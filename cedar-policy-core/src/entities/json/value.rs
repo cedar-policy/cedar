@@ -104,7 +104,7 @@ pub enum CedarValueJson {
     // `serde(untagged)`
     ExtnEscape {
         /// JSON object containing the extension-constructor call
-        __extn: FnAndArg,
+        __extn: FnAndArgs,
     },
     /// JSON bool => Cedar bool
     Bool(bool),
@@ -151,9 +151,22 @@ impl From<RawCedarValueJson> for CedarValueJson {
                                 {
                                     if let Some(arg) = r.values.get("arg") {
                                         return Self::ExtnEscape {
-                                            __extn: FnAndArg {
+                                            __extn: FnAndArgs::Single {
                                                 ext_fn: fn_name.clone(),
                                                 arg: Box::new(arg.clone().into()),
+                                            },
+                                        };
+                                    }
+                                    if let Some(RawCedarValueJson::Set(args)) = r.values.get("args")
+                                    {
+                                        return Self::ExtnEscape {
+                                            __extn: FnAndArgs::Multi {
+                                                ext_fn: fn_name.clone(),
+                                                args: args
+                                                    .into_iter()
+                                                    .cloned()
+                                                    .map(Into::into)
+                                                    .collect(),
                                             },
                                         };
                                     }
@@ -318,13 +331,41 @@ impl TryFrom<TypeAndId> for EntityUID {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub struct FnAndArg {
-    /// Extension constructor function
-    #[serde(rename = "fn")]
-    #[cfg_attr(feature = "wasm", tsify(type = "string"))]
-    pub(crate) ext_fn: SmolStr,
-    /// Argument to that constructor
-    pub(crate) arg: Box<CedarValueJson>,
+#[serde(untagged)]
+pub enum FnAndArgs {
+    /// Single-argument function
+    Single {
+        /// Extension constructor function
+        #[serde(rename = "fn")]
+        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
+        ext_fn: SmolStr,
+        /// Argument to that constructor
+        arg: Box<CedarValueJson>,
+    },
+    /// Multi-argument function
+    Multi {
+        /// Extension constructor function
+        #[serde(rename = "fn")]
+        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
+        ext_fn: SmolStr,
+        /// Arguments to that constructor
+        args: Vec<CedarValueJson>,
+    },
+}
+
+impl FnAndArgs {
+    pub(crate) fn fn_str(&self) -> &str {
+        match self {
+            Self::Multi { ext_fn, .. } | Self::Single { ext_fn, .. } => ext_fn,
+        }
+    }
+
+    pub(crate) fn args(&self) -> &[CedarValueJson] {
+        match self {
+            Self::Multi { args, .. } => args,
+            Self::Single { arg, .. } => std::slice::from_ref(arg),
+        }
+    }
 }
 
 impl CedarValueJson {
@@ -376,22 +417,30 @@ impl CedarValueJson {
     pub fn from_expr(expr: BorrowedRestrictedExpr<'_>) -> Result<Self, JsonSerializationError> {
         match expr.as_ref().expr_kind() {
             ExprKind::Lit(lit) => Ok(Self::from_lit(lit.clone())),
-            ExprKind::ExtensionFunctionApp { fn_name, args } => match args.len() {
-                0 => Err(JsonSerializationError::call_0_args(fn_name.clone())),
-                // PANIC SAFETY. We've checked that `args` is of length 1, fine to index at 0
-                #[allow(clippy::indexing_slicing)]
-                1 => Ok(Self::ExtnEscape {
-                    __extn: FnAndArg {
+            ExprKind::ExtensionFunctionApp { fn_name, args } => match args.as_slice() {
+                [] => Err(JsonSerializationError::call_0_args(fn_name.clone())),
+                [arg] => Ok(Self::ExtnEscape {
+                    __extn: FnAndArgs::Single {
                         ext_fn: fn_name.to_smolstr(),
                         arg: Box::new(CedarValueJson::from_expr(
                             // assuming the invariant holds for `expr`, it must also hold here
-                            BorrowedRestrictedExpr::new_unchecked(
-                                &args[0], // checked above that |args| == 1
-                            ),
+                            BorrowedRestrictedExpr::new_unchecked(arg),
                         )?),
                     },
                 }),
-                _ => Err(JsonSerializationError::call_2_or_more_args(fn_name.clone())),
+                args => Ok(Self::ExtnEscape {
+                    __extn: FnAndArgs::Multi {
+                        ext_fn: fn_name.to_smolstr(),
+                        args: args
+                            .into_iter()
+                            .map(|arg| {
+                                CedarValueJson::from_expr(BorrowedRestrictedExpr::new_unchecked(
+                                    arg,
+                                ))
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                    },
+                }),
             },
             ExprKind::Set(exprs) => Ok(Self::Set(
                 exprs
@@ -465,22 +514,24 @@ impl CedarValueJson {
             }
             ValueKind::ExtensionValue(ev) => {
                 let ext_func = &ev.func;
-                Ok(Self::ExtnEscape {
-                    __extn: FnAndArg {
-                        ext_fn: ext_func.to_smolstr(),
-                        arg: match ev.args.as_slice() {
-                            [ref expr] => Box::new(Self::from_expr(expr.as_borrowed())?),
-                            [] => {
-                                return Err(JsonSerializationError::call_0_args(ext_func.clone()))
-                            }
-                            _ => {
-                                return Err(JsonSerializationError::call_2_or_more_args(
-                                    ext_func.clone(),
-                                ))
-                            }
+                match ev.args.as_slice() {
+                    [] => Err(JsonSerializationError::call_0_args(ext_func.clone())),
+                    [ref expr] => Ok(Self::ExtnEscape {
+                        __extn: FnAndArgs::Single {
+                            ext_fn: ext_func.to_smolstr(),
+                            arg: Box::new(Self::from_expr(expr.as_borrowed())?),
                         },
-                    },
-                })
+                    }),
+                    exprs => Ok(Self::ExtnEscape {
+                        __extn: FnAndArgs::Multi {
+                            ext_fn: ext_func.to_smolstr(),
+                            args: exprs
+                                .into_iter()
+                                .map(|expr| Self::from_expr(expr.as_borrowed()))
+                                .collect::<Result<Vec<_>, _>>()?,
+                        },
+                    }),
+                }
             }
         }
     }
@@ -519,10 +570,23 @@ impl CedarValueJson {
                     Err(_) => Ok(CedarValueJson::EntityEscape { __entity }),
                 }
             }
-            CedarValueJson::ExtnEscape { __extn } => Ok(CedarValueJson::ExtnEscape {
-                __extn: FnAndArg {
-                    ext_fn: __extn.ext_fn,
-                    arg: Box::new((*__extn.arg).sub_entity_literals(mapping)?),
+            CedarValueJson::ExtnEscape {
+                __extn: FnAndArgs::Single { ext_fn, arg },
+            } => Ok(CedarValueJson::ExtnEscape {
+                __extn: FnAndArgs::Single {
+                    ext_fn,
+                    arg: Box::new((*arg).sub_entity_literals(mapping)?),
+                },
+            }),
+            CedarValueJson::ExtnEscape {
+                __extn: FnAndArgs::Multi { ext_fn, args },
+            } => Ok(CedarValueJson::ExtnEscape {
+                __extn: FnAndArgs::Multi {
+                    ext_fn,
+                    args: args
+                        .into_iter()
+                        .map(|arg| arg.sub_entity_literals(mapping))
+                        .collect::<Result<Vec<_>, _>>()?,
                 },
             }),
             v @ CedarValueJson::Bool(_) => Ok(v),
@@ -562,17 +626,21 @@ fn check_for_reserved_keys<'a>(
     }
 }
 
-impl FnAndArg {
+impl FnAndArgs {
     /// Convert this `FnAndArg` into a Cedar "restricted expression" (which will be a call to an extension constructor)
     pub fn into_expr(
         self,
         ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
+        let ext_fn = self.fn_str();
+        let args = self.args();
         Ok(RestrictedExpr::call_extension_fn(
-            Name::from_normalized_str(&self.ext_fn).map_err(|errs| {
-                JsonDeserializationError::parse_escape(EscapeKind::Extension, self.ext_fn, errs)
+            Name::from_normalized_str(ext_fn).map_err(|errs| {
+                JsonDeserializationError::parse_escape(EscapeKind::Extension, ext_fn, errs)
             })?,
-            vec![CedarValueJson::into_expr(*self.arg, ctx)?],
+            args.into_iter()
+                .map(|arg| CedarValueJson::into_expr(arg.clone(), ctx.clone()))
+                .collect::<Result<Vec<_>, _>>()?,
         ))
     }
 }
@@ -606,7 +674,7 @@ impl<'e> ValueParser<'e> {
             let extjson: ExtnValueJson = serde_json::from_value(val).ok()?;
             match extjson {
                 ExtnValueJson::ExplicitExtnEscape {
-                    __extn: FnAndArg { ext_fn, arg },
+                    __extn: FnAndArgs::Single { ext_fn, arg },
                 } if ext_fn == "unknown" => {
                     let arg = arg.into_expr(ctx.clone()).ok()?;
                     let name = arg.as_string()?;
@@ -634,7 +702,81 @@ impl<'e> ValueParser<'e> {
             // convert that into an extension-function-call `RestrictedExpr`
             Some(SchemaType::Extension { ref name, .. }) => {
                 let extjson: ExtnValueJson = serde_json::from_value(val)?;
-                self.extn_value_json_into_rexpr(extjson, name.clone(), ctx)
+                match extjson {
+                    ExtnValueJson::ExplicitExprEscape { .. } => {
+                        Err(JsonDeserializationError::ExprTag(Box::new(ctx())))
+                    }
+                    ExtnValueJson::ExplicitExtnEscape { __extn }
+                    | ExtnValueJson::ImplicitExtnEscape(__extn) => {
+                        let func = self.extensions.func(
+                            &Name::from_normalized_str(__extn.fn_str()).map_err(|errs| {
+                                JsonDeserializationError::parse_escape(
+                                    EscapeKind::Extension,
+                                    __extn.fn_str(),
+                                    errs,
+                                )
+                            })?,
+                        )?;
+                        let arg_types = func.arg_types();
+                        let args = __extn.args();
+                        if args.len() != arg_types.len() {
+                            return Err(JsonDeserializationError::incorrect_num_of_arguments(
+                                arg_types.len(),
+                                args.len(),
+                                __extn.fn_str(),
+                            ));
+                        }
+                        Ok(RestrictedExpr::call_extension_fn(
+                            func.name().clone(),
+                            arg_types
+                                .into_iter()
+                                .zip(args.iter())
+                                .map(|(arg_type, arg)| {
+                                    // We need to recur here because there
+                                    // could be arguments of non-primitive
+                                    // types like `datetime`, which could be
+                                    // expressed using `ImplicitExtnEscape` or
+                                    // `ImplicitConstructor`
+                                    self.val_into_restricted_expr(
+                                        // So, we have to serialize
+                                        // `CedarValueJson` here
+                                        serde_json::to_value(arg)?,
+                                        Some(arg_type),
+                                        ctx.clone(),
+                                    )
+                                })
+                                .collect::<Result<Vec<_>, _>>()?,
+                        ))
+                    }
+                    ExtnValueJson::ImplicitConstructor(val) => {
+                        let expected_return_type = SchemaType::Extension { name: name.clone() };
+                        // Unfortunately, we can only allow one argument
+                        // constructor here because it's impossible to
+                        // distinguish two cases where there are
+                        // multiple arguments and where there is one
+                        // argument of a set type
+                        if let Some(constructor) = self
+                            .extensions
+                            .lookup_single_arg_constructor(&expected_return_type)
+                        {
+                            // PANIC SAFETY: we've concluded above that it has one arugment
+                            #[allow(clippy::indexing_slicing)]
+                            Ok(RestrictedExpr::call_extension_fn(
+                                constructor.name().clone(),
+                                std::iter::once(self.val_into_restricted_expr(
+                                    serde_json::to_value(val)?,
+                                    Some(&constructor.arg_types()[0]),
+                                    ctx,
+                                )?),
+                            ))
+                        } else {
+                            Err(JsonDeserializationError::missing_implied_constructor(
+                                ctx(),
+                                expected_return_type,
+                            ))
+                        }
+                    }
+                }
             }
             // The expected type is a set type. No special parsing rules apply, but
             // we need to parse the elements according to the expected element type
@@ -753,55 +895,6 @@ impl<'e> ValueParser<'e> {
                 // `RestrictedExpr` from that.
                 let jvalue: CedarValueJson = serde_json::from_value(val)?;
                 Ok(jvalue.into_expr(ctx)?)
-            }
-        }
-    }
-
-    /// internal function that converts an `ExtnValueJson` into a
-    /// `RestrictedExpr`, which will be an extension constructor call.
-    ///
-    /// `expected_typename`: Specific extension type that is expected.
-    fn extn_value_json_into_rexpr(
-        &self,
-        extnjson: ExtnValueJson,
-        expected_typename: Name,
-        ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
-    ) -> Result<RestrictedExpr, JsonDeserializationError> {
-        match extnjson {
-            ExtnValueJson::ExplicitExprEscape { __expr } => {
-                Err(JsonDeserializationError::ExprTag(Box::new(ctx())))
-            }
-            ExtnValueJson::ExplicitExtnEscape { __extn }
-            | ExtnValueJson::ImplicitExtnEscape(__extn) => {
-                // reuse the same logic that parses CedarValueJson
-                let jvalue = CedarValueJson::ExtnEscape { __extn };
-                let expr = jvalue.into_expr(ctx.clone())?;
-                match expr.expr_kind() {
-                    ExprKind::ExtensionFunctionApp { .. } => Ok(expr),
-                    _ => Err(JsonDeserializationError::expected_extn_value(
-                        ctx(),
-                        Either::Right(expr.clone().into()),
-                    )),
-                }
-            }
-            ExtnValueJson::ImplicitConstructor(val) => {
-                let expected_return_type = SchemaType::Extension {
-                    name: expected_typename,
-                };
-                let func = self
-                    .extensions
-                    .lookup_single_arg_constructor(&expected_return_type)
-                    .ok_or_else(|| {
-                        JsonDeserializationError::missing_implied_constructor(
-                            ctx(),
-                            expected_return_type,
-                        )
-                    })?;
-                let arg = val.into_expr(ctx.clone())?;
-                Ok(RestrictedExpr::call_extension_fn(
-                    func.name().clone(),
-                    vec![arg],
-                ))
             }
         }
     }
@@ -952,11 +1045,11 @@ pub enum ExtnValueJson {
     /// Explicit `__extn` escape; see notes on `CedarValueJson::ExtnEscape`
     ExplicitExtnEscape {
         /// JSON object containing the extension-constructor call
-        __extn: FnAndArg,
+        __extn: FnAndArgs,
     },
     /// Implicit `__extn` escape, in which case we'll just see the `FnAndArg`
     /// directly
-    ImplicitExtnEscape(FnAndArg),
+    ImplicitExtnEscape(FnAndArgs),
     /// Implicit `__extn` escape and constructor. Constructor is implicitly
     /// selected based on the argument type and the expected type.
     //

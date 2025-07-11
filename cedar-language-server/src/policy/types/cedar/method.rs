@@ -124,7 +124,7 @@ impl MethodInfo {
 
     pub(crate) fn from_extension(ext: &Extension) -> Vec<Self> {
         ext.funcs()
-            .filter(|f| !f.is_constructor())
+            .filter(|f| !f.is_single_arg_constructor())
             .map(Self::from)
             .collect()
     }
