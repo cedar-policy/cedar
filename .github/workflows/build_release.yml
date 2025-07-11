@@ -23,7 +23,7 @@ jobs:
         run: rustup update stable && rustup default stable
       - name: Install protobuf (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get install protobuf-compiler
+        run: sudo apt-get update && sudo apt-get install protobuf-compiler
       - name: Install protobuf (macOS)
         if: startsWith(matrix.os, 'macos')
         run: brew install protobuf
