@@ -106,11 +106,11 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
 
         let mut entity_args = vec![
             "--principal".to_string(),
-            value_to_euid_string(json_request.principal.into()).unwrap(),
+            value_to_euid_string(json_request.principal).unwrap(),
             "--resource".to_string(),
-            value_to_euid_string(json_request.resource.into()).unwrap(),
+            value_to_euid_string(json_request.resource).unwrap(),
             "--action".to_string(),
-            value_to_euid_string(json_request.action.into()).unwrap(),
+            value_to_euid_string(json_request.action).unwrap(),
         ];
         if !json_request.validate_request {
             entity_args.push("--request-validation=false".to_string());
