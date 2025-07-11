@@ -425,7 +425,6 @@ version = "4.5.0"
 dependencies = [
  "assert_cmd",
  "cedar-policy",
- "cedar-policy-core",
  "miette",
  "serde",
  "serde_json",
