@@ -701,8 +701,6 @@ impl<'e> ValueParser<'e> {
             // convert that into an extension-function-call `RestrictedExpr`
             Some(SchemaType::Extension { ref name, .. }) => {
                 let extjson: ExtnValueJson = serde_json::from_value(val)?;
-                //let func = self.extensions.func(name)?;
-                //let arg_types = func.arg_types();
                 match extjson {
                     ExtnValueJson::ExplicitExprEscape { .. } => {
                         Err(JsonDeserializationError::ExprTag(Box::new(ctx())))
@@ -720,14 +718,22 @@ impl<'e> ValueParser<'e> {
                         )?;
                         let arg_types = func.arg_types();
                         let args = __extn.args();
+                        // TODO: check the lengths of `arg_types` and `args`
                         Ok(RestrictedExpr::call_extension_fn(
                             func.name().clone(),
                             arg_types
                                 .into_iter()
                                 .zip(args.iter())
                                 .map(|(arg_type, arg)| {
+                                    // We need to recur here because there
+                                    // could be arguments of non-primitive
+                                    // types like `datetime`, which could be
+                                    // expressed using `ImplicitExtnEscape` or
+                                    // `ImplicitConstructor`
                                     self.val_into_restricted_expr(
-                                        serde_json::to_value(arg).unwrap(),
+                                        // So, we have to serialize
+                                        // `CedarValueJson` here
+                                        serde_json::to_value(arg)?,
                                         Some(arg_type),
                                         ctx.clone(),
                                     )
@@ -737,47 +743,37 @@ impl<'e> ValueParser<'e> {
                     }
                     ExtnValueJson::ImplicitConstructor(val) => {
                         let expected_return_type = SchemaType::Extension { name: name.clone() };
-                        let funcs = self.extensions.lookup_constructors(&expected_return_type);
-                        for func in funcs {
-                            let arg_types = func.arg_types();
-                            match (arg_types, val.clone()) {
-                                ([], _) => {}
-                                ([arg_type], arg) => {
-                                    return Ok(RestrictedExpr::call_extension_fn(
-                                        func.name().clone(),
-                                        std::iter::once(self.val_into_restricted_expr(
-                                            serde_json::to_value(arg).unwrap(),
-                                            Some(arg_type),
-                                            ctx,
-                                        )?),
-                                    ));
-                                }
-                                (arg_types, CedarValueJson::Set(args)) => {
-                                    return Ok(RestrictedExpr::call_extension_fn(
-                                        func.name().clone(),
-                                        arg_types
-                                            .into_iter()
-                                            .zip(args.iter())
-                                            .map(|(arg_type, arg)| {
-                                                self.val_into_restricted_expr(
-                                                    serde_json::to_value(arg).unwrap(),
-                                                    Some(arg_type),
-                                                    ctx.clone(),
-                                                )
-                                            })
-                                            .collect::<Result<Vec<_>, _>>()?,
-                                    ));
-                                }
-                                (_, _) => {}
-                            }
+                        // Unfortunately, we can only allow one argument
+                        // constructor here because it's impossible to
+                        // distinguish two cases where there are
+                        // multiple arguments and where there is one
+                        // argument of a set type
+                        // TODO: revert changes to single constructors
+                        if let Some(constructor) = self
+                            .extensions
+                            .lookup_constructors(&expected_return_type.clone())
+                            .filter(|f| f.arg_types().len() == 1)
+                            .next()
+                        {
+                            // PANIC SAFETY: we've concluded above that it has
+                            // one arugment
+                            #[allow(clippy::indexing_slicing)]
+                            Ok(RestrictedExpr::call_extension_fn(
+                                constructor.name().clone(),
+                                std::iter::once(self.val_into_restricted_expr(
+                                    serde_json::to_value(val)?,
+                                    Some(&constructor.arg_types()[0]),
+                                    ctx,
+                                )?),
+                            ))
+                        } else {
+                            Err(JsonDeserializationError::missing_implied_constructor(
+                                ctx(),
+                                expected_return_type,
+                            ))
                         }
-                        Err(JsonDeserializationError::missing_implied_constructor(
-                            ctx(),
-                            expected_return_type,
-                        ))
                     }
                 }
-                //self.extn_value_json_into_rexpr(extjson, name.clone(), ctx)
             }
             // The expected type is a set type. No special parsing rules apply, but
             // we need to parse the elements according to the expected element type
