@@ -83,6 +83,19 @@ pub enum EntityUIDEntry {
     },
 }
 
+impl From<EntityUID> for EntityUIDEntry {
+    fn from(euid: EntityUID) -> Self {
+        Self::Known {
+            euid: Arc::new(euid.clone()),
+            loc: match &euid {
+                EntityUID::EntityUID(euid) => euid.loc(),
+                #[cfg(feature = "tolerant-ast")]
+                EntityUID::Error => None,
+            },
+        }
+    }
+}
+
 impl EntityUIDEntry {
     /// Evaluate the entry to either:
     /// A value, if the entry is concrete

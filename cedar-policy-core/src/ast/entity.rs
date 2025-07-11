@@ -208,6 +208,13 @@ pub struct EntityUIDImpl {
     loc: MaybeLoc,
 }
 
+impl EntityUIDImpl {
+    /// The source location of this entity
+    pub fn loc(&self) -> MaybeLoc {
+        self.loc.clone()
+    }
+}
+
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]

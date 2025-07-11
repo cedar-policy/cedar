@@ -86,7 +86,7 @@ impl From<transitive_closure::TcError<EntityUID>> for TransitiveClosureError {
 /// Error type for entity sets containing duplicate entity uids
 pub struct Duplicate {
     /// The [`EntityUID`] that was duplicated
-    euid: EntityUID,
+    pub(crate) euid: EntityUID,
 }
 
 #[cfg(test)]
