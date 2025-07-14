@@ -144,6 +144,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-recursion"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b43422f69d8ff38f95f1b2bb76517c91589a924d1559a0e935d7c8ce0274c11"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.103",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.88"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -295,9 +306,9 @@ name = "cedar-language-server"
 version = "0.0.1"
 dependencies = [
  "anyhow",
- "cedar-policy",
- "cedar-policy-core",
- "cedar-policy-formatter",
+ "cedar-policy 4.5.0",
+ "cedar-policy-core 4.5.0",
+ "cedar-policy-formatter 4.5.0",
  "cool_asserts",
  "dashmap 6.1.0",
  "itertools 0.14.0",
@@ -325,8 +336,8 @@ dependencies = [
 name = "cedar-policy"
 version = "4.5.0"
 dependencies = [
- "cedar-policy-core",
- "cedar-policy-formatter",
+ "cedar-policy-core 4.5.0",
+ "cedar-policy-formatter 4.5.0",
  "cool_asserts",
  "criterion",
  "dhat",
@@ -353,12 +364,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "cedar-policy"
+version = "4.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3a73fdc6a5127276075a8c559a0dee47d2b66aa823daef349a36e5a03e95624"
+dependencies = [
+ "cedar-policy-core 4.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cedar-policy-formatter 4.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "itertools 0.14.0",
+ "lalrpop-util",
+ "lazy_static",
+ "miette",
+ "nonempty",
+ "prost",
+ "prost-build",
+ "ref-cast",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "smol_str",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "cedar-policy-cli"
 version = "4.5.0"
 dependencies = [
  "assert_cmd",
- "cedar-policy",
- "cedar-policy-formatter",
+ "cedar-policy 4.5.0",
+ "cedar-policy-formatter 4.5.0",
  "clap",
  "glob",
  "graphviz-rust",
@@ -405,10 +440,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "cedar-policy-core"
+version = "4.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dda1924b69cc47f602d839782f3a9c5369f545897276c20fec9e2026562142e"
+dependencies = [
+ "chrono",
+ "educe",
+ "either",
+ "itertools 0.14.0",
+ "lalrpop",
+ "lalrpop-util",
+ "lazy_static",
+ "miette",
+ "nonempty",
+ "ref-cast",
+ "regex",
+ "rustc_lexer",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "smol_str",
+ "stacker",
+ "thiserror 2.0.12",
+ "unicode-security",
+]
+
+[[package]]
 name = "cedar-policy-formatter"
 version = "4.5.0"
 dependencies = [
- "cedar-policy-core",
+ "cedar-policy-core 4.5.0",
  "insta",
  "itertools 0.14.0",
  "lazy_static",
@@ -420,11 +482,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "cedar-policy-formatter"
+version = "4.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75b7998a24f7bf11f26224457a49c8cb5eacf42be780c2ad91f86b5b10f7c393"
+dependencies = [
+ "cedar-policy-core 4.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "itertools 0.14.0",
+ "lazy_static",
+ "logos",
+ "miette",
+ "pretty",
+ "regex",
+ "smol_str",
+]
+
+[[package]]
+name = "cedar-symcc"
+version = "4.5.0"
+dependencies = [
+ "anyhow",
+ "async-recursion",
+ "cedar-policy 4.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cedar-policy-core 4.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "itertools 0.14.0",
+ "log",
+ "miette",
+ "rand 0.8.5",
+ "ref-cast",
+ "smol_str",
+ "thiserror 2.0.12",
+ "tokio",
+]
+
+[[package]]
 name = "cedar-testing"
 version = "4.5.0"
 dependencies = [
  "assert_cmd",
- "cedar-policy",
+ "cedar-policy 4.5.0",
  "miette",
  "serde",
  "serde_json",
@@ -436,9 +532,9 @@ dependencies = [
 name = "cedar-wasm"
 version = "4.5.0"
 dependencies = [
- "cedar-policy",
- "cedar-policy-core",
- "cedar-policy-formatter",
+ "cedar-policy 4.5.0",
+ "cedar-policy-core 4.5.0",
+ "cedar-policy-formatter 4.5.0",
  "console_error_panic_hook",
  "cool_asserts",
  "serde",
@@ -1373,7 +1469,7 @@ checksum = "e04d7f318608d35d4b61ddd75cbdaee86b023ebe2bd5a66ee0915f0bf93095a9"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

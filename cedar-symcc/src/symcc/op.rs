@@ -1,0 +1,233 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+use super::term_type::TermType;
+use super::type_abbrevs::*;
+
+/// Uninterpreted unary function
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+pub struct Uuf {
+    pub id: String,
+    pub arg: TermType,
+    pub out: TermType,
+}
+
+/// Extension ADT operators
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+pub enum ExtOp {
+    DecimalVal,
+    IpaddrIsV4,
+    IpaddrAddrV4,
+    IpaddrPrefixV4,
+    IpaddrAddrV6,
+    IpaddrPrefixV6,
+    DurationVal,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+pub enum Op {
+    //   ---------- SMTLib core theory of equality with uninterpreted functions (`UF`) ----------
+    Not,
+    And,
+    Or,
+    Eq,
+    Ite,
+    Uuf(Uuf),
+    //   ---------- SMTLib theory of finite bitvectors (`BV`) ----------
+    Bvneg,
+    Bvadd,
+    Bvsub,
+    Bvmul,
+    Bvsdiv, // signed bit-vector division
+    Bvudiv, // unsigned bit-vector division
+    Bvshl,
+    Bvlshr,
+    Bvslt,
+    Bvsle,
+    Bvult,
+    Bvule,
+    /// bit-vector negation overflow predicate
+    Bvnego,
+    /// bit-vector signed addition overflow predicate
+    Bvsaddo,
+    /// bit-vector signed subtraction overflow predicate
+    Bvssubo,
+    /// bit-vector signed multiplication overflow predicate
+    Bvsmulo,
+    ZeroExtend(Nat),
+    //   ---------- CVC theory of finite sets (`FS`) ----------
+    SetMember,
+    SetSubset,
+    SetInter,
+    //   ---------- Core ADT operators with a trusted mapping to SMT ----------
+    OptionGet,
+    RecordGet(Attr),
+    StringLike(OrdPattern),
+    //   ---------- Extension ADT operators with a trusted mapping to SMT ----------
+    Ext(ExtOp),
+}
+
+impl ExtOp {
+    pub fn mk_name(&self) -> &'static str {
+        match self {
+            ExtOp::DecimalVal => "decimal.val",
+            ExtOp::IpaddrIsV4 => "ipaddr.isV4",
+            ExtOp::IpaddrAddrV4 => "ipaddr.addrV4",
+            ExtOp::IpaddrPrefixV4 => "ipaddr.prefixV4",
+            ExtOp::IpaddrAddrV6 => "ipaddr.addrV6",
+            ExtOp::IpaddrPrefixV6 => "ipaddr.prefixV6",
+            ExtOp::DurationVal => "duration.val",
+        }
+    }
+
+    pub fn type_of(self, l: Vec<TermType>) -> Option<TermType> {
+        match self {
+            ExtOp::DecimalVal
+                if l == vec![TermType::Ext {
+                    xty: ExtType::Decimal,
+                }] =>
+            {
+                Some(TermType::Bitvec { n: 64 })
+            }
+            _ => None,
+        }
+    }
+}
+// def ExtOp.typeOf : ExtOp → List TermType → Option TermType
+//   | .decimal.val, [.ext .decimal]     => .some (.bitvec 64)
+//   | .ipaddr.isV4, [.ext .ipAddr]      => .some .bool
+//   | .ipaddr.addrV4,   [.ext .ipAddr]  => .some (.bitvec 32)
+//   | .ipaddr.prefixV4, [.ext .ipAddr]  => .some (.option (.bitvec 5))
+//   | .ipaddr.addrV6,   [.ext .ipAddr]  => .some (.bitvec 128)
+//   | .ipaddr.prefixV6, [.ext .ipAddr]  => .some (.option (.bitvec 7))
+//   | _, _                              => .none
+
+impl Op {
+    pub fn type_of(self, l: Vec<TermType>) -> Option<TermType> {
+        use TermType::{Bitvec, Bool};
+        match self {
+            Op::Not if l == vec![TermType::Bool] => Some(TermType::Bool),
+            Op::And if l == vec![TermType::Bool, TermType::Bool] => Some(TermType::Bool),
+            Op::Or if l == vec![TermType::Bool, TermType::Bool] => Some(TermType::Bool),
+            Op::Eq if l.len() == 2 => {
+                if l[0] == l[1] {
+                    Some(TermType::Bool)
+                } else {
+                    None
+                }
+            }
+            Op::Ite if l.len() == 3 && l[0] == Bool => {
+                if l[1] == l[2] {
+                    Some(l[1].clone())
+                } else {
+                    None
+                }
+            }
+            Op::Uuf(f) if l.len() == 1 => {
+                if f.arg == l[0] {
+                    Some(f.out)
+                } else {
+                    None
+                }
+            }
+            Op::Bvneg if l.len() == 1 => match l[0] {
+                Bitvec { n } => Some(Bitvec { n }),
+                _ => None,
+            },
+            Op::Bvadd | Op::Bvsub | Op::Bvmul | Op::Bvshl | Op::Bvlshr if l.len() == 2 => {
+                match (l[0].clone(), l[1].clone()) {
+                    (Bitvec { n }, Bitvec { n: m }) if n == m => Some(Bitvec { n }),
+                    _ => None,
+                }
+            }
+            Op::Bvnego if l.len() == 1 && matches!(l[0].clone(), Bitvec { .. }) => Some(Bool),
+            Op::Bvsaddo
+            | Op::Bvssubo
+            | Op::Bvsmulo
+            | Op::Bvslt
+            | Op::Bvsle
+            | Op::Bvult
+            | Op::Bvule
+                if l.len() == 2 =>
+            {
+                match (l[0].clone(), l[1].clone()) {
+                    (Bitvec { n }, Bitvec { n: m }) if n == m => Some(Bool),
+                    _ => None,
+                }
+            }
+            Op::ZeroExtend(m) if l.len() == 1 => match l[0].clone() {
+                Bitvec { n } => Some(Bitvec { n: (n + m) }),
+                _ => None,
+            },
+            Op::SetMember if l.len() == 2 => match (l[0].clone(), l[1].clone()) {
+                (ty1, TermType::Set { ty: ty2 }) if ty1 == *ty2 => Some(Bool),
+                (_, _) => None,
+            },
+            Op::SetSubset | Op::SetInter if l.len() == 2 => match (l[0].clone(), l[1].clone()) {
+                (TermType::Set { ty: ty1 }, TermType::Set { ty: ty2 }) if *ty1 == *ty2 => {
+                    Some(Bool)
+                }
+                (_, _) => None,
+            },
+            Op::OptionGet if l.len() == 1 => match l.into_iter().next().unwrap() {
+                TermType::Option { ty } => Some(*ty),
+                _ => None,
+            },
+            Op::RecordGet(a) if l.len() == 1 => match l.into_iter().next().unwrap() {
+                TermType::Record { rty } => rty.get(&a).cloned(),
+                _ => None,
+            },
+            Op::StringLike(_) if l == vec![TermType::String] => Some(Bool),
+            Op::Ext(xop) => xop.type_of(l),
+            _ => None,
+        }
+    }
+
+    pub fn mk_name(&self) -> &'static str {
+        match self {
+            Op::Not => "not",
+            Op::And => "and",
+            Op::Or => "or",
+            Op::Eq => "eq",
+            Op::Ite => "ite",
+            Op::Uuf(_) => "uuf",
+            Op::Bvneg => "bvneg",
+            Op::Bvadd => "bvadd",
+            Op::Bvsub => "bvsub",
+            Op::Bvmul => "bvmul",
+            Op::Bvsdiv => "bvsdiv",
+            Op::Bvudiv => "bvudiv",
+            Op::Bvshl => "bvshl",
+            Op::Bvlshr => "bvlshr",
+            Op::Bvslt => "bvslt",
+            Op::Bvsle => "bvsle",
+            Op::Bvult => "bvult",
+            Op::Bvule => "bvule",
+            Op::Bvnego => "bvnego",
+            Op::Bvsaddo => "bvsaddo",
+            Op::Bvssubo => "bvssubo",
+            Op::Bvsmulo => "bvsmulo",
+            Op::ZeroExtend(_) => "zero_extend",
+            Op::SetMember => "set.member",
+            Op::SetSubset => "set.subset",
+            Op::SetInter => "set.inter",
+            Op::OptionGet => "option.get",
+            Op::RecordGet(_) => "record.get",
+            Op::StringLike(_) => "string.like",
+            Op::Ext(_) => "ext",
+        }
+    }
+}

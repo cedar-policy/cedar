@@ -4,6 +4,7 @@ members = [
 	"cedar-policy-core",
 	"cedar-policy-formatter",
 	"cedar-policy-cli",
+	"cedar-symcc",
 	"cedar-testing",
 	"cedar-wasm",
 	"cedar-language-server",
