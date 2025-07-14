@@ -484,37 +484,37 @@ mod tests {
         assert!(ext
             .get_func(&Name::parse_unqualified_name("ip").expect("should be a valid identifier"))
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isInRange").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),);
+            .is_single_arg_constructor(),);
     }
 
     #[test]

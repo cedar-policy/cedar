@@ -23,11 +23,12 @@ use crate::ast::{
 };
 use crate::entities::conformance::err::EntitySchemaConformanceError;
 use crate::entities::{Name, ReservedNameError};
+use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use either::Either;
 use itertools::Itertools;
 use miette::Diagnostic;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 /// Escape kind
@@ -85,6 +86,15 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     MissingImpliedConstructor(MissingImpliedConstructor),
+    /// Incorrect number of arguments of an extension function are provided
+    /// during schema-based parsing
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    IncorrectNumOfArguments(IncorrectNumOfArguments),
+    /// Failed to look up an extension function
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    FailedExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
     /// The same key appears two or more times in a single record
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -170,16 +180,6 @@ impl JsonDeserializationError {
         })
     }
 
-    pub(crate) fn expected_extn_value(
-        ctx: JsonDeserializationErrorContext,
-        got: Either<serde_json::Value, Expr>,
-    ) -> Self {
-        Self::ExpectedExtnValue(ExpectedExtnValue {
-            ctx: Box::new(ctx),
-            got: Box::new(got),
-        })
-    }
-
     pub(crate) fn action_parent_is_not_action(uid: EntityUID, parent: EntityUID) -> Self {
         Self::ActionParentIsNotAction(ActionParentIsNotAction { uid, parent })
     }
@@ -191,6 +191,18 @@ impl JsonDeserializationError {
         Self::MissingImpliedConstructor(MissingImpliedConstructor {
             ctx: Box::new(ctx),
             return_type: Box::new(return_type),
+        })
+    }
+
+    pub(crate) fn incorrect_num_of_arguments(
+        expected_arg_num: usize,
+        provided_arg_num: usize,
+        func_name: &str,
+    ) -> Self {
+        Self::IncorrectNumOfArguments(IncorrectNumOfArguments {
+            expected_arg_num,
+            provided_arg_num,
+            func_name: func_name.to_smolstr(),
         })
     }
 
@@ -290,6 +302,18 @@ pub struct MissingImpliedConstructor {
 }
 
 #[derive(Debug, Error, Diagnostic)]
+#[error("expected {expected_arg_num} arguments for function {func_name} but {provided_arg_num} arguments are provided")]
+/// Error type for incorrect extension function argument number
+pub struct IncorrectNumOfArguments {
+    /// Expected number of arguments
+    expected_arg_num: usize,
+    /// Provided number of argument
+    provided_arg_num: usize,
+    /// Function name
+    func_name: SmolStr,
+}
+
+#[derive(Debug, Error, Diagnostic)]
 #[error("action `{}` has a non-action parent `{}`", .uid, .parent)]
 #[diagnostic(help("parents of actions need to have type `Action` themselves, perhaps namespaced"))]
 /// Error type for action  parents not having type `Action`
@@ -371,11 +395,6 @@ pub enum JsonSerializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ExtnCall0Arguments(ExtnCall0Arguments),
-    /// Extension-function calls with 2 or more arguments are not currently
-    /// supported in our JSON format.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ExtnCall2OrMoreArguments(ExtnCall2OrMoreArguments),
     /// Encountered a `Record` which can't be serialized to JSON because it
     /// contains a key which is reserved as a JSON escape.
     #[error(transparent)]
@@ -392,15 +411,17 @@ pub enum JsonSerializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Residual(Residual),
+    /// Extension-function calls with 2 or more arguments are not currently
+    /// supported in our JSON format.
+    /// Cedar should not throw any error of this variant after #1697
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExtnCall2OrMoreArguments(ExtnCall2OrMoreArguments),
 }
 
 impl JsonSerializationError {
     pub(crate) fn call_0_args(func: Name) -> Self {
         Self::ExtnCall0Arguments(ExtnCall0Arguments { func })
-    }
-
-    pub(crate) fn call_2_or_more_args(func: Name) -> Self {
-        Self::ExtnCall2OrMoreArguments(ExtnCall2OrMoreArguments { func })
     }
 
     pub(crate) fn reserved_key(key: impl Into<SmolStr>) -> Self {
@@ -428,6 +449,7 @@ pub struct ExtnCall0Arguments {
 }
 
 /// Error type for extension functions called w/ 2+ arguments
+/// Cedar should not throw this error after #1697
 #[derive(Debug, Error, Diagnostic)]
 #[error("unsupported call to `{}` with 2 or more arguments", .func)]
 #[diagnostic(help("extension function calls with 2 or more arguments are not currently supported in our JSON format"))]

@@ -2293,6 +2293,7 @@ action "g" appliesTo {
 /// (Core has similar tests, but using a stubbed implementation of Schema.)
 mod schema_based_parsing_tests {
     use super::*;
+    use cedar_policy_core::entities::json::err::JsonDeserializationError;
     use cedar_policy_core::extensions::Extensions;
     use entities::conformance::err::EntitySchemaConformanceError;
     use entities::err::EntitiesError;
@@ -2533,6 +2534,210 @@ mod schema_based_parsing_tests {
                 None
             ),
             Err(EntitiesError::Deserialization(_))
+        );
+    }
+
+    #[test]
+    fn multiple_extension_arguments() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r#"
+        entity E {
+            d: datetime,
+        };
+        "#,
+        )
+        .unwrap();
+        // recommended way
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "fn": "offset",
+                            "args": [
+                                {"fn": "datetime", "arg": "2025-07-14"},
+                                {"fn": "duration", "arg": "0h"}],
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Ok(e) => {
+                assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+            }
+        );
+
+        // too many argments
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "fn": "offset",
+                            "args": [
+                                {"fn": "datetime", "arg": "2025-07-14"},
+                                {"fn": "duration", "arg": "0h"},
+                                {"fn": "duration", "arg": "0h"}
+                            ],
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Err(EntitiesError::Deserialization(
+                JsonDeserializationError::IncorrectNumOfArguments(_)
+            ))
+        );
+
+        // too few argments
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "fn": "offset",
+                            "args": [
+                                {"fn": "datetime", "arg": "2025-07-14"},
+                            ],
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Err(EntitiesError::Deserialization(
+                JsonDeserializationError::IncorrectNumOfArguments(_)
+            ))
+        );
+
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "fn": "offset",
+                            "arg":
+                                {"fn": "datetime", "arg": "2025-07-14"},
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Err(EntitiesError::Deserialization(
+                JsonDeserializationError::IncorrectNumOfArguments(_)
+            ))
+        );
+
+        // easiest way
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "fn": "offset",
+                            "args": [
+                                "2025-07-14",
+                               "0h"],
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Ok(e) => {
+                assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+            }
+        );
+
+        // hardest way
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "__extn": {
+                                "fn": "offset",
+                                "args": [
+                                {"__extn": {"fn": "datetime", "arg":"2025-07-14"}},
+                               {"__extn": {"fn": "duration", "arg":"0h"}},],
+                            }
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Ok(e) => {
+                assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+            }
+        );
+
+        // in-betweens
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "__extn": {
+                                "fn": "offset",
+                                "args": [
+                                {"fn": "datetime", "arg":"2025-07-14"},
+                               "0h"],
+                            }
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Ok(e) => {
+                assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+            }
+        );
+
+        // Arbitrarily deep
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "__extn": {
+                                "fn": "offset",
+                                "args": [
+                                    {"fn": "offset",
+                                    "args": [
+                                        "2025-07-14",
+                                        {"fn": "toTime", "arg": "2025-01-01"}]},
+                                    "0h"],
+                            }
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Ok(e) => {
+                assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+            }
         );
     }
 

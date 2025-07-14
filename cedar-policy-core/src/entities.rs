@@ -31,8 +31,8 @@ use json::err::JsonSerializationError;
 
 pub use json::{
     AllEntitiesNoAttrsSchema, AttributeType, CedarValueJson, ContextJsonParser, ContextSchema,
-    EntityJson, EntityJsonParser, EntityTypeDescription, EntityUidJson, FnAndArg, NoEntitiesSchema,
-    NoStaticContext, Schema, SchemaType, TypeAndId,
+    EntityJson, EntityJsonParser, EntityTypeDescription, EntityUidJson, FnAndArgs,
+    NoEntitiesSchema, NoStaticContext, Schema, SchemaType, TypeAndId,
 };
 
 use conformance::EntitySchemaConformanceChecker;
@@ -2608,6 +2608,9 @@ mod schema_based_parsing_tests {
                     .collect(),
                     open_attrs: false,
                 }),
+                "start_date" => Some(SchemaType::Extension {
+                    name: Name::parse_unqualified_name("datetime").expect("valid"),
+                }),
                 _ => None,
             }
         }
@@ -2670,7 +2673,11 @@ mod schema_based_parsing_tests {
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
+                        "tricky": { "type": "Employee", "id": "34FB87" },
+                        "start_date": { "fn": "offset", "args": [
+                            {"fn": "datetime", "arg": "1970-01-01"},
+                            {"fn": "duration", "arg": "1h"}
+                        ]}
                     },
                     "parents": [],
                     "tags": {
