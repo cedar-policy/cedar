@@ -411,6 +411,12 @@ pub enum JsonSerializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Residual(Residual),
+    /// Extension-function calls with 2 or more arguments are not currently
+    /// supported in our JSON format.
+    /// Cedar should not throw any error of this variant after #1697
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExtnCall2OrMoreArguments(ExtnCall2OrMoreArguments),
 }
 
 impl JsonSerializationError {
@@ -439,6 +445,16 @@ impl JsonSerializationError {
 ))]
 pub struct ExtnCall0Arguments {
     /// Name of the function which was called with 0 arguments
+    func: Name,
+}
+
+/// Error type for extension functions called w/ 2+ arguments
+/// Cedar should not throw this error after #1697
+#[derive(Debug, Error, Diagnostic)]
+#[error("unsupported call to `{}` with 2 or more arguments", .func)]
+#[diagnostic(help("extension function calls with 2 or more arguments are not currently supported in our JSON format"))]
+pub struct ExtnCall2OrMoreArguments {
+    /// Name of the function called w/ 2 or more arguments
     func: Name,
 }
 
