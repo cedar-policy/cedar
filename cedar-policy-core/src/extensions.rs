@@ -173,7 +173,7 @@ impl<'a> Extensions<'a> {
         self.extensions.iter().flat_map(|ext| ext.funcs())
     }
 
-    /// Lookup constructors
+    /// Lookup a single-argument constructor by its return type
     pub(crate) fn lookup_single_arg_constructor<'b>(
         &self,
         return_type: &SchemaType,
