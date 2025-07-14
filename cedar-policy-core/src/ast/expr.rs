@@ -299,7 +299,7 @@ impl<T> ExprKind<T> {
                 assert(forall |e: Expr<T>| exprs@.contains(e) ==> decreases_to!(exprs => e));
             }
             ExprKind::Record(map) => {
-                assert(decreases_to!(map => map@)); // TODO does this need to be an axiom?
+                broadcast use BTreeMapView::axiom_btree_map_view_decreases;
                 assert(forall |e: Expr<T>| map@.dom().finite() && map@.contains_value(e) ==> decreases_to!(map@ => e));
             },
             _ => {}
@@ -385,9 +385,16 @@ impl<T> Expr<T> {
         self.source_loc.as_ref()
     }
 
+    verus! {
+
     /// Return the `Expr`, but with the new `source_loc` (or `None`).
-    pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+    pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> (new_self: Self)
+        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
+            self.view_with_slot_env(slot_env) == new_self.view_with_slot_env(slot_env)
+    {
         Self { source_loc, ..self }
+    }
+
     }
 
     /// Update the data for this `Expr`. A convenient function used by the
@@ -598,9 +605,17 @@ impl Expr {
         ExprBuilder::new().noteq(e1, e2)
     }
 
+    verus! {
+
     /// Create an 'and' expression. Arguments must evaluate to Bool type
-    pub fn and(e1: Expr, e2: Expr) -> Self {
+    #[verifier::external_body]
+    pub fn and(e1: Expr, e2: Expr) -> (e: Self)
+        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
+            #[trigger] e.view_with_slot_env(slot_env) == spec_ast::Expr::and(e1.view_with_slot_env(slot_env), e2.view_with_slot_env(slot_env))
+    {
         ExprBuilder::new().and(e1, e2)
+    }
+
     }
 
     /// Create an 'or' expression. Arguments must evaluate to Bool type

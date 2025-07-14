@@ -105,6 +105,11 @@ pub struct ExBTreeMap<K, V, A: std::alloc::Allocator + Clone>(BTreeMap<K,V,A>);
 pub trait BTreeMapView {
     type V;
     spec fn view(&self) -> Self::V;
+    broadcast proof fn axiom_btree_map_view_decreases(&self)
+        ensures decreases_to!(self => #[trigger] self.view())
+    {
+        admit()
+    }
 }
 
 // Doesn't work for BTreeMap<SmolStr, V> because SmolStr doesn't implement View, but SmolStrView;
@@ -117,6 +122,8 @@ pub trait BTreeMapView {
 pub assume_specification<T: Clone, A: std::alloc::Allocator>[Arc::unwrap_or_clone](arc: Arc<T, A>) -> (inner: T)
     ensures inner == arc;
 
+// We don't actually need the spec on this
+pub assume_specification<T: Clone>[Option::<&T>::cloned](opt: Option<&T>) -> (cloned_opt: Option<T>);
 
 } // verus!
 
