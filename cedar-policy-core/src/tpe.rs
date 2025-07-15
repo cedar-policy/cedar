@@ -39,7 +39,7 @@ use crate::tpe::{
 /// Type-aware partial-evaluation on a `PolicySet`.
 /// Both `request` and `entities` should be valid and hence be constructed
 /// using their safe constructors.
-/// Polices must be static.
+/// Policies must be static.
 pub fn tpe_policies(
     ps: &PolicySet,
     request: &PartialRequest,

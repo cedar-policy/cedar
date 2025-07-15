@@ -320,7 +320,7 @@ impl PartialEntity {
             .insert(uid);
     }
 
-    /// Valiate `self` according to `schema`
+    /// Validate `self` according to `schema`
     pub fn validate(
         &self,
         schema: &ValidatorSchema,
