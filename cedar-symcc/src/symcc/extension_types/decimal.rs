@@ -16,7 +16,7 @@
 
 //! This module defines Cedar decimal values and functions.
 //! It is based on
-//! https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/Spec/Ext/Decimal.lean
+//! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/Spec/Ext/Decimal.lean>
 
 // A decimal number consists of an integer part and a fractional part.
 // The former is the integer number before the decimal point.

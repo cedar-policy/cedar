@@ -16,7 +16,7 @@
 
 //! This module defines Cedar IpAddr values and functions.
 //! It is based on
-//! https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/Spec/Ext/IPAddr.lean
+//! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/Spec/Ext/IPAddr.lean>
 
 // ----- IPv4Addr and IPv6Addr -----
 

@@ -15,7 +15,7 @@
  */
 
 //! This module is as straightforward a translation as possible of
-//! https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/SymCC.lean.
+//! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/SymCC.lean>.
 
 mod authorizer;
 mod bitvec;

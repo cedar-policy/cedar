@@ -43,8 +43,8 @@
 //!    We can't use raw Cedar attribute names for argument names because they may
 //!    not be valid SMT identifiers. So, we'll keep a mapping from the attribute
 //!    names to their unique SMT ids. In general, we'll name SMT record types as
-//!    "R<i>" where <i> is a natural number and attributes within the record as
-//!    "R<i>a<j>", where <j> is the attribute's position in the constructor argument
+//!    "R`<i>`" where `<i>` is a natural number and attributes within the record as
+//!    "R`<i>`a`<j>`", where `<j>` is the attribute's position in the constructor argument
 //!    list.
 //!
 //!  Similarly to types and attributes, all uninterpreted functions, variables, and

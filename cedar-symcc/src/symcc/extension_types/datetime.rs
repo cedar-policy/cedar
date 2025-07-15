@@ -16,7 +16,7 @@
 
 //! This module defines Cedar datetime and duration values and functions.
 //! It is based on
-//! https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/Spec/Ext/Datetime.lean
+//! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/Spec/Ext/Datetime.lean>
 
 /// A datetime value is measured in milliseconds and constructed from a datetime string.
 /// A datetime string must be of one of the forms:
