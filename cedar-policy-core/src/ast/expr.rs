@@ -560,20 +560,57 @@ impl Expr {
         ExprBuilder::new().val(v)
     }
 
+    verus! {
+
+    /// Create an `Expr` that's just a single `EntityUID`. Equivalent to `Expr::val()`, but the
+    /// trait bound on `Expr::val()` makes it hard to verify in Verus
+    #[verifier::external_body]
+    pub fn entity_uid(e: Arc<EntityUID>) -> (expr: Self)
+        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
+            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::lit(spec_ast::Prim::entity_uid(e@))
+    {
+        ExprBuilder::new().val(e)
+    }
+
+    /// Create an `Expr` that's just a single `EntityUID`. Equivalent to `Expr::val()`, but the
+    /// trait bound on `Expr::val()` makes it hard to verify in Verus
+    #[verifier::external_body]
+    pub fn bool(b: bool) -> (expr: Self)
+        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
+            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::lit(spec_ast::Prim::pbool(b))
+    {
+        ExprBuilder::new().val(b)
+    }
+
+    } // verus!
+
     /// Create an `Expr` that's just a single `Unknown`.
     pub fn unknown(u: Unknown) -> Self {
         // ExprBuilder::new().unknown(u)
         todo!("Expr::unknown has been deleted")
     }
 
+    verus! {
+
     /// Create an `Expr` that's just this literal `Var`
-    pub fn var(v: Var) -> Self {
+    #[verifier::external_body]
+    pub fn var(v: Var) -> (expr: Self)
+        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
+            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::var(v@)
+    {
         ExprBuilder::new().var(v)
     }
 
     /// Create an `Expr` that's just this `SlotId`
-    pub fn slot(s: SlotId) -> Self {
+    #[verifier::external_body]
+    pub fn slot(s: SlotId) -> (expr: Self)
+        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
+            slot_env.contains_key(s) ==>
+                #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::lit(spec_ast::Prim::entity_uid(slot_env.get(s).unwrap()))
+    {
         ExprBuilder::new().slot(s)
+    }
+
     }
 
     /// Create a ternary (if-then-else) `Expr`.
@@ -595,9 +632,21 @@ impl Expr {
         ExprBuilder::new().not(e)
     }
 
+    verus! {
+
     /// Create a '==' expression
-    pub fn is_eq(e1: Expr, e2: Expr) -> Self {
+    #[verifier::external_body]
+    pub fn is_eq(e1: Expr, e2: Expr) -> (expr: Self)
+        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
+            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::binary_app(
+                spec_ast::BinaryOp::Eq,
+                e1.view_with_slot_env(slot_env),
+                e2.view_with_slot_env(slot_env)
+            )
+    {
         ExprBuilder::new().is_eq(e1, e2)
+    }
+
     }
 
     /// Create a '!=' expression
@@ -609,9 +658,12 @@ impl Expr {
 
     /// Create an 'and' expression. Arguments must evaluate to Bool type
     #[verifier::external_body]
-    pub fn and(e1: Expr, e2: Expr) -> (e: Self)
+    pub fn and(e1: Expr, e2: Expr) -> (expr: Self)
         ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
-            #[trigger] e.view_with_slot_env(slot_env) == spec_ast::Expr::and(e1.view_with_slot_env(slot_env), e2.view_with_slot_env(slot_env))
+            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::and(
+                e1.view_with_slot_env(slot_env),
+                e2.view_with_slot_env(slot_env)
+            )
     {
         ExprBuilder::new().and(e1, e2)
     }
@@ -663,11 +715,23 @@ impl Expr {
         ExprBuilder::new().neg(e)
     }
 
+    verus! {
+
     /// Create an 'in' expression. First argument must evaluate to Entity type.
     /// Second argument must evaluate to either Entity type or Set type where
     /// all set elements have Entity type.
-    pub fn is_in(e1: Expr, e2: Expr) -> Self {
+    #[verifier::external_body]
+    pub fn is_in(e1: Expr, e2: Expr) -> (expr: Self)
+        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
+            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::binary_app(
+                spec_ast::BinaryOp::Mem,
+                e1.view_with_slot_env(slot_env),
+                e2.view_with_slot_env(slot_env)
+            )
+    {
         ExprBuilder::new().is_in(e1, e2)
+    }
+
     }
 
     /// Create a `contains` expression.
@@ -766,9 +830,20 @@ impl Expr {
         ExprBuilder::new().like(expr, pattern)
     }
 
+    verus! {
+
     /// Create an `is` expression.
-    pub fn is_entity_type(expr: Expr, entity_type: EntityType) -> Self {
+    #[verifier::external_body]
+    pub fn is_entity_type(expr: Expr, entity_type: EntityType) -> (e: Self)
+        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
+            #[trigger] e.view_with_slot_env(slot_env) == spec_ast::Expr::unary_app(
+                spec_ast::UnaryOp::Is { ety: entity_type@ },
+                expr.view_with_slot_env(slot_env),
+            )
+    {
         ExprBuilder::new().is_entity_type(expr, entity_type)
+    }
+
     }
 
     /// Check if an expression contains any symbolic unknowns
@@ -1720,15 +1795,24 @@ impl View for Var {
     }
 }
 
+pub open spec fn spec_PrincipalOrResource_to_Var(principal_or_resource: PrincipalOrResource) -> Var {
+    match principal_or_resource {
+        PrincipalOrResource::Principal => Var::Principal,
+        PrincipalOrResource::Resource => Var::Resource,
+    }
 }
 
 impl From<PrincipalOrResource> for Var {
-    fn from(v: PrincipalOrResource) -> Self {
+    fn from(v: PrincipalOrResource) -> (s: Self)
+        ensures s == spec_PrincipalOrResource_to_Var(v)
+    {
         match v {
             PrincipalOrResource::Principal => Var::Principal,
             PrincipalOrResource::Resource => Var::Resource,
         }
     }
+}
+
 }
 
 // PANIC SAFETY Tested by `test::all_vars_are_ids`. Never panics.

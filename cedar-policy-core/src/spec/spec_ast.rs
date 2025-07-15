@@ -287,6 +287,16 @@ impl Expr {
     pub open spec fn set(ls: Seq<Expr>) -> Expr {
         Expr::Set { ls }
     }
+
+    #[verifier::inline]
+    pub open spec fn unary_app(uop: UnaryOp, expr: Expr) -> Expr {
+        Expr::UnaryApp { uop, expr: Box::new(expr) }
+    }
+
+    #[verifier::inline]
+    pub open spec fn binary_app(bop: BinaryOp, a: Expr, b: Expr) -> Expr {
+        Expr::BinaryApp { bop, a: Box::new(a), b: Box::new(b) }
+    }
 }
 
 /////////////////////////////////////////////////////

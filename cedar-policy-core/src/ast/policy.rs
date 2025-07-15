@@ -703,6 +703,20 @@ pub type SlotEnv = HashMap<SlotId, EntityUID>;
 /// Spec version of SlotEnv
 pub type SpecSlotEnv = Map<SlotId, spec_ast::EntityUID>;
 
+pub open spec fn get_slot_env_principal(slot_env: SpecSlotEnv) -> spec_ast::EntityUID {
+    match slot_env.get(SlotId::spec_principal()) {
+        Some(euid) => euid,
+        None => arbitrary()
+    }
+}
+
+pub open spec fn get_slot_env_resource(slot_env: SpecSlotEnv) -> spec_ast::EntityUID {
+    match slot_env.get(SlotId::spec_resource()) {
+        Some(euid) => euid,
+        None => arbitrary()
+    }
+}
+
 }
 
 /// Represents either a static policy or a template linked policy.
@@ -1081,9 +1095,9 @@ impl TemplateBodyImpl {
         spec_ast::Policy {
             id: self.id@,
             effect: self.effect@,
-            principal_scope: self.principal_constraint@,
+            principal_scope: self.principal_constraint.view_with_slot_env(slot_env),
             action_scope: self.action_constraint@,
-            resource_scope: self.resource_constraint@,
+            resource_scope: self.resource_constraint.view_with_slot_env(slot_env),
             condition: self.non_scope_constraints.view_with_slot_env(slot_env)
         }
     }
@@ -1246,6 +1260,7 @@ impl TemplateBody {
     /// Get the `action` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `action,`), or an equality or hierarchy constraint
+    #[verifier::external_body]
     pub fn action_constraint_expr(&self) -> (expr: Expr)
         ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
             #[trigger] expr.view_with_slot_env(slot_env) == self.view_with_slot_env(slot_env).action_scope.to_expr()
@@ -1278,6 +1293,7 @@ impl TemplateBody {
     /// Get the `resource` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `resource,`), or an equality or hierarchy constraint
+    #[verifier::external_body]
     pub fn resource_constraint_expr(&self) -> (expr: Expr)
         ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
             #[trigger] expr.view_with_slot_env(slot_env) == self.view_with_slot_env(slot_env).resource_scope.to_expr()
@@ -1300,6 +1316,7 @@ impl TemplateBody {
     ///
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
+    #[verifier::external_body]
     pub fn non_scope_constraints(&self) -> (expr: &Expr)
         ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
             #[trigger] expr.view_with_slot_env(slot_env) == self.view_with_slot_env(slot_env).action_scope.to_expr()
@@ -1335,6 +1352,7 @@ impl TemplateBody {
     /// This will be a conjunction of the policy's scope constraints (on
     /// principal, resource, and action); the policy's "when" conditions; and
     /// the negation of each of the policy's "unless" conditions.
+    #[verifier::external_body]
     pub fn condition(&self) -> (expr: Expr)
         ensures forall |slot_env: SpecSlotEnv|
             #[trigger] expr.view_with_slot_env(slot_env) == self.view_with_slot_env(slot_env).to_expr(),
@@ -1447,11 +1465,10 @@ pub struct PrincipalConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
 }
 
-impl View for PrincipalConstraint {
-    type V = spec_ast::PrincipalScope;
-    closed spec fn view(&self) -> Self::V {
+impl PrincipalConstraint {
+    pub closed spec fn view_with_slot_env(&self, slot_env: SpecSlotEnv) -> spec_ast::PrincipalScope {
         spec_ast::PrincipalScope {
-            principal_scope: self.constraint@
+            principal_scope: self.constraint.view_with_slot(get_slot_env_principal(slot_env))
         }
     }
 }
@@ -1477,7 +1494,12 @@ impl PrincipalConstraint {
     verus! {
 
     /// Get the constraint as raw AST
-    pub fn as_expr(&self) -> Expr {
+    pub fn as_expr(&self) -> (expr: Expr)
+        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
+            slot_env.contains_key(SlotId::spec_principal()) ==>
+                #[trigger] expr.view_with_slot_env(slot_env) ==
+                    self.view_with_slot_env(slot_env).to_expr()
+    {
         self.constraint.as_expr(PrincipalOrResource::Principal)
     }
 
@@ -1572,14 +1594,14 @@ pub struct ResourceConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
 }
 
-impl View for ResourceConstraint {
-    type V = spec_ast::ResourceScope;
-    closed spec fn view(&self) -> Self::V {
+impl ResourceConstraint {
+    pub closed spec fn view_with_slot_env(&self, slot_env: SpecSlotEnv) -> spec_ast::ResourceScope {
         spec_ast::ResourceScope {
-            resource_scope: self.constraint@
+            resource_scope: self.constraint.view_with_slot(get_slot_env_resource(slot_env))
         }
     }
 }
+
 
 }
 
@@ -1706,6 +1728,15 @@ pub enum EntityReference {
     ),
 }
 
+impl EntityReference {
+    pub open spec fn view_with_slot(&self, v: spec_ast::EntityUID) -> spec_ast::EntityUID {
+        match self {
+            EntityReference::EUID(euid) => euid@,
+            EntityReference::Slot(_) => v,
+        }
+    }
+}
+
 // pub assume_specification[<EntityReference as PartialEq<EntityReference>>::eq](this: &EntityReference, other:&EntityReference) -> (b: bool)
 //     ensures b == (this == other);
 
@@ -1717,17 +1748,25 @@ impl EntityReference {
         Self::EUID(euid)
     }
 
+    verus! {
+
     /// Transform into an expression AST
     ///
     /// `slot` indicates what `SlotId` would be implied by
     /// `EntityReference::Slot`, which is always clear from the caller's
     /// context.
-    pub fn into_expr(&self, slot: SlotId) -> Expr {
+    pub fn into_expr(&self, slot: SlotId) -> (expr: Expr)
+        ensures forall |slot_env: SpecSlotEnv|
+            slot_env.contains_key(slot) ==>
+                #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::lit(spec_ast::Prim::entity_uid(self.view_with_slot(slot_env[slot])))
+    {
         match self {
-            EntityReference::EUID(euid) => Expr::val(euid.clone()),
+            EntityReference::EUID(euid) => Expr::entity_uid(euid.clone()),
             EntityReference::Slot(loc) => Expr::slot(slot).with_maybe_source_loc(loc.clone()),
         }
     }
+
+    } // verus!
 }
 
 /// Error for unexpected slots
@@ -1817,18 +1856,18 @@ pub enum PrincipalOrResourceConstraint {
 
 // clone_spec_for!(PrincipalOrResourceConstraint);
 
-impl View for PrincipalOrResourceConstraint {
-    type V = spec_ast::Scope;
-    uninterp spec fn view(&self) -> Self::V;
-    // open spec fn view(&self) -> Self::V {
-    //     match self {
-    //         PrincipalOrResourceConstraint::Any => spec_ast::Scope::Any,
-    //         PrincipalOrResourceConstraint::In(e) => todo!(),
-    //         PrincipalOrResourceConstraint::Eq(e) => todo!(),
-    //         PrincipalOrResourceConstraint::Is(ety) => todo!(),
-    //         PrincipalOrResourceConstraint::IsIn(ety, e) => todo!(),
-    //     }
-    // }
+impl PrincipalOrResourceConstraint {
+    pub open spec fn view_with_slot(&self, v: spec_ast::EntityUID) -> spec_ast::Scope {
+        match self {
+            PrincipalOrResourceConstraint::Any => spec_ast::Scope::Any,
+            PrincipalOrResourceConstraint::In(e) => spec_ast::Scope::Mem { entity: e.view_with_slot(v) },
+            PrincipalOrResourceConstraint::Eq(e) => spec_ast::Scope::Eq{ entity: e.view_with_slot(v) },
+            PrincipalOrResourceConstraint::Is(ety) => spec_ast::Scope::Is{ ety: ety@ },
+            PrincipalOrResourceConstraint::IsIn(ety, e) => {
+                spec_ast::Scope::IsMem { ety: ety@, entity: e.view_with_slot(v)}
+            },
+        }
+    }
 }
 
 } // verus!
@@ -1879,10 +1918,21 @@ impl PrincipalOrResourceConstraint {
     /// Turn the constraint into an expr
     /// # arguments
     /// * `v` - The variable name to be used in the expression.
-    #[verifier::external_body]
-    pub fn as_expr(&self, v: PrincipalOrResource) -> Expr {
+    pub fn as_expr(&self, v: PrincipalOrResource) -> (expr: Expr)
+        ensures ({
+            let slot = spec_PrincipalOrResource_to_SlotId(v);
+            let var = spec_PrincipalOrResource_to_Var(v)@;
+            forall |slot_env: SpecSlotEnv| slot_env.contains_key(slot) ==>
+                #[trigger] expr.view_with_slot_env(slot_env) == self.view_with_slot(slot_env[slot]).to_expr(var)
+        })
+    {
+        proof {
+            reveal(spec_ast::Scope::to_expr);
+        }
+        let ghost slot = spec_PrincipalOrResource_to_SlotId(v);
+        let ghost spec_var = spec_PrincipalOrResource_to_Var(v)@;
         match self {
-            PrincipalOrResourceConstraint::Any => Expr::val(true),
+            PrincipalOrResourceConstraint::Any => Expr::bool(true),
             PrincipalOrResourceConstraint::Eq(euid) => {
                 Expr::is_eq(Expr::var(v.into()), euid.into_expr(v.into()))
             }
