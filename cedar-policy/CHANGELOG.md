@@ -22,6 +22,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ### Changed
 
 - Allow multiple argument extension function calls in entity JSON format. (#1697)
+- Bumped MSRV to 1.85 (#1611)
 
 ## [4.5.0] - 2025-06-30
 Cedar Language Version: 4.4
