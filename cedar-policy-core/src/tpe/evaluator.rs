@@ -33,7 +33,7 @@ use crate::{
 /// The partial evaluator
 #[derive(Debug)]
 pub struct Evaluator<'e> {
-    pub(crate) request: PartialRequest,
+    pub(crate) request: &'e PartialRequest,
     pub(crate) entities: &'e PartialEntities,
     pub(crate) extensions: &'e Extensions<'e>,
 }
@@ -590,11 +590,11 @@ impl Evaluator<'_> {
                 }
             }
             // PANIC SAFETY: TPE does not expect explicit unknowns in policies
-            #[allow(clippy::unreachable)]
-            ExprKind::Unknown { .. } => unreachable!("we should not unexpect unknowns"),
+            #[allow(clippy::panic)]
+            ExprKind::Unknown { .. } => panic!("we should not unexpect unknowns"),
             // PANIC SAFETY: TPE currently only works on static policies
-            #[allow(clippy::unreachable)]
-            ExprKind::Slot(_) => unreachable!("we should not unexpect slot for now"),
+            #[allow(clippy::panic)]
+            ExprKind::Slot(_) => panic!("we should not unexpect slot for now"),
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => Residual::Error(ty),
             ExprKind::UnaryApp { op, arg } => {
@@ -760,7 +760,7 @@ mod tests {
             None,
         );
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &dummy_entities(),
             extensions: Extensions::all_available(),
         };
@@ -825,7 +825,7 @@ mod tests {
             None,
         );
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &dummy_entities(),
             extensions: Extensions::all_available(),
         };
@@ -895,7 +895,7 @@ mod tests {
             None,
         );
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &dummy_entities(),
             extensions: Extensions::all_available(),
         };
@@ -965,7 +965,7 @@ mod tests {
             None,
         );
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &dummy_entities(),
             extensions: Extensions::all_available(),
         };
@@ -1009,7 +1009,7 @@ mod tests {
             None,
         );
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &dummy_entities(),
             extensions: Extensions::all_available(),
         };
@@ -1054,7 +1054,7 @@ mod tests {
             None,
         );
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &dummy_entities(),
             extensions: Extensions::all_available(),
         };
@@ -1092,7 +1092,7 @@ mod tests {
             None,
         );
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &dummy_entities(),
             extensions: Extensions::all_available(),
         };
@@ -1156,7 +1156,7 @@ mod tests {
             ]),
         };
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &entities,
             extensions: Extensions::all_available(),
         };
@@ -1249,7 +1249,7 @@ mod tests {
             ]),
         };
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &entities,
             extensions: Extensions::all_available(),
         };
@@ -1307,7 +1307,7 @@ mod tests {
             None,
         );
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &dummy_entities(),
             extensions: Extensions::all_available(),
         };
@@ -1360,7 +1360,7 @@ mod tests {
             None,
         );
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &dummy_entities(),
             extensions: Extensions::all_available(),
         };
@@ -1422,7 +1422,7 @@ mod tests {
             None,
         );
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &dummy_entities(),
             extensions: Extensions::all_available(),
         };
@@ -1501,7 +1501,7 @@ mod tests {
             ]),
         };
         let eval = Evaluator {
-            request: req,
+            request: &req,
             entities: &entities,
             extensions: Extensions::all_available(),
         };

@@ -71,7 +71,7 @@ pub fn tpe_policies(
         }
     }
     let evaluator = Evaluator {
-        request: request.clone(),
+        request: &request,
         entities,
         extensions: Extensions::all_available(),
     };
