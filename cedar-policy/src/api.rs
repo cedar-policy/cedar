@@ -4972,6 +4972,7 @@ impl From<ast::Value> for EvalResult {
 }
 
 #[doc(hidden)]
+// PANIC SAFETY all fallible actions are annotated with PANIC SAFETY
 #[allow(clippy::fallible_impl_from)]
 impl From<EvalResult> for Expression {
     fn from(res: EvalResult) -> Self {
