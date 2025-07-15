@@ -1664,4 +1664,38 @@ mod tests {
             }
         );
     }
+
+    // Test containsAll/containsAny operations
+    #[test]
+    fn test_set_ops() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &dummy_entities(),
+            extensions: Extensions::all_available(),
+        };
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::ContainsAll,
+                builder().set([builder().val(true), builder().val(false)]),
+                builder().set([builder().val(true), builder().val(true)])
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+    }
 }
