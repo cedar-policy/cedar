@@ -23,7 +23,7 @@ use thiserror::Error;
 #[derive(Debug, Diagnostic, Error)]
 pub enum EntitiesError {
     /// Error occurring in serialization of entities
-    #[error("error during entity serialization")]
+    #[error("error during entity serialization: {0}")]
     #[diagnostic(transparent)]
     Serialization(#[from] crate::entities::json::err::JsonSerializationError),
     /// Error occurring in deserialization of entities

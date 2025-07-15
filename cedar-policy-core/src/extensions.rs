@@ -30,14 +30,13 @@ use std::collections::HashMap;
 
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
+use crate::extensions::extension_initialization_errors::MultipleConstructorsSameSignatureError;
 use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use miette::Diagnostic;
 use thiserror::Error;
 
 use self::extension_function_lookup_errors::FuncDoesNotExistError;
-use self::extension_initialization_errors::{
-    FuncMultiplyDefinedError, MultipleConstructorsSameSignatureError,
-};
+use self::extension_initialization_errors::FuncMultiplyDefinedError;
 
 lazy_static::lazy_static! {
     static ref ALL_AVAILABLE_EXTENSION_OBJECTS: Vec<Extension> = vec![
@@ -124,7 +123,7 @@ impl<'a> Extensions<'a> {
             extensions
                 .iter()
                 .flat_map(|e| e.funcs())
-                .filter(|f| f.is_constructor() && f.arg_types().len() == 1)
+                .filter(|f| f.is_single_arg_constructor())
                 .filter_map(|f| f.return_type().map(|return_type| (return_type, f))),
         )
         .map_err(|return_type| MultipleConstructorsSameSignatureError {
@@ -174,10 +173,8 @@ impl<'a> Extensions<'a> {
         self.extensions.iter().flat_map(|ext| ext.funcs())
     }
 
-    /// Lookup a single-argument constructor by its return type and argument type.
-    ///
-    /// `None` means no constructor has that signature.
-    pub(crate) fn lookup_single_arg_constructor(
+    /// Lookup a single-argument constructor by its return type
+    pub(crate) fn lookup_single_arg_constructor<'b>(
         &self,
         return_type: &SchemaType,
     ) -> Option<&ExtensionFunction> {

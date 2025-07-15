@@ -19,7 +19,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
   reporting for reduced memory usage and faster parsing. The feature is only intended for use with raw parsing
   APIs, as regular parsing performance is degraded when the `raw-parsing` feature is enabled.
 
-## [4.5.0] - Coming soon
+### Changed
+
+- Allow multiple argument extension function calls in entity JSON format. (#1697)
+
+## [4.5.0] - 2025-06-30
 Cedar Language Version: 4.4
 
 ### Added
