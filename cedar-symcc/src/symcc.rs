@@ -67,6 +67,7 @@ use verifier::{
 
 use crate::symcc::concretize::ConcretizeError;
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Action not found in Schema: {action}")]
@@ -322,7 +323,11 @@ pub fn well_typed_policy(
     well_typed_policy_inner(policy, &env, schema)
 }
 
-fn well_typed_policy_inner(policy: &Policy, env: &RequestEnv<'_>, schema: &Schema) -> Result<Policy> {
+fn well_typed_policy_inner(
+    policy: &Policy,
+    env: &RequestEnv<'_>,
+    schema: &Schema,
+) -> Result<Policy> {
     let validator_schema = schema.as_ref();
     let type_checker = Typechecker::new(validator_schema, ValidationMode::Strict);
     let policy_check = type_checker.typecheck_by_single_request_env(policy.template(), env);
@@ -374,6 +379,11 @@ pub fn well_typed_policies(
     match typed_policies {
         Ok(ps) => {
             let mut res = PolicySet::new();
+            // PANIC SAFETY
+            #[allow(
+                clippy::unwrap_used,
+                reason = "adding well-typed policy should not error"
+            )]
             ps.into_iter().for_each(|p| res.add(p).unwrap());
             Ok(res)
         }

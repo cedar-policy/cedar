@@ -38,7 +38,7 @@ impl SymEnv {
                 action: req_env.action().to_string(),
             })
         })?;
-        Ok(Self::of_env(env))
+        Self::of_env(&env).map_err(|e| Error::Symcc(symcc::Error::SymCC(e)))
     }
 }
 use std::fmt;

@@ -19,8 +19,8 @@
 
 use std::str::FromStr;
 
-use cedar_symcc::SymEnv;
 use cedar_policy::{Policy, PolicyId, PolicySet, RequestEnv, Schema, ValidationMode, Validator};
+use cedar_symcc::SymEnv;
 
 #[track_caller]
 pub fn pretty_panic<T>(e: impl miette::Diagnostic + Send + Sync + 'static) -> T {

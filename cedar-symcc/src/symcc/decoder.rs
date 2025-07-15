@@ -113,7 +113,7 @@ pub enum SExpr {
     Numeral(u128),
     String(String),
     Symbol(String),
-    SExpr(Vec<SExpr>),
+    App(Vec<SExpr>),
 }
 
 /// Tokenizes a string of SMT-LIB 2 S-expressions
@@ -127,17 +127,32 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
     let mut tokens = Vec::new();
 
     while i < src.len() {
+        // PANIC SAFETY
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "i < src.len() thus indexing by i should not panic"
+        )]
         let c = src[i];
 
         if in_str {
             match c {
                 b'"' => {
+                    // PANIC SAFETY
+                    #[allow(
+                        clippy::indexing_slicing,
+                        reason = "i + 1 < src.len() thus indexing by i + 1 should not panic"
+                    )]
                     if i + 1 < src.len() && src[i + 1] == b'"' {
                         // Two double quotes ("") is an escape sequence
                         // or a single double quote (") per SMT-LIB 2 spec
                         i += 2;
                     } else {
                         // String is terminated
+                        // PANIC SAFETY
+                        #[allow(
+                            clippy::indexing_slicing,
+                            reason = "invariant str_start <= i and i <= src.len() thus slicing should not panic"
+                        )]
                         tokens.push(Token::Atom(SExpr::String(
                             String::from_utf8(src[str_start..i].to_vec())?.replace("\"\"", "\""),
                         )));
@@ -169,22 +184,37 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                 // Bit vector
                 b'#' => {
                     if i + 1 < src.len() {
+                        // PANIC SAFETY
+                        #[allow(
+                            clippy::indexing_slicing,
+                            reason = "i + 1 < src.len() thus indexing by i + 1 should not panic"
+                        )]
                         match src[i + 1] {
                             // Binary representation
                             b'b' => {
                                 // Read until a non-0 and non-1 character
                                 i += 2;
                                 let start = i;
+                                // PANIC SAFETY
+                                #[allow(
+                                    clippy::indexing_slicing,
+                                    reason = "i < src.len() thus indexing by i should not panic"
+                                )]
                                 while i < src.len() && (src[i] == b'0' || src[i] == b'1') {
                                     i += 1;
                                 }
 
                                 let width: usize = i - start;
+                                // PANIC SAFETY
+                                #[allow(
+                                    clippy::indexing_slicing,
+                                    reason = "start <= i <= src.len() thus slicing should not panic"
+                                )]
                                 let num = String::from_utf8(src[start..i].to_vec())?;
                                 let num = u128::from_str_radix(&num, 2)?;
 
                                 // Do a sign-extension from i<width> to i<128>
-                                let num = if width != 0 && (1u128 << width - 1) & num != 0 {
+                                let num = if width != 0 && (1u128 << (width - 1)) & num != 0 {
                                     ((u128::MAX << width) | num) as i128
                                 } else {
                                     num as i128
@@ -205,10 +235,20 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                 c if c.is_ascii_digit() => {
                     // Read until a non-digit
                     let start = i;
+                    // PANIC SAFETY
+                    #[allow(
+                        clippy::indexing_slicing,
+                        reason = "i < src.len() thus indexing by i should not panic"
+                    )]
                     while i < src.len() && src[i].is_ascii_digit() {
                         i += 1;
                     }
 
+                    // PANIC SAFETY
+                    #[allow(
+                        clippy::indexing_slicing,
+                        reason = "start <= i <= src.len() ===> slicing should not panic"
+                    )]
                     let num = String::from_utf8(src[start..i].to_vec())?;
                     let num = num.parse::<u128>()?;
 
@@ -217,6 +257,11 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
 
                 // Comment
                 b';' => {
+                    // PANIC SAFETY
+                    #[allow(
+                        clippy::indexing_slicing,
+                        reason = "i < src.len() thus indexing src by i should not panic"
+                    )]
                     while i < src.len() && src[i] != b'\n' {
                         i += 1;
                     }
@@ -231,6 +276,11 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                 _ => {
                     // Take until (, ), or whitespace
                     let start = i;
+                    // PANIC SAFETY
+                    #[allow(
+                        clippy::indexing_slicing,
+                        reason = "i < src.len() thus indexing by I should not panic"
+                    )]
                     while i < src.len()
                         && src[i] != b'('
                         && src[i] != b')'
@@ -241,7 +291,11 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                     {
                         i += 1;
                     }
-
+                    // PANIC SAFETY
+                    #[allow(
+                        clippy::indexing_slicing,
+                        reason = "start <= i and i <= src.len ==> slicing should not panic"
+                    )]
                     let symbol = String::from_utf8(src[start..i].to_vec())?;
 
                     tokens.push(Token::Atom(SExpr::Symbol(symbol)));
@@ -273,11 +327,11 @@ pub fn parse_sexpr(src: &[u8]) -> Result<SExpr, DecodeError> {
                 };
 
                 if let Some(last) = stack.back_mut() {
-                    last.push(SExpr::SExpr(exprs));
+                    last.push(SExpr::App(exprs));
                 } else {
                     // Succeed if there is no trailing tokens
                     if i + 1 == token_count {
-                        return Ok(SExpr::SExpr(exprs));
+                        return Ok(SExpr::App(exprs));
                     } else {
                         return Err(DecodeError::TrailingTokens);
                     }
@@ -314,7 +368,7 @@ pub struct IdMaps {
 impl IdMaps {
     /// Extracts the reverse mapping from SMT symbols to
     /// Term-level names from the encoder state.
-    pub fn from_encoder<'a, S>(encoder: &Encoder<'a, S>) -> Self {
+    pub fn from_encoder<S>(encoder: &Encoder<'_, S>) -> Self {
         let mut types = BTreeMap::new();
         let mut vars = BTreeMap::new();
         let mut uufs = BTreeMap::new();
@@ -453,12 +507,12 @@ impl SExpr {
                         .types
                         .get(s)
                         .cloned()
-                        .ok_or(DecodeError::UnknownType(self.clone())),
+                        .ok_or_else(|| DecodeError::UnknownType(self.clone())),
                 }
             }
 
             // Parametrized types
-            SExpr::SExpr(args) => {
+            SExpr::App(args) => {
                 match args.as_slice() {
                     // (_ BitVec n)
                     [SExpr::Symbol(app), SExpr::Symbol(bit_vec), SExpr::Numeral(n)]
@@ -502,10 +556,10 @@ impl SExpr {
                 .get(e)
                 .cloned()
                 .map(|uid| Term::Prim(TermPrim::Entity(uid)))
-                .ok_or(DecodeError::UnknownLiteral(self.clone())),
+                .ok_or_else(|| DecodeError::UnknownLiteral(self.clone())),
 
             // More complex applications
-            SExpr::SExpr(args) => {
+            SExpr::App(args) => {
                 match args.as_slice() {
                     // Sometimes cvc5 does not simplify the terms in the model
                     // having these custom interpreters alleviates such issues
@@ -560,12 +614,17 @@ impl SExpr {
                     {
                         match typ.decode_type(id_maps)? {
                             TermType::Option { ty } => Ok(Term::None(*ty)),
-                            _ => return Err(DecodeError::InvalidOptionType(typ.clone())),
+                            _ => Err(DecodeError::InvalidOptionType(typ.clone())),
                         }
                     }
 
                     // ((as some <typ>) <val>)
-                    [SExpr::SExpr(as_some_typ), val]
+                    // PANIC SAFETY
+                    #[allow(
+                        clippy::indexing_slicing,
+                        reason = "Slice of length 3 can be indexed by 0-2"
+                    )]
+                    [SExpr::App(as_some_typ), val]
                         if as_some_typ.len() == 3
                             && as_some_typ[0].is_symbol("as")
                             && as_some_typ[1].is_symbol("some") =>
@@ -633,8 +692,12 @@ impl SExpr {
                             (set1, set2) => Err(DecodeError::SetUnionNonLiterals(set1, set2)),
                         }
                     }
-
-                    args if args.len() >= 1 && matches!(args[0], SExpr::Symbol(_)) => {
+                    // PANIC SAFETY
+                    #[allow(
+                        clippy::indexing_slicing,
+                        reason = "Non-empty slice can be indexed by 0"
+                    )]
+                    args if !args.is_empty() && matches!(args[0], SExpr::Symbol(_)) => {
                         match &args[0] {
                             SExpr::Symbol(s) => {
                                 match (id_maps.types.get(s), &args[1..]) {
@@ -761,9 +824,14 @@ impl SExpr {
         loop {
             // Check if the body is of the form
             // (ite (= <literal> <arg_name>) <literal> <else>)
-            if let SExpr::SExpr(exprs) = cur_body {
+            if let SExpr::App(exprs) = cur_body {
+                // PANIC SAFETY
+                #[allow(
+                    clippy::indexing_slicing,
+                    reason = "Slice of length 4 can be indexed by 0-3"
+                )]
                 if exprs.len() == 4 && exprs[0].is_symbol("ite") {
-                    if let SExpr::SExpr(args) = &exprs[1] {
+                    if let SExpr::App(args) = &exprs[1] {
                         if args.len() == 3 && args[0].is_symbol("=") {
                             if let SExpr::Symbol(arg) = &args[2] {
                                 if arg != arg_name {
@@ -802,7 +870,7 @@ impl SExpr {
 
     /// Decodes the output of `(get-model)` to as [`Interpretation`].
     pub fn decode_model(&self, id_maps: &IdMaps) -> Result<Interpretation, DecodeError> {
-        let SExpr::SExpr(cmds) = self else {
+        let SExpr::App(cmds) = self else {
             return Err(DecodeError::UnexpectedModel);
         };
 
@@ -811,19 +879,19 @@ impl SExpr {
 
         // TODO: better error handling here
         for cmd in cmds {
-            let SExpr::SExpr(sub_exprs) = cmd else {
+            let SExpr::App(sub_exprs) = cmd else {
                 return Err(DecodeError::UnexpectedModel);
             };
 
             // sub_exprs should be of the form
             // "define-fun" <name> (<args>) <ret_type> <body>
             match sub_exprs.as_slice() {
-                [SExpr::Symbol(define_fun), SExpr::Symbol(name), SExpr::SExpr(args), ret_ty, body]
+                [SExpr::Symbol(define_fun), SExpr::Symbol(name), SExpr::App(args), ret_ty, body]
                     if define_fun == "define-fun" =>
                 {
                     match args.as_slice() {
                         // Decode unary function
-                        [SExpr::SExpr(arg)] if arg.len() == 2 => match arg.as_slice() {
+                        [SExpr::App(arg)] if arg.len() == 2 => match arg.as_slice() {
                             [SExpr::Symbol(arg_name), arg_ty] => {
                                 let (uuf, udf) = Self::decode_unary_function(
                                     id_maps, name, arg_name, arg_ty, ret_ty, body,
@@ -858,7 +926,7 @@ impl Display for SExpr {
             SExpr::Numeral(n) => write!(f, "{}", n),
             SExpr::String(s) => write!(f, "\"{}\"", s),
             SExpr::Symbol(s) => write!(f, "{}", s),
-            SExpr::SExpr(exprs) => write!(f, "({})", exprs.iter().map(|e| e.to_string()).join(" ")),
+            SExpr::App(exprs) => write!(f, "({})", exprs.iter().map(|e| e.to_string()).join(" ")),
         }
     }
 }

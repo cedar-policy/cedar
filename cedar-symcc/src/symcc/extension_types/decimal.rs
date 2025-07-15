@@ -35,7 +35,17 @@ pub struct Decimal(pub i64);
 
 pub fn parse(s: &str) -> Option<Decimal> {
     match s.split(".").collect::<Vec<&str>>() {
+        // PANIC SAFETY
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "List of length 2 can be indexed by 0"
+        )]
         list if list.len() == 2 && list[0] == "-" => None,
+        // PANIC SAFETY
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "List of length 2 can be indexed by 0 or 1"
+        )]
         list if list.len() == 2 => {
             let left = list[0];
             let right = list[1];
@@ -46,7 +56,11 @@ pub fn parse(s: &str) -> Option<Decimal> {
                 match (left.parse::<i128>(), right.parse::<u32>()) {
                     (Ok(l), Ok(r)) => {
                         let l_prime = l * 10_i128.pow(DECIMAL_DIGITS);
-                        // This cannot panic because we checked than rlen is between 0 and 4.
+                        // PANIC SAFETY
+                        #[allow(
+                            clippy::unwrap_used,
+                            reason = "cannot panic as we previously checked that rlen is between 0 and 4."
+                        )]
                         let rlen_u32: u32 = rlen.try_into().unwrap();
                         let r: i128 = r.into();
                         let r_prime = r * 10_i128.pow(DECIMAL_DIGITS - rlen_u32);

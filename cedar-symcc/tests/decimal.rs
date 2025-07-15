@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use cedar_symcc::{solver::LocalSolver, SymCompiler, SymEnv};
 use cedar_policy::{Schema, Validator};
+use cedar_symcc::{solver::LocalSolver, SymCompiler, SymEnv};
 mod utils;
 
 fn sample_schema() -> Schema {

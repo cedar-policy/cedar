@@ -29,7 +29,10 @@ async fn emitln(
 }
 
 /// Abstraction layer to write output in the SMTLib2 format
-#[allow(async_fn_in_trait)]
+#[allow(
+    async_fn_in_trait,
+    reason = "We would like consumers to be able to use these functions asyncronously"
+)]
 pub trait SmtLibScript {
     async fn set_logic(&mut self, logic: &str) -> tokio::io::Result<()>;
     async fn set_option(&mut self, option: &str, value: &str) -> tokio::io::Result<()>;

@@ -93,6 +93,7 @@ impl ExtOp {
         }
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn type_of(self, l: Vec<TermType>) -> Option<TermType> {
         match self {
             ExtOp::DecimalVal
@@ -116,12 +117,18 @@ impl ExtOp {
 //   | _, _                              => .none
 
 impl Op {
+    #[allow(clippy::cognitive_complexity)]
     pub fn type_of(self, l: Vec<TermType>) -> Option<TermType> {
         use TermType::{Bitvec, Bool};
         match self {
             Op::Not if l == vec![TermType::Bool] => Some(TermType::Bool),
             Op::And if l == vec![TermType::Bool, TermType::Bool] => Some(TermType::Bool),
             Op::Or if l == vec![TermType::Bool, TermType::Bool] => Some(TermType::Bool),
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 2 should not error when indexed by 0 or 1"
+            )]
             Op::Eq if l.len() == 2 => {
                 if l[0] == l[1] {
                     Some(TermType::Bool)
@@ -129,6 +136,11 @@ impl Op {
                     None
                 }
             }
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 3 should not error when indexed by 0, 1, or 2"
+            )]
             Op::Ite if l.len() == 3 && l[0] == Bool => {
                 if l[1] == l[2] {
                     Some(l[1].clone())
@@ -136,6 +148,11 @@ impl Op {
                     None
                 }
             }
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 1 should not error when indexed by 0"
+            )]
             Op::Uuf(f) if l.len() == 1 => {
                 if f.arg == l[0] {
                     Some(f.out)
@@ -143,17 +160,37 @@ impl Op {
                     None
                 }
             }
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 1 should not error when indexed by 0"
+            )]
             Op::Bvneg if l.len() == 1 => match l[0] {
                 Bitvec { n } => Some(Bitvec { n }),
                 _ => None,
             },
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 2 should not error when indexed by 0 or 1"
+            )]
             Op::Bvadd | Op::Bvsub | Op::Bvmul | Op::Bvshl | Op::Bvlshr if l.len() == 2 => {
                 match (l[0].clone(), l[1].clone()) {
                     (Bitvec { n }, Bitvec { n: m }) if n == m => Some(Bitvec { n }),
                     _ => None,
                 }
             }
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 1 should not error when indexed by 0"
+            )]
             Op::Bvnego if l.len() == 1 && matches!(l[0].clone(), Bitvec { .. }) => Some(Bool),
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 2 should not error when indexed by 0 or 1"
+            )]
             Op::Bvsaddo
             | Op::Bvssubo
             | Op::Bvsmulo
@@ -168,24 +205,49 @@ impl Op {
                     _ => None,
                 }
             }
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 1 should not error when indexed by 0"
+            )]
             Op::ZeroExtend(m) if l.len() == 1 => match l[0].clone() {
                 Bitvec { n } => Some(Bitvec { n: (n + m) }),
                 _ => None,
             },
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 2 should not error when indexed by 0 or 1"
+            )]
             Op::SetMember if l.len() == 2 => match (l[0].clone(), l[1].clone()) {
                 (ty1, TermType::Set { ty: ty2 }) if ty1 == *ty2 => Some(Bool),
                 (_, _) => None,
             },
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 2 should not error when indexed by 0 or 1"
+            )]
             Op::SetSubset | Op::SetInter if l.len() == 2 => match (l[0].clone(), l[1].clone()) {
                 (TermType::Set { ty: ty1 }, TermType::Set { ty: ty2 }) if *ty1 == *ty2 => {
                     Some(Bool)
                 }
                 (_, _) => None,
             },
+            // PANIC SAFETY
+            #[allow(
+                clippy::unwrap_used,
+                reason = "List of length 1 should not error on first call to next()"
+            )]
             Op::OptionGet if l.len() == 1 => match l.into_iter().next().unwrap() {
                 TermType::Option { ty } => Some(*ty),
                 _ => None,
             },
+            // PANIC SAFETY
+            #[allow(
+                clippy::unwrap_used,
+                reason = "List of length 1 should not error on first call to next()"
+            )]
             Op::RecordGet(a) if l.len() == 1 => match l.into_iter().next().unwrap() {
                 TermType::Record { rty } => rty.get(&a).cloned(),
                 _ => None,

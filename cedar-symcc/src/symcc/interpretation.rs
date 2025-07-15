@@ -58,13 +58,16 @@ impl Interpretation {
         self.vars
             .get(var)
             .cloned()
-            .unwrap_or(var.ty.default_literal())
+            .unwrap_or_else(|| var.ty.default_literal())
     }
 
     /// Interprets uninterpreted functions as interpreted functions, and use the
     /// default UDF if not found.
     pub fn interpret_fun(&self, fun: &Uuf) -> Udf {
-        self.funs.get(fun).cloned().unwrap_or(fun.default_udf())
+        self.funs
+            .get(fun)
+            .cloned()
+            .unwrap_or_else(|| fun.default_udf())
     }
 
     /// Our acyclicity constraints only apply to the footprint,
@@ -84,10 +87,7 @@ impl Interpretation {
 
         // Interpret every term in the footprint to collect concrete EUIDs
         // occurring in them
-        for term in exprs
-            .map(|e| footprint(e, env).collect::<Vec<_>>())
-            .flatten()
-        {
+        for term in exprs.flat_map(|e| footprint(e, env).collect::<Vec<_>>()) {
             term.interpret(self)
                 .get_all_entity_uids(&mut footprint_uids);
         }
@@ -96,7 +96,7 @@ impl Interpretation {
 
         // Repair all ancestor functions
         for (ety, ent_data) in env.entities.iter() {
-            for (_, fun) in &ent_data.ancestors {
+            for fun in ent_data.ancestors.values() {
                 if let UnaryFunction::Uuf(uuf) = fun {
                     funs.insert(
                         uuf.clone(),

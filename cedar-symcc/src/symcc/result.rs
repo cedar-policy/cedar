@@ -19,7 +19,10 @@
 
 use thiserror::Error;
 
-#[allow(clippy::enum_variant_names)]
+#[allow(
+    clippy::enum_variant_names,
+    reason = "UnsupportedError reads better than just Unsupported"
+)]
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum Error {
     #[error("noSuchEntityType")]
@@ -30,4 +33,6 @@ pub enum Error {
     TypeError,
     #[error("unsupportedError")]
     UnsupportedError,
+    #[error("unreachableError: {0}")]
+    Unreachable(String),
 }

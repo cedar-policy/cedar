@@ -39,7 +39,7 @@ const MILLISECONDS_PER_SECOND: i64 = 1000;
 const MILLISECONDS_PER_DAY: i64 = 86400000;
 
 impl Datetime {
-    pub fn offset(&self, duration: Duration) -> Option<Datetime> {
+    pub fn offset(&self, duration: &Duration) -> Option<Datetime> {
         Some(Self {
             val: self.val.checked_add(duration.val)?,
         })
@@ -83,6 +83,10 @@ impl Datetime {
     }
 }
 
+#[allow(
+    clippy::derivable_impls,
+    reason = "Make explicit as require the default be 0"
+)]
 impl Default for Datetime {
     fn default() -> Self {
         Self { val: 0 }
@@ -130,6 +134,10 @@ impl Duration {
     }
 }
 
+#[allow(
+    clippy::derivable_impls,
+    reason = "Make explicit as require the default be 0"
+)]
 impl Default for Duration {
     fn default() -> Self {
         Self { val: 0 }

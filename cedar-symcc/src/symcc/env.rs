@@ -19,15 +19,18 @@
 //! A symbolic environment is _literal_ when it consists of literal terms and
 //! interpreted functions (UDFs).
 
-use crate::symcc::function::{
-    self, UnaryFunction,
-    UnaryFunction::{Udf, Uuf},
-};
 use crate::symcc::op;
 use crate::symcc::tags::SymTags;
 use crate::symcc::term::{Term, TermPrim, TermVar};
 use crate::symcc::term_type::TermType;
 use crate::symcc::type_abbrevs::*;
+use crate::symcc::{
+    function::{
+        self,
+        UnaryFunction::{self, Udf, Uuf},
+    },
+    result,
+};
 use cedar_policy_core::validator::ValidatorEntityType;
 use cedar_policy_core::validator::ValidatorSchema;
 use cedar_policy_core::validator::{
@@ -173,12 +176,12 @@ impl SymEntityData {
         ety: &EntityType,
         validator_ety: &ValidatorEntityType,
         schema: &ValidatorSchema,
-    ) -> Self {
+    ) -> Result<Self, result::Error> {
         let sch = EntitySchemaEntry::of_schema(ety, validator_ety, schema);
         let attrs_uuf = Uuf(op::Uuf {
             id: format!("attrs[{ety}]"),
             arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
-            out: TermType::of_type(record(sch.attrs)),
+            out: TermType::of_type(record(sch.attrs))?,
         });
         let ancs_uuf = |anc_ty: &EntityType| {
             Uuf(op::Uuf {
@@ -187,19 +190,21 @@ impl SymEntityData {
                 out: TermType::set_of(entity(anc_ty.clone())), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
             })
         };
-        let sym_tags = |tag_ty: Type| SymTags {
-            keys: Uuf(op::Uuf {
-                id: format!("tagKeys[{ety}]"),
-                arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
-                out: TermType::set_of(TermType::String),
-            }),
-            vals: Uuf(op::Uuf {
-                id: format!("tagVals[{ety}]"),
-                arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
-                out: TermType::of_type(tag_ty),
-            }),
+        let sym_tags = |tag_ty: Type| -> Result<SymTags, result::Error> {
+            Ok(SymTags {
+                keys: Uuf(op::Uuf {
+                    id: format!("tagKeys[{ety}]"),
+                    arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
+                    out: TermType::set_of(TermType::String),
+                }),
+                vals: Uuf(op::Uuf {
+                    id: format!("tagVals[{ety}]"),
+                    arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
+                    out: TermType::of_type(tag_ty)?,
+                }),
+            })
         };
-        SymEntityData {
+        Ok(SymEntityData {
             attrs: attrs_uuf,
             ancestors: sch
                 .ancestors
@@ -210,8 +215,8 @@ impl SymEntityData {
                 })
                 .collect(),
             members: None,
-            tags: sch.tags.map(sym_tags),
-        }
+            tags: sch.tags.map(sym_tags).transpose()?,
+        })
     }
 
     fn of_action_type<'a>(
@@ -303,12 +308,19 @@ impl SymEntities {
     ///
     /// This function assumes that no entity types have tags, and that action types
     /// have no attributes.
-    pub fn of_schema(schema: &ValidatorSchema) -> Self {
+    pub fn of_schema(schema: &ValidatorSchema) -> Result<Self, result::Error> {
         let e_data = schema.entity_types().map(|vdtr_ety| {
             let ety = core_entity_type_into_entity_type(vdtr_ety.name());
-            let sym_edata = SymEntityData::of_entity_type(ety, vdtr_ety, schema);
-            (ety.clone(), sym_edata)
+            match SymEntityData::of_entity_type(ety, vdtr_ety, schema) {
+                Ok(sym_edata) => Ok((ety.clone(), sym_edata)),
+                Err(e) => Err(e),
+            }
         });
+        // PANIC SAFETY
+        #[allow(
+            clippy::expect_used,
+            reason = "ValidatorSchema::action_entities should not error"
+        )]
         let acts = schema
             .action_entities()
             .expect("Schema should have action entities");
@@ -317,19 +329,21 @@ impl SymEntities {
             .map(|act| core_entity_type_into_entity_type(act.uid().entity_type()))
             .collect();
         let a_data = act_tys.iter().map(|&act_ty| {
-            (
+            Ok((
                 act_ty.clone(),
                 SymEntityData::of_action_type(act_ty, act_tys.clone(), schema),
-            )
+            ))
         });
-        SymEntities(e_data.into_iter().chain(a_data).collect())
+        Ok(SymEntities(
+            e_data.into_iter().chain(a_data).collect::<Result<_, _>>()?,
+        ))
     }
 }
 
 impl SymRequest {
     /// Creates a symbolic request for the given request type.
-    fn of_request_type(req_ty: RequestType<'_>) -> Self {
-        Self {
+    fn of_request_type(req_ty: &RequestType<'_>) -> Result<Self, result::Error> {
+        Ok(Self {
             principal: Term::Var(TermVar {
                 id: "principal".to_string(),
                 ty: TermType::Entity {
@@ -345,20 +359,20 @@ impl SymRequest {
             }),
             context: Term::Var(TermVar {
                 id: "context".to_string(),
-                ty: TermType::of_type(record(req_ty.context.clone())),
+                ty: TermType::of_type(record(req_ty.context.clone()))?,
             }),
-        }
+        })
     }
 }
 
 impl SymEnv {
     /// Returns a symbolic environment that conforms to the given
     /// type Environment.
-    pub fn of_env(ty_env: Environment<'_>) -> Self {
-        SymEnv {
-            request: SymRequest::of_request_type(ty_env.req_ty),
-            entities: SymEntities::of_schema(ty_env.schema),
-        }
+    pub fn of_env(ty_env: &Environment<'_>) -> Result<Self, result::Error> {
+        Ok(SymEnv {
+            request: SymRequest::of_request_type(&ty_env.req_ty)?,
+            entities: SymEntities::of_schema(ty_env.schema)?,
+        })
     }
 }
 
@@ -439,31 +453,18 @@ impl Deref for ActionSchemaEntries {
 impl ActionSchemaEntries {
     fn of_schema(schema: &ValidatorSchema) -> Self {
         Self(
+            // PANIC SAFETY
+            #[allow(
+                clippy::expect_used,
+                reason = "ValidatorSchema::action_entities should not error"
+            )]
             schema
                 .action_entities()
                 .expect("Failed to get action entities from schema")
                 .into_iter()
                 .map(|action| {
-                    /*
-                    let validator_action_data = schema
-                        .get_action_id(action.uid())
-                        .expect("Should be an action");
-                    */
                     let action_schema_entry = ActionSchemaEntry {
                         ancestors: action.ancestors().map(core_uid_into_uid).cloned().collect(),
-                        /*
-                        applies_to_principal: validator_action_data
-                            .applies_to_principals()
-                            .map(core_entity_type_into_entity_type)
-                            .cloned()
-                            .collect(),
-                        applies_to_resource: validator_action_data
-                            .applies_to_resources()
-                            .map(core_entity_type_into_entity_type)
-                            .cloned()
-                            .collect(),
-                        context: context_attributes(validator_action_data).clone(),
-                        */
                     };
                     (core_uid_into_uid(action.uid()).clone(), action_schema_entry)
                 })
@@ -472,13 +473,15 @@ impl ActionSchemaEntries {
     }
 }
 
-fn context_attributes(action: &ValidatorActionId) -> &Attributes {
+fn context_attributes(action: &ValidatorActionId) -> Result<&Attributes, result::Error> {
     match action.context_type() {
         Type::EntityOrRecord(EntityRecordKind::Record {
             attrs,
             open_attributes: OpenTag::ClosedAttributes,
-        }) => attrs,
-        _ => panic!("context type should be a closed record"),
+        }) => Ok(attrs),
+        _ => Err(result::Error::Unreachable(
+            "Context type should be a closed record".into(),
+        )),
     }
 }
 
@@ -513,7 +516,7 @@ impl<'a> Environment<'a> {
                 principal: renv.principal(),
                 action: renv.action(),
                 resource: renv.resource(),
-                context: context_attributes(schema.get_action_id(renv.action().as_ref())?),
+                context: context_attributes(schema.get_action_id(renv.action().as_ref())?).ok()?,
             },
         })
     }

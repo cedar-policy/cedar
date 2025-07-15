@@ -84,7 +84,7 @@ pub fn subnet_width(w: Nat, prefix: Term) -> Term {
 }
 
 pub fn range(w: Nat, ip_addr: Term, prefix: Term) -> (Term, Term) {
-    let width = subnet_width(w, prefix.clone());
+    let width = subnet_width(w, prefix);
     let lo = bvshl(bvlshr(ip_addr, width.clone()), width.clone());
     let hi = bvsub(bvadd(lo.clone(), bvshl(1.into(), width)), 1.into());
     (lo, hi)

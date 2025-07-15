@@ -55,6 +55,11 @@ pub fn tag_of(entity: Term, tag: Term) -> Term {
 pub fn not(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Bool(b)) => (!b).into(),
+        // PANIC SAFETY
+        #[allow(
+            clippy::unwrap_used,
+            reason = "List of length 1 should not panic when unwrapping first element"
+        )]
         Term::App {
             op: Op::Not, args, ..
         } if args.len() == 1 => args.into_iter().next().unwrap(),
@@ -68,12 +73,16 @@ pub fn not(t: Term) -> Term {
 
 pub fn opposites(t1: &Term, t2: &Term) -> bool {
     match (t1, t2) {
+        // PANIC SAFETY: List of length 1 should not error when indexed by 0
+        #[allow(clippy::indexing_slicing)]
         (
             t1,
             Term::App {
                 op: Op::Not, args, ..
             },
         ) if args.len() == 1 => t1 == &args[0],
+        // PANIC SAFETY: List of length 2 should not error when indexed by 0 or 1
+        #[allow(clippy::indexing_slicing)]
         (
             Term::App {
                 op: Op::Not, args, ..
@@ -218,6 +227,11 @@ pub fn bvneg(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Bitvec(b)) => b.neg().into(),
         // this optimization is not present in the Lean
+        // PANIC SAFETY
+        #[allow(
+            clippy::unwrap_used,
+            reason = "List of length 1 should not panic when unwrapping first element"
+        )]
         Term::App {
             op: Op::Bvneg,
             args,
@@ -615,7 +629,13 @@ pub fn is_none(t: Term) -> Term {
         Term::App {
             op: Op::Ite, args, ..
         } => {
+            #[cfg(test)]
             assert!(args.len() == 3);
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "Ite should have 3 args. Since term is constructed it should have 3 args"
+            )]
             match (&args[0], &args[1], &args[2]) {
                 (_, Term::Some(_), Term::Some(_)) => false.into(),
                 (g, Term::Some(_), Term::None(_)) => not(g.clone()),

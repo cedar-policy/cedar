@@ -31,7 +31,9 @@ use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 
+use crate::symcc::ext::Ext;
 use crate::symcc::factory;
+use crate::symcc::type_abbrevs::ExtType;
 
 use super::env::{SymEntities, SymEntityData, SymRequest};
 use super::function::{Udf, UnaryFunction};
@@ -66,6 +68,9 @@ pub enum ConcretizeError {
 
     #[error("Unable to construct entities: {0}")]
     EntitiesError(#[from] cedar_policy::entities_errors::EntitiesError),
+
+    #[error("Concretization function not yet implemented for extension: {0:?}")]
+    ExtensionNotImplemented(ExtType),
 }
 
 /// Tries to extract an `EntityUid` from a `Term`.
@@ -152,14 +157,24 @@ impl TryFrom<&Term> for Value {
             )),
 
             // TODO: concretize extension values
-            Term::Prim(TermPrim::Ext(..)) => todo!(),
+            Term::Prim(TermPrim::Ext(Ext::Decimal { d: _ })) => {
+                Err(ConcretizeError::ExtensionNotImplemented(ExtType::Decimal))
+            }
+            Term::Prim(TermPrim::Ext(Ext::Datetime { dt: _ })) => {
+                Err(ConcretizeError::ExtensionNotImplemented(ExtType::DateTime))
+            }
+            Term::Prim(TermPrim::Ext(Ext::Duration { d: _ })) => {
+                Err(ConcretizeError::ExtensionNotImplemented(ExtType::Duration))
+            }
+            Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: _ })) => {
+                Err(ConcretizeError::ExtensionNotImplemented(ExtType::IpAddr))
+            }
 
             Term::Set { elts, .. } => Ok(Value::new(
                 ValueKind::Set(Set::new(
                     elts.iter()
                         .map(|t| t.try_into())
-                        .collect::<Result<Vec<_>, _>>()?
-                        .into_iter(),
+                        .collect::<Result<Vec<_>, _>>()?,
                 )),
                 None,
             )),
@@ -179,7 +194,7 @@ impl TryFrom<&Term> for Value {
                         })
                         .collect::<Result<Vec<Option<_>>, ConcretizeError>>()?
                         .into_iter()
-                        .filter_map(|v| v)
+                        .flatten()
                         .collect(),
                 )),
                 None,
@@ -243,7 +258,7 @@ impl Term {
             }
 
             Term::Record(rec) => {
-                for (_, t) in rec {
+                for t in rec.values() {
                     t.get_all_entity_uids(uids);
                 }
             }
@@ -292,8 +307,8 @@ impl SymEntityData {
         // to obtain a concrete set of ancestor EUIDs
         let concrete_ancestors = self
             .ancestors
-            .iter()
-            .map(|(_, ancestor)| {
+            .values()
+            .map(|ancestor| {
                 let euids: BTreeSet<EntityUid> =
                     (&factory::app(ancestor.clone(), tuid.clone())).try_into()?;
 
@@ -351,7 +366,7 @@ impl SymEntityData {
 
         self.attrs.get_all_entity_uids(uids);
 
-        for (_, ancestor) in &self.ancestors {
+        for ancestor in self.ancestors.values() {
             ancestor.get_all_entity_uids(uids);
         }
 

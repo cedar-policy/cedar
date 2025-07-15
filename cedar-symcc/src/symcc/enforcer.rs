@@ -86,6 +86,8 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
             Err(_) => Box::new(std::iter::empty()),
         }
     };
+    // PANIC SAFETY
+    #[allow(clippy::unimplemented, reason = "Should fail at an earlier stage")]
     match x.expr_kind() {
         ExprKind::Lit(_) | ExprKind::Var(_) => of_entity(x),
         ExprKind::Slot(_) => unimplemented!("analyzing templates is not currently supported"),
@@ -154,6 +156,11 @@ fn acyclicity(t: &Term, es: &SymEntities) -> Term {
                 }
                 None => true.into(),
             },
+            // PANIC SAFETY
+            #[allow(
+                clippy::unreachable,
+                reason = "Code already checks that matches entity_type"
+            )]
             _ => unreachable!("already checked it matches TermType::Entity above"),
         },
         _ => true.into(),

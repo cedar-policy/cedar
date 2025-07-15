@@ -29,6 +29,10 @@ pub enum Ext {
 }
 
 impl Ext {
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Pass by value expected by consumer"
+    )]
     pub fn parse_decimal(str: String) -> Option<Ext> {
         super::extension_types::decimal::parse(&str).map(|d| Ext::Decimal { d })
     }

@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+use cedar_policy::{Authorizer, Decision, EvalResult, Policy, PolicySet, Schema, Validator};
 use cedar_symcc::{
     solver::{LocalSolver, Solver},
     CedarSymCompiler, SymEnv, WellTypedPolicies, WellTypedPolicy,
 };
-use cedar_policy::{Authorizer, Decision, EvalResult, Policy, PolicySet, Schema, Validator};
 
 use crate::utils::Environments;
 mod utils;

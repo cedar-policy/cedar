@@ -105,16 +105,24 @@ impl LocalSolver {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
+        let (stdin, stdout, stderr) = match (child.stdin, child.stdout, child.stderr) {
+            (Some(stdin), Some(stdout), Some(stderr)) => (stdin, stdout, stderr),
+            _ => {
+                return Err(Error::Solver(
+                    "Failed to fetch IO pipes for solver process".into(),
+                ))
+            }
+        };
         Ok(Self {
-            solver_stdin: BufWriter::new(child.stdin.unwrap()),
-            solver_stdout: BufReader::new(child.stdout.unwrap()),
-            solver_stderr: BufReader::new(child.stderr.unwrap()),
+            solver_stdin: BufWriter::new(stdin),
+            solver_stdout: BufReader::new(stdout),
+            solver_stderr: BufReader::new(stderr),
         })
     }
 
     pub fn cvc5() -> Result<Self> {
         Self::new(
-            std::env::var("CVC5").unwrap_or("cvc5".into()),
+            std::env::var("CVC5").unwrap_or_else(|_| "cvc5".into()),
             ["--lang", "smt", "--tlimit=60000"], // limit of 60000ms = 1 min of wall time for local solves, for now
         )
     }

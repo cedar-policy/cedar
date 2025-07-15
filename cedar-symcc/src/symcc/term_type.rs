@@ -15,6 +15,8 @@
  */
 use cedar_policy_core::validator::types::OpenTag;
 
+use crate::symcc::result;
+
 use super::{entity_tag::EntityTag, type_abbrevs::*};
 use std::collections::BTreeMap;
 
@@ -71,24 +73,26 @@ impl TermType {
 
     // This doesn't match the Lean because `cedar_policy_core::validator::types::Type` doesn't
     // TODO: test this
-    pub fn of_type(ty: cedar_policy_core::validator::types::Type) -> Self {
+    pub fn of_type(ty: cedar_policy_core::validator::types::Type) -> Result<Self, result::Error> {
         use cedar_policy::EntityTypeName;
         use cedar_policy_core::validator::types::Type;
         use std::str::FromStr;
         match ty {
             Type::Primitive { primitive_type } => match primitive_type {
-                cedar_policy_core::validator::types::Primitive::Bool => TermType::Bool,
-                cedar_policy_core::validator::types::Primitive::Long => TermType::Bitvec { n: 64 },
-                cedar_policy_core::validator::types::Primitive::String => TermType::String,
+                cedar_policy_core::validator::types::Primitive::Bool => Ok(TermType::Bool),
+                cedar_policy_core::validator::types::Primitive::Long => {
+                    Ok(TermType::Bitvec { n: 64 })
+                }
+                cedar_policy_core::validator::types::Primitive::String => Ok(TermType::String),
             },
             Type::ExtensionType { name } => match name.basename().to_string().as_str() {
-                "ipaddr" => TermType::Ext {
+                "ipaddr" => Ok(TermType::Ext {
                     xty: ExtType::IpAddr,
-                },
-                "decimal" => TermType::Ext {
+                }),
+                "decimal" => Ok(TermType::Ext {
                     xty: ExtType::Decimal,
-                },
-                ext => unimplemented!("Missing extension handler for {ext}"),
+                }),
+                _ => Err(result::Error::UnsupportedError),
             },
             Type::EntityOrRecord(entity_record_kind) => {
                 match entity_record_kind {
@@ -96,59 +100,73 @@ impl TermType {
                         attrs,
                         open_attributes,
                     } => {
-                        assert_eq!(
-                            open_attributes,
-                            OpenTag::ClosedAttributes,
-                            "Attributes should be closed"
-                        );
-                        TermType::Record {
-                            rty: attrs
-                                .into_iter()
-                                .map(|(k, v)| {
-                                    (
-                                        k,
-                                        //Inlining ofRecordType and ofQualifiedType here
-                                        if v.is_required {
-                                            Self::of_type(v.attr_type)
-                                        } else {
-                                            TermType::Option {
-                                                ty: Box::new(Self::of_type(v.attr_type)),
-                                            }
-                                        },
-                                    )
-                                })
-                                .collect(),
+                        if open_attributes == OpenTag::ClosedAttributes {
+                            Ok(TermType::Record {
+                                rty: attrs
+                                    .into_iter()
+                                    .map(|(k, v)| {
+                                        match Self::of_type(v.attr_type) {
+                                            Ok(vt) => Ok((
+                                                k,
+                                                //Inlining ofRecordType and ofQualifiedType here
+                                                if v.is_required {
+                                                    vt
+                                                } else {
+                                                    TermType::Option { ty: Box::new(vt) }
+                                                },
+                                            )),
+                                            Err(e) => Err(e),
+                                        }
+                                    })
+                                    .collect::<Result<_, _>>()?,
+                            })
+                        } else {
+                            // Attributes should be closed
+                            Err(result::Error::UnsupportedError)
                         }
                     }
                     cedar_policy_core::validator::types::EntityRecordKind::AnyEntity => {
-                        panic!("Strict validation should prevent this")
+                        Err(result::Error::Unreachable(
+                            "AnyEntity is not possible with Strict validation".into(),
+                        ))
                     }
                     cedar_policy_core::validator::types::EntityRecordKind::Entity(entity_lub) => {
                         match entity_lub.get_single_entity() {
-                            Some(name) => TermType::Entity {
+                            Some(name) => Ok(TermType::Entity {
                                 ety: core_entity_type_into_entity_type(name).clone(),
-                            },
-                            None => panic!("EntityLUB has multiple elements"),
+                            }),
+                            // EntityLUB has multiple elements
+                            None => Err(result::Error::UnsupportedError),
                         }
                     }
                     cedar_policy_core::validator::types::EntityRecordKind::ActionEntity {
-                        name, ..
-                    } => TermType::Entity {
+                        name,
+                        ..
+                    } => Ok(TermType::Entity {
                         // todo: expose `From<core::Name> for api::EntityTypeName`?
+                        // PANIC SAFETY
+                        #[allow(
+                            clippy::expect_used,
+                            reason = "conversion from core -> str -> public type should not error"
+                        )]
                         ety: EntityTypeName::from_str(name.to_string().as_str())
                             .expect("Name should parse"),
-                    },
+                    }),
                 }
             }
             Type::Set { element_type } => match element_type {
-                Some(element_type) => TermType::Set {
-                    ty: Box::new(Self::of_type(*element_type)),
-                },
-                None => panic!("Empty set. Unable to deduce type"),
+                Some(element_type) => Ok(TermType::Set {
+                    ty: Box::new(Self::of_type(*element_type)?),
+                }),
+                // Empty set. Unable to deduce type
+                None => Err(result::Error::UnsupportedError),
             },
-            Type::Never => panic!("Analysis cannot handle Never"),
-            Type::True => panic!("Analysis cannot handle True"),
-            Type::False => panic!("Analysis cannot handle False"),
+            // Analysis cannot handle Never,
+            Type::Never => Err(result::Error::UnsupportedError),
+            // Analysis cannot handle True,
+            Type::True => Err(result::Error::UnsupportedError),
+            // Analysis cannot handle False,
+            Type::False => Err(result::Error::UnsupportedError),
         }
     }
 }

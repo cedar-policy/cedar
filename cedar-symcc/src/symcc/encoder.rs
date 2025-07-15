@@ -57,6 +57,7 @@
 //!  of every s-expression in the encoding consists of atomic subterms (identifiers
 //!  or literals).
 
+use anyhow::anyhow;
 use async_recursion::async_recursion;
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet};
@@ -313,31 +314,35 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         entity: &EntityUID,
     ) -> Result<String, anyhow::Error> {
         match self.enums.get(entity.type_name()) {
-            Some(members) => Ok(
-                enum_id(
+            Some(members) => {
+                let entity_ind = match members.iter().position(|s| s ==  <EntityID as AsRef<str>>::as_ref(entity.id())) {
+                    Some(ind) => ind,
+                    None => return Err(anyhow!("members should contain entity.id()! Entity: {entity:?} \n Members: {members:?}"))
+                };
+                Ok(enum_id(ty_enc, entity_ind))
+            }
+            None => {
+                self.define_term(
                     ty_enc,
-                    members
-                        .iter()
-                        .position(|s| s == <EntityID as AsRef<str>>::as_ref(entity.id()))
-                        .unwrap_or_else(|| panic!("members should contain entity.id()! Entity: {entity:?} \n Members: {members:?}"))
+                    &format!(
+                        "({ty_enc} {})",
+                        encode_string(<EntityID as AsRef<str>>::as_ref(entity.id()))
+                    ),
                 )
-            ),
-            None => self.define_term(
-                ty_enc,
-                &format!("({ty_enc} {})", encode_string(<EntityID as AsRef<str>>::as_ref(entity.id()))),
-            ).await,
+                .await
+            }
         }
     }
 
-    fn index_of_attr(a: &Attr, t_ty: &TermType) -> usize {
+    fn index_of_attr(a: &Attr, t_ty: &TermType) -> Result<usize, anyhow::Error> {
         // Getting the index of a key in `BTreeMap` should be ok
         // (it wouldn't be for `HashMap`)
         match t_ty {
-            TermType::Record { rty } => rty
-                .keys()
-                .position(|k| k == a)
-                .unwrap_or_else(|| panic!("Could not find {a:?} in {rty:?}")),
-            _ => panic!("Bad term: (record.get {a} {t_ty:?})"),
+            TermType::Record { rty } => match rty.keys().position(|k| k == a) {
+                Some(ind) => Ok(ind),
+                None => Err(anyhow!("Could not find {a:?} in {rty:?}")),
+            },
+            _ => Err(anyhow!("Bad term: (record.get {a} {t_ty:?})")),
         }
     }
 
@@ -348,11 +353,11 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         t_enc: &str,
         ty: &TermType,
     ) -> Result<String, anyhow::Error> {
-        let r_id = self
-            .types
-            .get(ty)
-            .unwrap_or_else(|| panic!("Could not find {ty:?} in {:?}", self.types));
-        let a_id = Self::index_of_attr(a, ty);
+        let r_id = match self.types.get(ty) {
+            Some(t) => t,
+            None => return Err(anyhow!("Could not find {ty:?} in {:?}", self.types)),
+        };
+        let a_id = Self::index_of_attr(a, ty)?;
         self.define_term(ty_enc, &format!("({} {t_enc})", record_attr_id(r_id, a_id)))
             .await
     }
@@ -365,11 +370,12 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         ts: impl IntoIterator<Item = &'b Term>,
     ) -> Result<String, anyhow::Error> {
         let args = t_encs.into_iter().join(" ");
+        let t = match ts.into_iter().next() {
+            Some(t) => t.type_of(),
+            None => return Err(anyhow!("cannot get type of non-existant type")),
+        };
         match op {
-            Op::RecordGet(a) => {
-                self.define_record_get(ty_enc, a, &args, &ts.into_iter().next().unwrap().type_of())
-                    .await
-            }
+            Op::RecordGet(a) => self.define_record_get(ty_enc, a, &args, &t).await,
             Op::StringLike(p) => {
                 self.define_term(ty_enc, &format!("(str.in_re {args} {})", encode_pattern(p)))
                     .await
@@ -437,6 +443,11 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 args,
                 ret_ty: TermType::Bool,
             } if args.len() == 1 => {
+                // PANIC SAFETY
+                #[allow(
+                    clippy::indexing_slicing,
+                    reason = "Slice of length 1 can be indexed by 0"
+                )]
                 let t = &args[0]; // guaranteed to exist because we already checked that `args.len() == 1`
 
                 // don't encode bvnego itself, for compatibility with older CVC5 (bvnego was
@@ -544,7 +555,7 @@ fn encode_ipaddr_prefix_v6(w: Nat, pre: &IPv6Prefix) -> String {
 fn encode_ext(e: &Ext) -> String {
     match e {
         Ext::Decimal { d } => {
-            let bv_enc = encode_bitvec(&BitVec::of_int(64, d.0 as i128));
+            let bv_enc = encode_bitvec(&BitVec::of_int(64, i128::from(d.0)));
             format!("(Decimal {bv_enc})")
         }
         Ext::Ipaddr {
@@ -562,7 +573,7 @@ fn encode_ext(e: &Ext) -> String {
             format!("(V6 {addr} {pre})")
         }
         Ext::Duration { d } => {
-            let bv_enc = encode_bitvec(&BitVec::of_int(64, d.to_milliseconds() as i128));
+            let bv_enc = encode_bitvec(&BitVec::of_int(64, i128::from(d.to_milliseconds())));
             format!("(Duration {bv_enc})")
         }
         Ext::Datetime { .. } => String::new(), // Lean comment "TODO: Provide an actual encoding for datetimes"
@@ -602,6 +613,11 @@ fn encode_pattern(pattern: &OrdPattern) -> String {
     if pattern.get_elems().is_empty() {
         "(str.to_re \"\")".to_string()
     } else if pattern.get_elems().len() == 1 {
+        // PANIC SAFETY
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "Slice of length 1 can be indexed by 0"
+        )]
         encode_pat_elem(pattern.get_elems()[0])
     } else {
         format!(

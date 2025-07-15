@@ -99,6 +99,11 @@ pub fn verify_always_allows(policies: &PolicySet, env: &SymEnv) -> Result<Assert
         None,
     );
     let mut allow_all_ps = PolicySet::new();
+    // PANIC SAFETY
+    #[allow(
+        clippy::expect_used,
+        reason = "Adding allow_all to a `PolicySet` should not error"
+    )]
     allow_all_ps
         .add(allow_all)
         .expect("Could not add policy to policy set.");

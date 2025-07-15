@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
- //! This module defines the Cedar symbolic compiler.
+//! This module defines the Cedar symbolic compiler.
 //!
 //! The symbolic compiler takes as input a Cedar expression and a symbolic
 //! environment. Given these inputs, it produces a Term encoding of the expression.
@@ -47,7 +47,7 @@ type Result<T> = std::result::Result<T, Error>;
 fn compile_prim(p: &Prim, es: &SymEntities) -> Result<Term> {
     match p {
         Prim::Bool(b) => Ok(some_of((*b).into())),
-        Prim::Long(i) => Ok(some_of(BitVec::of_int(64, *i as i128).into())),
+        Prim::Long(i) => Ok(some_of(BitVec::of_int(64, i128::from(*i)).into())),
         Prim::String(s) => Ok(some_of(s.clone().into())),
         Prim::EntityUID(uid) => {
             let uid = core_uid_into_uid(uid);
@@ -256,6 +256,11 @@ pub fn compile_app2(op2: &BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Res
                 t2,
                 es.ancestors_of_type(&ety1, &ety2).cloned(),
             ))),
+            // PANIC SAFETY
+            #[allow(
+                clippy::unreachable,
+                reason = "Code is unreachable due to above match that type must be an Entity"
+            )]
             _ => unreachable!("We just matched with entity type above"),
         },
         (HasTag, Entity { ety }, String) => compile_has_tag(t1, t2, es.tags(&ety)),
@@ -359,6 +364,11 @@ pub fn compile_set(ts: Vec<Term>) -> Result<Term> {
     if ts.is_empty() {
         Err(Error::UnsupportedError) // Reject empty set literals
     } else {
+        // PANIC SAFETY
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "ts must be non-empty and thus indexing by 0 should not panic"
+        )]
         match ts[0].type_of() {
             ref ty @ TermType::Option { ty: ref ity } => {
                 if ts.iter().all(|it| &it.type_of() == ty) {
@@ -379,6 +389,10 @@ pub fn compile_set(ts: Vec<Term>) -> Result<Term> {
 }
 
 pub fn compile_record(ats: Vec<(Attr, Term)>) -> Result<Term> {
+    #[allow(
+        clippy::needless_collect,
+        reason = "collect allows ats to be moved in the following line"
+    )]
     Ok(if_all_some(
         ats.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
         some_of(record_of(ats.into_iter().map(|(a, t)| (a, option_get(t))))),
@@ -432,6 +446,11 @@ pub fn compile_call2(
 /// Extract the first item from a `Vec`, consuming the `Vec`.
 /// Panics if there is less than one element.
 fn extract_first<T>(v: Vec<T>) -> T {
+    // PANIC SAFETY
+    #[allow(
+        clippy::unwrap_used,
+        reason = "This function is only called from contexts where v has length >= 1"
+    )]
     v.into_iter().next().unwrap()
 }
 
@@ -439,6 +458,11 @@ fn extract_first<T>(v: Vec<T>) -> T {
 /// Panics if there are less than two elements.
 fn extract_first2<T>(v: Vec<T>) -> (T, T) {
     let mut it = v.into_iter();
+    // PANIC SAFETY
+    #[allow(
+        clippy::unwrap_used,
+        reason = "This function is only called from contexts where v has length >= 2"
+    )]
     (it.next().unwrap(), it.next().unwrap())
 }
 
@@ -464,10 +488,7 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
             let (t1, t2) = extract_first2(ts);
             compile_call2(ExtType::Decimal, extfun::greater_than_or_equal, t1, t2)
         }
-        ("ip", 1) => {
-            let t1 = extract_first(ts);
-            compile_call0(|_| unimplemented!("parsing"), t1)
-        }
+        ("ip", 1) => Err(Error::UnsupportedError),
         ("isIpv4", 1) => {
             let t1 = extract_first(ts);
             compile_call1(ExtType::IpAddr, extfun::is_ipv4, t1)
@@ -488,10 +509,7 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
             let (t1, t2) = extract_first2(ts);
             compile_call2(ExtType::IpAddr, extfun::is_in_range, t1, t2)
         }
-        ("duration", 1) => {
-            let t1 = extract_first(ts);
-            compile_call0(|_| unimplemented!("parsing"), t1)
-        }
+        ("duration", 1) => Err(Error::UnsupportedError),
         ("toMilliseconds", 1) => {
             let t1 = extract_first(ts);
             compile_call1(ExtType::Duration, extfun::to_milliseconds, t1)
