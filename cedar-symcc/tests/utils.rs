@@ -28,6 +28,7 @@ pub fn pretty_panic<T>(e: impl miette::Diagnostic + Send + Sync + 'static) -> T 
 }
 
 /// Parse a policy from text, panicking if it fails to parse or validate
+#[allow(dead_code, reason="supress unused warning as this is used within the integration_tests")]
 #[track_caller]
 pub fn policy_from_text(id: &str, text: &str, validator: &Validator) -> Policy {
     let p = Policy::parse(Some(PolicyId::new(id)), text).unwrap_or_else(pretty_panic);
@@ -43,6 +44,7 @@ pub fn policy_from_text(id: &str, text: &str, validator: &Validator) -> Policy {
 }
 
 /// Parse a policy set from text, panicking if it fails to parse or validate
+#[allow(dead_code, reason="supress unused warning as this is used within the integration_tests")]
 #[track_caller]
 pub fn pset_from_text(text: &str, validator: &Validator) -> PolicySet {
     let pset = PolicySet::from_str(text).unwrap_or_else(pretty_panic);
@@ -55,6 +57,7 @@ pub fn pset_from_text(text: &str, validator: &Validator) -> PolicySet {
 }
 
 /// Parse a schema from Cedar syntax, panicking if it fails to parse
+#[allow(dead_code, reason="supress unused warning as this is used within the integration_tests")]
 #[track_caller]
 pub fn schema_from_cedarstr(str: &str) -> Schema {
     Schema::from_cedarschema_str(str)
@@ -63,6 +66,7 @@ pub fn schema_from_cedarstr(str: &str) -> Schema {
 }
 
 /// Parse a request env from text, panicking if it fails to parse
+#[allow(dead_code, reason="supress unused warning as this is used within the integration_tests")]
 #[track_caller]
 pub fn req_env_from_strs(principal_ty: &str, action: &str, resource_ty: &str) -> RequestEnv {
     RequestEnv::new(
@@ -72,6 +76,7 @@ pub fn req_env_from_strs(principal_ty: &str, action: &str, resource_ty: &str) ->
     )
 }
 
+#[allow(dead_code, reason="supress unused warning as this is used within the integration_tests")]
 #[derive(Debug)]
 pub struct Environments<'a> {
     pub schema: &'a Schema,
@@ -79,6 +84,7 @@ pub struct Environments<'a> {
     pub symenv: SymEnv,
 }
 
+#[allow(dead_code, reason="supress unused warning as this is used within the integration_tests")]
 impl<'a> Environments<'a> {
     /// Create a new Environments instance from a schema and principal, action, and resource strings
     #[track_caller]
