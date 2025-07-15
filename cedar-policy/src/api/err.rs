@@ -21,6 +21,8 @@ pub use cedar_policy_core::ast::{
     expression_construction_errors, restricted_expr_errors, ContainsUnknown,
     ExpressionConstructionError, PartialValueToValueError, RestrictedExpressionError,
 };
+#[cfg(feature = "tpe")]
+use cedar_policy_core::entities::conformance::err::EntitySchemaConformanceError;
 #[cfg(feature = "entity-manifest")]
 use cedar_policy_core::entities::err::EntitiesError;
 pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
@@ -44,6 +46,9 @@ use to_cedar_syntax_errors::NameCollisionsError;
 
 #[cfg(feature = "entity-manifest")]
 use super::ValidationResult;
+
+#[cfg(feature = "tpe")]
+pub use cedar_policy_core::tpe::err as tpe_err;
 
 /// Errors related to [`crate::Entities`]
 pub mod entities_errors {
@@ -1304,4 +1309,38 @@ impl From<entity_manifest::EntityManifestError> for EntityManifestError {
             }
         }
     }
+}
+
+#[cfg(feature = "tpe")]
+/// Error thrown when creating a `PartialRequest`
+#[derive(Debug, Error, Diagnostic)]
+pub enum PartialRequestCreationError {
+    /// When the context contains unknowns
+    #[error("Context contains unknowns")]
+    ContextContainsUnknowns,
+    /// When the request does not pass validation
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Validation(#[from] RequestValidationError),
+}
+
+#[cfg(feature = "tpe")]
+/// Errors that can be encountered when re-evaluating a partial response
+#[derive(Debug, Error)]
+pub enum TPEReauthorizationError {
+    /// An evaluation error was encountered
+    #[error(transparent)]
+    Evaluation(#[from] EvaluationError),
+    /// `Request` cannot be validated
+    #[error(transparent)]
+    RequestValidation(#[from] RequestValidationError),
+    /// `Entities` cannot be validated
+    #[error(transparent)]
+    EntityValidation(#[from] EntitySchemaConformanceError),
+    /// Inconsistent entities
+    #[error(transparent)]
+    InconsistentEntities(#[from] tpe_err::EntitiesConsistencyError),
+    /// Inconsistent requests
+    #[error(transparent)]
+    InconsistentRequests(#[from] tpe_err::RequestConsistencyError),
 }

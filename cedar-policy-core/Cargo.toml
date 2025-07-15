@@ -59,8 +59,9 @@ partial-eval = []
 tolerant-ast = []
 entity-manifest = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
-experimental = ["tolerant-ast", "extended-schema", "entity-manifest", "partial-validate", "partial-eval"]
+experimental = ["tpe", "tolerant-ast", "extended-schema", "entity-manifest", "partial-validate", "partial-eval"]
 extended-schema = []
+tpe = []
 
 # Feature for raw parsing
 raw-parsing = []

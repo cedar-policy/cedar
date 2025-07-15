@@ -313,7 +313,7 @@ impl ast::RequestSchema for ValidatorSchema {
 }
 
 impl ValidatorActionId {
-    fn check_principal_type(
+    pub(crate) fn check_principal_type(
         &self,
         principal_type: &EntityType,
         action: &Arc<EntityUID>,
@@ -329,7 +329,7 @@ impl ValidatorActionId {
         }
     }
 
-    fn check_resource_type(
+    pub(crate) fn check_resource_type(
         &self,
         resource_type: &EntityType,
         action: &Arc<EntityUID>,
@@ -435,7 +435,7 @@ pub mod request_validation_errors {
     #[error("request's action `{action}` is not declared in the schema")]
     pub struct UndeclaredActionError {
         /// Action which was not declared in the schema
-        pub(super) action: Arc<ast::EntityUID>,
+        pub(crate) action: Arc<ast::EntityUID>,
     }
 
     impl Diagnostic for UndeclaredActionError {
@@ -454,7 +454,7 @@ pub mod request_validation_errors {
     #[error("principal type `{principal_ty}` is not declared in the schema")]
     pub struct UndeclaredPrincipalTypeError {
         /// Principal type which was not declared in the schema
-        pub(super) principal_ty: ast::EntityType,
+        pub(crate) principal_ty: ast::EntityType,
     }
 
     impl Diagnostic for UndeclaredPrincipalTypeError {
@@ -473,7 +473,7 @@ pub mod request_validation_errors {
     #[error("resource type `{resource_ty}` is not declared in the schema")]
     pub struct UndeclaredResourceTypeError {
         /// Resource type which was not declared in the schema
-        pub(super) resource_ty: ast::EntityType,
+        pub(crate) resource_ty: ast::EntityType,
     }
 
     impl Diagnostic for UndeclaredResourceTypeError {
@@ -493,11 +493,11 @@ pub mod request_validation_errors {
     #[error("principal type `{principal_ty}` is not valid for `{action}`")]
     pub struct InvalidPrincipalTypeError {
         /// Principal type which is not valid
-        pub(super) principal_ty: ast::EntityType,
+        pub(crate) principal_ty: ast::EntityType,
         /// Action which it is not valid for
-        pub(super) action: Arc<ast::EntityUID>,
+        pub(crate) action: Arc<ast::EntityUID>,
         /// Principal types which actually are valid for that `action`
-        pub(super) valid_principal_tys: Vec<ast::EntityType>,
+        pub(crate) valid_principal_tys: Vec<ast::EntityType>,
     }
 
     impl Diagnostic for InvalidPrincipalTypeError {
@@ -614,9 +614,9 @@ pub mod request_validation_errors {
     #[error("context `{}` is not valid for `{action}`", ast::BoundedToString::to_string_bounded(.context, BOUNDEDDISPLAY_BOUND_FOR_INVALID_CONTEXT_ERROR))]
     pub struct InvalidContextError {
         /// Context which is not valid
-        pub(super) context: ast::Context,
+        pub(crate) context: ast::Context,
         /// Action which it is not valid for
-        pub(super) action: Arc<ast::EntityUID>,
+        pub(crate) action: Arc<ast::EntityUID>,
     }
 
     const BOUNDEDDISPLAY_BOUND_FOR_INVALID_CONTEXT_ERROR: usize = 5;
