@@ -16,7 +16,6 @@ cedar-policy-formatter = { version = "=4.5.0", path = "../cedar-policy-formatter
 cedar-policy = { version = "=4.5.0", path = "../cedar-policy", features = ["tolerant-ast"]}
 anyhow = "1.0.95"
 itertools = "0.14.0"
-lsp-types = "0.94.1"
 miette = "7.4.0"
 ropey = "1.6.1"
 smol_str = "0.3"
@@ -24,10 +23,10 @@ tracing = "0.1.41"
 serde = "1"
 serde_json = "1.0.139"
 regex = "1.11.1"
+tower-lsp-server = "0.22.0"
 
 # Dependencies needed only for the language server binary
 tokio = { version = "1.43.0", features = ["full"], optional = true }
-tower-lsp = { version = "0.20.0", optional = true }
 tracing-appender = { version = "0.2.3", optional = true }
 tracing-subscriber = { version = "0.3.19", features = ["json"], optional = true}
 tower-service = { version = "0.3.3", optional = true}
@@ -45,7 +44,7 @@ similar-asserts = "1.7.0"
 
 [features]
 default = ["bin"]
-bin = ["dep:tokio", "dep:tower-lsp", "dep:tower-service", "dep:tracing-subscriber", "dep:tracing-appender", "dep:dashmap"]
+bin = ["dep:tokio", "dep:tower-service", "dep:tracing-subscriber", "dep:tracing-appender", "dep:dashmap"]
 wasm = ["dep:serde-wasm-bindgen", "dep:tsify", "dep:wasm-bindgen"]
 
 [[bin]]

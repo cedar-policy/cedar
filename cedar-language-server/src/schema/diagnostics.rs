@@ -16,7 +16,7 @@
 
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::validator::ValidatorSchema;
-use lsp_types::Diagnostic;
+use tower_lsp_server::lsp_types::Diagnostic;
 
 use crate::utils::to_lsp_diagnostics;
 

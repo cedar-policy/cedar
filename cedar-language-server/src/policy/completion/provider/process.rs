@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use lsp_types::Position;
+use tower_lsp_server::lsp_types::Position;
 
 pub(crate) const LSP_MARKER: &str = "__CEDAR_LSP";
 

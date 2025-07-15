@@ -15,9 +15,11 @@
  */
 
 use super::SchemaInfo;
-use lsp_types::{CompletionItem, CompletionItemKind, CompletionResponse, Position, Range};
 use regex::Regex;
 use std::collections::HashMap;
+use tower_lsp_server::lsp_types::{
+    self, CompletionItem, CompletionItemKind, CompletionResponse, Position, Range,
+};
 
 // PANIC SAFETY: These regex are valid and would panic immediately in test if not.
 #[allow(clippy::unwrap_used)]
