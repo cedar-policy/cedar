@@ -431,7 +431,7 @@ impl Evaluator<'_> {
                         },
                         BinaryOp::ContainsAll => match (v1.get_as_set(), v2.get_as_set()) {
                             (Ok(arg1_set), Ok(arg2_set)) => Residual::Concrete {
-                                value: arg1_set.is_subset(arg2_set).into(),
+                                value: arg2_set.is_subset(arg1_set).into(),
                                 ty,
                             },
                             _ => Residual::Error(ty),
