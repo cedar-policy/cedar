@@ -696,6 +696,7 @@ mod tests {
         FromNormalizedStr,
     };
     use cool_asserts::assert_matches;
+    use itertools::Itertools;
 
     use crate::{
         tpe::entities::{PartialEntities, PartialEntity},
@@ -1695,6 +1696,59 @@ mod tests {
                     ..
                 },
                 ..
+            }
+        );
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::ContainsAll,
+                builder().set([builder().val(true), builder().binary_app(BinaryOp::Eq, builder().var(Var::Principal), builder().var(Var::Resource))]),
+                builder().set([builder().val(true), builder().val(true)])
+            )),
+            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::ContainsAll, arg1, arg2 }, .. } => {
+                assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Set(s), ..} => {
+                    assert_matches!(s.as_slice(), [Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::Bool(true)), .. }, .. }, Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }] => {
+                        assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+                        assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
+                    })
+                } );
+                assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Set(s), .. }, .. } => {
+                    assert_eq!(s.iter().collect_vec(), [&Value::from(true)]);
+                });
+            }
+        );
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::ContainsAny,
+                builder().set([builder().val(true), builder().val(false)]),
+                builder().set([builder().val(true), builder().val(true)])
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::ContainsAny,
+                builder().set([builder().val(true), builder().binary_app(BinaryOp::Eq, builder().var(Var::Principal), builder().var(Var::Resource))]),
+                builder().set([builder().val(true), builder().val(true)])
+            )),
+            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::ContainsAny, arg1, arg2 }, .. } => {
+                assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Set(s), ..} => {
+                    assert_matches!(s.as_slice(), [Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::Bool(true)), .. }, .. }, Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }] => {
+                        assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+                        assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
+                    })
+                } );
+                assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Set(s), .. }, .. } => {
+                    assert_eq!(s.iter().collect_vec(), [&Value::from(true)]);
+                });
             }
         );
     }
