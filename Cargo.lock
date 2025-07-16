@@ -499,7 +499,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-symcc"
-version = "4.5.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-recursion",

@@ -3,7 +3,7 @@ name = "cedar-policy-symcc"
 edition.workspace = true
 rust-version.workspace = true
 
-version.workspace = true
+version = "0.1.0"
 license.workspace = true
 categories.workspace = true
 description = "Cedar Symbolic Compiler: translates queries about Cedar Policies to SMT"
