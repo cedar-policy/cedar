@@ -68,9 +68,16 @@ pub assume_specification<T:Clone>[<Expr<T> as Clone>::clone](this: &Expr<T>) -> 
 
 
 impl<T> Expr<T> {
+    // Encodes the "values total map" invariant
+    pub closed spec fn complete_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> bool
+        decreases self
+    {
+        self.expr_kind.complete_slot_env(slot_env)
+    }
+
     // We can't write `impl View for ExprKind`, since we also need to pass in the SlotEnv to fill in slots
     pub closed spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Expr
-        decreases self // TODO: why is this required?
+        decreases self
     {
         self.expr_kind.view_with_slot_env(slot_env)
     }
@@ -196,9 +203,79 @@ impl<T> BTreeMapView for BTreeMap<SmolStr, Expr<T>> {
 }
 
 impl<T> ExprKind<T> {
+    // Encodes the "values total map" invariant
+    pub open spec fn complete_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> bool
+        decreases self via Self::complete_slot_env_decreases
+    {
+        match self {
+            ExprKind::Lit(_) => true,
+            ExprKind::Var(_) => true,
+            ExprKind::Slot(slot) => slot_env.contains_key(*slot),
+            ExprKind::If { test_expr, then_expr, else_expr } => {
+                &&& test_expr.complete_slot_env(slot_env)
+                &&& then_expr.complete_slot_env(slot_env)
+                &&& else_expr.complete_slot_env(slot_env)
+            },
+            ExprKind::And { left, right } => {
+                &&& left.complete_slot_env(slot_env)
+                &&& right.complete_slot_env(slot_env)
+            },
+            ExprKind::Or { left, right } => {
+                &&& left.complete_slot_env(slot_env)
+                &&& right.complete_slot_env(slot_env)
+            },
+            ExprKind::UnaryApp { op, arg } => arg.complete_slot_env(slot_env),
+            ExprKind::BinaryApp { op, arg1, arg2 } => {
+                &&& arg1.complete_slot_env(slot_env)
+                &&& arg2.complete_slot_env(slot_env)
+            },
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                // TODO(Pratap): support extension functions
+                arbitrary()
+            },
+            ExprKind::GetAttr { expr, attr } => {
+                expr.complete_slot_env(slot_env)
+            },
+            ExprKind::HasAttr { expr, attr } => {
+                expr.complete_slot_env(slot_env)
+
+            },
+            ExprKind::Like { expr, pattern } => {
+                // TODO(Pratap): support patterns, something like:
+                // spec_ast::Expr::UnaryApp {
+                //     uop: spec_ast::UnaryOp::Like { p: pattern@ },
+                //     expr: Box::new(expr.view_with_slot_env(slot_env))
+                // }
+                arbitrary()
+            },
+            ExprKind::Is { expr, entity_type } => {
+                expr.complete_slot_env(slot_env)
+            },
+            ExprKind::Set(exprs) => {
+                forall |e: Expr<T>| exprs@.contains(e) ==> #[trigger] e.complete_slot_env(slot_env)
+            },
+            ExprKind::Record(map) => {
+                &&& map@.dom().finite()
+                &&& forall |e: Expr<T>| map@.contains_value(e) ==> #[trigger] e.complete_slot_env(slot_env)
+            }
+        }
+    }
+
+    #[via_fn]
+    proof fn complete_slot_env_decreases(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) {
+        match self {
+            ExprKind::Record(map) => {
+                broadcast use BTreeMapView::axiom_btree_map_view_decreases;
+                // assert(forall |e: Expr<T>| map@.dom().finite() && map@.contains_value(e) ==> decreases_to!(map@ => e));
+            },
+            _ => {}
+        };
+    }
+
     // We can't write `impl View for ExprKind`, since we also need to pass in the SlotEnv to fill in slots
     pub open spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Expr
-        decreases self via Self::expr_kind_view_with_slot_env_decreases
+        recommends self.complete_slot_env(slot_env)
+        decreases self via Self::view_with_slot_env_decreases
     {
         match self {
             ExprKind::Lit(lit) => spec_ast::Expr::lit(lit@),
@@ -293,7 +370,7 @@ impl<T> ExprKind<T> {
     }
 
     #[via_fn]
-    proof fn expr_kind_view_with_slot_env_decreases(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) {
+    proof fn view_with_slot_env_decreases(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) {
         match self {
             ExprKind::Set(exprs) => {
                 assert(forall |e: Expr<T>| exprs@.contains(e) ==> decreases_to!(exprs => e));
