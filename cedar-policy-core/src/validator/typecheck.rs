@@ -195,6 +195,27 @@ impl<'a> Typechecker<'a> {
         }
     }
 
+    /// Type check a `Template` by a single request environment
+    pub fn typecheck_by_single_request_env<'b>(
+        &'b self,
+        t: &'b Template,
+        request_env: &RequestEnv<'b>,
+    ) -> PolicyCheck {
+        let generalized_slots_to_validator_type_position = GeneralizedSlotsAnnotation::from_iter(
+            t.generalized_slots_annotation()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        )
+        .into_validator_generalized_slots_annotation(self.schema)
+        .expect("Schema is invalid");
+
+        self.single_env_typechecking(
+            request_env,
+            t.id(),
+            &t.condition(),
+            &generalized_slots_to_validator_type_position,
+        )
+    }
+
     /// Apply `typecheck_fn` to the given policy in every schema-defined request
     /// environment, and collect all the results.
     ///
