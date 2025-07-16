@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 use cedar_policy::{Authorizer, Decision, EvalResult, Policy, PolicySet, Schema, Validator};
-use cedar_symcc::{
+use cedar_policy_symcc::{
     solver::{LocalSolver, Solver},
     CedarSymCompiler, SymEnv, WellTypedPolicies, WellTypedPolicy,
 };
 
-use crate::utils::Environments;
 mod utils;
+use utils::Environments;
 
 fn sample_schema() -> Schema {
     utils::schema_from_cedarstr(

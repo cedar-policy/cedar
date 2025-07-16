@@ -498,7 +498,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cedar-symcc"
+name = "cedar-policy-symcc"
 version = "4.5.0"
 dependencies = [
  "anyhow",

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 use cedar_policy::{Policy, Schema, Validator};
-use cedar_symcc::{solver::LocalSolver, SymCompiler, SymEnv, WellTypedPolicy};
+use cedar_policy_symcc::{solver::LocalSolver, SymCompiler, SymEnv, WellTypedPolicy};
 use utils::Environments;
 mod utils;
 
