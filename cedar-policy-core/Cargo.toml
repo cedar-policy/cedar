@@ -30,9 +30,7 @@ miette = { version = "7.6.0", features = ["serde"] }
 nonempty = { version = "0.10.0", features = ["serialize"] }
 educe = "0.6.0"
 unicode-security = "0.1.0"
-
-# decimal extension requires regex
-regex = { version = "1.8", features = ["unicode"], optional = true }
+regex = { version = "1.8", features = ["unicode"]}
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
@@ -46,8 +44,8 @@ chrono = { version = "0.4.40", optional = true, default-features = false}
 # by default, enable all Cedar extensions
 default = ["ipaddr", "decimal", "datetime"]
 ipaddr = []
-decimal = ["dep:regex"]
-datetime = ["dep:chrono", "dep:regex"]
+decimal = []
+datetime = ["dep:chrono"]
 
 # Enables `Arbitrary` implementations for several types in this crate
 arbitrary = ["dep:arbitrary"]
@@ -61,8 +59,9 @@ partial-eval = []
 tolerant-ast = []
 entity-manifest = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
-experimental = ["tolerant-ast", "extended-schema", "entity-manifest", "partial-validate", "partial-eval"]
+experimental = ["tpe", "tolerant-ast", "extended-schema", "entity-manifest", "partial-validate", "partial-eval"]
 extended-schema = []
+tpe = []
 
 # Feature for raw parsing
 raw-parsing = []

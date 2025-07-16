@@ -18,6 +18,12 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
   `PolicySet`, `Policy`, and `Template`. These APIs don't retain source code information, trading detailed error
   reporting for reduced memory usage and faster parsing. The feature is only intended for use with raw parsing
   APIs, as regular parsing performance is degraded when the `raw-parsing` feature is enabled.
+- Implemented type-aware partial evaluation [RFC 95](https://github.com/cedar-policy/rfcs/pull/95), under the
+  experimental flag `tpe`. (#1575)
+
+### Changed
+
+- Allow multiple argument extension function calls in entity JSON format. (#1697)
 
 ## [4.5.0] - 2025-06-30
 Cedar Language Version: 4.4
