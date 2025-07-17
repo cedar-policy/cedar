@@ -759,10 +759,15 @@ impl Expr {
         ExprBuilder::new().has_tag(expr, tag)
     }
 
+    verus! {
+
     /// Create an `Expr` which evaluates to a Set of the given `Expr`s
+    #[verifier::external_body]
     pub fn set(exprs: impl IntoIterator<Item = Expr>) -> Self {
         ExprBuilder::new().set(exprs)
     }
+
+    } // verus!
 
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
     pub fn record(

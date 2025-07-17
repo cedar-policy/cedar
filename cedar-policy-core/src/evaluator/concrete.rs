@@ -16,7 +16,7 @@
 
 //! This module contains the Cedar concrete evaluator.
 
-use crate::ast::{Integer, Set, *};
+use crate::ast::{Set, *};
 use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
@@ -38,7 +38,6 @@ use vstd::prelude::*;
 
 verus! {
 
-#[verifier::external_body]
 pub struct Evaluator<'e> {
     /// `Principal` for the current request
     principal: EntityUIDEntry,

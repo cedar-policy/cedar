@@ -2050,17 +2050,38 @@ impl ActionConstraint {
 
     verus! {
 
-    /// Turn the constraint into an expression.
+    // TODO: Once Verus has better support for iterator combinators like `cloned`/`map`/`collect`,
+    // this function's spec should be provable.
+    // The proof for `ActionConstraint::as_expr` works better with two separate `map_values` calls here,
+    // to better align with the definitions of `ActionConstraint::view` and `spec_ast::ActionScope::to_expr`
     #[verifier::external_body]
-    pub fn as_expr(&self) -> Expr {
+    fn euids_into_expr_verus(euids: &Vec<Arc<EntityUID>>) -> (expr: Expr)
+        ensures ({
+            let exprs = euids@
+                            .map_values(|e: Arc<EntityUID>| e@)
+                            .map_values(|e: spec_ast::EntityUID| spec_ast::Expr::lit(spec_ast::Prim::entity_uid(e)));
+            expr@ == spec_ast::Expr::set(exprs)
+        })
+    {
+        ActionConstraint::euids_into_expr(euids.iter().cloned())
+    }
+
+    /// Turn the constraint into an expression.
+    pub fn as_expr(&self) -> (expr: Expr)
+        ensures expr@ == self@.to_expr()
+    {
+        proof {
+            reveal(spec_ast::ActionScope::to_expr);
+            reveal(spec_ast::Scope::to_expr);
+        }
         match self {
-            ActionConstraint::Any => Expr::val(true),
+            ActionConstraint::Any => Expr::bool(true),
             ActionConstraint::In(euids) => Expr::is_in(
-                Expr::var(Var::Action),
-                ActionConstraint::euids_into_expr(euids.iter().cloned()),
+                    Expr::var(Var::Action),
+                    ActionConstraint::euids_into_expr_verus(euids)
             ),
             ActionConstraint::Eq(euid) => {
-                Expr::is_eq(Expr::var(Var::Action), Expr::val(euid.clone()))
+                Expr::is_eq(Expr::var(Var::Action), Expr::entity_uid(euid.clone()))
             }
             #[cfg(feature = "tolerant-ast")]
             ActionConstraint::ErrorConstraint => Expr::new(

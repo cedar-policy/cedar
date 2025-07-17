@@ -29,7 +29,7 @@ use thiserror::Error;
 
 use super::{
     BorrowedRestrictedExpr, BoundedDisplay, EntityType, EntityUID, Expr, ExprKind,
-    ExpressionConstructionError, PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
+    ExpressionConstructionError, PartialValue, RestrictedExpr, Value, ValueKind, Var,
 };
 
 use crate::spec::*;
