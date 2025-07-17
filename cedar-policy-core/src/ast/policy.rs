@@ -608,6 +608,7 @@ impl Policy {
     pub fn condition(&self) -> (expr: Expr)
         ensures expr@ == self@.to_expr()
     {
+        reveal(spec_ast::Policy::to_expr);
         self.template.condition()
     }
 

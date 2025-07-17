@@ -338,24 +338,16 @@ clone_spec_for!(SlotId);
 impl SlotId {
     verus! {
 
-    pub closed spec fn spec_principal() -> Self {
-        Self(ValidSlotId::Principal)
-    }
-
     /// Get the slot for `principal`
     pub fn principal() -> (s: Self)
-        ensures s == Self::spec_principal()
+        ensures s@ == spec_ast::SlotId::Principal
     {
         Self(ValidSlotId::Principal)
     }
 
-    pub closed spec fn spec_resource() -> Self {
-        Self(ValidSlotId::Resource)
-    }
-
     /// Get the slot for `resource`
     pub fn resource() -> (s: Self)
-        ensures s == Self::spec_resource()
+        ensures s@ == spec_ast::SlotId::Resource
     {
         Self(ValidSlotId::Resource)
     }
@@ -375,16 +367,16 @@ impl SlotId {
 
 verus! {
 
-pub open spec fn spec_PrincipalOrResource_to_SlotId(principal_or_resource: PrincipalOrResource) -> SlotId {
+pub open spec fn spec_PrincipalOrResource_to_SlotId(principal_or_resource: PrincipalOrResource) -> spec_ast::SlotId {
     match principal_or_resource {
-        PrincipalOrResource::Principal => SlotId::spec_principal(),
-        PrincipalOrResource::Resource => SlotId::spec_resource(),
+        PrincipalOrResource::Principal => spec_ast::SlotId::Principal,
+        PrincipalOrResource::Resource => spec_ast::SlotId::Resource,
     }
 }
 
 impl From<PrincipalOrResource> for SlotId {
     fn from(v: PrincipalOrResource) -> (s: Self)
-        ensures s == spec_PrincipalOrResource_to_SlotId(v)
+        ensures s@ == spec_PrincipalOrResource_to_SlotId(v)
     {
         match v {
             PrincipalOrResource::Principal => SlotId::principal(),
