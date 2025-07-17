@@ -464,6 +464,17 @@ impl Template {
                     self.resource_scope.to_expr(),
                     self.condition)))
     }
+
+    #[verifier::opaque]
+    pub open spec fn to_expr_left_assoc(self) -> Expr {
+        Expr::and(
+            Expr::and(
+                Expr::and(
+                    self.principal_scope.to_expr(),
+                    self.action_scope.to_expr()),
+                self.resource_scope.to_expr()),
+            self.condition)
+    }
 }
 
 pub struct Policy {
@@ -476,6 +487,11 @@ impl Policy {
     #[verifier::opaque]
     pub open spec fn to_expr(self) -> Expr {
         self.template.to_expr()
+    }
+
+    #[verifier::opaque]
+    pub open spec fn to_expr_left_assoc(self) -> Expr {
+        self.template.to_expr_left_assoc()
     }
 }
 

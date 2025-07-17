@@ -239,8 +239,8 @@ impl Template {
     verus! {
 
     /// Get the `Effect` (`Permit` or `Deny`) of this template
-    #[verifier::external_body]
-    pub fn effect(&self) -> Effect
+    pub fn effect(&self) -> (res: Effect)
+        ensures res@ == self@.effect
     {
         self.body.effect()
     }
@@ -270,7 +270,7 @@ impl Template {
     /// principal, resource, and action); the template's "when" conditions; and
     /// the negation of each of the template's "unless" conditions.
     pub fn condition(&self) -> (expr: Expr)
-        ensures expr@ == self@.to_expr()
+        ensures expr@ == self@.to_expr_left_assoc()
     {
         self.body.condition()
     }
@@ -532,7 +532,6 @@ impl Policy {
     verus! {
 
     /// Get the effect (forbid or permit) of this policy.
-    #[verifier::external_body]
     pub fn effect(&self) -> (res: Effect)
         ensures res@ == self@.template.effect
     {
@@ -606,9 +605,9 @@ impl Policy {
 
     /// Get the expression that represents this policy.
     pub fn condition(&self) -> (expr: Expr)
-        ensures expr@ == self@.to_expr()
+        ensures expr@ == self@.to_expr_left_assoc()
     {
-        reveal(spec_ast::Policy::to_expr);
+        reveal(spec_ast::Policy::to_expr_left_assoc);
         self.template.condition()
     }
 
@@ -1152,13 +1151,19 @@ impl TemplateBody {
         TemplateBody::TemplateBodyError(id, loc)
     }
 
+    verus! {
+
     /// Get the `Effect` of this policy.
-    pub fn effect(&self) -> Effect {
+    pub fn effect(&self) -> (res: Effect)
+        ensures res@ == self@.effect
+    {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { effect, .. }) => *effect,
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => Effect::Forbid,
         }
+    }
+
     }
 
     /// Get data from an annotation.
@@ -1240,7 +1245,6 @@ impl TemplateBody {
     /// Get the `action` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `action,`), or an equality or hierarchy constraint
-    #[verifier::external_body]
     pub fn action_constraint_expr(&self) -> (expr: Expr)
         ensures expr@ == self@.action_scope.to_expr()
     {
@@ -1272,7 +1276,6 @@ impl TemplateBody {
     /// Get the `resource` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `resource,`), or an equality or hierarchy constraint
-    #[verifier::external_body]
     pub fn resource_constraint_expr(&self) -> (expr: Expr)
         ensures expr@ == self@.resource_scope.to_expr()
     {
@@ -1294,9 +1297,8 @@ impl TemplateBody {
     ///
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
-    #[verifier::external_body]
     pub fn non_scope_constraints(&self) -> (expr: &Expr)
-        ensures expr@ == self@.action_scope.to_expr()
+        ensures expr@ == self@.condition
      {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl {
@@ -1329,10 +1331,12 @@ impl TemplateBody {
     /// This will be a conjunction of the policy's scope constraints (on
     /// principal, resource, and action); the policy's "when" conditions; and
     /// the negation of each of the policy's "unless" conditions.
-    #[verifier::external_body]
     pub fn condition(&self) -> (expr: Expr)
-        ensures expr@ == self@.to_expr()
+        ensures expr@ == self@.to_expr_left_assoc()
     {
+        proof {
+            reveal(spec_ast::Template::to_expr_left_assoc);
+        }
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { .. }) => Expr::and(
                 Expr::and(
@@ -1599,7 +1603,9 @@ impl ResourceConstraint {
     verus! {
 
     /// Convert into an Expression. It will be a boolean valued expression.
-    pub fn as_expr(&self) -> Expr {
+    pub fn as_expr(&self) -> (expr: Expr)
+        ensures expr@ == self@.to_expr()
+    {
         self.constraint.as_expr(PrincipalOrResource::Resource)
     }
 

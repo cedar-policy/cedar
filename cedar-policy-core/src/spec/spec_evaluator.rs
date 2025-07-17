@@ -327,3 +327,24 @@ proof fn evaluate_decreases(x: Expr, req: Request, es: Entities, slot_env: SlotE
 }
 
 }
+
+///////////////////////////////////////////////////////
+// Helper definitions and lemmas about the evaluator //
+///////////////////////////////////////////////////////
+
+verus! {
+
+pub proof fn lemma_evaluate_to_expr_left_assoc_equal(p: Policy, req: Request, entities: Entities)
+    ensures evaluate(p.to_expr(), req, entities, p.slot_env) == evaluate(p.to_expr_left_assoc(), req, entities, p.slot_env)
+{
+    reveal(Policy::to_expr);
+    reveal(Policy::to_expr_left_assoc);
+    reveal(Template::to_expr);
+    reveal(Template::to_expr_left_assoc);
+    let p_scope_expr = p.template.principal_scope.to_expr();
+    let a_scope_expr = p.template.action_scope.to_expr();
+    let r_scope_expr = p.template.resource_scope.to_expr();
+    let c_expr = p.template.condition;
+}
+
+}
