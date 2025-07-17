@@ -190,7 +190,7 @@ impl Authorizer {
                     == spec_authorizer::error_policies_from_set(policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@),
         {
             let id = p.id().clone();
-            assert(id@ == p@.id);
+            assert(id@ == p@.template.id);
             proof {
                 // Establish that `p` is correctly being processed, to prove we update `satisfied_permits`/`satisfied_forbids` correctly
                 let (policies_idx, policies_seq) = policies_iter@;
@@ -207,7 +207,7 @@ impl Authorizer {
                         proof {
                             // Establish that `p@` is a satisfied permit and not a satisfied forbid
                             assert(spec_authorizer::satisfied(p@, q@, entities@)) by { reveal(spec_authorizer::satisfied) };
-                            assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Permit, p@, q@, entities@) matches Some(spec_id) && spec_id == p@.id )
+                            assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Permit, p@, q@, entities@) matches Some(spec_id) && spec_id == p@.template.id )
                                 by { reveal(spec_authorizer::satisfied_with_effect) };
                             assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Forbid, p@, q@, entities@) is None)
                                 by { reveal(spec_authorizer::satisfied_with_effect); reveal(spec_authorizer::satisfied) };
@@ -238,7 +238,7 @@ impl Authorizer {
                             assert(spec_authorizer::satisfied(p@, q@, entities@)) by { reveal(spec_authorizer::satisfied) };
                             assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Permit, p@, q@, entities@) is None)
                                 by { reveal(spec_authorizer::satisfied_with_effect); reveal(spec_authorizer::satisfied) };
-                            assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Forbid, p@, q@, entities@) matches Some(spec_id) && spec_id == p@.id )
+                            assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Forbid, p@, q@, entities@) matches Some(spec_id) && spec_id == p@.template.id )
                                 by { reveal(spec_authorizer::satisfied_with_effect) };
                             assert(spec_authorizer::errored(p@, q@, entities@) is None)
                                 by { reveal(spec_authorizer::errored); reveal(spec_authorizer::has_error) };
@@ -297,7 +297,7 @@ impl Authorizer {
                         spec_authorizer::lemma_erroring_policy_cannot_be_satisfied(p@, q@, entities@);
                         assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Permit, p@, q@, entities@) is None);
                         assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Forbid, p@, q@, entities@) is None);
-                        assert(spec_authorizer::errored(p@, q@, entities@) matches Some(spec_id) && spec_id == p@.id)
+                        assert(spec_authorizer::errored(p@, q@, entities@) matches Some(spec_id) && spec_id == p@.template.id)
                             by { reveal(spec_authorizer::errored) };
 
                         // Establish that `p@` should go into `errors` and neither `satisfied_permits` nor `satisfied_forbids`

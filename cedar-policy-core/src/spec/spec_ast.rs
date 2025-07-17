@@ -29,12 +29,13 @@ verus! {
 //////////////////////////////////////////////////
 
 pub enum Error {
-  EntityDoesNotExist,
-  AttrDoesNotExist,
-  TagDoesNotExist,
-  TypeError,
-  ArithBoundsError,
-  ExtensionError,
+    EntityDoesNotExist,
+    AttrDoesNotExist,
+    TagDoesNotExist,
+    TypeError,
+    ArithBoundsError,
+    ExtensionError,
+    UnlinkedSlot,
 }
 
 pub type SpecResult<T> = Result<T, Error>;
@@ -183,20 +184,20 @@ pub enum Var {
 
 impl Var {
     #[verifier::inline]
-    pub open spec fn eq_entity_uid(self, uid: EntityUID) -> Expr {
+    pub open spec fn eq_entity_uid(self, uid: EntityReference) -> Expr {
         Expr::BinaryApp {
             bop: BinaryOp::Eq,
             a: Box::new(Expr::var(self)),
-            b: Box::new(Expr::lit(Prim::entity_uid(uid)))
+            b: Box::new(uid.to_expr(self.try_as_slot_id()))
         }
     }
 
     #[verifier::inline]
-    pub open spec fn in_entity_uid(self, uid: EntityUID) -> Expr {
+    pub open spec fn in_entity_uid(self, uid: EntityReference) -> Expr {
         Expr::BinaryApp {
             bop: BinaryOp::Mem,
             a: Box::new(Expr::var(self)),
-            b: Box::new(Expr::lit(Prim::entity_uid(uid)))
+            b: Box::new(uid.to_expr(self.try_as_slot_id()))
         }
     }
 
@@ -205,6 +206,17 @@ impl Var {
         Expr::UnaryApp {
             uop: UnaryOp::Is { ety },
             expr: Box::new(Expr::var(self)),
+        }
+    }
+
+    #[verifier::inline]
+    pub open spec fn try_as_slot_id(self) -> SlotId
+        recommends self is Principal || self is Resource
+    {
+        match self {
+            Var::Principal => SlotId::Principal,
+            Var::Resource => SlotId::Resource,
+            _ => arbitrary(),
         }
     }
 }
@@ -232,9 +244,17 @@ pub enum BinaryOp {
   ContainsAny,
 }
 
+pub enum SlotId {
+    Principal,
+    Resource,
+}
+
+pub type SlotEnv = Map<SlotId, EntityUID>;
+
 pub enum Expr {
     Lit { p: Prim },
     Var { v: Var },
+    Slot { s: SlotId },
     Ite {
         cond: Box<Expr>,
         then_expr: Box<Expr>,
@@ -308,12 +328,26 @@ pub enum Effect {
     Forbid
 }
 
+pub enum EntityReference {
+    EUID { euid: EntityUID },
+    Slot,
+}
+
+impl EntityReference {
+    pub open spec fn to_expr(self, s: SlotId) -> Expr {
+        match self {
+            EntityReference::EUID { euid: uid } => Expr::lit(Prim::entity_uid(uid)),
+            EntityReference::Slot => Expr::Slot { s },
+        }
+    }
+}
+
 pub enum Scope {
     Any,
-    Eq { entity: EntityUID },
-    Mem { entity: EntityUID },
+    Eq { entity: EntityReference },
+    Mem { entity: EntityReference },
     Is { ety: EntityType },
-    IsMem { ety: EntityType, entity: EntityUID },
+    IsMem { ety: EntityType, entity: EntityReference },
 }
 
 impl Scope {
@@ -408,7 +442,7 @@ pub type PolicyID = Seq<char>;
 //         Expr::lit(Prim::pbool(true)))
 // }
 
-pub struct Policy {
+pub struct Template {
     pub id: PolicyID,
     pub effect: Effect,
     pub principal_scope: PrincipalScope,
@@ -419,7 +453,7 @@ pub struct Policy {
     pub condition: Expr,
 }
 
-impl Policy {
+impl Template {
     #[verifier::opaque]
     pub open spec fn to_expr(self) -> Expr {
         Expr::and(
@@ -429,6 +463,19 @@ impl Policy {
                 Expr::and(
                     self.resource_scope.to_expr(),
                     self.condition)))
+    }
+}
+
+pub struct Policy {
+    pub template: Template,
+    // Different from Lean spec, which does not reason about template slots
+    pub slot_env: SlotEnv
+}
+
+impl Policy {
+    #[verifier::opaque]
+    pub open spec fn to_expr(self) -> Expr {
+        self.template.to_expr()
     }
 }
 

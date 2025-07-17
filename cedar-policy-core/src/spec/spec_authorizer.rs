@@ -30,14 +30,14 @@ verus! {
 
 #[verifier::opaque]
 pub open spec fn satisfied(p: Policy, req: Request, entities: Entities) -> bool {
-    &&& evaluate(p.to_expr(), req, entities) matches Ok(v)
+    &&& evaluate(p.to_expr(), req, entities, p.slot_env) matches Ok(v)
     &&& v is Prim &&& v->p is Bool &&& v->p->b == true
 }
 
 #[verifier::opaque]
 pub open spec fn satisfied_with_effect(effect: Effect, policy: Policy, req: Request, entities: Entities) -> Option<PolicyID> {
-    if policy.effect == effect && satisfied(policy, req, entities) {
-        Some(policy.id)
+    if policy.template.effect == effect && satisfied(policy, req, entities) {
+        Some(policy.template.id)
     } else {
         None
     }
@@ -50,7 +50,7 @@ pub open spec fn satisfied_policies(effect: Effect, policies: Policies, req: Req
 
 #[verifier::opaque]
 pub open spec fn has_error(policy: Policy, req: Request, entities: Entities) -> bool {
-    evaluate(policy.to_expr(), req, entities) is Err
+    evaluate(policy.to_expr(), req, entities, policy.slot_env) is Err
 }
 
 // This function is analogous to `satisfiedWithEffect` in that it returns
@@ -59,7 +59,7 @@ pub open spec fn has_error(policy: Policy, req: Request, entities: Entities) -> 
 #[verifier::opaque]
 pub open spec fn errored(policy: Policy, req: Request, entities: Entities) -> Option<PolicyID> {
     if has_error(policy, req, entities) {
-        Some(policy.id)
+        Some(policy.template.id)
     } else {
         None
     }

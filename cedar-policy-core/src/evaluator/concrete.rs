@@ -117,11 +117,11 @@ impl<'e> Evaluator<'e> {
     pub fn evaluate_verus(&self, p: &Policy) -> (res: Result<bool>)
         ensures ({
             &&& res matches Ok(res_b) ==> {
-                &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities) matches Ok(v)
+                &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities, p@.slot_env) matches Ok(v)
                 &&& v is Prim &&& v->p is Bool &&& v->p->b == res_b
             }
             &&& res is Err ==> {
-                &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities) is Err
+                &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities, p@.slot_env) is Err
             }
         })
     {

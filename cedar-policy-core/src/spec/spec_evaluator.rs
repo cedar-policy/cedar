@@ -172,7 +172,7 @@ pub open spec fn get_attr(v: Value, a: Attr, es: Entities) -> SpecResult<Value> 
     }
 }
 
-pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Value>
+pub open spec fn evaluate(x: Expr, req: Request, es: Entities, slot_env: SlotEnv) -> SpecResult<Value>
     decreases x via evaluate_decreases
 {
     match x {
@@ -183,14 +183,20 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Val
             Var::Resource => Ok(Value::entity_uid(req.resource)),
             Var::Context => Ok(Value::Record { m: req.context }),
         },
+        Expr::Slot { s } => {
+            match slot_env.get(s) {
+                Some(euid) => Ok(Value::entity_uid(euid)),
+                None => Err(Error::UnlinkedSlot)
+            }
+        }
         Expr::Ite { cond, then_expr, else_expr } => {
-            match evaluate(*cond, req, es) {
+            match evaluate(*cond, req, es, slot_env) {
                 Ok(cond_result) => match cond_result {
                     Value::Prim { p: Prim::Bool { b } } => {
                         if b {
-                            evaluate(*then_expr, req, es)
+                            evaluate(*then_expr, req, es, slot_env)
                         } else {
-                            evaluate(*else_expr, req, es)
+                            evaluate(*else_expr, req, es, slot_env)
                         }
                     },
                     _ => Err(Error::TypeError),
@@ -199,13 +205,13 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Val
             }
         },
         Expr::And { a, b } => {
-            match evaluate(*a, req, es) {
+            match evaluate(*a, req, es, slot_env) {
                 Ok(a_result) => match a_result {
                     Value::Prim { p: Prim::Bool { b: bool_a } } => {
                         if !bool_a {
                             Ok(Value::bool(bool_a))
                         } else {
-                            match evaluate(*b, req, es) {
+                            match evaluate(*b, req, es, slot_env) {
                                 Ok(b_result) => match b_result {
                                     Value::Prim { p: Prim::Bool { b: bool_b } } => Ok(Value::bool(bool_b)),
                                     _ => Err(Error::TypeError),
@@ -220,13 +226,13 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Val
             }
         },
         Expr::Or { a, b } => {
-            match evaluate(*a, req, es) {
+            match evaluate(*a, req, es, slot_env) {
                 Ok(a_result) => match a_result {
                     Value::Prim { p: Prim::Bool { b: bool_a } } => {
                         if bool_a {
                             Ok(Value::bool(bool_a))
                         } else {
-                            match evaluate(*b, req, es) {
+                            match evaluate(*b, req, es, slot_env) {
                                 Ok(b_result) => match b_result {
                                     Value::Prim { p: Prim::Bool { b: bool_b } } => Ok(Value::bool(bool_b)),
                                     _ => Err(Error::TypeError),
@@ -241,14 +247,14 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Val
             }
         },
         Expr::UnaryApp { uop, expr } => {
-            match evaluate(*expr, req, es) {
+            match evaluate(*expr, req, es, slot_env) {
                 Ok(v) => apply_1(uop, v),
                 Err(err) => Err(err),
             }
         },
         Expr::BinaryApp { bop, a, b } => {
-            match evaluate(*a, req, es) {
-                Ok(v1) => match evaluate(*b, req, es) {
+            match evaluate(*a, req, es, slot_env) {
+                Ok(v1) => match evaluate(*b, req, es, slot_env) {
                     Ok(v2) => apply_2(bop, v1, v2, es),
                     Err(err) => Err(err),
                 },
@@ -256,13 +262,13 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Val
             }
         },
         Expr::HasAttr { expr, attr } => {
-            match evaluate(*expr, req, es) {
+            match evaluate(*expr, req, es, slot_env) {
                 Ok(v1) => has_attr(v1, attr, es),
                 Err(err) => Err(err),
             }
         },
         Expr::GetAttr { expr, attr } => {
-            match evaluate(*expr, req, es) {
+            match evaluate(*expr, req, es, slot_env) {
                 Ok(v1) => get_attr(v1, attr, es),
                 Err(err) => Err(err),
             }
@@ -271,7 +277,7 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Val
             let vs_r = seq_map_result_all(ls, |lx: Expr| {
                 // Needed to prove termination
                 if ls.contains(lx) {
-                    evaluate(lx, req, es)
+                    evaluate(lx, req, es, slot_env)
                 } else {
                     arbitrary()
                 }
@@ -288,7 +294,7 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Val
             let entries_evaluated_rs = map.map_values(|mx: Expr| {
                 // Needed to prove termination
                 if map.dom().finite() && map.contains_value(mx) {
-                    evaluate(mx, req, es)
+                    evaluate(mx, req, es, slot_env)
                 } else {
                     arbitrary()
                 }
@@ -308,7 +314,7 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Val
 
 
 #[via_fn]
-proof fn evaluate_decreases(x: Expr, req: Request, es: Entities) {
+proof fn evaluate_decreases(x: Expr, req: Request, es: Entities, slot_env: SlotEnv) {
     match x {
         Expr::Set { ls } => {
             assert(forall |lx: Expr| ls.contains(lx) ==> decreases_to!(ls => lx));

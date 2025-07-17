@@ -267,6 +267,17 @@ impl View for EntityUID {
     }
 }
 
+impl DeepView for EntityUID {
+    type V = spec_ast::EntityUID;
+    open spec fn deep_view(&self) -> spec_ast::EntityUID {
+        self.view()
+    }
+}
+
+pub broadcast proof fn lemma_entity_uid_view_deep_view_coincide(euid: EntityUID)
+    ensures euid.view() == #[trigger] euid.deep_view()
+{}
+
 } // verus!
 
 impl<'de> Deserialize<'de> for EntityUID {

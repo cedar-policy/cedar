@@ -312,9 +312,26 @@ verus! {
 #[verifier::external_derive]
 pub struct SlotId(pub(crate) ValidSlotId);
 
+impl View for SlotId {
+    type V = spec_ast::SlotId;
+    closed spec fn view(&self) -> spec_ast::SlotId {
+       self.0.view()
+    }
+}
+
+impl DeepView for SlotId {
+    type V = spec_ast::SlotId;
+    open spec fn deep_view(&self) -> spec_ast::SlotId {
+       self@
+    }
+}
+
+pub broadcast proof fn lemma_slot_id_view_deep_view_coincide(s: SlotId)
+    ensures s.view() == #[trigger] s.deep_view()
+{}
+
 // don't want to declare View on SlotId, so we don't use `clone_spec_for!`
-pub assume_specification[<SlotId as Clone>::clone](this: &SlotId) -> (other: SlotId)
-    ensures this == other;
+clone_spec_for!(SlotId);
 
 } // verus!
 
@@ -394,6 +411,16 @@ pub(crate) enum ValidSlotId {
     Principal,
     #[serde(rename = "?resource")]
     Resource,
+}
+
+impl View for ValidSlotId {
+    type V = spec_ast::SlotId;
+    closed spec fn view(&self) -> spec_ast::SlotId {
+        match self {
+            ValidSlotId::Principal => spec_ast::SlotId::Principal,
+            ValidSlotId::Resource => spec_ast::SlotId::Resource,
+        }
+    }
 }
 
 }

@@ -61,25 +61,22 @@ pub struct Expr<T = ()> {
     data: T,
 }
 
-// clone_spec_for!(Expr<T>, T:Clone);
-pub assume_specification<T:Clone>[<Expr<T> as Clone>::clone](this: &Expr<T>) -> (other: Expr<T>)
-    ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
-                this.view_with_slot_env(slot_env) == other.view_with_slot_env(slot_env);
+clone_spec_for!(Expr<T>, T:Clone);
 
+impl<T> View for Expr<T> {
+    type V = spec_ast::Expr;
+    open spec fn view(&self) -> Self::V
+        decreases self
+    {
+        self.view_aux()
+    }
+}
 
 impl<T> Expr<T> {
-    // Encodes the "values total map" invariant
-    pub closed spec fn complete_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> bool
+    pub closed spec fn view_aux(&self) -> spec_ast::Expr
         decreases self
     {
-        self.expr_kind.complete_slot_env(slot_env)
-    }
-
-    // We can't write `impl View for ExprKind`, since we also need to pass in the SlotEnv to fill in slots
-    pub closed spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Expr
-        decreases self
-    {
-        self.expr_kind.view_with_slot_env(slot_env)
+        self.expr_kind.view_aux()
     }
 }
 
@@ -202,120 +199,54 @@ impl<T> BTreeMapView for BTreeMap<SmolStr, Expr<T>> {
     uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
 }
 
-impl<T> ExprKind<T> {
-    // Encodes the "values total map" invariant
-    pub open spec fn complete_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> bool
-        decreases self via Self::complete_slot_env_decreases
+impl<T> View for ExprKind<T> {
+    type V = spec_ast::Expr;
+
+    open spec fn view(&self) -> Self::V
+        decreases self
     {
-        match self {
-            ExprKind::Lit(_) => true,
-            ExprKind::Var(_) => true,
-            ExprKind::Slot(slot) => slot_env.contains_key(*slot),
-            ExprKind::If { test_expr, then_expr, else_expr } => {
-                &&& test_expr.complete_slot_env(slot_env)
-                &&& then_expr.complete_slot_env(slot_env)
-                &&& else_expr.complete_slot_env(slot_env)
-            },
-            ExprKind::And { left, right } => {
-                &&& left.complete_slot_env(slot_env)
-                &&& right.complete_slot_env(slot_env)
-            },
-            ExprKind::Or { left, right } => {
-                &&& left.complete_slot_env(slot_env)
-                &&& right.complete_slot_env(slot_env)
-            },
-            ExprKind::UnaryApp { op, arg } => arg.complete_slot_env(slot_env),
-            ExprKind::BinaryApp { op, arg1, arg2 } => {
-                &&& arg1.complete_slot_env(slot_env)
-                &&& arg2.complete_slot_env(slot_env)
-            },
-            ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                // TODO(Pratap): support extension functions
-                arbitrary()
-            },
-            ExprKind::GetAttr { expr, attr } => {
-                expr.complete_slot_env(slot_env)
-            },
-            ExprKind::HasAttr { expr, attr } => {
-                expr.complete_slot_env(slot_env)
-
-            },
-            ExprKind::Like { expr, pattern } => {
-                // TODO(Pratap): support patterns, something like:
-                // spec_ast::Expr::UnaryApp {
-                //     uop: spec_ast::UnaryOp::Like { p: pattern@ },
-                //     expr: Box::new(expr.view_with_slot_env(slot_env))
-                // }
-                arbitrary()
-            },
-            ExprKind::Is { expr, entity_type } => {
-                expr.complete_slot_env(slot_env)
-            },
-            ExprKind::Set(exprs) => {
-                forall |e: Expr<T>| exprs@.contains(e) ==> #[trigger] e.complete_slot_env(slot_env)
-            },
-            ExprKind::Record(map) => {
-                &&& map@.dom().finite()
-                &&& forall |e: Expr<T>| map@.contains_value(e) ==> #[trigger] e.complete_slot_env(slot_env)
-            }
-        }
+        self.view_aux()
     }
+}
 
-    #[via_fn]
-    proof fn complete_slot_env_decreases(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) {
-        match self {
-            ExprKind::Record(map) => {
-                broadcast use BTreeMapView::axiom_btree_map_view_decreases;
-                // assert(forall |e: Expr<T>| map@.dom().finite() && map@.contains_value(e) ==> decreases_to!(map@ => e));
-            },
-            _ => {}
-        };
-    }
-
-    // We can't write `impl View for ExprKind`, since we also need to pass in the SlotEnv to fill in slots
-    pub open spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Expr
-        recommends self.complete_slot_env(slot_env)
-        decreases self via Self::view_with_slot_env_decreases
+impl<T> ExprKind<T> {
+    pub open spec fn view_aux(&self) -> <Self as View>::V
+        decreases self via Self::view_aux_decreases
     {
         match self {
             ExprKind::Lit(lit) => spec_ast::Expr::lit(lit@),
             ExprKind::Var(var) => spec_ast::Expr::var(var@),
-            ExprKind::Slot(slot) => {
-                match slot_env.get(*slot) {
-                    Some(uid) => spec_ast::Expr::lit(spec_ast::Prim::entity_uid(uid)),
-                    None => arbitrary() // should not happen due to "values total map" invariant
-                }
-            },
+            ExprKind::Slot(slot) => spec_ast::Expr::Slot { s: slot@ },
             ExprKind::If { test_expr, then_expr, else_expr } => {
                 spec_ast::Expr::Ite {
-                    cond: Box::new(test_expr.view_with_slot_env(slot_env)),
-                    then_expr: Box::new(then_expr.view_with_slot_env(slot_env)),
-                    else_expr: Box::new(else_expr.view_with_slot_env(slot_env)),
+                    cond: Box::new(test_expr.view_aux()),
+                    then_expr: Box::new(then_expr.view_aux()),
+                    else_expr: Box::new(else_expr.view_aux()),
                 }
             },
             ExprKind::And { left, right } => {
                 spec_ast::Expr::And {
-                    a: Box::new(left.view_with_slot_env(slot_env)),
-                    b: Box::new(right.view_with_slot_env(slot_env)),
+                    a: Box::new(left.view_aux()),
+                    b: Box::new(right.view_aux()),
                 }
             },
             ExprKind::Or { left, right } => {
                 spec_ast::Expr::Or {
-                    a: Box::new(left.view_with_slot_env(slot_env)),
-                    b: Box::new(right.view_with_slot_env(slot_env)),
+                    a: Box::new(left.view_aux()),
+                    b: Box::new(right.view_aux()),
                 }
             },
             ExprKind::UnaryApp { op, arg } => {
                 spec_ast::Expr::UnaryApp {
                     uop: op@,
-                    expr: Box::new(arg.view_with_slot_env(slot_env)),
+                    expr: Box::new(arg.view_aux()),
                 }
             },
             ExprKind::BinaryApp { op, arg1, arg2 } => {
                 spec_ast::Expr::BinaryApp {
                     bop: op@,
-                    a: Box::new(arg1.view_with_slot_env(slot_env)),
-                    b: Box::new(arg2.view_with_slot_env(slot_env)),
+                    a: Box::new(arg1.view_aux()),
+                    b: Box::new(arg2.view_aux()),
                 }
             },
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
@@ -324,13 +255,13 @@ impl<T> ExprKind<T> {
             },
             ExprKind::GetAttr { expr, attr } => {
                 spec_ast::Expr::GetAttr {
-                    expr: Box::new(expr.view_with_slot_env(slot_env)),
+                    expr: Box::new(expr.view_aux()),
                     attr: attr@,
                 }
             },
             ExprKind::HasAttr { expr, attr } => {
                 spec_ast::Expr::HasAttr {
-                    expr: Box::new(expr.view_with_slot_env(slot_env)),
+                    expr: Box::new(expr.view_aux()),
                     attr: attr@,
                 }
             },
@@ -338,20 +269,20 @@ impl<T> ExprKind<T> {
                 // TODO(Pratap): support patterns, something like:
                 // spec_ast::Expr::UnaryApp {
                 //     uop: spec_ast::UnaryOp::Like { p: pattern@ },
-                //     expr: Box::new(expr.view_with_slot_env(slot_env))
+                //     expr: Box::new(expr@)
                 // }
                 arbitrary()
             },
             ExprKind::Is { expr, entity_type } => {
                 spec_ast::Expr::UnaryApp {
                     uop: spec_ast::UnaryOp::Is { ety: entity_type@ },
-                    expr: Box::new(expr.view_with_slot_env(slot_env)),
+                    expr: Box::new(expr.view_aux()),
                 }
             },
             ExprKind::Set(exprs) => {
                 spec_ast::Expr::Set { ls: exprs@.map_values(|e:Expr<T>| {
                     if exprs@.contains(e) {
-                        e.view_with_slot_env(slot_env)
+                        e.view_aux()
                     } else {
                         arbitrary()
                     }
@@ -359,8 +290,12 @@ impl<T> ExprKind<T> {
             },
             ExprKind::Record(map) => {
                 spec_ast::Expr::Record { map: map@.map_values(|e:Expr<T>| {
+                    // proof {
+                    //     broadcast use BTreeMapView::axiom_btree_map_view_decreases;
+                    //     assert(forall |e: Expr<T>| map@.dom().finite() && map@.contains_value(e) ==> decreases_to!(map@ => e));
+                    // }
                     if map@.dom().finite() && map@.contains_value(e) {
-                        e.view_with_slot_env(slot_env)
+                        e.view_aux()
                     } else {
                         arbitrary()
                     }
@@ -370,7 +305,7 @@ impl<T> ExprKind<T> {
     }
 
     #[via_fn]
-    proof fn view_with_slot_env_decreases(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) {
+    proof fn view_aux_decreases(&self) {
         match self {
             ExprKind::Set(exprs) => {
                 assert(forall |e: Expr<T>| exprs@.contains(e) ==> decreases_to!(exprs => e));
@@ -466,8 +401,7 @@ impl<T> Expr<T> {
 
     /// Return the `Expr`, but with the new `source_loc` (or `None`).
     pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> (new_self: Self)
-        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
-            self.view_with_slot_env(slot_env) == new_self.view_with_slot_env(slot_env)
+        ensures self@ == new_self@
     {
         Self { source_loc, ..self }
     }
@@ -643,8 +577,7 @@ impl Expr {
     /// trait bound on `Expr::val()` makes it hard to verify in Verus
     #[verifier::external_body]
     pub fn entity_uid(e: Arc<EntityUID>) -> (expr: Self)
-        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
-            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::lit(spec_ast::Prim::entity_uid(e@))
+        ensures expr@ == spec_ast::Expr::lit(spec_ast::Prim::entity_uid(e@))
     {
         ExprBuilder::new().val(e)
     }
@@ -653,8 +586,7 @@ impl Expr {
     /// trait bound on `Expr::val()` makes it hard to verify in Verus
     #[verifier::external_body]
     pub fn bool(b: bool) -> (expr: Self)
-        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
-            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::lit(spec_ast::Prim::pbool(b))
+        ensures expr@ == spec_ast::Expr::lit(spec_ast::Prim::pbool(b))
     {
         ExprBuilder::new().val(b)
     }
@@ -672,8 +604,7 @@ impl Expr {
     /// Create an `Expr` that's just this literal `Var`
     #[verifier::external_body]
     pub fn var(v: Var) -> (expr: Self)
-        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
-            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::var(v@)
+        ensures expr@ == spec_ast::Expr::var(v@)
     {
         ExprBuilder::new().var(v)
     }
@@ -681,9 +612,7 @@ impl Expr {
     /// Create an `Expr` that's just this `SlotId`
     #[verifier::external_body]
     pub fn slot(s: SlotId) -> (expr: Self)
-        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
-            slot_env.contains_key(s) ==>
-                #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::lit(spec_ast::Prim::entity_uid(slot_env.get(s).unwrap()))
+        ensures expr@ == (spec_ast::Expr::Slot { s: s@ })
     {
         ExprBuilder::new().slot(s)
     }
@@ -714,12 +643,7 @@ impl Expr {
     /// Create a '==' expression
     #[verifier::external_body]
     pub fn is_eq(e1: Expr, e2: Expr) -> (expr: Self)
-        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
-            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::binary_app(
-                spec_ast::BinaryOp::Eq,
-                e1.view_with_slot_env(slot_env),
-                e2.view_with_slot_env(slot_env)
-            )
+        ensures expr@ == spec_ast::Expr::binary_app(spec_ast::BinaryOp::Eq, e1@, e2@)
     {
         ExprBuilder::new().is_eq(e1, e2)
     }
@@ -736,11 +660,7 @@ impl Expr {
     /// Create an 'and' expression. Arguments must evaluate to Bool type
     #[verifier::external_body]
     pub fn and(e1: Expr, e2: Expr) -> (expr: Self)
-        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
-            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::and(
-                e1.view_with_slot_env(slot_env),
-                e2.view_with_slot_env(slot_env)
-            )
+        ensures expr@ == spec_ast::Expr::and(e1@, e2@)
     {
         ExprBuilder::new().and(e1, e2)
     }
@@ -799,12 +719,7 @@ impl Expr {
     /// all set elements have Entity type.
     #[verifier::external_body]
     pub fn is_in(e1: Expr, e2: Expr) -> (expr: Self)
-        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
-            #[trigger] expr.view_with_slot_env(slot_env) == spec_ast::Expr::binary_app(
-                spec_ast::BinaryOp::Mem,
-                e1.view_with_slot_env(slot_env),
-                e2.view_with_slot_env(slot_env)
-            )
+        ensures expr@ == spec_ast::Expr::binary_app(spec_ast::BinaryOp::Mem, e1@, e2@)
     {
         ExprBuilder::new().is_in(e1, e2)
     }
@@ -912,11 +827,7 @@ impl Expr {
     /// Create an `is` expression.
     #[verifier::external_body]
     pub fn is_entity_type(expr: Expr, entity_type: EntityType) -> (e: Self)
-        ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
-            #[trigger] e.view_with_slot_env(slot_env) == spec_ast::Expr::unary_app(
-                spec_ast::UnaryOp::Is { ety: entity_type@ },
-                expr.view_with_slot_env(slot_env),
-            )
+        ensures e@ == spec_ast::Expr::unary_app(spec_ast::UnaryOp::Is { ety: entity_type@ }, expr@)
     {
         ExprBuilder::new().is_entity_type(expr, entity_type)
     }
