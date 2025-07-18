@@ -21,8 +21,11 @@
 #![allow(missing_docs)] // just for now
 #![allow(unused_imports)]
 
+use core::prelude::v1;
+
 pub use crate::spec::spec_ast::*;
 pub use crate::verus_utils::*;
+use regex::escape;
 #[cfg(verus_keep_ghost)]
 pub use vstd::{map::*, prelude::*, seq::*, set::*};
 
@@ -334,8 +337,40 @@ proof fn evaluate_decreases(x: Expr, req: Request, es: Entities, slot_env: SlotE
 
 verus! {
 
+pub proof fn lemma_eval_and_spec(a: Expr, b: Expr, req: Request, es: Entities, slot_env: SlotEnv)
+    ensures ({
+        let a_result = evaluate(a, req, es, slot_env);
+        let b_result = evaluate(b, req, es, slot_env);
+        match (evaluate(a, req, es, slot_env), evaluate(b, req, es, slot_env)) {
+            (Ok(Value::Prim { p: Prim::Bool { b: bool_a } }), Ok(Value::Prim { p: Prim::Bool { b: bool_b } })) =>
+                evaluate(Expr::and(a, b), req, es, slot_env) matches Ok(Value::Prim { p: Prim::Bool { b } }) && b == (bool_a && bool_b),
+            (Ok(Value::Prim { p: Prim::Bool { b: bool_a } }), _) => !bool_a ==>
+                (evaluate(Expr::and(a, b), req, es, slot_env) matches Ok(Value::Prim { p: Prim::Bool { b } }) && b == false),
+            (_, _) => evaluate(Expr::and(a, b), req, es, slot_env) is Err
+        }
+    })
+{
+    reveal_with_fuel(evaluate, 1);
+}
+
+pub proof fn lemma_eval_and_assoc(a: Expr, b: Expr, c: Expr, req: Request, es: Entities, slot_env: SlotEnv)
+    ensures
+        evaluate(Expr::and(a, Expr::and(b, c)), req, es, slot_env) matches Ok(v1) ==>
+                evaluate(Expr::and(Expr::and(a, b), c), req, es, slot_env) matches Ok(v2) && v1 == v2,
+        evaluate(Expr::and(a, Expr::and(b, c)), req, es, slot_env) is Err ==>
+                evaluate(Expr::and(Expr::and(a, b), c), req, es, slot_env) is Err
+{
+    reveal_with_fuel(evaluate, 1);
+    lemma_eval_and_spec(a, Expr::and(b, c), req, es, slot_env);
+    lemma_eval_and_spec(Expr::and(a, b), c, req, es, slot_env);
+}
+
 pub proof fn lemma_evaluate_to_expr_left_assoc_equal(p: Policy, req: Request, entities: Entities)
-    ensures evaluate(p.to_expr(), req, entities, p.slot_env) == evaluate(p.to_expr_left_assoc(), req, entities, p.slot_env)
+    ensures
+        evaluate(p.to_expr(), req, entities, p.slot_env) matches Ok(v) ==>
+                evaluate(p.to_expr_left_assoc(), req, entities, p.slot_env) matches Ok(v_left) && v == v_left,
+        evaluate(p.to_expr(), req, entities, p.slot_env) is Err ==>
+                evaluate(p.to_expr_left_assoc(), req, entities, p.slot_env) is Err
 {
     reveal(Policy::to_expr);
     reveal(Policy::to_expr_left_assoc);
@@ -345,6 +380,10 @@ pub proof fn lemma_evaluate_to_expr_left_assoc_equal(p: Policy, req: Request, en
     let a_scope_expr = p.template.action_scope.to_expr();
     let r_scope_expr = p.template.resource_scope.to_expr();
     let c_expr = p.template.condition;
+    // (p, (a, (r, c))) == ((p, a), (r, c))
+    lemma_eval_and_assoc(p_scope_expr, a_scope_expr, Expr::and(r_scope_expr, c_expr), req, entities, p.slot_env);
+    // ((p, a), (r, c)) == (((p, a), r), c)
+    lemma_eval_and_assoc(Expr::and(p_scope_expr, a_scope_expr), r_scope_expr, c_expr, req, entities, p.slot_env);
 }
 
 }
