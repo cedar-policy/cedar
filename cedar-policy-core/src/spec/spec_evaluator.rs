@@ -31,6 +31,10 @@ pub use vstd::{map::*, prelude::*, seq::*, set::*};
 
 verus! {
 
+// Spec symbol representing the check that we have enough stack space
+pub uninterp spec fn enough_stack_space() -> bool;
+
+
 #[verifier::inline]
 pub open spec fn int_or_err(x: Option<i64>) -> SpecResult<Value> {
     match x {

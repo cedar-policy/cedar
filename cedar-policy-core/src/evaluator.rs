@@ -1254,7 +1254,11 @@ verus! {
 
 #[inline(always)]
 #[verifier::external_body]
-fn stack_size_check() -> Result<()> {
+fn stack_size_check() -> (res: Result<()>)
+    ensures
+        res is Ok ==> spec_evaluator::enough_stack_space(),
+        res is Err ==> !spec_evaluator::enough_stack_space()
+{
     // We assume there's enough space if we cannot determine it with `remaining_stack`
     if stacker::remaining_stack().unwrap_or(REQUIRED_STACK_SPACE) < REQUIRED_STACK_SPACE {
         return Err(EvaluationError::recursion_limit(None));
