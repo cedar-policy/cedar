@@ -18,9 +18,14 @@ use crate::ast::EntityType;
 
 use super::Name;
 
+use vstd::prelude::*;
+
+verus! {
+
 /// This represents the runtime type of a Cedar value.
 /// Nominal types: two entity types are equal if they have the same Name.
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
+#[verifier::external_derive]
 pub enum Type {
     /// Boolean type
     Bool,
@@ -61,6 +66,8 @@ pub enum Type {
         /// confusion.
         name: Name,
     },
+}
+
 }
 
 impl Type {

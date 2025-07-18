@@ -201,7 +201,7 @@ impl Authorizer {
                 assert(policies_seq.take(policies_ghost_iter.pos + 1).map_values(|p:Policy| p@).to_set()
                         == policies_seq.take(policies_ghost_iter.pos).map_values(|p:Policy| p@).to_set().insert(p@));
             }
-            match eval.evaluate_verus(p) {
+            match eval.evaluate(p) {
                 Ok(satisfied) => match (satisfied, p.effect()) {
                     (true, Effect::Permit) => {
                         proof {

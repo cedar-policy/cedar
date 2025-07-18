@@ -120,7 +120,10 @@ clone_spec_for!(EvaluationError);
 }
 
 impl EvaluationError {
+    verus! {
+
     /// Extract the source location of the error, if one is attached
+    #[verifier::external_body]
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
             Self::EntityDoesNotExist(e) => e.source_loc.as_ref(),
@@ -140,6 +143,7 @@ impl EvaluationError {
     }
 
     /// Return the `EvaluationError`, but with the new `source_loc` (or `None`).
+    #[verifier::external_body]
     pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
         match self {
             Self::EntityDoesNotExist(e) => {
@@ -189,6 +193,8 @@ impl EvaluationError {
             }
         }
     }
+
+    } // verus!
 
     /// Construct a [`EntityDoesNotExist`] error
     pub(crate) fn entity_does_not_exist(uid: Arc<EntityUID>, source_loc: Option<Loc>) -> Self {
@@ -280,8 +286,13 @@ impl EvaluationError {
         .into()
     }
 
+    verus! {
+
+    #[verifier::external_body]
     pub(crate) fn type_error_single(expected: Type, actual: &Value) -> Self {
         Self::type_error(nonempty![expected], actual)
+    }
+
     }
 
     /// Construct a [`TypeError`] error with the advice field set

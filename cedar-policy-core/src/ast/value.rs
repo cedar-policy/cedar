@@ -168,10 +168,16 @@ impl Value {
         }
     }
 
+    verus! {
+
     /// Return the `Value`, but with the given `Loc` (or `None`)
-    pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
+    pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> (new_self: Self)
+        ensures self@ == new_self@
+    {
         Self { loc, ..self }
     }
+
+    } // verus!
 
     /// Get the `ValueKind` for this `Value`
     pub fn value_kind(&self) -> &ValueKind {

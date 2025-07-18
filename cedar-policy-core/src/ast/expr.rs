@@ -392,12 +392,12 @@ impl<T> Expr<T> {
         (self.expr_kind, self.source_loc, self.data)
     }
 
+    verus! {
+
     /// Access the `Loc` stored on the `Expr`.
     pub fn source_loc(&self) -> Option<&Loc> {
         self.source_loc.as_ref()
     }
-
-    verus! {
 
     /// Return the `Expr`, but with the new `source_loc` (or `None`).
     pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> (new_self: Self)

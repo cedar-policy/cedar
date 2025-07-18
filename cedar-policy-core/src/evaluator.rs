@@ -1185,14 +1185,22 @@ impl std::fmt::Debug for Evaluator<'_> {
 }
 
 impl Value {
+    verus! {
+
     /// Convert the `Value` to a boolean, or throw a type error if it's not a
     /// boolean.
-    pub(crate) fn get_as_bool(&self) -> Result<bool> {
+    pub(crate) fn get_as_bool(&self) -> (res: Result<bool>)
+        ensures
+            (self@ is Prim && self@->p is Bool) ==> (res matches Ok(b) && b == self@->p->b),
+            !(self@ is Prim && self@->p is Bool) ==> res is Err,
+    {
         match &self.value {
             ValueKind::Lit(Literal::Bool(b)) => Ok(*b),
             _ => Err(EvaluationError::type_error_single(Type::Bool, self)),
         }
     }
+
+    } // verus!
 
     /// Convert the `Value` to a Long, or throw a type error if it's not a
     /// Long.
@@ -1242,13 +1250,18 @@ impl Value {
     }
 }
 
+verus! {
+
 #[inline(always)]
+#[verifier::external_body]
 fn stack_size_check() -> Result<()> {
     // We assume there's enough space if we cannot determine it with `remaining_stack`
     if stacker::remaining_stack().unwrap_or(REQUIRED_STACK_SPACE) < REQUIRED_STACK_SPACE {
         return Err(EvaluationError::recursion_limit(None));
     }
     Ok(())
+}
+
 }
 
 // PANIC SAFETY: Unit Test Code
