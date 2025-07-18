@@ -113,10 +113,6 @@ impl Authorizer {
             // these are uninterpreted in vstd and need to be assumed
             assume(obeys_key_model::<PolicyID>() && builds_valid_hashers::<std::hash::RandomState>());
 
-            // Assumption: We always have enough stack space to run the evaluator
-            // TODO: should this assumption go elsewhere?
-            assume(crate::spec::spec_evaluator::enough_stack_space());
-
             // To make the proof easier, we prove the code correct against `spec_authorizer::is_authorized_from_set`, which
             // operates on a Set<Policy> (like this function), not a Seq<Policy> (like the Lean model).
             // This lemma proves that the two versions are equivalent for the case that we start with a Set<Policy>
@@ -173,7 +169,6 @@ impl Authorizer {
         }
         for p in policies_ghost_iter: policies_iter
             invariant
-                crate::spec::spec_evaluator::enough_stack_space(),
                 eval@.request == q@,
                 eval@.entities == entities@,
                 // "Structural" invariants about how the loop iteration proceeds

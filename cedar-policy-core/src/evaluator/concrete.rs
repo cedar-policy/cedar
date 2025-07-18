@@ -111,8 +111,6 @@ impl<'e> Evaluator<'e> {
     /// it doesn't consider whether we're processing a `Permit` policy or a
     /// `Forbid` policy.
     pub fn evaluate(&self, p: &Policy) -> (res: Result<bool>)
-        requires
-            spec_evaluator::enough_stack_space(),
         ensures ({
             &&& res matches Ok(res_b) ==> {
                 &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities, p@.slot_env) matches Ok(v)
@@ -124,6 +122,9 @@ impl<'e> Evaluator<'e> {
         })
     {
         proof {
+            // Assumption: We always have enough stack space to run the evaluator
+            assume(spec_evaluator::enough_stack_space());
+
             spec_evaluator::lemma_evaluate_to_expr_left_assoc_equal(p@, self@.request, self@.entities);
             spec_evaluator::lemma_evaluate_to_expr_bool_or_err(p@, self@.request, self@.entities);
         }
@@ -159,7 +160,7 @@ impl<'e> Evaluator<'e> {
         // also, if there is an error, set its source location to the source
         // location of the input expression as well, unless it already had a
         // more specific location
-        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
+        res.map(|pval: Value| -> (new_pval: Value) ensures pval@ == new_pval@ { pval.with_maybe_source_loc(expr.source_loc().cloned()) })
             .map_err(|err| match err.source_loc() {
                 None => err.with_maybe_source_loc(expr.source_loc().cloned()),
                 Some(_) => err,
