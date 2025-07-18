@@ -334,10 +334,15 @@ impl EvaluationError {
         .into()
     }
 
+    verus! {
+
     /// Construct a [`UnlinkedSlot`] error
+    #[verifier::external_body]
     pub(crate) fn unlinked_slot(slot: SlotId, source_loc: Option<Loc>) -> Self {
         evaluation_errors::UnlinkedSlotError { slot, source_loc }.into()
     }
+
+    } // verus!
 
     /// Construct a [`FailedExtensionFunctionApplication`] error
     pub(crate) fn failed_extension_function_application(

@@ -363,11 +363,17 @@ impl<T> Expr<T> {
         }
     }
 
+    verus! {
+
     /// Access the inner `ExprKind` for this `Expr`. The `ExprKind` is the
     /// `enum` which specifies the expression variant, so it must be accessed by
     /// any code matching and recursing on an expression.
-    pub fn expr_kind(&self) -> &ExprKind<T> {
+    pub fn expr_kind(&self) -> (expr_kind: &ExprKind<T>)
+        ensures self@ == expr_kind@
+    {
         &self.expr_kind
+    }
+
     }
 
     /// Access the inner `ExprKind`, taking ownership and consuming the `Expr`.

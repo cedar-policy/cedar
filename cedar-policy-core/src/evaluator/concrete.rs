@@ -177,7 +177,6 @@ impl<'e> Evaluator<'e> {
     /// all errors are set properly before returning them from
     /// `interpret()`.
     #[allow(clippy::cognitive_complexity)]
-    #[verifier::external_body]
     fn interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> (res: Result<Value>)
         ensures ({
             &&& res matches Ok(res_v) ==> {
@@ -194,8 +193,8 @@ impl<'e> Evaluator<'e> {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Slot(id) => slots
                 .get(id)
-                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc.cloned()))
-                .map(|euid| Value::from(euid.clone())),
+                .ok_or(err::EvaluationError::unlinked_slot(*id, loc.cloned())) // Verus doesn't support `ok_or_else`
+                .map(|euid| Value::from(euid.clone())), // TODO: spec for `impl<T: Into<Literal>> From<T> for Value`
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate_concrete(*v)),
                 Var::Action => Ok(self.action.evaluate_concrete(*v)),
@@ -246,19 +245,36 @@ impl<'e> Evaluator<'e> {
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
-                        let uid1 = arg1.get_as_entity().map_err(|mut e|
+                        // Verus cannot handle the below since it uses a `mut` parameter to the closure
+                        // let uid1 = arg1.get_as_entity().map_err(|mut e|
+                        //     {
+                        //         // If arg1 is not an entity and arg2 is a set, then possibly
+                        //         // the user intended `arg2.contains(arg1)` rather than `arg1 in arg2`.
+                        //         // If arg2 is a record, then possibly they intended `arg2 has arg1`.
+                        //         if let EvaluationError::TypeError(TypeError { advice, .. }) = &mut e {
+                        //             match arg2.type_of() {
+                        //                 Type::Set => *advice = Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
+                        //                 Type::Record => *advice = Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
+                        //                 _ => {}
+                        //             }
+                        //         };
+                        //         e
+                        //     })?;
+                        let uid1 = arg1.get_as_entity().map_err(|e|
                             {
                                 // If arg1 is not an entity and arg2 is a set, then possibly
                                 // the user intended `arg2.contains(arg1)` rather than `arg1 in arg2`.
                                 // If arg2 is a record, then possibly they intended `arg2 has arg1`.
-                                if let EvaluationError::TypeError(TypeError { advice, .. }) = &mut e {
-                                    match arg2.type_of() {
-                                        Type::Set => *advice = Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
-                                        Type::Record => *advice = Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
-                                        _ => {}
-                                    }
-                                };
-                                e
+                                if let EvaluationError::TypeError(e_inner) = e {
+                                    let advice = match arg2.type_of() {
+                                        Type::Set => Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
+                                        Type::Record => Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
+                                        _ => e_inner.advice
+                                    };
+                                    EvaluationError::TypeError(TypeError { advice, ..e_inner })
+                                } else {
+                                    e
+                                }
                             })?;
                         match self.entities.entity(uid1) {
                             Dereference::Residual(r) => {
@@ -355,7 +371,7 @@ impl<'e> Evaluator<'e> {
                                             Err(EvaluationError::entity_tag_does_not_exist(
                                                 Arc::new(uid.clone()),
                                                 tag.clone(),
-                                                entity.tag_keys(),
+                                                entity.tag_keys_verus(),
                                                 entity.get(tag).is_some(),
                                                 entity.tags_len(),
                                                 loc.cloned(), // intentionally using the location of the entire `GetTag` expression
@@ -437,7 +453,7 @@ impl<'e> Evaluator<'e> {
             ExprKind::Record(map) => {
                 let map = map
                     .iter()
-                    .map(|(k, v)| Ok((k.clone(), self.interpret(v, slots)?)))
+                    .map(|kv| { let (k, v) = kv; Ok((k.clone(), self.interpret(v, slots)?)) })
                     .collect::<Result<Vec<_>>>()?;
                 let (names, vals): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
                 Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())

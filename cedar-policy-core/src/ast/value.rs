@@ -710,18 +710,24 @@ impl<T: Into<Value>> From<Vec<T>> for ValueKind {
     }
 }
 
+verus! {
+
 /// Create a `Value` directly from a `Literal`, or from anything that implements
 /// `Into<Literal>` (so `Integer`, `&str`, `EntityUID`, etc)
 ///
 /// This impl does not propagate source location; the resulting `Value` will
 /// have no source location info attached
 impl<T: Into<Literal>> From<T> for Value {
-    fn from(lit: T) -> Self {
+    fn from(lit: T) -> (v: Self)
+        // ensures v@ == spec_ast::Value::prim(lit.into()@)
+    {
         Self {
             value: lit.into().into(),
             loc: None,
         }
     }
+}
+
 }
 
 /// Create a `ValueKind` directly from a `Literal`, or from anything that implements

@@ -256,6 +256,8 @@ pub enum EntityUID {
     Error,
 }
 
+clone_spec_for!(EntityUID);
+
 impl View for EntityUID {
     type V = spec_ast::EntityUID;
     closed spec fn view(&self) -> spec_ast::EntityUID {
@@ -529,8 +531,12 @@ impl<'a> arbitrary::Arbitrary<'a> for Eid {
     }
 }
 
+verus! {
+
 /// Entity datatype
 #[derive(Debug, Clone)]
+#[verifier::external_derive]
+#[verifier::external_body]
 pub struct Entity {
     /// UID
     uid: EntityUID,
@@ -556,6 +562,8 @@ pub struct Entity {
     /// deterministic order.
     tags: BTreeMap<SmolStr, PartialValue>,
 }
+
+} // verus!
 
 impl std::hash::Hash for Entity {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -693,6 +701,17 @@ impl Entity {
     pub fn tag_keys(&self) -> impl Iterator<Item = &SmolStr> {
         self.tags.keys()
     }
+
+    verus! {
+
+    /// Produce a `Vec` of this entity's tag names, since Verus cannot handle
+    /// `impl Iterator<Item = &SmolStr>` in return position
+    #[verifier::external_body]
+    pub fn tag_keys_verus(&self) -> Vec<&SmolStr> {
+        self.tags.keys().collect()
+    }
+
+    } // verus!
 
     /// Iterate over this entity's attributes
     pub fn attrs(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
