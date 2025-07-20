@@ -719,24 +719,30 @@ verus! {
 /// have no source location info attached
 impl<T: Into<Literal>> From<T> for Value {
     fn from(lit: T) -> (v: Self)
-        // ensures v@ == spec_ast::Value::prim(lit.into()@)
+        ensures exists |l|
+            #[trigger] call_ensures(<T as Into<Literal>>::into, (lit,), l)
+            && v@ == spec_ast::Value::prim(l@)
     {
         Self {
-            value: lit.into().into(),
+            value: ValueKind::Lit(lit.into()),
             loc: None,
         }
     }
 }
 
-}
-
 /// Create a `ValueKind` directly from a `Literal`, or from anything that implements
 /// `Into<Literal>` (so `Integer`, `&str`, `EntityUID`, etc)
 impl<T: Into<Literal>> From<T> for ValueKind {
-    fn from(lit: T) -> Self {
+    fn from(lit: T) -> (v: Self)
+        ensures exists |l|
+            #[trigger] call_ensures(<T as Into<Literal>>::into, (lit,), l)
+            && v@ == spec_ast::Value::prim(l@)
+    {
         Self::Lit(lit.into())
     }
 }
+
+} // verus!
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
