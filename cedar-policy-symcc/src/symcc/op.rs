@@ -34,7 +34,10 @@ pub enum ExtOp {
     IpaddrPrefixV4,
     IpaddrAddrV6,
     IpaddrPrefixV6,
+    DatetimeVal,
+    DatetimeOfBitVec,
     DurationVal,
+    DurationOfBitVec,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
@@ -53,6 +56,9 @@ pub enum Op {
     Bvmul,
     Bvsdiv, // signed bit-vector division
     Bvudiv, // unsigned bit-vector division
+    Bvsrem, // signed remainder (remainder of division rounded towards zero) (copies sign from dividend)
+    Bvsmod, // signed modulus (remainder of division rounded towards negative infinity) (copies sign from divisor)
+    Bvumod, // unsigned modulus
     Bvshl,
     Bvlshr,
     Bvslt,
@@ -89,7 +95,10 @@ impl ExtOp {
             ExtOp::IpaddrPrefixV4 => "ipaddr.prefixV4",
             ExtOp::IpaddrAddrV6 => "ipaddr.addrV6",
             ExtOp::IpaddrPrefixV6 => "ipaddr.prefixV6",
+            ExtOp::DatetimeVal => "datetime.val",
+            ExtOp::DatetimeOfBitVec => "datetime.ofBitVec",
             ExtOp::DurationVal => "duration.val",
+            ExtOp::DurationOfBitVec => "duration.ofBitVec",
         }
     }
 
@@ -103,18 +112,64 @@ impl ExtOp {
             {
                 Some(TermType::Bitvec { n: 64 })
             }
+            ExtOp::IpaddrIsV4
+                if l == vec![TermType::Ext {
+                    xty: ExtType::IpAddr,
+                }] =>
+            {
+                Some(TermType::Bool)
+            }
+            ExtOp::IpaddrAddrV4
+                if l == vec![TermType::Ext {
+                    xty: ExtType::IpAddr,
+                }] =>
+            {
+                Some(TermType::Bitvec { n: 32 })
+            }
+            ExtOp::IpaddrPrefixV4
+                if l == vec![TermType::Ext {
+                    xty: ExtType::IpAddr,
+                }] =>
+            {
+                Some(TermType::Option {
+                    ty: Box::new(TermType::Bitvec { n: 5 }),
+                })
+            }
+            ExtOp::IpaddrAddrV6
+                if l == vec![TermType::Ext {
+                    xty: ExtType::IpAddr,
+                }] =>
+            {
+                Some(TermType::Bitvec { n: 128 })
+            }
+            ExtOp::DatetimeVal
+                if l == vec![TermType::Ext {
+                    xty: ExtType::DateTime,
+                }] =>
+            {
+                Some(TermType::Bitvec { n: 64 })
+            }
+            ExtOp::DatetimeOfBitVec if l == vec![TermType::Bitvec { n: 64 }] => {
+                Some(TermType::Ext {
+                    xty: ExtType::DateTime,
+                })
+            }
+            ExtOp::DurationVal
+                if l == vec![TermType::Ext {
+                    xty: ExtType::Duration,
+                }] =>
+            {
+                Some(TermType::Bitvec { n: 64 })
+            }
+            ExtOp::DurationOfBitVec if l == vec![TermType::Bitvec { n: 64 }] => {
+                Some(TermType::Ext {
+                    xty: ExtType::Duration,
+                })
+            }
             _ => None,
         }
     }
 }
-// def ExtOp.typeOf : ExtOp → List TermType → Option TermType
-//   | .decimal.val, [.ext .decimal]     => .some (.bitvec 64)
-//   | .ipaddr.isV4, [.ext .ipAddr]      => .some .bool
-//   | .ipaddr.addrV4,   [.ext .ipAddr]  => .some (.bitvec 32)
-//   | .ipaddr.prefixV4, [.ext .ipAddr]  => .some (.option (.bitvec 5))
-//   | .ipaddr.addrV6,   [.ext .ipAddr]  => .some (.bitvec 128)
-//   | .ipaddr.prefixV6, [.ext .ipAddr]  => .some (.option (.bitvec 7))
-//   | _, _                              => .none
 
 impl Op {
     #[allow(clippy::cognitive_complexity)]
@@ -174,7 +229,18 @@ impl Op {
                 clippy::indexing_slicing,
                 reason = "List of length 2 should not error when indexed by 0 or 1"
             )]
-            Op::Bvadd | Op::Bvsub | Op::Bvmul | Op::Bvshl | Op::Bvlshr if l.len() == 2 => {
+            Op::Bvadd
+            | Op::Bvsub
+            | Op::Bvmul
+            | Op::Bvshl
+            | Op::Bvlshr
+            | Op::Bvsdiv
+            | Op::Bvudiv
+            | Op::Bvsrem
+            | Op::Bvsmod
+            | Op::Bvumod
+                if l.len() == 2 =>
+            {
                 match (l[0].clone(), l[1].clone()) {
                     (Bitvec { n }, Bitvec { n: m }) if n == m => Some(Bitvec { n }),
                     _ => None,
@@ -272,6 +338,9 @@ impl Op {
             Op::Bvmul => "bvmul",
             Op::Bvsdiv => "bvsdiv",
             Op::Bvudiv => "bvudiv",
+            Op::Bvsrem => "bvsrem",
+            Op::Bvsmod => "bvsmod",
+            Op::Bvumod => "Bvurem",
             Op::Bvshl => "bvshl",
             Op::Bvlshr => "bvlshr",
             Op::Bvslt => "bvslt",
