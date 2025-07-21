@@ -576,7 +576,10 @@ fn encode_ext(e: &Ext) -> String {
             let bv_enc = encode_bitvec(&BitVec::of_int(64, i128::from(d.to_milliseconds())));
             format!("(Duration {bv_enc})")
         }
-        Ext::Datetime { .. } => String::new(), // Lean comment "TODO: Provide an actual encoding for datetimes"
+        Ext::Datetime { dt } => {
+            let bv_enc = encode_bitvec(&BitVec::of_int(64, i128::from(dt)));
+            format!("(Datetime {bv_enc})")
+        }
     }
 }
 
@@ -588,7 +591,10 @@ fn encode_ext_op(ext_op: &ExtOp) -> &'static str {
         ExtOp::IpaddrPrefixV4 => "prefixV4",
         ExtOp::IpaddrAddrV6 => "addrV6",
         ExtOp::IpaddrPrefixV6 => "prefixV6",
+        ExtOp::DatetimeVal => "datetimeVal",
+        ExtOp::DatetimeOfBitVec => "Datetime",
         ExtOp::DurationVal => "durationVal",
+        ExtOp::DurationOfBitVec => "Duration",
     }
 }
 

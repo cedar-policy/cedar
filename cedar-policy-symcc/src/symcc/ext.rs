@@ -36,4 +36,20 @@ impl Ext {
     pub fn parse_decimal(str: String) -> Option<Ext> {
         super::extension_types::decimal::parse(&str).map(|d| Ext::Decimal { d })
     }
+
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Pass by value expected by consumer"
+    )]
+    pub fn parse_datetime(str: String) -> Option<Ext> {
+        super::extension_types::datetime::Datetime::parse(&str).map(|dt| Ext::Datetime { dt })
+    }
+
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Pass by value expected by consumer"
+    )]
+    pub fn parse_duration(str: String) -> Option<Ext> {
+        super::extension_types::datetime::Duration::parse(&str).map(|d| Ext::Duration { d })
+    }
 }

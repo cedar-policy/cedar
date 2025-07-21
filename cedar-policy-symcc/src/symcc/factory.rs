@@ -17,7 +17,10 @@
 use super::bitvec::{self, BitVec};
 use super::entity_tag::EntityTag;
 use super::ext::Ext;
-use super::extension_types::ipaddr::IPNet;
+use super::extension_types::{
+    datetime::{Datetime, Duration},
+    ipaddr::IPNet,
+};
 use super::function::UnaryFunction;
 use super::op::{ExtOp, Op};
 use super::term::{Term, TermPrim};
@@ -283,6 +286,20 @@ pub fn bvsdiv(t1: Term, t2: Term) -> Term {
 
 pub fn bvudiv(t1: Term, t2: Term) -> Term {
     bvapp(Op::Bvudiv, &BitVec::udiv, t1, t2)
+}
+
+pub fn bvsrem(t1: Term, t2: Term) -> Term {
+    bvapp(Op::Bvsrem, &BitVec::srem, t1, t2)
+}
+
+#[allow(unused, reason = "Added for completeness")]
+pub fn bvsmod(t1: Term, t2: Term) -> Term {
+    bvapp(Op::Bvsmod, &BitVec::smod, t1, t2)
+}
+
+#[allow(unused, reason = "Added for completeness")]
+pub fn bvumod(t1: Term, t2: Term) -> Term {
+    bvapp(Op::Bvumod, &BitVec::umod, t1, t2)
 }
 
 pub fn bvshl(t1: Term, t2: Term) -> Term {
@@ -609,13 +626,64 @@ pub fn ext_ipaddr_prefix_v6(t: Term) -> Term {
     }
 }
 
+pub fn ext_datetime_val(t: Term) -> Term {
+    match t {
+        Term::Prim(TermPrim::Ext(Ext::Datetime { dt })) => Term::Prim(TermPrim::Bitvec(BitVec {
+            width: 64,
+            v: i128::from(dt),
+        })),
+        t => Term::App {
+            op: Op::Ext(ExtOp::DatetimeVal),
+            args: vec![t],
+            ret_ty: TermType::Bitvec { n: 64 },
+        },
+    }
+}
+
+pub fn ext_datetime_of_bitvec(t: Term) -> Term {
+    match t {
+        Term::Prim(TermPrim::Bitvec(BitVec { width: 64, v })) => {
+            Term::Prim(TermPrim::Ext(Ext::Datetime {
+                dt: Datetime::from(v),
+            }))
+        }
+        _ => Term::App {
+            op: Op::Ext(ExtOp::DatetimeOfBitVec),
+            args: vec![t],
+            ret_ty: TermType::Ext {
+                xty: ExtType::DateTime,
+            },
+        },
+    }
+}
+
 pub fn ext_duration_val(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Ext(Ext::Duration { d })) => Ext::Duration { d }.into(),
+        Term::Prim(TermPrim::Ext(Ext::Duration { d })) => Term::Prim(TermPrim::Bitvec(BitVec {
+            width: 64,
+            v: i128::from(d.to_milliseconds()),
+        })),
         t => Term::App {
             op: Op::Ext(ExtOp::DurationVal),
             args: vec![t],
             ret_ty: TermType::Bitvec { n: 64 },
+        },
+    }
+}
+
+pub fn ext_duration_of_bitvec(t: Term) -> Term {
+    match t {
+        Term::Prim(TermPrim::Bitvec(BitVec { width: 64, v })) => {
+            Term::Prim(TermPrim::Ext(Ext::Duration {
+                d: Duration::from(v),
+            }))
+        }
+        _ => Term::App {
+            op: Op::Ext(ExtOp::DurationOfBitVec),
+            args: vec![t],
+            ret_ty: TermType::Ext {
+                xty: ExtType::Duration,
+            },
         },
     }
 }
