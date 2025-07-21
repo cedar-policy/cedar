@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+use super::result::Error;
 use super::type_abbrevs::Nat;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -140,6 +141,39 @@ impl BitVec {
                 (lhs.v as u128 / rhs.v as u128) as i128
             },
         }
+    }
+
+    // semantics to match https://leanprover-community.github.io/mathlib4_docs/Init/Data/BitVec/Basic.html#BitVec.srem
+    pub fn srem(_lhs: &Self, _rhs: &Self) -> Self {
+        let unimplemented = Err(Error::UnsupportedError);
+        // PANIC SAFETY (not really panic safe, hack until BitVec refactor)
+        #[allow(
+            clippy::expect_used,
+            reason = "TODO, but can't use todo! or unimplemented!"
+        )]
+        unimplemented.expect("BitVec::srem not implemented. Waiting for BitVec refactor")
+    }
+
+    // semantics to match https://leanprover-community.github.io/mathlib4_docs/Init/Data/BitVec/Basic.html#BitVec.smod
+    pub fn smod(_lhs: &Self, _rhs: &Self) -> Self {
+        let unimplemented = Err(Error::UnsupportedError);
+        // PANIC SAFETY (not really panic safe, hack until BitVec refactor)
+        #[allow(
+            clippy::expect_used,
+            reason = "TODO, but can't use todo! or unimplemented!"
+        )]
+        unimplemented.expect("BitVec::smod not implemented. Waiting for BitVec refactor")
+    }
+
+    // semantics to match https://leanprover-community.github.io/mathlib4_docs/Init/Data/BitVec/Basic.html#BitVec.umod
+    pub fn umod(_lhs: &Self, _rhs: &Self) -> Self {
+        let unimplemented = Err(Error::UnsupportedError);
+        // PANIC SAFETY (not really panic safe, hack until BitVec refactor)
+        #[allow(
+            clippy::expect_used,
+            reason = "TODO, but can't use todo! or unimplemented!"
+        )]
+        unimplemented.expect("BitVec::umod not implemented. Waiting for BitVec refactor")
     }
 
     pub fn shl(lhs: &Self, rhs: &Self) -> Self {
