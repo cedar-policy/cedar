@@ -182,6 +182,8 @@ impl<'e> Evaluator<'e> {
     #[allow(clippy::cognitive_complexity)]
     #[verifier::exec_allows_no_decreases_clause]
     fn interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> (res: Result<Value>)
+        requires
+            spec_evaluator::enough_stack_space(),
         ensures ({
             &&& res matches Ok(res_v) ==> {
                 &&& spec_evaluator::evaluate(expr@, self@.request, self@.entities, slots.deep_view()) matches Ok(v)
@@ -465,7 +467,10 @@ impl<'e> Evaluator<'e> {
                 // Ok(Value::set(vals, loc.cloned()).into())
                 // Verus can't handle iterators, so we have to use a loop:
                 let mut vals: Vec<Value> = Vec::with_capacity(items.len());
-                for item in items.iter() {
+                for item in items.iter()
+                    invariant
+                        spec_evaluator::enough_stack_space(),
+                {
                     let item_val = self.interpret(item, slots)?;
                     vals.push(item_val);
                 }
@@ -480,7 +485,10 @@ impl<'e> Evaluator<'e> {
                 // Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
                 // Verus can't handle iterators, so we have to use a loop:
                 let mut names_vals: Vec<(SmolStr, Value)> = Vec::with_capacity(expr_map_len(&map));
-                for k in expr_map_keys_arc(&map) {
+                for k in expr_map_keys_arc(&map)
+                    invariant
+                        spec_evaluator::enough_stack_space(),
+                {
                     let v = match expr_map_get_arc(&map, k) {
                         Some(v) => v,
                         None => unreached(),
@@ -507,7 +515,10 @@ impl<'e> Evaluator<'e> {
     }
 
     #[verifier::external_body] // TODO: support the `in` operator
-    fn eval_in(&self, uid1: &EntityUID, entity1: Option<&Entity>, arg2: Value) -> Result<Value> {
+    fn eval_in(&self, uid1: &EntityUID, entity1: Option<&Entity>, arg2: Value) -> (res: Result<Value>)
+        requires
+            spec_evaluator::enough_stack_space(),
+    {
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
         let rhs = match arg2.value {
@@ -548,7 +559,10 @@ impl<'e> Evaluator<'e> {
         consequent: &Arc<Expr>,
         alternative: &Arc<Expr>,
         slots: &SlotEnv,
-    ) -> Result<Value> {
+    ) -> (res: Result<Value>)
+        requires
+            spec_evaluator::enough_stack_space(),
+    {
         let v = self.interpret(guard, slots)?;
         if v.get_as_bool()? {
             self.interpret(consequent, slots)
@@ -567,7 +581,10 @@ impl<'e> Evaluator<'e> {
         attr: &SmolStr,
         slots: &SlotEnv,
         source_loc: Option<&Loc>,
-    ) -> Result<Value> {
+    ) -> (res: Result<Value>)
+        requires
+            spec_evaluator::enough_stack_space(),
+    {
         match self.interpret(expr, slots)? {
             Value {
                 value: ValueKind::Record(record),
