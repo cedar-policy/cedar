@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
-use lsp_types::{Position, Range, TextEdit};
+use tower_lsp_server::lsp_types::{Position, Range, TextEdit};
 
 /// Formats a Cedar policy according to standard style guidelines.
 ///

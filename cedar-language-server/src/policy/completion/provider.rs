@@ -20,8 +20,8 @@ use cedar_policy_core::{
     ast::PolicyID,
     parser::{cst::Policy, Node},
 };
-use lsp_types::{CompletionItem, Position};
 use process::preprocess_policy;
+use tower_lsp_server::lsp_types::{CompletionItem, Position};
 use tracing::{error, info};
 
 use crate::{
