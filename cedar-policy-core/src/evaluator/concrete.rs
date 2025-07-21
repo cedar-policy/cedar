@@ -28,11 +28,13 @@ use super::err::EvaluationError;
 use super::err::EvaluationError::ASTErrorExpr;
 use super::err::*;
 use evaluation_errors::*;
-use nonempty::nonempty;
+use nonempty::{nonempty, NonEmpty};
 use smol_str::SmolStr;
 
 // Temporary, until more refactoring can be done
 use crate::evaluator::*;
+
+use crate::verus_utils::*;
 
 use vstd::prelude::*;
 
@@ -136,6 +138,7 @@ impl<'e> Evaluator<'e> {
     /// Ensures the result is not a residual.
     /// May return an error, for instance if the `Expr` tries to access an
     /// attribute that doesn't exist.
+    #[verifier::exec_allows_no_decreases_clause]
     pub fn interpret(&self, expr: &Expr, slots: &SlotEnv) -> (res: Result<Value>)
         requires
             spec_evaluator::enough_stack_space(),
@@ -177,6 +180,7 @@ impl<'e> Evaluator<'e> {
     /// all errors are set properly before returning them from
     /// `interpret()`.
     #[allow(clippy::cognitive_complexity)]
+    #[verifier::exec_allows_no_decreases_clause]
     fn interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> (res: Result<Value>)
         ensures ({
             &&& res matches Ok(res_v) ==> {
@@ -284,66 +288,70 @@ impl<'e> Evaluator<'e> {
                             Dereference::Data(entity1) => self.eval_in(uid1, Some(entity1), arg2),
                         }
                     }
-                    // contains, which works on Sets
-                    BinaryOp::Contains => match arg1.value {
-                        ValueKind::Set(Set { fast: Some(h), .. }) => match arg2.try_as_lit() {
-                            Some(lit) => Ok((h.contains(lit)).into()),
-                            None => Ok(false.into()), // we know it doesn't contain a non-literal
-                        },
-                        ValueKind::Set(Set {
-                            fast: None,
-                            authoritative,
-                        }) => Ok((authoritative.contains(&arg2)).into()),
-                        _ => Err(EvaluationError::type_error_single(Type::Set, &arg1)),
-                    },
-                    // ContainsAll and ContainsAny, which work on Sets
-                    BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
-                        let arg1_set = arg1.get_as_set()?;
-                        let arg2_set = arg2.get_as_set()?;
-                        match (&arg1_set.fast, &arg2_set.fast) {
-                            (Some(arg1_set), Some(arg2_set)) => {
-                                // both sets are in fast form, ie, they only contain literals.
-                                // Fast hashset-based implementation.
-                                match op {
-                                    BinaryOp::ContainsAll => {
-                                        Ok((arg2_set.is_subset(arg1_set)).into())
-                                    }
-                                    BinaryOp::ContainsAny => {
-                                        Ok((!arg1_set.is_disjoint(arg2_set)).into())
-                                    }
-                                    // PANIC SAFETY `op` is checked to be one of these two above
-                                    #[allow(clippy::unreachable)]
-                                    _ => unreachable!(
-                                        "Should have already checked that op was one of these"
-                                    ),
-                                }
-                            }
-                            (_, _) => {
-                                // one or both sets are in slow form, ie, contain a non-literal.
-                                // Fallback to slow implementation.
-                                match op {
-                                    BinaryOp::ContainsAll => {
-                                        let is_subset = arg2_set
-                                            .authoritative
-                                            .iter()
-                                            .all(|item| arg1_set.authoritative.contains(item));
-                                        Ok(is_subset.into())
-                                    }
-                                    BinaryOp::ContainsAny => {
-                                        let not_disjoint = arg1_set
-                                            .authoritative
-                                            .iter()
-                                            .any(|item| arg2_set.authoritative.contains(item));
-                                        Ok(not_disjoint.into())
-                                    }
-                                    // PANIC SAFETY `op` is checked to be one of these two above
-                                    #[allow(clippy::unreachable)]
-                                    _ => unreachable!(
-                                        "Should have already checked that op was one of these"
-                                    ),
-                                }
-                            }
-                        }
+                    // // contains, which works on Sets
+                    // BinaryOp::Contains => match arg1.value {
+                    //     ValueKind::Set(Set { fast: Some(h), .. }) => match arg2.try_as_lit() {
+                    //         Some(lit) => Ok((h.contains(lit)).into()),
+                    //         None => Ok(false.into()), // we know it doesn't contain a non-literal
+                    //     },
+                    //     ValueKind::Set(Set {
+                    //         fast: None,
+                    //         authoritative,
+                    //     }) => Ok((authoritative.contains(&arg2)).into()),
+                    //     _ => Err(EvaluationError::type_error_single(Type::Set, &arg1)),
+                    // },
+                    // // ContainsAll and ContainsAny, which work on Sets
+                    // BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
+                    //     let arg1_set = arg1.get_as_set()?;
+                    //     let arg2_set = arg2.get_as_set()?;
+                    //     match (&arg1_set.fast, &arg2_set.fast) {
+                    //         (Some(arg1_set), Some(arg2_set)) => {
+                    //             // both sets are in fast form, ie, they only contain literals.
+                    //             // Fast hashset-based implementation.
+                    //             match op {
+                    //                 BinaryOp::ContainsAll => {
+                    //                     Ok((arg2_set.is_subset(arg1_set)).into())
+                    //                 }
+                    //                 BinaryOp::ContainsAny => {
+                    //                     Ok((!arg1_set.is_disjoint(arg2_set)).into())
+                    //                 }
+                    //                 // PANIC SAFETY `op` is checked to be one of these two above
+                    //                 #[allow(clippy::unreachable)]
+                    //                 _ => unreachable!(
+                    //                     "Should have already checked that op was one of these"
+                    //                 ),
+                    //             }
+                    //         }
+                    //         (_, _) => {
+                    //             // one or both sets are in slow form, ie, contain a non-literal.
+                    //             // Fallback to slow implementation.
+                    //             match op {
+                    //                 BinaryOp::ContainsAll => {
+                    //                     let is_subset = arg2_set
+                    //                         .authoritative
+                    //                         .iter()
+                    //                         .all(|item| arg1_set.authoritative.contains(item));
+                    //                     Ok(is_subset.into())
+                    //                 }
+                    //                 BinaryOp::ContainsAny => {
+                    //                     let not_disjoint = arg1_set
+                    //                         .authoritative
+                    //                         .iter()
+                    //                         .any(|item| arg2_set.authoritative.contains(item));
+                    //                     Ok(not_disjoint.into())
+                    //                 }
+                    //                 // PANIC SAFETY `op` is checked to be one of these two above
+                    //                 #[allow(clippy::unreachable)]
+                    //                 _ => unreachable!(
+                    //                     "Should have already checked that op was one of these"
+                    //                 ),
+                    //             }
+                    //         }
+                    //     }
+                    // }
+                    BinaryOp::Contains | BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
+                        // todo: handle Set ops
+                        unreached()
                     }
                     // GetTag and HasTag, which require an Entity on the left and a String on the right
                     BinaryOp::GetTag | BinaryOp::HasTag => {
@@ -362,17 +370,17 @@ impl<'e> Evaluator<'e> {
                                     Dereference::Residual(r) => {
                                         Err(err::EvaluationError::non_value(expr.clone()))
                                     }
-                                    Dereference::Data(entity) => match entity.get_tag(tag) {
-                                        Some(PartialValue::Value(v)) => Ok(v.clone()),
-                                        Some(PartialValue::Residual(_)) => {
-                                            Err(err::EvaluationError::non_value(expr.clone()))
-                                        }
+                                    Dereference::Data(entity) => match entity.get_tag_value_verus(tag.as_str()) {
+                                        Some(v) => Ok(v.clone()),
+                                        // Some(PartialValue::Residual(_)) => {
+                                        //     Err(err::EvaluationError::non_value(expr.clone()))
+                                        // }
                                         None => {
                                             Err(EvaluationError::entity_tag_does_not_exist(
                                                 Arc::new(uid.clone()),
                                                 tag.clone(),
                                                 entity.tag_keys_verus(),
-                                                entity.get(tag).is_some(),
+                                                entity.get_value_verus(tag.as_str()).is_some(),
                                                 entity.tags_len(),
                                                 loc.cloned(), // intentionally using the location of the entire `GetTag` expression
                                             ))
@@ -386,29 +394,34 @@ impl<'e> Evaluator<'e> {
                                     Err(err::EvaluationError::non_value(expr.clone()))
                                 }
                                 Dereference::Data(entity) => {
-                                    Ok(entity.get_tag(tag).is_some().into())
+                                    Ok(entity.get_tag_value_verus(tag.as_str()).is_some().into())
                                 }
                             },
                             // PANIC SAFETY `op` is checked to be one of these two above
                             #[allow(clippy::unreachable)]
                             _ => {
-                                unreachable!("Should have already checked that op was one of these")
+                                unreached()
+                                // unreachable!("Should have already checked that op was one of these")
                             }
                         }
                     }
                 }
             }
+            // ExprKind::ExtensionFunctionApp { fn_name, args } => {
+            //     let args = args
+            //         .iter()
+            //         .map(|arg| self.interpret(arg, slots))
+            //         .collect::<Result<Vec<_>>>()?;
+            //     let efunc = self.extensions.func(fn_name)?;
+            //     // TODO need to change extension functions internally?
+            //     match efunc.call(&args)? {
+            //         PartialValue::Value(v) => Ok(v),
+            //         PartialValue::Residual(_) => Err(err::EvaluationError::non_value(expr.clone())),
+            //     }
+            // }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = args
-                    .iter()
-                    .map(|arg| self.interpret(arg, slots))
-                    .collect::<Result<Vec<_>>>()?;
-                let efunc = self.extensions.func(fn_name)?;
-                // TODO need to change extension functions internally?
-                match efunc.call(&args)? {
-                    PartialValue::Value(v) => Ok(v),
-                    PartialValue::Residual(_) => Err(err::EvaluationError::non_value(expr.clone())),
-                }
+                // todo: handle ExtensionFunctionApp
+                unreached()
             }
             ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
             ExprKind::HasAttr {
@@ -418,45 +431,64 @@ impl<'e> Evaluator<'e> {
                 Value {
                     value: ValueKind::Record(record),
                     ..
-                } => Ok(record.get(attr).is_some().into()),
+                } => Ok(record_get_arc(&record, attr).is_some().into()),
                 Value {
                     value: ValueKind::Lit(Literal::EntityUID(uid)),
                     ..
                 } => match self.entities.entity(&uid) {
                     Dereference::NoSuchEntity => Ok(false.into()),
                     Dereference::Residual(r) => Err(err::EvaluationError::non_value(expr.clone())),
-                    Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
+                    Dereference::Data(e) => Ok(e.get_value_verus(attr.as_str()).is_some().into()),
                 },
                 val => Err(err::EvaluationError::type_error(
-                    nonempty![
-                        Type::Record,
-                        Type::entity_type(names::ANY_ENTITY_TYPE.clone())
-                    ],
+                    Self::nonempty_record_any_entity_type(),
                     &val,
                 )),
             },
+            // ExprKind::Like { expr, pattern } => {
+            //     let v = self.interpret(expr, slots)?;
+            //     Ok((pattern.wildcard_match(v.get_as_string()?)).into())
+            // }
             ExprKind::Like { expr, pattern } => {
-                let v = self.interpret(expr, slots)?;
-                Ok((pattern.wildcard_match(v.get_as_string()?)).into())
+                // TODO: handle patterns
+                unreached()
             }
             ExprKind::Is { expr, entity_type } => {
                 let v = self.interpret(expr, slots)?;
-                Ok((v.get_as_entity()?.entity_type() == entity_type).into())
+                Ok((v.get_as_entity()?.entity_type().eq_entity_type(entity_type)).into())
             }
             ExprKind::Set(items) => {
-                let vals = items
-                    .iter()
-                    .map(|item| self.interpret(item, slots))
-                    .collect::<Result<Vec<_>>>()?;
+                // let vals = items
+                //     .iter()
+                //     .map(|item| self.interpret(item, slots))
+                //     .collect::<Result<Vec<_>>>()?;
+                // Ok(Value::set(vals, loc.cloned()).into())
+                // Verus can't handle iterators, so we have to use a loop:
+                let mut vals: Vec<Value> = Vec::with_capacity(items.len());
+                for item in items.iter() {
+                    let item_val = self.interpret(item, slots)?;
+                    vals.push(item_val);
+                }
                 Ok(Value::set(vals, loc.cloned()).into())
             }
             ExprKind::Record(map) => {
-                let map = map
-                    .iter()
-                    .map(|kv| { let (k, v) = kv; Ok((k.clone(), self.interpret(v, slots)?)) })
-                    .collect::<Result<Vec<_>>>()?;
-                let (names, vals): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
-                Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
+                // let map = map
+                //     .iter()
+                //     .map(|kv| { let (k, v) = kv; Ok((k.clone(), self.interpret(v, slots)?)) })
+                //     .collect::<Result<Vec<_>>>()?;
+                // let (names, vals): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
+                // Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
+                // Verus can't handle iterators, so we have to use a loop:
+                let mut names_vals: Vec<(SmolStr, Value)> = Vec::with_capacity(expr_map_len(&map));
+                for k in expr_map_keys_arc(&map) {
+                    let v = match expr_map_get_arc(&map, k) {
+                        Some(v) => v,
+                        None => unreached(),
+                    };
+                    let v_val = self.interpret(v, slots)?;
+                    names_vals.push((k.clone(), v_val));
+                }
+                Ok(Value::record(names_vals, loc.cloned()).into())
             }
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
@@ -465,8 +497,16 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    } // verus!
+    // Factored out from type error case in `ExprKind::HasAttr`, since Verus can't handle the lazy static `ANY_ENTITY_TYPE`
+    #[verifier::external_body]
+    fn nonempty_record_any_entity_type() -> NonEmpty<Type> {
+        nonempty![
+            Type::Record,
+            Type::entity_type(names::ANY_ENTITY_TYPE.clone())
+        ]
+    }
 
+    #[verifier::external_body] // TODO: support the `in` operator
     fn eval_in(&self, uid1: &EntityUID, entity1: Option<&Entity>, arg2: Value) -> Result<Value> {
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
@@ -501,6 +541,7 @@ impl<'e> Evaluator<'e> {
 
     /// Evaluation of conditionals
     /// Must be sure to respect short-circuiting semantics
+    #[verifier::exec_allows_no_decreases_clause]
     fn eval_if(
         &self,
         guard: &Expr,
@@ -519,6 +560,7 @@ impl<'e> Evaluator<'e> {
     /// We don't use the `source_loc()` on `expr` because that's only the loc
     /// for the LHS of the GetAttr. `source_loc` argument should be the loc for
     /// the entire GetAttr expression
+    #[verifier::exec_allows_no_decreases_clause]
     fn get_attr(
         &self,
         expr: &Expr,
@@ -530,17 +572,14 @@ impl<'e> Evaluator<'e> {
             Value {
                 value: ValueKind::Record(record),
                 ..
-            } => record
-                .as_ref()
-                .get(attr)
-                .ok_or_else(|| {
-                    EvaluationError::record_attr_does_not_exist(
+            } => record_get_arc(&record, attr)
+                .ok_or(
+                    EvaluationError::record_attr_does_not_exist_verus(
                         attr.clone(),
-                        record.keys(),
-                        record.len(),
+                        &record,
                         source_loc.cloned(),
                     )
-                })
+                )
                 .map(|v| v.clone()),
             Value {
                 value: ValueKind::Lit(Literal::EntityUID(uid)),
@@ -554,16 +593,16 @@ impl<'e> Evaluator<'e> {
                     expr.clone(),
                     attr.clone(),
                 ))),
-                Dereference::Data(entity) => match entity.get(attr) {
-                    Some(PartialValue::Value(v)) => Ok(v.clone()),
-                    Some(PartialValue::Residual(e)) => Err(EvaluationError::non_value(
-                        Expr::get_attr(expr.clone(), attr.clone()),
-                    )),
+                Dereference::Data(entity) => match entity.get_value_verus(attr.as_str()) {
+                    Some(v) => Ok(v.clone()),
+                    // Some(PartialValue::Residual(e)) => Err(EvaluationError::non_value(
+                    //     Expr::get_attr(expr.clone(), attr.clone()),
+                    // )),
                     None => Err(EvaluationError::entity_attr_does_not_exist(
                         uid,
                         attr.clone(),
-                        entity.keys(),
-                        entity.get_tag(attr).is_some(),
+                        entity.keys_verus(),
+                        entity.get_tag_value_verus(attr.as_str()).is_some(),
                         entity.attrs_len(),
                         source_loc.cloned(),
                     )),
@@ -573,15 +612,18 @@ impl<'e> Evaluator<'e> {
                 // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
                 #[allow(clippy::unwrap_used)]
                 Err(EvaluationError::type_error(
-                    nonempty![
-                        Type::Record,
-                        Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
-                    ],
+                    Self::nonempty_record_any_entity_type(),
+                    // nonempty![
+                    //     Type::Record,
+                    //     Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
+                    // ],
                     &v,
                 ))
             }
         }
     }
+
+    } // verus!
 }
 
 impl std::fmt::Debug for Evaluator<'_> {

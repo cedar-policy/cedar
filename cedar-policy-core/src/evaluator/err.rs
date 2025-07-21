@@ -20,6 +20,7 @@ use crate::parser::Loc;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use smol_str::SmolStr;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -194,16 +195,17 @@ impl EvaluationError {
         }
     }
 
-    } // verus!
-
     /// Construct a [`EntityDoesNotExist`] error
+    #[verifier::external_body]
     pub(crate) fn entity_does_not_exist(uid: Arc<EntityUID>, source_loc: Option<Loc>) -> Self {
         evaluation_errors::EntityDoesNotExistError { uid, source_loc }.into()
     }
 
+
     /// Construct a [`EntityAttrDoesNotExist`] error
     ///
     /// `does_attr_exist_as_a_tag`: does `attr` exist on `entity` as a tag (rather than an attribute)
+    #[verifier::external_body]
     pub(crate) fn entity_attr_does_not_exist<'a>(
         entity: Arc<EntityUID>,
         attr: SmolStr,
@@ -231,6 +233,7 @@ impl EvaluationError {
     /// Construct an error for the case where an entity tag does not exist
     ///
     /// `does_tag_exist_as_an_attr`: does `tag` exist on `entity` as an attribute (rather than a tag)
+    #[verifier::external_body]
     pub(crate) fn entity_tag_does_not_exist<'a>(
         entity: Arc<EntityUID>,
         tag: SmolStr,
@@ -255,6 +258,8 @@ impl EvaluationError {
         .into()
     }
 
+    } // verus!
+
     /// Construct a [`RecordAttrDoesNotExist`] error
     pub(crate) fn record_attr_does_not_exist<'a>(
         attr: SmolStr,
@@ -275,7 +280,26 @@ impl EvaluationError {
         .into()
     }
 
+    verus! {
+
+    /// Construct a [`RecordAttrDoesNotExist`] error
+    /// Wrapper for `record_attr_does_not_exist` to avoid having to deal with the BTreeMap::Keys iterator
+    #[verifier::external_body]
+    pub(crate) fn record_attr_does_not_exist_verus<'a>(
+        attr: SmolStr,
+        record: &Arc<BTreeMap<SmolStr, Value>>,
+        source_loc: Option<Loc>,
+    ) -> Self {
+        Self::record_attr_does_not_exist(
+            attr,
+            record.keys(),
+            record.len(),
+            source_loc,
+        )
+    }
+
     /// Construct a [`TypeError`] error
+    #[verifier::external_body]
     pub(crate) fn type_error(expected: NonEmpty<Type>, actual: &Value) -> Self {
         evaluation_errors::TypeError {
             expected,
@@ -286,16 +310,16 @@ impl EvaluationError {
         .into()
     }
 
-    verus! {
+
 
     #[verifier::external_body]
     pub(crate) fn type_error_single(expected: Type, actual: &Value) -> Self {
         Self::type_error(nonempty![expected], actual)
     }
 
-    }
 
     /// Construct a [`TypeError`] error with the advice field set
+    #[verifier::external_body]
     pub(crate) fn type_error_with_advice(
         expected: NonEmpty<Type>,
         actual: &Value,
@@ -309,6 +333,8 @@ impl EvaluationError {
         }
         .into()
     }
+
+    } // verus!
 
     pub(crate) fn type_error_with_advice_single(
         expected: Type,
@@ -360,11 +386,16 @@ impl EvaluationError {
         .into()
     }
 
+    verus! {
+
     /// Construct a [`NonValue`] error
+    #[verifier::external_body]
     pub(crate) fn non_value(expr: Expr) -> Self {
         let source_loc = expr.source_loc().cloned();
         evaluation_errors::NonValueError { expr, source_loc }.into()
     }
+
+    } // verus!
 
     /// Construct a [`RecursionLimit`] error
     pub(crate) fn recursion_limit(source_loc: Option<Loc>) -> Self {
@@ -555,7 +586,6 @@ pub mod evaluation_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
-    #[verifier::external_body]
     #[verifier::external_derive]
     pub struct TypeError {
         /// Expected one of these types

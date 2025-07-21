@@ -37,7 +37,8 @@ use nonempty::nonempty;
 use smol_str::SmolStr;
 
 use crate::spec::{spec_ast, spec_evaluator};
-use vstd::prelude::{verus, View};
+use crate::verus_utils::*;
+use vstd::prelude::{unreached, verus, View};
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
@@ -53,6 +54,8 @@ mod names {
     }
 }
 
+verus! {
+
 /// Apply a `UnaryOp` to `arg` of type `Value`
 pub fn unary_app(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> Result<Value> {
     match op {
@@ -62,14 +65,9 @@ pub fn unary_app(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> Result<Value> {
         },
         UnaryOp::Neg => {
             let i = arg.get_as_long()?;
-            match i.checked_neg() {
+            match i64_checked_neg_verus(&i) {
                 Some(v) => Ok(v.into()),
-                None => Err(IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
-                    op,
-                    arg,
-                    source_loc: loc.cloned(),
-                })
-                .into()),
+                None => Err(unary_op_overflow_error(op, arg, loc)),
             }
         }
         UnaryOp::IsEmpty => {
@@ -77,6 +75,16 @@ pub fn unary_app(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> Result<Value> {
             Ok(s.is_empty().into())
         }
     }
+}
+
+#[verifier::external_body]
+fn unary_op_overflow_error(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> EvaluationError {
+    IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
+        op,
+        arg,
+        source_loc: loc.cloned(),
+    })
+    .into()
 }
 
 /// Evaluate binary relations (i.e., `BinaryOp::Eq`, `BinaryOp::Less`, and `BinaryOp::LessEq`)
@@ -87,29 +95,40 @@ pub fn binary_relation(
     extensions: &Extensions<'_>,
 ) -> Result<Value> {
     match op {
-        BinaryOp::Eq => Ok((arg1 == arg2).into()),
+        BinaryOp::Eq => Ok((arg1.eq_value(&arg2)).into()),
         // comparison and arithmetic operators, which only work on Longs
         BinaryOp::Less | BinaryOp::LessEq => {
-            let long_op = if matches!(op, BinaryOp::Less) {
-                |x, y| x < y
-            } else {
-                |x, y| x <= y
-            };
-            let ext_op = if matches!(op, BinaryOp::Less) {
-                |x, y| x < y
-            } else {
-                |x, y| x <= y
-            };
+            // Verus does not handle these closures well
+            // let long_op = if matches!(op, BinaryOp::Less) {
+            //     |x, y| x < y
+            // } else {
+            //     |x, y| x <= y
+            // };
+            // let ext_op = if matches!(op, BinaryOp::Less) {
+            //     |x, y| x < y
+            // } else {
+            //     |x, y| x <= y
+            // };
             match (arg1.value_kind(), arg2.value_kind()) {
                 (ValueKind::Lit(Literal::Long(x)), ValueKind::Lit(Literal::Long(y))) => {
-                    Ok(long_op(x, y).into())
+                    let b = match op {
+                        BinaryOp::Less => x < y,
+                        _ => x <= y,
+                    };
+                    Ok(b.into())
                 }
                 (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y))
                     if x.supports_operator_overloading()
                         && y.supports_operator_overloading()
                         && x.typename() == y.typename() =>
                 {
-                    Ok(ext_op(x, y).into())
+                    // let b = match op {
+                    //     BinaryOp::Less => x < y,
+                    //     _ => x <= y,
+                    // };
+                    // Ok(b.into())
+                    // TODO: support extension functions
+                    unreached()
                 }
                 // throw type errors
                 (ValueKind::Lit(Literal::Long(_)), _) => {
@@ -132,13 +151,18 @@ pub fn binary_relation(
                 }
                 _ => {
                     let expected_types = valid_comparison_op_types(extensions);
-                    Err(EvaluationError::type_error_with_advice(
-                        expected_types.clone(),
-                        &arg1,
-                        format!(
-                            "Only types {} support comparison",
-                            expected_types.into_iter().sorted().join(", ")
-                        ),
+                    // Err(EvaluationError::type_error_with_advice(
+                    //     expected_types.clone(),
+                    //     &arg1,
+                    //     format!(
+                    //         "Only types {} support comparison",
+                    //         expected_types.into_iter().sorted().join(", ")
+                    //     ),
+                    // ))
+                    // Verus doesn't like the `format!` so we just use a different type error
+                    Err(EvaluationError::type_error(
+                        expected_types,
+                        &arg1
                     ))
                 }
             }
@@ -146,7 +170,8 @@ pub fn binary_relation(
         // PANIC SAFETY `op` is checked by the caller
         #[allow(clippy::unreachable)]
         _ => {
-            unreachable!("Should have already checked that op was one of these")
+            // unreachable!("Should have already checked that op was one of these")
+            unreached()
         }
     }
 }
@@ -158,41 +183,37 @@ pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -
     match op {
         BinaryOp::Add => match i1.checked_add(i2) {
             Some(sum) => Ok(sum.into()),
-            None => Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                op,
-                arg1,
-                arg2,
-                source_loc: loc.cloned(),
-            })
-            .into()),
+            None => Err(binary_op_overflow_error(op, arg1, arg2, loc)),
         },
         BinaryOp::Sub => match i1.checked_sub(i2) {
             Some(diff) => Ok(diff.into()),
-            None => Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                op,
-                arg1,
-                arg2,
-                source_loc: loc.cloned(),
-            })
-            .into()),
+            None => Err(binary_op_overflow_error(op, arg1, arg2, loc)),
         },
         BinaryOp::Mul => match i1.checked_mul(i2) {
             Some(prod) => Ok(prod.into()),
-            None => Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                op,
-                arg1,
-                arg2,
-                source_loc: loc.cloned(),
-            })
-            .into()),
+            None => Err(binary_op_overflow_error(op, arg1, arg2, loc)),
         },
         // PANIC SAFETY `op` is checked by the caller
         #[allow(clippy::unreachable)]
         _ => {
-            unreachable!("Should have already checked that op was one of these")
+            // unreachable!("Should have already checked that op was one of these")
+            unreached()
         }
     }
 }
+
+#[verifier::external_body]
+fn binary_op_overflow_error(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -> EvaluationError {
+    IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+        op,
+        arg1,
+        arg2,
+        source_loc: loc.cloned(),
+    })
+    .into()
+}
+
+} // verus!
 
 verus! {
 
@@ -360,6 +381,9 @@ impl<'e> RestrictedEvaluator<'e> {
     }
 }
 
+verus! {
+
+#[verifier::external_body]
 pub(crate) fn valid_comparison_op_types(extensions: &Extensions<'_>) -> nonempty::NonEmpty<Type> {
     let mut expected_types = nonempty::NonEmpty::singleton(Type::Long);
     expected_types.extend(
@@ -368,6 +392,8 @@ pub(crate) fn valid_comparison_op_types(extensions: &Extensions<'_>) -> nonempty
             .map(|n| Type::Extension { name: n.clone() }),
     );
     expected_types
+}
+
 }
 
 impl<'e> Evaluator<'e> {
@@ -1200,11 +1226,14 @@ impl Value {
         }
     }
 
-    } // verus!
 
     /// Convert the `Value` to a Long, or throw a type error if it's not a
     /// Long.
-    pub(crate) fn get_as_long(&self) -> Result<Integer> {
+    pub(crate) fn get_as_long(&self) -> (res: Result<Integer>)
+        ensures
+            (self@ is Prim && self@->p is Int) ==> (res matches Ok(i) && i == self@->p->i),
+            !(self@ is Prim && self@->p is Int) ==> res is Err,
+    {
         match &self.value {
             ValueKind::Lit(Literal::Long(i)) => Ok(*i),
             _ => Err(EvaluationError::type_error_single(Type::Long, self)),
@@ -1213,7 +1242,11 @@ impl Value {
 
     /// Convert the `Value` to a String, or throw a type error if it's not a
     /// String.
-    pub(crate) fn get_as_string(&self) -> Result<&SmolStr> {
+    pub(crate) fn get_as_string(&self) -> (res: Result<&SmolStr>)
+        ensures
+            (self@ is Prim && self@->p is String) ==> (res matches Ok(s) && s@ == self@->p->s),
+            !(self@ is Prim && self@->p is String) ==> res is Err,
+    {
         match &self.value {
             ValueKind::Lit(Literal::String(s)) => Ok(s),
             _ => Err(EvaluationError::type_error_single(Type::String, self)),
@@ -1221,7 +1254,11 @@ impl Value {
     }
 
     /// Convert the `Value` to a Set, or throw a type error if it's not a Set.
-    pub(crate) fn get_as_set(&self) -> Result<&Set> {
+    pub(crate) fn get_as_set(&self) -> (res: Result<&Set>)
+        ensures
+            self@ is Set ==> (res matches Ok(s) && s@ == self@->s),
+            !(self@ is Set) ==> res is Err,
+    {
         match &self.value {
             ValueKind::Set(set) => Ok(set),
             _ => Err(EvaluationError::type_error_single(Type::Set, self)),
@@ -1237,9 +1274,15 @@ impl Value {
         }
     }
 
+
     /// Convert the `Value` to an Entity, or throw a type error if it's not a
     /// Entity.
-    pub(crate) fn get_as_entity(&self) -> Result<&EntityUID> {
+    #[verifier::external_body]
+    pub(crate) fn get_as_entity(&self) -> (res: Result<&EntityUID>)
+        ensures
+            (self@ is Prim && self@->p is EntityUID) ==> (res matches Ok(uid) && uid@ == self@->p->uid),
+            !(self@ is Prim && self@->p is EntityUID) ==> res is Err,
+    {
         match &self.value {
             ValueKind::Lit(Literal::EntityUID(uid)) => Ok(uid.as_ref()),
             _ => Err(EvaluationError::type_error_single(
@@ -1247,6 +1290,8 @@ impl Value {
                 self,
             )),
         }
+    }
+
     }
 }
 

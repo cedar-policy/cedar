@@ -19,6 +19,7 @@
 #![allow(missing_debug_implementations)] // vstd types Seq/Set/Map don't impl Debug
 #![allow(missing_docs)] // don't want docs on `assume_specification` etc
 
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
@@ -60,9 +61,75 @@ macro_rules! empty_clone_spec_for {
 #[allow(unused_imports)]
 pub(crate) use empty_clone_spec_for;
 
+#[allow(unused_imports)]
+macro_rules! eq_spec_for {
+    ($type_name:ty) => {
+        verus! {
+        pub assume_specification[<$type_name as PartialEq>::eq](s1: &$type_name, s2: &$type_name) -> (res: bool)
+            ensures
+                res == (s1@ == s2@);
+        }
+    };
+}
+#[allow(unused_imports)]
+pub(crate) use eq_spec_for;
+
+// Arithmetic
+
+verus! {
+
+#[verifier::inline]
+pub open spec fn i64_of_int_checked(x: int) -> Option<i64> {
+    if i64::MIN <= x && x <= i64::MAX {
+        Some(x as i64)
+    } else {
+        None
+    }
+}
+
+#[verifier::inline]
+pub open spec fn checked_add(i1: i64, i2: i64) -> Option<i64> {
+    i64_of_int_checked(i1 as int + i2 as int)
+}
+
+#[verifier::inline]
+pub open spec fn checked_sub(i1: i64, i2: i64) -> Option<i64> {
+    i64_of_int_checked(i1 as int - i2 as int)
+}
+
+#[verifier::inline]
+pub open spec fn checked_mul(i1: i64, i2: i64) -> Option<i64> {
+    i64_of_int_checked(i1 as int * i2 as int)
+}
+
+#[verifier::inline]
+pub open spec fn checked_neg(i: i64) -> Option<i64> {
+    i64_of_int_checked(-(i as int))
+}
+
+#[verifier::external_body]
+pub fn i64_checked_neg_verus(i: &i64) -> (neg: Option<i64>)
+    ensures neg == checked_neg(*i)
+{
+    i.checked_neg()
+}
+
+} // verus!
+
 // Specifications for external types
 
 verus! {
+
+// Misc stdlib stuff
+
+pub assume_specification<T: Clone, A: std::alloc::Allocator>[Arc::unwrap_or_clone](arc: Arc<T, A>) -> (inner: T)
+    ensures inner == arc;
+
+pub assume_specification<T: ?Sized, A: std::alloc::Allocator>[Arc::as_ref](arc: &Arc<T, A>) -> (a_ref: &T)
+    ensures a_ref == arc;
+
+// We don't actually need the spec on this
+pub assume_specification<T: Clone>[Option::<&T>::cloned](opt: Option<&T>) -> (cloned_opt: Option<T>);
 
 // SmolStr
 
@@ -83,7 +150,15 @@ impl SmolStrView for SmolStr {
     uninterp spec fn view(&self) -> Self::V;
 }
 
+pub assume_specification[SmolStr::as_str](this: &SmolStr) -> (s: &str)
+    ensures this@ == s@;
 
+// NonEmpty
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)] // TODO: can be relaxed maybe
+pub struct ExNonEmpty<T>(NonEmpty<T>);
 
 // BTreeMap
 
@@ -119,15 +194,6 @@ pub trait BTreeMapView {
 //     uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
 // }
 
-pub assume_specification<T: Clone, A: std::alloc::Allocator>[Arc::unwrap_or_clone](arc: Arc<T, A>) -> (inner: T)
-    ensures inner == arc;
-
-pub assume_specification<T: ?Sized, A: std::alloc::Allocator>[Arc::as_ref](arc: &Arc<T, A>) -> (a_ref: &T)
-    ensures a_ref == arc;
-
-// We don't actually need the spec on this
-pub assume_specification<T: Clone>[Option::<&T>::cloned](opt: Option<&T>) -> (cloned_opt: Option<T>);
-
 } // verus!
 
 // Helper data structures (should be in vstd)
@@ -153,6 +219,8 @@ impl<T> FiniteSet<T> {
     pub closed spec fn is_empty(self) -> bool {
         self.s.len() == 0
     }
+
+    pub uninterp spec fn len(&self) -> nat;
 
     pub uninterp spec fn all(&self, pred: spec_fn(T) -> bool) -> bool;
 

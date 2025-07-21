@@ -419,15 +419,21 @@ impl RepresentableExtensionValue {
         self.value.as_ref()
     }
 
+    verus! {
+
     /// Get the typename of this extension value
+    #[verifier::external_body]
     pub fn typename(&self) -> Name {
         self.value.typename()
     }
 
     /// If this value supports operator overloading
+    #[verifier::external_body]
     pub(crate) fn supports_operator_overloading(&self) -> bool {
         self.value.supports_operator_overloading()
     }
+
+    } // verus!
 }
 
 impl From<RepresentableExtensionValue> for RestrictedExpr {

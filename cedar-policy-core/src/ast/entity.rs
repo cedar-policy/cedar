@@ -83,6 +83,23 @@ impl View for EntityType {
 }
 
 clone_spec_for!(EntityType);
+eq_spec_for!(EntityType);
+
+impl EntityType {
+    // Verus doesn't appropriately propagate the spec for `PartialEq::eq`, so we just add a wrapper
+    #[verifier::external_body]
+    pub fn eq_entity_type(&self, other: &Self) -> (b: bool)
+        ensures b == (self@ == other@)
+    {
+        match (self, other) {
+            (EntityType::EntityType(n1), EntityType::EntityType(n2)) => n1 == n2,
+            #[cfg(feature = "tolerant-ast")]
+            (EntityType::ErrorEntityType, EntityType::ErrorEntityType) => true,
+            #[cfg(feature = "tolerant-ast")]
+            _ => false,
+        }
+    }
+}
 
 }
 
@@ -373,13 +390,19 @@ impl EntityUID {
         Self::EntityUID(EntityUIDImpl { ty, eid, loc })
     }
 
+    verus! {
+
     /// Get the type component.
-    pub fn entity_type(&self) -> &EntityType {
+    pub fn entity_type(&self) -> (ty: &EntityType)
+        ensures ty@ == self@.ty
+    {
         match self {
             EntityUID::EntityUID(entity_uid) => &entity_uid.ty,
             #[cfg(feature = "tolerant-ast")]
             EntityUID::Error => &EntityType::ErrorEntityType,
         }
+    }
+
     }
 
     /// Get the Eid component.
@@ -652,6 +675,33 @@ impl Entity {
         self.tags.get(tag)
     }
 
+    verus! {
+
+    /// Get the value for the given attribute, or `None` if not present
+    /// For Verus purposes, return `None` if the value is a residual
+    /// (should not happen)
+    #[verifier::external_body]
+    pub fn get_value_verus(&self, attr: &str) -> Option<&Value> {
+        match self.attrs.get(attr) {
+            Some(PartialValue::Value(v)) => Some(v),
+            _ => None
+        }
+    }
+
+    /// Get the value for the given tag, or `None` if not present
+    /// For Verus purposes, return `None` if the value is a residual
+    /// (should not happen)
+    #[verifier::external_body]
+    pub fn get_tag_value_verus(&self, tag: &str) -> Option<&Value> {
+        match self.tags.get(tag) {
+            Some(PartialValue::Value(v)) => Some(v),
+            _ => None
+        }
+    }
+
+
+    }
+
     /// Is this `Entity` a (direct or indirect) descendant of `e` in the entity hierarchy?
     pub fn is_descendant_of(&self, e: &EntityUID) -> bool {
         self.parents.contains(e) || self.indirect_ancestors.contains(e)
@@ -682,14 +732,20 @@ impl Entity {
         self.parents.iter()
     }
 
+    verus! {
+
     /// Get the number of attributes on this entity
+    #[verifier::external_body]
     pub fn attrs_len(&self) -> usize {
         self.attrs.len()
     }
 
     /// Get the number of tags on this entity
+    #[verifier::external_body]
     pub fn tags_len(&self) -> usize {
         self.tags.len()
+    }
+
     }
 
     /// Iterate over this entity's attribute names
@@ -703,6 +759,13 @@ impl Entity {
     }
 
     verus! {
+
+    /// Produce a `Vec` of this entity's attribute names, since Verus cannot handle
+    /// `impl Iterator<Item = &SmolStr>` in return position
+    #[verifier::external_body]
+    pub fn keys_verus(&self) -> Vec<&SmolStr> {
+        self.attrs.keys().collect()
+    }
 
     /// Produce a `Vec` of this entity's tag names, since Verus cannot handle
     /// `impl Iterator<Item = &SmolStr>` in return position

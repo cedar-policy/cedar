@@ -22,6 +22,9 @@ use vstd::prelude::*;
 
 verus! {
 
+// We don't verify anything to do with the `Type`s, since in the evaluator, they are
+// only used to provide better error messages. They are not used in the spec evaluator
+
 /// This represents the runtime type of a Cedar value.
 /// Nominal types: two entity types are equal if they have the same Name.
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
@@ -71,9 +74,14 @@ pub enum Type {
 }
 
 impl Type {
+    verus! {
+
     /// Shorthand for constructing an entity type.
+    #[verifier::external_body]
     pub fn entity_type(name: Name) -> Self {
         Type::Entity { ty: name.into() }
+    }
+
     }
 }
 
@@ -91,6 +99,8 @@ impl std::fmt::Display for Type {
     }
 }
 
+verus! {
+
 /// Trait for everything in Cedar that has a type known statically.
 ///
 /// For instance, `Value` and `Entity` implement this, but `Expr` does not
@@ -98,4 +108,6 @@ impl std::fmt::Display for Type {
 pub trait StaticallyTyped {
     /// Get the object's type
     fn type_of(&self) -> Type;
+}
+
 }

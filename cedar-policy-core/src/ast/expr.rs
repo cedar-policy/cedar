@@ -199,6 +199,29 @@ impl<T> BTreeMapView for BTreeMap<SmolStr, Expr<T>> {
     uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
 }
 
+#[verifier::external_body]
+pub fn expr_map_get_arc<'a, T>(expr_map: &'a Arc<BTreeMap<SmolStr, Expr<T>>>, key: &SmolStr) -> (res: Option<&'a Expr<T>>)
+    ensures
+        res matches Some(v) ==> expr_map@.get(key@) matches Some(v_spec) && v@ == v_spec@,
+        res is None ==> expr_map@.get(key@) is None
+{
+    expr_map.get(key)
+}
+
+#[verifier::external_body]
+pub fn expr_map_keys_arc<'a, T>(expr_map: &'a Arc<BTreeMap<SmolStr, Expr<T>>>) -> (res: Vec<&'a SmolStr>)
+    ensures
+        res@.map_values(|k: &SmolStr| k@).to_set() == expr_map@.dom()
+{
+    expr_map.keys().collect()
+}
+
+#[verifier::external_body]
+pub fn expr_map_len<T>(expr_map: &Arc<BTreeMap<SmolStr, Expr<T>>>) -> usize {
+    expr_map.len()
+}
+
+
 impl<T> View for ExprKind<T> {
     type V = spec_ast::Expr;
 
@@ -811,11 +834,16 @@ impl Expr {
         ExprBuilder::new().binary_app(op, arg1, arg2)
     }
 
+    verus! {
+
     /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
+    #[verifier::external_body]
     pub fn get_attr(expr: Expr, attr: SmolStr) -> Self {
         ExprBuilder::new().get_attr(expr, attr)
+    }
+
     }
 
     /// Create an `Expr` which tests for the existence of a given

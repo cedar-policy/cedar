@@ -43,35 +43,6 @@ pub open spec fn int_or_err(x: Option<i64>) -> SpecResult<Value> {
     }
 }
 
-#[verifier::inline]
-pub open spec fn i64_of_int_checked(x: int) -> Option<i64> {
-    if i64::MIN <= x && x <= i64::MAX {
-        Some(x as i64)
-    } else {
-        None
-    }
-}
-
-#[verifier::inline]
-pub open spec fn checked_add(i1: i64, i2: i64) -> Option<i64> {
-    i64_of_int_checked(i1 as int + i2 as int)
-}
-
-#[verifier::inline]
-pub open spec fn checked_sub(i1: i64, i2: i64) -> Option<i64> {
-    i64_of_int_checked(i1 as int - i2 as int)
-}
-
-#[verifier::inline]
-pub open spec fn checked_mul(i1: i64, i2: i64) -> Option<i64> {
-    i64_of_int_checked(i1 as int * i2 as int)
-}
-
-#[verifier::inline]
-pub open spec fn checked_neg(i: i64) -> Option<i64> {
-    i64_of_int_checked(-(i as int))
-}
-
 pub open spec fn apply_1(u: UnaryOp, v: Value) -> SpecResult<Value> {
     match (u, v) {
         (UnaryOp::Not, Value::Prim { p: Prim::Bool { b }}) => Ok(Value::bool(!b)),

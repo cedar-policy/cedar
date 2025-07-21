@@ -481,6 +481,7 @@ impl View for Name {
 }
 
 clone_spec_for!(Name);
+eq_spec_for!(Name);
 
 }
 

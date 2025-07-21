@@ -91,6 +91,25 @@ impl BTreeMapView for BTreeMap<SmolStr, Value> {
     uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
 }
 
+#[verifier::external_body]
+pub fn record_get_arc<'a>(record: &'a Arc<BTreeMap<SmolStr, Value>>, key: &SmolStr) -> (res: Option<&'a Value>)
+    ensures
+        res matches Some(v) ==> record@.get(key@) matches Some(v_spec) && v@ == v_spec,
+        res is None ==> record@.get(key@) is None
+{
+    record.get(key)
+}
+
+impl Value {
+    // Cannot attach Verus spec to PartialEq
+    #[verifier::external_body]
+    pub fn eq_value(&self, other: &Value) -> (res: bool)
+        ensures res == (self@ == other@)
+    {
+        self == other
+    }
+}
+
 } // verus!
 
 impl Value {
@@ -128,14 +147,14 @@ impl Value {
         Self { value: ValueKind::Lit(Literal::EntityUID(Arc::new(value))), loc }
     }
 
-    }
-
     /// Create a set with the given `Value`s as elements
     pub fn set(vals: impl IntoIterator<Item = Value>, loc: Option<Loc>) -> Self {
         Self {
             value: ValueKind::set(vals),
             loc,
         }
+    }
+
     }
 
     /// Create a set with the given `Literal`s as elements
@@ -149,7 +168,10 @@ impl Value {
         }
     }
 
+    verus! {
+
     /// Create a record with the given (key, value) pairs
+    #[verifier::external_body]
     pub fn record<K: Into<SmolStr>, V: Into<Value>>(
         pairs: impl IntoIterator<Item = (K, V)>,
         loc: Option<Loc>,
@@ -158,6 +180,8 @@ impl Value {
             value: ValueKind::record(pairs),
             loc,
         }
+    }
+
     }
 
     /// Create a record with the given attributes/value mapping.
@@ -177,16 +201,18 @@ impl Value {
         Self { loc, ..self }
     }
 
-    } // verus!
-
     /// Get the `ValueKind` for this `Value`
-    pub fn value_kind(&self) -> &ValueKind {
+    pub fn value_kind(&self) -> (vk: &ValueKind)
+        ensures vk@ == self@
+    {
         &self.value
     }
 
     /// Get the `Loc` attached to this `Value`, if there is one
     pub fn source_loc(&self) -> Option<&Loc> {
         self.loc.as_ref()
+    }
+
     }
 
     /// If the value is a `Literal`, get a reference to the underlying `Literal`
@@ -219,9 +245,14 @@ impl ValueKind {
         Self::Record(Arc::new(BTreeMap::new()))
     }
 
+    verus! {
+
     /// Create a set with the given `Value`s as elements
+    #[verifier::external_body]
     pub fn set(vals: impl IntoIterator<Item = Value>) -> Self {
         Self::Set(Set::new(vals))
+    }
+
     }
 
     /// Create a set with the given `Literal`s as elements
@@ -487,14 +518,24 @@ impl Set {
         }
     }
 
+    verus! {
+
     /// Get the number of items in the set
-    pub fn len(&self) -> usize {
+    #[verifier::external_body]
+    pub fn len(&self) -> (l: usize)
+        ensures l as nat == self@.len()
+    {
         self.authoritative.len()
     }
 
     /// Convenience method to check if a set is empty
-    pub fn is_empty(&self) -> bool {
+    #[verifier::external_body]
+    pub fn is_empty(&self) -> (b: bool)
+        ensures b == (self@.is_empty())
+    {
         self.len() == 0
+    }
+
     }
 
     /// Borrowed iterator
@@ -592,6 +633,8 @@ impl PartialOrd<Set> for Set {
     }
 }
 
+verus! {
+
 impl StaticallyTyped for Value {
     fn type_of(&self) -> Type {
         self.value.type_of()
@@ -599,6 +642,7 @@ impl StaticallyTyped for Value {
 }
 
 impl StaticallyTyped for ValueKind {
+    #[verifier::external_body]
     fn type_of(&self) -> Type {
         match self {
             Self::Lit(lit) => lit.type_of(),
@@ -607,6 +651,8 @@ impl StaticallyTyped for ValueKind {
             Self::ExtensionValue(ev) => ev.type_of(),
         }
     }
+}
+
 }
 
 /// Like `Display`, but optionally truncates embedded sets/records to `n`

@@ -103,7 +103,10 @@ impl Entities {
         ret
     }
 
+    verus! {
+
     /// Get the `Entity` with the given UID, if any
+    #[verifier::external_body]
     pub fn entity(&self, uid: &EntityUID) -> Dereference<'_, Entity> {
         match self.entities.get(uid) {
             Some(e) => Dereference::Data(e),
@@ -118,6 +121,8 @@ impl Entities {
                 ))),
             },
         }
+    }
+
     }
 
     /// Iterate over the `Entity`s in the `Entities`
@@ -484,8 +489,11 @@ impl std::fmt::Display for Entities {
     }
 }
 
+verus! {
+
 /// Results from dereferencing values from the Entity Store
 #[derive(Debug, Clone)]
+#[verifier::external_derive]
 pub enum Dereference<'a, T> {
     /// No entity with the dereferenced EntityUID exists. This is an error.
     NoSuchEntity,
@@ -493,6 +501,8 @@ pub enum Dereference<'a, T> {
     Residual(Expr),
     /// The entity store has returned the requested data.
     Data(&'a T),
+}
+
 }
 
 impl<'a, T> Dereference<'a, T>
