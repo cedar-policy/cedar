@@ -28,8 +28,8 @@ use cedar_policy_core::{
     parser::Loc,
 };
 use itertools::Itertools;
-use lsp_types::Range;
 use smol_str::SmolStr;
+use tower_lsp_server::lsp_types::Range;
 
 use crate::{
     policy::{

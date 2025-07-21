@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use lsp_types::{CompletionItem, Documentation, MarkupContent};
+use tower_lsp_server::lsp_types::{self, CompletionItem, Documentation, MarkupContent};
 
 use crate::documentation::{DecimalDocumentation, IpDocumentation, ToDocumentationString};
 
@@ -27,7 +27,7 @@ impl From<DecimalCompletionItem> for CompletionItem {
             insert_text: Some("decimal(${1})".to_string()),
             insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
             documentation: Some(Documentation::MarkupContent(MarkupContent {
-                kind: lsp_types::MarkupKind::Markdown,
+                kind: tower_lsp_server::lsp_types::MarkupKind::Markdown,
                 value: DecimalDocumentation
                     .to_documentation_string(None)
                     .into_owned(),
@@ -47,7 +47,7 @@ impl From<IpCompletionItem> for CompletionItem {
             kind: Some(lsp_types::CompletionItemKind::FUNCTION),
             insert_text: Some("ip(${1:\"127.0.0.1\"})".to_string()),
             documentation: Some(Documentation::MarkupContent(MarkupContent {
-                kind: lsp_types::MarkupKind::Markdown,
+                kind: tower_lsp_server::lsp_types::MarkupKind::Markdown,
                 value: IpDocumentation.to_documentation_string(None).into_owned(),
             })),
             insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),

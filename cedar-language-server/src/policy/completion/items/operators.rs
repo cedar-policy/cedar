@@ -15,7 +15,7 @@
  */
 
 #![allow(clippy::literal_string_with_formatting_args)]
-use lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat};
+use tower_lsp_server::lsp_types::{self, CompletionItem, CompletionItemKind, InsertTextFormat};
 
 pub(crate) struct IfCompletionItem;
 

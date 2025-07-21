@@ -16,13 +16,15 @@
 
 use std::collections::HashMap;
 
-use lsp_types::{CodeAction, CodeActionContext, CodeActionKind, TextEdit, Url, WorkspaceEdit};
+use tower_lsp_server::lsp_types::{
+    CodeAction, CodeActionContext, CodeActionKind, TextEdit, Uri, WorkspaceEdit,
+};
 
 use super::DidYouMeanCodeAction;
 
 #[must_use]
 pub fn policy_quickfix_code_actions(
-    uri: &Url,
+    uri: &Uri,
     context: CodeActionContext,
 ) -> Option<Vec<CodeAction>> {
     let mut code_actions = Vec::new();
