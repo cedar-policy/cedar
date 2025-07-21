@@ -20,7 +20,7 @@ use cedar_policy_core::{
     ast::{AnyId, Template},
     parser::text_to_cst::parse_policies_tolerant,
 };
-use lsp_types::{DocumentSymbol, SymbolKind};
+use tower_lsp_server::lsp_types::{DocumentSymbol, SymbolKind};
 
 use crate::{lsp::new_symbol, utils::ToRange};
 
