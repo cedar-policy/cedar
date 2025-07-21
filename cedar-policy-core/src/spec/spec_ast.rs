@@ -73,6 +73,11 @@ impl Prim {
     }
 
     #[verifier::inline]
+    pub open spec fn string(s: Seq<char>) -> Prim {
+        Prim::String { s }
+    }
+
+    #[verifier::inline]
     pub open spec fn entity_uid(uid: EntityUID) -> Prim {
         Prim::EntityUID { uid }
     }

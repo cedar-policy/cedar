@@ -57,7 +57,17 @@ mod names {
 verus! {
 
 /// Apply a `UnaryOp` to `arg` of type `Value`
-pub fn unary_app(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> Result<Value> {
+pub fn unary_app(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> (res: Result<Value>)
+    ensures ({
+        &&& res matches Ok(res_v) ==> {
+            &&& spec_evaluator::apply_1(op@, arg@) matches Ok(v)
+            &&& res_v@ == v
+        }
+        &&& res is Err ==> {
+            &&& spec_evaluator::apply_1(op@, arg@) is Err
+        }
+    })
+{
     match op {
         UnaryOp::Not => match arg.get_as_bool()? {
             true => Ok(false.into()),
@@ -93,7 +103,9 @@ pub fn binary_relation(
     arg1: Value,
     arg2: Value,
     extensions: &Extensions<'_>,
-) -> Result<Value> {
+) -> (res: Result<Value>)
+    requires (op@ is Eq || op@ is Less || op@ is LessEq)
+{
     match op {
         BinaryOp::Eq => Ok((arg1.eq_value(&arg2)).into()),
         // comparison and arithmetic operators, which only work on Longs
@@ -128,7 +140,7 @@ pub fn binary_relation(
                     // };
                     // Ok(b.into())
                     // TODO: support extension functions
-                    unreached()
+                    assume(false); unreached()
                 }
                 // throw type errors
                 (ValueKind::Lit(Literal::Long(_)), _) => {
@@ -177,7 +189,9 @@ pub fn binary_relation(
 }
 
 /// Evaluate binary arithmetic operations (i.e., `BinaryOp::Add`, `BinaryOp::Sub`, and `BinaryOp::Mul`)
-pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -> Result<Value> {
+pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -> (res: Result<Value>)
+    requires (op@ is Add || op@ is Sub || op@ is Mul)
+{
     let i1 = arg1.get_as_long()?;
     let i2 = arg2.get_as_long()?;
     match op {

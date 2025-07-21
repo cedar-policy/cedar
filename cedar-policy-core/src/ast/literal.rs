@@ -99,51 +99,72 @@ impl std::str::FromStr for Literal {
     }
 }
 
+verus! {
+
 /// Create a Literal directly from a bool
 impl From<bool> for Literal {
-    fn from(b: bool) -> Self {
+    fn from(b: bool) -> (r: Self)
+        ensures r@ == spec_ast::Prim::pbool(b)
+    {
         Self::Bool(b)
     }
 }
 
 /// Create a Literal directly from an Integer
 impl From<Integer> for Literal {
-    fn from(i: Integer) -> Self {
+    fn from(i: Integer) -> (r: Self)
+        ensures r@ == spec_ast::Prim::int(i)
+    {
         Self::Long(i)
     }
 }
 
 /// Create a Literal directly from a String
 impl From<String> for Literal {
-    fn from(s: String) -> Self {
+    #[verifier::external_body]
+    fn from(s: String) -> (r: Self)
+        ensures r@ == spec_ast::Prim::string(s@)
+    {
         Self::String(SmolStr::new(s))
     }
 }
 
 /// Create a Literal directly from an &str
 impl From<&str> for Literal {
-    fn from(s: &str) -> Self {
+    #[verifier::external_body]
+    fn from(s: &str) -> (r: Self)
+        ensures r@ == spec_ast::Prim::string(s@)
+    {
         Self::String(SmolStr::new(s))
     }
 }
 
 impl From<SmolStr> for Literal {
-    fn from(s: SmolStr) -> Self {
+    #[verifier::external_body]
+    fn from(s: SmolStr) -> (r: Self)
+        ensures r@ == spec_ast::Prim::string(s@)
+    {
         Self::String(s)
     }
 }
 
 /// Create a Literal directly from an EntityUID
 impl From<EntityUID> for Literal {
-    fn from(e: EntityUID) -> Self {
+    fn from(e: EntityUID) -> (r: Self)
+        ensures r@ == spec_ast::Prim::entity_uid(e@)
+    {
         Self::EntityUID(Arc::new(e))
     }
 }
 
 impl From<Arc<EntityUID>> for Literal {
-    fn from(ptr: Arc<EntityUID>) -> Self {
+    fn from(ptr: Arc<EntityUID>) -> (r: Self)
+        ensures r@ == spec_ast::Prim::entity_uid(ptr@)
+    {
         Self::EntityUID(ptr)
     }
+}
+
 }
 
 impl Literal {
