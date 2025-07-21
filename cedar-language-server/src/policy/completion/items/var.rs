@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use lsp_types::{Documentation, MarkupContent};
+use tower_lsp_server::lsp_types::{self, Documentation, MarkupContent};
 
 use crate::{
     documentation::{
@@ -53,7 +53,7 @@ impl From<&PrincipalCompletionItem<'_>> for PrincipalDocumentation {
     }
 }
 
-impl From<PrincipalCompletionItem<'_>> for lsp_types::CompletionItem {
+impl From<PrincipalCompletionItem<'_>> for tower_lsp_server::lsp_types::CompletionItem {
     fn from(value: PrincipalCompletionItem<'_>) -> Self {
         let label = if value.template {
             "?principal"
@@ -64,9 +64,9 @@ impl From<PrincipalCompletionItem<'_>> for lsp_types::CompletionItem {
 
         Self {
             label,
-            kind: lsp_types::CompletionItemKind::VARIABLE.into(),
+            kind: tower_lsp_server::lsp_types::CompletionItemKind::VARIABLE.into(),
             documentation: Documentation::MarkupContent(MarkupContent {
-                kind: lsp_types::MarkupKind::Markdown,
+                kind: tower_lsp_server::lsp_types::MarkupKind::Markdown,
                 value: PrincipalDocumentation::from(&value)
                     .to_documentation_string(value.cx.schema())
                     .into_owned(),
@@ -96,13 +96,13 @@ impl<'a> From<&'a ActionCompletionItem<'a>> for ActionDocumentation<'a> {
     }
 }
 
-impl From<ActionCompletionItem<'_>> for lsp_types::CompletionItem {
+impl From<ActionCompletionItem<'_>> for tower_lsp_server::lsp_types::CompletionItem {
     fn from(value: ActionCompletionItem<'_>) -> Self {
         Self {
             label: "action".to_string(),
-            kind: lsp_types::CompletionItemKind::VARIABLE.into(),
+            kind: tower_lsp_server::lsp_types::CompletionItemKind::VARIABLE.into(),
             documentation: Documentation::MarkupContent(MarkupContent {
-                kind: lsp_types::MarkupKind::Markdown,
+                kind: tower_lsp_server::lsp_types::MarkupKind::Markdown,
                 value: ActionDocumentation::from(&value)
                     .to_documentation_string(value.cx.schema())
                     .into_owned(),
@@ -142,7 +142,7 @@ impl From<&ResourceCompletionItem<'_>> for ResourceDocumentation {
     }
 }
 
-impl From<ResourceCompletionItem<'_>> for lsp_types::CompletionItem {
+impl From<ResourceCompletionItem<'_>> for tower_lsp_server::lsp_types::CompletionItem {
     fn from(value: ResourceCompletionItem<'_>) -> Self {
         let label = if value.template {
             "?resource"
@@ -153,9 +153,9 @@ impl From<ResourceCompletionItem<'_>> for lsp_types::CompletionItem {
 
         Self {
             label,
-            kind: lsp_types::CompletionItemKind::VARIABLE.into(),
+            kind: tower_lsp_server::lsp_types::CompletionItemKind::VARIABLE.into(),
             documentation: Documentation::MarkupContent(MarkupContent {
-                kind: lsp_types::MarkupKind::Markdown,
+                kind: tower_lsp_server::lsp_types::MarkupKind::Markdown,
                 value: ResourceDocumentation::from(&value)
                     .to_documentation_string(value.cx.schema())
                     .into_owned(),
@@ -185,13 +185,13 @@ impl From<&ContextCompletionIem<'_>> for ContextDocumentation {
     }
 }
 
-impl From<ContextCompletionIem<'_>> for lsp_types::CompletionItem {
+impl From<ContextCompletionIem<'_>> for tower_lsp_server::lsp_types::CompletionItem {
     fn from(value: ContextCompletionIem<'_>) -> Self {
         Self {
             label: "context".to_string(),
-            kind: lsp_types::CompletionItemKind::VARIABLE.into(),
+            kind: tower_lsp_server::lsp_types::CompletionItemKind::VARIABLE.into(),
             documentation: Documentation::MarkupContent(MarkupContent {
-                kind: lsp_types::MarkupKind::Markdown,
+                kind: tower_lsp_server::lsp_types::MarkupKind::Markdown,
                 value: ContextDocumentation::from(&value)
                     .to_documentation_string(value.cx.schema())
                     .into_owned(),
@@ -204,12 +204,12 @@ impl From<ContextCompletionIem<'_>> for lsp_types::CompletionItem {
 
 pub(crate) struct BoolCompletionItem(pub(crate) bool);
 
-impl From<BoolCompletionItem> for lsp_types::CompletionItem {
+impl From<BoolCompletionItem> for tower_lsp_server::lsp_types::CompletionItem {
     fn from(value: BoolCompletionItem) -> Self {
         Self {
             label: value.0.to_string(),
             documentation: Some(Documentation::MarkupContent(MarkupContent {
-                kind: lsp_types::MarkupKind::Markdown,
+                kind: tower_lsp_server::lsp_types::MarkupKind::Markdown,
                 value: BoolDocumentation.to_documentation_string(None).into_owned(),
             })),
             kind: Some(lsp_types::CompletionItemKind::CONSTANT),

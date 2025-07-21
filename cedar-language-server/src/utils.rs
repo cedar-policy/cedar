@@ -17,9 +17,9 @@
 use std::fmt::Write;
 
 use cedar_policy_core::parser::Loc;
-use lsp_types::{Position, Range};
 use miette::SourceSpan;
 use smol_str::SmolStr;
+use tower_lsp_server::lsp_types::{self, Position, Range};
 
 pub(crate) trait ToRange {
     fn to_range(&self) -> Range;

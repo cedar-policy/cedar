@@ -30,7 +30,7 @@ use cedar_policy_core::{
     validator::{ValidatorEntityType, ValidatorSchema},
 };
 use itertools::Itertools;
-use lsp_types::{CompletionItem, CompletionItemKind};
+use tower_lsp_server::lsp_types::{self, CompletionItem, CompletionItemKind};
 
 /// Represents the context for completing a binary operation expression.
 ///

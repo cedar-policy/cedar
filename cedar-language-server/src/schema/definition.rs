@@ -22,7 +22,7 @@ use cedar_policy_core::validator::{
     ValidatorActionId, ValidatorEntityType, ValidatorSchema,
 };
 use itertools::Itertools;
-use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Url};
+use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 
 use crate::utils::{get_word_at_position, position_within_loc, ToRange};
 
@@ -66,7 +66,7 @@ use super::SchemaInfo;
 pub(crate) fn schema_goto_definition(
     position: Position,
     schema: &SchemaInfo,
-    schema_uri: &Url,
+    schema_uri: &Uri,
 ) -> Option<GotoDefinitionResponse> {
     let validator = ValidatorSchema::try_from(schema).ok().map(Arc::new)?;
 
@@ -267,7 +267,7 @@ fn offset_to_position(text: &str, offset: usize) -> Position {
 mod test {
     use std::sync::LazyLock;
 
-    use lsp_types::{GotoDefinitionResponse, Url};
+    use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Uri};
 
     use crate::{
         schema::SchemaInfo,
@@ -276,7 +276,7 @@ mod test {
 
     use tracing_test::traced_test;
 
-    static URL: LazyLock<Url> = LazyLock::new(|| Url::parse("https://example.net").ok().unwrap());
+    static URI: LazyLock<Uri> = LazyLock::new(|| "https://example.net".parse().ok().unwrap());
 
     #[track_caller]
     fn goto_def_test(schema: &str, expected: &str) {
@@ -285,7 +285,7 @@ mod test {
         let GotoDefinitionResponse::Scalar(actual) = super::schema_goto_definition(
             position,
             &SchemaInfo::cedar_schema(schema.clone()),
-            &URL,
+            &URI,
         )
         .unwrap() else {
             panic!("Expected exactly one definition");
