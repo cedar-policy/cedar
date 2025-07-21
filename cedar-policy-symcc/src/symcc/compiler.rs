@@ -203,11 +203,19 @@ pub fn compile_app2(op2: &BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Res
             }
         }
         (Less, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(some_of(factory::bvslt(t1, t2))),
+        (Less, Ext { xty: DateTime }, Ext { xty: DateTime }) => Ok(some_of(factory::bvslt(
+            factory::ext_datetime_val(t1),
+            factory::ext_datetime_val(t2),
+        ))),
         (Less, Ext { xty: Duration }, Ext { xty: Duration }) => Ok(some_of(factory::bvslt(
             factory::ext_duration_val(t1),
             factory::ext_duration_val(t2),
         ))),
         (LessEq, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(some_of(factory::bvsle(t1, t2))),
+        (LessEq, Ext { xty: DateTime }, Ext { xty: DateTime }) => Ok(some_of(factory::bvsle(
+            factory::ext_datetime_val(t1),
+            factory::ext_datetime_val(t2),
+        ))),
         (LessEq, Ext { xty: Duration }, Ext { xty: Duration }) => Ok(some_of(factory::bvsle(
             factory::ext_duration_val(t1),
             factory::ext_duration_val(t2),
@@ -412,35 +420,57 @@ pub fn compile_call0(mk: impl Fn(String) -> Option<Ext>, arg: Term) -> Result<Te
     }
 }
 
-pub fn compile_call1(xty: ExtType, enc: impl Fn(Term) -> Term, t1: Term) -> Result<Term> {
-    if t1.type_of()
-        == (TermType::Option {
-            ty: Box::new(TermType::Ext { xty }),
-        })
-    {
-        Ok(if_some(t1.clone(), some_of(enc(option_get(t1)))))
+// Use directly for encoding calls that can error
+pub fn compile_call1_error(xty: ExtType, enc: impl Fn(Term) -> Term, t1: Term) -> Result<Term> {
+    let ty = TermType::Option {
+        ty: Box::new(TermType::Ext { xty }),
+    };
+    if t1.type_of() == ty {
+        Ok(if_some(t1.clone(), enc(option_get(t1))))
     } else {
         Err(Error::TypeError)
     }
 }
 
+// Use directly for encoding calls that cannot error
+pub fn compile_call1(xty: ExtType, enc: impl Fn(Term) -> Term, t1: Term) -> Result<Term> {
+    let enc = |t1: Term| -> Term { some_of(enc(t1)) };
+    compile_call1_error(xty, enc, t1)
+}
+
+// Use directly for encoding calls that can error
+pub fn compile_call2_error(
+    xty1: ExtType,
+    xty2: ExtType,
+    enc: impl Fn(Term, Term) -> Term,
+    t1: Term,
+    t2: Term,
+) -> Result<Term> {
+    let ty1 = TermType::Option {
+        ty: Box::new(TermType::Ext { xty: xty1 }),
+    };
+    let ty2 = TermType::Option {
+        ty: Box::new(TermType::Ext { xty: xty2 }),
+    };
+    if t1.type_of() == ty1 && t2.type_of() == ty2 {
+        Ok(if_some(
+            t1.clone(),
+            if_some(t2.clone(), enc(option_get(t1), option_get(t2))),
+        ))
+    } else {
+        Err(Error::TypeError)
+    }
+}
+
+// Use directly for encoding calls that cannot error
 pub fn compile_call2(
     xty: ExtType,
     enc: impl Fn(Term, Term) -> Term,
     t1: Term,
     t2: Term,
 ) -> Result<Term> {
-    let ty = TermType::Option {
-        ty: Box::new(TermType::Ext { xty }),
-    };
-    if t1.type_of() == ty && t2.type_of() == ty {
-        Ok(if_some(
-            t1.clone(),
-            if_some(t2.clone(), some_of(enc(option_get(t1), option_get(t2)))),
-        ))
-    } else {
-        Err(Error::TypeError)
-    }
+    let enc = |t1: Term, t2: Term| -> Term { some_of(enc(t1, t2)) };
+    compile_call2_error(xty.clone(), xty, enc, t1, t2)
 }
 
 /// Extract the first item from a `Vec`, consuming the `Vec`.
@@ -509,7 +539,36 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
             let (t1, t2) = extract_first2(ts);
             compile_call2(ExtType::IpAddr, extfun::is_in_range, t1, t2)
         }
-        ("duration", 1) => Err(Error::UnsupportedError),
+        ("datetime", 1) => {
+            let t1 = extract_first(ts);
+            compile_call0(Ext::parse_datetime, t1)
+        }
+        ("duration", 1) => {
+            let t1 = extract_first(ts);
+            compile_call0(Ext::parse_duration, t1)
+        }
+        ("offset", 2) => {
+            let (t1, t2) = extract_first2(ts);
+            compile_call2_error(ExtType::DateTime, ExtType::Duration, extfun::offset, t1, t2)
+        }
+        ("durationSince", 2) => {
+            let (t1, t2) = extract_first2(ts);
+            compile_call2_error(
+                ExtType::DateTime,
+                ExtType::DateTime,
+                extfun::duration_since,
+                t1,
+                t2,
+            )
+        }
+        ("toDate", 1) => {
+            let t1 = extract_first(ts);
+            compile_call1_error(ExtType::DateTime, extfun::to_date, t1)
+        }
+        ("toTime", 1) => {
+            let t1 = extract_first(ts);
+            compile_call1(ExtType::DateTime, extfun::to_time, t1)
+        }
         ("toMilliseconds", 1) => {
             let t1 = extract_first(ts);
             compile_call1(ExtType::Duration, extfun::to_milliseconds, t1)
@@ -627,13 +686,15 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
 }
 
 #[cfg(test)]
-mod tests {
+mod decimal_tests {
 
     use cedar_policy_core::ast::Name;
 
     use cedar_policy::{RequestEnv, Schema};
 
     use crate::symcc::{extension_types::decimal::Decimal, result::Error};
+
+    use std::str::FromStr;
 
     use super::*;
 
@@ -707,6 +768,18 @@ mod tests {
         );
     }
 
+    fn parse_expr(str: &str) -> Expr {
+        Expr::from_str(str).expect(format!("Could not parse expression: {str}").as_str())
+    }
+
+    fn test_valid_bool_simpl_expr(str: &str, res: bool) {
+        assert_eq!(
+            compile(&parse_expr(str), &sym_env()),
+            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Bool(res))))),
+            "{str}"
+        )
+    }
+
     #[test]
     fn test_decimal() {
         test_valid("0.0", 0);
@@ -733,5 +806,470 @@ mod tests {
             Err(Error::TypeError),
             "Error: applying decimal constructor to a non-literal"
         );
+    }
+
+    #[test]
+    // Test expressions for decimal comparisons that evaluates to a constant bool
+    fn test_decimal_simpl_comp_expr() {
+        test_valid_bool_simpl_expr(r#"decimal("0.0") == decimal("0.1")"#, false);
+        test_valid_bool_simpl_expr(r#"decimal("0.0") == decimal("0.00")"#, true);
+        test_valid_bool_simpl_expr(r#"decimal("0.0") != decimal("0.0001")"#, true);
+        test_valid_bool_simpl_expr(r#"decimal("0.0") != decimal("0.00")"#, false);
+        test_valid_bool_simpl_expr(r#"decimal("0.0").lessThan(decimal("0.0001"))"#, true);
+        test_valid_bool_simpl_expr(r#"decimal("0.0").greaterThan(decimal("0.0001"))"#, false);
+        test_valid_bool_simpl_expr(
+            r#"decimal("0.0010").lessThanOrEqual(decimal("0.001"))"#,
+            true,
+        );
+        test_valid_bool_simpl_expr(
+            r#"decimal("0.0010").greaterThanOrEqual(decimal("0.001"))"#,
+            true,
+        );
+    }
+}
+
+#[cfg(test)]
+mod datetime_tests {
+    use cedar_policy_core::ast::Name;
+
+    use cedar_policy::{RequestEnv, Schema};
+
+    use crate::symcc::{
+        extension_types::datetime::{Datetime, Duration},
+        result::Error,
+    };
+
+    use super::*;
+
+    use std::str::FromStr;
+
+    #[track_caller]
+    pub fn pretty_panic<T>(e: impl miette::Diagnostic + Send + Sync + 'static) -> T {
+        panic!("{:?}", miette::Report::new(e))
+    }
+
+    fn datetime_lit(str: &str) -> Expr {
+        Expr::call_extension_fn(
+            Name::parse_unqualified_name("datetime")
+                .expect("Could not parse datetime ext constructor."),
+            vec![Expr::val(str)],
+        )
+    }
+
+    fn duration_lit(str: &str) -> Expr {
+        Expr::call_extension_fn(
+            Name::parse_unqualified_name("duration")
+                .expect("Could not parse datetime ext constructor."),
+            vec![Expr::val(str)],
+        )
+    }
+
+    fn datetime_schema() -> Schema {
+        let schema = r#"
+            entity Thing;
+            entity User;
+            action View appliesTo {
+                principal: [User],
+                resource: [Thing],
+                context: {
+                    x: datetime,
+                    y: datetime,
+                    z: datetime,
+                    s: String,
+                }
+            };
+        "#;
+        Schema::from_cedarschema_str(schema)
+            .unwrap_or_else(pretty_panic)
+            .0
+    }
+
+    fn duration_schema() -> Schema {
+        let schema = r#"
+            entity Thing;
+            entity User;
+            action View appliesTo {
+                principal: [User],
+                resource: [Thing],
+                context: {
+                    x: duration,
+                    y: duration,
+                    z: duration,
+                    s: String,
+                }
+            };
+        "#;
+        Schema::from_cedarschema_str(schema)
+            .unwrap_or_else(pretty_panic)
+            .0
+    }
+
+    fn request_env() -> RequestEnv {
+        RequestEnv::new(
+            "User".parse().unwrap(),
+            "Action::\"View\"".parse().unwrap(),
+            "Thing".parse().unwrap(),
+        )
+    }
+
+    fn datetime_sym_env() -> SymEnv {
+        SymEnv::new(&datetime_schema(), &request_env()).expect("Malformed sym env.")
+    }
+
+    fn duration_sym_env() -> SymEnv {
+        SymEnv::new(&duration_schema(), &request_env()).expect("Malformed sym env.")
+    }
+
+    #[track_caller]
+    fn test_valid_datetime_constructor(str: &str, rep: i64) {
+        assert_eq!(
+            compile(&datetime_lit(str), &datetime_sym_env()),
+            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Ext(
+                Ext::Datetime {
+                    dt: Datetime::from(i128::from(rep))
+                }
+            ))))),
+            "{str}"
+        );
+    }
+
+    #[track_caller]
+    fn test_invalid_datetime_constructor(str: &str, msg: &str) {
+        let sym_env = SymEnv::new(&datetime_schema(), &request_env()).expect("Malformed sym env.");
+        assert_eq!(
+            compile(&datetime_lit(str), &sym_env),
+            Err(Error::TypeError),
+            "{msg}"
+        );
+    }
+
+    #[track_caller]
+    fn test_valid_duration_constructor(str: &str, rep: i64) {
+        assert_eq!(
+            compile(&duration_lit(str), &duration_sym_env()),
+            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Ext(
+                Ext::Duration {
+                    d: Duration::from(i128::from(rep))
+                }
+            ))))),
+            "{str}"
+        );
+    }
+
+    #[track_caller]
+    fn test_invalid_duration_constructor(str: &str, msg: &str) {
+        let sym_env = SymEnv::new(&duration_schema(), &request_env()).expect("Malformed sym env.");
+        assert_eq!(
+            compile(&duration_lit(str), &sym_env),
+            Err(Error::TypeError),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn test_datetime() {
+        test_valid_datetime_constructor("2022-10-10", 1665360000000);
+        test_valid_datetime_constructor("1969-12-31", -86400000);
+        test_valid_datetime_constructor("1969-12-31T23:59:59Z", -1000);
+        test_valid_datetime_constructor("1969-12-31T23:59:59.001Z", -999);
+        test_valid_datetime_constructor("1969-12-31T23:59:59.999Z", -1);
+        test_valid_datetime_constructor("2024-10-15", 1728950400000);
+        test_valid_datetime_constructor("2024-10-15T11:38:02Z", 1728992282000);
+        test_valid_datetime_constructor("2024-10-15T11:38:02.101Z", 1728992282101);
+        test_valid_datetime_constructor("2024-10-15T11:38:02.101-1134", 1729033922101);
+        test_valid_datetime_constructor("2024-10-15T11:38:02.101+1134", 1728950642101);
+        test_valid_datetime_constructor("2024-10-15T11:38:02+1134", 1728950642000);
+        test_valid_datetime_constructor("2024-10-15T11:38:02-1134", 1729033922000);
+        test_invalid_datetime_constructor("", "empty string");
+        test_invalid_datetime_constructor("a", "string is letter");
+        test_invalid_datetime_constructor("-", "string is character");
+        test_invalid_datetime_constructor("-1", "string is integer");
+        test_invalid_datetime_constructor(" 2022-10-10", "leading space");
+        test_invalid_datetime_constructor("2022-10-10 ", "trailing space");
+        test_invalid_datetime_constructor("2022-10- 10", "interior space");
+        test_invalid_datetime_constructor("11-12-13", "two digits for year");
+        test_invalid_datetime_constructor("011-12-13", "three digits for year");
+        test_invalid_datetime_constructor("00011-12-13", "five digits for year");
+        test_invalid_datetime_constructor("0001-2-13", "one digit for month");
+        test_invalid_datetime_constructor("0001-012-13", "three digits for month");
+        test_invalid_datetime_constructor("0001-02-3", "one digit for day");
+        test_invalid_datetime_constructor("0001-02-003", "three digits for day");
+        test_invalid_datetime_constructor("0001-01-01T1:01:01Z", "one digit for hour");
+        test_invalid_datetime_constructor("0001-01-01T001:01:01Z", "three digits for hour");
+        test_invalid_datetime_constructor("0001-01-01T01:1:01Z", "one digit for minutes");
+        test_invalid_datetime_constructor("0001-01-01T01:001:01Z", "three digits for minutes");
+        test_invalid_datetime_constructor("0001-01-01T01:01:1Z", "one digit for seconds");
+        test_invalid_datetime_constructor("0001-01-01T01:01:001Z", "three digits for seconds");
+        test_invalid_datetime_constructor("0001-01-01T01:01:01.01Z", "two digits for ms");
+        test_invalid_datetime_constructor("0001-01-01T01:01:01.0001Z", "four digits for ms");
+        test_invalid_datetime_constructor("0001-01-01T01:01:01.001+01", "two digits for offset");
+        test_invalid_datetime_constructor("0001-01-01T01:01:01.001+001", "three digits for offset");
+        test_invalid_datetime_constructor(
+            "0001-01-01T01:01:01.001+000001",
+            "six digits for offset",
+        );
+        test_invalid_datetime_constructor("0001-01-01T01:01:01.001+00:01", "offset with colon");
+        test_invalid_datetime_constructor(
+            "0001-01-01T01:01:01.001+00:00:01",
+            "six offset with colon",
+        );
+        test_invalid_datetime_constructor("-0001-01-01", "negative year");
+        test_invalid_datetime_constructor("1111-1x-20", "invalid month");
+        test_invalid_datetime_constructor("1111-Jul-20", "abbreviated month");
+        test_invalid_datetime_constructor("1111-July-20", "full month");
+        test_invalid_datetime_constructor("1111-J-20", "single letter month");
+        test_invalid_datetime_constructor("2024-10-15Z", "Zulu code invalid for date");
+        test_invalid_datetime_constructor("2024-10-15T11:38:02ZZ", "double Zulu code");
+        test_invalid_datetime_constructor("2024-01-01T", "separator not needed");
+        test_invalid_datetime_constructor("2024-01-01Ta", "unexpected character 'a'");
+        test_invalid_datetime_constructor("2024-01-01T01:", "only hours");
+        test_invalid_datetime_constructor("2024-01-01T01:02", "no seconds");
+        test_invalid_datetime_constructor("2024-01-01T01:02:0b", "unexpected character 'b'");
+        test_invalid_datetime_constructor("2024-01-01T01::02:03", "double colon");
+        test_invalid_datetime_constructor("2024-01-01T01::02::03", "double colons");
+        test_invalid_datetime_constructor("2024-01-01T31:02:03Z", "invalid hour range");
+        test_invalid_datetime_constructor("2024-01-01T01:60:03Z", "invalid minute range");
+        test_invalid_datetime_constructor("2016-12-31T23:59:60Z", "leap second");
+        test_invalid_datetime_constructor("2016-12-31T23:59:61Z", "invalid second range");
+        test_invalid_datetime_constructor("2024-01-01T00:00:00", "timezone not specified");
+        test_invalid_datetime_constructor("2024-01-01T00:00:00T", "separator is not timezone");
+        test_invalid_datetime_constructor("2024-01-01T00:00:00ZZ", "double Zulu code");
+        test_invalid_datetime_constructor(
+            "2024-01-01T00:00:00x001Z",
+            "typo in milliseconds separator",
+        );
+        test_invalid_datetime_constructor(
+            "2024-01-01T00:00:00.001ZZ",
+            "double Zulu code w/ millis",
+        );
+        test_invalid_datetime_constructor("2016-12-31T23:59:60.000Z", "leap second (millis/UTC)");
+        test_invalid_datetime_constructor(
+            "2016-12-31T23:59:60.000+0200",
+            "leap second (millis/offset)",
+        );
+        test_invalid_datetime_constructor("2024-01-01T00:00:00➕0000", "sign `+` is an emoji");
+        test_invalid_datetime_constructor("2024-01-01T00:00:00➖0000", "sign `-` is an emoji");
+        test_invalid_datetime_constructor(
+            "2024-01-01T00:00:00.0001Z",
+            "fraction of seconds is 4 digits",
+        );
+        test_invalid_datetime_constructor("2024-01-01T00:00:00.001➖0000", "sign `+` is an emoji");
+        test_invalid_datetime_constructor("2024-01-01T00:00:00.001➕0000", "sign `-` is an emoji");
+        test_invalid_datetime_constructor("2024-01-01T00:00:00.001+00000", "offset is 5 digits");
+        test_invalid_datetime_constructor("2024-01-01T00:00:00.001-00000", "offset is 5 digits");
+        test_invalid_datetime_constructor("2016-01-01T00:00:00+2400", "invalid offset hour range");
+        test_invalid_datetime_constructor(
+            "2016-01-01T00:00:00+0060",
+            "invalid offset minute range",
+        );
+        test_invalid_datetime_constructor(
+            "2016-01-01T00:00:00+9999",
+            "invalid offset hour and minute range",
+        );
+        test_invalid_datetime_constructor(
+            "context.s",
+            "Error: applying datetime constructor to a non-literal",
+        );
+    }
+
+    #[test]
+    fn test_duration() {
+        test_valid_duration_constructor("0ms", 0);
+        test_valid_duration_constructor("0d0s", 0);
+        test_valid_duration_constructor("1ms", 1);
+        test_valid_duration_constructor("1s", 1000);
+        test_valid_duration_constructor("1m", 60000);
+        test_valid_duration_constructor("1h", 3600000);
+        test_valid_duration_constructor("1d", 86400000);
+        test_valid_duration_constructor("12s340ms", 12340);
+        test_valid_duration_constructor("1s234ms", 1234);
+        test_valid_duration_constructor("-1ms", -1);
+        test_valid_duration_constructor("-1s", -1000);
+        test_valid_duration_constructor("-4s200ms", -4200);
+        test_valid_duration_constructor("-9s876ms", -9876);
+        test_valid_duration_constructor("106751d23h47m16s854ms", 9223372036854);
+        test_valid_duration_constructor("-106751d23h47m16s854ms", -9223372036854);
+        test_valid_duration_constructor("-9223372036854775808ms", i64::MIN);
+        test_valid_duration_constructor("9223372036854775807ms", i64::MAX);
+        test_valid_duration_constructor("1d2h3m4s5ms", 93784005);
+        test_valid_duration_constructor("2d12h", 216000000);
+        test_valid_duration_constructor("3m30s", 210000);
+        test_valid_duration_constructor("1h30m45s", 5445000);
+        test_valid_duration_constructor("2d5h20m", 192000000);
+        test_valid_duration_constructor("-1d12h", -129600000);
+        test_valid_duration_constructor("-3h45m", -13500000);
+        test_valid_duration_constructor("1d1ms", 86400001);
+        test_valid_duration_constructor("59m59s999ms", 3599999);
+        test_valid_duration_constructor("23h59m59s999ms", 86399999);
+        test_valid_duration_constructor("0d0h0m0s0ms", 0);
+        test_invalid_duration_constructor("", "empty string");
+        test_invalid_duration_constructor("d", "unit but no amount");
+        test_invalid_duration_constructor("1d-1s", "invalid use of -");
+        test_invalid_duration_constructor("1d2h3m4s5ms6", "trailing amount");
+        test_invalid_duration_constructor("1x2m3s", "invalid unit");
+        test_invalid_duration_constructor("1.23s", "amounts must be integral");
+        test_invalid_duration_constructor("1s1d", "invalid order");
+        test_invalid_duration_constructor("1s1s", "repeated units");
+        test_invalid_duration_constructor("1d2h3m4s5ms ", "trailing space");
+        test_invalid_duration_constructor(" 1d2h3m4s5ms", "leading space");
+        test_invalid_duration_constructor("1d9223372036854775807ms", "overflow");
+        test_invalid_duration_constructor("1d92233720368547758071ms", "overflow ms");
+        test_invalid_duration_constructor("9223372036854776s1ms", "overflow s");
+        test_invalid_duration_constructor(
+            "context.s",
+            "Error: applying duration constructor to a non-literal",
+        );
+    }
+
+    fn parse_expr(str: &str) -> Expr {
+        Expr::from_str(str).expect(format!("Could not parse expression: {str}").as_str())
+    }
+
+    // Test that the str compiles and simplifies to a Datetime literal matching rep
+    fn test_valid_datetime_simpl_expr(str: &str, rep: i64) {
+        assert_eq!(
+            compile(&parse_expr(str), &datetime_sym_env()),
+            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Ext(
+                Ext::Datetime {
+                    dt: Datetime::from(i128::from(rep))
+                }
+            ))))),
+            "{str}"
+        )
+    }
+
+    // Test that the str compiles and simplifies to a Duration literal matching rep
+    fn test_valid_duration_simpl_expr(str: &str, rep: i64) {
+        assert_eq!(
+            compile(&parse_expr(str), &duration_sym_env()),
+            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Ext(
+                Ext::Duration {
+                    d: Duration::from(i128::from(rep))
+                }
+            ))))),
+            "{str}"
+        )
+    }
+
+    fn test_valid_bool_simpl_expr(str: &str, res: bool) {
+        assert_eq!(
+            compile(&parse_expr(str), &datetime_sym_env()),
+            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Bool(res))))),
+            "{str}"
+        )
+    }
+
+    #[test]
+    fn test_datetime_simpl_expr() {
+        test_valid_datetime_simpl_expr(
+            r#"datetime("1970-01-01").offset(duration("365d"))"#,
+            31536000000,
+        );
+        test_valid_datetime_simpl_expr(
+            r#"
+            datetime("1970-01-01")
+            .offset(
+                datetime("1971-01-01")
+                .durationSince(datetime("1970-01-01"))
+            )"#,
+            31536000000,
+        );
+        // Tests with toDate will not work until BitVec::srem is implemented
+        //        test_valid_datetime_simpl_expr(
+        //            r#"datetime("1970-01-01T09:30:00Z").toDate()"#,
+        //            0,
+        //        );
+        //        test_valid_datetime_simpl_expr(
+        //            r#"datetime("1970-01-02T10:30:00.001Z").toDate()"#,
+        //            86400000,
+        //        );
+        //        test_valid_datetime_simpl_expr(
+        //            r#"datetime("1969-12-31T10:30:00.001Z").toDate()"#,
+        //            -86400000,
+        //        );
+        //        test_valid_datetime_simpl_expr(
+        //            r#"
+        //            datetime("1969-12-31T10:30:00.001Z").toDate()
+        //            .offset(duration("1d1h29m59s999ms"))
+        //            "#,
+        //            86400000,
+        //        );
+    }
+
+    #[test]
+    fn test_duration_simpl_expr() {
+        // Tests with toTime will not work until BitVec::srem is implemented
+        // test_valid_duration_simpl_expr(r#"datetime("1970-01-01").toTime()"#, 0);
+        // test_valid_duration_simpl_expr(r#"datetime("1969-12-31T00:01:00Z").toTime()"#, 60000);
+        test_valid_duration_simpl_expr(
+            r#"
+            datetime("1973-01-02T01:23:19Z")
+            .durationSince(
+                datetime("1973-01-02T01:23:19Z")
+            )"#,
+            0,
+        );
+        test_valid_duration_simpl_expr(
+            r#"
+            datetime("1973-01-02")
+            .durationSince(
+                datetime("2000-01-02")
+            )"#,
+            -851990400000,
+        );
+        test_valid_duration_simpl_expr(
+            r#"
+            datetime("2000-01-02")
+            .durationSince(
+                datetime("1973-01-02")
+            )"#,
+            851990400000,
+        );
+        test_valid_duration_simpl_expr(
+            r#"
+            datetime("1969-12-31")
+            .durationSince(
+                datetime("1969-12-31T23:59:00+2359")
+            )"#,
+            0,
+        );
+    }
+
+    #[test]
+    fn test_datetime_simpl_comp_expr() {
+        test_valid_bool_simpl_expr(r#"datetime("2025-01-01") == datetime("2025-01-01")"#, true);
+        test_valid_bool_simpl_expr(
+            r#"datetime("2025-01-01") == datetime("2025-01-01T00:00:00.001Z")"#,
+            false,
+        );
+        test_valid_bool_simpl_expr(r#"datetime("2025-01-01") != datetime("2025-01-01")"#, false);
+        test_valid_bool_simpl_expr(
+            r#"datetime("2025-01-01") != datetime("2025-01-01T00:00:00.001Z")"#,
+            true,
+        );
+        test_valid_bool_simpl_expr(r#"datetime("2025-01-01") <= datetime("2025-01-01")"#, true);
+        test_valid_bool_simpl_expr(r#"datetime("2025-01-01") <= datetime("2025-01-02")"#, true);
+        test_valid_bool_simpl_expr(r#"datetime("2024-01-01") <= datetime("2025-01-01")"#, true);
+        test_valid_bool_simpl_expr(r#"datetime("2024-01-01") < datetime("2025-01-01")"#, true);
+        test_valid_bool_simpl_expr(r#"datetime("2025-01-01") < datetime("2025-01-01")"#, false);
+        test_valid_bool_simpl_expr(r#"datetime("2025-01-01") < datetime("2025-01-02")"#, true);
+        test_valid_bool_simpl_expr(r#"datetime("2025-01-01") < datetime("2024-01-01")"#, false);
+        test_valid_bool_simpl_expr(r#"datetime("2025-01-02") <= datetime("2025-01-01")"#, false);
+    }
+
+    #[test]
+    fn test_duration_simpl_comp_expr() {
+        test_valid_bool_simpl_expr(r#"duration("-39d") == duration("-3369600000ms")"#, true);
+        test_valid_bool_simpl_expr(r#"duration("-32d") == duration("-3369600000s")"#, false);
+        test_valid_bool_simpl_expr(r#"duration("-39d") != duration("-3369600000ms")"#, false);
+        test_valid_bool_simpl_expr(r#"duration("-32d") != duration("-3369600000s")"#, true);
+        test_valid_bool_simpl_expr(r#"duration("-32d") <= duration("-986986712ms")"#, true);
+        test_valid_bool_simpl_expr(r#"duration("0ms") <= duration("1d")"#, true);
+        test_valid_bool_simpl_expr(r#"duration("986986712ms") <= duration("32d")"#, true);
+        test_valid_bool_simpl_expr(r#"duration("90s") < duration("1m31s")"#, true);
+        test_valid_bool_simpl_expr(r#"duration("1m31s") < duration("91s")"#, false);
+        test_valid_bool_simpl_expr(r#"duration("4s") < duration("4001ms")"#, true);
+        test_valid_bool_simpl_expr(r#"duration("-1ms") < duration("-2ms")"#, false);
+        test_valid_bool_simpl_expr(r#"duration("8d") <= duration("80109s")"#, false);
     }
 }

@@ -291,7 +291,14 @@ impl Term {
                     ExtOp::IpaddrPrefixV4 => factory::ext_ipaddr_prefix_v4(arg.interpret(interp)),
                     ExtOp::IpaddrAddrV6 => factory::ext_ipaddr_addr_v6(arg.interpret(interp)),
                     ExtOp::IpaddrPrefixV6 => factory::ext_ipaddr_prefix_v6(arg.interpret(interp)),
+                    ExtOp::DatetimeVal => factory::ext_datetime_val(arg.interpret(interp)),
+                    ExtOp::DatetimeOfBitVec => {
+                        factory::ext_datetime_of_bitvec(arg.interpret(interp))
+                    }
                     ExtOp::DurationVal => factory::ext_duration_val(arg.interpret(interp)),
+                    ExtOp::DurationOfBitVec => {
+                        factory::ext_duration_of_bitvec(arg.interpret(interp))
+                    }
                 },
 
                 // Otherwise leave the application as it but

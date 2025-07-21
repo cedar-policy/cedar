@@ -92,6 +92,12 @@ impl TermType {
                 "decimal" => Ok(TermType::Ext {
                     xty: ExtType::Decimal,
                 }),
+                "datetime" => Ok(TermType::Ext {
+                    xty: ExtType::DateTime,
+                }),
+                "duration" => Ok(TermType::Ext {
+                    xty: ExtType::Duration,
+                }),
                 _ => Err(result::Error::UnsupportedError),
             },
             Type::EntityOrRecord(entity_record_kind) => {
