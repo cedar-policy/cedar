@@ -148,6 +148,7 @@ impl Value {
     }
 
     /// Create a set with the given `Value`s as elements
+    #[verifier::external_body]
     pub fn set(vals: impl IntoIterator<Item = Value>, loc: Option<Loc>) -> Self {
         Self {
             value: ValueKind::set(vals),
