@@ -35,9 +35,11 @@ use super::{
         IPNet, LOOP_BACK_CIDR_V4, LOOP_BACK_CIDR_V6, MULTICAST_CIDR_V4, MULTICAST_CIDR_V6,
     },
     factory::{
-        and, bvadd, bvlshr, bvsdiv, bvshl, bvsle, bvslt, bvsub, bvule, ext_decimal_val,
-        ext_duration_val, ext_ipaddr_addr_v4, ext_ipaddr_addr_v6, ext_ipaddr_is_v4,
-        ext_ipaddr_prefix_v4, ext_ipaddr_prefix_v6, is_none, ite, not, option_get, or, zero_extend,
+        and, bvadd, bvlshr, bvmul, bvsaddo, bvsdiv, bvshl, bvsle, bvslt, bvsmulo, bvsrem, bvssubo,
+        bvsub, bvule, eq, ext_datetime_of_bitvec, ext_datetime_val, ext_decimal_val,
+        ext_duration_of_bitvec, ext_duration_val, ext_ipaddr_addr_v4, ext_ipaddr_addr_v6,
+        ext_ipaddr_is_v4, ext_ipaddr_prefix_v4, ext_ipaddr_prefix_v6, if_false, is_none, ite, not,
+        option_get, or, some_of, zero_extend,
     },
     term::{Term, TermPrim},
     type_abbrevs::Nat,
@@ -161,4 +163,71 @@ pub fn to_hours(t: Term) -> Term {
 
 pub fn to_days(t: Term) -> Term {
     bvsdiv(to_hours(t), 24.into())
+}
+
+pub fn offset(dt: Term, dur: Term) -> Term {
+    let dt_val = ext_datetime_val(dt);
+    let dur_val = ext_duration_val(dur);
+    if_false(
+        bvsaddo(dt_val.clone(), dur_val.clone()),
+        ext_datetime_of_bitvec(bvadd(dt_val, dur_val)),
+    )
+}
+
+pub fn duration_since(dt1: Term, dt2: Term) -> Term {
+    let dt1_val = ext_datetime_val(dt1);
+    let dt2_val = ext_datetime_val(dt2);
+    if_false(
+        bvssubo(dt1_val.clone(), dt2_val.clone()),
+        ext_duration_of_bitvec(bvsub(dt1_val, dt2_val)),
+    )
+}
+
+pub fn to_date(dt: Term) -> Term {
+    let zero = Term::Prim(TermPrim::Bitvec(BitVec { width: 64, v: 0 }));
+    let one = Term::Prim(TermPrim::Bitvec(BitVec { width: 64, v: 1 }));
+    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec {
+        width: 64,
+        v: 86400000,
+    }));
+    let dt_val = ext_datetime_val(dt);
+    ite(
+        bvsle(zero.clone(), dt_val.clone()),
+        some_of(ext_datetime_of_bitvec(bvmul(
+            ms_per_day.clone(),
+            bvsdiv(dt_val.clone(), ms_per_day.clone()),
+        ))),
+        ite(
+            eq(bvsrem(dt_val.clone(), ms_per_day.clone()), zero),
+            some_of(dt_val.clone()),
+            if_false(
+                bvsmulo(
+                    bvsub(bvsdiv(dt_val.clone(), ms_per_day.clone()), one.clone()),
+                    ms_per_day.clone(),
+                ),
+                ext_datetime_of_bitvec(bvmul(
+                    bvsub(bvsdiv(dt_val, ms_per_day.clone()), one),
+                    ms_per_day,
+                )),
+            ),
+        ),
+    )
+}
+
+pub fn to_time(dt: Term) -> Term {
+    let zero = Term::Prim(TermPrim::Bitvec(BitVec { width: 64, v: 0 }));
+    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec {
+        width: 64,
+        v: 86400000,
+    }));
+    let dt_val = ext_datetime_val(dt);
+    ext_duration_of_bitvec(ite(
+        bvsle(zero.clone(), dt_val.clone()),
+        bvsrem(dt_val.clone(), ms_per_day.clone()),
+        ite(
+            eq(bvsrem(dt_val.clone(), ms_per_day.clone()), zero.clone()),
+            zero,
+            bvadd(bvsrem(dt_val, ms_per_day.clone()), ms_per_day),
+        ),
+    ))
 }
