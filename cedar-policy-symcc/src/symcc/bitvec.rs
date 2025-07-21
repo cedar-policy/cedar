@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use super::type_abbrevs::Nat;
 use super::result::Error;
+use super::type_abbrevs::Nat;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct BitVec {
@@ -147,7 +147,10 @@ impl BitVec {
     pub fn srem(_lhs: &Self, _rhs: &Self) -> Self {
         let unimplemented = Err(Error::UnsupportedError);
         // PANIC SAFETY (not really panic safe, hack until BitVec refactor)
-        #[allow(clippy::expect_used, reason="TODO, but can't use todo! or unimplemented!")]
+        #[allow(
+            clippy::expect_used,
+            reason = "TODO, but can't use todo! or unimplemented!"
+        )]
         unimplemented.expect("BitVec::srem not implemented. Waiting for BitVec refactor")
     }
 
@@ -155,7 +158,10 @@ impl BitVec {
     pub fn smod(_lhs: &Self, _rhs: &Self) -> Self {
         let unimplemented = Err(Error::UnsupportedError);
         // PANIC SAFETY (not really panic safe, hack until BitVec refactor)
-        #[allow(clippy::expect_used, reason="TODO, but can't use todo! or unimplemented!")]
+        #[allow(
+            clippy::expect_used,
+            reason = "TODO, but can't use todo! or unimplemented!"
+        )]
         unimplemented.expect("BitVec::smod not implemented. Waiting for BitVec refactor")
     }
 
@@ -163,7 +169,10 @@ impl BitVec {
     pub fn umod(_lhs: &Self, _rhs: &Self) -> Self {
         let unimplemented = Err(Error::UnsupportedError);
         // PANIC SAFETY (not really panic safe, hack until BitVec refactor)
-        #[allow(clippy::expect_used, reason="TODO, but can't use todo! or unimplemented!")]
+        #[allow(
+            clippy::expect_used,
+            reason = "TODO, but can't use todo! or unimplemented!"
+        )]
         unimplemented.expect("BitVec::umod not implemented. Waiting for BitVec refactor")
     }
 
