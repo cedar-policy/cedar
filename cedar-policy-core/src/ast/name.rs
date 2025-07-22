@@ -326,6 +326,12 @@ impl DeepView for SlotId {
     }
 }
 
+impl SlotId {
+    pub proof fn lemma_deep_view_injective()
+        ensures vstd::relations::injective(|s: SlotId| s.deep_view())
+    {}
+}
+
 pub broadcast proof fn lemma_slot_id_view_deep_view_coincide(s: SlotId)
     ensures s.view() == #[trigger] s.deep_view()
 {}

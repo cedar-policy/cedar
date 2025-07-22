@@ -309,6 +309,20 @@ impl Expr {
     }
 
     #[verifier::inline]
+    pub open spec fn ite(cond: Expr, then_expr: Expr, else_expr: Expr) -> Expr {
+        Expr::Ite {
+            cond: Box::new(cond),
+            then_expr: Box::new(then_expr),
+            else_expr: Box::new(else_expr),
+        }
+    }
+
+    #[verifier::inline]
+    pub open spec fn get_attr(expr: Expr, attr: Attr) -> Expr {
+        Expr::GetAttr { expr: Box::new(expr), attr }
+    }
+
+    #[verifier::inline]
     pub open spec fn set(ls: Seq<Expr>) -> Expr {
         Expr::Set { ls }
     }

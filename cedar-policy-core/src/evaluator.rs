@@ -105,6 +105,15 @@ pub fn binary_relation(
     extensions: &Extensions<'_>,
 ) -> (res: Result<Value>)
     requires (op@ is Eq || op@ is Less || op@ is LessEq)
+    ensures ({
+        &&& res matches Ok(res_v) ==> {
+            &&& spec_evaluator::apply_2_relation(op@, arg1@, arg2@) matches Ok(v)
+            &&& res_v@ == v
+        }
+        &&& res is Err ==> {
+            &&& spec_evaluator::apply_2_relation(op@, arg1@, arg2@) is Err
+        }
+    })
 {
     match op {
         BinaryOp::Eq => Ok((arg1.eq_value(&arg2)).into()),
@@ -191,6 +200,15 @@ pub fn binary_relation(
 /// Evaluate binary arithmetic operations (i.e., `BinaryOp::Add`, `BinaryOp::Sub`, and `BinaryOp::Mul`)
 pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -> (res: Result<Value>)
     requires (op@ is Add || op@ is Sub || op@ is Mul)
+    ensures ({
+        &&& res matches Ok(res_v) ==> {
+            &&& spec_evaluator::apply_2_arith(op@, arg1@, arg2@) matches Ok(v)
+            &&& res_v@ == v
+        }
+        &&& res is Err ==> {
+            &&& spec_evaluator::apply_2_arith(op@, arg1@, arg2@) is Err
+        }
+    })
 {
     let i1 = arg1.get_as_long()?;
     let i2 = arg2.get_as_long()?;

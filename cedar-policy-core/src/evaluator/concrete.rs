@@ -37,6 +37,8 @@ use crate::evaluator::*;
 use crate::verus_utils::*;
 
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use vstd::std_specs::hash::*;
 
 verus! {
 
@@ -194,13 +196,31 @@ impl<'e> Evaluator<'e> {
             }
         })
     {
+        proof {
+            // Well-formedness assumptions for `SlotEnv`
+            assume(obeys_key_model::<SlotId>() && builds_valid_hashers::<std::hash::RandomState>());
+
+            // `spec_evaluator::evaluate` is recursive, so need to reveal explicitly
+            reveal_with_fuel(spec_evaluator::evaluate, 1);
+        }
         let loc = expr.source_loc(); // the `loc` describing the location of the entire expression
         match expr.expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
-            ExprKind::Slot(id) => slots
-                .get(id)
-                .ok_or(err::EvaluationError::unlinked_slot(*id, loc.cloned())) // Verus doesn't support `ok_or_else`
-                .map(|euid| Value::from(euid.clone())), // TODO: spec for `impl<T: Into<Literal>> From<T> for Value`
+            ExprKind::Slot(id) => {
+                // slots
+                //     .get(id)
+                //     .ok_or(err::EvaluationError::unlinked_slot(*id, loc.cloned())) // Verus doesn't support `ok_or_else`
+                //     .map(|euid| Value::from(euid.clone())) // TODO: spec for `impl<T: Into<Literal>> From<T> for Value`
+                // Verus doesn't like `Option::map`
+                proof {
+                    SlotId::lemma_deep_view_injective();
+                    lemma_hashmap_deepview_properties(*slots);
+                };
+                match slots.get(id) {
+                    Some(euid) => Ok(Value::from(euid.clone())),
+                    None => Err(err::EvaluationError::unlinked_slot(*id, loc.cloned()))
+                }
+            },
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate_concrete(*v)),
                 Var::Action => Ok(self.action.evaluate_concrete(*v)),
@@ -244,14 +264,17 @@ impl<'e> Evaluator<'e> {
                 let (arg1, arg2) = (self.interpret(arg1, slots)?, self.interpret(arg2, slots)?);
                 match op {
                     BinaryOp::Eq | BinaryOp::Less | BinaryOp::LessEq => {
-                        binary_relation(*op, arg1, arg2, self.extensions).map(Into::into)
+                        proof { spec_evaluator::lemma_apply_2_relation_correct(op@, arg1@, arg2@, self@.entities); }
+                        binary_relation(*op, arg1, arg2, self.extensions)
                     }
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
-                        binary_arith(*op, arg1, arg2, loc).map(Into::into)
+                        proof { spec_evaluator::lemma_apply_2_arith_correct(op@, arg1@, arg2@, self@.entities); }
+                        binary_arith(*op, arg1, arg2, loc)
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
                         // Verus cannot handle the below since it uses a `mut` parameter to the closure
+                        // We rewrite to use an immutable parameter since erroring is not on the fast path
                         // let uid1 = arg1.get_as_entity().map_err(|mut e|
                         //     {
                         //         // If arg1 is not an entity and arg2 is a set, then possibly
@@ -353,6 +376,7 @@ impl<'e> Evaluator<'e> {
                     // }
                     BinaryOp::Contains | BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
                         // todo: handle Set ops
+                        assume(false);
                         unreached()
                     }
                     // GetTag and HasTag, which require an Entity on the left and a String on the right
@@ -423,6 +447,7 @@ impl<'e> Evaluator<'e> {
             // }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 // todo: handle ExtensionFunctionApp
+                assume(false);
                 unreached()
             }
             ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
@@ -453,6 +478,7 @@ impl<'e> Evaluator<'e> {
             // }
             ExprKind::Like { expr, pattern } => {
                 // TODO: handle patterns
+                assume(false);
                 unreached()
             }
             ExprKind::Is { expr, entity_type } => {
@@ -466,9 +492,11 @@ impl<'e> Evaluator<'e> {
                 //     .collect::<Result<Vec<_>>>()?;
                 // Ok(Value::set(vals, loc.cloned()).into())
                 // Verus can't handle iterators, so we have to use a loop:
+                assume(false);
                 let mut vals: Vec<Value> = Vec::with_capacity(items.len());
                 for item in items.iter()
                     invariant
+                        false,
                         spec_evaluator::enough_stack_space(),
                 {
                     let item_val = self.interpret(item, slots)?;
@@ -484,9 +512,11 @@ impl<'e> Evaluator<'e> {
                 // let (names, vals): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
                 // Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
                 // Verus can't handle iterators, so we have to use a loop:
+                assume(false);
                 let mut names_vals: Vec<(SmolStr, Value)> = Vec::with_capacity(expr_map_len(&map));
                 for k in expr_map_keys_arc(&map)
                     invariant
+                        false,
                         spec_evaluator::enough_stack_space(),
                 {
                     let v = match expr_map_get_arc(&map, k) {
@@ -562,6 +592,16 @@ impl<'e> Evaluator<'e> {
     ) -> (res: Result<Value>)
         requires
             spec_evaluator::enough_stack_space(),
+        ensures ({
+            let spec_expr = spec_ast::Expr::ite(guard@, consequent@, alternative@);
+            &&& res matches Ok(res_v) ==> {
+                &&& spec_evaluator::evaluate(spec_expr, self@.request, self@.entities, slots.deep_view()) matches Ok(v)
+                &&& res_v@ == v
+            }
+            &&& res is Err ==> {
+                &&& spec_evaluator::evaluate(spec_expr, self@.request, self@.entities, slots.deep_view()) is Err
+            }
+        })
     {
         let v = self.interpret(guard, slots)?;
         if v.get_as_bool()? {
@@ -575,6 +615,7 @@ impl<'e> Evaluator<'e> {
     /// for the LHS of the GetAttr. `source_loc` argument should be the loc for
     /// the entire GetAttr expression
     #[verifier::exec_allows_no_decreases_clause]
+    #[verifier::external_body]
     fn get_attr(
         &self,
         expr: &Expr,
@@ -584,6 +625,16 @@ impl<'e> Evaluator<'e> {
     ) -> (res: Result<Value>)
         requires
             spec_evaluator::enough_stack_space(),
+        ensures ({
+            let spec_expr = spec_ast::Expr::get_attr(expr@, attr@);
+            &&& res matches Ok(res_v) ==> {
+                &&& spec_evaluator::evaluate(spec_expr, self@.request, self@.entities, slots.deep_view()) matches Ok(v)
+                &&& res_v@ == v
+            }
+            &&& res is Err ==> {
+                &&& spec_evaluator::evaluate(spec_expr, self@.request, self@.entities, slots.deep_view()) is Err
+            }
+        })
     {
         match self.interpret(expr, slots)? {
             Value {

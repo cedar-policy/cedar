@@ -312,6 +312,70 @@ proof fn evaluate_decreases(x: Expr, req: Request, es: Entities, slot_env: SlotE
 
 verus! {
 
+// The concrete evaluator separates out the relation operations into a function that doesn't take `es: Entities` as argument;
+// to simplify the proof, we provide this spec which we prove matches `apply_2` above on the arithmetic cases
+pub open spec fn apply_2_relation(op2: BinaryOp, v1: Value, v2: Value) -> SpecResult<Value>
+    recommends (op2 is Eq || op2 is Less || op2 is LessEq)
+{
+    if op2 is Eq || op2 is Less || op2 is LessEq {
+        match (op2, v1, v2) {
+            (BinaryOp::Eq, _, _) => Ok(Value::bool(v1 == v2)),
+            (BinaryOp::Less, Value::Prim { p: Prim::Int { i } }, Value::Prim { p: Prim::Int { i: j } }) =>
+                Ok(Value::bool(i < j)),
+            // TODO: datetime and duration cases for BinaryOp::Less
+            // (BinaryOp::Less, Value::Ext { e: Ext::Datetime { d: d1 } }, Value::Ext { e: Ext::Datetime { d: d2 } }) =>
+            //     Ok(Value::bool(d1 < d2)),
+            // (BinaryOp::Less, Value::Ext { e: Ext::Duration { d: d1 } }, Value::Ext { e: Ext::Duration { d: d2 } }) =>
+            //     Ok(Value::bool(d1 < d2)),
+            (BinaryOp::LessEq, Value::Prim { p: Prim::Int { i } }, Value::Prim { p: Prim::Int { i: j } }) =>
+                Ok(Value::bool(i <= j)),
+            // TODO: datetime and duration cases for BinaryOp::LessEq
+            // (BinaryOp::LessEq, Value::Ext { e: Ext::Datetime { d: d1 } }, Value::Ext { e: Ext::Datetime { d: d2 } }) =>
+            //     Ok(Value::bool(d1 <= d2)),
+            // (BinaryOp::LessEq, Value::Ext { e: Ext::Duration { d: d1 } }, Value::Ext { e: Ext::Duration { d: d2 } }) =>
+            //     Ok(Value::bool(d1 <= d2)),
+            _ => Err(Error::TypeError)
+        }
+    } else {
+        arbitrary()
+    }
+}
+
+// Proof for `apply_2_relation`
+pub proof fn lemma_apply_2_relation_correct(op2: BinaryOp, v1: Value, v2: Value, es: Entities)
+    requires (op2 is Eq || op2 is Less || op2 is LessEq)
+    ensures apply_2_relation(op2, v1, v2) == apply_2(op2, v1, v2, es)
+{}
+
+
+// The concrete evaluator separates out the arithmetic operations into a function that doesn't take `es: Entities` as argument;
+// to simplify the proof, we provide this spec which we prove matches `apply_2` above on the arithmetic cases
+pub open spec fn apply_2_arith(op2: BinaryOp, v1: Value, v2: Value) -> SpecResult<Value>
+    recommends (op2 is Add || op2 is Sub || op2 is Mul)
+{
+    if op2 is Add || op2 is Sub || op2 is Mul {
+        match (op2, v1, v2) {
+            (BinaryOp::Add, Value::Prim { p: Prim::Int { i } }, Value::Prim { p: Prim::Int { i: j } }) =>
+                int_or_err(checked_add(i, j)),
+            (BinaryOp::Sub, Value::Prim { p: Prim::Int { i } }, Value::Prim { p: Prim::Int { i: j } }) =>
+                int_or_err(checked_sub(i, j)),
+            (BinaryOp::Mul, Value::Prim { p: Prim::Int { i } }, Value::Prim { p: Prim::Int { i: j } }) =>
+                int_or_err(checked_mul(i, j)),
+            _ => Err(Error::TypeError)
+        }
+    } else {
+        arbitrary()
+    }
+}
+
+// Proof for `apply_2_arith`
+pub proof fn lemma_apply_2_arith_correct(op2: BinaryOp, v1: Value, v2: Value, es: Entities)
+    requires (op2 is Add || op2 is Sub || op2 is Mul)
+    ensures apply_2_arith(op2, v1, v2) == apply_2(op2, v1, v2, es)
+{}
+
+
+
 pub proof fn lemma_eval_and_spec(a: Expr, b: Expr, req: Request, es: Entities, slot_env: SlotEnv)
     ensures ({
         let a_result = evaluate(a, req, es, slot_env);

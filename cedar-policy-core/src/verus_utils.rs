@@ -128,6 +128,9 @@ pub assume_specification<T: Clone, A: std::alloc::Allocator>[Arc::unwrap_or_clon
 pub assume_specification<T: ?Sized, A: std::alloc::Allocator>[Arc::as_ref](arc: &Arc<T, A>) -> (a_ref: &T)
     ensures a_ref == arc;
 
+pub assume_specification<T>[<T as From<T>>::from](t: T) -> (new_t: T)
+    ensures new_t == t;
+
 // We don't actually need the spec on this
 pub assume_specification<T: Clone>[Option::<&T>::cloned](opt: Option<&T>) -> (cloned_opt: Option<T>);
 
