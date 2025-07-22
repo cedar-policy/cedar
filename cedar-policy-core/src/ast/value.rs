@@ -183,17 +183,15 @@ impl Value {
         }
     }
 
-    }
-
     /// Create a record with the given attributes/value mapping.
-    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>, loc: Option<Loc>) -> Self {
+    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>, loc: Option<Loc>) -> (res: Self)
+        ensures res@ == (spec_ast::Value::Record { m: pairs@ })
+    {
         Self {
             value: ValueKind::record_arc(pairs),
             loc,
         }
     }
-
-    verus! {
 
     /// Return the `Value`, but with the given `Loc` (or `None`)
     pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> (new_self: Self)
@@ -273,9 +271,15 @@ impl ValueKind {
         ))
     }
 
+    verus! {
+
     /// Create a record with the given attributes/value mapping.
-    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>) -> Self {
+    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>) -> (res: Self)
+        ensures res@ == (spec_ast::Value::Record { m: pairs@ })
+    {
         Self::Record(pairs)
+    }
+
     }
 
     /// If the value is a `Literal`, get a reference to the underlying `Literal`

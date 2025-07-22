@@ -20,6 +20,7 @@ use crate::ast::{Set, *};
 use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::err::evaluation_errors;
@@ -50,7 +51,8 @@ pub struct Evaluator<'e> {
     /// `Resource` for the current request
     resource: EntityUIDEntry,
     /// `Context` for the current request; this will be a Record type
-    context: Option<Value>,
+    /// MODIFICATION FOR VERUS PROOF: changed from PartialValue to just the underlying Record
+    context: Arc<BTreeMap<SmolStr, Value>>,
     /// Entities which we use to resolve entity references.
     ///
     /// This is a reference, because the `Evaluator` doesn't need ownership of
@@ -63,16 +65,17 @@ pub struct Evaluator<'e> {
 
 impl vstd::view::View for Evaluator<'_> {
     type V = SpecEvaluator;
-    uninterp spec fn view(&self) -> SpecEvaluator;
-        // SpecEvaluator {
-        //     request: spec_ast::Request {
-        //         principal: self.principal.view(),
-        //         action: self.action.view(),
-        //         resource: self.resource.view(),
-        //         context: self.context.view(),
-        //     },
-        //     entities: self.entities.view(),
-        // }
+    closed spec fn view(&self) -> SpecEvaluator {
+        SpecEvaluator {
+            request: spec_ast::Request {
+                principal: self.principal.view(),
+                action: self.action.view(),
+                resource: self.resource.view(),
+                context: self.context.view(),
+            },
+            entities: self.entities.view(),
+        }
+    }
 }
 
 }
@@ -83,26 +86,28 @@ impl<'e> Evaluator<'e> {
     /// Create a fresh `Evaluator` for the given `request`, which uses the given
     /// `Entities` to resolve entity references. Use the given `Extension`s when
     /// evaluating.
+    /// MODIFICATIONS FOR VERUS PROOF: returns None if called with a Request whose
+    /// Context is not a value
     #[verifier::external_body] // axiomatized for now
-    pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> (res: Self)
-        ensures (res@ == SpecEvaluator {
-            request: q@,
-            entities: entities@,
-        })
+    pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> (res: Option<Self>)
+        ensures
+            res matches Some(r) ==> (r@ == SpecEvaluator {
+                request: q@,
+                entities: entities@,
+            })
     {
-        Self {
-            principal: q.principal,
-            action: q.action,
-            resource: q.resource,
-            context: {
-                match q.context {
-                    Some(Context::Value(attrs)) => Some(Value::record_arc(attrs, None)),
-                    _ => None,
-                }
-            },
-            entities,
-            extensions,
+        match q.context {
+            Some(Context::Value(attrs)) => Some(Self {
+                principal: q.principal,
+                action: q.action,
+                resource: q.resource,
+                context: attrs,
+                entities,
+                extensions,
+            }),
+            _ => None
         }
+
     }
 
     }
@@ -225,10 +230,7 @@ impl<'e> Evaluator<'e> {
                 Var::Principal => Ok(self.principal.evaluate_concrete(*v)),
                 Var::Action => Ok(self.action.evaluate_concrete(*v)),
                 Var::Resource => Ok(self.resource.evaluate_concrete(*v)),
-                Var::Context => self
-                    .context
-                    .clone()
-                    .ok_or(err::EvaluationError::non_value(expr.clone())),
+                Var::Context => Ok(Value::record_arc(self.context.clone(), None)),
             },
             // ExprKind::Unknown(u) => Err(err::EvaluationError::non_value(expr.clone())),
             ExprKind::If {

@@ -120,7 +120,10 @@ impl Authorizer {
             spec_authorizer::lemma_is_authorized_from_set(q@, entities@, pset@);
         }
 
-        let eval = ConcreteEvaluator::new(q.clone(), entities, self.extensions);
+        // TODO: figure out how to avoid the panic
+        let eval_opt = ConcreteEvaluator::new(q.clone(), entities, self.extensions);
+        proof { assume(eval_opt is Some) }
+        let eval = eval_opt.expect("Got an invalid request context");
 
         // logic from `Authorizer::is_authorized_core_internal()`
         let mut satisfied_permits = vec![];
