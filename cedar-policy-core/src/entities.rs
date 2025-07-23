@@ -107,7 +107,12 @@ impl Entities {
 
     /// Get the `Entity` with the given UID, if any
     #[verifier::external_body]
-    pub fn entity(&self, uid: &EntityUID) -> Dereference<'_, Entity> {
+    pub fn entity(&self, uid: &EntityUID) -> (res: Dereference<'_, Entity>)
+        ensures
+            res matches Dereference::Data(e) ==> self@.get(uid@) matches Some(e_spec) && e@ == e_spec,
+            res is NoSuchEntity ==> self@.get(uid@) is None,
+            !(res is Residual)
+    {
         match self.entities.get(uid) {
             Some(e) => Dereference::Data(e),
             None => match self.mode {

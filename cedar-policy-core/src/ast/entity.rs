@@ -586,6 +586,18 @@ pub struct Entity {
     tags: BTreeMap<SmolStr, PartialValue>,
 }
 
+impl View for Entity {
+    type V = spec_ast::EntityData;
+    uninterp spec fn view(&self) -> Self::V;
+    // closed spec fn view(&self) -> Self::V {
+    //     spec_ast::EntityData {
+    //         attrs: self.attrs@,
+    //         ancestors: self.indirect_ancestors@.map(|e| e@).union(self.parents@.map(|e| e@)),
+    //         tags: self.tags@,
+    //     }
+    // }
+}
+
 } // verus!
 
 impl std::hash::Hash for Entity {
