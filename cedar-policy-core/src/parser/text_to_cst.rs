@@ -1240,7 +1240,7 @@ mod tests {
         let many_policies =
             std::fs::read_to_string("src/parser/testfiles/policies.cedar").expect("missing file");
         let cst1 = assert_parse_succeeds(parse_policies, &many_policies);
-        let revert = format!("{}", cst1);
+        let revert = format!("{cst1}");
         let cst2 = assert_parse_succeeds(parse_policies, &revert);
         assert_eq!(cst1, cst2);
     }

@@ -97,8 +97,8 @@ mod test {
             .iter()
             .map(|sym| (sym.name.as_str(), slice_range(policy, sym.range)))
             .collect_vec();
-        actual.sort();
-        expected.sort();
+        actual.sort_unstable();
+        expected.sort_unstable();
         if expected.len() == 1 && actual.len() == 1 {
             similar_asserts::assert_eq!(expected[0].0, actual[0].0);
             similar_asserts::assert_eq!(expected[0].1, actual[0].1);

@@ -122,7 +122,7 @@ mod test {
             .map(|range| (range.start_line, range.end_line))
             .sorted()
             .collect_vec();
-        expected.sort();
+        expected.sort_unstable();
         similar_asserts::assert_eq!(expected, actual);
     }
 

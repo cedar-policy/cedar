@@ -79,7 +79,7 @@ impl std::fmt::Display for Type {
             Self::Set => write!(f, "set"),
             Self::Record => write!(f, "record"),
             Self::Entity { ty } => write!(f, "(entity of type `{ty}`)"),
-            Self::Extension { name } => write!(f, "{}", name),
+            Self::Extension { name } => write!(f, "{name}"),
         }
     }
 }

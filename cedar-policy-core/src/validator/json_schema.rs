@@ -1034,7 +1034,7 @@ impl ActionEntityUID<RawName> {
 impl<N: std::fmt::Display> std::fmt::Display for ActionEntityUID<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(ty) = &self.ty {
-            write!(f, "{}::", ty)?
+            write!(f, "{ty}::")?
         } else {
             write!(f, "Action::")?
         }
@@ -1266,8 +1266,8 @@ impl<N> Type<N> {
                 ty: TypeVariant::Record(RecordType { attributes, .. }),
                 ..
             } => attributes
-                .iter()
-                .map(|(_, ty)| ty.ty.common_type_references())
+                .values()
+                .map(|ty| ty.ty.common_type_references())
                 .fold(Box::new(std::iter::empty()), |it, tys| {
                     Box::new(it.chain(tys))
                 }),
@@ -2428,7 +2428,7 @@ mod test {
             "actions": {}
         });
         let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
-        println!("{:#?}", schema);
+        println!("{schema:#?}");
     }
 
     #[test]
@@ -2452,7 +2452,7 @@ mod test {
             "actions": {}
         });
         let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
-        println!("{:#?}", schema);
+        println!("{schema:#?}");
     }
 
     #[test]
@@ -2477,7 +2477,7 @@ mod test {
             "actions": {}
         });
         let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
-        println!("{:#?}", schema);
+        println!("{schema:#?}");
     }
 
     #[test]
@@ -2502,7 +2502,7 @@ mod test {
             "actions": {}
         });
         let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
-        println!("{:#?}", schema);
+        println!("{schema:#?}");
     }
 
     #[test]
@@ -2548,7 +2548,7 @@ mod test {
             "actions": {}
         });
         let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
-        println!("{:#?}", schema);
+        println!("{schema:#?}");
     }
 
     #[test]

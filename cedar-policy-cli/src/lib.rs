@@ -575,7 +575,7 @@ fn read_schema_from_file(path: impl AsRef<Path>, format: SchemaFormat) -> Result
                 .wrap_err_with(|| format!("failed to parse schema from file {}", path.display()))?;
             for warning in warnings {
                 let report = miette::Report::new(warning);
-                eprintln!("{:?}", report);
+                eprintln!("{report:?}");
             }
             Ok(schema)
         }
@@ -1027,7 +1027,7 @@ fn format_policies_inner(args: &FormatArgs) -> Result<bool> {
                     "failed to write formatted policies to {policies_file}"
                 ))?;
         }
-        _ => print!("{}", formatted_policy),
+        _ => print!("{formatted_policy}"),
     }
     Ok(are_policies_equivalent)
 }
@@ -1091,7 +1091,7 @@ fn translate_schema_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
     let (fragment, warnings) = SchemaFragment::from_cedarschema_str(cedar_src.as_ref())?;
     for warning in warnings {
         let report = miette::Report::new(warning);
-        eprintln!("{:?}", report);
+        eprintln!("{report:?}");
     }
     let output = fragment.to_json_string()?;
     Ok(output)
@@ -1407,7 +1407,7 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
                 } else {
                     println!("note: this decision was due to the following policies:");
                     for reason in ans.diagnostics().reason() {
-                        println!("  {}", reason);
+                        println!("  {reason}");
                     }
                     println!();
                 }
@@ -1493,7 +1493,7 @@ fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
                 "missing reason(s): {}",
                 missing_reason
                     .into_iter()
-                    .map(|r| format!("`{}`", r))
+                    .map(|r| format!("`{r}`"))
                     .collect::<Vec<_>>()
                     .join(", ")
             ));
@@ -1539,7 +1539,7 @@ fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
 /// and then check the authorization decision
 fn run_one_test(policies: &PolicySet, test: &serde_json::Value) -> Result<TestResult> {
     let test = TestCase::deserialize(test.clone()).into_diagnostic()?;
-    let ans = Authorizer::new().is_authorized(&test.request, &policies, &test.entities);
+    let ans = Authorizer::new().is_authorized(&test.request, policies, &test.entities);
     Ok(compare_test_decisions(&test, &ans))
 }
 
@@ -1552,7 +1552,7 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
     println!("running {} test(s)", tests.len());
     for test in tests.iter() {
         if let Some(name) = test["name"].as_str() {
-            print!("  test {} ... ", name);
+            print!("  test {name} ... ");
         } else {
             print!("  test (unamed) ... ");
         }
@@ -1682,7 +1682,7 @@ where
     })?;
 
     Request::new(principal, action, resource, context, None)
-        .map_err(|e| serde::de::Error::custom(format!("failed to create request: {}", e)))
+        .map_err(|e| serde::de::Error::custom(format!("failed to create request: {e}")))
 }
 
 /// Helper function to deserialize an `Entities` from JSON (without schema)
@@ -1692,7 +1692,7 @@ where
 {
     let value = serde_json::Value::deserialize(data)?;
     Entities::from_json_value(value, None)
-        .map_err(|e| serde::de::Error::custom(format!("failed to parse entities: {}", e)))
+        .map_err(|e| serde::de::Error::custom(format!("failed to parse entities: {e}")))
 }
 
 #[derive(Error, Diagnostic, Debug)]
@@ -1800,7 +1800,7 @@ fn read_from_file_or_stdin(filename: Option<&impl AsRef<Path>>, context: &str) -
         None => {
             std::io::Read::read_to_string(&mut std::io::stdin(), &mut src_str)
                 .into_diagnostic()
-                .wrap_err_with(|| format!("failed to read {} from stdin", context))?;
+                .wrap_err_with(|| format!("failed to read {context} from stdin"))?;
         }
     };
     Ok(src_str)

@@ -749,9 +749,9 @@ pub mod schema_errors {
     impl std::fmt::Display for ContextOrShape {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
-                ContextOrShape::ActionContext(action) => write!(f, "Context for action {}", action),
+                ContextOrShape::ActionContext(action) => write!(f, "Context for action {action}"),
                 ContextOrShape::EntityTypeShape(entity_type) => {
-                    write!(f, "Shape for entity type {}", entity_type)
+                    write!(f, "Shape for entity type {entity_type}")
                 }
             }
         }
