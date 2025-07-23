@@ -461,7 +461,7 @@ mod test {
             .exactly_one_underline("foo_type")
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -509,7 +509,7 @@ mod test {
             .exactly_one_underline(src)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -579,7 +579,7 @@ mod test {
             .help("did you mean `foo_type`?")
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -597,7 +597,7 @@ mod test {
             .exactly_one_underline(r#"Action::"foo_name""#)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -770,7 +770,7 @@ mod test {
             .help(r#"did you mean `Action::"foo_name"`?"#)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -806,7 +806,7 @@ mod test {
             .help(r#"did you intend to include the type in action `Action::"Action::view"`?"#)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -839,7 +839,7 @@ mod test {
             .help(r#"did you intend to include the type in action `foo::foo::bar::baz::Action::"Action::view"`?"#)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -902,7 +902,7 @@ mod test {
             .help(r#"did you mean `NS::Action::"foo_name"`?"#)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -968,7 +968,7 @@ mod test {
             .help("did you mean `NS::Foo`?")
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -1239,7 +1239,7 @@ mod test {
             .exactly_one_underline(src)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -1263,7 +1263,7 @@ mod test {
             .exactly_one_underline(src)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -1287,7 +1287,7 @@ mod test {
             .exactly_one_underline(src)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{:?}", notes);
+        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]

@@ -2697,8 +2697,7 @@ mod test {
         assert_eq!(
             ty.to_string(),
             repr,
-            "Unexpected Display output for type {:?}",
-            ty
+            "Unexpected Display output for type {ty:?}"
         );
     }
 

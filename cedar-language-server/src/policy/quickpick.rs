@@ -88,7 +88,7 @@ mod test {
             .map(|item| item.label.as_str())
             .sorted()
             .collect_vec();
-        expected_selected_labels.sort();
+        expected_selected_labels.sort_unstable();
 
         assert_eq!(
             expected_selected_labels, actual_selected_labels,

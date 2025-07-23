@@ -220,7 +220,7 @@ pub enum ToASTErrorKind {
     #[diagnostic(transparent)]
     InvalidActionType(#[from] parse_errors::InvalidActionType),
     /// Returned when a condition clause is empty
-    #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{}` ", ident), None => "".to_string() })]
+    #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{ident}` "), None => "".to_string() })]
     EmptyClause(Option<cst::Ident>),
     /// Returned when membership chains do not resolve to an expression,
     /// violating an internal invariant
@@ -804,7 +804,7 @@ pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> 
         "or",
         expected,
         |f, token| match config.friendly_token_names.get(token) {
-            Some(friendly_token_name) => write!(f, "{}", friendly_token_name),
+            Some(friendly_token_name) => write!(f, "{friendly_token_name}"),
             None => write!(f, "{}", token.replace('"', "`")),
         },
     )

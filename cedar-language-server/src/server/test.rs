@@ -501,7 +501,7 @@ async fn goto_definition() {
     assert_matches!(def, GotoDefinitionResponse::Scalar(def) => {
         assert_eq!(uri, def.uri);
         assert_eq!("entity Entity;", slice_range(&src, def.range));
-    })
+    });
 }
 
 #[tokio::test]
@@ -609,7 +609,7 @@ async fn goto_definition_in_schema_from_policy() {
     assert_matches!(def, GotoDefinitionResponse::Scalar(def) => {
         assert_eq!(schema_uri, def.uri);
         assert_eq!("entity User;", slice_range(schema_src, def.range));
-    })
+    });
 }
 
 #[tokio::test]
@@ -651,7 +651,7 @@ async fn execute_command_associate_schema_with_entities() {
     assert_eq!(
         diagnostic.message,
         r#"entity does not conform to the schema. in attribute `foo` on `E::"alice"`, type mismatch: value was expected to have type long, but it actually has type string: `"not_a_number"`"#
-    )
+    );
 }
 
 #[tokio::test]
@@ -872,9 +872,9 @@ async fn code_action_for_misspelled_entity() {
         CodeActionOrCommand::CodeAction(action) =>  {
             let edit = &action.edit.as_ref().unwrap().changes.as_ref().unwrap().get(&policy_uri).unwrap()[0];
             assert_eq!("User", edit.new_text);
-            assert_eq!("Usr", slice_range(policy_text, edit.range))
+            assert_eq!("Usr", slice_range(policy_text, edit.range));
         }
-    )
+    );
 }
 
 #[tokio::test]
@@ -917,9 +917,9 @@ async fn code_action_for_misspelled_action() {
         CodeActionOrCommand::CodeAction(action) =>  {
             let edit = &action.edit.as_ref().unwrap().changes.as_ref().unwrap().get(&policy_uri).unwrap()[0];
             assert_eq!("Action::\"Action\"", edit.new_text);
-            assert_eq!("Action::\"Act\"", slice_range(policy_text, edit.range))
+            assert_eq!("Action::\"Act\"", slice_range(policy_text, edit.range));
         }
-    )
+    );
 }
 
 #[tokio::test]

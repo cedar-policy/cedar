@@ -581,7 +581,7 @@ impl std::fmt::Display for PrincipalOrResourceIsConstraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "is {}", self.entity_type)?;
         if let Some(in_entity) = &self.in_entity {
-            write!(f, " {}", in_entity)?;
+            write!(f, " {in_entity}")?;
         }
         Ok(())
     }

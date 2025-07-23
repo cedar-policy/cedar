@@ -3957,9 +3957,7 @@ mod tests {
             let e = assert_parse_expr_succeeds(es);
             assert!(
                 e.eq_shape(&expr),
-                "{:?} and {:?} should have the same shape.",
-                e,
-                expr
+                "{e:?} and {expr:?} should have the same shape."
             );
         }
     }
@@ -3990,9 +3988,7 @@ mod tests {
             let e = assert_parse_expr_succeeds(es);
             assert!(
                 e.eq_shape(&expr),
-                "{:?} and {:?} should have the same shape.",
-                e,
-                expr
+                "{e:?} and {expr:?} should have the same shape."
             );
         }
 
@@ -4203,9 +4199,7 @@ mod tests {
             let e = parse_expr(es).unwrap();
             assert!(
                 e.eq_shape(&expr),
-                "{:?} and {:?} should have the same shape.",
-                e,
-                expr
+                "{e:?} and {expr:?} should have the same shape."
             );
         }
     }

@@ -243,7 +243,7 @@ impl CedarTestImplementation for RustEngine {
         let authorizer = Authorizer::new();
         let (response, duration) =
             time_function(|| authorizer.is_authorized(request, policies, entities));
-        let response = cedar_policy::Response::from(response);
+        let response = response;
         let response = ffi::Response::new(
             response.decision(),
             response.diagnostics().reason().cloned().collect(),
@@ -326,7 +326,7 @@ impl CedarTestImplementation for RustEngine {
         entities: &Entities,
     ) -> TestResult<TestValidationResult> {
         let (res, dur) =
-            time_function(|| Entities::from_entities(entities.iter().cloned(), Some(&schema)));
+            time_function(|| Entities::from_entities(entities.iter().cloned(), Some(schema)));
         let response = TestValidationResult {
             errors: res.err().map(|e| vec![e.to_string()]).unwrap_or_default(),
             timing_info: HashMap::from([("validate_entities".into(), Micros(dur.as_micros()))]),

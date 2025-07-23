@@ -1256,7 +1256,7 @@ mod tests {
         test_valid("aaa\u{1F408}bcd👍👍👍");
         // test string with invalid escapes
         let test_invalid = |s: &str, bad_escapes: Vec<&str>| {
-            let src: &str = &format!("\"{}\"", s);
+            let src: &str = &format!("\"{s}\"");
             assert_matches!(parse_literal(src), Err(LiteralParseError::Parse(e)) => {
                 expect_n_errors(src, &e, bad_escapes.len());
                 bad_escapes.iter().for_each(|esc|

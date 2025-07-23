@@ -135,7 +135,7 @@ mod test {
         // Using `1 && false` because `true && false` would be simplified to
         // `false` by `Expr::and`.
         let e = Expr::and(Expr::val(1), Expr::val(false));
-        println!("{:?}", e);
+        println!("{e:?}");
         let v: HashSet<_> = e.subexpressions().collect();
         assert_eq!(v, HashSet::from([&e, &Expr::val(1), &Expr::val(false)]));
     }

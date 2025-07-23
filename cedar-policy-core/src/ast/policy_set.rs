@@ -795,10 +795,9 @@ mod test {
         // should not conflict because p1 == p3
         match pset1.merge_policyset(&pset2, false) {
             Ok(_) => (),
-            Err(PolicySetError::Occupied { id }) => panic!(
-                "There should not have been an error! Unexpected conflict for id {}",
-                id
-            ),
+            Err(PolicySetError::Occupied { id }) => {
+                panic!("There should not have been an error! Unexpected conflict for id {id}")
+            }
         }
     }
 
@@ -857,10 +856,9 @@ mod test {
                     assert_eq!(Policy::from(p4), new_p4.clone());
                 }
             }
-            Err(PolicySetError::Occupied { id }) => panic!(
-                "There should not have been an error! Unexpected conflict for id {}",
-                id
-            ),
+            Err(PolicySetError::Occupied { id }) => {
+                panic!("There should not have been an error! Unexpected conflict for id {id}")
+            }
         }
     }
 

@@ -1694,9 +1694,9 @@ impl PrincipalOrResourceConstraint {
                 format!("{} is {} in {}", v, entity_type, euid.into_expr(v.into()))
             }
             PrincipalOrResourceConstraint::Is(entity_type) => {
-                format!("{} is {}", v, entity_type)
+                format!("{v} is {entity_type}")
             }
-            PrincipalOrResourceConstraint::Any => format!("{}", v),
+            PrincipalOrResourceConstraint::Any => format!("{v}"),
         }
     }
 
@@ -1751,7 +1751,7 @@ impl std::fmt::Display for ActionConstraint {
             ActionConstraint::In(euids) => {
                 write!(f, "action in [{}]", render_euids(euids))
             }
-            ActionConstraint::Eq(euid) => write!(f, "action == {}", euid),
+            ActionConstraint::Eq(euid) => write!(f, "action == {euid}"),
             #[cfg(feature = "tolerant-ast")]
             ActionConstraint::ErrorConstraint => write!(f, "<invalid_action_constraint>"),
         }
@@ -2429,7 +2429,7 @@ mod test {
         assert_eq!(error_body.condition(), expected_error);
 
         // Test Display implementation
-        let display_str = format!("{}", error_body);
+        let display_str = format!("{error_body}");
         assert!(display_str.contains("TemplateBodyError"));
         assert!(display_str.contains("error_policy"));
     }
@@ -2483,7 +2483,7 @@ mod test {
         assert!(error_template.annotations().count() == 0);
 
         // Verify display implementation
-        let display_str = format!("{}", error_template);
+        let display_str = format!("{error_template}");
         assert!(display_str.contains("TemplateBody::TemplateBodyError"));
         assert!(display_str.contains(&policy_id.to_string()));
     }
