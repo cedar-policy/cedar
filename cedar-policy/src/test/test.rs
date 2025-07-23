@@ -8287,7 +8287,7 @@ mod tpe_tests {
 
         use crate::{
             Context, Entities, EntityId, PartialEntities, PartialEntityUid, PartialRequest,
-            PolicySet, ResourceQueryRequest, RestrictedExpression, Schema,
+            PolicySet, PrincipalQueryRequest, ResourceQueryRequest, RestrictedExpression, Schema,
         };
 
         #[track_caller]
@@ -8603,14 +8603,51 @@ unless
             let residuals = policies
                 .tpe(&request, &partial_entities, &schema)
                 .expect("TPE should succeed");
+            // TPE should only produce one non-trivial policy
             assert_matches!(&residuals.non_trivially_false_residuals().collect_vec(), [p] => {
                 assert_matches!(p.annotation("id"), Some("subscriber-content-access/movie"));
             });
 
+            // The two movies do not need rent or buy and hence satisfy the
+            // residual policy
             assert_matches!(&policies.query_resource(&ResourceQueryRequest(request), &entities(), &schema).expect("resource query should succeed").collect_vec(), movies => {
                 assert_eq!(movies.len(), 2);
                 assert!(movies.contains(&r#"Movie::"The Godparent""#.parse().unwrap()));
                 assert!(movies.contains(&r#"Movie::"The Gleaming""#.parse().unwrap()));
+            });
+
+            let request = PartialRequest::new(
+                PartialEntityUid::new(r#"Subscriber"#.parse().unwrap(), None),
+                r#"Action::"watch""#.parse().unwrap(),
+                PartialEntityUid::new(
+                    r#"Movie"#.parse().unwrap(),
+                    Some(EntityId::new("The Godparent")),
+                ),
+                Some(
+                    Context::from_pairs([(
+                        "now".into(),
+                        RestrictedExpression::new_record([
+                            (
+                                "datetime".into(),
+                                RestrictedExpression::from_str(r#"datetime("2025-07-22")"#)
+                                    .unwrap(),
+                            ),
+                            (
+                                "localTimeOffset".into(),
+                                RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                            ),
+                        ])
+                        .unwrap(),
+                    )])
+                    .unwrap(),
+                ),
+                &schema,
+            )
+            .unwrap();
+            assert_matches!(&policies.query_principal(&PrincipalQueryRequest(request), &entities(), &schema).expect("resource query should succeed").collect_vec(), uids => {
+                assert_eq!(uids.len(), 2);
+                assert!(uids.contains(&r#"Subscriber::"Alice""#.parse().unwrap()));
+                assert!(uids.contains(&r#"Subscriber::"Charlie""#.parse().unwrap()));
             });
         }
     }
