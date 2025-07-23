@@ -243,7 +243,6 @@ impl CedarTestImplementation for RustEngine {
         let authorizer = Authorizer::new();
         let (response, duration) =
             time_function(|| authorizer.is_authorized(request, policies, entities));
-        let response = response;
         let response = ffi::Response::new(
             response.decision(),
             response.diagnostics().reason().cloned().collect(),
