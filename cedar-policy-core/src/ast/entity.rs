@@ -268,12 +268,22 @@ impl View for EntityUIDImpl {
 pub enum EntityUID {
     /// Unique ID for an entity. These represent entities in the AST
     EntityUID(EntityUIDImpl),
-    #[cfg(feature = "tolerant-ast")] // Pratap: can ignore this feature at least initially
+    #[cfg(feature = "tolerant-ast")]
     /// Represents the ID of an error that failed to parse
     Error,
 }
 
 clone_spec_for!(EntityUID);
+
+impl EntityUID {
+    // Verus doesn't appropriately derive the spec for `eq`, so we just write one ourselves
+    #[verifier::external_body]
+    pub fn eq_entity_uid(&self, other: &Self) -> (b: bool)
+        ensures b == (self@ == other@)
+    {
+        self == other
+    }
+}
 
 impl View for EntityUID {
     type V = spec_ast::EntityUID;
@@ -711,13 +721,15 @@ impl Entity {
         }
     }
 
-
-    }
-
     /// Is this `Entity` a (direct or indirect) descendant of `e` in the entity hierarchy?
-    pub fn is_descendant_of(&self, e: &EntityUID) -> bool {
+    #[verifier::external_body]
+    pub fn is_descendant_of(&self, e: &EntityUID) -> (b: bool)
+        ensures b == (self@.ancestors.contains(e@))
+    {
         self.parents.contains(e) || self.indirect_ancestors.contains(e)
     }
+
+    } // verus!
 
     /// Is this `Entity` a an indirect descendant of `e` in the entity hierarchy?
     pub fn is_indirect_descendant_of(&self, e: &EntityUID) -> bool {

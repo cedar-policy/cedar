@@ -225,9 +225,13 @@ impl<T> FiniteSet<T> {
 
     pub uninterp spec fn len(&self) -> nat;
 
-    pub uninterp spec fn all(&self, pred: spec_fn(T) -> bool) -> bool;
+    pub open spec fn all(&self, pred: spec_fn(T) -> bool) -> bool {
+        forall |x: T| self.contains(x) ==> pred(x)
+    }
 
-    pub uninterp spec fn any(&self, pred: spec_fn(T) -> bool) -> bool;
+    pub open spec fn any(&self, pred: spec_fn(T) -> bool) -> bool {
+        exists |x: T| self.contains(x) && pred(x)
+    }
 
     pub uninterp spec fn map<B>(self, f: spec_fn(T) -> B) -> FiniteSet<B>;
 
@@ -238,6 +242,9 @@ impl<T> FiniteSet<T> {
     pub uninterp spec fn intersect(self, s2: FiniteSet<T>) -> FiniteSet<T>;
 
     pub uninterp spec fn from_seq(s: Seq<T>) -> FiniteSet<T>;
+
+    pub broadcast axiom fn finiteset_from_seq_contains_spec(s:Seq<T>, t: T)
+        ensures s.contains(t) <==> #[trigger] Self::from_seq(s).contains(t);
 }
 
 

@@ -603,7 +603,7 @@ impl Set {
         }
     }
 
-    }
+    } // verus!
 }
 
 impl FromIterator<Value> for Set {

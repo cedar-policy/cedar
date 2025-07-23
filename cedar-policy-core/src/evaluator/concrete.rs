@@ -37,6 +37,7 @@ use crate::evaluator::*;
 
 use crate::verus_utils::*;
 
+use vstd::assert_by_contradiction;
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use vstd::std_specs::hash::*;
@@ -336,63 +337,59 @@ impl<'e> Evaluator<'e> {
                         let arg2_set = arg2.get_as_set()?;
                         Ok((!arg1_set.is_disjoint(arg2_set)).into())
                     }
-                    // BinaryOp::Contains | BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
-                    //     // todo: handle Set ops
-                    //     assume(false);
-                    //     unreached()
-                    // }
                     // GetTag and HasTag, which require an Entity on the left and a String on the right
-                    BinaryOp::GetTag | BinaryOp::HasTag => {
-                        let uid = arg1.get_as_entity()?;
-                        let tag = arg2.get_as_string()?;
-                        match op {
-                            BinaryOp::GetTag => {
-                                match self.entities.entity(uid) {
-                                    Dereference::NoSuchEntity => {
-                                        // intentionally using the location of the euid (the LHS) and not the entire GetTag expression
-                                        Err(EvaluationError::entity_does_not_exist(
-                                            Arc::new(uid.clone()),
-                                            arg1.source_loc().cloned(),
-                                        ))
-                                    }
-                                    Dereference::Residual(r) => {
-                                        Err(err::EvaluationError::non_value(expr.clone()))
-                                    }
-                                    Dereference::Data(entity) => match entity.get_tag_value_verus(tag.as_str()) {
-                                        Some(v) => Ok(v.clone()),
-                                        // Some(PartialValue::Residual(_)) => {
-                                        //     Err(err::EvaluationError::non_value(expr.clone()))
-                                        // }
-                                        None => {
-                                            Err(EvaluationError::entity_tag_does_not_exist(
-                                                Arc::new(uid.clone()),
-                                                tag.clone(),
-                                                entity.tag_keys_verus(),
-                                                entity.get_value_verus(tag.as_str()).is_some(),
-                                                entity.tags_len(),
-                                                loc.cloned(), // intentionally using the location of the entire `GetTag` expression
-                                            ))
-                                        }
-                                    },
-                                }
-                            }
-                            BinaryOp::HasTag => match self.entities.entity(uid) {
-                                Dereference::NoSuchEntity => Ok(false.into()),
-                                Dereference::Residual(r) => {
-                                    Err(err::EvaluationError::non_value(expr.clone()))
-                                }
-                                Dereference::Data(entity) => {
-                                    Ok(entity.get_tag_value_verus(tag.as_str()).is_some().into())
-                                }
-                            },
-                            // PANIC SAFETY `op` is checked to be one of these two above
-                            #[allow(clippy::unreachable)]
-                            _ => {
-                                unreached()
-                                // unreachable!("Should have already checked that op was one of these")
-                            }
-                        }
-                    }
+                    // BinaryOp::GetTag | BinaryOp::HasTag => {
+                    //     let uid = arg1.get_as_entity()?;
+                    //     let tag = arg2.get_as_string()?;
+                    //     match op {
+                    //         BinaryOp::GetTag => {
+                    //             match self.entities.entity(uid) {
+                    //                 Dereference::NoSuchEntity => {
+                    //                     // intentionally using the location of the euid (the LHS) and not the entire GetTag expression
+                    //                     Err(EvaluationError::entity_does_not_exist(
+                    //                         Arc::new(uid.clone()),
+                    //                         arg1.source_loc().cloned(),
+                    //                     ))
+                    //                 }
+                    //                 Dereference::Residual(r) => {
+                    //                     Err(err::EvaluationError::non_value(expr.clone()))
+                    //                 }
+                    //                 Dereference::Data(entity) => match entity.get_tag_value_verus(tag.as_str()) {
+                    //                     Some(v) => Ok(v.clone()),
+                    //                     // Some(PartialValue::Residual(_)) => {
+                    //                     //     Err(err::EvaluationError::non_value(expr.clone()))
+                    //                     // }
+                    //                     None => {
+                    //                         Err(EvaluationError::entity_tag_does_not_exist(
+                    //                             Arc::new(uid.clone()),
+                    //                             tag.clone(),
+                    //                             entity.tag_keys_verus(),
+                    //                             entity.get_value_verus(tag.as_str()).is_some(),
+                    //                             entity.tags_len(),
+                    //                             loc.cloned(), // intentionally using the location of the entire `GetTag` expression
+                    //                         ))
+                    //                     }
+                    //                 },
+                    //             }
+                    //         }
+                    //         BinaryOp::HasTag => match self.entities.entity(uid) {
+                    //             Dereference::NoSuchEntity => Ok(false.into()),
+                    //             Dereference::Residual(r) => {
+                    //                 Err(err::EvaluationError::non_value(expr.clone()))
+                    //             }
+                    //             Dereference::Data(entity) => {
+                    //                 Ok(entity.get_tag_value_verus(tag.as_str()).is_some().into())
+                    //             }
+                    //         },
+                    //         // PANIC SAFETY `op` is checked to be one of these two above
+                    //         #[allow(clippy::unreachable)]
+                    //         _ => {
+                    //             unreached()
+                    //             // unreachable!("Should have already checked that op was one of these")
+                    //         }
+                    //     }
+                    // }
+                    _ => {assume(false); unreached()}
                 }
             }
             // ExprKind::ExtensionFunctionApp { fn_name, args } => {
@@ -412,134 +409,285 @@ impl<'e> Evaluator<'e> {
                 assume(false);
                 unreached()
             }
-            ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
-            ExprKind::HasAttr {
-                expr: expr_inner,
-                attr,
-            } => match self.interpret(expr_inner, slots)? {
-                Value {
-                    value: ValueKind::Record(record),
-                    ..
-                } => Ok(record_get_arc(&record, attr).is_some().into()),
-                Value {
-                    value: ValueKind::Lit(Literal::EntityUID(uid)),
-                    ..
-                } => match self.entities.entity(&uid) {
-                    Dereference::NoSuchEntity => Ok(false.into()),
-                    Dereference::Residual(r) => Err(err::EvaluationError::non_value(expr.clone())),
-                    Dereference::Data(e) => Ok(e.get_value_verus(attr.as_str()).is_some().into()),
-                },
-                val => Err(err::EvaluationError::type_error(
-                    Self::nonempty_record_any_entity_type(),
-                    &val,
-                )),
-            },
+            // ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
+            // ExprKind::HasAttr {
+            //     expr: expr_inner,
+            //     attr,
+            // } => match self.interpret(expr_inner, slots)? {
+            //     Value {
+            //         value: ValueKind::Record(record),
+            //         ..
+            //     } => Ok(record_get_arc(&record, attr).is_some().into()),
+            //     Value {
+            //         value: ValueKind::Lit(Literal::EntityUID(uid)),
+            //         ..
+            //     } => match self.entities.entity(&uid) {
+            //         Dereference::NoSuchEntity => Ok(false.into()),
+            //         Dereference::Residual(r) => Err(err::EvaluationError::non_value(expr.clone())),
+            //         Dereference::Data(e) => Ok(e.get_value_verus(attr.as_str()).is_some().into()),
+            //     },
+            //     val => Err(err::EvaluationError::type_error(
+            //         Self::nonempty_type_any_entity_type(Type::Record),
+            //         &val,
+            //     )),
+            // },
+            // // ExprKind::Like { expr, pattern } => {
+            // //     let v = self.interpret(expr, slots)?;
+            // //     Ok((pattern.wildcard_match(v.get_as_string()?)).into())
+            // // }
             // ExprKind::Like { expr, pattern } => {
-            //     let v = self.interpret(expr, slots)?;
-            //     Ok((pattern.wildcard_match(v.get_as_string()?)).into())
+            //     // TODO: handle patterns
+            //     assume(false);
+            //     unreached()
             // }
-            ExprKind::Like { expr, pattern } => {
-                // TODO: handle patterns
-                assume(false);
-                unreached()
-            }
-            ExprKind::Is { expr, entity_type } => {
-                let v = self.interpret(expr, slots)?;
-                Ok((v.get_as_entity()?.entity_type().eq_entity_type(entity_type)).into())
-            }
-            ExprKind::Set(items) => {
-                // let vals = items
-                //     .iter()
-                //     .map(|item| self.interpret(item, slots))
-                //     .collect::<Result<Vec<_>>>()?;
-                // Ok(Value::set(vals, loc.cloned()).into())
-                // Verus can't handle iterators, so we have to use a loop:
-                assume(false);
-                let mut vals: Vec<Value> = Vec::with_capacity(items.len());
-                for item in items.iter()
-                    invariant
-                        false,
-                        spec_evaluator::enough_stack_space(),
-                {
-                    let item_val = self.interpret(item, slots)?;
-                    vals.push(item_val);
-                }
-                Ok(Value::set(vals, loc.cloned()).into())
-            }
-            ExprKind::Record(map) => {
-                // let map = map
-                //     .iter()
-                //     .map(|kv| { let (k, v) = kv; Ok((k.clone(), self.interpret(v, slots)?)) })
-                //     .collect::<Result<Vec<_>>>()?;
-                // let (names, vals): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
-                // Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
-                // Verus can't handle iterators, so we have to use a loop:
-                assume(false);
-                let mut names_vals: Vec<(SmolStr, Value)> = Vec::with_capacity(expr_map_len(&map));
-                for k in expr_map_keys_arc(&map)
-                    invariant
-                        false,
-                        spec_evaluator::enough_stack_space(),
-                {
-                    let v = match expr_map_get_arc(&map, k) {
-                        Some(v) => v,
-                        None => unreached(),
-                    };
-                    let v_val = self.interpret(v, slots)?;
-                    names_vals.push((k.clone(), v_val));
-                }
-                Ok(Value::record(names_vals, loc.cloned()).into())
-            }
-            #[cfg(feature = "tolerant-ast")]
-            ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
-                source_loc: loc.cloned(),
-            })),
+            // ExprKind::Is { expr, entity_type } => {
+            //     let v = self.interpret(expr, slots)?;
+            //     Ok((v.get_as_entity()?.entity_type().eq_entity_type(entity_type)).into())
+            // }
+            // ExprKind::Set(items) => {
+            //     // let vals = items
+            //     //     .iter()
+            //     //     .map(|item| self.interpret(item, slots))
+            //     //     .collect::<Result<Vec<_>>>()?;
+            //     // Ok(Value::set(vals, loc.cloned()).into())
+            //     // Verus can't handle iterators, so we have to use a loop:
+            //     assume(false);
+            //     let mut vals: Vec<Value> = Vec::with_capacity(items.len());
+            //     for item in items.iter()
+            //         invariant
+            //             false,
+            //             spec_evaluator::enough_stack_space(),
+            //     {
+            //         let item_val = self.interpret(item, slots)?;
+            //         vals.push(item_val);
+            //     }
+            //     Ok(Value::set(vals, loc.cloned()).into())
+            // }
+            // ExprKind::Record(map) => {
+            //     // let map = map
+            //     //     .iter()
+            //     //     .map(|kv| { let (k, v) = kv; Ok((k.clone(), self.interpret(v, slots)?)) })
+            //     //     .collect::<Result<Vec<_>>>()?;
+            //     // let (names, vals): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
+            //     // Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
+            //     // Verus can't handle iterators, so we have to use a loop:
+            //     assume(false);
+            //     let mut names_vals: Vec<(SmolStr, Value)> = Vec::with_capacity(expr_map_len(&map));
+            //     for k in expr_map_keys_arc(&map)
+            //         invariant
+            //             false,
+            //             spec_evaluator::enough_stack_space(),
+            //     {
+            //         let v = match expr_map_get_arc(&map, k) {
+            //             Some(v) => v,
+            //             None => unreached(),
+            //         };
+            //         let v_val = self.interpret(v, slots)?;
+            //         names_vals.push((k.clone(), v_val));
+            //     }
+            //     Ok(Value::record(names_vals, loc.cloned()).into())
+            // }
+            // #[cfg(feature = "tolerant-ast")]
+            // ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
+            //     source_loc: loc.cloned(),
+            // })),
+            _ => {assume(false); unreached()}
         }
     }
 
-    // Factored out from type error case in `ExprKind::HasAttr`, since Verus can't handle the lazy static `ANY_ENTITY_TYPE`
+    // Factored out from type error calls, since Verus can't handle the lazy static `ANY_ENTITY_TYPE`
     #[verifier::external_body]
-    fn nonempty_record_any_entity_type() -> NonEmpty<Type> {
+    fn nonempty_type_any_entity_type(t: Type) -> NonEmpty<Type> {
         nonempty![
-            Type::Record,
+            t,
             Type::entity_type(names::ANY_ENTITY_TYPE.clone())
         ]
     }
 
-    #[verifier::external_body] // TODO: support the `in` operator
+    #[verifier::loop_isolation(false)]
     fn eval_in(&self, uid1: &EntityUID, entity1: Option<&Entity>, arg2: Value) -> (res: Result<Value>)
         requires
             spec_evaluator::enough_stack_space(),
+        ensures ({
+            let entity1_view = match entity1 { Some(e) => Some(e@), None => None };
+            &&& res matches Ok(res_v) ==> {
+                &&& spec_evaluator::apply_2_mem_with_entity(uid1@, entity1_view, arg2@) matches Ok(v)
+                &&& res_v@ == v
+            }
+            &&& res is Err ==> {
+                &&& spec_evaluator::apply_2_mem_with_entity(uid1@, entity1_view, arg2@) is Err
+            }
+        })
     {
+        broadcast use FiniteSet::finiteset_from_seq_contains_spec;
+        let ghost entity1_view = match entity1 { Some(e) => Some(e@), None => None };
+
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
         let rhs = match arg2.value {
             ValueKind::Lit(Literal::EntityUID(uid)) => vec![Arc::unwrap_or_clone(uid)],
             // we assume that iterating the `authoritative` BTreeSet is
             // approximately the same cost as iterating the `fast` HashSet
-            ValueKind::Set(Set { authoritative, .. }) => authoritative
-                .iter()
-                .map(|val| Ok(val.get_as_entity()?.clone()))
-                .collect::<Result<Vec<EntityUID>>>()?,
+            // ValueKind::Set(Set { authoritative, .. }) => authoritative
+            //     .iter()
+            //     .map(|val| Ok(val.get_as_entity()?.clone()))
+            //     .collect::<Result<Vec<EntityUID>>>()?,
+            ValueKind::Set(s) => Self::set_try_into_entity_uids(&s)?,
             _ => {
                 return Err(EvaluationError::type_error(
-                    nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                    Self::nonempty_type_any_entity_type(Type::Set),
                     &arg2,
                 ))
             }
         };
-        for uid2 in rhs {
-            if uid1 == &uid2
+        let ghost mut i: int = 0;
+        for uid2 in rhs_spec: rhs
+            invariant
+                i == rhs_spec.pos,
+                // (match arg2@ {
+                //     spec_ast::Value::Prim { p: spec_ast::Prim::EntityUID { uid } } => {
+                //         rhs@.map_values(|euid: EntityUID| euid@) == seq![uid]
+                //     },
+                //     spec_ast::Value::Set { s: vs } => {
+                //         &&& spec_ast::valueset_as_entity_uid(vs) matches Ok(euid_set)
+                //         &&& FiniteSet::from_seq(rhs@.map_values(|euid: EntityUID| euid@)) == euid_set
+                //     }
+                //     _ => false // unreachable
+                // }),
+                (match arg2.value {
+                    ValueKind::Lit(Literal::EntityUID(uid)) => {
+                        rhs@ == seq![*uid]
+                    },
+                    ValueKind::Set(s) => {
+                        &&& spec_ast::valueset_as_entity_uid(s@) matches Ok(euid_set)
+                        &&& FiniteSet::from_seq(rhs@.map_values(|euid: EntityUID| euid@)) == euid_set
+                    }
+                    _ => false // unreachable
+                }),
+                rhs_spec.elements == rhs@,
+                forall |euid: EntityUID| #[trigger] rhs_spec.elements.take(rhs_spec.pos).contains(euid) ==>
+                    !(#[trigger] spec_evaluator::in_e_with_entity(uid1@, entity1_view, euid@)),
+                // forall |es: spec_ast::Entities| #[trigger] es.get(uid1@) == entity1_view ==>
+                //     !FiniteSet::from_seq(rhs_spec.elements.take(rhs_spec.pos)).any(|u: EntityUID| spec_evaluator::in_e(uid1@, u@, es)),
+        {
+            broadcast use FiniteSet::finiteset_from_seq_contains_spec;
+            proof {
+                assert(rhs@.map_values(|euid: EntityUID| euid@).contains(uid2@)) by {
+                    assert(rhs@.contains(uid2));
+                    let i = choose |i: int| 0 <= i < rhs@.len() && rhs@[i] == uid2;
+                    assert(rhs@.map_values(|euid: EntityUID| euid@)[i] == uid2@);
+                }
+                assert(FiniteSet::from_seq(rhs@.map_values(|euid: EntityUID| euid@)).contains(uid2@));
+                assert(arg2@ is Set ==>
+                        (spec_ast::valueset_as_entity_uid(arg2@->s) matches Ok(euid_set)
+                            && euid_set.contains(uid2@))
+                );
+
+                assert(rhs_spec.elements[rhs_spec.pos] == uid2);
+            }
+            if uid1.eq_entity_uid(&uid2)
                 || entity1
-                    .map(|e1| e1.is_descendant_of(&uid2))
+                    .map(|e1: &Entity| -> (b:bool) ensures b == e1@.ancestors.contains(uid2@) { e1.is_descendant_of(&uid2) })
                     .unwrap_or(false)
             {
+                proof {
+                    assert(spec_evaluator::in_e_with_entity(uid1@, entity1_view, uid2@));
+                    assert(arg2@ is Set ==>
+                            (spec_ast::valueset_as_entity_uid(arg2@->s) matches Ok(euid_set)
+                            && euid_set.any(|u: spec_ast::EntityUID| spec_evaluator::in_e_with_entity(uid1@, entity1_view, u)))
+                    );
+                };
                 return Ok(true.into());
             }
+            proof {
+                assert(rhs_spec.elements.take(rhs_spec.pos + 1) =~= rhs_spec.elements.take(rhs_spec.pos) + seq![uid2]);
+                assert forall |euid: EntityUID| #[trigger] rhs_spec.elements.take(rhs_spec.pos + 1).contains(euid) implies
+                    !(#[trigger] spec_evaluator::in_e_with_entity(uid1@, entity1_view, euid@)) by {
+                    assert(rhs_spec.elements.take(rhs_spec.pos).contains(euid) || euid == uid2);
+                    if rhs_spec.elements.take(rhs_spec.pos).contains(euid) {
+                        assert(!(spec_evaluator::in_e_with_entity(uid1@, entity1_view, euid@)));
+                    } else {
+                        assert(!spec_evaluator::in_e_with_entity(uid1@, entity1_view, uid2@));
+                    }
+                };
+            }
+            proof {
+                i = i + 1;
+            }
         }
+        proof {
+            assert(i == rhs@.len() as int);
+            assert(rhs@.take(i) =~= rhs@);
+            assert(forall |euid: EntityUID| #[trigger] rhs@.contains(euid) ==> !(#[trigger] spec_evaluator::in_e_with_entity(uid1@, entity1_view, euid@)));
+            assert forall |euid: EntityUID| #[trigger] rhs@.contains(euid) implies rhs@.map_values(|e: EntityUID| e@).contains(euid@) by {
+                assert(rhs@.contains(euid));
+                let i = choose |i: int| 0 <= i < rhs@.len() && rhs@[i] == euid;
+                assert(rhs@.map_values(|euid: EntityUID| euid@)[i] == euid@);
+            };
+            // assert(forall |euid: spec_ast::EntityUID| rhs@.map_values(|euid: EntityUID| euid@).contains(euid) ==> !(#[trigger] spec_evaluator::in_e_with_entity(uid1@, entity1_view, euid)));
+            // assert(
+            //     match arg2.value {
+            //         ValueKind::Set(s) => {
+            //             &&& spec_ast::valueset_as_entity_uid(s@) matches Ok(euid_set)
+            //             &&& FiniteSet::from_seq(rhs@.map_values(|euid: EntityUID| euid@)) == euid_set
+            //             &&& forall |euid: EntityUID| #[trigger] rhs@.contains(euid) ==> #[trigger] euid_set.contains(euid@)
+            //         }
+            //         _ => true
+            //     }
+            // );
+            match arg2.value {
+                ValueKind::Lit(Literal::EntityUID(uid)) => {
+                    assert(rhs@ == seq![*uid]);
+                    assert(rhs@.contains(*uid));
+                    assert(!spec_evaluator::in_e_with_entity(uid1@, entity1_view, uid@))
+                },
+                ValueKind::Set(s) => {
+                    assert(spec_ast::valueset_as_entity_uid(s@) matches Ok(euid_set));
+                    let euid_set = spec_ast::valueset_as_entity_uid(s@)->Ok_0;
+                    assert(FiniteSet::from_seq(rhs@.map_values(|euid: EntityUID| euid@)) == euid_set);
+                    assert(forall |euid: EntityUID| #[trigger] rhs@.contains(euid) ==> #[trigger] euid_set.contains(euid@));
+                    assert_by_contradiction!( !euid_set.any(|u: spec_ast::EntityUID| spec_evaluator::in_e_with_entity(uid1@, entity1_view, u)), {
+                        // assert(euid_set.any(|u: spec_ast::EntityUID| spec_evaluator::in_e_with_entity(uid1@, entity1_view, u)));
+                        assert(exists |u: spec_ast::EntityUID| #[trigger] euid_set.contains(u) && spec_evaluator::in_e_with_entity(uid1@, entity1_view, u));
+                        let u = choose |u: spec_ast::EntityUID| #[trigger] euid_set.contains(u) && spec_evaluator::in_e_with_entity(uid1@, entity1_view, u);
+                        assert(rhs@.map_values(|e: EntityUID| e@).contains(u));
+                        assert(exists |i| 0 <= i < rhs@.len() && rhs@.map_values(|e: EntityUID| e@)[i] == u);
+                        let i = choose |i| 0 <= i < rhs@.len() && rhs@.map_values(|e: EntityUID| e@)[i] == u;
+                    });
+                },
+                _ => {},
+            }
+
+            // assert(arg2@ is Prim && arg2@->p is EntityUID ==> !spec_evaluator::in_e_with_entity(uid1@, entity1_view, arg2@->p->uid)) by {
+            //     assert(rhs@.map_values(|euid: EntityUID| euid@).contains(arg2@->p->uid));
+            //     //     assert(rhs@.contains(arg2@->p->uid));
+            //     //     let i = choose |i: int| 0 <= i < rhs@.len() && rhs@[i] == arg2@->p->uid;
+            //     //     assert(rhs@.map_values(|euid: EntityUID| euid@)[i] == arg2@->p->uid);
+            //     // }
+            // }
+            // assert(arg2@ is Set ==>
+            //     (spec_ast::valueset_as_entity_uid(arg2@->s) matches Ok(euid_set)
+            //         && !euid_set.any(|u: spec_ast::EntityUID| spec_evaluator::in_e_with_entity(uid1@, entity1_view, u)))
+            // );
+        }
+
         // if we get here, `uid1` is not a descendant of (or equal to)
         // any UID in `rhs`
         Ok(false.into())
+    }
+
+    // If all elements are `EntityUID`, get them all as a `Vec`, otherwise return an error
+    // Factored out from `eval_in` since Verus doesn't reason about the set
+    #[verifier::external_body]
+    fn set_try_into_entity_uids(s: &Set) -> (res: Result<Vec<EntityUID>>)
+        ensures
+            res matches Ok(v) ==> spec_ast::valueset_as_entity_uid(s@) matches Ok(euid_set) && FiniteSet::from_seq(v@.map_values(|euid: EntityUID| euid@)) == euid_set,
+            res is Err ==> spec_ast::valueset_as_entity_uid(s@) is Err,
+    {
+        s.authoritative
+            .iter()
+            .map(|val| Ok(val.get_as_entity()?.clone()))
+            .collect::<Result<Vec<EntityUID>>>()
     }
 
     /// Evaluation of conditionals
@@ -642,7 +790,7 @@ impl<'e> Evaluator<'e> {
                 // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
                 #[allow(clippy::unwrap_used)]
                 Err(EvaluationError::type_error(
-                    Self::nonempty_record_any_entity_type(),
+                    Self::nonempty_type_any_entity_type(Type::Record),
                     // nonempty![
                     //     Type::Record,
                     //     Type::entity_type(names::ANY_ENTITY_TYPE.clone()),

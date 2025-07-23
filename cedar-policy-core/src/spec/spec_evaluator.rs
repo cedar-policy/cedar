@@ -451,5 +451,37 @@ pub proof fn lemma_evaluate_to_expr_bool_or_err(p: Policy, req: Request, entitie
     lemma_eval_and_spec(p_scope_expr, Expr::and(a_scope_expr, Expr::and(r_scope_expr, c_expr)), req, entities, p.slot_env);
 }
 
+pub open spec fn in_e_with_entity(uid1: EntityUID, entity1: Option<EntityData>, uid2: EntityUID) -> bool {
+    uid1 == uid2 || (match entity1 {
+        Some(e1) => e1.ancestors.contains(uid2),
+        None => false,
+    })
+}
+
+pub open spec fn in_s_with_entity(uid: EntityUID, entity1: Option<EntityData>, vs: FiniteSet<Value>) -> SpecResult<Value> {
+    let uids_r = valueset_as_entity_uid(vs);
+    match uids_r {
+        Ok(uids) => {
+            let b = uids.any(|u: EntityUID| in_e_with_entity(uid, entity1, u));
+            Ok(Value::bool(b))
+        },
+        Err(err) => Err(err)
+    }
+}
+
+// The concrete evaluator separates out the arithmetic operations into a function that takes a single entity, rather than
+// the whole entities map; to simplify the proof, we provide this spec. Verus seems to be able to prove equivalence at the call site
+pub open spec fn apply_2_mem_with_entity(uid1: EntityUID, entity1: Option<EntityData>, v2: Value) -> SpecResult<Value> {
+    match v2 {
+        (Value::Prim { p: Prim::EntityUID { uid: uid2 } }) =>
+            Ok(Value::bool(in_e_with_entity(uid1, entity1, uid2))),
+        (Value::Set { s: vs }) =>
+            in_s_with_entity(uid1, entity1, vs),
+        _ => Err(Error::TypeError)
+    }
+}
+
+
+
 
 }
