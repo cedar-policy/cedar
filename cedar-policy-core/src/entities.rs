@@ -500,7 +500,7 @@ where
     pub fn unwrap(self) -> &'a T {
         match self {
             Self::Data(e) => e,
-            e => panic!("unwrap() called on {:?}", e),
+            e => panic!("unwrap() called on {e:?}"),
         }
     }
 
@@ -519,7 +519,7 @@ where
     pub fn expect(self, msg: &str) -> &'a T {
         match self {
             Self::Data(e) => e,
-            e => panic!("expect() called on {:?}, msg: {msg}", e),
+            e => panic!("expect() called on {e:?}, msg: {msg}"),
         }
     }
 }

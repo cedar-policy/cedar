@@ -176,7 +176,7 @@ pub fn parse_entities_from_test(test: &JsonTest, schema: &Schema) -> Entities {
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
 fn parse_entity_uid(json: serde_json::Value, error_string: &str) -> EntityUid {
-    EntityUid::from_json(json).unwrap_or_else(|e| panic!("{}: {e}", error_string))
+    EntityUid::from_json(json).unwrap_or_else(|e| panic!("{error_string}: {e}"))
 }
 
 /// Given a `JsonRequest`, parse (and optionally validate) the provided request.

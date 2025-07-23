@@ -638,8 +638,8 @@ pub(crate) mod tests {
             .to_policy_template_tolerant(PolicyID::from_string("0"))
             .unwrap();
         DocumentContext::new(
-            Some(schema().into()),
-            ast.into(),
+            Some(schema()),
+            ast,
             policy,
             position,
             PolicyLanguageFeatures::default(),
@@ -1036,12 +1036,12 @@ permit(
 
     #[test]
     fn get_policy_scope_is_operator() {
-        let policy = r#"
+        let policy = r"
         permit(
             principal is User,
             action,
             resource is Resource
-        );"#;
+        );";
 
         // Test cursor in complex principal section
         let result = get_policy_scope_variable(

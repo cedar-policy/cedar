@@ -201,7 +201,7 @@ impl InternalName {
 impl std::fmt::Display for InternalName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for elem in self.path.as_ref() {
-            write!(f, "{}::", elem)?;
+            write!(f, "{elem}::")?;
         }
         write!(f, "{}", self.id)?;
         Ok(())

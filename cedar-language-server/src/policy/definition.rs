@@ -133,8 +133,8 @@ mod tests {
             None => Vec::new(),
         };
 
-        actual.sort();
-        expected.sort();
+        actual.sort_unstable();
+        expected.sort_unstable();
         if actual.len() == 1 && expected.len() == 1 {
             // Nicer error on failure in the common case of one goto
             similar_asserts::assert_eq!(expected[0], actual[0]);
@@ -555,8 +555,8 @@ mod tests {
 
     goto_def_test!(
         go_to_context_attr_unqual_action,
-        r#"permit(principal,action, resource)
-        when { context.oth|caret|er == 0 };"#,
+        r"permit(principal,action, resource)
+        when { context.oth|caret|er == 0 };",
         get_schema_info(),
         "other: Bool,",
         "other: Bool,",
@@ -588,7 +588,7 @@ mod tests {
 
     goto_def_test!(
         go_to_has_attr_definition,
-        r#"permit(principal, action, resource) when { principal has viewPermissi|caret|ons };"#,
+        r"permit(principal, action, resource) when { principal has viewPermissi|caret|ons };",
         get_schema_info(),
         "viewPermissions: PermissionsMap,"
     );

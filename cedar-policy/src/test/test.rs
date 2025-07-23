@@ -797,7 +797,7 @@ mod policy_set_tests {
             .expect("Failed to parse");
         pset.add(policy0).unwrap();
         pset.add(policy1).unwrap();
-        let policy_fmt = format!("{}", pset);
+        let policy_fmt = format!("{pset}");
         let mut expected_fmt = String::from(STATIC_POLICY_TEXT);
         expected_fmt.push('\n');
         expected_fmt.push_str(STATIC_POLICY_TEXT);
@@ -823,7 +823,7 @@ mod policy_set_tests {
             HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
         pset.link(PolicyId::new("template1"), PolicyId::new("linked1"), env1)
             .expect("Failed to link");
-        let policy_fmt = format!("{}", pset);
+        let policy_fmt = format!("{pset}");
         let mut expected_fmt = String::from(LINKED_POLICY_TEXT);
         expected_fmt.push('\n');
         expected_fmt.push_str(LINKED_POLICY_TEXT);
@@ -2558,11 +2558,11 @@ mod schema_based_parsing_tests {
     #[test]
     fn multiple_extension_arguments() {
         let (schema, _) = Schema::from_cedarschema_str(
-            r#"
+            r"
         entity E {
             d: datetime,
         };
-        "#,
+        ",
         )
         .unwrap();
         // recommended way

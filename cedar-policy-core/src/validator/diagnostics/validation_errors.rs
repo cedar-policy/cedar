@@ -106,8 +106,8 @@ pub fn unrecognized_action_id_help(
 ) -> Option<UnrecognizedActionIdHelp> {
     // Check if the user has included the type (i.e., `Action::`) in the action id
     let eid_str: &str = euid.eid().as_ref();
-    let eid_with_type = format!("Action::{}", eid_str);
-    let eid_with_type_and_quotes = format!("Action::\"{}\"", eid_str);
+    let eid_with_type = format!("Action::{eid_str}");
+    let eid_with_type_and_quotes = format!("Action::\"{eid_str}\"");
     let maybe_id_with_type = schema.action_ids().find(|action_id| {
         let eid = <Eid as AsRef<str>>::as_ref(action_id.name().eid());
         eid.contains(&eid_with_type) || eid.contains(&eid_with_type_and_quotes)
@@ -165,7 +165,7 @@ impl Diagnostic for InvalidActionApplication {
 #[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
 #[error("for policy `{policy_id}`, unexpected type: expected {} but saw {}",
     match .expected.iter().next() {
-        Some(single) if .expected.len() == 1 => format!("{}", single),
+        Some(single) if .expected.len() == 1 => format!("{single}"),
         _ => .expected.iter().join(", or ")
     },
     .actual)]
@@ -661,7 +661,7 @@ impl Display for AttributeAccess {
                 f,
                 "`{attrs_str}` on entity type{}",
                 match lub.get_single_entity() {
-                    Some(single) => format!(" `{}`", single),
+                    Some(single) => format!(" `{single}`"),
                     _ => format!("s {}", lub.iter().map(|ety| format!("`{ety}`")).join(", ")),
                 },
             ),

@@ -163,7 +163,7 @@ impl From<RawCedarValueJson> for CedarValueJson {
                                             __extn: FnAndArgs::Multi {
                                                 ext_fn: fn_name.clone(),
                                                 args: args
-                                                    .into_iter()
+                                                    .iter()
                                                     .cloned()
                                                     .map(Into::into)
                                                     .collect(),
@@ -432,7 +432,7 @@ impl CedarValueJson {
                     __extn: FnAndArgs::Multi {
                         ext_fn: fn_name.to_smolstr(),
                         args: args
-                            .into_iter()
+                            .iter()
                             .map(|arg| {
                                 CedarValueJson::from_expr(BorrowedRestrictedExpr::new_unchecked(
                                     arg,
@@ -526,7 +526,7 @@ impl CedarValueJson {
                         __extn: FnAndArgs::Multi {
                             ext_fn: ext_func.to_smolstr(),
                             args: exprs
-                                .into_iter()
+                                .iter()
                                 .map(|expr| Self::from_expr(expr.as_borrowed()))
                                 .collect::<Result<Vec<_>, _>>()?,
                         },
@@ -638,7 +638,7 @@ impl FnAndArgs {
             Name::from_normalized_str(ext_fn).map_err(|errs| {
                 JsonDeserializationError::parse_escape(EscapeKind::Extension, ext_fn, errs)
             })?,
-            args.into_iter()
+            args.iter()
                 .map(|arg| CedarValueJson::into_expr(arg.clone(), ctx.clone()))
                 .collect::<Result<Vec<_>, _>>()?,
         ))
@@ -729,7 +729,7 @@ impl<'e> ValueParser<'e> {
                         Ok(RestrictedExpr::call_extension_fn(
                             func.name().clone(),
                             arg_types
-                                .into_iter()
+                                .iter()
                                 .zip(args.iter())
                                 .map(|(arg_type, arg)| {
                                     // We need to recur here because there

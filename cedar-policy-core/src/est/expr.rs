@@ -1120,7 +1120,7 @@ fn display_cedarvaluejson(
         CedarValueJson::EntityEscape { __entity } => {
             match ast::EntityUID::try_from(__entity.clone()) {
                 Ok(euid) => write!(f, "{euid}"),
-                Err(e) => write!(f, "(invalid entity uid: {})", e),
+                Err(e) => write!(f, "(invalid entity uid: {e})"),
             }
         }
         CedarValueJson::ExprEscape { __expr } => write!(f, "({__expr})"),

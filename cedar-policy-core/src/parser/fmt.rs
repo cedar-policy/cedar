@@ -25,9 +25,9 @@ impl<T: fmt::Display> fmt::Display for View<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(n) = &self.0.as_inner() {
             if f.alternate() {
-                write!(f, "{:#}", n)
+                write!(f, "{n:#}")
             } else {
-                write!(f, "{}", n)
+                write!(f, "{n}")
             }
         } else {
             write!(f, "[error]")
@@ -430,8 +430,8 @@ impl fmt::Display for Ident {
             Ident::If => write!(f, "if"),
             Ident::Then => write!(f, "then"),
             Ident::Else => write!(f, "else"),
-            Ident::Ident(s) => write!(f, "{}", s),
-            Ident::Invalid(s) => write!(f, "{}", s),
+            Ident::Ident(s) => write!(f, "{s}"),
+            Ident::Invalid(s) => write!(f, "{s}"),
         }
     }
 }
@@ -440,7 +440,7 @@ impl fmt::Display for Literal {
         match self {
             Literal::True => write!(f, "true"),
             Literal::False => write!(f, "false"),
-            Literal::Num(n) => write!(f, "{}", n),
+            Literal::Num(n) => write!(f, "{n}"),
             Literal::Str(s) => write!(f, "{}", View(s)),
         }
     }
@@ -449,7 +449,7 @@ impl fmt::Display for Str {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Str::String(s) | Str::Invalid(s) => {
-                write!(f, "\"{}\"", s)
+                write!(f, "\"{s}\"")
             }
         }
     }
@@ -525,10 +525,10 @@ mod test {
         )
         .expect("parse fail");
         let cst1 = cstnode1.as_inner().expect("no data");
-        let revert = format!("{}", cst1);
+        let revert = format!("{cst1}");
         let cstnode2 = text_to_cst::parse_policies(&revert).expect("parse fail");
         let cst2 = cstnode2.as_inner().expect("no data");
-        println!("{:#}", cst2);
+        println!("{cst2:#}");
         assert!(cst1 == cst2);
     }
     #[test]
@@ -545,7 +545,7 @@ mod test {
         )
         .expect("parse fail");
         let cst1 = cstnode1.as_inner().expect("no data");
-        let revert = format!("{}", cst1);
+        let revert = format!("{cst1}");
         let cstnode2 = text_to_cst::parse_policies(&revert).expect("parse fail");
         let cst2 = cstnode2.as_inner().expect("no data");
         assert!(cst1 == cst2);
@@ -564,7 +564,7 @@ mod test {
         )
         .expect("parse fail");
         let cst1 = cstnode1.as_inner().expect("no data");
-        let revert = format!("{}", cst1);
+        let revert = format!("{cst1}");
         let cstnode2 = text_to_cst::parse_policies(&revert).expect("parse fail");
         let cst2 = cstnode2.as_inner().expect("no data");
         assert!(cst1 == cst2);
@@ -587,8 +587,8 @@ mod test {
         )
         .expect("parse fail");
         let cst1 = cstnode1.as_inner().expect("no data");
-        let revert = format!("{}", cst1);
-        println!("{:#}", cst1);
+        let revert = format!("{cst1}");
+        println!("{cst1:#}");
         let cstnode2 = text_to_cst::parse_policies(&revert).expect("parse fail");
         let cst2 = cstnode2.as_inner().expect("no data");
         assert!(cst1 == cst2);
@@ -608,7 +608,7 @@ mod test {
         )
         .expect("parse fail");
         let cst1 = cstnode1.as_inner().expect("no data");
-        let revert = format!("{}", cst1);
+        let revert = format!("{cst1}");
         let cstnode2 = text_to_cst::parse_policies(&revert).expect("parse fail");
         let cst2 = cstnode2.as_inner().expect("no data");
         assert!(cst1 == cst2);
