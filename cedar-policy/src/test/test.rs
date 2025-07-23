@@ -8651,4 +8651,322 @@ unless
             });
         }
     }
+
+    mod github {
+        use std::str::FromStr;
+
+        use cool_asserts::assert_matches;
+        use itertools::Itertools;
+
+        use crate::{
+            Context, Entities, PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
+        };
+
+        #[track_caller]
+        fn schema() -> Schema {
+            Schema::from_str(
+                r#"
+            entity Team, UserGroup in [UserGroup];
+entity Issue  = {
+  "repo": Repository,
+  "reporter": User,
+};
+entity Org  = {
+  "members": UserGroup,
+  "owners": UserGroup,
+};
+entity Repository  = {
+  "admins": UserGroup,
+  "maintainers": UserGroup,
+  "readers": UserGroup,
+  "triagers": UserGroup,
+  "writers": UserGroup,
+};
+entity User in [UserGroup, Team];
+
+action push, pull, fork appliesTo {
+  principal: [User],
+  resource: [Repository]
+};
+action assign_issue, delete_issue, edit_issue appliesTo {
+  principal: [User],
+  resource: [Issue]
+};
+action add_reader, add_writer, add_maintainer, add_admin, add_triager appliesTo {
+  principal: [User],
+  resource: [Repository]
+};
+            "#,
+            )
+            .unwrap()
+        }
+
+        fn policy_set() -> PolicySet {
+            PolicySet::from_str(
+                r#"
+                //Actions for readers
+permit (
+  principal,
+  action == Action::"pull",
+  resource
+)
+when { principal in resource.readers };
+
+permit (
+  principal,
+  action == Action::"fork",
+  resource
+)
+when { principal in resource.readers };
+
+permit (
+  principal,
+  action == Action::"delete_issue",
+  resource
+)
+when { principal in resource.repo.readers && principal == resource.reporter };
+
+permit (
+  principal,
+  action == Action::"edit_issue",
+  resource
+)
+when { principal in resource.repo.readers && principal == resource.reporter };
+
+//Actions for triagers
+permit (
+  principal,
+  action == Action::"assign_issue",
+  resource
+)
+when { principal in resource.repo.triagers };
+
+//Actions for writers
+permit (
+  principal,
+  action == Action::"push",
+  resource
+)
+when { principal in resource.writers };
+
+permit (
+  principal,
+  action == Action::"edit_issue",
+  resource
+)
+when { principal in resource.repo.writers };
+
+//Actions for maintainers
+permit (
+  principal,
+  action == Action::"delete_issue",
+  resource
+)
+when { principal in resource.repo.maintainers };
+
+//Actions for admins
+permit (
+  principal,
+  action in
+    [Action::"add_reader",
+     Action::"add_triager",
+     Action::"add_writer",
+     Action::"add_maintainer",
+     Action::"add_admin"],
+  resource
+)
+when { principal in resource.admins };
+//We use the same permissions for org owners, and rely on placing them in the admins group for every repository in the org
+//The other option is to duplicate all policies for the org base permissions (with a separate heirarchy for each org)
+"#,
+            )
+            .unwrap()
+        }
+
+        #[track_caller]
+        fn entities() -> Entities {
+            Entities::from_json_value(serde_json::json!(
+
+                [
+    {
+      "uid": { "__entity": { "type": "User", "id": "alice"} },
+      "attrs": {},
+      "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} }, { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} } ]
+    },
+    {
+      "uid": { "__entity": { "type": "User", "id": "jane"} },
+      "attrs": {},
+      "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },  { "__entity": { "type": "Team", "id": "team_that_can_read_everything"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "User", "id": "bob"} },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "Repository", "id": "common_knowledge"} },
+        "attrs": {
+            "readers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} },
+            "triagers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"} },
+            "writers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} },
+            "maintainers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },
+            "admins" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_admins"} }
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} },
+        "attrs": {
+        },
+        "parents": [  ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"} },
+        "attrs": {
+        },
+        "parents": [ { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} } ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_writers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_admins"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "Repository", "id": "secret"} },
+        "attrs": {
+            "readers" : { "__entity": { "type": "UserGroup", "id": "secret_readers"} },
+            "triagers" : { "__entity": { "type": "UserGroup", "id": "secret_triagers"} },
+            "writers" : { "__entity": { "type": "UserGroup", "id": "secret_writers"} },
+            "maintainers" : { "__entity": { "type": "UserGroup", "id": "secret_maintainers"} },
+            "admins" : { "__entity": { "type": "UserGroup", "id": "secret_admins"} }
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "secret_readers"} },
+        "attrs": {
+        },
+        "parents": [  ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "secret_triagers"} },
+        "attrs": {
+        },
+        "parents": [ { "__entity": { "type": "UserGroup", "id": "secret_readers"} } ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "secret_writers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_triagers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "secret_maintainers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_writers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "secret_admins"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_maintainers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "Repository", "id": "uncommon_knowledge"} },
+        "attrs": {
+            "readers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} },
+            "triagers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"} },
+            "writers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} },
+            "maintainers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"} },
+            "admins" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_admins"} }
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} },
+        "attrs": {
+        },
+        "parents": [  ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"} },
+        "attrs": {
+        },
+        "parents": [ { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} } ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_admins"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "Team", "id": "team_that_can_read_everything"} },
+        "attrs": {},
+        "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} }, { "__entity": { "type": "UserGroup", "id": "secret_readers"} }, { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} }]
+    },
+]
+            ), Some(&schema())).unwrap()
+        }
+
+        #[test]
+        fn query_resource() {
+            let schema = schema();
+            let request = ResourceQueryRequest::new(
+                r#"User::"jane""#.parse().unwrap(),
+                r#"Action::"push""#.parse().unwrap(),
+                r#"Repository"#.parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+            let policies = policy_set();
+            assert_matches!(&policies.query_resource(&request, &entities(), &schema).unwrap().collect_vec(), [uid] => {
+                assert_eq!(uid, &r#"Repository::"common_knowledge""#.parse().unwrap());
+            });
+        }
+
+        #[test]
+        fn query_principal() {
+            let schema = schema();
+            let request = PrincipalQueryRequest::new(
+                r#"User"#.parse().unwrap(),
+                r#"Action::"pull""#.parse().unwrap(),
+                r#"Repository::"secret""#.parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+            let policies = policy_set();
+            assert_matches!(&policies.query_principal(&request, &entities(), &schema).unwrap().collect_vec(), [uid] => {
+                assert_eq!(uid, &r#"User::"jane""#.parse().unwrap());
+            });
+        }
+    }
 }
