@@ -5177,7 +5177,7 @@ mod tpe {
     pub struct PrincipalQueryRequest(pub(crate) PartialRequest);
 
     impl PrincipalQueryRequest {
-        /// Construct a valid [`PrincipalRequest`] according to a [`Schema`]
+        /// Construct a valid [`PrincipalQueryRequest`] according to a [`Schema`]
         pub fn new(
             principal: EntityTypeName,
             action: EntityUid,
@@ -5252,14 +5252,14 @@ mod tpe {
         /// Perform conditional authorization
         pub fn is_authorized(&self) -> Option<Decision> {
             // Scan forbid policies and see if any of them is guaranteed to
-            // match (i.e., its condition is `true`)
+            // match (i.e., its non-scope constraint is `true`)
             for p in self
                 .ps
                 .policies()
                 .filter(|p| p.effect() == ast::Effect::Forbid)
             {
                 if matches!(
-                    p.ast.condition().expr_kind(),
+                    p.ast.non_scope_constraints().expr_kind(),
                     ast::ExprKind::Lit(ast::Literal::Bool(true))
                 ) {
                     return Some(Decision::Deny);
@@ -5271,20 +5271,20 @@ mod tpe {
                 .filter(|p| p.effect() == ast::Effect::Forbid)
                 .all(|p| {
                     matches!(
-                        p.ast.condition().expr_kind(),
+                        p.ast.non_scope_constraints().expr_kind(),
                         ast::ExprKind::Lit(ast::Literal::Bool(false))
                     )
                 })
             {
                 // Scan permit policies and see if any of them is guaranteed to
-                // match (i.e., its condition is `true`)
+                // match (i.e., its non-scope constraint is `true`)
                 for p in self
                     .ps
                     .policies()
                     .filter(|p| p.effect() == ast::Effect::Permit)
                 {
                     if matches!(
-                        p.ast.condition().expr_kind(),
+                        p.ast.non_scope_constraints().expr_kind(),
                         ast::ExprKind::Lit(ast::Literal::Bool(true))
                     ) {
                         return Some(Decision::Allow);
@@ -5301,6 +5301,16 @@ mod tpe {
         /// Get residual policies
         pub fn residuals(&self) -> impl Iterator<Item = &Policy> {
             self.ps.policies()
+        }
+
+        /// Get non-trivially-false residual policies
+        pub fn non_trivially_false_residuals(&self) -> impl Iterator<Item = &Policy> {
+            self.residuals().filter(|p| {
+                !matches!(
+                    p.ast.non_scope_constraints().expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::Bool(false))
+                )
+            })
         }
 
         /// Re-authorize residuals with consistent concrete request and entities
@@ -5375,13 +5385,15 @@ mod tpe {
             }
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
             let policies = &residuals.ps;
+            // PANIC SAFETY: request construction should succeed because each entity passes validation
+            #[allow(clippy::unwrap_used)]
             match residuals.is_authorized() {
                 Some(Decision::Allow) => Ok(entities
                     .iter()
                     .filter(|entity| {
                         entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
                     })
-                    .map(|entity| entity.uid().clone())
+                    .map(|entity| entity.uid())
                     .collect_vec()
                     .into_iter()),
                 Some(Decision::Deny) => Ok(vec![].into_iter()),
@@ -5401,7 +5413,7 @@ mod tpe {
                             .decision
                             == Decision::Allow
                     })
-                    .map(|entity| entity.uid().clone())
+                    .map(|entity| entity.uid())
                     .collect_vec()
                     .into_iter()),
             }
@@ -5424,13 +5436,15 @@ mod tpe {
             }
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
             let policies = &residuals.ps;
+            // PANIC SAFETY: request construction should succeed because each entity passes validation
+            #[allow(clippy::unwrap_used)]
             match residuals.is_authorized() {
                 Some(Decision::Allow) => Ok(entities
                     .iter()
                     .filter(|entity| {
                         entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
                     })
-                    .map(|entity| entity.uid().clone())
+                    .map(|entity| entity.uid())
                     .collect_vec()
                     .into_iter()),
                 Some(Decision::Deny) => Ok(vec![].into_iter()),
@@ -5450,7 +5464,7 @@ mod tpe {
                             .decision
                             == Decision::Allow
                     })
-                    .map(|entity| entity.uid().clone())
+                    .map(|entity| entity.uid())
                     .collect_vec()
                     .into_iter()),
             }

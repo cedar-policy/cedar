@@ -8276,3 +8276,342 @@ mod raw_parsing {
             .expect("Failed to parse");
     }
 }
+
+#[cfg(feature = "tpe")]
+mod tpe_tests {
+    mod streaming_service {
+        use std::str::FromStr;
+
+        use cool_asserts::assert_matches;
+        use itertools::Itertools;
+
+        use crate::{
+            Context, Entities, EntityId, PartialEntities, PartialEntityUid, PartialRequest,
+            PolicySet, ResourceQueryRequest, RestrictedExpression, Schema,
+        };
+
+        #[track_caller]
+        fn schema() -> Schema {
+            Schema::from_cedarschema_str(
+                r#"
+            // Types
+type Subscription = {
+  tier: String
+};
+type Profile = {
+  isKid: Bool
+};
+
+// Entities
+entity FreeMember;
+entity Subscriber = {
+  subscription: Subscription,
+  profile: Profile
+};
+entity Movie = {
+  isFree: Bool,
+  needsRentOrBuy: Bool,
+  isOscarNominated: Bool
+};
+entity Show = {
+  isFree: Bool,
+  releaseDate: datetime,
+  isEarlyAccess: Bool
+};
+
+// Actions for content in general
+action watch
+  appliesTo {
+    principal: [FreeMember, Subscriber],
+    resource: [Movie, Show],
+    context: {
+      now: {
+        datetime: datetime,
+        localTimeOffset: duration
+      }
+    }
+  };
+
+// Actions for movies only
+action rent, buy
+  appliesTo {
+    principal: [FreeMember, Subscriber],
+    resource: Movie,
+    context: {
+      now: {
+        datetime: datetime
+      }
+    }
+  };
+            "#,
+            )
+            .unwrap()
+            .0
+        }
+
+        #[track_caller]
+        fn policy_set() -> PolicySet {
+            PolicySet::from_str(
+                r#"
+            // Subscriber Content Access (Shows)
+@id("subscriber-content-access/show")
+permit (
+  principal is Subscriber,
+  action == Action::"watch",
+  resource is Show
+)
+unless
+{ resource.isEarlyAccess && context.now.datetime < resource.releaseDate };
+
+// Subscriber Content Access (Movies)
+@id("subscriber-content-access/movie")
+permit (
+  principal is Subscriber,
+  action == Action::"watch",
+  resource is Movie
+)
+unless { resource.needsRentOrBuy };
+
+// Free Content Access
+@id("free-content-access")
+permit (
+  principal is FreeMember,
+  action == Action::"watch",
+  resource
+)
+when { resource.isFree };
+
+// Promo: Rent/Buy Oscar-Nominated Movies Until the Oscars
+@id("rent-buy-oscar-movie")
+permit (
+  principal is Subscriber,
+  action in [Action::"rent", Action::"buy"],
+  resource is Movie
+)
+when
+{
+  resource.isOscarNominated &&
+  context.now.datetime >= datetime("2025-02-02T19:00:00-0500") &&
+  context.now.datetime < datetime(
+      "2025-03-02T19:00:00-0500"
+    ) // Oscars Night
+};
+
+// Early Access (24h) to Shows for Premium Subscribers
+@id("early-access-show")
+permit (
+  principal is Subscriber,
+  action == Action::"watch",
+  resource is Show
+)
+when
+{
+  resource.isEarlyAccess &&
+  principal.subscription.tier == "premium" &&
+  context.now.datetime >= resource.releaseDate.offset(duration("-24h"))
+};
+
+// Forbid Bedtime Access to Kid Profile
+@id("forbid-bedtime-watch-kid-profile")
+forbid (
+  principal is Subscriber,
+  action == Action::"watch",
+  resource
+)
+when { principal.profile.isKid }
+unless
+{
+  // `toTime()` returns the duration modulo one day (i.e., it ignores the "date"
+  // component). Here, we use it to calculate the subscriber's local time and
+  // compare the result against durations that represent 6:00AM and 9:00PM.
+  duration("6h") <= context.now
+    .datetime
+    .offset
+    (
+      context.now.localTimeOffset
+    )
+    .toTime
+    (
+    ) &&
+  context.now.datetime.offset(context.now.localTimeOffset).toTime() <= duration(
+      "21h"
+    )
+};
+            "#,
+            )
+            .unwrap()
+        }
+
+        #[track_caller]
+        fn entities() -> Entities {
+            Entities::from_json_value(
+                serde_json::json!(
+                                [
+                    {
+                        "uid": {
+                            "type": "Subscriber",
+                            "id": "Alice"
+                        },
+                        "attrs": {
+                            "subscription" : {
+                                "tier": "standard"
+                            },
+                            "profile" : {
+                                "isKid": false
+                            }
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "FreeMember",
+                            "id": "Bob"
+                        },
+                        "attrs": {},
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Subscriber",
+                            "id": "Charlie"
+                        },
+                        "attrs": {
+                            "subscription" : {
+                                "tier": "premium"
+                            },
+                            "profile" : {
+                                "isKid": false
+                            }
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Subscriber",
+                            "id": "Dave"
+                        },
+                        "attrs": {
+                            "subscription" : {
+                                "tier": "standard"
+                            },
+                            "profile" : {
+                                "isKid": true
+                            }
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Movie",
+                            "id": "The Godparent"
+                        },
+                        "attrs": {
+                            "isFree" : true,
+                            "needsRentOrBuy" : false,
+                            "isOscarNominated": true
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Movie",
+                            "id": "The Gleaming"
+                        },
+                        "attrs": {
+                            "isFree" : false,
+                            "needsRentOrBuy" : false,
+                            "isOscarNominated": false
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Movie",
+                            "id": "Devilish"
+                        },
+                        "attrs": {
+                            "isFree" : false,
+                            "needsRentOrBuy" : true,
+                            "isOscarNominated": true
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Show",
+                            "id": "Buddies"
+                        },
+                        "attrs": {
+                            "isFree" : false,
+                            "releaseDate": "2024-10-10",
+                            "isEarlyAccess": false
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Show",
+                            "id": "Breach"
+                        },
+                        "attrs": {
+                            "isFree" : false,
+                            "releaseDate": "2025-02-21",
+                            "isEarlyAccess": true
+                        },
+                        "parents": []
+                    }
+                ]
+                            ),
+                Some(&schema()),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn run() {
+            let schema = schema();
+            let partial_entities = PartialEntities(entities().0.try_into().unwrap());
+            let request = PartialRequest::new(
+                PartialEntityUid::new(
+                    r#"Subscriber"#.parse().unwrap(),
+                    Some(EntityId::new("Alice")),
+                ),
+                r#"Action::"watch""#.parse().unwrap(),
+                PartialEntityUid::new(r#"Movie"#.parse().unwrap(), None),
+                Some(
+                    Context::from_pairs([(
+                        "now".into(),
+                        RestrictedExpression::new_record([
+                            (
+                                "datetime".into(),
+                                RestrictedExpression::from_str(r#"datetime("2025-07-22")"#)
+                                    .unwrap(),
+                            ),
+                            (
+                                "localTimeOffset".into(),
+                                RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                            ),
+                        ])
+                        .unwrap(),
+                    )])
+                    .unwrap(),
+                ),
+                &schema,
+            )
+            .unwrap();
+            let policies = policy_set();
+            let residuals = policies
+                .tpe(&request, &partial_entities, &schema)
+                .expect("TPE should succeed");
+            assert_matches!(&residuals.non_trivially_false_residuals().collect_vec(), [p] => {
+                assert_matches!(p.annotation("id"), Some("subscriber-content-access/movie"));
+            });
+
+            assert_matches!(&policies.query_resource(&ResourceQueryRequest(request), &entities(), &schema).expect("resource query should succeed").collect_vec(), movies => {
+                assert_eq!(movies.len(), 2);
+                assert!(movies.contains(&r#"Movie::"The Godparent""#.parse().unwrap()));
+                assert!(movies.contains(&r#"Movie::"The Gleaming""#.parse().unwrap()));
+            });
+        }
+    }
+}
