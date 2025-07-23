@@ -548,7 +548,10 @@ impl Set {
         self.authoritative.iter()
     }
 
+    verus! {
+
     /// Subset test
+    #[verifier::external_body]
     pub fn is_subset(&self, other: &Set) -> bool {
         match (&self.fast, &other.fast) {
             // both sets are in fast form, ie, they only contain literals.
@@ -565,6 +568,7 @@ impl Set {
     }
 
     /// Disjointness test
+    #[verifier::external_body]
     pub fn is_disjoint(&self, other: &Set) -> bool {
         match (&self.fast, &other.fast) {
             // both sets are in fast form, ie, they only contain literals.
@@ -577,6 +581,7 @@ impl Set {
     }
 
     /// Membership test
+    #[verifier::external_body]
     pub fn contains(&self, value: &Value) -> bool {
         match (&self.fast, &value.value) {
             // both sets are in fast form, ie, they only contain literals.
@@ -590,6 +595,8 @@ impl Set {
             // Fallback to slow implementation.
             _ => self.authoritative.contains(value),
         }
+    }
+
     }
 }
 
