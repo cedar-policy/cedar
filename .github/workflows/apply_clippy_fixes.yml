@@ -23,9 +23,6 @@ jobs:
         id: date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
           
-      - name: Create fixes branch
-        run: git checkout -b clippy-fixes-${{ steps.date.outputs.date }}
-          
       - name: Run Clippy fixes
         run: |
           cargo clippy --fix --allow-dirty --allow-staged
