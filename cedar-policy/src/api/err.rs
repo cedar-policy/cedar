@@ -1344,3 +1344,18 @@ pub enum TPEReauthorizationError {
     #[error(transparent)]
     InconsistentRequests(#[from] tpe_err::RequestConsistencyError),
 }
+
+#[cfg(feature = "tpe")]
+/// Errors that can be encountered when performing a permission query
+#[derive(Debug, Error)]
+pub enum PermissionQueryError {
+    /// When entities contain unknowns
+    #[error(transparent)]
+    EntitiesContainUnknown(#[from] PartialValueToValueError),
+    /// When TPE fails
+    #[error(transparent)]
+    TPE(#[from] tpe_err::TPEError),
+    /// When concrete entities fail validation
+    #[error(transparent)]
+    EntityValidation(#[from] EntitySchemaConformanceError),
+}
