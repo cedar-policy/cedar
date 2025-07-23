@@ -58,13 +58,13 @@ impl StaticallyTyped for Literal {
 impl std::fmt::Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Bool(b) => write!(f, "{}", b),
-            Self::Long(i) => write!(f, "{}", i),
+            Self::Bool(b) => write!(f, "{b}"),
+            Self::Long(i) => write!(f, "{i}"),
             // print string literals after the `escape_debug` transformation
             // note that it adds backslashes for more characters than we may want,
             // e.g., a single quote is printed as `\'`.
             Self::String(s) => write!(f, "\"{}\"", s.escape_debug()),
-            Self::EntityUID(uid) => write!(f, "{}", uid),
+            Self::EntityUID(uid) => write!(f, "{uid}"),
         }
     }
 }

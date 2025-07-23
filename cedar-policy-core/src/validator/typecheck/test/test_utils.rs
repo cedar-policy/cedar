@@ -73,9 +73,11 @@ impl Type {
     /// Construct a named entity reference type using the `Name` resulting from
     /// parsing the `name` string. This function will panic on a parse error.
     pub(crate) fn named_entity_reference_from_str(name: &str) -> Type {
-        Type::named_entity_reference(name.parse().unwrap_or_else(|_| {
-            panic!("Expected that {} would be a valid entity type name.", name)
-        }))
+        Type::named_entity_reference(
+            name.parse().unwrap_or_else(|_| {
+                panic!("Expected that {name} would be a valid entity type name.")
+            }),
+        )
     }
 }
 
@@ -127,10 +129,10 @@ impl Typechecker<'_> {
 pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual: &Type) {
     assert!(
             Type::is_subtype(schema, expected, actual, ValidationMode::Permissive),
-            "Type equality assertion failed: the expected type is not a subtype of the actual type.\nexpected: {:#?}\nactual: {:#?}", expected, actual);
+            "Type equality assertion failed: the expected type is not a subtype of the actual type.\nexpected: {expected:#?}\nactual: {actual:#?}");
     assert!(
             Type::is_subtype(schema, actual, expected, ValidationMode::Permissive),
-             "Type equality assertion failed: the actual type is not a subtype of the expected type.\nexpected: {:#?}\nactual: {:#?}", expected, actual);
+             "Type equality assertion failed: the actual type is not a subtype of the expected type.\nexpected: {expected:#?}\nactual: {actual:#?}");
 }
 
 /// Assert that every `T` in `actual` appears in `expected`, and vice versa.

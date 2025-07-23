@@ -17,8 +17,8 @@
 use cedar_policy_core::parser::parse_policyset;
 use cedar_policy_core::validator::validation_errors::UnrecognizedActionIdHelp;
 use cedar_policy_core::validator::{ValidationError, ValidationMode, Validator, ValidatorSchema};
-use lsp_types::{Diagnostic, Range};
 use serde::{Deserialize, Serialize};
+use tower_lsp_server::lsp_types::{Diagnostic, Range};
 
 use crate::schema::SchemaInfo;
 use crate::utils::{to_lsp_diagnostics, ToRange};

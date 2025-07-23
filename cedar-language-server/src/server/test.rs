@@ -23,16 +23,16 @@ use cool_asserts::assert_matches;
 use dashmap::DashMap;
 use similar_asserts::assert_eq;
 use std::sync::Arc;
-use tower_lsp::lsp_types::*;
-use tower_lsp::LanguageServer;
+use tower_lsp_server::lsp_types::*;
+use tower_lsp_server::LanguageServer;
 
 async fn open_test_document(
     backend: &Backend<MockClient>,
     uri_str: &str,
     language_id: &str,
     text: &str,
-) -> Url {
-    let uri = Url::parse(uri_str).unwrap();
+) -> Uri {
+    let uri: Uri = uri_str.parse().unwrap();
     let params = DidOpenTextDocumentParams {
         text_document: TextDocumentItem {
             uri: uri.clone(),
@@ -46,7 +46,7 @@ async fn open_test_document(
     uri
 }
 
-async fn associate_schema(backend: &Backend<MockClient>, document_uri: &Url, schema_uri: &Url) {
+async fn associate_schema(backend: &Backend<MockClient>, document_uri: &Uri, schema_uri: &Uri) {
     let command_params = ExecuteCommandParams {
         command: "cedar.associateSchema".to_string(),
         arguments: vec![serde_json::json!({
@@ -59,7 +59,7 @@ async fn associate_schema(backend: &Backend<MockClient>, document_uri: &Url, sch
     backend.execute_command(command_params).await.unwrap();
 }
 
-fn get_diagnostics(backend: &Backend<MockClient>, uri: &Url) -> Vec<Diagnostic> {
+fn get_diagnostics(backend: &Backend<MockClient>, uri: &Uri) -> Vec<Diagnostic> {
     backend
         .client
         .diagnostics
@@ -81,15 +81,14 @@ impl MockClient {
     }
 }
 
-#[tower_lsp::async_trait]
 impl Client for MockClient {
     async fn log_message(&self, _: MessageType, _: impl std::fmt::Display + Send) {}
 
-    async fn publish_diagnostics(&self, uri: Url, diagnostics: Vec<Diagnostic>, _: Option<i32>) {
+    async fn publish_diagnostics(&self, uri: Uri, diagnostics: Vec<Diagnostic>, _: Option<i32>) {
         self.diagnostics.insert(uri.to_string(), diagnostics);
     }
 
-    async fn code_lens_refresh(&self) -> tower_lsp::jsonrpc::Result<()> {
+    async fn code_lens_refresh(&self) -> tower_lsp_server::jsonrpc::Result<()> {
         Ok(())
     }
 }
@@ -341,7 +340,7 @@ async fn schema_assoc_code_lens() {
     let lens = lens[0].command.as_ref().unwrap();
     assert_eq!(
         lens.title,
-        format!("Schema: {schema_uri} (click to change or remove)")
+        format!("Schema: {} (click to change or remove)", schema_uri.path())
     );
     assert_eq!("cedar.schemaOptions", lens.command,);
 }
@@ -502,7 +501,7 @@ async fn goto_definition() {
     assert_matches!(def, GotoDefinitionResponse::Scalar(def) => {
         assert_eq!(uri, def.uri);
         assert_eq!("entity Entity;", slice_range(&src, def.range));
-    })
+    });
 }
 
 #[tokio::test]
@@ -554,7 +553,7 @@ async fn execute_command_associate_schema() {
     associate_schema(&backend, &doc_uri, &schema_uri).await;
 
     let doc = backend.documents.get(&doc_uri).unwrap();
-    assert_eq!(doc.schema_url(), Some(&schema_uri));
+    assert_eq!(doc.schema_uri(), Some(&schema_uri));
     drop(doc);
 
     let src = "permit(principal, action, resource) when { principal.fob == 0 };";
@@ -610,7 +609,7 @@ async fn goto_definition_in_schema_from_policy() {
     assert_matches!(def, GotoDefinitionResponse::Scalar(def) => {
         assert_eq!(schema_uri, def.uri);
         assert_eq!("entity User;", slice_range(schema_src, def.range));
-    })
+    });
 }
 
 #[tokio::test]
@@ -645,14 +644,14 @@ async fn execute_command_associate_schema_with_entities() {
     associate_schema(&backend, &entities_uri, &schema_uri).await;
 
     let doc = backend.documents.get(&entities_uri).unwrap();
-    assert_eq!(doc.schema_url(), Some(&schema_uri));
+    assert_eq!(doc.schema_uri(), Some(&schema_uri));
     drop(doc);
 
     let diagnostic = &get_diagnostics(&backend, &entities_uri)[0];
     assert_eq!(
         diagnostic.message,
         r#"entity does not conform to the schema. in attribute `foo` on `E::"alice"`, type mismatch: value was expected to have type long, but it actually has type string: `"not_a_number"`"#
-    )
+    );
 }
 
 #[tokio::test]
@@ -799,7 +798,7 @@ async fn will_rename_files() {
         "entity E;",
     )
     .await;
-    let new_uri = Url::parse("file:///test/new_schema.cedarschema").unwrap();
+    let new_uri: Uri = "file:///test/new_schema.cedarschema".parse().unwrap();
 
     let rename_params = RenameFilesParams {
         files: vec![FileRename {
@@ -873,9 +872,9 @@ async fn code_action_for_misspelled_entity() {
         CodeActionOrCommand::CodeAction(action) =>  {
             let edit = &action.edit.as_ref().unwrap().changes.as_ref().unwrap().get(&policy_uri).unwrap()[0];
             assert_eq!("User", edit.new_text);
-            assert_eq!("Usr", slice_range(policy_text, edit.range))
+            assert_eq!("Usr", slice_range(policy_text, edit.range));
         }
-    )
+    );
 }
 
 #[tokio::test]
@@ -918,9 +917,9 @@ async fn code_action_for_misspelled_action() {
         CodeActionOrCommand::CodeAction(action) =>  {
             let edit = &action.edit.as_ref().unwrap().changes.as_ref().unwrap().get(&policy_uri).unwrap()[0];
             assert_eq!("Action::\"Action\"", edit.new_text);
-            assert_eq!("Action::\"Act\"", slice_range(policy_text, edit.range))
+            assert_eq!("Action::\"Act\"", slice_range(policy_text, edit.range));
         }
-    )
+    );
 }
 
 #[tokio::test]
@@ -935,11 +934,13 @@ async fn schema_association_with_nonexistent_schema() {
     )
     .await;
 
-    let nonexistent_schema_uri = Url::parse("file:///test/nonexistent_schema.cedarschema").unwrap();
+    let nonexistent_schema_uri = "file:///test/nonexistent_schema.cedarschema"
+        .parse()
+        .unwrap();
     associate_schema(&backend, &policy_uri, &nonexistent_schema_uri).await;
 
     // The document should still exist and not have a schema association
     assert!(backend.documents.contains_key(&policy_uri));
     let doc = backend.documents.get(&policy_uri).unwrap();
-    assert_eq!(doc.schema_url(), None);
+    assert_eq!(doc.schema_uri(), None);
 }

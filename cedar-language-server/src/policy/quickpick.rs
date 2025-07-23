@@ -17,7 +17,7 @@
 use std::str::FromStr;
 
 use cedar_policy_core::{ast::AnyId, parser::text_to_cst::parse_policies_tolerant};
-use lsp_types::Range;
+use tower_lsp_server::lsp_types::Range;
 
 use crate::utils::{ranges_intersect, ToRange};
 
@@ -57,7 +57,7 @@ pub(crate) fn quickpick_list(
 #[cfg(test)]
 mod test {
     use itertools::Itertools;
-    use lsp_types::{Position, Range};
+    use tower_lsp_server::lsp_types::{Position, Range};
     use tracing_test::traced_test;
 
     use super::quickpick_list;
@@ -88,7 +88,7 @@ mod test {
             .map(|item| item.label.as_str())
             .sorted()
             .collect_vec();
-        expected_selected_labels.sort();
+        expected_selected_labels.sort_unstable();
 
         assert_eq!(
             expected_selected_labels, actual_selected_labels,

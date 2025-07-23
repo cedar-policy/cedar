@@ -1835,10 +1835,9 @@ pub(crate) mod test {
             Err(SchemaError::TypeNotDefined(missing)) => {
                 assert_eq!(missing.undefined_types.len(), 3);
             }
-            x => panic!(
-                "Expected TypeNotDefined due to unknown types in commonTypes, found: {:?}",
-                x
-            ),
+            x => {
+                panic!("Expected TypeNotDefined due to unknown types in commonTypes, found: {x:?}")
+            }
         }
     }
 
@@ -1863,10 +1862,9 @@ pub(crate) mod test {
             Err(SchemaError::TypeNotDefined(missing)) => {
                 assert_eq!(missing.undefined_types.len(), 3);
             }
-            x => panic!(
-                "Expected TypeNotDefined due to unknown entities in appliesTo, found: {:?}",
-                x
-            ),
+            x => {
+                panic!("Expected TypeNotDefined due to unknown entities in appliesTo, found: {x:?}")
+            }
         }
     }
 

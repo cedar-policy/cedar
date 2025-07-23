@@ -17,9 +17,9 @@
 use std::fmt::Write;
 
 use cedar_policy_core::parser::Loc;
-use lsp_types::{Position, Range};
 use miette::SourceSpan;
 use smol_str::SmolStr;
+use tower_lsp_server::lsp_types::{self, Position, Range};
 
 pub(crate) trait ToRange {
     fn to_range(&self) -> Range;
@@ -638,8 +638,8 @@ pub(crate) mod tests {
             .to_policy_template_tolerant(PolicyID::from_string("0"))
             .unwrap();
         DocumentContext::new(
-            Some(schema().into()),
-            ast.into(),
+            Some(schema()),
+            ast,
             policy,
             position,
             PolicyLanguageFeatures::default(),
@@ -1036,12 +1036,12 @@ permit(
 
     #[test]
     fn get_policy_scope_is_operator() {
-        let policy = r#"
+        let policy = r"
         permit(
             principal is User,
             action,
             resource is Resource
-        );"#;
+        );";
 
         // Test cursor in complex principal section
         let result = get_policy_scope_variable(

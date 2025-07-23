@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::validator::ValidatorSchema;
-use lsp_types::{DocumentSymbol, SymbolKind};
+use tower_lsp_server::lsp_types::{DocumentSymbol, SymbolKind};
 
 use crate::{
     lsp::new_symbol,
@@ -200,8 +200,8 @@ mod test {
             }))
             .collect_vec();
 
-        actual.sort();
-        expected.sort();
+        actual.sort_unstable();
+        expected.sort_unstable();
         if expected.len() == 1 && actual.len() == 1 {
             similar_asserts::assert_eq!(expected[0].0, actual[0].0);
             similar_asserts::assert_eq!(expected[0].1, actual[0].1);

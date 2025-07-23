@@ -184,7 +184,7 @@ impl FromStr for EntityType {
 impl std::fmt::Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EntityType::EntityType(name) => write!(f, "{}", name),
+            EntityType::EntityType(name) => write!(f, "{name}"),
             #[cfg(feature = "tolerant-ast")]
             EntityType::ErrorEntityType => write!(f, "{ENTITY_TYPE_ERROR_STR}"),
         }
@@ -823,7 +823,7 @@ impl std::fmt::Display for Entity {
             self.uid,
             self.attrs
                 .iter()
-                .map(|(k, v)| format!("{}: {}", k, v))
+                .map(|(k, v)| format!("{k}: {v}"))
                 .join("; "),
             self.ancestors().join(", ")
         )

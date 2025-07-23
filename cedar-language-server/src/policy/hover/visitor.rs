@@ -20,8 +20,8 @@ use cedar_policy_core::{
     ast::{BinaryOp, EntityType, Expr, ExprKind, ExprVisitor, Literal, Pattern, UnaryOp, Var},
     parser::Loc,
 };
-use lsp_types::Hover;
 use smol_str::SmolStr;
+use tower_lsp_server::lsp_types::Hover;
 
 use crate::{
     documentation::{

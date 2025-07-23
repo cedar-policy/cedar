@@ -4789,7 +4789,7 @@ pub(crate) mod test {
         let raw_expr = "(true && 3)";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
         let t = evaluator.interpret_inline_policy(&expr);
-        println!("EXPR={:?}", t);
+        println!("EXPR={t:?}");
         assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 && true)";

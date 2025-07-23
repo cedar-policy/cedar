@@ -271,7 +271,7 @@ impl std::fmt::Display for Request {
             EntityUIDEntry::Unknown {
                 ty: Some(known_type),
                 ..
-            } => format!("unknown of type {}", known_type),
+            } => format!("unknown of type {known_type}"),
         };
         write!(
             f,
