@@ -552,7 +552,9 @@ impl Set {
 
     /// Subset test
     #[verifier::external_body]
-    pub fn is_subset(&self, other: &Set) -> bool {
+    pub fn is_subset(&self, other: &Set) -> (b: bool)
+        ensures b == (self@.subset_of(other@))
+    {
         match (&self.fast, &other.fast) {
             // both sets are in fast form, ie, they only contain literals.
             // Fast hashset-based implementation.
@@ -569,7 +571,9 @@ impl Set {
 
     /// Disjointness test
     #[verifier::external_body]
-    pub fn is_disjoint(&self, other: &Set) -> bool {
+    pub fn is_disjoint(&self, other: &Set) -> (b: bool)
+        ensures b == (self@.intersect(other@).is_empty())
+    {
         match (&self.fast, &other.fast) {
             // both sets are in fast form, ie, they only contain literals.
             // Fast hashset-based implementation.
@@ -582,7 +586,9 @@ impl Set {
 
     /// Membership test
     #[verifier::external_body]
-    pub fn contains(&self, value: &Value) -> bool {
+    pub fn contains(&self, value: &Value) -> (b: bool)
+        ensures b == (self@.contains(value@))
+    {
         match (&self.fast, &value.value) {
             // both sets are in fast form, ie, they only contain literals.
             // Fast hashset-based implementation.
