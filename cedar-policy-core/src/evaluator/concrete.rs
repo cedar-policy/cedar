@@ -738,7 +738,7 @@ impl<'e> Evaluator<'e> {
                         source_loc.cloned(),
                     )
                 )
-                .map(|v| v.clone()),
+                .map(|v: &Value| -> (new_v: Value) ensures v@ == new_v@ { v.clone() }),
             Value {
                 value: ValueKind::Lit(Literal::EntityUID(uid)),
                 loc,
@@ -747,10 +747,13 @@ impl<'e> Evaluator<'e> {
                     // intentionally using the location of the euid (the LHS) and not the entire GetAttr expression
                     Err(EvaluationError::entity_does_not_exist(uid.clone(), loc))
                 }
-                Dereference::Residual(r) => Err(EvaluationError::non_value(Expr::get_attr(
-                    expr.clone(),
-                    attr.clone(),
-                ))),
+                Dereference::Residual(r) => {
+                    assert(false); // no residuals
+                    Err(EvaluationError::non_value(Expr::get_attr(
+                        expr.clone(),
+                        attr.clone(),
+                    )))
+                },
                 Dereference::Data(entity) => match entity.get_value_verus(attr.as_str()) {
                     Some(v) => Ok(v.clone()),
                     // Some(PartialValue::Residual(e)) => Err(EvaluationError::non_value(
