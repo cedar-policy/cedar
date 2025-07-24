@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub enum TermType {
     Bool,
-    Bitvec { n: Nat },
+    Bitvec { n: Width },
     String,
     Option { ty: Box<TermType> },
     Entity { ety: EntityType },

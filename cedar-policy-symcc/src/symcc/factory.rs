@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::bitvec::{self, BitVec};
+use super::bitvec::BitVec;
 use super::entity_tag::EntityTag;
 use super::ext::Ext;
 use super::extension_types::{
@@ -26,6 +26,7 @@ use super::op::{ExtOp, Op};
 use super::term::{Term, TermPrim};
 use super::term_type::TermType;
 use super::type_abbrevs::*;
+use num_traits::ToPrimitive;
 use std::collections::BTreeSet;
 
 // ---------- Checked term constructors ----------
@@ -298,8 +299,8 @@ pub fn bvsmod(t1: Term, t2: Term) -> Term {
 }
 
 #[allow(unused, reason = "Added for completeness")]
-pub fn bvumod(t1: Term, t2: Term) -> Term {
-    bvapp(Op::Bvumod, &BitVec::umod, t1, t2)
+pub fn bvurem(t1: Term, t2: Term) -> Term {
+    bvapp(Op::Bvumod, &BitVec::urem, t1, t2)
 }
 
 pub fn bvshl(t1: Term, t2: Term) -> Term {
@@ -342,7 +343,7 @@ pub fn bvule(t1: Term, t2: Term) -> Term {
 /// Does negation overflow
 pub fn bvnego(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(bv)) => bitvec::overflows(bv.width(), -bv.v).into(),
+        Term::Prim(TermPrim::Bitvec(bv)) => BitVec::overflows(bv.width(), -bv.to_int()).into(),
         t => Term::App {
             op: Op::Bvnego,
             args: vec![t],
@@ -355,7 +356,7 @@ pub fn bvso(op: Op, f: &BVOp, t1: Term, t2: Term) -> Term {
     match (t1, t2) {
         (Term::Prim(TermPrim::Bitvec(bv1)), Term::Prim(TermPrim::Bitvec(bv2))) => {
             assert!(bv1.width() == bv2.width());
-            bitvec::overflows(bv1.width(), f(&bv1, &bv2).v).into()
+            BitVec::overflows(bv1.width(), f(&bv1, &bv2).to_int()).into()
         }
         (t1, t2) => Term::App {
             op,
@@ -381,13 +382,9 @@ pub fn bvsmulo(t1: Term, t2: Term) -> Term {
 /// so we compensate for the difference in partial evaluation.
 ///
 /// This function adds `n` to the existing width. It does not pad the width to `n`.
-pub fn zero_extend(n: Nat, t: Term) -> Term {
+pub fn zero_extend(n: Width, t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(BitVec { width, v })) => BitVec {
-            width: n + width,
-            v,
-        }
-        .into(),
+        Term::Prim(TermPrim::Bitvec(bv)) => BitVec::zero_extend(&bv, n + bv.width()).into(),
         t => {
             match t.type_of() {
                 TermType::Bitvec { n: cur_width } => Term::App {
@@ -537,10 +534,9 @@ pub fn string_like(t: Term, p: OrdPattern) -> Term {
 
 pub fn ext_decimal_val(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => Term::Prim(TermPrim::Bitvec(BitVec {
-            width: 64,
-            v: d.0.into(),
-        })),
+        Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => {
+            Term::Prim(TermPrim::Bitvec(BitVec::of_int(64, d.0.into())))
+        }
         t => Term::App {
             op: Op::Ext(ExtOp::DecimalVal),
             args: vec![t],
@@ -573,15 +569,9 @@ pub fn ext_ipaddr_addr_v4(t: Term) -> Term {
 
 pub fn ext_ipaddr_prefix_v4(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V4(v4) })) => match v4.prefix {
+        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V4(v4) })) => match v4.prefix.val {
             None => Term::None(TermType::Bitvec { n: 5 }),
-            Some(p) => some_of(
-                BitVec {
-                    width: 5,
-                    v: p.v as i128,
-                }
-                .into(),
-            ),
+            Some(p) => some_of(p.into()),
         },
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV4),
@@ -606,15 +596,9 @@ pub fn ext_ipaddr_addr_v6(t: Term) -> Term {
 
 pub fn ext_ipaddr_prefix_v6(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V6(v6) })) => match v6.prefix {
+        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V6(v6) })) => match v6.prefix.val {
             None => Term::None(TermType::Bitvec { n: 7 }),
-            Some(p) => some_of(
-                BitVec {
-                    width: 7,
-                    v: p.v as i128,
-                }
-                .into(),
-            ),
+            Some(p) => some_of(p.into()),
         },
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV6),
@@ -628,10 +612,9 @@ pub fn ext_ipaddr_prefix_v6(t: Term) -> Term {
 
 pub fn ext_datetime_val(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Ext(Ext::Datetime { dt })) => Term::Prim(TermPrim::Bitvec(BitVec {
-            width: 64,
-            v: i128::from(dt),
-        })),
+        Term::Prim(TermPrim::Ext(Ext::Datetime { dt })) => {
+            Term::Prim(TermPrim::Bitvec(BitVec::of_i128(64, dt.into())))
+        }
         t => Term::App {
             op: Op::Ext(ExtOp::DatetimeVal),
             args: vec![t],
@@ -642,9 +625,11 @@ pub fn ext_datetime_val(t: Term) -> Term {
 
 pub fn ext_datetime_of_bitvec(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(BitVec { width: 64, v })) => {
+        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 => {
+            // PANIC SAFETY: If condition ensures the value will fit in 128 bits.
+            #[allow(clippy::unwrap_used)]
             Term::Prim(TermPrim::Ext(Ext::Datetime {
-                dt: Datetime::from(v),
+                dt: Datetime::from(bv.to_int().to_i128().unwrap()),
             }))
         }
         _ => Term::App {
@@ -659,10 +644,9 @@ pub fn ext_datetime_of_bitvec(t: Term) -> Term {
 
 pub fn ext_duration_val(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Ext(Ext::Duration { d })) => Term::Prim(TermPrim::Bitvec(BitVec {
-            width: 64,
-            v: i128::from(d.to_milliseconds()),
-        })),
+        Term::Prim(TermPrim::Ext(Ext::Duration { d })) => Term::Prim(TermPrim::Bitvec(
+            BitVec::of_i128(64, d.to_milliseconds().into()),
+        )),
         t => Term::App {
             op: Op::Ext(ExtOp::DurationVal),
             args: vec![t],
@@ -673,9 +657,11 @@ pub fn ext_duration_val(t: Term) -> Term {
 
 pub fn ext_duration_of_bitvec(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(BitVec { width: 64, v })) => {
+        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 => {
+            // PANIC SAFETY: If condition ensures the value will fit in 128 bits.
+            #[allow(clippy::unwrap_used)]
             Term::Prim(TermPrim::Ext(Ext::Duration {
-                d: Duration::from(v),
+                d: Duration::from(bv.to_int().to_i128().unwrap()),
             }))
         }
         _ => Term::App {
@@ -763,9 +749,9 @@ mod test {
         let my_term = Term::Prim(TermPrim::Bool(true));
         let not_my_term = not(my_term.clone());
 
-        assert_ne!(my_term.clone(), not_my_term.clone());
+        assert_ne!(my_term, not_my_term);
 
-        let not_not_my_term = not(not_my_term.clone());
+        let not_not_my_term = not(not_my_term);
 
         assert_eq!(my_term, not_not_my_term);
     }
