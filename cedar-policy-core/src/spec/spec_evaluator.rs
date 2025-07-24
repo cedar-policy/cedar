@@ -252,14 +252,7 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities, slot_env: SlotEnv
             }
         },
         Expr::Set { ls } => {
-            let vs_r = seq_map_result_all(ls, |lx: Expr| {
-                // Needed to prove termination
-                if ls.contains(lx) {
-                    evaluate(lx, req, es, slot_env)
-                } else {
-                    arbitrary()
-                }
-            });
+            let vs_r = evaluate_expr_seq(ls, req, es, slot_env);
             match vs_r {
                 Ok(vs) => Ok(Value::Set { s: FiniteSet::from_seq(vs) }),
                 Err(err) => Err(err)
@@ -290,18 +283,32 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities, slot_env: SlotEnv
     }
 }
 
-
 #[via_fn]
 proof fn evaluate_decreases(x: Expr, req: Request, es: Entities, slot_env: SlotEnv) {
     match x {
-        Expr::Set { ls } => {
-            assert(forall |lx: Expr| ls.contains(lx) ==> decreases_to!(ls => lx));
-        }
         Expr::Record { map } => {
             assert(forall |mx: Expr| map.dom().finite() && map.contains_value(mx) ==> decreases_to!(map => mx));
         },
         _ => {}
     };
+}
+
+// Short-circuiting evaluation of a sequence of `Expr`s, implemented recursively
+pub open spec fn evaluate_expr_seq(exprs: Seq<Expr>, req: Request, es: Entities, slot_env: SlotEnv) -> SpecResult<Seq<Value>>
+    decreases exprs
+{
+    if exprs.len() == 0 {
+        Ok(seq![])
+    } else {
+        let last = exprs.last();
+        match evaluate_expr_seq(exprs.drop_last(), req, es, slot_env) {
+            Ok(front_seq) => match evaluate(last, req, es, slot_env) {
+                Ok(last_val) => Ok(front_seq.push(last_val)),
+                Err(err) => Err(err),
+            },
+            Err(err) => Err(err),
+        }
+    }
 }
 
 }
@@ -311,6 +318,84 @@ proof fn evaluate_decreases(x: Expr, req: Request, es: Entities, slot_env: SlotE
 ///////////////////////////////////////////////////////
 
 verus! {
+
+// if evaluate_expr_seq(exprs1, ...) is Err, then evaluate_expr_seq(exprs1 + exprs2, ...) is Err
+pub proof fn evaluate_expr_seq_err_short_circuit_auto(exprs1: Seq<Expr>, req: Request, es: Entities, slot_env: SlotEnv)
+    requires evaluate_expr_seq(exprs1, req, es, slot_env) is Err
+    ensures forall |exprs2: Seq<Expr>| #[trigger] evaluate_expr_seq(#[trigger] (exprs1 + exprs2), req, es, slot_env) is Err
+    decreases exprs1
+{
+    assert forall |exprs2: Seq<Expr>| #[trigger] evaluate_expr_seq(#[trigger] (exprs1 + exprs2), req, es, slot_env) is Err by {
+        evaluate_expr_seq_err_short_circuit(exprs1, exprs2, req, es, slot_env)
+    }
+}
+
+// if evaluate_expr_seq(exprs1, ...) is Err, then evaluate_expr_seq(exprs1 + exprs2, ...) is Err
+pub proof fn evaluate_expr_seq_err_short_circuit(exprs1: Seq<Expr>, exprs2: Seq<Expr>, req: Request, es: Entities, slot_env: SlotEnv)
+    requires evaluate_expr_seq(exprs1, req, es, slot_env) is Err
+    ensures evaluate_expr_seq(exprs1 + exprs2, req, es, slot_env) is Err
+    decreases exprs2
+{
+    if exprs2.len() >= 1 {
+        assert(exprs1 + exprs2 =~= (exprs1.push(exprs2[0])) + exprs2.subrange(1, exprs2.len() as int));
+        evaluate_expr_seq_err_short_circuit_aux(exprs1, exprs2[0], req, es, slot_env);
+        evaluate_expr_seq_err_short_circuit(exprs1.push(exprs2[0]), exprs2.subrange(1, exprs2.len() as int), req, es, slot_env);
+    }
+}
+
+// if evaluate_expr_seq(exprs1, ...) is Err, then evaluate_expr_seq(exprs1.push(expr2), ...) is Err
+pub proof fn evaluate_expr_seq_err_short_circuit_aux(exprs1: Seq<Expr>, expr2: Expr, req: Request, es: Entities, slot_env: SlotEnv)
+    requires evaluate_expr_seq(exprs1, req, es, slot_env) is Err
+    ensures evaluate_expr_seq(exprs1.push(expr2), req, es, slot_env) is Err
+{
+    assert(exprs1.push(expr2).drop_last() =~= exprs1);
+    if exprs1.len() > 0 {
+        let last = exprs1.last();
+        match evaluate_expr_seq(exprs1.drop_last(), req, es, slot_env) {
+            Ok(front_seq) => match evaluate(last, req, es, slot_env) {
+                Ok(last_val) => assert(false),
+                Err(err) => {
+                    assert(evaluate_expr_seq(exprs1, req, es, slot_env) is Err) by { reveal_with_fuel(evaluate_expr_seq, 1) };
+                    assert(evaluate_expr_seq(exprs1.push(expr2), req, es, slot_env) is Err) by { reveal_with_fuel(evaluate_expr_seq, 1) };
+                },
+            },
+            Err(err) => {
+                assert(evaluate_expr_seq(exprs1, req, es, slot_env) is Err) by { reveal_with_fuel(evaluate_expr_seq, 1) };
+                assert(evaluate_expr_seq(exprs1.push(expr2), req, es, slot_env) is Err) by { reveal_with_fuel(evaluate_expr_seq, 1) };
+            },
+        }
+    }
+}
+
+// if evaluate_expr_seq(exprs1, ...) is Ok(vs1), and evaluate(expr2, ...) is Ok(v2), then evaluate_expr_seq(exprs1.push(expr2), ...) is Ok(vs1.push(v2))
+pub proof fn evaluate_expr_seq_ok_push(exprs1: Seq<Expr>, expr2: Expr, req: Request, es: Entities, slot_env: SlotEnv)
+    requires
+        evaluate_expr_seq(exprs1, req, es, slot_env) is Ok,
+        evaluate(expr2, req, es, slot_env) is Ok
+    ensures ({
+        &&& evaluate_expr_seq(exprs1.push(expr2), req, es, slot_env) matches Ok(vs)
+        &&& vs == (evaluate_expr_seq(exprs1, req, es, slot_env)->Ok_0).push(evaluate(expr2, req, es, slot_env)->Ok_0)
+    })
+{
+    assert(exprs1.push(expr2).drop_last() =~= exprs1);
+    if exprs1.len() > 0 {
+        let last = exprs1.last();
+        match evaluate_expr_seq(exprs1.drop_last(), req, es, slot_env) {
+            Ok(front_seq) => match evaluate(last, req, es, slot_env) {
+                Ok(last_val) => {
+                    reveal_with_fuel(evaluate_expr_seq, 2);
+                },
+                Err(err) => {
+                    assert(false);
+                },
+            },
+            Err(err) => {
+                assert(false);
+            },
+        }
+    }
+}
+
 
 // The concrete evaluator separates out the relation operations into a function that doesn't take `es: Entities` as argument;
 // to simplify the proof, we provide this spec which we prove matches `apply_2` above on the arithmetic cases

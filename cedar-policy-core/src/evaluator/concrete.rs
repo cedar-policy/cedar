@@ -430,67 +430,134 @@ impl<'e> Evaluator<'e> {
                     &val,
                 )),
             },
-            // // ExprKind::Like { expr, pattern } => {
-            // //     let v = self.interpret(expr, slots)?;
-            // //     Ok((pattern.wildcard_match(v.get_as_string()?)).into())
-            // // }
             // ExprKind::Like { expr, pattern } => {
-            //     // TODO: handle patterns
-            //     assume(false);
-            //     unreached()
-            // }
-            // ExprKind::Is { expr, entity_type } => {
             //     let v = self.interpret(expr, slots)?;
-            //     Ok((v.get_as_entity()?.entity_type().eq_entity_type(entity_type)).into())
+            //     Ok((pattern.wildcard_match(v.get_as_string()?)).into())
             // }
-            // ExprKind::Set(items) => {
-            //     // let vals = items
-            //     //     .iter()
-            //     //     .map(|item| self.interpret(item, slots))
-            //     //     .collect::<Result<Vec<_>>>()?;
-            //     // Ok(Value::set(vals, loc.cloned()).into())
-            //     // Verus can't handle iterators, so we have to use a loop:
-            //     assume(false);
-            //     let mut vals: Vec<Value> = Vec::with_capacity(items.len());
-            //     for item in items.iter()
-            //         invariant
-            //             false,
-            //             spec_evaluator::enough_stack_space(),
-            //     {
-            //         let item_val = self.interpret(item, slots)?;
-            //         vals.push(item_val);
-            //     }
-            //     Ok(Value::set(vals, loc.cloned()).into())
-            // }
-            // ExprKind::Record(map) => {
-            //     // let map = map
-            //     //     .iter()
-            //     //     .map(|kv| { let (k, v) = kv; Ok((k.clone(), self.interpret(v, slots)?)) })
-            //     //     .collect::<Result<Vec<_>>>()?;
-            //     // let (names, vals): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
-            //     // Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
-            //     // Verus can't handle iterators, so we have to use a loop:
-            //     assume(false);
-            //     let mut names_vals: Vec<(SmolStr, Value)> = Vec::with_capacity(expr_map_len(&map));
-            //     for k in expr_map_keys_arc(&map)
-            //         invariant
-            //             false,
-            //             spec_evaluator::enough_stack_space(),
-            //     {
-            //         let v = match expr_map_get_arc(&map, k) {
-            //             Some(v) => v,
-            //             None => unreached(),
-            //         };
-            //         let v_val = self.interpret(v, slots)?;
-            //         names_vals.push((k.clone(), v_val));
-            //     }
-            //     Ok(Value::record(names_vals, loc.cloned()).into())
-            // }
-            // #[cfg(feature = "tolerant-ast")]
-            // ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
-            //     source_loc: loc.cloned(),
-            // })),
-            _ => { assume(false); unreached() }
+            ExprKind::Like { expr, pattern } => {
+                // TODO: handle patterns
+                assume(false);
+                unreached()
+            }
+            ExprKind::Is { expr, entity_type } => {
+                let v = self.interpret(expr, slots)?;
+                Ok((v.get_as_entity()?.entity_type().eq_entity_type(entity_type)).into())
+            }
+            ExprKind::Set(items) => {
+                // let vals = items
+                //     .iter()
+                //     .map(|item| self.interpret(item, slots))
+                //     .collect::<Result<Vec<_>>>()?;
+                // Ok(Value::set(vals, loc.cloned()).into())
+                // Verus can't handle iterators, so we have to use a loop:
+
+                let ghost spec_exprs = items@.map_values(|e:Expr| e@);
+                assert(expr@ == spec_ast::Expr::Set { ls: spec_exprs } ) by {
+                    assert(forall |i| 0 <= i < items@.len() ==> items@.contains(#[trigger] items@[i]));
+                    let spec_exprs_aux = items@.map_values(|e:Expr| { if items@.contains(e) { e.view_aux() } else { arbitrary() }});
+                    assert(expr@ == spec_ast::Expr::Set { ls: spec_exprs_aux });
+                    assert(spec_exprs =~= spec_exprs_aux);
+                };
+
+                let ghost spec_vals_result = spec_evaluator::evaluate_expr_seq(expr@->ls, self@.request, self@.entities, slots.deep_view());
+                // proof {
+                //     let spec_result = spec_evaluator::evaluate(expr@, self@.request, self@.entities, slots.deep_view());
+                //     match spec_result {
+                //         Ok(v) => {
+                //             assert(spec_vals_result is Ok);
+                //             assert(v is Set);
+                //             assert(v->s == FiniteSet::from_seq(spec_vals_result->Ok_0));
+                //         },
+                //         Err(_) => {
+                //             assert(spec_vals_result is Err);
+                //         }
+                //     }
+                // }
+
+                let mut vals: Vec<Value> = Vec::with_capacity(items.len());
+                let mut items_iter = items.iter();
+                let ghost mut i: int = 0;
+                for item in items_ghost_iter: items_iter
+                    invariant
+                        spec_evaluator::enough_stack_space(),
+                        i == items_ghost_iter.pos,
+                        items_ghost_iter.elements == items@,
+                        expr@->ls == items@.map_values(|e:Expr| e@),
+                        (spec_evaluator::evaluate_expr_seq(expr@->ls, self@.request, self@.entities, slots.deep_view()) is Err
+                            ==> spec_evaluator::evaluate(expr@, self@.request, self@.entities, slots.deep_view()) is Err),
+                        ({
+                            let exprs_so_far = items_ghost_iter.elements.take(items_ghost_iter.pos).map_values(|e:Expr| e@);
+                            let vals_so_far = vals@.map_values(|v:Value| v@);
+                            spec_evaluator::evaluate_expr_seq(exprs_so_far, self@.request, self@.entities, slots.deep_view()) matches Ok(v)
+                            && vals_so_far == v
+                        })
+                {
+                    reveal_with_fuel(spec_evaluator::evaluate_expr_seq, 1);
+                    let ghost exprs_so_far = items_ghost_iter.elements.take(items_ghost_iter.pos).map_values(|e:Expr| e@);
+                    let ghost exprs_next_iter = items_ghost_iter.elements.take(items_ghost_iter.pos + 1).map_values(|e:Expr| e@);
+                    proof {
+                        assert(item@ == exprs_next_iter.last());
+                        assert(exprs_next_iter =~= exprs_so_far.push(item@));
+                        assert(items@.map_values(|e:Expr| e@) =~= exprs_next_iter + items_ghost_iter.elements.skip(items_ghost_iter.pos + 1).map_values(|e:Expr| e@));
+                    }
+                    let item_val = match self.interpret(item, slots) {
+                        Ok(v) => v,
+                        Err(err) => {
+                            proof {
+                                spec_evaluator::evaluate_expr_seq_err_short_circuit(
+                                    exprs_next_iter,
+                                    items_ghost_iter.elements.skip(items_ghost_iter.pos + 1).map_values(|e:Expr| e@),
+                                    self@.request,
+                                    self@.entities,
+                                    slots.deep_view()
+                                );
+
+                            }
+                            return Err(err)
+                        }
+                    };
+                    vals.push(item_val);
+                    proof {
+                        i = i + 1;
+                        spec_evaluator::evaluate_expr_seq_ok_push(exprs_so_far, item@, self@.request, self@.entities, slots.deep_view());
+                        assert(spec_evaluator::evaluate_expr_seq(exprs_next_iter, self@.request, self@.entities, slots.deep_view()) matches Ok(vs)
+                                && vs == vals@.map_values(|v: Value| v@));
+                    }
+                }
+
+                assert(i == items@.len());
+                assert(items@.take(i).map_values(|e:Expr| e@) == items@.map_values(|e:Expr| e@));
+
+                Ok(Value::set_from_vec_verus(vals, loc.cloned()))
+            }
+            ExprKind::Record(map) => {
+                // let map = map
+                //     .iter()
+                //     .map(|kv| { let (k, v) = kv; Ok((k.clone(), self.interpret(v, slots)?)) })
+                //     .collect::<Result<Vec<_>>>()?;
+                // let (names, vals): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
+                // Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
+                // Verus can't handle iterators, so we have to use a loop:
+                assume(false);
+                let mut names_vals: Vec<(SmolStr, Value)> = Vec::with_capacity(expr_map_len(&map));
+                for k in expr_map_keys_arc(&map)
+                    invariant
+                        false,
+                        spec_evaluator::enough_stack_space(),
+                {
+                    let v = match expr_map_get_arc(&map, k) {
+                        Some(v) => v,
+                        None => unreached(),
+                    };
+                    let v_val = self.interpret(v, slots)?;
+                    names_vals.push((k.clone(), v_val));
+                }
+                Ok(Value::record(names_vals, loc.cloned()).into())
+            }
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
+                source_loc: loc.cloned(),
+            })),
         }
     }
 

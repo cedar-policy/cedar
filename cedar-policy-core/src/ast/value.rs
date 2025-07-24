@@ -147,6 +147,17 @@ impl Value {
         Self { value: ValueKind::Lit(Literal::EntityUID(Arc::new(value))), loc }
     }
 
+    /// Create a set with the given `Value`s as elements, with the elements provided as a Vec for Verus purposes
+    #[verifier::external_body]
+    pub fn set_from_vec_verus(vals: Vec<Value>, loc: Option<Loc>) -> (res: Self)
+        ensures res@ == (spec_ast::Value::Set { s: FiniteSet::from_seq(vals@.map_values(|v: Value| v@)) })
+    {
+        Self {
+            value: ValueKind::set(vals),
+            loc,
+        }
+    }
+
     /// Create a set with the given `Value`s as elements
     #[verifier::external_body]
     pub fn set(vals: impl IntoIterator<Item = Value>, loc: Option<Loc>) -> Self {

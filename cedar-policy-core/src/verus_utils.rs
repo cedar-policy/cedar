@@ -298,7 +298,7 @@ pub open spec fn seq_map_result_all<A, B, E>(s: Seq<A>, f: spec_fn(A) -> Result<
         },
         Err(err) => Err(err),
     };
-    s.fold_left(Ok(seq![]), f)
+    s.fold_left_alt(Ok(seq![]), f)
 }
 
 
