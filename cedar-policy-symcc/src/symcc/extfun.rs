@@ -28,7 +28,13 @@
 //! See `compiler.rs` to see how the symbolic compiler uses this API. See also
 //! `factory.rs`.
 
-use crate::symcc::type_abbrevs::{nat, Nat, Width};
+use crate::symcc::{
+    factory::{
+        bvmul, bvsaddo, bvsmulo, bvsrem, bvssubo, eq, ext_datetime_of_bitvec, ext_datetime_val,
+        ext_duration_of_bitvec, if_false, some_of,
+    },
+    type_abbrevs::{nat, Width},
+};
 
 use super::{
     bitvec::BitVec,
@@ -81,7 +87,7 @@ pub fn subnet_width(w: Width, prefix: Term) -> Term {
 }
 
 pub fn range(w: Width, ip_addr: Term, prefix: Term) -> (Term, Term) {
-    let width = subnet_width(w, prefix.clone());
+    let width = subnet_width(w, prefix);
     let lo = bvshl(bvlshr(ip_addr, width.clone()), width.clone());
     let hi = bvsub(bvadd(lo.clone(), bvshl(1.into(), width)), 1.into());
     (lo, hi)
@@ -133,19 +139,11 @@ pub fn in_range_lit(t: Term, cidr4: IPNet, cidr6: IPNet) -> Term {
 }
 
 pub fn is_loopback(t: Term) -> Term {
-    in_range_lit(
-        t,
-        LOOP_BACK_CIDR_V4.as_ref().clone(),
-        LOOP_BACK_CIDR_V6.as_ref().clone(),
-    )
+    in_range_lit(t, LOOP_BACK_CIDR_V4.clone(), LOOP_BACK_CIDR_V6.clone())
 }
 
 pub fn is_multicast(t: Term) -> Term {
-    in_range_lit(
-        t,
-        MULTICAST_CIDR_V4.as_ref().clone(),
-        MULTICAST_CIDR_V6.as_ref().clone(),
-    )
+    in_range_lit(t, MULTICAST_CIDR_V4.clone(), MULTICAST_CIDR_V6.clone())
 }
 
 pub fn to_milliseconds(t: Term) -> Term {
@@ -187,12 +185,9 @@ pub fn duration_since(dt1: Term, dt2: Term) -> Term {
 }
 
 pub fn to_date(dt: Term) -> Term {
-    let zero = Term::Prim(TermPrim::Bitvec(BitVec { width: 64, v: 0 }));
-    let one = Term::Prim(TermPrim::Bitvec(BitVec { width: 64, v: 1 }));
-    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec {
-        width: 64,
-        v: 86400000,
-    }));
+    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0)));
+    let one = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 1)));
+    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000)));
     let dt_val = ext_datetime_val(dt);
     ite(
         bvsle(zero.clone(), dt_val.clone()),
@@ -218,11 +213,8 @@ pub fn to_date(dt: Term) -> Term {
 }
 
 pub fn to_time(dt: Term) -> Term {
-    let zero = Term::Prim(TermPrim::Bitvec(BitVec { width: 64, v: 0 }));
-    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec {
-        width: 64,
-        v: 86400000,
-    }));
+    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0)));
+    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000)));
     let dt_val = ext_datetime_val(dt);
     ext_duration_of_bitvec(ite(
         bvsle(zero.clone(), dt_val.clone()),

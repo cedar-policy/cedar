@@ -19,8 +19,6 @@ use crate::symcc::type_abbrevs::{Int, Nat, Width};
 use num_bigint::{BigInt, BigUint, ToBigInt};
 use num_traits::cast::ToPrimitive;
 
-use super::result::Error;
-
 /// Implementation of the Lean BitVec in Rust. The Lean version is a wrapper around a `Fin`,
 /// a finite natural number that is guaranteed to be less than 2^width. In our implementation
 /// we use a BigUint and enforce the invariant that it is less than 2^width. Trying to

@@ -519,7 +519,7 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
             compile_call2(ExtType::Decimal, extfun::greater_than_or_equal, t1, t2)
         }
         ("ip", 1) => {
-            // XXX call here
+            // TODO update code parse ip address here
             let t1 = extract_first(ts);
             compile_call0(|_| unimplemented!("parsing"), t1)
         }

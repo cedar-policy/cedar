@@ -59,24 +59,11 @@ pub struct Fin {
 }
 
 impl Fin {
-    pub fn new(upper_bound: Nat, v: Nat) -> Self {
-        assert!(v < upper_bound);
-        Self { upper_bound, v }
-    }
-
     pub fn try_new(upper_bound: Nat, v: Nat) -> Option<Self> {
         if v < upper_bound {
             Some(Self { upper_bound, v })
         } else {
             None
-        }
-    }
-
-    pub fn of_nat(upper_bound: Nat, v: Nat) -> Fin {
-        assert!(upper_bound != BigUint::ZERO);
-        Fin {
-            upper_bound: upper_bound.clone(),
-            v: v % upper_bound,
         }
     }
 
