@@ -27,6 +27,7 @@ use cedar_policy_core::ast::{
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
 use cedar_policy_core::extensions::Extensions;
+use num_bigint::{BigInt, TryFromBigIntError};
 use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -68,6 +69,9 @@ pub enum ConcretizeError {
 
     #[error("Unable to construct entities: {0}")]
     EntitiesError(#[from] cedar_policy::entities_errors::EntitiesError),
+
+    #[error("Unable to convert BitVec to integer: {0}")]
+    TryFromBigIntError(#[from] TryFromBigIntError<BigInt>),
 
     #[error("Concretization function not yet implemented for extension: {0:?}")]
     ExtensionNotImplemented(ExtType),
@@ -143,7 +147,7 @@ impl TryFrom<&Term> for Value {
             }
 
             Term::Prim(TermPrim::Bitvec(v)) => Ok(Value::new(
-                ValueKind::Lit(Literal::Long(v.v.try_into()?)),
+                ValueKind::Lit(Literal::Long(v.to_int().try_into()?)),
                 None,
             )),
 

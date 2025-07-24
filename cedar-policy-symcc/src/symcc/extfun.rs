@@ -28,6 +28,8 @@
 //! See `compiler.rs` to see how the symbolic compiler uses this API. See also
 //! `factory.rs`.
 
+use crate::symcc::type_abbrevs::{nat, Nat, Width};
+
 use super::{
     bitvec::BitVec,
     ext::Ext,
@@ -35,14 +37,11 @@ use super::{
         IPNet, LOOP_BACK_CIDR_V4, LOOP_BACK_CIDR_V6, MULTICAST_CIDR_V4, MULTICAST_CIDR_V6,
     },
     factory::{
-        and, bvadd, bvlshr, bvmul, bvsaddo, bvsdiv, bvshl, bvsle, bvslt, bvsmulo, bvsrem, bvssubo,
-        bvsub, bvule, eq, ext_datetime_of_bitvec, ext_datetime_val, ext_decimal_val,
-        ext_duration_of_bitvec, ext_duration_val, ext_ipaddr_addr_v4, ext_ipaddr_addr_v6,
-        ext_ipaddr_is_v4, ext_ipaddr_prefix_v4, ext_ipaddr_prefix_v6, if_false, is_none, ite, not,
-        option_get, or, some_of, zero_extend,
+        and, bvadd, bvlshr, bvsdiv, bvshl, bvsle, bvslt, bvsub, bvule, ext_decimal_val,
+        ext_duration_val, ext_ipaddr_addr_v4, ext_ipaddr_addr_v6, ext_ipaddr_is_v4,
+        ext_ipaddr_prefix_v4, ext_ipaddr_prefix_v6, is_none, ite, not, option_get, or, zero_extend,
     },
     term::{Term, TermPrim},
-    type_abbrevs::Nat,
 };
 
 pub fn less_than(t1: Term, t2: Term) -> Term {
@@ -69,24 +68,20 @@ pub fn is_ipv6(t: Term) -> Term {
     not(is_ipv4(t))
 }
 
-pub fn subnet_width(w: Nat, prefix: Term) -> Term {
-    let n = 2_usize.pow(w as u32);
+pub fn subnet_width(w: Width, prefix: Term) -> Term {
+    let n = 2_u32.pow(w);
     ite(
         is_none(prefix.clone()),
         0.into(),
         bvsub(
-            BitVec {
-                width: n,
-                v: n as i128,
-            }
-            .into(),
+            BitVec::of_nat(n, nat(n)).into(),
             zero_extend(n - w, option_get(prefix)),
         ),
     )
 }
 
-pub fn range(w: Nat, ip_addr: Term, prefix: Term) -> (Term, Term) {
-    let width = subnet_width(w, prefix);
+pub fn range(w: Width, ip_addr: Term, prefix: Term) -> (Term, Term) {
+    let width = subnet_width(w, prefix.clone());
     let lo = bvshl(bvlshr(ip_addr, width.clone()), width.clone());
     let hi = bvsub(bvadd(lo.clone(), bvshl(1.into(), width)), 1.into());
     (lo, hi)
@@ -138,11 +133,19 @@ pub fn in_range_lit(t: Term, cidr4: IPNet, cidr6: IPNet) -> Term {
 }
 
 pub fn is_loopback(t: Term) -> Term {
-    in_range_lit(t, LOOP_BACK_CIDR_V4, LOOP_BACK_CIDR_V6)
+    in_range_lit(
+        t,
+        LOOP_BACK_CIDR_V4.as_ref().clone(),
+        LOOP_BACK_CIDR_V6.as_ref().clone(),
+    )
 }
 
 pub fn is_multicast(t: Term) -> Term {
-    in_range_lit(t, MULTICAST_CIDR_V4, MULTICAST_CIDR_V6)
+    in_range_lit(
+        t,
+        MULTICAST_CIDR_V4.as_ref().clone(),
+        MULTICAST_CIDR_V6.as_ref().clone(),
+    )
 }
 
 pub fn to_milliseconds(t: Term) -> Term {

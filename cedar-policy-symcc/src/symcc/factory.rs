@@ -342,7 +342,7 @@ pub fn bvule(t1: Term, t2: Term) -> Term {
 /// Does negation overflow
 pub fn bvnego(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(bv)) => bitvec::overflows(bv.width(), -bv.v).into(),
+        Term::Prim(TermPrim::Bitvec(bv)) => BitVec::overflows(bv.width(), -bv.to_int()).into(),
         t => Term::App {
             op: Op::Bvnego,
             args: vec![t],
@@ -355,7 +355,7 @@ pub fn bvso(op: Op, f: &BVOp, t1: Term, t2: Term) -> Term {
     match (t1, t2) {
         (Term::Prim(TermPrim::Bitvec(bv1)), Term::Prim(TermPrim::Bitvec(bv2))) => {
             assert!(bv1.width() == bv2.width());
-            bitvec::overflows(bv1.width(), f(&bv1, &bv2).v).into()
+            BitVec::overflows(bv1.width(), f(&bv1, &bv2).to_int()).into()
         }
         (t1, t2) => Term::App {
             op,
@@ -381,13 +381,9 @@ pub fn bvsmulo(t1: Term, t2: Term) -> Term {
 /// so we compensate for the difference in partial evaluation.
 ///
 /// This function adds `n` to the existing width. It does not pad the width to `n`.
-pub fn zero_extend(n: Nat, t: Term) -> Term {
+pub fn zero_extend(n: Width, t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(BitVec { width, v })) => BitVec {
-            width: n + width,
-            v,
-        }
-        .into(),
+        Term::Prim(TermPrim::Bitvec(bv)) => BitVec::zero_extend(&bv, n + bv.width()).into(),
         t => {
             match t.type_of() {
                 TermType::Bitvec { n: cur_width } => Term::App {
@@ -537,10 +533,9 @@ pub fn string_like(t: Term, p: OrdPattern) -> Term {
 
 pub fn ext_decimal_val(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => Term::Prim(TermPrim::Bitvec(BitVec {
-            width: 64,
-            v: d.0.into(),
-        })),
+        Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => {
+            Term::Prim(TermPrim::Bitvec(BitVec::of_int(64, d.0.into())))
+        }
         t => Term::App {
             op: Op::Ext(ExtOp::DecimalVal),
             args: vec![t],
@@ -573,15 +568,9 @@ pub fn ext_ipaddr_addr_v4(t: Term) -> Term {
 
 pub fn ext_ipaddr_prefix_v4(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V4(v4) })) => match v4.prefix {
+        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V4(v4) })) => match v4.prefix.val {
             None => Term::None(TermType::Bitvec { n: 5 }),
-            Some(p) => some_of(
-                BitVec {
-                    width: 5,
-                    v: p.v as i128,
-                }
-                .into(),
-            ),
+            Some(p) => some_of(p.into()),
         },
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV4),
@@ -606,15 +595,9 @@ pub fn ext_ipaddr_addr_v6(t: Term) -> Term {
 
 pub fn ext_ipaddr_prefix_v6(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V6(v6) })) => match v6.prefix {
+        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V6(v6) })) => match v6.prefix.val {
             None => Term::None(TermType::Bitvec { n: 7 }),
-            Some(p) => some_of(
-                BitVec {
-                    width: 7,
-                    v: p.v as i128,
-                }
-                .into(),
-            ),
+            Some(p) => some_of(p.into()),
         },
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV6),
