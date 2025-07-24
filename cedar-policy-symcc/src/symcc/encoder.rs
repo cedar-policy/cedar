@@ -536,20 +536,14 @@ fn encode_bitvec(bv: &BitVec) -> String {
 
 fn encode_ipaddr_prefix_v4(pre: &IPv4Prefix) -> String {
     match &pre.val {
-        Some(pre) => format!(
-            "(some {})",
-            encode_bitvec(&pre)
-        ),
+        Some(pre) => format!("(some {})", encode_bitvec(&pre)),
         None => format!("(as none (Option (_ BitVec {V4_WIDTH})))"),
     }
 }
 
 fn encode_ipaddr_prefix_v6(pre: &IPv6Prefix) -> String {
     match &pre.val {
-        Some(pre) => format!(
-            "(some {})",
-            encode_bitvec(&pre)
-        ),
+        Some(pre) => format!("(some {})", encode_bitvec(&pre)),
         None => format!("(as none (Option (_ BitVec {V6_WIDTH})))"),
     }
 }
@@ -579,7 +573,7 @@ fn encode_ext(e: &Ext) -> String {
             format!("(Duration {bv_enc})")
         }
         Ext::Datetime { dt } => {
-            let bv_enc = encode_bitvec(&BitVec::of_int(64, i128::from(dt)));
+            let bv_enc = encode_bitvec(&BitVec::of_i128(64, dt.into()));
             format!("(Datetime {bv_enc})")
         }
     }

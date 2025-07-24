@@ -20,10 +20,9 @@
 
 // ----- IPv4Addr and IPv6Addr -----
 
-use std::sync::Arc;
+use std::sync::LazyLock;
 
 use num_bigint::BigUint;
-use once_cell::sync::Lazy;
 
 use crate::symcc::{
     bitvec::BitVec,
@@ -58,10 +57,10 @@ impl IPv4Addr {
     // Helper method that does not exist in the corresponding Lean code
     pub fn mk_u8(a0: u8, a1: u8, a2: u8, a3: u8) -> Self {
         Self::mk(
-            &BitVec::of_u128(8, a0 as u128),
-            &BitVec::of_u128(8, a1 as u128),
-            &BitVec::of_u128(8, a2 as u128),
-            &BitVec::of_u128(8, a3 as u128),
+            &BitVec::of_u128(8, u128::from(a0)),
+            &BitVec::of_u128(8, u128::from(a1)),
+            &BitVec::of_u128(8, u128::from(a2)),
+            &BitVec::of_u128(8, u128::from(a3)),
         )
     }
 }
@@ -114,14 +113,14 @@ impl IPv6Addr {
     // Helper method that does not exist in the corresponding Lean code
     pub fn mk_u16(a0: u16, a1: u16, a2: u16, a3: u16, a4: u16, a5: u16, a6: u16, a7: u16) -> Self {
         Self::mk(
-            &BitVec::of_u128(16, a0 as u128),
-            &BitVec::of_u128(16, a1 as u128),
-            &BitVec::of_u128(16, a2 as u128),
-            &BitVec::of_u128(16, a3 as u128),
-            &BitVec::of_u128(16, a4 as u128),
-            &BitVec::of_u128(16, a5 as u128),
-            &BitVec::of_u128(16, a6 as u128),
-            &BitVec::of_u128(16, a7 as u128),
+            &BitVec::of_u128(16, u128::from(a0)),
+            &BitVec::of_u128(16, u128::from(a1)),
+            &BitVec::of_u128(16, u128::from(a2)),
+            &BitVec::of_u128(16, u128::from(a3)),
+            &BitVec::of_u128(16, u128::from(a4)),
+            &BitVec::of_u128(16, u128::from(a5)),
+            &BitVec::of_u128(16, u128::from(a6)),
+            &BitVec::of_u128(16, u128::from(a7)),
         )
     }
 }
@@ -249,38 +248,36 @@ pub enum IPNet {
     V6(CIDRv6),
 }
 
-static LOOP_BACK_ADDRESS_V4: Lazy<Arc<IPv4Addr>> =
-    Lazy::new(|| Arc::new(IPv4Addr::mk_u8(127, 0, 0, 0)));
-static LOOP_BACK_ADDRESS_V6: Lazy<Arc<IPv6Addr>> =
-    Lazy::new(|| Arc::new(IPv6Addr::mk_u16(0, 0, 0, 0, 0, 0, 0, 1)));
-pub static LOOP_BACK_CIDR_V4: Lazy<Arc<IPNet>> = Lazy::new(|| {
-    Arc::new(IPNet::V4(CIDRv4 {
-        addr: (**LOOP_BACK_ADDRESS_V4).clone(),
+static LOOP_BACK_ADDRESS_V4: LazyLock<IPv4Addr> = LazyLock::new(|| IPv4Addr::mk_u8(127, 0, 0, 0));
+static LOOP_BACK_ADDRESS_V6: LazyLock<IPv6Addr> =
+    LazyLock::new(|| IPv6Addr::mk_u16(0, 0, 0, 0, 0, 0, 0, 1));
+pub static LOOP_BACK_CIDR_V4: LazyLock<IPNet> = LazyLock::new(|| {
+    IPNet::V4(CIDRv4 {
+        addr: (*LOOP_BACK_ADDRESS_V4).clone(),
         prefix: IPv4Prefix::of_nat(nat(8)),
-    }))
+    })
 });
-pub static LOOP_BACK_CIDR_V6: Lazy<Arc<IPNet>> = Lazy::new(|| {
-    Arc::new(IPNet::V6(CIDRv6 {
-        addr: (**LOOP_BACK_ADDRESS_V6).clone(),
+pub static LOOP_BACK_CIDR_V6: LazyLock<IPNet> = LazyLock::new(|| {
+    IPNet::V6(CIDRv6 {
+        addr: (*LOOP_BACK_ADDRESS_V6).clone(),
         prefix: IPv6Prefix::of_nat(nat(128)),
-    }))
+    })
 });
 
-static MULTICAST_ADDRESS_V4: Lazy<Arc<IPv4Addr>> =
-    Lazy::new(|| Arc::new(IPv4Addr::mk_u8(224, 0, 0, 0)));
-static MULTICAST_ADDRESS_V6: Lazy<Arc<IPv6Addr>> =
-    Lazy::new(|| Arc::new(IPv6Addr::mk_u16(65280, 0, 0, 0, 0, 0, 0, 0)));
-pub static MULTICAST_CIDR_V4: Lazy<Arc<IPNet>> = Lazy::new(|| {
-    Arc::new(IPNet::V4(CIDRv4 {
-        addr: (**MULTICAST_ADDRESS_V4).clone(),
+static MULTICAST_ADDRESS_V4: LazyLock<IPv4Addr> = LazyLock::new(|| IPv4Addr::mk_u8(224, 0, 0, 0));
+static MULTICAST_ADDRESS_V6: LazyLock<IPv6Addr> =
+    LazyLock::new(|| IPv6Addr::mk_u16(65280, 0, 0, 0, 0, 0, 0, 0));
+pub static MULTICAST_CIDR_V4: LazyLock<IPNet> = LazyLock::new(|| {
+    IPNet::V4(CIDRv4 {
+        addr: (*MULTICAST_ADDRESS_V4).clone(),
         prefix: IPv4Prefix::of_nat(nat(4)),
-    }))
+    })
 });
-pub static MULTICAST_CIDR_V6: Lazy<Arc<IPNet>> = Lazy::new(|| {
-    Arc::new(IPNet::V6(CIDRv6 {
-        addr: (**MULTICAST_ADDRESS_V6).clone(),
+pub static MULTICAST_CIDR_V6: LazyLock<IPNet> = LazyLock::new(|| {
+    IPNet::V6(CIDRv6 {
+        addr: (*MULTICAST_ADDRESS_V6).clone(),
         prefix: IPv6Prefix::of_nat(nat(4)),
-    }))
+    })
 });
 
 impl IPNet {
@@ -363,9 +360,14 @@ fn parse_segs_v4(s: &str) -> Option<IPv4Addr> {
         return None;
     }
 
+    // PANIC SAFETY: if condition ensures accesses are within bounds
+    #[allow(clippy::indexing_slicing)]
     let a0 = parse_num_v4(parts[0])?;
+    #[allow(clippy::indexing_slicing)]
     let a1 = parse_num_v4(parts[1])?;
+    #[allow(clippy::indexing_slicing)]
     let a2 = parse_num_v4(parts[2])?;
+    #[allow(clippy::indexing_slicing)]
     let a3 = parse_num_v4(parts[3])?;
     Some(IPv4Addr::mk(&a0, &a1, &a2, &a3))
 }
@@ -496,7 +498,7 @@ impl std::fmt::Display for IPNet {
                 let a0 = (v.clone() >> 24) & nat(0xFF);
                 let a1 = (v.clone() >> 16) & nat(0xFF);
                 let a2 = (v.clone() >> 8) & nat(0xFF);
-                let a3 = v.clone() & nat(0xFF);
+                let a3 = v & nat(0xFF);
                 write!(
                     f,
                     "{}.{}.{}.{}/{}",
@@ -516,7 +518,7 @@ impl std::fmt::Display for IPNet {
                 let a4 = (v.clone() >> 48) & nat(0xFFFF);
                 let a5 = (v.clone() >> 32) & nat(0xFFFF);
                 let a6 = (v.clone() >> 16) & nat(0xFFFF);
-                let a7 = v.clone() & nat(0xFFFF);
+                let a7 = v & nat(0xFFFF);
                 write!(
                     f,
                     "{:04x}:{:04x}:{:04x}:{:04x}:{:04x}:{:04x}:{:04x}:{:04x}/{}",

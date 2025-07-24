@@ -28,7 +28,7 @@ use num_traits::cast::ToPrimitive;
 
 use thiserror::Error;
 
-use crate::symcc::type_abbrevs::{ExtType, Nat, Width};
+use crate::symcc::type_abbrevs::{ExtType, Width};
 
 use super::bitvec::BitVec;
 use super::encoder::Encoder;
