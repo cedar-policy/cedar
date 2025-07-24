@@ -703,7 +703,11 @@ impl Entity {
     /// For Verus purposes, return `None` if the value is a residual
     /// (should not happen)
     #[verifier::external_body]
-    pub fn get_value_verus(&self, attr: &str) -> Option<&Value> {
+    pub fn get_value_verus(&self, attr: &str) -> (res: Option<&Value>)
+        ensures
+            res matches Some(v) ==> self@.attrs.get(attr@) matches Some(v_spec) && v@ == v_spec,
+            res is None ==> self@.attrs.get(attr@) is None
+    {
         match self.attrs.get(attr) {
             Some(PartialValue::Value(v)) => Some(v),
             _ => None
@@ -714,7 +718,11 @@ impl Entity {
     /// For Verus purposes, return `None` if the value is a residual
     /// (should not happen)
     #[verifier::external_body]
-    pub fn get_tag_value_verus(&self, tag: &str) -> Option<&Value> {
+    pub fn get_tag_value_verus(&self, tag: &str) -> (res: Option<&Value>)
+        ensures
+            res matches Some(v) ==> self@.tags.get(tag@) matches Some(v_spec) && v@ == v_spec,
+            res is None ==> self@.tags.get(tag@) is None
+    {
         match self.tags.get(tag) {
             Some(PartialValue::Value(v)) => Some(v),
             _ => None

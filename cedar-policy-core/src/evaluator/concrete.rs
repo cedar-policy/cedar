@@ -430,66 +430,67 @@ impl<'e> Evaluator<'e> {
                     &val,
                 )),
             },
+            // // ExprKind::Like { expr, pattern } => {
+            // //     let v = self.interpret(expr, slots)?;
+            // //     Ok((pattern.wildcard_match(v.get_as_string()?)).into())
+            // // }
             // ExprKind::Like { expr, pattern } => {
-            //     let v = self.interpret(expr, slots)?;
-            //     Ok((pattern.wildcard_match(v.get_as_string()?)).into())
+            //     // TODO: handle patterns
+            //     assume(false);
+            //     unreached()
             // }
-            ExprKind::Like { expr, pattern } => {
-                // TODO: handle patterns
-                assume(false);
-                unreached()
-            }
-            ExprKind::Is { expr, entity_type } => {
-                let v = self.interpret(expr, slots)?;
-                Ok((v.get_as_entity()?.entity_type().eq_entity_type(entity_type)).into())
-            }
-            ExprKind::Set(items) => {
-                // let vals = items
-                //     .iter()
-                //     .map(|item| self.interpret(item, slots))
-                //     .collect::<Result<Vec<_>>>()?;
-                // Ok(Value::set(vals, loc.cloned()).into())
-                // Verus can't handle iterators, so we have to use a loop:
-                assume(false);
-                let mut vals: Vec<Value> = Vec::with_capacity(items.len());
-                for item in items.iter()
-                    invariant
-                        false,
-                        spec_evaluator::enough_stack_space(),
-                {
-                    let item_val = self.interpret(item, slots)?;
-                    vals.push(item_val);
-                }
-                Ok(Value::set(vals, loc.cloned()).into())
-            }
-            ExprKind::Record(map) => {
-                // let map = map
-                //     .iter()
-                //     .map(|kv| { let (k, v) = kv; Ok((k.clone(), self.interpret(v, slots)?)) })
-                //     .collect::<Result<Vec<_>>>()?;
-                // let (names, vals): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
-                // Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
-                // Verus can't handle iterators, so we have to use a loop:
-                assume(false);
-                let mut names_vals: Vec<(SmolStr, Value)> = Vec::with_capacity(expr_map_len(&map));
-                for k in expr_map_keys_arc(&map)
-                    invariant
-                        false,
-                        spec_evaluator::enough_stack_space(),
-                {
-                    let v = match expr_map_get_arc(&map, k) {
-                        Some(v) => v,
-                        None => unreached(),
-                    };
-                    let v_val = self.interpret(v, slots)?;
-                    names_vals.push((k.clone(), v_val));
-                }
-                Ok(Value::record(names_vals, loc.cloned()).into())
-            }
-            #[cfg(feature = "tolerant-ast")]
-            ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
-                source_loc: loc.cloned(),
-            })),
+            // ExprKind::Is { expr, entity_type } => {
+            //     let v = self.interpret(expr, slots)?;
+            //     Ok((v.get_as_entity()?.entity_type().eq_entity_type(entity_type)).into())
+            // }
+            // ExprKind::Set(items) => {
+            //     // let vals = items
+            //     //     .iter()
+            //     //     .map(|item| self.interpret(item, slots))
+            //     //     .collect::<Result<Vec<_>>>()?;
+            //     // Ok(Value::set(vals, loc.cloned()).into())
+            //     // Verus can't handle iterators, so we have to use a loop:
+            //     assume(false);
+            //     let mut vals: Vec<Value> = Vec::with_capacity(items.len());
+            //     for item in items.iter()
+            //         invariant
+            //             false,
+            //             spec_evaluator::enough_stack_space(),
+            //     {
+            //         let item_val = self.interpret(item, slots)?;
+            //         vals.push(item_val);
+            //     }
+            //     Ok(Value::set(vals, loc.cloned()).into())
+            // }
+            // ExprKind::Record(map) => {
+            //     // let map = map
+            //     //     .iter()
+            //     //     .map(|kv| { let (k, v) = kv; Ok((k.clone(), self.interpret(v, slots)?)) })
+            //     //     .collect::<Result<Vec<_>>>()?;
+            //     // let (names, vals): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
+            //     // Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
+            //     // Verus can't handle iterators, so we have to use a loop:
+            //     assume(false);
+            //     let mut names_vals: Vec<(SmolStr, Value)> = Vec::with_capacity(expr_map_len(&map));
+            //     for k in expr_map_keys_arc(&map)
+            //         invariant
+            //             false,
+            //             spec_evaluator::enough_stack_space(),
+            //     {
+            //         let v = match expr_map_get_arc(&map, k) {
+            //             Some(v) => v,
+            //             None => unreached(),
+            //         };
+            //         let v_val = self.interpret(v, slots)?;
+            //         names_vals.push((k.clone(), v_val));
+            //     }
+            //     Ok(Value::record(names_vals, loc.cloned()).into())
+            // }
+            // #[cfg(feature = "tolerant-ast")]
+            // ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
+            //     source_loc: loc.cloned(),
+            // })),
+            _ => { assume(false); unreached() }
         }
     }
 
@@ -705,7 +706,6 @@ impl<'e> Evaluator<'e> {
     /// for the LHS of the GetAttr. `source_loc` argument should be the loc for
     /// the entire GetAttr expression
     #[verifier::exec_allows_no_decreases_clause]
-    #[verifier::external_body]
     fn get_attr(
         &self,
         expr: &Expr,
