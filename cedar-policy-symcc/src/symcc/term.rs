@@ -126,9 +126,7 @@ impl TermPrim {
     pub fn type_of(&self) -> TermType {
         match self {
             TermPrim::Bool(_) => TermType::Bool,
-            TermPrim::Bitvec(v) => TermType::Bitvec {
-                n: v.width() as usize,
-            },
+            TermPrim::Bitvec(v) => TermType::Bitvec { n: v.width() },
             TermPrim::String(_) => TermType::String,
             TermPrim::Entity(e) => TermType::Entity {
                 ety: e.type_name().clone(),

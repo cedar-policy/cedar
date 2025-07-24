@@ -23,9 +23,12 @@ use std::io;
 
 use cedar_policy::{EntityId, EntityUid};
 use itertools::Itertools;
+use num_bigint::BigUint;
+use num_traits::cast::ToPrimitive;
+
 use thiserror::Error;
 
-use crate::symcc::type_abbrevs::ExtType;
+use crate::symcc::type_abbrevs::{ExtType, Nat, Width};
 
 use super::bitvec::BitVec;
 use super::encoder::Encoder;
@@ -214,13 +217,16 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                                 let num = u128::from_str_radix(&num, 2)?;
 
                                 // Do a sign-extension from i<width> to i<128>
-                                let num = if width != 0 && (1u128 << (width - 1)) & num != 0 {
+                                let num = if width != 0 && (1u128 << width - 1) & num != 0 {
                                     ((u128::MAX << width) | num) as i128
                                 } else {
                                     num as i128
                                 };
 
-                                tokens.push(Token::Atom(SExpr::BitVec(BitVec::of_int(width, num))));
+                                tokens.push(Token::Atom(SExpr::BitVec(BitVec::of_int(
+                                    width as Width,
+                                    num.into(),
+                                ))));
                             }
 
                             // TODO: support #x...
@@ -416,7 +422,10 @@ impl TermType {
     pub fn default_literal(&self) -> Term {
         match self {
             TermType::Bool => Term::Prim(TermPrim::Bool(false)),
-            TermType::Bitvec { n } => Term::Prim(TermPrim::Bitvec(BitVec::of_int(*n, 0))),
+            TermType::Bitvec { n } => Term::Prim(TermPrim::Bitvec(BitVec::of_nat(
+                (*n).to_u32().unwrap(),
+                BigUint::ZERO,
+            ))),
             TermType::String => Term::Prim(TermPrim::String("".to_string())),
 
             TermType::Entity { ety } =>
@@ -518,7 +527,7 @@ impl SExpr {
                     [SExpr::Symbol(app), SExpr::Symbol(bit_vec), SExpr::Numeral(n)]
                         if app == "_" && bit_vec == "BitVec" =>
                     {
-                        Ok(TermType::Bitvec { n: *n as usize })
+                        Ok(TermType::Bitvec { n: *n as Width })
                     } // TODO: overflow?
 
                     // (Option x)

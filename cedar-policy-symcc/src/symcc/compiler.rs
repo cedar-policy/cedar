@@ -47,7 +47,7 @@ type Result<T> = std::result::Result<T, Error>;
 fn compile_prim(p: &Prim, es: &SymEntities) -> Result<Term> {
     match p {
         Prim::Bool(b) => Ok(some_of((*b).into())),
-        Prim::Long(i) => Ok(some_of(BitVec::of_int(64, i128::from(*i)).into())),
+        Prim::Long(i) => Ok(some_of(BitVec::of_i128(64, *i as i128).into())),
         Prim::String(s) => Ok(some_of(s.clone().into())),
         Prim::EntityUID(uid) => {
             let uid = core_uid_into_uid(uid);
@@ -518,7 +518,11 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
             let (t1, t2) = extract_first2(ts);
             compile_call2(ExtType::Decimal, extfun::greater_than_or_equal, t1, t2)
         }
-        ("ip", 1) => Err(Error::UnsupportedError),
+        ("ip", 1) => {
+            // XXX call here
+            let t1 = extract_first(ts);
+            compile_call0(|_| unimplemented!("parsing"), t1)
+        }
         ("isIpv4", 1) => {
             let t1 = extract_first(ts);
             compile_call1(ExtType::IpAddr, extfun::is_ipv4, t1)
