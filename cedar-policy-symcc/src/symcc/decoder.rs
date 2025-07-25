@@ -28,6 +28,7 @@ use num_traits::cast::ToPrimitive;
 
 use thiserror::Error;
 
+use crate::symcc;
 use crate::symcc::type_abbrevs::{ExtType, Width};
 
 use super::bitvec::BitVec;
@@ -99,6 +100,9 @@ pub enum DecodeError {
 
     #[error("Unexpected unary function form: {0}")]
     UnexpectedUnaryFunctionForm(SExpr),
+
+    #[error("Unexpected symcc result error: {0}.")]
+    UnexpectedSymccResult(#[from] symcc::result::Error),
 }
 
 /// Types of tokens
@@ -223,10 +227,10 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                                     num as i128
                                 };
 
-                                tokens.push(Token::Atom(SExpr::BitVec(BitVec::of_int(
-                                    width as Width,
-                                    num.into(),
-                                ))));
+                                tokens.push(Token::Atom(SExpr::BitVec(
+                                    BitVec::of_int(width as Width, num.into())
+                                        .map_err(DecodeError::UnexpectedSymccResult)?,
+                                )));
                             }
 
                             // TODO: support #x...
@@ -422,10 +426,14 @@ impl TermType {
     pub fn default_literal(&self) -> Term {
         match self {
             TermType::Bool => Term::Prim(TermPrim::Bool(false)),
-            TermType::Bitvec { n } => Term::Prim(TermPrim::Bitvec(BitVec::of_nat(
-                (*n).to_u32().unwrap(),
-                BigUint::ZERO,
-            ))),
+            TermType::Bitvec { n } =>
+            {
+                #[allow(
+                    clippy::unwrap_used,
+                    reason = "Assume the bit-vectors have the same width by construction for now."
+                )]
+                Term::Prim(TermPrim::Bitvec(BitVec::of_nat(*n, BigUint::ZERO).unwrap()))
+            }
             TermType::String => Term::Prim(TermPrim::String("".to_string())),
 
             TermType::Entity { ety } =>

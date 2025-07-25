@@ -80,7 +80,11 @@ pub fn subnet_width(w: Width, prefix: Term) -> Term {
         is_none(prefix.clone()),
         0.into(),
         bvsub(
-            BitVec::of_nat(n, nat(n)).into(),
+            #[allow(
+                clippy::unwrap_used,
+                reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
+            )]
+            BitVec::of_nat(n, nat(n)).unwrap().into(),
             zero_extend(n - w, option_get(prefix)),
         ),
     )
@@ -185,9 +189,21 @@ pub fn duration_since(dt1: Term, dt2: Term) -> Term {
 }
 
 pub fn to_date(dt: Term) -> Term {
-    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0)));
-    let one = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 1)));
-    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000)));
+    #[allow(
+        clippy::unwrap_used,
+        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
+    )]
+    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0).unwrap()));
+    #[allow(
+        clippy::unwrap_used,
+        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
+    )]
+    let one = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 1).unwrap()));
+    #[allow(
+        clippy::unwrap_used,
+        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
+    )]
+    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000).unwrap()));
     let dt_val = ext_datetime_val(dt);
     ite(
         bvsle(zero.clone(), dt_val.clone()),
@@ -213,8 +229,16 @@ pub fn to_date(dt: Term) -> Term {
 }
 
 pub fn to_time(dt: Term) -> Term {
-    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0)));
-    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000)));
+    #[allow(
+        clippy::unwrap_used,
+        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
+    )]
+    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0).unwrap()));
+    #[allow(
+        clippy::unwrap_used,
+        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
+    )]
+    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000).unwrap()));
     let dt_val = ext_datetime_val(dt);
     ext_duration_of_bitvec(ite(
         bvsle(zero.clone(), dt_val.clone()),

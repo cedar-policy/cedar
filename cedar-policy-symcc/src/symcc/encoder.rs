@@ -464,8 +464,8 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                         self.define_app(
                             &ty_enc,
                             &Op::Eq,
-                            [t_enc, encode_bitvec(&BitVec::int_min(n))],
-                            [t, &BitVec::int_min(n).into()],
+                            [t_enc, encode_bitvec(&BitVec::int_min(n)?)],
+                            [t, &BitVec::int_min(n)?.into()],
                         )
                         .await?
                     }
@@ -551,7 +551,11 @@ fn encode_ipaddr_prefix_v6(pre: &IPv6Prefix) -> String {
 fn encode_ext(e: &Ext) -> String {
     match e {
         Ext::Decimal { d } => {
-            let bv_enc = encode_bitvec(&BitVec::of_int(64, d.0.into()));
+            #[allow(
+                clippy::unwrap_used,
+                reason = "Cannot panic because bitwidth is non-zero."
+            )]
+            let bv_enc = encode_bitvec(&BitVec::of_int(64, d.0.into()).unwrap());
             format!("(Decimal {bv_enc})")
         }
         Ext::Ipaddr {
@@ -569,11 +573,19 @@ fn encode_ext(e: &Ext) -> String {
             format!("(V6 {addr} {pre})")
         }
         Ext::Duration { d } => {
-            let bv_enc = encode_bitvec(&BitVec::of_int(64, d.to_milliseconds().into()));
+            #[allow(
+                clippy::unwrap_used,
+                reason = "Cannot panic because bitwidth is non-zero."
+            )]
+            let bv_enc = encode_bitvec(&BitVec::of_int(64, d.to_milliseconds().into()).unwrap());
             format!("(Duration {bv_enc})")
         }
         Ext::Datetime { dt } => {
-            let bv_enc = encode_bitvec(&BitVec::of_i128(64, dt.into()));
+            #[allow(
+                clippy::unwrap_used,
+                reason = "Cannot panic because bitwidth is non-zero."
+            )]
+            let bv_enc = encode_bitvec(&BitVec::of_i128(64, dt.into()).unwrap());
             format!("(Datetime {bv_enc})")
         }
     }
