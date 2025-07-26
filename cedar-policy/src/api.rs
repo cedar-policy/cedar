@@ -5055,20 +5055,14 @@ pub use tpe::*;
 
 #[cfg(feature = "tpe")]
 mod tpe {
+    use cedar_policy_core::ast;
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::tpe;
-    use cedar_policy_core::{
-        ast::{self, RequestSchema},
-        entities::conformance::EntitySchemaConformanceChecker,
-        extensions::Extensions,
-        validator::CoreSchema,
-    };
     use ref_cast::RefCast;
 
     use crate::{
-        tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
-        PartialRequestCreationError, Policy, PolicySet, Request, Response, Schema,
-        TPEReauthorizationError,
+        api, tpe_err, Context, Entities, EntityId, EntityTypeName, EntityUid,
+        PartialRequestCreationError, PolicySet, Request, Schema, TPEReauthorizationError,
     };
 
     /// A partial [`EntityUid`]
@@ -5132,91 +5126,27 @@ mod tpe {
         }
     }
 
-    /// The outcome of type-aware partial evaluation
-    #[derive(Debug, Clone)]
-    pub struct Residuals<'a> {
-        pub(super) ps: PolicySet,
-        pub(super) request: &'a PartialRequest,
-        pub(super) entities: &'a PartialEntities,
-        pub(super) schema: &'a Schema,
-    }
+    /// A partial [`Response`]
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct Response<'a>(pub(crate) tpe::response::Response<'a>);
 
-    impl Residuals<'_> {
-        /// Perform conditional authorization
-        pub fn is_authorized(&self) -> Option<Decision> {
-            // Scan forbid policies and see if any of them is guaranteed to
-            // match (i.e., its condition is `true`)
-            for p in self
-                .ps
-                .policies()
-                .filter(|p| p.effect() == ast::Effect::Forbid)
-            {
-                if matches!(
-                    p.ast.condition().expr_kind(),
-                    ast::ExprKind::Lit(ast::Literal::Bool(true))
-                ) {
-                    return Some(Decision::Deny);
-                }
-            }
-            if self
-                .ps
-                .policies()
-                .filter(|p| p.effect() == ast::Effect::Forbid)
-                .all(|p| {
-                    matches!(
-                        p.ast.condition().expr_kind(),
-                        ast::ExprKind::Lit(ast::Literal::Bool(false))
-                    )
-                })
-            {
-                // Scan permit policies and see if any of them is guaranteed to
-                // match (i.e., its condition is `true`)
-                for p in self
-                    .ps
-                    .policies()
-                    .filter(|p| p.effect() == ast::Effect::Permit)
-                {
-                    if matches!(
-                        p.ast.condition().expr_kind(),
-                        ast::ExprKind::Lit(ast::Literal::Bool(true))
-                    ) {
-                        return Some(Decision::Allow);
-                    }
-                }
-                None
-            } else {
-                // We can't make any concrete decision because forbid
-                // policies contain unknown
-                None
-            }
+    impl Response<'_> {
+        /// Attempt to get the authorization decision
+        pub fn decision(&self) -> Option<Decision> {
+            self.0.decision()
         }
 
-        /// Get residual policies
-        pub fn residuals(&self) -> impl Iterator<Item = &Policy> {
-            self.ps.policies()
-        }
-
-        /// Re-authorize residuals with consistent concrete request and entities
+        /// Perform reauthorization
         pub fn reauthorize(
             &self,
-            request: Request,
-            entities: Entities,
-        ) -> Result<Response, TPEReauthorizationError> {
-            let _ = self
-                .schema
-                .0
-                .validate_request(&request.0, Extensions::all_available())
-                .map_err(|err| TPEReauthorizationError::RequestValidation(err.into()))?;
-            let core_schema = CoreSchema::new(&self.schema.0);
-            let entities_checker =
-                EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
-            for entity in entities.0.iter() {
-                entities_checker.validate_entity(&entity)?;
-            }
-            let _ = self.entities.0.check_consistency(&entities.0)?;
-            let _ = self.request.0.check_consistency(&request.0)?;
-            let authorizer = Authorizer::new();
-            Ok(authorizer.is_authorized(&request, &self.ps, &entities))
+            request: &Request,
+            entities: &Entities,
+        ) -> Result<api::Response, TPEReauthorizationError> {
+            self.0
+                .reauthorize(&request.0, &entities.0)
+                .map(Into::into)
+                .map_err(Into::into)
         }
     }
 
@@ -5229,26 +5159,11 @@ mod tpe {
             request: &'a PartialRequest,
             entities: &'a PartialEntities,
             schema: &'a Schema,
-        ) -> Result<Residuals<'a>, tpe_err::TPEError> {
-            use cedar_policy_core::tpe::tpe_policies;
+        ) -> Result<Response<'a>, tpe_err::TPEError> {
+            use cedar_policy_core::tpe::is_authorized;
             let ps = &self.ast;
-            let res = tpe_policies(ps, &request.0, &entities.0, &schema.0)?;
-            // PANIC SAFETY: `res` should have the same policy ids with `ps`
-            #[allow(clippy::unwrap_used)]
-            Ok(Residuals {
-                ps: Self::from_policies(res.into_iter().map(|(id, r)| {
-                    let p = ps.get(&id).unwrap();
-                    Policy::from_ast(r.to_policy(
-                        id,
-                        p.effect(),
-                        p.annotations_arc().as_ref().clone(),
-                    ))
-                }))
-                .unwrap(),
-                request,
-                entities,
-                schema,
-            })
+            let res = is_authorized(ps, &request.0, &entities.0, &schema.0)?;
+            Ok(Response(res))
         }
     }
 }
