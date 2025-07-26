@@ -178,6 +178,36 @@ impl<'a> Response<'a> {
         }
     }
 
+    /// Get policy ids of satisified permit residual policies
+    pub fn get_satisfied_permits(&self) -> impl Iterator<Item = &PolicyID> {
+        self.satisfied_permits.iter()
+    }
+
+    /// Get policy ids of satisified forbid residual policies
+    pub fn get_satisfied_forbids(&self) -> impl Iterator<Item = &PolicyID> {
+        self.satisfied_forbids.iter()
+    }
+
+    /// Get policy ids of trivially false permit residual policies
+    pub fn get_false_permits(&self) -> impl Iterator<Item = &PolicyID> {
+        self.false_permits.iter()
+    }
+
+    /// Get policy ids of trivially false forbid residual policies
+    pub fn get_false_forbids(&self) -> impl Iterator<Item = &PolicyID> {
+        self.false_forbids.iter()
+    }
+
+    /// Get policy ids of non-trivial permit residual policies
+    pub fn get_non_trival_permits(&self) -> impl Iterator<Item = &PolicyID> {
+        self.non_trivial_permits.iter()
+    }
+
+    /// Get policy ids of non-trivial forbid residual policies
+    pub fn get_non_trival_forbids(&self) -> impl Iterator<Item = &PolicyID> {
+        self.non_trivial_forbids.iter()
+    }
+
     /// Look up the [`Residual`] by [`PolicyID`]
     pub fn get_residual(&self, id: &PolicyID) -> Option<&Residual> {
         self.residuals.get(id).map(|rp| rp.residual.as_ref())
@@ -206,6 +236,8 @@ impl<'a> Response<'a> {
         let _ = self.entities.check_consistency(entities)?;
         let _ = self.request.check_consistency(request)?;
         let authorizer = Authorizer::new();
+        // PANIC SAFETY: policy ids should not clash
+        #[allow(clippy::unwrap_used)]
         Ok(authorizer.is_authorized(
             request.clone(),
             &PolicySet::try_from_iter(self.residuals.values().map(|rp| rp.clone().into())).unwrap(),
