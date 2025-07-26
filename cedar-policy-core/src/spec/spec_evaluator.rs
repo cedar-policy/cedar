@@ -255,29 +255,36 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities, slot_env: SlotEnv
             let vs_r = evaluate_expr_seq(ls, req, es, slot_env);
             match vs_r {
                 Ok(vs) => Ok(Value::Set { s: FiniteSet::from_seq(vs) }),
-                Err(err) => Err(err)
+                Err(err) => Err(err),
             }
         },
         Expr::Record { map } => {
-            // TODO: this doesn't guarantee which map entry's error will be returned, but does guarantee
-            // that if any element in the map results in error, then some error will be returned.
-            // This is analogous to the property checked by DRT, but may not be strong enough to verify the impl
-            let entries_evaluated_rs = map.map_values(|mx: Expr| {
-                // Needed to prove termination
-                if map.dom().finite() && map.contains_value(mx) {
-                    evaluate(mx, req, es, slot_env)
-                } else {
-                    arbitrary()
-                }
-            });
-            if entries_evaluated_rs.values().any(|vr: SpecResult<Value>| vr is Err) {
-                // return one of the errors in the set
-                entries_evaluated_rs.values().filter(|vr: SpecResult<Value>| vr is Err).choose()
-            } else {
-                let entries_evaluated =
-                    entries_evaluated_rs.map_values(|x: SpecResult<Value>| x->Ok_0);
-                Ok(Value::Record { m: entries_evaluated })
+            let vmap_r = evaluate_expr_map(map, req, es, slot_env);
+            match vmap_r {
+                Ok(vmap) => Ok(Value::Record { m: vmap }),
+                Err(err) => Err(err),
             }
+            // // TODO: this doesn't guarantee which map entry's error will be returned, but does guarantee
+            // // that if any element in the map results in error, then some error will be returned.
+            // // This is analogous to the property checked by DRT, but may not be strong enough to verify the impl
+            // let entries_evaluated_rs = map.map_values(|mx: Expr| {
+            //     // Needed to prove termination
+            //     if map.dom().finite() && map.contains_value(mx) {
+            //         evaluate(mx, req, es, slot_env)
+            //     } else {
+            //         arbitrary()
+            //     }
+            // });
+            // if entries_evaluated_rs.values().any(|vr: SpecResult<Value>| vr is Err) {
+            //     // return one of the errors in the map
+            //     // entries_evaluated_rs.values().filter(|vr: SpecResult<Value>| vr is Err).choose()
+            //     let err_res = choose |vr: SpecResult<Value>| entries_evaluated_rs.contains_value(vr) && vr is Err;
+            //     Err(err_res->Err_0)
+            // } else {
+            //     let entries_evaluated =
+            //         entries_evaluated_rs.map_values(|x: SpecResult<Value>| x->Ok_0);
+            //     Ok(Value::Record { m: entries_evaluated })
+            // }
         },
         // TODO: case for ExtFun call
     }
@@ -286,9 +293,7 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities, slot_env: SlotEnv
 #[via_fn]
 proof fn evaluate_decreases(x: Expr, req: Request, es: Entities, slot_env: SlotEnv) {
     match x {
-        Expr::Record { map } => {
-            assert(forall |mx: Expr| map.dom().finite() && map.contains_value(mx) ==> decreases_to!(map => mx));
-        },
+        Expr::Record { map } => {}, // Not sure why this is required
         _ => {}
     };
 }
@@ -311,6 +316,41 @@ pub open spec fn evaluate_expr_seq(exprs: Seq<Expr>, req: Request, es: Entities,
     }
 }
 
+// Short-circuiting evaluation of a `Map<Attr, Expr>`, implemented recursively
+pub open spec fn evaluate_expr_map(expr_map: Map<Attr, Expr>, req: Request, es: Entities, slot_env: SlotEnv) -> SpecResult<Map<Attr, Value>>
+    decreases expr_map, expr_map.len() via evaluate_expr_map_decreases
+{
+    if expr_map.len() == 0 {
+        Ok(map![])
+    } else {
+        let attr = expr_map.dom().choose();
+        let expr = expr_map[attr];
+        let rest_of_expr_map = expr_map.remove(attr);
+        match evaluate_expr_map(rest_of_expr_map, req, es, slot_env) {
+            Ok(value_map) => match evaluate(expr, req, es, slot_env) {
+                Ok(val) => Ok(value_map.insert(attr, val)),
+                Err(err) => Err(err),
+            },
+            Err(err) => Err(err),
+        }
+    }
+}
+
+#[via_fn]
+proof fn evaluate_expr_map_decreases(expr_map: Map<Attr, Expr>, req: Request, es: Entities, slot_env: SlotEnv) {
+    if expr_map.len() > 0 {
+        let attr = expr_map.dom().choose();
+        let expr = expr_map[attr];
+        let rest_of_expr_map: Map<Seq<char>, Expr> = expr_map.remove(attr);
+        assume(expr_map.dom().finite());
+        assert(expr_map.dom().contains(attr));
+        assert(expr_map[attr] == expr);
+        assert(decreases_to!(expr_map => expr_map[attr]));
+        assert(rest_of_expr_map.len() < expr_map.len());
+        admit() // todo
+    }
+}
+
 }
 
 ///////////////////////////////////////////////////////
@@ -320,31 +360,31 @@ pub open spec fn evaluate_expr_seq(exprs: Seq<Expr>, req: Request, es: Entities,
 verus! {
 
 // if evaluate_expr_seq(exprs1, ...) is Err, then evaluate_expr_seq(exprs1 + exprs2, ...) is Err
-pub proof fn evaluate_expr_seq_err_short_circuit_auto(exprs1: Seq<Expr>, req: Request, es: Entities, slot_env: SlotEnv)
+pub proof fn lemma_evaluate_expr_seq_err_short_circuit_auto(exprs1: Seq<Expr>, req: Request, es: Entities, slot_env: SlotEnv)
     requires evaluate_expr_seq(exprs1, req, es, slot_env) is Err
     ensures forall |exprs2: Seq<Expr>| #[trigger] evaluate_expr_seq(#[trigger] (exprs1 + exprs2), req, es, slot_env) is Err
     decreases exprs1
 {
     assert forall |exprs2: Seq<Expr>| #[trigger] evaluate_expr_seq(#[trigger] (exprs1 + exprs2), req, es, slot_env) is Err by {
-        evaluate_expr_seq_err_short_circuit(exprs1, exprs2, req, es, slot_env)
+        lemma_evaluate_expr_seq_err_short_circuit(exprs1, exprs2, req, es, slot_env)
     }
 }
 
 // if evaluate_expr_seq(exprs1, ...) is Err, then evaluate_expr_seq(exprs1 + exprs2, ...) is Err
-pub proof fn evaluate_expr_seq_err_short_circuit(exprs1: Seq<Expr>, exprs2: Seq<Expr>, req: Request, es: Entities, slot_env: SlotEnv)
+pub proof fn lemma_evaluate_expr_seq_err_short_circuit(exprs1: Seq<Expr>, exprs2: Seq<Expr>, req: Request, es: Entities, slot_env: SlotEnv)
     requires evaluate_expr_seq(exprs1, req, es, slot_env) is Err
     ensures evaluate_expr_seq(exprs1 + exprs2, req, es, slot_env) is Err
     decreases exprs2
 {
     if exprs2.len() >= 1 {
         assert(exprs1 + exprs2 =~= (exprs1.push(exprs2[0])) + exprs2.subrange(1, exprs2.len() as int));
-        evaluate_expr_seq_err_short_circuit_aux(exprs1, exprs2[0], req, es, slot_env);
-        evaluate_expr_seq_err_short_circuit(exprs1.push(exprs2[0]), exprs2.subrange(1, exprs2.len() as int), req, es, slot_env);
+        lemma_evaluate_expr_seq_err_short_circuit_aux(exprs1, exprs2[0], req, es, slot_env);
+        lemma_evaluate_expr_seq_err_short_circuit(exprs1.push(exprs2[0]), exprs2.subrange(1, exprs2.len() as int), req, es, slot_env);
     }
 }
 
 // if evaluate_expr_seq(exprs1, ...) is Err, then evaluate_expr_seq(exprs1.push(expr2), ...) is Err
-pub proof fn evaluate_expr_seq_err_short_circuit_aux(exprs1: Seq<Expr>, expr2: Expr, req: Request, es: Entities, slot_env: SlotEnv)
+pub proof fn lemma_evaluate_expr_seq_err_short_circuit_aux(exprs1: Seq<Expr>, expr2: Expr, req: Request, es: Entities, slot_env: SlotEnv)
     requires evaluate_expr_seq(exprs1, req, es, slot_env) is Err
     ensures evaluate_expr_seq(exprs1.push(expr2), req, es, slot_env) is Err
 {
@@ -368,7 +408,7 @@ pub proof fn evaluate_expr_seq_err_short_circuit_aux(exprs1: Seq<Expr>, expr2: E
 }
 
 // if evaluate_expr_seq(exprs1, ...) is Ok(vs1), and evaluate(expr2, ...) is Ok(v2), then evaluate_expr_seq(exprs1.push(expr2), ...) is Ok(vs1.push(v2))
-pub proof fn evaluate_expr_seq_ok_push(exprs1: Seq<Expr>, expr2: Expr, req: Request, es: Entities, slot_env: SlotEnv)
+pub proof fn lemma_evaluate_expr_seq_ok_push(exprs1: Seq<Expr>, expr2: Expr, req: Request, es: Entities, slot_env: SlotEnv)
     requires
         evaluate_expr_seq(exprs1, req, es, slot_env) is Ok,
         evaluate(expr2, req, es, slot_env) is Ok
@@ -390,6 +430,113 @@ pub proof fn evaluate_expr_seq_ok_push(exprs1: Seq<Expr>, expr2: Expr, req: Requ
                 },
             },
             Err(err) => {
+                assert(false);
+            },
+        }
+    }
+}
+
+
+// if evaluate_expr_map(expr_map1, ...) is Err and expr_map1 is a submap of expr_map2, then evaluate_expr_map(expr_map2, ...) is Err
+pub proof fn lemma_evaluate_expr_map_err_short_circuit(expr_map1: Map<Attr, Expr>, expr_map2: Map<Attr, Expr>, req: Request, es: Entities, slot_env: SlotEnv)
+    requires
+        expr_map1.dom().finite(),
+        expr_map2.dom().finite(),
+        evaluate_expr_map(expr_map1, req, es, slot_env) is Err,
+        expr_map1.submap_of(expr_map2)
+    ensures evaluate_expr_map(expr_map2, req, es, slot_env) is Err,
+{
+    if expr_map1.len() > 0 {
+        lemma_evaluate_expr_map_err_contains_err(expr_map1, req, es, slot_env);
+        let k_err = choose |k: Attr| #[trigger] expr_map1.contains_key(k) && evaluate(#[trigger] expr_map1[k], req, es, slot_env) is Err;
+        assert(expr_map2.contains_key(k_err));
+        lemma_evaluate_expr_map_err_from_err(expr_map2, k_err, req, es, slot_env);
+    }
+}
+
+// if expr_map[k] evaluates to Err, then evaluate_expr_map(expr_map, ...) is Err
+pub proof fn lemma_evaluate_expr_map_err_from_err(expr_map: Map<Attr, Expr>, k: Attr, req: Request, es: Entities, slot_env: SlotEnv)
+    requires
+        expr_map.dom().finite(),
+        expr_map.dom().contains(k),
+        evaluate(expr_map[k], req, es, slot_env) is Err,
+    ensures evaluate_expr_map(expr_map, req, es, slot_env) is Err,
+    decreases expr_map.len()
+{
+    if expr_map.len() > 0 {
+        let attr = expr_map.dom().choose();
+        let expr = expr_map[attr];
+        let rest_of_expr_map = expr_map.remove(attr);
+        assert(expr_map.dom().contains(attr));
+        assert(expr_map[attr] == expr);
+        assert(rest_of_expr_map.len() < expr_map.len());
+        if attr == k {
+            assert(evaluate_expr_map(expr_map, req, es, slot_env) is Err);
+        } else {
+            lemma_evaluate_expr_map_err_from_err(rest_of_expr_map, k, req, es, slot_env);
+        }
+    }
+}
+
+// if evaluate_expr_map(expr_map, ...) is Err, then some element in expr_map evaluates to an Err
+pub proof fn lemma_evaluate_expr_map_err_contains_err(expr_map: Map<Attr, Expr>, req: Request, es: Entities, slot_env: SlotEnv)
+    requires
+        expr_map.dom().finite(),
+        evaluate_expr_map(expr_map, req, es, slot_env) is Err,
+    ensures exists |k: Attr| #[trigger] expr_map.contains_key(k) && evaluate(#[trigger] expr_map[k], req, es, slot_env) is Err
+    decreases expr_map.len()
+{
+    if expr_map.len() > 0 {
+        let attr = expr_map.dom().choose();
+        let expr = expr_map[attr];
+        let rest_of_expr_map = expr_map.remove(attr);
+        assert(expr_map.dom().contains(attr));
+        assert(expr_map[attr] == expr);
+        assert(rest_of_expr_map.len() < expr_map.len());
+        match evaluate(expr, req, es, slot_env) {
+            Ok(val) => {
+                lemma_evaluate_expr_map_err_contains_err(rest_of_expr_map, req, es, slot_env);
+            },
+            Err(err) => {
+                assert(evaluate_expr_map(expr_map, req, es, slot_env) is Err);
+            },
+        }
+    }
+}
+
+
+
+pub proof fn lemma_evaluate_expr_map_ok_map_values(expr_map: Map<Attr, Expr>, req: Request, es: Entities, slot_env: SlotEnv)
+    requires
+        expr_map.dom().finite(),
+        forall |k: Attr| #[trigger] expr_map.contains_key(k) ==> evaluate(#[trigger] expr_map[k], req, es, slot_env) is Ok,
+    ensures ({
+        let value_map_eval_r = evaluate_expr_map(expr_map, req, es, slot_env);
+        let value_map_map_values = expr_map.map_values(|e: Expr| evaluate(e, req, es, slot_env)->Ok_0);
+        value_map_eval_r matches Ok(value_map_eval) && value_map_eval == value_map_map_values
+    })
+    decreases expr_map.len()
+{
+    if expr_map.len() > 0 {
+        let value_map_map_values = expr_map.map_values(|e: Expr| evaluate(e, req, es, slot_env)->Ok_0);
+        assert(forall |k: Attr| #[trigger] expr_map.contains_key(k) ==>
+            value_map_map_values.contains_key(k) && value_map_map_values[k] == evaluate(expr_map[k], req, es, slot_env)->Ok_0);
+
+        let attr = expr_map.dom().choose();
+        let expr = expr_map[attr];
+        let rest_of_expr_map = expr_map.remove(attr);
+        assert(expr_map.dom().contains(attr));
+        assert(expr_map[attr] == expr);
+        assert(rest_of_expr_map.len() < expr_map.len());
+        match evaluate_expr_map(rest_of_expr_map, req, es, slot_env) {
+            Ok(value_map) => match evaluate(expr, req, es, slot_env) {
+                Ok(val) => {
+                    lemma_evaluate_expr_map_ok_map_values(rest_of_expr_map, req, es, slot_env);
+                },
+                Err(err) => assert(false),
+            },
+            Err(err) => {
+                lemma_evaluate_expr_map_ok_map_values(rest_of_expr_map, req, es, slot_env);
                 assert(false);
             },
         }

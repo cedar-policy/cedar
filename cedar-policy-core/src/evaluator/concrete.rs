@@ -37,10 +37,9 @@ use crate::evaluator::*;
 
 use crate::verus_utils::*;
 
-use vstd::assert_by_contradiction;
-use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use vstd::std_specs::hash::*;
+use vstd::{assert_by_contradiction, prelude::*, relations::*};
 
 verus! {
 
@@ -504,14 +503,13 @@ impl<'e> Evaluator<'e> {
                         Ok(v) => v,
                         Err(err) => {
                             proof {
-                                spec_evaluator::evaluate_expr_seq_err_short_circuit(
+                                spec_evaluator::lemma_evaluate_expr_seq_err_short_circuit(
                                     exprs_next_iter,
                                     items_ghost_iter.elements.skip(items_ghost_iter.pos + 1).map_values(|e:Expr| e@),
                                     self@.request,
                                     self@.entities,
                                     slots.deep_view()
                                 );
-
                             }
                             return Err(err)
                         }
@@ -519,7 +517,7 @@ impl<'e> Evaluator<'e> {
                     vals.push(item_val);
                     proof {
                         i = i + 1;
-                        spec_evaluator::evaluate_expr_seq_ok_push(exprs_so_far, item@, self@.request, self@.entities, slots.deep_view());
+                        spec_evaluator::lemma_evaluate_expr_seq_ok_push(exprs_so_far, item@, self@.request, self@.entities, slots.deep_view());
                         assert(spec_evaluator::evaluate_expr_seq(exprs_next_iter, self@.request, self@.entities, slots.deep_view()) matches Ok(vs)
                                 && vs == vals@.map_values(|v: Value| v@));
                     }
@@ -538,21 +536,141 @@ impl<'e> Evaluator<'e> {
                 // let (names, vals): (Vec<SmolStr>, Vec<Value>) = map.into_iter().unzip();
                 // Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
                 // Verus can't handle iterators, so we have to use a loop:
-                assume(false);
                 let mut names_vals: Vec<(SmolStr, Value)> = Vec::with_capacity(expr_map_len(&map));
-                for k in expr_map_keys_arc(&map)
+                let record_keys = expr_map_keys_arc(&map);
+
+                broadcast use axiom_map_map_values_finite;
+                let ghost mut i: int = 0;
+                let ghost expr_map_view = map@.map_values(|e: Expr| e@);
+                proof {
+                    assert(record_keys@.map_values(|k: &SmolStr| k@).no_duplicates()) by {
+                        smol_str_ref_view_injective();
+                        Seq::lemma_no_duplicates_injective(record_keys@, |k: &SmolStr| k@);
+                    };
+                    assert(record_keys@.map_values(|k: &SmolStr| k@).to_set() == record_keys@.to_set().map(|k: &SmolStr| k@)) by {
+                        broadcast use Seq::lemma_to_set_map_commutes;
+                    };
+                    assert forall |k: &SmolStr| (#[trigger] record_keys@.contains(k)) implies (#[trigger] map@.contains_key(k@)) by {
+                        let j = choose |j| 0 <= j < record_keys@.len() && record_keys@[j] == k;
+                        assert(record_keys@.map_values(|k: &SmolStr| k@)[j] == k@);
+                    };
+                    assert(expr_map_view == expr@->map);
+                    assert(expr_map_view.dom().finite()) by {
+                        arc_smolstr_expr_map_view_finite(map);
+                    }
+                }
+                for k in record_keys_ghost_iter: record_keys
                     invariant
-                        false,
                         spec_evaluator::enough_stack_space(),
+                        record_keys_ghost_iter.elements == record_keys@,
+                        i == record_keys_ghost_iter.pos,
+                        expr_map_view == expr@->map,
+                        expr_map_view.dom().finite(),
+                        expr_map_view.dom() == map@.dom(),
+                        expr_map_view == map@.map_values(|e: Expr| e@),
+                        record_keys@.no_duplicates(),
+                        record_keys@.map_values(|k: &SmolStr| k@).no_duplicates(),
+                        record_keys@.map_values(|k: &SmolStr| k@).to_set() == map@.dom(),
+                        record_keys@.map_values(|k: &SmolStr| k@).to_set() == record_keys@.to_set().map(|k: &SmolStr| k@),
+                        forall |k: &SmolStr| (#[trigger] record_keys@.contains(k)) ==> (#[trigger] map@.contains_key(k@)),
+                        (spec_evaluator::evaluate_expr_map(expr@->map, self@.request, self@.entities, slots.deep_view()) is Err
+                            ==> spec_evaluator::evaluate(expr@, self@.request, self@.entities, slots.deep_view()) is Err),
+                        forall |k: &SmolStr| record_keys_ghost_iter.elements.take(record_keys_ghost_iter.pos).contains(k)
+                                                ==> spec_evaluator::evaluate((#[trigger] map@.get(k@))->Some_0@, self@.request, self@.entities, slots.deep_view()) is Ok,
+                        ({
+                            let expr_map_so_far = record_keys_ghost_iter.elements.take(record_keys_ghost_iter.pos).map_values(|s: &SmolStr| s@)
+                                                    .to_set()
+                                                    .mk_map(|k: spec_ast::Attr| map@.get(k)->Some_0@);
+                            let names_vals_as_map = assoc_list_as_map(names_vals@.map_values(|kv: (SmolStr, Value)| { let (k, v) = kv; (k@, v@) }));
+                            &&& expr_map_so_far.submap_of(expr_map_view)
+                            &&& names_vals_as_map == expr_map_so_far.map_values(|e: spec_ast::Expr| spec_evaluator::evaluate(e, self@.request, self@.entities, slots.deep_view())->Ok_0)
+                        }),
                 {
+                    reveal_with_fuel(spec_evaluator::evaluate_expr_map, 1);
+                    assert(record_keys@[record_keys_ghost_iter.pos] == k);
+                    assert(record_keys@.map_values(|s: &SmolStr| s@)[record_keys_ghost_iter.pos] == k@);
+                    assert(record_keys@.contains(k));
+                    assert(record_keys_ghost_iter.elements.take(record_keys_ghost_iter.pos).map_values(|s: &SmolStr| s@).no_duplicates()) by {
+                        smol_str_ref_view_injective();
+                        Seq::lemma_no_duplicates_injective(record_keys@, |k: &SmolStr| k@);
+                    };
+                    let ghost record_keys_so_far_mapped = record_keys_ghost_iter.elements.take(record_keys_ghost_iter.pos).map_values(|s: &SmolStr| s@);
+                    let ghost record_keys_next_iter_mapped = record_keys_ghost_iter.elements.take(record_keys_ghost_iter.pos + 1).map_values(|s: &SmolStr| s@);
+                    assert(record_keys_ghost_iter.elements.take(record_keys_ghost_iter.pos + 1) =~= record_keys_ghost_iter.elements.take(record_keys_ghost_iter.pos).push(k));
+                    assert(record_keys_next_iter_mapped =~= record_keys_so_far_mapped.push(k@));
+                    assert(record_keys_so_far_mapped =~= record_keys_next_iter_mapped.remove(record_keys_ghost_iter.pos));
+                    assert(record_keys_next_iter_mapped.no_duplicates()) by {
+                        smol_str_ref_view_injective();
+                        Seq::lemma_no_duplicates_injective(record_keys@, |k: &SmolStr| k@);
+                    };
+
+                    assert(record_keys_next_iter_mapped[record_keys_ghost_iter.pos] == k@);
+                    assert(forall |j| 0 <= j < (record_keys_ghost_iter.pos + 1) ==> (j != record_keys_ghost_iter.pos ==> record_keys_next_iter_mapped[j] != k@));
+                    assert(!record_keys_so_far_mapped.contains(k@));
+
+                    let ghost expr_map_so_far = record_keys_so_far_mapped.to_set().mk_map(|k: spec_ast::Attr| map@.get(k)->Some_0@);
+                    assert(expr_map_so_far.dom().finite());
+                    assert(!expr_map_so_far.contains_key(k@));
+                    assert(!expr_map_so_far.dom().contains(k@));
+
+                    let ghost expr_map_next_iter = record_keys_next_iter_mapped.to_set().mk_map(|k: spec_ast::Attr| map@.get(k)->Some_0@);
+                    assert(expr_map_next_iter.dom().finite());
+                    assert(expr_map_next_iter.contains_key(k@));
+
+                    let ghost names_vals_assoc_list = names_vals@.map_values(|kv: (SmolStr, Value)| { let (k, v) = kv; (k@, v@) });
+
                     let v = match expr_map_get_arc(&map, k) {
                         Some(v) => v,
                         None => unreached(),
                     };
-                    let v_val = self.interpret(v, slots)?;
+
+                    assert(v@ == expr_map_view[k@]);
+                    assert(v@ == map@.get(k@)->Some_0@);
+                    assert(expr_map_next_iter.get(k@)->Some_0 == v@);
+                    assert(forall |s: spec_ast::Attr| expr_map_so_far.contains_key(s) ==> s != k@);
+                    assert(expr_map_next_iter == expr_map_so_far.insert(k@, v@)) by {
+                        assert(expr_map_next_iter.dom() =~= expr_map_so_far.dom().insert(k@));
+                        assert forall |s: spec_ast::Attr| expr_map_next_iter.dom().contains(s) implies #[trigger] expr_map_next_iter[s] == #[trigger] expr_map_so_far.insert(k@, v@)[s] by {
+                            if s == k@ {
+                                assert(expr_map_next_iter[s] == v@);
+                                assert(expr_map_so_far.insert(k@, v@)[s] == v@);
+                            } else {
+
+                            }
+                        }
+                    };
+
+                    let v_val = match self.interpret(v, slots) {
+                        Ok(v) => v,
+                        Err(err) => {
+                            proof {
+                                spec_evaluator::lemma_evaluate_expr_map_err_from_err(
+                                    expr_map_view,
+                                    k@,
+                                    self@.request,
+                                    self@.entities,
+                                    slots.deep_view()
+                                );
+                            }
+                            return Err(err);
+                        }
+                    };
                     names_vals.push((k.clone(), v_val));
+                    proof {
+                        i = i + 1;
+                        assoc_list_insert_spec(names_vals_assoc_list, k@, v_val@);
+                        assert(names_vals@.map_values(|kv: (SmolStr, Value)| { let (k, v) = kv; (k@, v@) }) =~= names_vals_assoc_list.push((k@,v_val@)));
+                        lemma_map_insert_map_values(expr_map_so_far, k@, v@, |e: spec_ast::Expr| spec_evaluator::evaluate(e, self@.request, self@.entities, slots.deep_view())->Ok_0);
+                    }
                 }
-                Ok(Value::record(names_vals, loc.cloned()).into())
+
+                proof {
+                    assert(i == record_keys@.len());
+                    assert(record_keys@.take(i).map_values(|k: &SmolStr| k@) == record_keys@.map_values(|k: &SmolStr| k@));
+                    spec_evaluator::lemma_evaluate_expr_map_ok_map_values(expr_map_view, self@.request, self@.entities, slots.deep_view());
+                }
+
+                Ok(Value::record_from_vec_verus(names_vals, loc.cloned()).into())
             }
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {

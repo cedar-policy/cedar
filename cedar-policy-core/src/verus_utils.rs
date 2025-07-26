@@ -28,7 +28,7 @@ use std::sync::Arc;
 #[cfg(verus_keep_ghost)]
 #[allow(unused_imports)]
 use vstd::std_specs::hash::*;
-use vstd::{assert_seqs_equal, assert_sets_equal, calc, prelude::*, seq_lib};
+use vstd::{assert_seqs_equal, assert_sets_equal, calc, prelude::*, relations::*, seq_lib};
 
 // Specification macros
 
@@ -73,6 +73,19 @@ macro_rules! eq_spec_for {
 }
 #[allow(unused_imports)]
 pub(crate) use eq_spec_for;
+
+// Axioms
+
+verus! {
+
+pub broadcast proof fn axiom_map_map_values_finite<K,V,U>(m: Map<K,V>, f: spec_fn(V) -> U)
+    requires m.dom().finite(),
+    ensures #[trigger] m.map_values(f).dom().finite()
+{
+    admit()
+}
+
+}
 
 // Arithmetic
 
@@ -152,6 +165,19 @@ impl SmolStrView for SmolStr {
     type V = Seq<char>;
     uninterp spec fn view(&self) -> Self::V;
 }
+
+pub proof fn smol_str_view_injective()
+    ensures injective(|s: SmolStr| s.view())
+{
+    admit()
+}
+
+pub proof fn smol_str_ref_view_injective()
+    ensures injective(|s: &SmolStr| s.view())
+{
+    admit()
+}
+
 
 pub assume_specification[SmolStr::as_str](this: &SmolStr) -> (s: &str)
     ensures this@ == s@;
@@ -301,7 +327,32 @@ pub open spec fn seq_map_result_all<A, B, E>(s: Seq<A>, f: spec_fn(A) -> Result<
     s.fold_left_alt(Ok(seq![]), f)
 }
 
+pub open spec fn assoc_list_as_map<K,V>(assoc_list: Seq<(K,V)>) -> Map<K,V>
+    decreases assoc_list.len()
+{
+    if assoc_list.len() == 0 {
+        map![]
+    } else {
+        let (last_k, last_v) = assoc_list.last();
+        let rest_map = assoc_list_as_map(assoc_list.drop_last());
+        rest_map.insert(last_k, last_v)
+    }
+}
 
+pub open spec fn assoc_list_no_dups<K,V>(assoc_list: Seq<(K,V)>) -> bool {
+    forall |i:int, j:int| 0 <= i < assoc_list.len() && 0 <= j < assoc_list.len() ==> ((#[trigger] assoc_list[i]).0 == (#[trigger] assoc_list[j]).0 ==> i == j)
+}
+
+pub open spec fn assoc_list_dom<K,V>(assoc_list: Seq<(K,V)>) -> Set<K> {
+    assoc_list.map_values(|kv: (K,V)| kv.0).to_set()
+}
+
+pub proof fn assoc_list_insert_spec<K,V>(assoc_list: Seq<(K,V)>, k: K, v: V)
+    ensures assoc_list_as_map(assoc_list.push((k,v))) == assoc_list_as_map(assoc_list).insert(k, v)
+{
+    reveal_with_fuel(assoc_list_as_map, 1);
+    assert(assoc_list.push((k,v)).drop_last() =~= assoc_list);
+}
 
 
 } // verus!
@@ -309,6 +360,39 @@ pub open spec fn seq_map_result_all<A, B, E>(s: Seq<A>, f: spec_fn(A) -> Result<
 // Helper lemmas (should be in vstd)
 
 verus! {
+
+pub proof fn lemma_map_insert_map_values<K,V,U>(m: Map<K,V>, k: K, v: V, f: spec_fn(V) -> U)
+    ensures
+        m.insert(k, v).map_values(f) == m.map_values(f).insert(k, f(v))
+{
+    assert(m.insert(k, v).map_values(f) =~= m.map_values(f).insert(k, f(v)));
+}
+
+pub proof fn lemma_map_map_values_only_on_dom<K,V,U>(m: Map<K,V>, f: spec_fn(V) -> U)
+    requires m.dom().finite()
+    ensures ({
+        let map_values_f = m.map_values(f);
+        let map_values_check_contains_f = m.map_values(|v: V| {
+            if m.dom().finite() && m.contains_value(v) {
+                f(v)
+            } else {
+                arbitrary()
+            }
+        });
+        map_values_f == map_values_check_contains_f
+    })
+{
+    let map_values_f = m.map_values(f);
+    let map_values_check_contains_f = m.map_values(|v: V| {
+        if m.dom().finite() && m.contains_value(v) {
+            f(v)
+        } else {
+            arbitrary()
+        }
+    });
+    assert(map_values_f =~= map_values_check_contains_f);
+}
+
 
 pub proof fn lemma_set_filter_map_aux_equiv<A,B>(st: Set<A>, f: spec_fn(A) -> Option<B>)
     requires

@@ -182,6 +182,22 @@ impl Value {
 
     verus! {
 
+    /// Create a record with the given (key, value) pairs, with the pairs provided as a Vec for Verus purposes
+    #[verifier::external_body]
+    pub fn record_from_vec_verus(pairs: Vec<(SmolStr, Value)>, loc: Option<Loc>) -> (res: Self)
+        ensures res@ == (spec_ast::Value::Record {
+            m: assoc_list_as_map(pairs@.map_values(|kv: (SmolStr, Value)| {
+                let (k, v) = kv;
+                (k@, v@)
+            }))
+        })
+    {
+        Self {
+            value: ValueKind::record(pairs),
+            loc,
+        }
+    }
+
     /// Create a record with the given (key, value) pairs
     #[verifier::external_body]
     pub fn record<K: Into<SmolStr>, V: Into<Value>>(

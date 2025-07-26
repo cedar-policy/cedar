@@ -199,6 +199,12 @@ impl<T> BTreeMapView for BTreeMap<SmolStr, Expr<T>> {
     uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
 }
 
+pub broadcast proof fn arc_smolstr_expr_map_view_finite<T>(v: &Arc<BTreeMap<SmolStr, Expr<T>>>)
+    ensures #[trigger] v.view().dom().finite()
+{
+    admit()
+}
+
 #[verifier::external_body]
 pub fn expr_map_get_arc<'a, T>(expr_map: &'a Arc<BTreeMap<SmolStr, Expr<T>>>, key: &SmolStr) -> (res: Option<&'a Expr<T>>)
     ensures
@@ -211,7 +217,8 @@ pub fn expr_map_get_arc<'a, T>(expr_map: &'a Arc<BTreeMap<SmolStr, Expr<T>>>, ke
 #[verifier::external_body]
 pub fn expr_map_keys_arc<'a, T>(expr_map: &'a Arc<BTreeMap<SmolStr, Expr<T>>>) -> (res: Vec<&'a SmolStr>)
     ensures
-        res@.map_values(|k: &SmolStr| k@).to_set() == expr_map@.dom()
+        res@.map_values(|k: &SmolStr| k@).to_set() == expr_map@.dom(),
+        res@.no_duplicates(),
 {
     expr_map.keys().collect()
 }
