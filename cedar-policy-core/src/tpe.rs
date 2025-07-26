@@ -75,7 +75,7 @@ pub fn is_authorized<'a>(
         entities,
         extensions: Extensions::all_available(),
     };
-    // PANIC SAFFTY: `id` should exist in the policy set
+    // PANIC SAFETY: `id` should exist in the policy set
     #[allow(clippy::unwrap_used)]
     Ok(Response::new(
         exprs.into_iter().map(|(id, expr)| {

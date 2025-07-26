@@ -1342,6 +1342,7 @@ pub enum TPEReauthorizationError {
     InconsistentRequests(#[from] tpe_err::RequestConsistencyError),
 }
 
+#[cfg(feature = "tpe")]
 impl From<tpe_err::ReauthorizationError> for TPEReauthorizationError {
     fn from(value: tpe_err::ReauthorizationError) -> Self {
         match value {
