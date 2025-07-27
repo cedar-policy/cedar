@@ -271,9 +271,12 @@ action Delete appliesTo {
 
 #[cfg(test)]
 mod tinytodo {
+    use std::collections::HashSet;
     use std::{collections::BTreeMap, sync::Arc};
 
-    use crate::ast::{Annotation, AnyId, BinaryOp, EntityUID, Literal, Value, ValueKind, Var};
+    use crate::ast::{
+        Annotation, AnyId, BinaryOp, EntityUID, Literal, PolicyID, Value, ValueKind, Var,
+    };
     use crate::tpe::residual::{Residual, ResidualKind};
     use crate::validator::ValidatorSchema;
     use crate::{
@@ -441,17 +444,23 @@ when { principal in resource.editors };
             .static_policies()
             .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "3"))
             .unwrap();
-        // false
-        assert_matches!(
-            residuals.get_residual(policy0.id()),
-            Some(Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(false)),
-                    ..
-                },
-                ..
-            })
-        );
+        let false_permits: HashSet<&PolicyID> = residuals.get_false_permits().collect();
+        assert!(false_permits.len() == 2);
+        assert!(false_permits.contains(policy0.id()));
+        assert!(false_permits.contains(policy3.id()));
+        let false_forbids: HashSet<&PolicyID> = residuals.get_false_forbids().collect();
+        assert!(false_forbids.is_empty());
+        let true_permits: HashSet<&PolicyID> = residuals.get_satisfied_permits().collect();
+        assert!(true_permits.is_empty());
+        let true_forbids: HashSet<&PolicyID> = residuals.get_satisfied_forbids().collect();
+        assert!(true_forbids.is_empty());
+        let non_trivial_permits: HashSet<&PolicyID> = residuals.get_non_trival_permits().collect();
+        assert!(non_trivial_permits.len() == 2);
+        assert!(non_trivial_permits.contains(policy1.id()));
+        assert!(non_trivial_permits.contains(policy2.id()));
+        let non_trivial_forbids: HashSet<&PolicyID> = residuals.get_non_trival_forbids().collect();
+        assert!(non_trivial_forbids.is_empty());
+        assert_matches!(residuals.decision(), None);
         // (resource["owner"]) == User::"aaron"
         assert_matches!(residuals.get_residual(policy1.id()), Some(Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }) => {
             assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::GetAttr { expr, attr }, .. } => {
@@ -483,16 +492,5 @@ when { principal in resource.editors };
                         });
                     });
                 });
-        // false
-        assert_matches!(
-            residuals.get_residual(policy3.id()),
-            Some(Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(false)),
-                    ..
-                },
-                ..
-            })
-        );
     }
 }
