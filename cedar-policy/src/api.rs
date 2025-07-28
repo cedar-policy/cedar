@@ -5299,7 +5299,7 @@ mod tpe {
             let policies = &PolicySet::from_policies(
                 residuals
                     .0
-                    .get_residual_policies()
+                    .residual_policies()
                     .into_iter()
                     .map(Policy::from_ast),
             )
@@ -5359,7 +5359,7 @@ mod tpe {
             let policies = &PolicySet::from_policies(
                 residuals
                     .0
-                    .get_residual_policies()
+                    .residual_policies()
                     .into_iter()
                     .map(Policy::from_ast),
             )

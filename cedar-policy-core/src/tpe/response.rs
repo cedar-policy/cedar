@@ -179,32 +179,32 @@ impl<'a> Response<'a> {
     }
 
     /// Get policy ids of satisified permit residual policies
-    pub fn get_satisfied_permits(&self) -> impl Iterator<Item = &PolicyID> {
+    pub fn satisfied_permits(&self) -> impl Iterator<Item = &PolicyID> {
         self.satisfied_permits.iter()
     }
 
     /// Get policy ids of satisified forbid residual policies
-    pub fn get_satisfied_forbids(&self) -> impl Iterator<Item = &PolicyID> {
+    pub fn satisfied_forbids(&self) -> impl Iterator<Item = &PolicyID> {
         self.satisfied_forbids.iter()
     }
 
     /// Get policy ids of trivially false permit residual policies
-    pub fn get_false_permits(&self) -> impl Iterator<Item = &PolicyID> {
+    pub fn false_permits(&self) -> impl Iterator<Item = &PolicyID> {
         self.false_permits.iter()
     }
 
     /// Get policy ids of trivially false forbid residual policies
-    pub fn get_false_forbids(&self) -> impl Iterator<Item = &PolicyID> {
+    pub fn false_forbids(&self) -> impl Iterator<Item = &PolicyID> {
         self.false_forbids.iter()
     }
 
     /// Get policy ids of non-trivial permit residual policies
-    pub fn get_non_trival_permits(&self) -> impl Iterator<Item = &PolicyID> {
+    pub fn non_trival_permits(&self) -> impl Iterator<Item = &PolicyID> {
         self.non_trivial_permits.iter()
     }
 
     /// Get policy ids of non-trivial forbid residual policies
-    pub fn get_non_trival_forbids(&self) -> impl Iterator<Item = &PolicyID> {
+    pub fn non_trival_forbids(&self) -> impl Iterator<Item = &PolicyID> {
         self.non_trivial_forbids.iter()
     }
 
@@ -246,7 +246,7 @@ impl<'a> Response<'a> {
     }
 
     /// Get residual policies
-    pub fn get_residual_policies(&self) -> Vec<Policy> {
+    pub fn residual_policies(&self) -> Vec<Policy> {
         self.residuals
             .values()
             .map(|rp| rp.clone().into())
