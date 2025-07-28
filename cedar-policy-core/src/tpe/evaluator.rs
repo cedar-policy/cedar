@@ -107,10 +107,27 @@ impl Evaluator<'_> {
                                 ..
                             },
                         ..
-                    } => Residual::Concrete {
-                        value: false.into(),
-                        ty,
+                    } => match self.interpret(&right) {
+                        // false && <bool> => false
+                        Residual::Concrete {
+                            value:
+                                Value {
+                                    value: ValueKind::Lit(ast::Literal::Bool(_)),
+                                    ..
+                                },
+                            ..
+                        } => left,
+                        // cannot simplify false && <residual>
+                        right => Residual::Partial {
+                            kind: ResidualKind::And {
+                                left: Arc::new(left),
+                                right: Arc::new(right),
+                            },
+                            ty,
+                        },
                     },
+                    // true && <bool> => <bool>
+                    // true && <residual> => <residual>
                     Residual::Concrete {
                         value:
                             Value {
@@ -120,7 +137,8 @@ impl Evaluator<'_> {
                         ..
                     } => self.interpret(right),
                     Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
-                    Residual::Partial { .. } => match &self.interpret(&right) {
+                    Residual::Partial { .. } => match self.interpret(&right) {
+                        // <residual> && true => <residual>
                         Residual::Concrete {
                             value:
                                 Value {
@@ -129,10 +147,12 @@ impl Evaluator<'_> {
                                 },
                             ..
                         } => left,
+                        // cannot simplify <residual> && false
+                        // cannot simplify <residual> && <residual>
                         right => Residual::Partial {
                             kind: ResidualKind::And {
                                 left: Arc::new(left),
-                                right: Arc::new(right.clone()),
+                                right: Arc::new(right),
                             },
                             ty,
                         },
