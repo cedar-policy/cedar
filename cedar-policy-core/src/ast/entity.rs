@@ -485,7 +485,7 @@ pub enum Eid {
 
 impl View for Eid {
     type V = Seq<char>;
-    closed spec fn view(&self) -> Self::V {
+    open spec fn view(&self) -> Self::V {
         match self {
             Eid::Eid(s) => s.view(),
             #[cfg(feature = "tolerant-ast")]
