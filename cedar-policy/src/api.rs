@@ -5294,6 +5294,8 @@ mod tpe {
                 validator.validate_entity(entity)?;
             }
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
+            // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
+            #[allow(clippy::unwrap_used)]
             let policies = &PolicySet::from_policies(
                 residuals
                     .0
@@ -5352,6 +5354,8 @@ mod tpe {
                 validator.validate_entity(entity)?;
             }
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
+            // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
+            #[allow(clippy::unwrap_used)]
             let policies = &PolicySet::from_policies(
                 residuals
                     .0
