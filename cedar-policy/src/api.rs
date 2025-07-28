@@ -4158,7 +4158,7 @@ impl std::fmt::Display for Expression {
 ///   - if-then-else expressions
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
-pub struct RestrictedExpression(ast::RestrictedExpr);
+pub struct RestrictedExpression(pub(crate) ast::RestrictedExpr);
 
 #[doc(hidden)] // because this converts to a private/internal type
 impl AsRef<ast::RestrictedExpr> for RestrictedExpression {
@@ -5058,11 +5058,17 @@ mod tpe {
     use cedar_policy_core::ast;
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::tpe;
+    use cedar_policy_core::{
+        entities::conformance::EntitySchemaConformanceChecker, extensions::Extensions,
+        validator::CoreSchema,
+    };
+    use itertools::Itertools;
     use ref_cast::RefCast;
 
     use crate::{
-        api, tpe_err, Context, Entities, EntityId, EntityTypeName, EntityUid,
-        PartialRequestCreationError, PolicySet, Request, Schema, TPEReauthorizationError,
+        api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
+        PartialRequestCreationError, PermissionQueryError, Policy, PolicySet, Request,
+        RequestValidationError, RestrictedExpression, Schema, TPEReauthorizationError,
     };
 
     /// A partial [`EntityUid`]
@@ -5108,6 +5114,112 @@ mod tpe {
             tpe::request::PartialRequest::new(principal.0, action.0, resource.0, context, &schema.0)
                 .map(Self)
                 .map_err(|e| PartialRequestCreationError::Validation(e.into()))
+        }
+    }
+
+    /// Like [`PartialRequest`] but only `resource` can be unknown
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct ResourceQueryRequest(pub(crate) PartialRequest);
+
+    impl ResourceQueryRequest {
+        /// Construct a valid [`ResourceQueryRequest`] according to a [`Schema`]
+        pub fn new(
+            principal: EntityUid,
+            action: EntityUid,
+            resource: EntityTypeName,
+            context: Context,
+            schema: &Schema,
+        ) -> Result<Self, PartialRequestCreationError> {
+            PartialRequest::new(
+                PartialEntityUid(principal.0.into()),
+                action,
+                PartialEntityUid::new(resource, None),
+                Some(context),
+                schema,
+            )
+            .map(Self)
+        }
+
+        /// Convert [`ResourceQueryRequest`] to a [`Request`] by providing the resource [`EntityId`]
+        pub fn to_request(
+            &self,
+            resource_id: EntityId,
+            schema: Option<&Schema>,
+        ) -> Result<Request, RequestValidationError> {
+            // PANIC SAFETY: various fields are validated through the constructor
+            #[allow(clippy::unwrap_used)]
+            Request::new(
+                EntityUid(self.0 .0.get_principal().try_into().unwrap()),
+                EntityUid(self.0 .0.get_action()),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName(self.0 .0.get_resource_type()),
+                    resource_id,
+                ),
+                Context::from_pairs(
+                    self.0
+                         .0
+                        .get_context_attrs()
+                        .unwrap()
+                        .into_iter()
+                        .map(|(a, v)| (a.to_string(), RestrictedExpression(v.clone().into()))),
+                )
+                .unwrap(),
+                schema,
+            )
+        }
+    }
+
+    /// Like [`PartialRequest`] but only `principal` can be unknown
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct PrincipalQueryRequest(pub(crate) PartialRequest);
+
+    impl PrincipalQueryRequest {
+        /// Construct a valid [`PrincipalQueryRequest`] according to a [`Schema`]
+        pub fn new(
+            principal: EntityTypeName,
+            action: EntityUid,
+            resource: EntityUid,
+            context: Context,
+            schema: &Schema,
+        ) -> Result<Self, PartialRequestCreationError> {
+            PartialRequest::new(
+                PartialEntityUid::new(principal, None),
+                action,
+                PartialEntityUid(resource.0.into()),
+                Some(context),
+                schema,
+            )
+            .map(Self)
+        }
+
+        /// Convert [`PrincipalQueryRequest`] to a [`Request`] by providing the principal [`EntityId`]
+        pub fn to_request(
+            &self,
+            principal_id: EntityId,
+            schema: Option<&Schema>,
+        ) -> Result<Request, RequestValidationError> {
+            // PANIC SAFETY: various fields are validated through the constructor
+            #[allow(clippy::unwrap_used)]
+            Request::new(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName(self.0 .0.get_principal_type()),
+                    principal_id,
+                ),
+                EntityUid(self.0 .0.get_action()),
+                EntityUid(self.0 .0.get_resource().try_into().unwrap()),
+                Context::from_pairs(
+                    self.0
+                         .0
+                        .get_context_attrs()
+                        .unwrap()
+                        .into_iter()
+                        .map(|(a, v)| (a.to_string(), RestrictedExpression(v.clone().into()))),
+                )
+                .unwrap(),
+                schema,
+            )
         }
     }
 
@@ -5164,6 +5276,122 @@ mod tpe {
             let ps = &self.ast;
             let res = is_authorized(ps, &request.0, &entities.0, &schema.0)?;
             Ok(Response(res))
+        }
+
+        /// Perform a permission query on the resource
+        pub fn query_resource(
+            &self,
+            request: &ResourceQueryRequest,
+            entities: &Entities,
+            schema: &Schema,
+        ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
+            let partial_entities = PartialEntities(entities.clone().0.try_into()?);
+            let core_schema = CoreSchema::new(&schema.0);
+            let validator =
+                EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
+            // We need to type-check the entities
+            for entity in entities.0.iter() {
+                validator.validate_entity(entity)?;
+            }
+            let residuals = self.tpe(&request.0, &partial_entities, schema)?;
+            let policies = &PolicySet::from_policies(
+                residuals
+                    .0
+                    .get_residual_policies()
+                    .into_iter()
+                    .map(Policy::from_ast),
+            )
+            .unwrap();
+            // PANIC SAFETY: request construction should succeed because each entity passes validation
+            #[allow(clippy::unwrap_used)]
+            match residuals.decision() {
+                Some(Decision::Allow) => Ok(entities
+                    .iter()
+                    .filter(|entity| {
+                        entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
+                    })
+                    .map(|entity| entity.uid())
+                    .collect_vec()
+                    .into_iter()),
+                Some(Decision::Deny) => Ok(vec![].into_iter()),
+                None => Ok(entities
+                    .iter()
+                    .filter(|entity| {
+                        entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
+                    })
+                    .filter(|entity| {
+                        let authorizer = Authorizer::new();
+                        authorizer
+                            .is_authorized(
+                                &request.to_request(entity.uid().id().clone(), None).unwrap(),
+                                policies,
+                                entities,
+                            )
+                            .decision
+                            == Decision::Allow
+                    })
+                    .map(|entity| entity.uid())
+                    .collect_vec()
+                    .into_iter()),
+            }
+        }
+
+        /// Perform a permission query on the principal
+        pub fn query_principal(
+            &self,
+            request: &PrincipalQueryRequest,
+            entities: &Entities,
+            schema: &Schema,
+        ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
+            let partial_entities = PartialEntities(entities.clone().0.try_into()?);
+            let core_schema = CoreSchema::new(&schema.0);
+            let validator =
+                EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
+            // We need to type-check the entities
+            for entity in entities.0.iter() {
+                validator.validate_entity(entity)?;
+            }
+            let residuals = self.tpe(&request.0, &partial_entities, schema)?;
+            let policies = &PolicySet::from_policies(
+                residuals
+                    .0
+                    .get_residual_policies()
+                    .into_iter()
+                    .map(Policy::from_ast),
+            )
+            .unwrap();
+            // PANIC SAFETY: request construction should succeed because each entity passes validation
+            #[allow(clippy::unwrap_used)]
+            match residuals.decision() {
+                Some(Decision::Allow) => Ok(entities
+                    .iter()
+                    .filter(|entity| {
+                        entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
+                    })
+                    .map(|entity| entity.uid())
+                    .collect_vec()
+                    .into_iter()),
+                Some(Decision::Deny) => Ok(vec![].into_iter()),
+                None => Ok(entities
+                    .iter()
+                    .filter(|entity| {
+                        entity.0.uid().entity_type() == &request.0 .0.get_principal_type()
+                    })
+                    .filter(|entity| {
+                        let authorizer = Authorizer::new();
+                        authorizer
+                            .is_authorized(
+                                &request.to_request(entity.uid().id().clone(), None).unwrap(),
+                                policies,
+                                entities,
+                            )
+                            .decision
+                            == Decision::Allow
+                    })
+                    .map(|entity| entity.uid())
+                    .collect_vec()
+                    .into_iter()),
+            }
         }
     }
 }

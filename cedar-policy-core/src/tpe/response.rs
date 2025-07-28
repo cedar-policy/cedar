@@ -244,4 +244,12 @@ impl<'a> Response<'a> {
             entities,
         ))
     }
+
+    /// Get residual policies
+    pub fn get_residual_policies(&self) -> Vec<Policy> {
+        self.residuals
+            .values()
+            .map(|rp| rp.clone().into())
+            .collect()
+    }
 }
