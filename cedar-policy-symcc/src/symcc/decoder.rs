@@ -24,7 +24,6 @@ use std::io;
 use cedar_policy::{EntityId, EntityUid};
 use itertools::Itertools;
 use num_bigint::BigUint;
-use num_traits::cast::ToPrimitive;
 
 use thiserror::Error;
 
