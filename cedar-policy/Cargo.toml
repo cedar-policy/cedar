@@ -28,7 +28,7 @@ prost = { version = "0.14", optional = true }
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
-tsify = { version = "0.4.5", optional = true }
+tsify = { version = "0.5.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
 semver = "1.0.26"
 lazy_static = "1.5.0"
@@ -72,7 +72,7 @@ raw-parsing = ["cedar-policy-core/raw-parsing"]
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }
 cool_asserts = "2.0"
-criterion = "0.6"
+criterion = "0.7"
 globset = "0.4"
 cedar-policy-core = { version = "=4.5.0", features = [
     "test-util",
