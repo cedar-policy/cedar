@@ -4976,13 +4976,42 @@ pub(crate) mod test {
         });
     }
 
+    fn schema() -> crate::validator::ValidatorSchema {
+        let src = r#"
+            namespace FS {
+                entity Disk = {
+                    owner: String, 
+                };
+                entity Folder in Disk = {
+                    owner: String,
+                };
+                entity Document in Folder = {
+                    owner: String,
+                };
+                entity Person;
+            }
+
+            action Navigate appliesTo {
+                principal: FS::Person,
+                resource: [FS::Disk, FS::Folder, FS::Document],
+            };
+
+            action Write appliesTo {
+                principal: FS::Person,
+                resource: [FS::Disk, FS::Folder, FS::Document],
+            };
+        "#;
+        src.parse().unwrap()
+    }
+
     #[test]
     fn generalized_template_interp() {
+        let schema = schema();
         let t = parse_policy_or_template(
             Some(PolicyID::from_string("template")),
-            r#"template(?body: Long) => 
+            r#"template(?body: Long, ?disk: FS::Disk) => 
             permit(principal, action, resource) 
-            when { ?body == 8 };"#,
+            when { ?body == 8 && ?disk.owner == "James" };"#,
         )
         .expect("Parse Error");
 
@@ -4990,16 +5019,22 @@ pub(crate) mod test {
         pset.add_template(t)
             .expect("Template already present in PolicySet");
         let values = HashMap::new();
-        let generalized_values = HashMap::from_iter([(
-            SlotId::generalized_slot("body".parse().unwrap()),
-            RestrictedExpr::val(8),
-        )]);
+        let generalized_values = HashMap::from_iter([
+            (
+                SlotId::generalized_slot("body".parse().unwrap()),
+                RestrictedExpr::val(8),
+            ),
+            (
+                SlotId::generalized_slot("disk".parse().unwrap()),
+                RestrictedExpr::val("FS::Disk::\"SSD\"".parse::<EntityUID>().unwrap()),
+            ),
+        ]);
         pset.link(
             PolicyID::from_string("template"),
             PolicyID::from_string("instance"),
             values,
             generalized_values,
-            None,
+            Some(&schema),
         )
         .expect("Linking failed!");
         let q = Request::new(
@@ -5014,7 +5049,19 @@ pub(crate) mod test {
 
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::none(), TCComputation::ComputeNow);
-        let entities = eparser.from_json_str("[]").expect("empty slice");
+        let entities = eparser
+            .from_json_str(
+                r#"
+        [{
+            "uid": {
+                "type": "FS::Disk",
+                "id": "SSD"
+            },
+            "attrs": { "owner": "James" },
+            "parents": []
+        }]"#,
+            )
+            .expect("empty slice");
         let eval = Evaluator::new(q.clone(), &entities, Extensions::none());
 
         let ir = pset.policies().next().expect("No linked policies");

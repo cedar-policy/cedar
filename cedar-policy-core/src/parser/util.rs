@@ -62,7 +62,7 @@ pub fn flatten_tuple_4<T1, T2, T3, T4>(
     Ok((v1, v2, v3, v4))
 }
 
-/// Combine four `Result`s into a single `Result`
+/// Combine five `Result`s into a single `Result`
 pub fn flatten_tuple_5<T1, T2, T3, T4, T5>(
     res1: Result<T1>,
     res2: Result<T2>,

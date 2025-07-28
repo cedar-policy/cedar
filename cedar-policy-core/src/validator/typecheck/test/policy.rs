@@ -185,6 +185,35 @@ fn simple_schema_file_1() -> json_schema::NamespaceDefinition<RawName> {
     .expect("Expected valid schema")
 }
 
+fn simple_schema_file_2() -> json_schema::Fragment<RawName> {
+    json_schema::Fragment::from_json_str(
+        r#"
+            { "N::S": {
+                "entityTypes": {
+                    "Foo": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "name": { "type": "String" }
+                            }
+                        }
+                    },
+                    "Bar": {}
+                },
+                "actions": {
+                  "baz": {
+                    "appliesTo": {
+                      "principalTypes": [ "Bar" ],
+                      "resourceTypes": [ "Foo" ]
+                    }
+                  }
+                }
+            }}
+            "#,
+    )
+    .expect("Expected valid schema")
+}
+
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typechecks_permissive_simple_schema(p: impl Into<Arc<Template>>) {
     assert_policy_typechecks_for_mode(simple_schema_file(), p, ValidationMode::Permissive)
@@ -1514,6 +1543,23 @@ mod generalized_templates {
               principal,
               action == Action::"Navigate", 
               resource == ?resource);"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn generalized_slot_with_namespace_type_annotations() {
+        assert_policy_typechecks(
+            simple_schema_file_2(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?foo: N::S::Foo) => 
+              permit(
+              principal,
+              action, 
+              resource) when { ?foo.name == "FOO" };"#,
             )
             .unwrap(),
         );
