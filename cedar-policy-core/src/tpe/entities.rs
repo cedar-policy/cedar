@@ -16,7 +16,7 @@
 
 //! This module contains partial entities.
 
-use crate::ast::Entity;
+use crate::ast::{Entity, PartialValueToValueError};
 use crate::entities::conformance::err::EntitySchemaConformanceError;
 use crate::entities::err::Duplicate;
 use crate::entities::{Dereference, Entities};
@@ -99,6 +99,29 @@ pub struct PartialEntity {
     pub ancestors: Option<HashSet<EntityUID>>,
     /// Optional tags
     pub tags: Option<BTreeMap<SmolStr, Value>>,
+}
+
+// An `Entity` without unknowns is a `PartialEntity`
+impl TryFrom<Entity> for PartialEntity {
+    type Error = PartialValueToValueError;
+    fn try_from(value: Entity) -> Result<Self, Self::Error> {
+        let uid = value.uid().clone();
+        let attrs = value
+            .attrs()
+            .map(|(a, v)| Ok((a.clone(), Value::try_from(v.clone())?)))
+            .collect::<Result<BTreeMap<_, _>, PartialValueToValueError>>()?;
+        let ancestors = value.ancestors().cloned().collect();
+        let tags = value
+            .tags()
+            .map(|(a, v)| Ok((a.clone(), Value::try_from(v.clone())?)))
+            .collect::<Result<BTreeMap<_, _>, PartialValueToValueError>>()?;
+        Ok(Self {
+            uid,
+            attrs: Some(attrs),
+            ancestors: Some(ancestors),
+            tags: Some(tags),
+        })
+    }
 }
 
 impl PartialEntity {
@@ -445,6 +468,21 @@ pub struct PartialEntities {
     /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
     pub(crate) entities: HashMap<EntityUID, PartialEntity>,
+}
+
+// `Entities` without unknowns are `PartialEntities`
+impl TryFrom<Entities> for PartialEntities {
+    type Error = PartialValueToValueError;
+    fn try_from(entities: Entities) -> Result<Self, Self::Error> {
+        let mut partial_entities = PartialEntities::default();
+        for e in entities.into_iter() {
+            let partial_entity: PartialEntity = e.try_into()?;
+            partial_entities
+                .entities
+                .insert(partial_entity.uid.clone(), partial_entity);
+        }
+        Ok(partial_entities)
+    }
 }
 
 impl PartialEntities {

@@ -372,3 +372,20 @@ pub struct InconsistentActionError {
     pub(super) partial: EntityUID,
     pub(super) concrete: EntityUID,
 }
+
+/// Error thrown during reauthorization
+#[derive(Debug, Error)]
+pub enum ReauthorizationError {
+    /// Error thrown when request validation fails
+    #[error(transparent)]
+    RequestValidation(#[from] RequestValidationError),
+    /// Error thrown when entity validation fails
+    #[error(transparent)]
+    EntityValidation(#[from] EntitySchemaConformanceError),
+    /// Error thrown when entities and partial entities are inconsistent
+    #[error(transparent)]
+    EntitiesConsistentcy(#[from] EntitiesConsistencyError),
+    /// Error thrown when request and partial request are inconsistent
+    #[error(transparent)]
+    RequestConsistentcy(#[from] RequestConsistencyError),
+}

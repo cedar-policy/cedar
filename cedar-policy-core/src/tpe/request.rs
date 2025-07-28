@@ -291,6 +291,36 @@ impl PartialRequest {
         }
         Ok(())
     }
+
+    /// Get the [`EntityType`] of `principal`
+    pub fn get_principal_type(&self) -> EntityType {
+        self.principal.ty.clone()
+    }
+
+    /// Get the [`EntityType`] of `resource`
+    pub fn get_resource_type(&self) -> EntityType {
+        self.resource.ty.clone()
+    }
+
+    /// Get the `principal`
+    pub fn get_principal(&self) -> PartialEntityUID {
+        self.principal.clone()
+    }
+
+    /// Get the `resource`
+    pub fn get_resource(&self) -> PartialEntityUID {
+        self.resource.clone()
+    }
+
+    /// Get the `action`
+    pub fn get_action(&self) -> EntityUID {
+        self.action.clone()
+    }
+
+    /// Get the `context` attributes
+    pub fn get_context_attrs(&self) -> Option<&BTreeMap<SmolStr, Value>> {
+        self.context.as_ref().map(|attrs| attrs.as_ref())
+    }
 }
 
 /// A request builder based on a [`PartialRequest`]
