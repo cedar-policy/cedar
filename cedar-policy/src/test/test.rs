@@ -8282,12 +8282,14 @@ mod tpe_tests {
     mod streaming_service {
         use std::str::FromStr;
 
+        use cedar_policy_core::authorizer::Decision;
         use cool_asserts::assert_matches;
         use itertools::Itertools;
 
         use crate::{
-            Context, Entities, EntityId, PartialEntityUid, PartialRequest, PolicySet,
-            PrincipalQueryRequest, ResourceQueryRequest, RestrictedExpression, Schema,
+            Context, Entities, EntityId, EntityUid, PartialEntities, PartialEntityUid,
+            PartialRequest, PolicySet, PrincipalQueryRequest, Request, ResourceQueryRequest,
+            RestrictedExpression, Schema,
         };
 
         #[track_caller]
@@ -8568,7 +8570,113 @@ unless
         }
 
         #[test]
-        fn run() {
+        fn run_tpe() {
+            let schema = schema();
+            let request = PartialRequest::new(
+                PartialEntityUid::new(
+                    r#"Subscriber"#.parse().unwrap(),
+                    Some(EntityId::new("Alice")),
+                ),
+                r#"Action::"watch""#.parse().unwrap(),
+                PartialEntityUid::new(r#"Movie"#.parse().unwrap(), None),
+                Some(
+                    Context::from_pairs([(
+                        "now".into(),
+                        RestrictedExpression::new_record([
+                            (
+                                "datetime".into(),
+                                RestrictedExpression::from_str(r#"datetime("2025-07-22")"#)
+                                    .unwrap(),
+                            ),
+                            (
+                                "localTimeOffset".into(),
+                                RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                            ),
+                        ])
+                        .unwrap(),
+                    )])
+                    .unwrap(),
+                ),
+                &schema,
+            )
+            .unwrap();
+            let policies = policy_set();
+            let partial_entities: PartialEntities =
+                PartialEntities(entities().0.try_into().unwrap());
+
+            let response = policies
+                .tpe(&request, &partial_entities, &schema)
+                .expect("tpe should succeed");
+
+            assert_eq!(response.decision(), None);
+
+            let request = Request::new(
+                EntityUid::from_type_name_and_id(
+                    r#"Subscriber"#.parse().unwrap(),
+                    EntityId::new("Alice"),
+                ),
+                r#"Action::"watch""#.parse().unwrap(),
+                EntityUid::from_type_name_and_id(
+                    r#"Movie"#.parse().unwrap(),
+                    EntityId::new("The Godparent"),
+                ),
+                Context::from_pairs([(
+                    "now".into(),
+                    RestrictedExpression::new_record([
+                        (
+                            "datetime".into(),
+                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
+                        ),
+                        (
+                            "localTimeOffset".into(),
+                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                        ),
+                    ])
+                    .unwrap(),
+                )])
+                .unwrap(),
+                Some(&schema),
+            )
+            .unwrap();
+            assert_matches!(response.reauthorize(&request, &entities()), Ok(res) => {
+                assert_eq!(res.decision(), Decision::Allow);
+            });
+
+            let request = Request::new(
+                EntityUid::from_type_name_and_id(
+                    r#"Subscriber"#.parse().unwrap(),
+                    EntityId::new("Alice"),
+                ),
+                r#"Action::"watch""#.parse().unwrap(),
+                EntityUid::from_type_name_and_id(
+                    r#"Movie"#.parse().unwrap(),
+                    EntityId::new("Devilish"),
+                ),
+                Context::from_pairs([(
+                    "now".into(),
+                    RestrictedExpression::new_record([
+                        (
+                            "datetime".into(),
+                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
+                        ),
+                        (
+                            "localTimeOffset".into(),
+                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                        ),
+                    ])
+                    .unwrap(),
+                )])
+                .unwrap(),
+                Some(&schema),
+            )
+            .unwrap();
+            assert_matches!(response.reauthorize(&request, &entities()), Ok(res) => {
+                assert_eq!(res.decision(), Decision::Deny);
+            });
+        }
+
+        #[test]
+        fn run_pq() {
             let schema = schema();
             let request = PartialRequest::new(
                 PartialEntityUid::new(
