@@ -153,16 +153,12 @@ pub enum ToASTErrorKind {
     #[error("duplicate generalized slots annotation: @{0}")]
     DuplicateGeneralizedSlotAnnotation(ast::SlotId),
     /// Returned when a generalized slot appears in the condition of the template
-    /// however it is neither in the scope nor does it have a type annotation
+    /// but does not have a type annotation
     #[error(transparent)]
     #[diagnostic(transparent)]
     SlotInConditionClauseNotInGeneralizedSlotsAnnotation(
         #[from] parse_errors::SlotInConditionClauseNotInGeneralizedSlotsAnnotation,
     ),
-    /// Return when a generalized slot is used multiple times in the scope of
-    /// the template
-    #[error("cannot reuse {0} multiple times in the scope")]
-    GeneralizedSlotAppearsMultipleTimesInTheScope(ast::SlotId),
     /// Return when a generalized slot appears in the generalized slots annotation
     /// but is not used within the template
     #[error("{0} slot is given a type annotation, however it is not used with the template")]
@@ -575,8 +571,10 @@ pub mod parse_errors {
 
     /// Details about a `SlotInConditionClauseNotInGeneralizedSlotsAnnotation`
     #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
-    #[error("found template slot {} in the condition clause but it does not appear in the scope nor does it have a type annotation", slot.id)]
-    #[diagnostic(help("slots that do not appear in the scope and appear in the condition clause require a type annotation"))]
+    #[error("found template slot {} in the condition clause but it does not have a type annotation", slot.id)]
+    #[diagnostic(help(
+        "generalized slots that appear in the condition clause require a type annotation"
+    ))]
     pub struct SlotInConditionClauseNotInGeneralizedSlotsAnnotation {
         pub(crate) slot: ast::Slot,
     }

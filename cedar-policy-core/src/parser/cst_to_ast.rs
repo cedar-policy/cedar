@@ -4946,6 +4946,14 @@ mod tests {
                 r#"permit(principal in ?resource, action, resource);"#,
                 ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?resource instead of ?principal").exactly_one_underline("?resource").build(),
             ),
+            (
+                r#"permit(principal == ?foo, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
+            ),
+            (
+                r#"permit(principal in ?foo, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
+            ),
 
             (
                 r#"permit(principal, action, resource == ?principal);"#,
@@ -4956,25 +4964,29 @@ mod tests {
                 ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?principal instead of ?resource").exactly_one_underline("?principal").build(),
             ),
             (
+                r#"permit(principal, action, resource == ?baz);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
+            ),
+            (
+                r#"permit(principal, action, resource in ?baz);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
+            ),
+            (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
                 ExpectedErrorMessageBuilder::error(
-                    "found template slot ?foo in the condition clause but it does not appear in the scope nor does it have a type annotation",
+                    "found template slot ?foo in the condition clause but it does not have a type annotation",
                 ).help(
-                    "slots that do not appear in the scope and appear in the condition clause require a type annotation",
+                    "generalized slots that appear in the condition clause require a type annotation",
                 ).exactly_one_underline("?foo").build(),
             ),
 
             (
                 r#"permit(principal, action == ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("?action is not a valid slot name").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action in ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("?action is not a valid slot name").exactly_one_underline("?action").build(),
-            ),
-            (
-                r#"permit(principal, action in ?generalized, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?generalized").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action == ?principal, resource);"#,
@@ -6438,6 +6450,14 @@ mod tests {
                 r#"permit(principal in ?resource, action, resource);"#,
                 ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?resource instead of ?principal").exactly_one_underline("?resource").build(),
             ),
+            (
+                r#"permit(principal == ?foo, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
+            ),
+            (
+                r#"permit(principal in ?foo, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
+            ),
 
             (
                 r#"permit(principal, action, resource == ?principal);"#,
@@ -6448,25 +6468,29 @@ mod tests {
                 ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?principal instead of ?resource").exactly_one_underline("?principal").build(),
             ),
             (
+                r#"permit(principal, action, resource == ?baz);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
+            ),
+            (
+                r#"permit(principal, action, resource in ?baz);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
+            ),
+            (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
                 ExpectedErrorMessageBuilder::error(
-                    "found template slot ?foo in the condition clause but it does not appear in the scope nor does it have a type annotation",
+                    "found template slot ?foo in the condition clause but it does not have a type annotation",
                 ).help(
-                    "slots that do not appear in the scope and appear in the condition clause require a type annotation",
+                    "generalized slots that appear in the condition clause require a type annotation",
                 ).exactly_one_underline("?foo").build(),
             ),
 
             (
                 r#"permit(principal, action == ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("?action is not a valid slot name").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action in ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("?action is not a valid slot name").exactly_one_underline("?action").build(),
-            ),
-            (
-                r#"permit(principal, action in ?generalized, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?generalized").build(),
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action == ?principal, resource);"#,

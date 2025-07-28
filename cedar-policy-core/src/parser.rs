@@ -900,8 +900,8 @@ mod tests {
                 resource == ?blah
             };
             "#;
-        let error = ExpectedErrorMessageBuilder::error("found template slot ?blah in the condition clause but it does not appear in the scope nor does it have a type annotation")
-            .help("slots that do not appear in the scope and appear in the condition clause require a type annotation")
+        let error = ExpectedErrorMessageBuilder::error("found template slot ?blah in the condition clause but it does not have a type annotation")
+            .help("generalized slots that appear in the condition clause require a type annotation")
             .exactly_one_underline("?blah")
             .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
@@ -1008,8 +1008,8 @@ mod tests {
                 resource == ?blah
             };
             "#;
-        let error = ExpectedErrorMessageBuilder::error("found template slot ?blah in the condition clause but it does not appear in the scope nor does it have a type annotation")
-            .help("slots that do not appear in the scope and appear in the condition clause require a type annotation")
+        let error = ExpectedErrorMessageBuilder::error("found template slot ?blah in the condition clause but it does not have a type annotation")
+            .help("generalized slots that appear in the condition clause require a type annotation")
             .exactly_one_underline("?blah")
             .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
