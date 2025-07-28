@@ -48,6 +48,7 @@ use crate::ast::{
 use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
 use crate::validator::cedar_schema::to_json_schema;
+use crate::validator::{json_schema::Type as JSONSchemaType, RawName};
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use nonempty::NonEmpty;
@@ -341,13 +342,9 @@ impl Node<Option<cst::Policy>> {
             }
         }));
 
-        // get slots in the scope
-        let (maybe_slot_in_principal, maybe_slot_in_resource) = match &maybe_scope {
-            Ok((p, _, r)) => (
-                p.get_slot_in_principal_constraint(),
-                r.get_slot_in_resource_constraint(),
-            ),
-            Err(_) => (None, None),
+        let (contains_slot_in_principal, contains_slot_in_resource) = match &maybe_scope {
+            Ok((p, _, r)) => (p.has_slot(), r.has_slot()),
+            Err(_) => (false, false),
         };
 
         // maximally get all the slots in the condition, any errors will have already been caught by maybe_cond
@@ -363,8 +360,8 @@ impl Node<Option<cst::Policy>> {
 
         // get generalized_slots_annotation
         let maybe_generalized_slots_annotation = policy.get_generalized_slots_annotation(
-            maybe_slot_in_principal.as_ref(),
-            maybe_slot_in_resource.as_ref(),
+            contains_slot_in_principal,
+            contains_slot_in_resource,
             cond_slots,
         );
 
@@ -458,6 +455,11 @@ impl Node<Option<cst::Policy>> {
         // convert scope
         let maybe_scope = policy.extract_scope_tolerant_ast();
 
+        let (contains_slot_in_principal, contains_slot_in_resource) = match &maybe_scope {
+            Ok((p, _, r)) => (p.has_slot(), r.has_slot()),
+            Err(_) => (false, false),
+        };
+
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
             let (e, is_when) = c.to_expr::<ExprWithErrsBuilder<()>>()?;
@@ -477,16 +479,6 @@ impl Node<Option<cst::Policy>> {
             }
         }));
 
-        // get slots in the scope
-        let (maybe_generalized_slot_in_principal, maybe_generalized_slot_in_resource) =
-            match &maybe_scope {
-                Ok((p, _, r)) => (
-                    p.get_slot_in_principal_constraint(),
-                    r.get_slot_in_resource_constraint(),
-                ),
-                Err(_) => (None, None),
-            };
-
         // maximally get all the slots in the condition, any errors will have already been caught by maybe_cond
         let cond_slots = policy
             .conds
@@ -500,8 +492,8 @@ impl Node<Option<cst::Policy>> {
 
         // get generalized_slots_annotation
         let maybe_generalized_slots_annotation = policy.get_generalized_slots_annotation(
-            maybe_generalized_slot_in_principal.as_ref(),
-            maybe_generalized_slot_in_resource.as_ref(),
+            contains_slot_in_principal,
+            contains_slot_in_resource,
             cond_slots,
         );
 
@@ -753,36 +745,23 @@ impl cst::PolicyImpl {
         }
     }
 
-    /// Get the generalized_slots_annotation by combining position and type information about the generalized slots
+    /// Get the generalized_slots_annotation from the `cst::Policy`
     pub fn get_generalized_slots_annotation(
         &self,
-        maybe_slot_in_principal: Option<&ast::SlotId>,
-        maybe_slot_in_resource: Option<&ast::SlotId>,
+        contains_slot_in_principal: bool,
+        contains_slot_in_resource: bool,
         slots_in_cond: HashSet<ast::Slot>,
     ) -> Result<GeneralizedSlotsAnnotation> {
-        let mut generalized_slots_type_position_annotation: BTreeMap<
-            ast::SlotId,
-            ast::SlotTypePosition,
-        > = BTreeMap::new();
+        let mut generalized_slots_annotation: BTreeMap<ast::SlotId, JSONSchemaType<RawName>> =
+            BTreeMap::new();
         let mut all_errs: Vec<ParseErrors> = vec![];
 
-        match (maybe_slot_in_principal, maybe_slot_in_resource) {
-            (Some(s1), Some(s2)) if s1 == s2 => all_errs.push(
-                ToASTError::new(
-                    ToASTErrorKind::GeneralizedSlotAppearsMultipleTimesInTheScope(s1.clone()),
-                    None,
-                )
-                .into(),
-            ),
-            (_, _) => (),
-        };
-
-        let generalized_slots_type_annotation = match &self.generalized_slots_type_annotation {
+        let cst_generalized_slots_annotation = match &self.generalized_slots_annotation {
             Some(n) => n.try_as_inner()?.values.clone(),
             None => vec![],
         };
 
-        for node in generalized_slots_type_annotation {
+        for node in cst_generalized_slots_annotation {
             let loc = node.loc.clone();
             let slot_type_pair = match node.try_into_inner() {
                 Ok(slot_type_pair) => slot_type_pair,
@@ -791,6 +770,7 @@ impl cst::PolicyImpl {
                     continue;
                 }
             };
+
             let ast_slot = match ast::SlotId::try_from(&slot_type_pair.slot) {
                 Ok(ast_slot) => ast_slot,
                 Err(e) => {
@@ -799,20 +779,9 @@ impl cst::PolicyImpl {
                 }
             };
 
-            if ast_slot.is_principal() || ast_slot.is_resource() {
-                all_errs.push(
-                    ToASTError::new(
-                        ToASTErrorKind::SlotDoesNotBelongInGeneralizedSlotAnnotation(ast_slot),
-                        loc,
-                    )
-                    .into(),
-                );
-                continue;
-            }
-
             use std::collections::btree_map::Entry;
 
-            match generalized_slots_type_position_annotation.entry(ast_slot.clone()) {
+            match generalized_slots_annotation.entry(ast_slot.clone()) {
                 Entry::Occupied(oentry) => {
                     all_errs.push(
                         ToASTError::new(
@@ -832,7 +801,7 @@ impl cst::PolicyImpl {
                                 node: ty.clone(),
                                 loc: None,
                             });
-                            ventry.insert(ast::SlotTypePosition::Ty(t));
+                            ventry.insert(t);
                         }
                         Err(e) => {
                             all_errs.push(e.into());
@@ -842,37 +811,12 @@ impl cst::PolicyImpl {
             }
         }
 
-        if let Some(s) = maybe_slot_in_principal {
-            if s.is_generalized_slot()
-                && !generalized_slots_type_position_annotation.contains_key(s)
-            {
-                BTreeMap::insert(
-                    &mut generalized_slots_type_position_annotation,
-                    s.clone(),
-                    ast::SlotTypePosition::Position(ast::ScopePosition::Principal),
-                );
-            }
-        };
-
-        if let Some(s) = maybe_slot_in_resource {
-            if s.is_generalized_slot()
-                && !generalized_slots_type_position_annotation.contains_key(s)
-            {
-                BTreeMap::insert(
-                    &mut generalized_slots_type_position_annotation,
-                    s.clone(),
-                    ast::SlotTypePosition::Position(ast::ScopePosition::Resource),
-                );
-            }
-        };
-
-        for slot in generalized_slots_type_position_annotation.keys() {
-            if (Some(slot) != maybe_slot_in_principal)
-                && (Some(slot) != maybe_slot_in_resource)
-                && !(slots_in_cond).contains(&ast::Slot {
-                    id: slot.clone(),
-                    loc: None,
-                })
+        for slot in generalized_slots_annotation.keys() {
+            if !(slots_in_cond).contains(&ast::Slot {
+                id: slot.clone(),
+                loc: None,
+            }) && !(slot.is_principal() && contains_slot_in_principal)
+                && !(slot.is_resource() && contains_slot_in_resource)
             {
                 all_errs.push(
                     ToASTError::new(
@@ -886,9 +830,7 @@ impl cst::PolicyImpl {
 
         for slot in slots_in_cond {
             if slot.id.is_generalized_slot()
-                && (Some(&slot.id) != maybe_slot_in_principal)
-                && (Some(&slot.id) != maybe_slot_in_resource)
-                && !(generalized_slots_type_position_annotation.contains_key(&slot.id))
+                && !(generalized_slots_annotation.contains_key(&slot.id))
             {
                 all_errs.push(ToASTError::new(
                     ToASTErrorKind::slots_in_condition_clause_not_in_generalized_slots_annotation(
@@ -902,7 +844,7 @@ impl cst::PolicyImpl {
 
         match ParseErrors::flatten(all_errs) {
             Some(errs) => Err(errs),
-            None => Ok(generalized_slots_type_position_annotation.into()),
+            None => Ok(generalized_slots_annotation.into()),
         }
     }
 }
@@ -4534,10 +4476,7 @@ mod tests {
             ),
             (
                 r#"permit(principal is User in ?principal, action, resource);"#,
-                PrincipalConstraint::is_entity_type_in_slot(
-                    Arc::new("User".parse().unwrap()),
-                    ast::SlotId::principal(),
-                ),
+                PrincipalConstraint::is_entity_type_in_slot(Arc::new("User".parse().unwrap())),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
@@ -4554,15 +4493,6 @@ mod tests {
                 ResourceConstraint::is_entity_type_in(
                     Arc::new("Folder".parse().unwrap()),
                     Arc::new(r#"Folder::"inner""#.parse().unwrap()),
-                ),
-            ),
-            (
-                r#"permit(principal, action, resource is Folder in ?resource);"#,
-                PrincipalConstraint::any(),
-                ActionConstraint::any(),
-                ResourceConstraint::is_entity_type_in_slot(
-                    Arc::new("Folder".parse().unwrap()),
-                    ast::SlotId::resource(),
                 ),
             ),
         ] {
@@ -5921,24 +5851,6 @@ mod tests {
     }
 
     #[test]
-    fn generalized_slots_in_the_scope_can_have_optional_type_annotation() {
-        let txt = r#"
-        permit(principal, action, resource == ?car) when {
-          ?car.permitted
-        };
-        "#;
-        assert_parse_template_succeeds(txt);
-
-        let txt = r#"
-        template(?car: Vehicle) =>
-        permit(principal, action, resource == ?car) when {
-          ?car.permitted
-        };
-        "#;
-        assert_parse_template_succeeds(txt);
-    }
-
-    #[test]
     fn generalized_slot_can_be_duplicated_in_the_cond() {
         let txt = r#"
         template(?age: Long) =>
@@ -5947,6 +5859,44 @@ mod tests {
         };
         "#;
         assert_parse_template_succeeds(txt);
+    }
+
+    #[test]
+    fn generalized_slot_annotations_can_be_principal_or_resource() {
+        let txt = r#"
+        template(?principal: University::Department) => 
+        permit(principal == ?principal, action, resource); 
+        "#;
+        assert_parse_template_succeeds(txt);
+
+        let txt = r#"
+        template(?resource: University::Department) => 
+        permit(principal, action, resource == ?resource); 
+        "#;
+        assert_parse_template_succeeds(txt);
+
+        let txt = r#"
+        template(?principal: University::Department, ?resource: University::Department) => 
+        permit(principal == ?principal, action, resource == ?resource); 
+        "#;
+        assert_parse_template_succeeds(txt);
+    }
+
+    #[test]
+    fn principal_slot_can_not_appear_in_condition_standalone() {
+        let txt = r#"
+        permit(principal == ?principal, action, resource) when {
+            ?principal
+        }; 
+        "#;
+        assert_parse_template_succeeds(txt);
+
+        let txt = r#"
+        permit(principal, action, resource) when {
+            ?principal
+        }; 
+        "#;
+        assert_parse_template_fails(txt);
     }
 
     #[test]
@@ -6035,43 +5985,6 @@ mod tests {
         }; 
         "#;
         assert_parse_template_fails(txt);
-    }
-
-    #[test]
-    fn generalized_slot_annotations_can_not_be_principal_or_resource() {
-        let txt = r#"
-        template(?principal: University::Department) => 
-        permit(principal == ?principal, action, resource); 
-        "#;
-        assert_parse_template_fails(txt);
-
-        let txt = r#"
-        template(?resource: University::Department) => 
-        permit(principal, action, resource == ?resource); 
-        "#;
-        assert_parse_template_fails(txt);
-
-        let txt = r#"
-        template(?principal: University::Department, ?resource: University::Department) => 
-        permit(principal == ?principal, action, resource == ?resource); 
-        "#;
-        assert_parse_template_fails(txt);
-
-        let txt = r#"
-        template(?principal: Long) => 
-        permit(principal, action, resource) when {
-            ?principal == 8
-        };"#;
-        assert_parse_template_fails(txt);
-    }
-
-    #[test]
-    fn generalized_slot_annotations_can_be_similiar_to_principal_or_resource() {
-        let txt = r#"
-        template(?principals: University::Department, ?resources: University::Department) => 
-        permit(principal == ?principals, action, resource == ?resources); 
-        "#;
-        assert_parse_template_succeeds(txt);
     }
 
     #[test]

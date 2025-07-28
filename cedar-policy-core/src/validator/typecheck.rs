@@ -272,15 +272,16 @@ impl<'a> Typechecker<'a> {
                 context,
                 ..
             } => Box::new(
-                // We only care about the slots that are in the scope, if the slot is not in the type it must be annotated with a type
                 self.possible_slot_links(
-                    t.principal_constraint().get_slot_in_principal_constraint(),
+                    t,
+                    SlotId::principal(),
                     principal,
                     t.principal_constraint().as_inner(),
                 )
                 .flat_map(move |p_slot| {
                     self.possible_slot_links(
-                        t.resource_constraint().get_slot_in_resource_constraint(),
+                        t,
+                        SlotId::resource(),
                         resource,
                         t.resource_constraint().as_inner(),
                     )
@@ -303,11 +304,12 @@ impl<'a> Typechecker<'a> {
     /// only on the scope constraints.
     fn possible_slot_links(
         &self,
-        slot_id: Option<SlotId>,
+        t: &Template,
+        slot_id: SlotId,
         var: &'a EntityType,
         constraint: &PrincipalOrResourceConstraint,
     ) -> Box<dyn Iterator<Item = Option<EntityType>> + 'a> {
-        if slot_id.is_some() {
+        if t.slots().any(|t_slot| t_slot.id == slot_id) {
             let all_entity_types = self.schema.entity_types();
             match constraint {
                 // The condition is `var = ?slot`, so the policy can only apply
@@ -419,34 +421,25 @@ impl<'a> SingleEnvTypechecker<'a> {
             // Template Slots
             ExprKind::Slot(slotid) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(
-                    if slotid.is_principal()
-                        || self
-                            .generalized_slots_to_validator_type_position
-                            .in_principal_position(slotid)
+                    if let Some(validator_ty) = self
+                        .generalized_slots_to_validator_type_position
+                        .get(slotid)
                     {
+                        validator_ty.clone()
+                    } else if slotid.is_principal() {
                         self.request_env
                             .principal_slot()
                             .clone()
                             .map(Type::named_entity_reference)
                             .unwrap_or_else(Type::any_entity_reference)
-                    } else if slotid.is_resource()
-                        || self
-                            .generalized_slots_to_validator_type_position
-                            .in_resource_position(slotid)
-                    {
+                    } else if slotid.is_resource() {
                         self.request_env
                             .resource_slot()
                             .clone()
                             .map(Type::named_entity_reference)
                             .unwrap_or_else(Type::any_entity_reference)
                     } else {
-                        match self
-                            .generalized_slots_to_validator_type_position
-                            .get_type(slotid)
-                        {
-                            Some(validator_ty) => validator_ty,
-                            None => Type::any_entity_reference(),
-                        }
+                        Type::any_entity_reference()
                     },
                 ))
                 .with_same_source_loc(e)

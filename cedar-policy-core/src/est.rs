@@ -202,6 +202,11 @@ impl TryFrom<cst::Policy> for Policy {
             })
         });
 
+        let (contains_slot_in_principal, contains_slot_in_resource) = match &maybe_scope {
+            Ok((p, _, r)) => (p.has_slot(), r.has_slot()),
+            Err(_) => (false, false),
+        };
+
         let cond_slots = policy
             .conds
             .iter()
@@ -212,17 +217,9 @@ impl TryFrom<cst::Policy> for Policy {
             .flat_map(|e| e.slots().collect::<Vec<ast::Slot>>())
             .collect();
 
-        let (maybe_slot_in_principal, maybe_slot_in_resource) = match &maybe_scope {
-            Ok((p, _, r)) => (
-                p.get_slot_in_principal_constraint(),
-                r.get_slot_in_resource_constraint(),
-            ),
-            Err(_) => (None, None),
-        };
-
         let maybe_generalized_slots_annotation = policy.get_generalized_slots_annotation(
-            maybe_slot_in_principal.as_ref(),
-            maybe_slot_in_resource.as_ref(),
+            contains_slot_in_principal,
+            contains_slot_in_resource,
             cond_slots,
         );
 
@@ -858,67 +855,13 @@ mod test {
                 }],
                 "generalized_slots_annotation": {
                     "?age": {
-                    "Ty": {
                         "type": "EntityOrCommon",
                         "name": "Long"
-                    }
-                },
+                    },
                     "?test": {
-                    "Ty": {
                         "type": "EntityOrCommon",
                         "name": "Long"
-                    }
-                    }
-                }
-            }
-        );
-        assert_eq!(
-            serde_json::to_value(&est).unwrap(),
-            expected_json,
-            "\nExpected:\n{}\n\nActual:\n{}\n\n",
-            serde_json::to_string_pretty(&expected_json).unwrap(),
-            serde_json::to_string_pretty(&est).unwrap()
-        );
-        let old_est = est.clone();
-        let roundtripped = est_roundtrip(est);
-        assert_eq!(&old_est, &roundtripped);
-        let est = text_roundtrip(&old_est);
-        assert_eq!(&old_est, &est);
-    }
-
-    #[test]
-    fn roundtrip_generalized_slots_annotations_2() {
-        let policy = r#"
-        template(?user: Department::User) => 
-        permit(principal == ?user, 
-        action, 
-        resource);"#;
-        let cst = parser::text_to_cst::parse_policy(policy)
-            .unwrap()
-            .node
-            .unwrap();
-        let est: Policy = cst.try_into().unwrap();
-        let expected_json = json!(
-            {
-                "effect": "permit",
-                "principal": {
-                    "op": "==",
-                    "slot": "?user"
-                },
-                "action": {
-                    "op": "All",
-                },
-                "resource": {
-                    "op": "All",
-                },
-                "conditions": [],
-                "generalized_slots_annotation": {
-                    "?user": {
-                    "Ty": {
-                        "type": "EntityOrCommon",
-                        "name": "Department::User"
-                    }
-                }
+                    },
                 }
             }
         );
@@ -4898,67 +4841,6 @@ mod test {
         use super::*;
 
         #[test]
-        fn is_template_generalized_slots_in_scope() {
-            let template = r#"
-            permit(
-                principal == ?User,
-                action == Action::"view",
-                resource
-            ) when {
-                principal in resource.owners
-            };
-        "#;
-            let cst = parser::text_to_cst::parse_policy(template)
-                .unwrap()
-                .node
-                .unwrap();
-            let est: Policy = cst.try_into().unwrap();
-            assert!(
-                est.is_template(),
-                "Policy with User slot not marked as template"
-            );
-
-            let template = r#"
-            template(?User: User) => 
-            permit(
-                principal == ?User,
-                action == Action::"view",
-                resource
-            ) when {
-                principal in resource.owners
-            };
-        "#;
-            let cst = parser::text_to_cst::parse_policy(template)
-                .unwrap()
-                .node
-                .unwrap();
-            let est: Policy = cst.try_into().unwrap();
-            assert!(
-                est.is_template(),
-                "Policy with User slot not marked as template"
-            );
-
-            let template = r#"
-            permit(
-                principal == ?User,
-                action == Action::"view",
-                resource == ?car
-            ) when {
-                principal in resource.owners
-            };
-        "#;
-            let cst = parser::text_to_cst::parse_policy(template)
-                .unwrap()
-                .node
-                .unwrap();
-            let est: Policy = cst.try_into().unwrap();
-            assert!(
-                est.is_template(),
-                "Policy with User slot and car slot not marked as template"
-            );
-        }
-
-        #[test]
         fn is_template_generalized_slots_in_condition() {
             let template = r#"
             template(?age: Long) => 
@@ -4979,48 +4861,6 @@ mod test {
             assert!(
                 est.is_template(),
                 "Policy with age slot not marked as template"
-            );
-        }
-
-        #[test]
-        fn is_template_generalized_slots_in_scope_in_condition() {
-            let template = r#"
-            template(?age: Long) => 
-            permit(
-                principal == ?user,
-                action == Action::"view",
-                resource
-            ) when {
-                ?age == 8
-            };"#;
-            let cst = parser::text_to_cst::parse_policy(template)
-                .unwrap()
-                .node
-                .unwrap();
-            let est: Policy = cst.try_into().unwrap();
-            assert!(
-                est.is_template(),
-                "Policy with user slot and age slot not marked as template"
-            );
-
-            let template = r#"
-            template(?age: Long, ?user: User) => 
-            permit(
-                principal == ?user,
-                action == Action::"view",
-                resource
-            ) when {
-                ?age == 8
-            };
-        "#;
-            let cst = parser::text_to_cst::parse_policy(template)
-                .unwrap()
-                .node
-                .unwrap();
-            let est: Policy = cst.try_into().unwrap();
-            assert!(
-                est.is_template(),
-                "Policy with user slot and age slot not marked as template"
             );
         }
 
@@ -5083,63 +4923,6 @@ mod test {
                 serde_json::to_string_pretty(&linked_json).unwrap(),
             );
         }
-    }
-
-    #[test]
-    fn link_with_generalized_template_2() {
-        let template = r#"
-            permit(
-                principal == ?generalized,
-                action == Action::"view",
-                resource 
-            );
-        "#;
-        let cst = parser::text_to_cst::parse_policy(template)
-            .unwrap()
-            .node
-            .unwrap();
-        let est: Policy = cst.try_into().unwrap();
-        let linked = est
-            .clone()
-            .link(
-                &HashMap::from_iter([]),
-                &HashMap::from_iter([(
-                    ast::SlotId::generalized_slot("generalized".parse().unwrap()),
-                    CedarValueJson::from_lit(
-                        EntityUID::with_eid_and_type("User", "alice")
-                            .unwrap()
-                            .into(),
-                    ),
-                )]),
-            )
-            .expect("did fill all the slots");
-
-        let expected_json = json!(
-            {
-                "effect": "permit",
-                "principal": {
-                    "op": "==",
-                    "entity": { "__entity": { "type": "User", "id": "alice"}}
-                },
-                "action": {
-                    "op": "==",
-                    "entity": { "type": "Action", "id": "view" },
-                },
-                "resource": {
-                    "op": "All",
-                },
-                "conditions": [
-                ],
-            }
-        );
-        let linked_json = serde_json::to_value(linked).unwrap();
-        assert_eq!(
-            linked_json,
-            expected_json,
-            "\nExpected:\n{}\n\nActual:\n{}\n\n",
-            serde_json::to_string_pretty(&expected_json).unwrap(),
-            serde_json::to_string_pretty(&linked_json).unwrap(),
-        );
     }
 }
 

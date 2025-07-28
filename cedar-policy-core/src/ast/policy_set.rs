@@ -933,52 +933,15 @@ mod test {
     }
 
     #[test]
-    fn generalized_link_in_scope_fails_when_value_provided_is_not_of_entity_type() {
-        let schema = ValidatorSchema::try_from(simple_schema_file()).ok();
-        let mut pset = PolicySet::new();
-        let template = parser::parse_policy_or_template(
-            Some(PolicyID::from_string("t")),
-            "permit(principal == ?generalized, 
-                action, 
-                resource);",
-        )
-        .expect("Failed to parse");
-        pset.add_template(template).expect("Add failed");
-
-        let env: HashMap<SlotId, EntityUID> = HashMap::from([]);
-
-        let generalized_slot = SlotId::generalized_slot("generalized".parse().unwrap());
-        let generalized_value: RestrictedExpr = RestrictedExpr::val(37);
-        let generalized_env: HashMap<SlotId, RestrictedExpr> =
-            HashMap::from([(generalized_slot.clone(), generalized_value.clone())]);
-
-        let r = pset.link(
-            PolicyID::from_string("t"),
-            PolicyID::from_string("id"),
-            env,
-            generalized_env,
-            schema.as_ref(),
-        );
-
-        match r {
-            Ok(_) => panic!("Should have failed due to value provided for slot in scope not being of Entity Type"),
-            Err(LinkingError::ValueProvidedForSlotInScopeNotEntityUID { slot, value }) => {
-                assert_eq!(slot, generalized_slot.clone());
-                assert_eq!(value, generalized_value.clone());
-            }
-            Err(e) => panic!("Incorrect error: {e}"),
-        };
-    }
-
-    #[test]
     fn generalized_link_success() {
         let schema = ValidatorSchema::try_from(simple_schema_file()).ok();
         let mut pset = PolicySet::new();
         let template = parser::parse_policy_or_template(
             Some(PolicyID::from_string("t")),
-            "permit(principal == ?generalized, 
+            "template(?generalized: Person) =>
+                permit(principal, 
                 action, 
-                resource);",
+                resource) when { principal == ?generalized };",
         )
         .expect("Failed to parse");
         pset.add_template(template).expect("Add failed");
@@ -1301,9 +1264,9 @@ mod test {
             Annotations::new(),
             GeneralizedSlotsAnnotation::new(),
             Effect::Permit,
-            PrincipalConstraint::is_eq_slot(SlotId::principal()),
+            PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),
-            ResourceConstraint::is_in_slot(SlotId::resource()),
+            ResourceConstraint::is_in_slot(),
             Expr::val(true),
         );
 
@@ -1369,7 +1332,7 @@ mod test {
             Annotations::new(),
             GeneralizedSlotsAnnotation::new(),
             Effect::Forbid,
-            PrincipalConstraint::is_eq_slot(SlotId::principal()),
+            PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
             Expr::val(true),
@@ -1460,7 +1423,7 @@ mod test {
             Annotations::new(),
             GeneralizedSlotsAnnotation::new(),
             Effect::Permit,
-            PrincipalConstraint::is_eq_slot(SlotId::principal()),
+            PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
             Expr::val(true),

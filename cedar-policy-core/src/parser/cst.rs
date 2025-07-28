@@ -53,8 +53,8 @@ pub enum Str {
 pub struct PolicyImpl {
     /// Annotations
     pub annotations: Vec<Node<Annotation>>,
-    /// Generalized Slots Type Annotation
-    pub generalized_slots_type_annotation: Option<Node<GeneralizedSlotsTypeAnnotation>>,
+    /// Generalized Slots Annotation
+    pub generalized_slots_annotation: Option<Node<GeneralizedSlotsAnnotation>>,
     /// policy effect
     pub effect: Node<Ident>,
     /// Variables
@@ -426,9 +426,9 @@ pub struct SlotType {
     pub ty: Node<Type>,
 }
 
-/// GeneralizedSlotsTypeAnnotation: a vector of pairs consisting of a slot and it's type
+/// GeneralizedSlotsAnnotation: a vector of pairs consisting of a slot and it's type
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GeneralizedSlotsTypeAnnotation {
+pub struct GeneralizedSlotsAnnotation {
     /// a vector of slot and type pairs
     pub values: Vec<Node<SlotType>>,
 }

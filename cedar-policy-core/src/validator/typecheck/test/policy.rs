@@ -1410,22 +1410,7 @@ mod generalized_templates {
     use super::*;
 
     #[test]
-    fn generalized_slot_in_scope_and_condition() {
-        assert_policy_typechecks(
-            simple_schema_file_1(),
-            parse_policy_or_template(
-                None,
-                r#"permit(principal == ?person, 
-                action, 
-                resource in ?fs) 
-                when { ?fs.owner == resource.owner };"#,
-            )
-            .unwrap(),
-        );
-    }
-
-    #[test]
-    fn generalized_slot_in_scope_and_condition_with_type_annotation() {
+    fn generalized_slot_in_condition_with_type_annotation() {
         assert_policy_typechecks(
             simple_schema_file_1(),
             parse_policy_or_template(
@@ -1512,6 +1497,23 @@ mod generalized_templates {
               action == Action::"Navigate", 
               resource) when 
               { ?person == 8 };"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn type_annotation_for_slot_in_scope() {
+        assert_policy_typechecks(
+            simple_schema_file_1(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?resource: Folder) => 
+              permit(
+              principal,
+              action == Action::"Navigate", 
+              resource == ?resource);"#,
             )
             .unwrap(),
         );

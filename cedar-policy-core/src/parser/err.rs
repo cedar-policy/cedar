@@ -159,9 +159,6 @@ pub enum ToASTErrorKind {
     SlotInConditionClauseNotInGeneralizedSlotsAnnotation(
         #[from] parse_errors::SlotInConditionClauseNotInGeneralizedSlotsAnnotation,
     ),
-    /// Return when we try to assign a type to a Principal or Resource slot
-    #[error("cannot annotate types for {0} slot")]
-    SlotDoesNotBelongInGeneralizedSlotAnnotation(ast::SlotId),
     /// Return when a generalized slot is used multiple times in the scope of
     /// the template
     #[error("cannot reuse {0} multiple times in the scope")]
