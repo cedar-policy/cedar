@@ -720,8 +720,9 @@ impl SExpr {
                                 if let SExpr::BitVec(bv) = &args[1] {
                                     if bv.width() == 64 {
                                         Ok(Term::Prim(TermPrim::Ext(Ext::Decimal {
-                                            d: Decimal(bv.to_int().try_into()
-                                                .or(Err(DecodeError::UnknownLiteral(self.clone())))?),
+                                            d: Decimal(bv.to_int().try_into().or(Err(
+                                                DecodeError::UnknownLiteral(self.clone()),
+                                            ))?),
                                         })))
                                     } else {
                                         Err(DecodeError::UnknownLiteral(self.clone()))
