@@ -649,7 +649,7 @@ impl Entity {
     /// attributes, attribute values, and ancestors/parents.
     ///
     /// Does not test that they have the same _direct_ parents, only that they have the same overall ancestor set.
-    pub(crate) fn deep_eq(&self, other: &Self) -> bool {
+    pub fn deep_eq(&self, other: &Self) -> bool {
         self.uid == other.uid
             && self.attrs == other.attrs
             && (self.ancestors().collect::<HashSet<_>>())
