@@ -42,7 +42,7 @@ mod term_type;
 mod type_abbrevs;
 mod verifier;
 
-use cedar_policy::{Entities, Request, Schema};
+use cedar_policy::Schema;
 use decoder::{parse_sexpr, DecodeError, IdMaps};
 use env::to_validator_request_env;
 // public exports
@@ -59,13 +59,13 @@ use thiserror::Error;
 use verifier::Asserts;
 
 use encoder::Encoder;
-pub use verifier::verify_sat;
-use verifier::{
+pub use verifier::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
     verify_never_errors,
 };
 
 use crate::symcc::concretize::ConcretizeError;
+pub use crate::symcc::concretize::Env;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
@@ -118,7 +118,7 @@ impl<S: Solver> SymCompiler<S> {
     /// and returns `true` if the result is unsatisfiable. The function `vc` is
     /// expected to produce a list of terms type `Bool` that are well-formed
     /// with respect to the `symenv`.
-    async fn check_unsat(
+    pub async fn check_unsat(
         &mut self,
         vc: impl FnOnce(&SymEnv) -> std::result::Result<Asserts, result::Error>,
         symenv: &SymEnv,
@@ -157,13 +157,14 @@ impl<S: Solver> SymCompiler<S> {
         }
     }
 
-    /// Checks satisfiability, and then returns the model (as a pair of [`Request`] and [`Entities`])
+    /// Checks satisfiability, and then returns the model (as a pair of [`Request`] and [`Entities`]);
+    /// For soundness, `policies` must include all policies involved in the verification condition.
     pub async fn check_sat(
         &mut self,
         vc: impl FnOnce(&SymEnv) -> std::result::Result<Asserts, result::Error>,
         symenv: &SymEnv,
-        policy_set: &PolicySet,
-    ) -> Result<Option<(Request, Entities)>> {
+        policies: impl Iterator<Item = &Policy>,
+    ) -> Result<Option<Env>> {
         let asserts = vc(symenv)?;
         if asserts.iter().any(|assert| *assert == false.into()) {
             // some assert has been reduced to constant-false by the symcc process.
@@ -171,7 +172,8 @@ impl<S: Solver> SymCompiler<S> {
             Ok(None)
         } else if asserts.iter().all(|assert| *assert == true.into()) {
             let interp = Interpretation::default();
-            Ok(Some(symenv.interpret(&interp).concretize()?))
+            let exprs = policies.map(|p| p.condition()).collect::<Vec<_>>();
+            Ok(Some(symenv.interpret(&interp).concretize(exprs.iter())?))
         } else {
             self.solver
                 .smtlib_input()
@@ -203,95 +205,15 @@ impl<S: Solver> SymCompiler<S> {
                     };
 
                     let model = parse_sexpr(model_str.as_bytes())?;
+                    let exprs = policies.map(|p| p.condition()).collect::<Vec<_>>();
                     let interp = model.decode_model(&id_maps)?;
-                    let interp = interp.repair_as_counterexample(
-                        policy_set
-                            .policies()
-                            .map(|p| p.condition())
-                            .collect::<Vec<_>>()
-                            .iter(),
-                        symenv,
-                    );
+                    let interp = interp.repair_as_counterexample(exprs.iter(), symenv);
 
-                    Ok(Some(symenv.interpret(&interp).concretize()?))
+                    Ok(Some(symenv.interpret(&interp).concretize(exprs.iter())?))
                 }
                 Decision::Unknown => Err(Error::SolverUnknown),
             }
         }
-    }
-
-    /// Returns true iff `policy` does not error on any well-formed input in the `symenv`.
-    pub async fn check_never_errors(&mut self, policy: &Policy, symenv: &SymEnv) -> Result<bool> {
-        self.check_unsat(|symenv| verify_never_errors(policy, symenv), symenv)
-            .await
-    }
-
-    /// Returns true iff the authorization decision of `policies1` implies that
-    /// of `policies2` for every well-formed input in the `symenv`. That is,
-    /// every input allowed by `policies1` is allowed by `policies2`;
-    /// `policies2` is either more permissive than, or equivalent to, `policies1`.
-    pub async fn check_implies(
-        &mut self,
-        policies1: &PolicySet,
-        policies2: &PolicySet,
-        symenv: &SymEnv,
-    ) -> Result<bool> {
-        self.check_unsat(
-            |symenv| verify_implies(policies1, policies2, symenv),
-            symenv,
-        )
-        .await
-    }
-
-    /// Returns true iff `policies` allows all well-formed inputs in the `symenv`.
-    pub async fn check_always_allows(
-        &mut self,
-        policies: &PolicySet,
-        symenv: &SymEnv,
-    ) -> Result<bool> {
-        self.check_unsat(|symenv| verify_always_allows(policies, symenv), symenv)
-            .await
-    }
-
-    /// Returns true iff `policies` denies all well-formed inputs in the `symenv`.
-    pub async fn check_always_denies(
-        &mut self,
-        policies: &PolicySet,
-        symenv: &SymEnv,
-    ) -> Result<bool> {
-        self.check_unsat(|symenv| verify_always_denies(policies, symenv), symenv)
-            .await
-    }
-
-    /// Returns true iff `policies1` and `policies2` produce the same
-    /// authorization decision on all well-formed inputs in the `symenv`.
-    pub async fn check_equivalent(
-        &mut self,
-        policies1: &PolicySet,
-        policies2: &PolicySet,
-        symenv: &SymEnv,
-    ) -> Result<bool> {
-        self.check_unsat(
-            |symenv| verify_equivalent(policies1, policies2, symenv),
-            symenv,
-        )
-        .await
-    }
-
-    /// Returns true iff there is no well-formed input in the `symenv` that is allowed by both
-    /// `policies1` and `policies2`. If this returns `false`, then there is at least one well-formed
-    /// input that is allowed by both `policies1` and `policies2`.
-    pub async fn check_disjoint(
-        &mut self,
-        policies1: &PolicySet,
-        policies2: &PolicySet,
-        symenv: &SymEnv,
-    ) -> Result<bool> {
-        self.check_unsat(
-            |symenv| verify_disjoint(policies1, policies2, symenv),
-            symenv,
-        )
-        .await
     }
 }
 
