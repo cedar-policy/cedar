@@ -68,13 +68,15 @@ use super::{
     bitvec::BitVec,
     env::SymEnv,
     ext::Ext,
-    extension_types::ipaddr::{Cidrv4, Cidrv6, IPNet, IPv4Prefix, IPv6Prefix},
+    extension_types::ipaddr::{CIDRv4, CIDRv6, IPNet, IPv4Prefix, IPv6Prefix},
     op::{ExtOp, Op, Uuf},
     smtlib_script::SmtLibScript,
     term::{Term, TermPrim, TermVar},
     term_type::TermType,
     type_abbrevs::*,
 };
+
+use crate::symcc::extension_types::ipaddr::{V4_WIDTH, V6_WIDTH};
 
 #[derive(Debug)]
 pub struct Encoder<'a, S> {
@@ -85,27 +87,27 @@ pub struct Encoder<'a, S> {
     script: S,
 }
 
-fn term_id(n: Nat) -> String {
+fn term_id(n: usize) -> String {
     format!("t{n}")
 }
 
-fn uuf_id(n: Nat) -> String {
+fn uuf_id(n: usize) -> String {
     format!("f{n}")
 }
 
-fn entity_type_id(n: Nat) -> String {
+fn entity_type_id(n: usize) -> String {
     format!("E{n}")
 }
 
-pub(super) fn enum_id(e: &str, n: Nat) -> String {
+pub(super) fn enum_id(e: &str, n: usize) -> String {
     format!("{e}_m{n}")
 }
 
-fn record_type_id(n: Nat) -> String {
+fn record_type_id(n: usize) -> String {
     format!("R{n}")
 }
 
-fn record_attr_id(r: &str, n: Nat) -> String {
+fn record_attr_id(r: &str, n: usize) -> String {
     format!("{r}_a{n}")
 }
 
@@ -462,8 +464,8 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                         self.define_app(
                             &ty_enc,
                             &Op::Eq,
-                            [t_enc, encode_bitvec(&BitVec::int_min(n))],
-                            [t, &BitVec::int_min(n).into()],
+                            [t_enc, encode_bitvec(&BitVec::int_min(n)?)],
+                            [t, &BitVec::int_min(n)?.into()],
                         )
                         .await?
                     }
@@ -532,52 +534,58 @@ fn encode_bitvec(bv: &BitVec) -> String {
     format!("(_ bv{} {})", bv.to_nat(), bv.width())
 }
 
-fn encode_ipaddr_prefix_v4(w: Nat, pre: &IPv4Prefix) -> String {
-    match pre {
-        Some(pre) => format!(
-            "(some {})",
-            encode_bitvec(&BitVec::of_nat(w, pre.v as usize))
-        ),
-        None => format!("(as none (Option (_ BitVec {w})))"),
+fn encode_ipaddr_prefix_v4(pre: &IPv4Prefix) -> String {
+    match &pre.val {
+        Some(pre) => format!("(some {})", encode_bitvec(&pre)),
+        None => format!("(as none (Option (_ BitVec {V4_WIDTH})))"),
     }
 }
 
-fn encode_ipaddr_prefix_v6(w: Nat, pre: &IPv6Prefix) -> String {
-    match pre {
-        Some(pre) => format!(
-            "(some {})",
-            encode_bitvec(&BitVec::of_nat(w, pre.v as usize))
-        ),
-        None => format!("(as none (Option (_ BitVec {w})))"),
+fn encode_ipaddr_prefix_v6(pre: &IPv6Prefix) -> String {
+    match &pre.val {
+        Some(pre) => format!("(some {})", encode_bitvec(&pre)),
+        None => format!("(as none (Option (_ BitVec {V6_WIDTH})))"),
     }
 }
 
 fn encode_ext(e: &Ext) -> String {
     match e {
         Ext::Decimal { d } => {
-            let bv_enc = encode_bitvec(&BitVec::of_int(64, i128::from(d.0)));
+            #[allow(
+                clippy::unwrap_used,
+                reason = "Cannot panic because bitwidth is non-zero."
+            )]
+            let bv_enc = encode_bitvec(&BitVec::of_int(64, d.0.into()).unwrap());
             format!("(Decimal {bv_enc})")
         }
         Ext::Ipaddr {
-            ip: IPNet::V4(Cidrv4 { addr, prefix }),
+            ip: IPNet::V4(CIDRv4 { addr, prefix }),
         } => {
-            let addr = encode_bitvec(&BitVec::of_nat(32, *addr as usize));
-            let pre = encode_ipaddr_prefix_v4(5, prefix);
+            let addr = encode_bitvec(&addr.val);
+            let pre = encode_ipaddr_prefix_v4(prefix);
             format!("(V4 {addr} {pre})")
         }
         Ext::Ipaddr {
-            ip: IPNet::V6(Cidrv6 { addr, prefix }),
+            ip: IPNet::V6(CIDRv6 { addr, prefix }),
         } => {
-            let addr = encode_bitvec(&BitVec::of_nat(128, *addr as usize));
-            let pre = encode_ipaddr_prefix_v6(7, prefix);
+            let addr = encode_bitvec(&addr.val);
+            let pre = encode_ipaddr_prefix_v6(prefix);
             format!("(V6 {addr} {pre})")
         }
         Ext::Duration { d } => {
-            let bv_enc = encode_bitvec(&BitVec::of_int(64, i128::from(d.to_milliseconds())));
+            #[allow(
+                clippy::unwrap_used,
+                reason = "Cannot panic because bitwidth is non-zero."
+            )]
+            let bv_enc = encode_bitvec(&BitVec::of_int(64, d.to_milliseconds().into()).unwrap());
             format!("(Duration {bv_enc})")
         }
         Ext::Datetime { dt } => {
-            let bv_enc = encode_bitvec(&BitVec::of_int(64, i128::from(dt)));
+            #[allow(
+                clippy::unwrap_used,
+                reason = "Cannot panic because bitwidth is non-zero."
+            )]
+            let bv_enc = encode_bitvec(&BitVec::of_i128(64, dt.into()).unwrap());
             format!("(Datetime {bv_enc})")
         }
     }
