@@ -8314,8 +8314,8 @@ mod deep_eq {
         .unwrap();
         assert_not_deep_eq!(entity, &other);
     }
-    #[test]
 
+    #[test]
     fn not_deep_eq_ancestors() {
         let entity = Entity::new(
             EntityUid::from_str(r#"E::"a""#).unwrap(),

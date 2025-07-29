@@ -440,7 +440,7 @@ pub fn expect_err<'a>(
     msg.expect_underlines_match(err);
 }
 
-/// Assert equality by `Entities` using structural equality with the `deep_eq` method.
+/// Assert equality of `Entities` using structural equality with the `deep_eq` method.
 #[macro_export]
 macro_rules! assert_deep_eq {
     ( $self:expr , $other:expr ) => {
@@ -453,7 +453,7 @@ macro_rules! assert_deep_eq {
     };
 }
 
-/// Assert equality by `Entities` using structural equality with the `deep_eq` method.
+/// Assert inequality of `Entities` using structural equality with the `deep_eq` method.
 #[macro_export]
 macro_rules! assert_not_deep_eq {
     ( $self:expr , $other:expr ) => {
