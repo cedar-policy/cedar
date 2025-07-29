@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use cedar_policy::{Authorizer, Decision, EvalResult, Policy, PolicySet, Schema, Validator};
+use cedar_policy::{Authorizer, Decision, Policy, PolicySet, Schema, Validator};
 use cedar_policy_symcc::{
     solver::{LocalSolver, Solver},
-    CedarSymCompiler, SymEnv, WellTypedPolicies, WellTypedPolicy,
+    CedarSymCompiler, Env, WellTypedPolicies, WellTypedPolicy,
 };
 
 mod utils;
@@ -117,6 +117,10 @@ async fn assert_never_errors<S: Solver>(
         Ok(false) => panic!("assert_never_errors failed for:\n{policy}"),
         Err(e) => panic!("{e}"),
     }
+    assert!(
+        compiler.check_never_errors_with_counterexample(&policy, &envs.symenv).await.unwrap().is_none(),
+        "check_never_errors is true, but check_never_errors_with_counterexample returned a counterexample",
+    );
 }
 
 async fn assert_always_allows<S: Solver>(
@@ -130,6 +134,10 @@ async fn assert_always_allows<S: Solver>(
         Ok(false) => panic!("assert_always_allows failed for:\n{pset}"),
         Err(e) => panic!("{e}"),
     }
+    assert!(
+        compiler.check_always_allows_with_counterexample(&pset, &envs.symenv).await.unwrap().is_none(),
+        "check_always_allows is true, but check_always_allows_with_counterexample returned a counterexample",
+    );
 }
 
 async fn assert_does_not_always_allow<S: Solver>(
@@ -137,11 +145,23 @@ async fn assert_does_not_always_allow<S: Solver>(
     pset: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_always_allows(&pset, &envs.symenv).await {
+    let typed_pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
+    match compiler
+        .check_always_allows(&typed_pset, &envs.symenv)
+        .await
+    {
         Ok(true) => panic!("assert_does_not_always_allow failed for:\n{pset}"),
         Ok(false) => (),
         Err(e) => panic!("{e}"),
+    }
+    match compiler.check_always_allows_with_counterexample(&typed_pset, &envs.symenv).await.unwrap() {
+        Some(Env { request, entities }) => {
+            // Check that the counterexample is correct
+            let resp1 = Authorizer::new().is_authorized(&request, pset, &entities);
+            assert!(resp1.decision() == Decision::Deny,
+                "check_always_allows_with_counterexample returned an invalid counterexample");
+        }
+        _ => panic!("check_always_allows is false, but check_always_allows_with_counterexample returned no counterexample"),
     }
 }
 
@@ -156,6 +176,10 @@ async fn assert_always_denies<S: Solver>(
         Ok(false) => panic!("assert_always_denies failed for:\n{pset}"),
         Err(e) => panic!("{e}"),
     }
+    assert!(
+        compiler.check_always_denies_with_counterexample(&pset, &envs.symenv).await.unwrap().is_none(),
+        "check_always_denies is true, but check_always_denies_with_counterexample returned a counterexample",
+    );
 }
 
 async fn assert_does_not_always_deny<S: Solver>(
@@ -163,11 +187,23 @@ async fn assert_does_not_always_deny<S: Solver>(
     pset: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_always_denies(&pset, &envs.symenv).await {
+    let typed_pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
+    match compiler
+        .check_always_denies(&typed_pset, &envs.symenv)
+        .await
+    {
         Ok(true) => panic!("assert_does_not_always_deny failed for:\n{pset}"),
         Ok(false) => (),
         Err(e) => panic!("{e}"),
+    }
+    match compiler.check_always_denies_with_counterexample(&typed_pset, &envs.symenv).await.unwrap() {
+        Some(Env { request, entities }) => {
+            // Check that the counterexample is correct
+            let resp1 = Authorizer::new().is_authorized(&request, pset, &entities);
+            assert!(resp1.decision() == Decision::Allow,
+                "check_always_denies_with_counterexample returned an invalid counterexample");
+        }
+        _ => panic!("check_always_denies is false, but check_always_denies_with_counterexample returned no counterexample"),
     }
 }
 
@@ -187,6 +223,10 @@ async fn assert_equivalent<S: Solver>(
         Ok(false) => panic!("assert_equivalent failed for:\n{pset1}\n{pset2}"),
         Err(e) => panic!("{e}"),
     }
+    assert!(
+        compiler.check_equivalent_with_counterexample(&pset1, &pset2, &envs.symenv).await.unwrap().is_none(),
+        "check_equivalent is true, but check_equivalent_with_counterexample returned a counterexample",
+    );
 }
 
 async fn assert_not_equivalent<S: Solver>(
@@ -195,15 +235,25 @@ async fn assert_not_equivalent<S: Solver>(
     pset2: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
+    let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
+    let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
     match compiler
-        .check_equivalent(&pset1, &pset2, &envs.symenv)
+        .check_equivalent(&typed_pset1, &typed_pset2, &envs.symenv)
         .await
     {
         Ok(true) => panic!("assert_not_equivalent failed for:\n{pset1}\n{pset2}"),
         Ok(false) => (),
         Err(e) => panic!("{e}"),
+    }
+    match compiler.check_equivalent_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
+        Some(Env { request, entities }) => {
+            // Check that the counterexample is correct
+            let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
+            let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
+            assert!(resp1.decision() != resp2.decision(),
+                "check_equivalent_with_counterexample returned an invalid counterexample");
+        }
+        _ => panic!("check_equivalent is false, but check_equivalent_with_counterexample returned no counterexample"),
     }
 }
 
@@ -220,6 +270,14 @@ async fn assert_implies<S: Solver>(
         Ok(false) => panic!("assert_implies failed for:\n{pset1}\n{pset2}"),
         Err(e) => panic!("{e}"),
     }
+    assert!(
+        compiler
+            .check_implies_with_counterexample(&pset1, &pset2, &envs.symenv)
+            .await
+            .unwrap()
+            .is_none(),
+        "check_implies is true, but check_implies_with_counterexample returned a counterexample",
+    );
 }
 
 async fn assert_does_not_imply<S: Solver>(
@@ -228,12 +286,25 @@ async fn assert_does_not_imply<S: Solver>(
     pset2: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_implies(&pset1, &pset2, &envs.symenv).await {
+    let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
+    let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
+    match compiler
+        .check_implies(&typed_pset1, &typed_pset2, &envs.symenv)
+        .await
+    {
         Ok(true) => panic!("assert_does_not_imply failed for:\n{pset1}\n{pset2}"),
         Ok(false) => (),
         Err(e) => panic!("{e}"),
+    }
+    match compiler.check_implies_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
+        Some(Env { request, entities }) => {
+            // Check that the counterexample is correct
+            let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
+            let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
+            assert!(resp1.decision() == Decision::Allow && resp2.decision() == Decision::Deny,
+                "check_implies_with_counterexample returned an invalid counterexample");
+        }
+        _ => panic!("check_implies is false, but check_implies_with_counterexample returned no counterexample"),
     }
 }
 
@@ -250,6 +321,14 @@ async fn assert_disjoint<S: Solver>(
         Ok(false) => panic!("assert_disjoint failed for:\n{pset1}\n{pset2}"),
         Err(e) => panic!("{e}"),
     }
+    assert!(
+        compiler
+            .check_disjoint_with_counterexample(&pset1, &pset2, &envs.symenv)
+            .await
+            .unwrap()
+            .is_none(),
+        "check_disjoint is true, but check_disjoint_with_counterexample returned a counterexample",
+    );
 }
 
 async fn assert_not_disjoint<S: Solver>(
@@ -258,12 +337,25 @@ async fn assert_not_disjoint<S: Solver>(
     pset2: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_disjoint(&pset1, &pset2, &envs.symenv).await {
+    let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
+    let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
+    match compiler
+        .check_disjoint(&typed_pset1, &typed_pset2, &envs.symenv)
+        .await
+    {
         Ok(true) => panic!("assert_not_disjoint failed for:\n{pset1}\n{pset2}"),
         Ok(false) => (),
         Err(e) => panic!("{e}"),
+    }
+    match compiler.check_disjoint_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
+        Some(Env { request, entities }) => {
+            // Check that the counterexample is correct
+            let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
+            let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
+            assert!(resp1.decision() == Decision::Allow && resp2.decision() == Decision::Allow,
+                "check_disjoint_with_counterexample returned an invalid counterexample");
+        }
+        _ => panic!("check_disjoint is false, but check_disjoint_with_counterexample returned no counterexample"),
     }
 }
 
@@ -1896,37 +1988,10 @@ async fn cex_test_simple_model() {
         &validator,
     );
 
-    let req_env = utils::req_env_from_strs("User", "Action::\"eat\"", "Snack");
-    let symenv = SymEnv::new(&schema, &req_env).unwrap();
-    let mut solver = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"eat\"", "Snack");
 
-    let (request, entities) = solver.check_sat(&pset, &symenv).await.unwrap().unwrap();
-
-    // Check that the model is correct (i.e., allowed by the policy set)
-    let resp = Authorizer::new().is_authorized(&request, &pset, &entities);
-    assert!(resp.decision() == Decision::Allow);
-    assert!(resp.diagnostics().errors().count() == 0);
-
-    // Check that the model actually satisfies the constraint in the policy
-    let resource_entity = entities.get(request.resource().unwrap()).unwrap();
-
-    // Get min_hungry_level attr of the resource
-    let EvalResult::Long(min_hungry_level) =
-        resource_entity.attr("min_hungry_level").unwrap().unwrap()
-    else {
-        panic!("unexpected value");
-    };
-
-    // Get context.hungry_level
-    let context = request.context().unwrap().as_ref();
-    let (_, hungry_level) = context
-        .clone()
-        .into_iter()
-        .find(|(name, _)| name.as_str() == "hungry_level")
-        .unwrap();
-    let hungry_level = hungry_level.as_long().unwrap();
-
-    assert!(hungry_level >= min_hungry_level);
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
 }
 
 /// Tests generation of simple models with ancestors
@@ -1959,22 +2024,10 @@ async fn cex_test_simple_model_ancestor() {
         &validator,
     );
 
-    let req_env = utils::req_env_from_strs("User", "Action::\"eat\"", "Snack");
-    let symenv = SymEnv::new(&schema, &req_env).unwrap();
-    let mut solver = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"eat\"", "Snack");
 
-    let (request, entities) = solver.check_sat(&pset, &symenv).await.unwrap().unwrap();
-
-    // Check that the model is correct (i.e., allowed by the policy set)
-    let resp = Authorizer::new().is_authorized(&request, &pset, &entities);
-    assert!(resp.decision() == Decision::Allow);
-    assert!(resp.diagnostics().errors().count() == 0);
-
-    // Check that principal is in UserGroup::"chef"
-    let principal_entity = entities.get(request.principal().unwrap()).unwrap();
-    assert!(principal_entity
-        .as_ref()
-        .is_descendant_of(&"UserGroup::\"chef\"".parse().unwrap()));
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
 }
 
 /// Tests generation of simple models with tags
@@ -2007,24 +2060,10 @@ async fn cex_test_simple_model_tags() {
         &validator,
     );
 
-    let req_env = utils::req_env_from_strs("User", "Action::\"eat\"", "Snack");
-    let symenv = SymEnv::new(&schema, &req_env).unwrap();
-    let mut solver = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"eat\"", "Snack");
 
-    let (request, entities) = solver.check_sat(&pset, &symenv).await.unwrap().unwrap();
-
-    // Check that the model is correct (i.e., allowed by the policy set)
-    let resp = Authorizer::new().is_authorized(&request, &pset, &entities);
-    assert!(resp.decision() == Decision::Allow);
-    assert!(resp.diagnostics().errors().count() == 0);
-
-    // Check that the right tag exists
-    let principal_entity = entities.get(request.principal().unwrap()).unwrap();
-    let EvalResult::Bool(can_eat) = principal_entity.tag("can_eat").unwrap().unwrap() else {
-        panic!("tag incorrect type");
-    };
-
-    assert!(can_eat);
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
 }
 
 /// Tests generation of ancestor functions with at least one ite
@@ -2059,27 +2098,10 @@ async fn cex_test_simple_model_ancestor_ite() {
         &validator,
     );
 
-    let req_env = utils::req_env_from_strs("User", "Action::\"eat\"", "Snack");
-    let symenv = SymEnv::new(&schema, &req_env).unwrap();
-    let mut solver = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"eat\"", "Snack");
 
-    let (request, entities) = solver.check_sat(&pset, &symenv).await.unwrap().unwrap();
-
-    // Check that the model is correct (i.e., allowed by the policy set)
-    let resp = Authorizer::new().is_authorized(&request, &pset, &entities);
-    assert!(resp.decision() == Decision::Allow);
-    assert!(resp.diagnostics().errors().count() == 0);
-
-    // Check that principal is in UserGroup::"chef"
-    let principal_entity = entities.get(request.principal().unwrap()).unwrap();
-    assert!(principal_entity
-        .as_ref()
-        .is_descendant_of(&"UserGroup::\"chef\"".parse().unwrap()));
-
-    let alice = entities.get(&"User::\"alice\"".parse().unwrap()).unwrap();
-    assert!(!alice
-        .as_ref()
-        .is_descendant_of(&"UserGroup::\"chef\"".parse().unwrap()));
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
 }
 
 /// Tests generation of trivial models
@@ -2104,14 +2126,8 @@ async fn cex_test_simple_model_trivial() {
 
     let pset = utils::pset_from_text(r#"permit(principal, action, resource);"#, &validator);
 
-    let req_env = utils::req_env_from_strs("User", "Action::\"eat\"", "Snack");
-    let symenv = SymEnv::new(&schema, &req_env).unwrap();
-    let mut solver = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"eat\"", "Snack");
 
-    let (request, entities) = solver.check_sat(&pset, &symenv).await.unwrap().unwrap();
-
-    // Check that the model is correct (i.e., allowed by the policy set)
-    let resp = Authorizer::new().is_authorized(&request, &pset, &entities);
-    assert!(resp.decision() == Decision::Allow);
-    assert!(resp.diagnostics().errors().count() == 0);
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
 }

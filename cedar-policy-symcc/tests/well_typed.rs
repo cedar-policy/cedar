@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 use cedar_policy::{Policy, Schema, Validator};
-use cedar_policy_symcc::{solver::LocalSolver, SymCompiler, SymEnv, WellTypedPolicy};
+use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler, SymEnv, WellTypedPolicy};
 use utils::Environments;
 mod utils;
 
@@ -161,9 +161,11 @@ fn policy_b(validator: &Validator) -> Policy {
 async fn test_fail_on_ill_typed(
     p: &Policy,
     symenv: &SymEnv,
-    compiler: &mut SymCompiler<LocalSolver>,
+    compiler: &mut CedarSymCompiler<LocalSolver>,
 ) {
-    let res = compiler.check_never_errors(p.as_ref(), symenv).await;
+    let res = compiler
+        .check_never_errors(&WellTypedPolicy::from_policy_unchecked(p), symenv)
+        .await;
     assert!(
         res.is_err(),
         "check_never_error of {p} fails due to type errors",
@@ -173,11 +175,11 @@ async fn test_fail_on_ill_typed(
 async fn test_succeeds_on_well_typed(
     p: &Policy,
     env: &Environments<'_>,
-    compiler: &mut SymCompiler<LocalSolver>,
+    compiler: &mut CedarSymCompiler<LocalSolver>,
     expected: bool,
 ) {
     let p = WellTypedPolicy::from_policy(p, &env.req_env, env.schema).unwrap();
-    let res = compiler.check_never_errors(p.policy(), &env.symenv).await;
+    let res = compiler.check_never_errors(&p, &env.symenv).await;
     assert!(
         res.is_ok_and(|r| r == expected),
         "check_never_error of {} succeeds with outcome {}",
@@ -193,7 +195,7 @@ async fn tests_for_ill_typed() {
     let policy_a = policy_a(&validator);
     let policy_b = policy_b(&validator);
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let envs = Environments::new(validator.schema(), "P", "Action::\"view\"", "R");
     test_fail_on_ill_typed(&policy_a, &envs.symenv, &mut compiler).await;
     test_fail_on_ill_typed(&policy_b, &envs.symenv, &mut compiler).await;
@@ -206,7 +208,7 @@ async fn tests_for_well_typed() {
     let policy_a = policy_a(&validator);
     let policy_b = policy_b(&validator);
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let envs = Environments::new(validator.schema(), "P", "Action::\"view\"", "R");
     test_succeeds_on_well_typed(&policy_a, &envs, &mut compiler, false).await;
     test_succeeds_on_well_typed(&policy_b, &envs, &mut compiler, true).await;
