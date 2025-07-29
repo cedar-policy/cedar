@@ -20,6 +20,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
   APIs, as regular parsing performance is degraded when the `raw-parsing` feature is enabled.
 - Implemented type-aware partial evaluation [RFC 95](https://github.com/cedar-policy/rfcs/pull/95), under the
   experimental flag `tpe`. (#1575)
+- Added `deep_eq` to the `Entity` and `Entities` structs to allow comparing these objects for structural equality. 
 
 ### Changed
 

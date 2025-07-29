@@ -54,6 +54,7 @@ impl From<&entities::Entities> for models::Entities {
 #[cfg(test)]
 mod test {
     use super::*;
+    use cedar_policy_core::assert_deep_eq;
     use smol_str::SmolStr;
     use std::collections::{BTreeMap, HashMap, HashSet};
     use std::sync::Arc;
@@ -62,7 +63,7 @@ mod test {
     fn entities_roundtrip() {
         // Empty Test
         let entities1 = entities::Entities::new();
-        assert_eq!(
+        assert_deep_eq!(
             entities1,
             entities::Entities::from(&models::Entities::from(&entities1))
         );
@@ -91,7 +92,7 @@ mod test {
                 extensions::Extensions::none(),
             )
             .unwrap();
-        assert_eq!(
+        assert_deep_eq!(
             entities2,
             entities::Entities::from(&models::Entities::from(&entities2))
         );
@@ -117,7 +118,7 @@ mod test {
                 extensions::Extensions::none(),
             )
             .unwrap();
-        assert_eq!(
+        assert_deep_eq!(
             entities3,
             entities::Entities::from(&models::Entities::from(&entities3))
         );
