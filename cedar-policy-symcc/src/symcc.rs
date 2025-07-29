@@ -171,9 +171,7 @@ impl<S: Solver> SymCompiler<S> {
             Ok(None)
         } else if asserts.iter().all(|assert| *assert == true.into()) {
             let interp = Interpretation::default();
-            let exprs = policies
-                .map(|p| p.condition())
-                .collect::<Vec<_>>();
+            let exprs = policies.map(|p| p.condition()).collect::<Vec<_>>();
             Ok(Some(symenv.interpret(&interp).concretize(exprs.iter())?))
         } else {
             self.solver
@@ -206,14 +204,9 @@ impl<S: Solver> SymCompiler<S> {
                     };
 
                     let model = parse_sexpr(model_str.as_bytes())?;
-                    let exprs = policies
-                        .map(|p| p.condition())
-                        .collect::<Vec<_>>();
+                    let exprs = policies.map(|p| p.condition()).collect::<Vec<_>>();
                     let interp = model.decode_model(&id_maps)?;
-                    let interp = interp.repair_as_counterexample(
-                        exprs.iter(),
-                        symenv,
-                    );
+                    let interp = interp.repair_as_counterexample(exprs.iter(), symenv);
 
                     Ok(Some(symenv.interpret(&interp).concretize(exprs.iter())?))
                 }

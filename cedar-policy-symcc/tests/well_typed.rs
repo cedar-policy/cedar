@@ -163,7 +163,9 @@ async fn test_fail_on_ill_typed(
     symenv: &SymEnv,
     compiler: &mut CedarSymCompiler<LocalSolver>,
 ) {
-    let res = compiler.check_never_errors(&WellTypedPolicy::from_policy_unchecked(p), symenv).await;
+    let res = compiler
+        .check_never_errors(&WellTypedPolicy::from_policy_unchecked(p), symenv)
+        .await;
     assert!(
         res.is_err(),
         "check_never_error of {p} fails due to type errors",

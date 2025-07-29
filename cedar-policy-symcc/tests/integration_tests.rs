@@ -146,7 +146,10 @@ async fn assert_does_not_always_allow<S: Solver>(
     envs: &Environments<'_>,
 ) {
     let typed_pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_always_allows(&typed_pset, &envs.symenv).await {
+    match compiler
+        .check_always_allows(&typed_pset, &envs.symenv)
+        .await
+    {
         Ok(true) => panic!("assert_does_not_always_allow failed for:\n{pset}"),
         Ok(false) => (),
         Err(e) => panic!("{e}"),
@@ -185,7 +188,10 @@ async fn assert_does_not_always_deny<S: Solver>(
     envs: &Environments<'_>,
 ) {
     let typed_pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_always_denies(&typed_pset, &envs.symenv).await {
+    match compiler
+        .check_always_denies(&typed_pset, &envs.symenv)
+        .await
+    {
         Ok(true) => panic!("assert_does_not_always_deny failed for:\n{pset}"),
         Ok(false) => (),
         Err(e) => panic!("{e}"),
@@ -265,7 +271,11 @@ async fn assert_implies<S: Solver>(
         Err(e) => panic!("{e}"),
     }
     assert!(
-        compiler.check_implies_with_counterexample(&pset1, &pset2, &envs.symenv).await.unwrap().is_none(),
+        compiler
+            .check_implies_with_counterexample(&pset1, &pset2, &envs.symenv)
+            .await
+            .unwrap()
+            .is_none(),
         "check_implies is true, but check_implies_with_counterexample returned a counterexample",
     );
 }
@@ -278,7 +288,10 @@ async fn assert_does_not_imply<S: Solver>(
 ) {
     let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
     let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_implies(&typed_pset1, &typed_pset2, &envs.symenv).await {
+    match compiler
+        .check_implies(&typed_pset1, &typed_pset2, &envs.symenv)
+        .await
+    {
         Ok(true) => panic!("assert_does_not_imply failed for:\n{pset1}\n{pset2}"),
         Ok(false) => (),
         Err(e) => panic!("{e}"),
@@ -309,7 +322,11 @@ async fn assert_disjoint<S: Solver>(
         Err(e) => panic!("{e}"),
     }
     assert!(
-        compiler.check_disjoint_with_counterexample(&pset1, &pset2, &envs.symenv).await.unwrap().is_none(),
+        compiler
+            .check_disjoint_with_counterexample(&pset1, &pset2, &envs.symenv)
+            .await
+            .unwrap()
+            .is_none(),
         "check_disjoint is true, but check_disjoint_with_counterexample returned a counterexample",
     );
 }
@@ -322,7 +339,10 @@ async fn assert_not_disjoint<S: Solver>(
 ) {
     let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
     let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_disjoint(&typed_pset1, &typed_pset2, &envs.symenv).await {
+    match compiler
+        .check_disjoint(&typed_pset1, &typed_pset2, &envs.symenv)
+        .await
+    {
         Ok(true) => panic!("assert_not_disjoint failed for:\n{pset1}\n{pset2}"),
         Ok(false) => (),
         Err(e) => panic!("{e}"),

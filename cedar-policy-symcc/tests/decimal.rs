@@ -61,8 +61,18 @@ async fn x_lte_max() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
 
-    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset1 = WellTypedPolicies::from_policies(
+        &pset1,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
+    let pset2 = WellTypedPolicies::from_policies(
+        &pset2,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
 
     assert!(
         compiler
@@ -88,8 +98,18 @@ async fn max_gte_x() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
 
-    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset1 = WellTypedPolicies::from_policies(
+        &pset1,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
+    let pset2 = WellTypedPolicies::from_policies(
+        &pset2,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
 
     assert!(
         compiler
@@ -115,8 +135,18 @@ async fn x_gte_min() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
 
-    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset1 = WellTypedPolicies::from_policies(
+        &pset1,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
+    let pset2 = WellTypedPolicies::from_policies(
+        &pset2,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
 
     assert!(
         compiler
@@ -142,8 +172,18 @@ async fn min_lte_x() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
 
-    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset1 = WellTypedPolicies::from_policies(
+        &pset1,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
+    let pset2 = WellTypedPolicies::from_policies(
+        &pset2,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
 
     assert!(
         compiler
@@ -177,8 +217,18 @@ async fn x_ne_max_impl_x_lt_max() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
 
-    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset1 = WellTypedPolicies::from_policies(
+        &pset1,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
+    let pset2 = WellTypedPolicies::from_policies(
+        &pset2,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
 
     assert!(
         compiler
@@ -212,8 +262,18 @@ async fn x_ne_min_impl_x_gt_min() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
 
-    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset1 = WellTypedPolicies::from_policies(
+        &pset1,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
+    let pset2 = WellTypedPolicies::from_policies(
+        &pset2,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
 
     assert!(
         compiler
@@ -247,8 +307,18 @@ async fn x_lt_y_impl_y_gt_x() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
 
-    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset1 = WellTypedPolicies::from_policies(
+        &pset1,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
+    let pset2 = WellTypedPolicies::from_policies(
+        &pset2,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
 
     assert!(
         compiler
@@ -282,8 +352,18 @@ async fn x_lte_y_impl_y_gte_x() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
 
-    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset1 = WellTypedPolicies::from_policies(
+        &pset1,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
+    let pset2 = WellTypedPolicies::from_policies(
+        &pset2,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
 
     assert!(
         compiler
@@ -318,8 +398,18 @@ async fn x_lte_y_and_y_lte_x_impl_x_eq_y() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
 
-    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset1 = WellTypedPolicies::from_policies(
+        &pset1,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
+    let pset2 = WellTypedPolicies::from_policies(
+        &pset2,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
 
     assert!(
         compiler
@@ -354,8 +444,18 @@ async fn x_lt_y_and_y_lt_z_impl_z_gt_x() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
 
-    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset1 = WellTypedPolicies::from_policies(
+        &pset1,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
+    let pset2 = WellTypedPolicies::from_policies(
+        &pset2,
+        &request_env_for_sample_schema(),
+        &sample_schema(),
+    )
+    .unwrap();
 
     assert!(
         compiler
