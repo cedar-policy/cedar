@@ -137,12 +137,3 @@ pub fn verify_disjoint(
     let disjoint = |t1: Term, t2: Term| not(and(t1, t2));
     verify_is_authorized(disjoint, policies1, policies2, env)
 }
-
-/// Returns asserts that are satisfiable iff the policy set allows some request
-/// This is only used for integration tests
-pub fn verify_sat(policies: &PolicySet, env: &SymEnv) -> Result<Asserts> {
-    let term = is_authorized(policies, env)?;
-    let xs: Vec<Expr> = policies.policies().map(|p| p.condition()).collect();
-    let assumptions = enforce(xs.iter(), env);
-    Ok(assumptions.into_iter().chain([term]).collect())
-}

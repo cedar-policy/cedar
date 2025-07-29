@@ -23,15 +23,17 @@ use std::sync::Arc;
 
 use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request};
 use cedar_policy_core::ast::{
-    Context, Entity, EntityAttrEvaluationError, Literal, Set, Value, ValueKind,
+    Context, Entity, EntityAttrEvaluationError, Expr, Literal, Name, PartialValue, Set, Value,
+    ValueKind,
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
-use cedar_policy_core::extensions::Extensions;
+use cedar_policy_core::extensions::{decimal, Extensions};
 use num_bigint::{BigInt, TryFromBigIntError};
 use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 
+use crate::symcc::enforcer::footprint;
 use crate::symcc::ext::Ext;
 use crate::symcc::factory;
 use crate::symcc::type_abbrevs::ExtType;
@@ -75,6 +77,16 @@ pub enum ConcretizeError {
 
     #[error("Concretization function not yet implemented for extension: {0:?}")]
     ExtensionNotImplemented(ExtType),
+
+    #[error("Failed to construct extension value")]
+    ExtensionError,
+}
+
+/// A concrete environment recovered from a [`SymEnv`].
+#[derive(Debug, Clone)]
+pub struct Env {
+    pub request: Request,
+    pub entities: Entities,
 }
 
 /// Tries to extract an `EntityUid` from a `Term`.
@@ -160,10 +172,21 @@ impl TryFrom<&Term> for Value {
                 None,
             )),
 
-            // TODO: concretize extension values
-            Term::Prim(TermPrim::Ext(Ext::Decimal { d: _ })) => {
-                Err(ConcretizeError::ExtensionNotImplemented(ExtType::Decimal))
+            Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => {
+                let name = Name::parse_unqualified_name("decimal")
+                    .or(Err(ConcretizeError::ExtensionError))?;
+                match decimal::extension()
+                    .get_func(&name)
+                    .ok_or(ConcretizeError::ExtensionError)?
+                    .call(&[format!("{}", d).into()])
+                    .or(Err(ConcretizeError::ExtensionError))?
+                {
+                    PartialValue::Value(v) => Ok(v),
+                    _ => Err(ConcretizeError::ExtensionError),
+                }
             }
+
+            // TODO: concretize extension values
             Term::Prim(TermPrim::Ext(Ext::Datetime { dt: _ })) => {
                 Err(ConcretizeError::ExtensionNotImplemented(ExtType::DateTime))
             }
@@ -420,11 +443,21 @@ impl SymEntities {
 
 impl SymEnv {
     /// Concretizes a literal SymEnv to a Context
-    pub fn concretize(&self) -> Result<(Request, Entities), ConcretizeError> {
+    pub fn concretize<'a>(
+        &self,
+        exprs: impl Iterator<Item = &'a Expr>,
+    ) -> Result<Env, ConcretizeError> {
         let mut uids = BTreeSet::new();
         self.request.get_all_entity_uids(&mut uids);
         self.entities.get_all_entity_uids(&mut uids);
 
-        Ok((self.request.concretize()?, self.entities.concretize(&uids)?))
+        for term in exprs.flat_map(|e| footprint(e, self).collect::<Vec<_>>()) {
+            term.get_all_entity_uids(&mut uids);
+        }
+
+        Ok(Env {
+            request: self.request.concretize()?,
+            entities: self.entities.concretize(&uids)?,
+        })
     }
 }
