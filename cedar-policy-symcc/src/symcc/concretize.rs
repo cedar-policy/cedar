@@ -76,6 +76,9 @@ pub enum ConcretizeError {
 
     #[error("Concretization function not yet implemented for extension: {0:?}")]
     ExtensionNotImplemented(ExtType),
+
+    #[error("Failed to construct extension value")]
+    ExtensionError,
 }
 
 /// Tries to extract an `EntityUid` from a `Term`.
@@ -162,13 +165,15 @@ impl TryFrom<&Term> for Value {
             )),
 
             Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => {
-                let name = Name::parse_unqualified_name("decimal").unwrap();
-                Ok(match decimal::extension().get_func(&name).unwrap().call(&[
-                    format!("{}", d).into(),
-                ]).unwrap() {
-                    PartialValue::Value(v) => v,
-                    _ => panic!(),
-                })
+                let name = Name::parse_unqualified_name("decimal")
+                    .or(Err(ConcretizeError::ExtensionError))?;
+                match decimal::extension().get_func(&name)
+                    .ok_or(ConcretizeError::ExtensionError)?
+                    .call(&[format!("{}", d).into()])
+                    .or(Err(ConcretizeError::ExtensionError))? {
+                    PartialValue::Value(v) => Ok(v),
+                    _ => Err(ConcretizeError::ExtensionError),
+                }
             }
 
             // TODO: concretize extension values
