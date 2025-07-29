@@ -715,6 +715,17 @@ impl SExpr {
                     )]
                     args if !args.is_empty() && matches!(args[0], SExpr::Symbol(_)) => {
                         match &args[0] {
+                            // Decimal
+                            SExpr::Symbol(s) if s == "Decimal" && args.len() == 2 => {
+                                if let SExpr::BitVec(BitVec { width: 64, v }) = &args[1] {
+                                    Ok(Term::Prim(TermPrim::Ext(Ext::Decimal {
+                                        d: Decimal(*v as i64),
+                                    })))
+                                } else {
+                                    Err(DecodeError::UnknownLiteral(self.clone()))
+                                }
+                            }
+
                             SExpr::Symbol(s) => {
                                 match (id_maps.types.get(s), &args[1..]) {
                                     // Entity UID
@@ -760,11 +771,11 @@ impl SExpr {
                                         Ok(Term::Record(record))
                                     }
 
-                                    // TODO: Decimal, Duration, Datetime, V4, V6
                                     _ => Err(DecodeError::UnknownLiteral(self.clone())),
                                 }
                             }
 
+                            // TODO: Duration, Datetime, V4, V6
                             _ => Err(DecodeError::UnknownLiteral(self.clone())),
                         }
                     }

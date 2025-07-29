@@ -23,11 +23,11 @@ use std::sync::Arc;
 
 use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request};
 use cedar_policy_core::ast::{
-    Context, Entity, EntityAttrEvaluationError, Expr, Literal, Set, Value, ValueKind
+    Context, Entity, EntityAttrEvaluationError, Expr, Literal, Name, PartialValue, Set, Value, ValueKind
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
-use cedar_policy_core::extensions::Extensions;
 use num_bigint::{BigInt, TryFromBigIntError};
+use cedar_policy_core::extensions::{decimal, Extensions};
 use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -161,10 +161,17 @@ impl TryFrom<&Term> for Value {
                 None,
             )),
 
-            // TODO: concretize extension values
-            Term::Prim(TermPrim::Ext(Ext::Decimal { d: _ })) => {
-                Err(ConcretizeError::ExtensionNotImplemented(ExtType::Decimal))
+            Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => {
+                let name = Name::parse_unqualified_name("decimal").unwrap();
+                Ok(match decimal::extension().get_func(&name).unwrap().call(&[
+                    format!("{}", d).into(),
+                ]).unwrap() {
+                    PartialValue::Value(v) => v,
+                    _ => panic!(),
+                })
             }
+
+            // TODO: concretize extension values
             Term::Prim(TermPrim::Ext(Ext::Datetime { dt: _ })) => {
                 Err(ConcretizeError::ExtensionNotImplemented(ExtType::DateTime))
             }
