@@ -8276,3 +8276,155 @@ mod raw_parsing {
             .expect("Failed to parse");
     }
 }
+
+mod deep_eq {
+    use std::{
+        collections::{HashMap, HashSet},
+        str::FromStr,
+    };
+
+    use cedar_policy_core::{assert_deep_eq, assert_not_deep_eq};
+
+    use crate::{Entities, Entity, EntityUid, RestrictedExpression};
+
+    #[test]
+    fn deep_eq_same() {
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        assert_deep_eq!(entity, &entity);
+    }
+
+    #[test]
+    fn not_deep_eq_attrs() {
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        let other = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(true))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        assert_not_deep_eq!(entity, &other);
+    }
+    #[test]
+
+    fn not_deep_eq_ancestors() {
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        let other = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"x""#).unwrap()]),
+        )
+        .unwrap();
+        assert_not_deep_eq!(entity, &other);
+    }
+
+    #[test]
+    fn not_deep_eq_id() {
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        let other = Entity::new(
+            EntityUid::from_str(r#"E::"x""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        assert_not_deep_eq!(entity, &other);
+    }
+
+    #[test]
+    fn deep_eq_same_hierachy() {
+        let es = Entities::from_entities(
+            [Entity::new_no_attrs(
+                EntityUid::from_strs("test", "A").clone(),
+                HashSet::new(),
+            )],
+            None,
+        )
+        .unwrap();
+        assert_deep_eq!(es, &es);
+    }
+
+    #[test]
+    fn not_deep_eq_hierarchy_different_attributes() {
+        let es = Entities::from_entities(
+            [Entity::new_no_attrs(
+                EntityUid::from_strs("test", "A").clone(),
+                HashSet::new(),
+            )],
+            None,
+        )
+        .unwrap();
+        let other = Entities::from_entities(
+            [Entity::new(
+                EntityUid::from_strs("test", "A").clone(),
+                HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+                HashSet::new(),
+            )
+            .unwrap()],
+            None,
+        )
+        .unwrap();
+        assert_not_deep_eq!(es, &other);
+    }
+
+    #[test]
+    fn not_deep_eq_hierarchy_different_ids() {
+        let es = Entities::from_entities(
+            [Entity::new_no_attrs(
+                EntityUid::from_strs("test", "A").clone(),
+                HashSet::new(),
+            )],
+            None,
+        )
+        .unwrap();
+        let other = Entities::from_entities(
+            [Entity::new_no_attrs(
+                EntityUid::from_strs("test", "B").clone(),
+                HashSet::new(),
+            )],
+            None,
+        )
+        .unwrap();
+        assert_not_deep_eq!(es, &other);
+    }
+
+    #[test]
+    fn not_deep_eq_hierarchy_different_num_entities() {
+        let es = Entities::from_entities(
+            [
+                Entity::new_no_attrs(EntityUid::from_strs("test", "A").clone(), HashSet::new()),
+                Entity::new_no_attrs(EntityUid::from_strs("test", "B").clone(), HashSet::new()),
+            ],
+            None,
+        )
+        .unwrap();
+        let other = Entities::from_entities(
+            [Entity::new_no_attrs(
+                EntityUid::from_strs("test", "A").clone(),
+                HashSet::new(),
+            )],
+            None,
+        )
+        .unwrap();
+        assert_not_deep_eq!(es, &other);
+        assert_not_deep_eq!(other, &es);
+    }
+}

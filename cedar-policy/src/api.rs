@@ -190,6 +190,18 @@ impl Entity {
         Self(ast::Entity::with_uid(uid.into()))
     }
 
+    /// Test if two entities are structurally equal. That is, not only do they
+    /// have the same UID, but they also have the same attributes and ancestors.
+    ///
+    /// Note that ancestor equality is determined by examining the ancestors
+    /// entities provided when constructing these objects, without computing
+    /// their transitive closure. For accurate comparison, entities should be
+    /// constructed with the transitive closure precomputed or be drawn from an
+    /// [`Entities`] object which will perform this computation.
+    pub fn deep_eq(&self, other: &Self) -> bool {
+        self.0.deep_eq(&other.0)
+    }
+
     /// Get the Uid of this entity
     /// ```
     /// # use cedar_policy::{Entity, EntityId, EntityTypeName, EntityUid};
@@ -412,6 +424,15 @@ impl Entities {
     /// Iterate over the `Entity`'s in the `Entities`
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
         self.0.iter().map(Entity::ref_cast)
+    }
+
+    /// Test if two entity hierarchies are structurally equal. The hierarchies
+    /// must contain the same set of entity ids, and the entities with each id
+    /// must be structurally equal (decided [`Entity::deep_eq`]). Ancestor
+    /// equality between entities is always decided by comparing the transitive
+    /// closure of ancestor and not direct parents.
+    pub fn deep_eq(&self, other: &Self) -> bool {
+        self.0.deep_eq(&other.0)
     }
 
     /// Create an `Entities` object with the given entities.

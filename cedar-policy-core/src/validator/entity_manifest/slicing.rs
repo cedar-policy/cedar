@@ -246,7 +246,6 @@ impl AccessTrie {
 #[cfg(test)]
 mod entity_slice_tests {
     use similar_asserts::assert_eq;
-    use std::collections::BTreeSet;
 
     use crate::{
         ast::{Context, PolicyID, PolicySet},
@@ -260,42 +259,6 @@ mod entity_slice_tests {
     };
 
     use super::*;
-
-    /// The implementation of [`Eq`] and [`PartialEq`] for
-    /// entities just compares entity ids.
-    /// This implementation does a more traditional, deep equality
-    /// check comparing attributes, ancestors, and the id.
-    fn entity_deep_equal(this: &Entity, other: &Entity) -> bool {
-        this.uid() == other.uid()
-            && BTreeMap::from_iter(this.attrs()) == BTreeMap::from_iter(other.attrs())
-            && BTreeSet::from_iter(this.ancestors()) == BTreeSet::from_iter(other.ancestors())
-    }
-
-    /// The implementation of [`Eq`] and [`PartialEq`] on [`Entities`]
-    /// only checks equality by id for entities in the store.
-    /// This method checks that the entities are equal deeply,
-    /// using `[Entity::deep_equal]` to check equality.
-    /// Note that it ignores mode
-    fn entities_deep_equal(this: &Entities, other: &Entities) -> bool {
-        for this_entity in this.iter() {
-            let key = this_entity.uid();
-            if let Dereference::Data(other_value) = other.entity(key) {
-                if !entity_deep_equal(this_entity, other_value) {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-
-        for key in other.iter() {
-            if !matches!(this.entity(key.uid()), Dereference::Data(_)) {
-                return false;
-            }
-        }
-
-        true
-    }
 
     // Schema for testing in this module
     fn schema() -> ValidatorSchema {
@@ -389,7 +352,7 @@ action Read appliesTo {
 
         // PANIC SAFETY: panic in testing when test fails
         #[allow(clippy::panic)]
-        if !entities_deep_equal(&sliced_entities, &expected_entities) {
+        if !sliced_entities.deep_eq(&expected_entities) {
             panic!(
                 "Sliced entities differed from expected. Expected:\n{}\nGot:\n{}",
                 expected_entities.to_json_value().unwrap(),

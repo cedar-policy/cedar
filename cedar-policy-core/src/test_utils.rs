@@ -439,3 +439,29 @@ pub fn expect_err<'a>(
     msg.expect_source_matches(src, err);
     msg.expect_underlines_match(err);
 }
+
+/// Assert equality by `Entities` using structural equality with the `deep_eq` method.
+#[macro_export]
+macro_rules! assert_deep_eq {
+    ( $self:expr , $other:expr ) => {
+        assert!(
+            $self.deep_eq(&$other),
+            "expected that {:?} would be structurally equal to {:?}",
+            $self,
+            $other
+        )
+    };
+}
+
+/// Assert equality by `Entities` using structural equality with the `deep_eq` method.
+#[macro_export]
+macro_rules! assert_not_deep_eq {
+    ( $self:expr , $other:expr ) => {
+        assert!(
+            !$self.deep_eq(&$other),
+            "expected that {:?} would not be structurally equal to {:?}",
+            $self,
+            $other
+        )
+    };
+}
