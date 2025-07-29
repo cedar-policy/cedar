@@ -282,7 +282,7 @@ impl Policy {
         let id = id.unwrap_or_else(|| ast::PolicyID::from_string("JSON policy"));
         let has_principal: bool = self.principal.has_slot();
         let has_resource = self.resource.has_slot();
-        
+
         let mut conditions_iter = self
             .conditions
             .into_iter()
@@ -315,9 +315,16 @@ impl Policy {
 }
 
 impl Clause {
-    fn filter_slots(e: ast::Expr, has_principal: bool, has_resource: bool, is_when: bool) -> Result<ast::Expr, FromJsonError> {
+    fn filter_slots(
+        e: ast::Expr,
+        has_principal: bool,
+        has_resource: bool,
+        is_when: bool,
+    ) -> Result<ast::Expr, FromJsonError> {
         for slot in e.slots() {
-            if (slot.id.is_principal() && !has_principal) || (slot.id.is_resource() && !has_resource) {
+            if (slot.id.is_principal() && !has_principal)
+                || (slot.id.is_resource() && !has_resource)
+            {
                 return Err(FromJsonError::SlotsNotInScopeInConditionClause(
                     parse_errors::SlotsNotInScopeInConditionClause {
                         slot,
@@ -330,12 +337,22 @@ impl Clause {
     }
 
     /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
-    fn try_into_ast(self, has_principal: bool, has_resource: bool, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+    fn try_into_ast(
+        self,
+        has_principal: bool,
+        has_resource: bool,
+        id: &ast::PolicyID,
+    ) -> Result<ast::Expr, FromJsonError> {
         match self {
-            Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id)?, has_principal, has_resource, true),
-            Clause::Unless(expr) => {
-                Self::filter_slots(ast::Expr::not(expr.try_into_ast(id)?), has_principal, has_resource, false)
+            Clause::When(expr) => {
+                Self::filter_slots(expr.try_into_ast(id)?, has_principal, has_resource, true)
             }
+            Clause::Unless(expr) => Self::filter_slots(
+                ast::Expr::not(expr.try_into_ast(id)?),
+                has_principal,
+                has_resource,
+                false,
+            ),
         }
     }
 }
@@ -3580,6 +3597,39 @@ mod test {
                 );
             }
         );
+
+        let template = json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        "==": {
+                            "left": { "Var": "principal" },
+                            "right": { "Slot": "?principal" }
+                        }
+                    }
+                }
+            ]
+        });
+
+        let est: Policy = serde_json::from_value(template).unwrap();
+        let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
+        assert_matches!(
+            ast,
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("found template slot ?principal in a `when` clause")
+                    .help("?principal needs to appear in the scope to appear in the condition of the template")
+                    .build(),
+                );
+            }
+        )
     }
 
     #[test]

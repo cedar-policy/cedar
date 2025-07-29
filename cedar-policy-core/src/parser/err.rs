@@ -456,7 +456,10 @@ impl ToASTErrorKind {
     }
 
     /// Constructor for the [`ToASTErrorKind::SlotsNotInScopeInConditionClause`] error
-    pub fn slots_not_in_scope_in_condition_clause(slot: ast::Slot, clause_type: &'static str) -> Self {
+    pub fn slots_not_in_scope_in_condition_clause(
+        slot: ast::Slot,
+        clause_type: &'static str,
+    ) -> Self {
         parse_errors::SlotsNotInScopeInConditionClause { slot, clause_type }.into()
     }
 

@@ -276,10 +276,12 @@ impl Node<Option<cst::Policy>> {
                     .iter()
                     .filter_map(|err| match err {
                         ParseError::ToAST(err) => match err.kind() {
-                            ToASTErrorKind::SlotsNotInScopeInConditionClause(inner) => Some(ToASTError::new(
-                                ToASTErrorKind::expected_static_policy(inner.slot.clone()),
-                                err.source_loc().into_maybe_loc(),
-                            )),
+                            ToASTErrorKind::SlotsNotInScopeInConditionClause(inner) => {
+                                Some(ToASTError::new(
+                                    ToASTErrorKind::expected_static_policy(inner.slot.clone()),
+                                    err.source_loc().into_maybe_loc(),
+                                ))
+                            }
                             _ => None,
                         },
                         _ => None,
@@ -320,34 +322,37 @@ impl Node<Option<cst::Policy>> {
         let maybe_scope = policy.extract_scope();
 
         // convert conditions
-        let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
-            let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
-            let (p, _, r) = policy.extract_scope()?;
-            let slots_in_scope: HashSet<ast::Slot> =
-                HashSet::from_iter(p.as_expr().slots().chain(r.as_expr().slots()));
+        let maybe_conds = match policy.extract_scope() {
+            Ok((p, _, r)) => {
+                let slots_in_scope: HashSet<ast::Slot> =
+                    HashSet::from_iter(p.as_expr().slots().chain(r.as_expr().slots()));
+                ParseErrors::transpose(policy.conds.iter().map(|c| {
+                    let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
+                    let slot_errs =
+                        e.slots()
+                            .filter(|slot| !slots_in_scope.contains(slot))
+                            .map(|slot| {
+                                ToASTError::new(
+                                    ToASTErrorKind::slots_not_in_scope_in_condition_clause(
+                                        slot.clone(),
+                                        if is_when { "when" } else { "unless" },
+                                    ),
+                                    slot.loc,
+                                )
+                                .into()
+                            });
 
-            // slots that are in the condition but not in the scope
-            let slot_errs = e
-                .slots() // Chore: change this with generalized slots 
-                .filter(|slot| {
-                    !slots_in_scope.contains(&slot)
-                })
-                .map(|slot| {
-                    ToASTError::new(
-                        ToASTErrorKind::slots_not_in_scope_in_condition_clause( 
-                            slot.clone(),
-                            if is_when { "when" } else { "unless" },
-                        ),
-                        slot.loc.clone(),
-                    )
-                    .into()
-                });
-
-            match ParseErrors::from_iter(slot_errs) {
-                Some(errs) => Err(errs),
-                None => Ok(e),
+                    match ParseErrors::from_iter(slot_errs) {
+                        Some(errs) => Err(errs),
+                        None => Ok(e),
+                    }
+                }))
             }
-        }));
+            Err(_) => ParseErrors::transpose(policy.conds.iter().map(|c| {
+                let (e, _) = c.to_expr::<ast::ExprBuilder<()>>()?;
+                Ok(e)
+            })),
+        };
 
         let (effect, annotations, (principal, action, resource), conds) =
             flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
@@ -387,10 +392,12 @@ impl Node<Option<cst::Policy>> {
                     .iter()
                     .filter_map(|err| match err {
                         ParseError::ToAST(err) => match err.kind() {
-                            ToASTErrorKind::SlotsNotInScopeInConditionClause(inner) => Some(ToASTError::new(
-                                ToASTErrorKind::expected_static_policy(inner.slot.clone()),
-                                err.source_loc().into_maybe_loc(),
-                            )),
+                            ToASTErrorKind::SlotsNotInScopeInConditionClause(inner) => {
+                                Some(ToASTError::new(
+                                    ToASTErrorKind::expected_static_policy(inner.slot.clone()),
+                                    err.source_loc().into_maybe_loc(),
+                                ))
+                            }
                             _ => None,
                         },
                         _ => None,
@@ -428,34 +435,37 @@ impl Node<Option<cst::Policy>> {
         let maybe_scope = policy.extract_scope_tolerant_ast();
 
         // convert conditions
-        let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
-            let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
-            let (p, _, r) = policy.extract_scope()?;
-            let slots_in_scope: HashSet<ast::Slot> =
-                HashSet::from_iter(p.as_expr().slots().chain(r.as_expr().slots()));
+        let maybe_conds = match policy.extract_scope_tolerant_ast() {
+            Ok((p, _, r)) => {
+                let slots_in_scope: HashSet<ast::Slot> =
+                    HashSet::from_iter(p.as_expr().slots().chain(r.as_expr().slots()));
+                ParseErrors::transpose(policy.conds.iter().map(|c| {
+                    let (e, is_when) = c.to_expr::<ExprWithErrsBuilder<()>>()?;
+                    let slot_errs =
+                        e.slots()
+                            .filter(|slot| !slots_in_scope.contains(slot))
+                            .map(|slot| {
+                                ToASTError::new(
+                                    ToASTErrorKind::slots_not_in_scope_in_condition_clause(
+                                        slot.clone(),
+                                        if is_when { "when" } else { "unless" },
+                                    ),
+                                    slot.loc,
+                                )
+                                .into()
+                            });
 
-            // slots that are in the condition but not in the scope
-            let slot_errs = e
-                .slots() // Chore: change this with generalized slots 
-                .filter(|slot| {
-                    !slots_in_scope.contains(&slot)
-                })
-                .map(|slot| {
-                    ToASTError::new(
-                        ToASTErrorKind::slots_not_in_scope_in_condition_clause( 
-                            slot.clone(),
-                            if is_when { "when" } else { "unless" },
-                        ),
-                        slot.loc.clone(),
-                    )
-                    .into()
-                });
-
-            match ParseErrors::from_iter(slot_errs) {
-                Some(errs) => Err(errs),
-                None => Ok(e),
+                    match ParseErrors::from_iter(slot_errs) {
+                        Some(errs) => Err(errs),
+                        None => Ok(e),
+                    }
+                }))
             }
-        }));
+            Err(_) => ParseErrors::transpose(policy.conds.iter().map(|c| {
+                let (e, _) = c.to_expr::<ExprWithErrsBuilder<()>>()?;
+                Ok(e)
+            })),
+        };
 
         let (effect, annotations, (principal, action, resource), conds) =
             flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
@@ -4824,6 +4834,94 @@ mod tests {
                 expect_err(forbid_src.as_str(), &miette::Report::new(e), &expected);
             });
         }
+    }
+
+    #[test]
+    fn template_slot_in_condition() {
+        let src = r#"permit(principal == ?principal, action == Action::"action", resource in ?resource) when {?principal.name == true && ?resource.valid == 5};"#;
+        text_to_cst::parse_policy(src)
+            .expect("parse_error")
+            .to_template(ast::PolicyID::from_string("i0"))
+            .unwrap_or_else(|errs| {
+                panic!(
+                    "Failed to create a policy template: {:?}",
+                    miette::Report::new(errs)
+                );
+            });
+    }
+
+    #[test]
+    fn template_slot_not_in_scope_in_condition_1() {
+        let src =
+            r#"permit(principal, action == Action::"action", resource) when {?principal.valid};"#;
+        let errs = text_to_cst::parse_policy(src)
+            .expect("parse_error")
+            .to_template(ast::PolicyID::from_string("i0"))
+            .unwrap_err();
+
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("found template slot ?principal in a `when` clause")
+                .help("?principal needs to appear in the scope to appear in the condition of the template")
+                .exactly_one_underline("?principal")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn template_slot_not_in_scope_in_condition_2() {
+        let src = r#"forbid(principal, action == Action::"action", resource) unless {?resource.storage == 5};"#;
+        let errs = text_to_cst::parse_policy(src)
+            .expect("parse_error")
+            .to_template(ast::PolicyID::from_string("i0"))
+            .unwrap_err();
+
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "found template slot ?resource in a `unless` clause",
+            )
+            .help(
+                "?resource needs to appear in the scope to appear in the condition of the template",
+            )
+            .exactly_one_underline("?resource")
+            .build(),
+        );
+    }
+
+    #[test]
+    fn template_slot_not_in_scope_in_condition_3() {
+        let src = r#"permit(principal, action == Action::"action", resource) unless {?principal.valid && ?resource.storage == 5};"#;
+        let errs = text_to_cst::parse_policy(src)
+            .expect("parse_error")
+            .to_template(ast::PolicyID::from_string("i0"))
+            .unwrap_err();
+
+        expect_n_errors(src, &errs, 2);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("found template slot ?principal in a `unless` clause")
+                .help("?principal needs to appear in the scope to appear in the condition of the template")
+                .exactly_one_underline("?principal")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "found template slot ?resource in a `unless` clause",
+            )
+            .help(
+                "?resource needs to appear in the scope to appear in the condition of the template",
+            )
+            .exactly_one_underline("?resource")
+            .build(),
+        );
     }
 
     #[test]

@@ -107,6 +107,118 @@ fn simple_schema_file() -> json_schema::NamespaceDefinition<RawName> {
     .expect("Expected valid schema")
 }
 
+fn simple_schema_file_1() -> json_schema::NamespaceDefinition<RawName> {
+    serde_json::from_value(serde_json::json!(
+            {
+            "entityTypes": {
+                "Disk": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "name": {
+                                "type": "EntityOrCommon",
+                                "name": "String"
+                            },
+                            "storage": {
+                                "type": "EntityOrCommon",
+                                "name": "Long"
+                            }
+                        }
+                    }
+                },
+                "Document": {
+                    "memberOfTypes": [
+                        "Folder"
+                    ],
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "lastEdited": {
+                                "type": "EntityOrCommon",
+                                "name": "datetime"
+                            }
+                        }
+                    }
+                },
+                "File": {
+                    "memberOfTypes": [
+                        "Document"
+                    ]
+                },
+                "Folder": {
+                    "memberOfTypes": [
+                        "Disk"
+                    ],
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "lastEdited": {
+                                "type": "EntityOrCommon",
+                                "name": "datetime"
+                            }
+                        }
+                    }
+                },
+                "Person": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "age": {
+                                "type": "EntityOrCommon",
+                                "name": "Long"
+                            }
+                        }
+                    }
+                }
+            },
+            "actions": {
+                "Access": {
+                    "appliesTo": {
+                        "principalTypes": [
+                            "Person"
+                        ],
+                        "resourceTypes": [
+                            "Disk"
+                        ]
+                    }
+                },
+                "Navigate": {
+                    "appliesTo": {
+                        "principalTypes": [
+                            "Person"
+                        ],
+                        "resourceTypes": [
+                            "Disk",
+                            "Folder",
+                            "Document"
+                        ]
+                    }
+                },
+                "Write": {
+                    "appliesTo": {
+                        "principalTypes": [
+                            "Person"
+                        ],
+                        "resourceTypes": [
+                            "Folder",
+                            "Document"
+                        ],
+                        "context": {
+                            "type": "Record",
+                            "attributes": {
+                                "date": {
+                                    "type": "EntityOrCommon",
+                                    "name": "datetime"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+    }))
+    .expect("Expected valid schema")
+}
+
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typechecks_permissive_simple_schema(p: impl Into<Arc<Template>>) {
     assert_policy_typechecks_for_mode(simple_schema_file(), p, ValidationMode::Permissive)
@@ -1325,5 +1437,37 @@ mod templates {
                 PolicyID::from_string("policy0"),
             )
         );
+    }
+
+    #[test]
+    fn slot_in_condition_should_typecheck() {
+        let s = simple_schema_file_1();
+
+        let templates = [
+            r#"permit(principal == ?principal, action == Action::"Navigate", resource in ?resource) when { ?resource has storage && ?resource.storage == 5 };"#,
+            r#"permit(principal == ?principal, action == Action::"Navigate", resource in ?resource) when { ?principal.age == 25 };"#,
+            r#"permit(principal == ?principal, action == Action::"Write", resource == ?resource) when { ?resource.lastEdited > context.date };"#,
+            r#"permit(principal == ?principal, action == Action::"Access", resource in ?resource) when { ?resource.name == "SSD" };"#,
+        ];
+
+        for template in templates {
+            let t = parse_policy_or_template(None, template).unwrap();
+            assert_policy_typechecks(s.clone(), t);
+        }
+    }
+
+    #[test]
+    fn slot_in_condition_should_not_typecheck() {
+        let s = simple_schema_file_1();
+
+        let templates = [
+            r#"permit(principal == ?principal, action == Action::"Navigate", resource in ?resource) when { ?resource.storage == 5 };"#,
+            r#"permit(principal == ?principal, action == Action::"Write", resource in ?resource) when { ?resource.random == true };"#,
+        ];
+
+        for template in templates {
+            let t = parse_policy_or_template(None, template).unwrap();
+            assert_policy_typecheck_fails(s.clone(), t);
+        }
     }
 }

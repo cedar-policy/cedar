@@ -5422,7 +5422,7 @@ mod issue_606 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
                     .source("found template slot ?principal in a `when` clause")
-                    .help("slots are currently unsupported in `when` clauses")
+                    .help("?principal needs to appear in the scope to appear in the condition of the template")
                     .build(),
             );
         });
