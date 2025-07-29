@@ -19,13 +19,13 @@ pub use err::{Error, Result};
 mod symcc;
 use solver::Solver;
 use symcc::SymCompiler;
-pub use symcc::{solver, Environment, Interpretation, SmtLibScript, SymEnv};
+pub use symcc::{solver, Env, Environment, Interpretation, SmtLibScript, SymEnv};
 use symcc::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
     verify_never_errors, well_typed_policies, well_typed_policy,
 };
 
-use cedar_policy::{Entities, Policy, PolicySet, Request, RequestEnv, Schema};
+use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
 
 /// Cedar Symbolic Compiler paramatized by a solver `S`.
 #[derive(Clone, Debug)]
@@ -172,7 +172,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         &mut self,
         policy: &WellTypedPolicy,
         symenv: &SymEnv,
-    ) -> Result<Option<(Request, Entities)>> {
+    ) -> Result<Option<Env>> {
         Ok(self
             .symcc
             .check_sat(
@@ -212,7 +212,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset1: &WellTypedPolicies,
         pset2: &WellTypedPolicies,
         symenv: &SymEnv,
-    ) -> Result<Option<(Request, Entities)>> {
+    ) -> Result<Option<Env>> {
         Ok(self
             .symcc
             .check_sat(
@@ -250,7 +250,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         &mut self,
         pset: &WellTypedPolicies,
         symenv: &SymEnv,
-    ) -> Result<Option<(Request, Entities)>> {
+    ) -> Result<Option<Env>> {
         Ok(self
             .symcc
             .check_sat(
@@ -285,7 +285,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         &mut self,
         pset: &WellTypedPolicies,
         symenv: &SymEnv,
-    ) -> Result<Option<(Request, Entities)>> {
+    ) -> Result<Option<Env>> {
         Ok(self
             .symcc
             .check_sat(
@@ -323,7 +323,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset1: &WellTypedPolicies,
         pset2: &WellTypedPolicies,
         symenv: &SymEnv,
-    ) -> Result<Option<(Request, Entities)>> {
+    ) -> Result<Option<Env>> {
         Ok(self
             .symcc
             .check_sat(
@@ -366,7 +366,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset1: &WellTypedPolicies,
         pset2: &WellTypedPolicies,
         symenv: &SymEnv,
-    ) -> Result<Option<(Request, Entities)>> {
+    ) -> Result<Option<Env>> {
         Ok(self
             .symcc
             .check_sat(

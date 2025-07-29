@@ -42,7 +42,7 @@ mod term_type;
 mod type_abbrevs;
 mod verifier;
 
-use cedar_policy::{Entities, Request, Schema};
+use cedar_policy::Schema;
 use decoder::{parse_sexpr, DecodeError, IdMaps};
 use env::to_validator_request_env;
 // public exports
@@ -65,6 +65,7 @@ pub use verifier::{
 };
 
 use crate::symcc::concretize::ConcretizeError;
+pub use crate::symcc::concretize::Env;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
@@ -163,7 +164,7 @@ impl<S: Solver> SymCompiler<S> {
         vc: impl FnOnce(&SymEnv) -> std::result::Result<Asserts, result::Error>,
         symenv: &SymEnv,
         policies: impl Iterator<Item = &Policy>,
-    ) -> Result<Option<(Request, Entities)>> {
+    ) -> Result<Option<Env>> {
         let asserts = vc(symenv)?;
         if asserts.iter().any(|assert| *assert == false.into()) {
             // some assert has been reduced to constant-false by the symcc process.

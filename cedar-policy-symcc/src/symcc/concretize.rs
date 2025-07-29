@@ -82,6 +82,13 @@ pub enum ConcretizeError {
     ExtensionError,
 }
 
+/// A concrete environment recovered from a [`SymEnv`].
+#[derive(Debug, Clone)]
+pub struct Env {
+    pub request: Request,
+    pub entities: Entities,
+}
+
 /// Tries to extract an `EntityUid` from a `Term`.
 /// Corresponds to `Term.entityUID?` in `Concretize.lean`
 impl TryFrom<&Term> for EntityUid {
@@ -439,7 +446,7 @@ impl SymEnv {
     pub fn concretize<'a>(
         &self,
         exprs: impl Iterator<Item = &'a Expr>,
-    ) -> Result<(Request, Entities), ConcretizeError> {
+    ) -> Result<Env, ConcretizeError> {
         let mut uids = BTreeSet::new();
         self.request.get_all_entity_uids(&mut uids);
         self.entities.get_all_entity_uids(&mut uids);
@@ -448,6 +455,9 @@ impl SymEnv {
             term.get_all_entity_uids(&mut uids);
         }
 
-        Ok((self.request.concretize()?, self.entities.concretize(&uids)?))
+        Ok(Env {
+            request: self.request.concretize()?,
+            entities: self.entities.concretize(&uids)?,
+        })
     }
 }

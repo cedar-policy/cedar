@@ -16,7 +16,7 @@
 use cedar_policy::{Authorizer, Decision, Policy, PolicySet, Schema, Validator};
 use cedar_policy_symcc::{
     solver::{LocalSolver, Solver},
-    CedarSymCompiler, WellTypedPolicies, WellTypedPolicy,
+    CedarSymCompiler, Env, WellTypedPolicies, WellTypedPolicy,
 };
 
 mod utils;
@@ -155,7 +155,7 @@ async fn assert_does_not_always_allow<S: Solver>(
         Err(e) => panic!("{e}"),
     }
     match compiler.check_always_allows_with_counterexample(&typed_pset, &envs.symenv).await.unwrap() {
-        Some((request, entities)) => {
+        Some(Env { request, entities }) => {
             // Check that the counterexample is correct
             let resp1 = Authorizer::new().is_authorized(&request, pset, &entities);
             assert!(resp1.decision() == Decision::Deny,
@@ -197,7 +197,7 @@ async fn assert_does_not_always_deny<S: Solver>(
         Err(e) => panic!("{e}"),
     }
     match compiler.check_always_denies_with_counterexample(&typed_pset, &envs.symenv).await.unwrap() {
-        Some((request, entities)) => {
+        Some(Env { request, entities }) => {
             // Check that the counterexample is correct
             let resp1 = Authorizer::new().is_authorized(&request, pset, &entities);
             assert!(resp1.decision() == Decision::Allow,
@@ -246,7 +246,7 @@ async fn assert_not_equivalent<S: Solver>(
         Err(e) => panic!("{e}"),
     }
     match compiler.check_equivalent_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
-        Some((request, entities)) => {
+        Some(Env { request, entities }) => {
             // Check that the counterexample is correct
             let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
             let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
@@ -297,7 +297,7 @@ async fn assert_does_not_imply<S: Solver>(
         Err(e) => panic!("{e}"),
     }
     match compiler.check_implies_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
-        Some((request, entities)) => {
+        Some(Env { request, entities }) => {
             // Check that the counterexample is correct
             let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
             let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
@@ -348,7 +348,7 @@ async fn assert_not_disjoint<S: Solver>(
         Err(e) => panic!("{e}"),
     }
     match compiler.check_disjoint_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
-        Some((request, entities)) => {
+        Some(Env { request, entities }) => {
             // Check that the counterexample is correct
             let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
             let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
