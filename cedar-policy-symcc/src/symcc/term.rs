@@ -82,7 +82,14 @@ impl From<bool> for Term {
 
 impl From<i64> for Term {
     fn from(i: i64) -> Self {
-        Term::Prim(TermPrim::Bitvec(BitVec::of_int(64, i.into())))
+        #[allow(
+            clippy::expect_used,
+            reason = "Cannot panic because bitwidth passed in is non-zero."
+        )]
+        Term::Prim(TermPrim::Bitvec(
+            BitVec::of_int(64, i.into())
+                .expect("Cannot panic because bitwidth passed in is non-zero."),
+        ))
     }
 }
 
@@ -126,9 +133,7 @@ impl TermPrim {
     pub fn type_of(&self) -> TermType {
         match self {
             TermPrim::Bool(_) => TermType::Bool,
-            TermPrim::Bitvec(v) => TermType::Bitvec {
-                n: v.width() as usize,
-            },
+            TermPrim::Bitvec(v) => TermType::Bitvec { n: v.width() },
             TermPrim::String(_) => TermType::String,
             TermPrim::Entity(e) => TermType::Entity {
                 ety: e.type_name().clone(),
