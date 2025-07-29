@@ -270,13 +270,13 @@ impl Node<Option<cst::Policy>> {
             )
             .into()),
             // The source failed to parse completely. If the parse errors include
-            // `SlotsInConditionClause` also add an `ExpectedStaticPolicy` error.
+            // `SlotsNotInScopeInConditionClause` also add an `ExpectedStaticPolicy` error.
             Err(mut errs) => {
                 let new_errs = errs
                     .iter()
                     .filter_map(|err| match err {
                         ParseError::ToAST(err) => match err.kind() {
-                            ToASTErrorKind::SlotsInConditionClause(inner) => Some(ToASTError::new(
+                            ToASTErrorKind::SlotsNotInScopeInConditionClause(inner) => Some(ToASTError::new(
                                 ToASTErrorKind::expected_static_policy(inner.slot.clone()),
                                 err.source_loc().into_maybe_loc(),
                             )),
@@ -322,17 +322,27 @@ impl Node<Option<cst::Policy>> {
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
             let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
+            let (p, _, r) = policy.extract_scope()?;
+            let slots_in_scope: HashSet<ast::Slot> =
+                HashSet::from_iter(p.as_expr().slots().chain(r.as_expr().slots()));
 
-            let slot_errs = e.slots().map(|slot| {
-                ToASTError::new(
-                    ToASTErrorKind::slots_in_condition_clause(
-                        slot.clone(),
-                        if is_when { "when" } else { "unless" },
-                    ),
-                    slot.loc.or_else(|| c.loc.clone()),
-                )
-                .into()
-            });
+            // slots that are in the condition but not in the scope
+            let slot_errs = e
+                .slots() // Chore: change this with generalized slots 
+                .filter(|slot| {
+                    !slots_in_scope.contains(&slot)
+                })
+                .map(|slot| {
+                    ToASTError::new(
+                        ToASTErrorKind::slots_not_in_scope_in_condition_clause( 
+                            slot.clone(),
+                            if is_when { "when" } else { "unless" },
+                        ),
+                        slot.loc.clone(),
+                    )
+                    .into()
+                });
+
             match ParseErrors::from_iter(slot_errs) {
                 Some(errs) => Err(errs),
                 None => Ok(e),
@@ -371,13 +381,13 @@ impl Node<Option<cst::Policy>> {
             )
             .into()),
             // The source failed to parse completely. If the parse errors include
-            // `SlotsInConditionClause` also add an `ExpectedStaticPolicy` error.
+            // `SlotsNotInScopeInConditionClause` also add an `ExpectedStaticPolicy` error.
             Err(mut errs) => {
                 let new_errs = errs
                     .iter()
                     .filter_map(|err| match err {
                         ParseError::ToAST(err) => match err.kind() {
-                            ToASTErrorKind::SlotsInConditionClause(inner) => Some(ToASTError::new(
+                            ToASTErrorKind::SlotsNotInScopeInConditionClause(inner) => Some(ToASTError::new(
                                 ToASTErrorKind::expected_static_policy(inner.slot.clone()),
                                 err.source_loc().into_maybe_loc(),
                             )),
@@ -419,17 +429,28 @@ impl Node<Option<cst::Policy>> {
 
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
-            let (e, is_when) = c.to_expr::<ExprWithErrsBuilder<()>>()?;
-            let slot_errs = e.slots().map(|slot| {
-                ToASTError::new(
-                    ToASTErrorKind::slots_in_condition_clause(
-                        slot.clone(),
-                        if is_when { "when" } else { "unless" },
-                    ),
-                    slot.loc.or_else(|| c.loc.clone()),
-                )
-                .into()
-            });
+            let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
+            let (p, _, r) = policy.extract_scope()?;
+            let slots_in_scope: HashSet<ast::Slot> =
+                HashSet::from_iter(p.as_expr().slots().chain(r.as_expr().slots()));
+
+            // slots that are in the condition but not in the scope
+            let slot_errs = e
+                .slots() // Chore: change this with generalized slots 
+                .filter(|slot| {
+                    !slots_in_scope.contains(&slot)
+                })
+                .map(|slot| {
+                    ToASTError::new(
+                        ToASTErrorKind::slots_not_in_scope_in_condition_clause( 
+                            slot.clone(),
+                            if is_when { "when" } else { "unless" },
+                        ),
+                        slot.loc.clone(),
+                    )
+                    .into()
+                });
+
             match ParseErrors::from_iter(slot_errs) {
                 Some(errs) => Err(errs),
                 None => Ok(e),

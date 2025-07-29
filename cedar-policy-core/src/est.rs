@@ -280,10 +280,13 @@ impl Policy {
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
         let id = id.unwrap_or_else(|| ast::PolicyID::from_string("JSON policy"));
+        let has_principal: bool = self.principal.has_slot();
+        let has_resource = self.resource.has_slot();
+        
         let mut conditions_iter = self
             .conditions
             .into_iter()
-            .map(|cond| cond.try_into_ast(&id));
+            .map(|cond| cond.try_into_ast(has_principal, has_resource, &id));
         let conditions = match conditions_iter.next() {
             None => ast::Expr::val(true),
             Some(first) => ast::ExprBuilder::with_data(())
@@ -312,24 +315,26 @@ impl Policy {
 }
 
 impl Clause {
-    fn filter_slots(e: ast::Expr, is_when: bool) -> Result<ast::Expr, FromJsonError> {
-        let first_slot = e.slots().next();
-        if let Some(slot) = first_slot {
-            Err(parse_errors::SlotsInConditionClause {
-                slot,
-                clause_type: if is_when { "when" } else { "unless" },
+    fn filter_slots(e: ast::Expr, has_principal: bool, has_resource: bool, is_when: bool) -> Result<ast::Expr, FromJsonError> {
+        for slot in e.slots() {
+            if (slot.id.is_principal() && !has_principal) || (slot.id.is_resource() && !has_resource) {
+                return Err(FromJsonError::SlotsNotInScopeInConditionClause(
+                    parse_errors::SlotsNotInScopeInConditionClause {
+                        slot,
+                        clause_type: if is_when { "when" } else { "unless" },
+                    },
+                ));
             }
-            .into())
-        } else {
-            Ok(e)
         }
+        Ok(e)
     }
+
     /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
-    fn try_into_ast(self, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+    fn try_into_ast(self, has_principal: bool, has_resource: bool, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
         match self {
-            Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id)?, true),
+            Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id)?, has_principal, has_resource, true),
             Clause::Unless(expr) => {
-                Self::filter_slots(ast::Expr::not(expr.try_into_ast(id)?), false)
+                Self::filter_slots(ast::Expr::not(expr.try_into_ast(id)?), has_principal, has_resource, false)
             }
         }
     }

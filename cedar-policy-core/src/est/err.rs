@@ -53,7 +53,7 @@ pub enum FromJsonError {
     /// EST contained a template slot in policy condition
     #[error(transparent)]
     #[diagnostic(transparent)]
-    SlotsInConditionClause(#[from] parse_errors::SlotsInConditionClause),
+    SlotsNotInScopeInConditionClause(#[from] parse_errors::SlotsNotInScopeInConditionClause),
     /// EST contained the empty JSON object `{}` where a key (operator) was expected
     #[error("missing operator, found empty object")]
     MissingOperator,
