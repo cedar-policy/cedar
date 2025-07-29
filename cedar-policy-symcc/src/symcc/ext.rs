@@ -52,4 +52,12 @@ impl Ext {
     pub fn parse_duration(str: String) -> Option<Ext> {
         super::extension_types::datetime::Duration::parse(&str).map(|d| Ext::Duration { d })
     }
+
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "Pass by value expected by consumer"
+    )]
+    pub fn parse_ip(str: String) -> Option<Ext> {
+        super::extension_types::ipaddr::parse(&str).map(|ip| Ext::Ipaddr { ip })
+    }
 }
