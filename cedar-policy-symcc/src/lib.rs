@@ -18,10 +18,14 @@ mod err;
 pub use err::{Error, Result};
 mod symcc;
 use solver::Solver;
-pub use symcc::{solver, Environment, Interpretation, SmtLibScript, SymCompiler, SymEnv};
-use symcc::{verify_sat, well_typed_policies, well_typed_policy};
+use symcc::SymCompiler;
+pub use symcc::{solver, Env, Environment, Interpretation, SmtLibScript, SymEnv};
+use symcc::{
+    verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
+    verify_never_errors, well_typed_policies, well_typed_policy,
+};
 
-use cedar_policy::{Entities, Policy, PolicySet, Request, RequestEnv, Schema};
+use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
 
 /// Cedar Symbolic Compiler paramatized by a solver `S`.
 #[derive(Clone, Debug)]
@@ -66,6 +70,15 @@ impl WellTypedPolicy {
             .map(|p| WellTypedPolicy { policy: p })
             .map_err(Error::Symcc)
     }
+
+    /// Convers a [`Policy`] to a [`WellTypedPolicy`] unchecked.
+    /// Note that SymCC may fail on the policy produced by this function
+    /// even if it is validated.
+    pub fn from_policy_unchecked(policy: &Policy) -> Self {
+        WellTypedPolicy {
+            policy: policy.as_ref().clone(),
+        }
+    }
 }
 
 impl fmt::Display for WellTypedPolicy {
@@ -98,6 +111,15 @@ impl WellTypedPolicies {
         well_typed_policies(ps.as_ref(), env, schema)
             .map(|ps| WellTypedPolicies { policies: ps })
             .map_err(Error::Symcc)
+    }
+
+    /// Converts a [`PolicySet`] to a [`WellTypedPolicies`] unchecked.
+    /// Note that SymCC may fail on the policy set produced by this function
+    /// even if it is validated.
+    pub fn from_policies_unchecked(ps: &PolicySet) -> Self {
+        WellTypedPolicies {
+            policies: ps.as_ref().clone(),
+        }
     }
 }
 
@@ -137,7 +159,27 @@ impl<S: Solver> CedarSymCompiler<S> {
     ) -> Result<bool> {
         Ok(self
             .symcc
-            .check_never_errors(&policy.policy, symenv)
+            .check_unsat(
+                |symenv| verify_never_errors(policy.policy(), symenv),
+                symenv,
+            )
+            .await?)
+    }
+
+    /// Similar to [`Self::check_never_errors`], but returns a counterexample
+    /// where the policy does error.
+    pub async fn check_never_errors_with_counterexample(
+        &mut self,
+        policy: &WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        Ok(self
+            .symcc
+            .check_sat(
+                |symenv| verify_never_errors(policy.policy(), symenv),
+                symenv,
+                std::iter::once(policy.policy()),
+            )
             .await?)
     }
 
@@ -156,7 +198,31 @@ impl<S: Solver> CedarSymCompiler<S> {
     ) -> Result<bool> {
         Ok(self
             .symcc
-            .check_implies(&pset1.policies, &pset2.policies, symenv)
+            .check_unsat(
+                |symenv| verify_implies(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                symenv,
+            )
+            .await?)
+    }
+
+    /// Similar to [`Self::check_implies`], but returns a counterexample
+    /// that is allowed by `pset1` but not by `pset2`.
+    pub async fn check_implies_with_counterexample(
+        &mut self,
+        pset1: &WellTypedPolicies,
+        pset2: &WellTypedPolicies,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        Ok(self
+            .symcc
+            .check_sat(
+                |symenv| verify_implies(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                symenv,
+                pset1
+                    .policy_set()
+                    .policies()
+                    .chain(pset2.policy_set().policies()),
+            )
             .await?)
     }
 
@@ -171,7 +237,27 @@ impl<S: Solver> CedarSymCompiler<S> {
     ) -> Result<bool> {
         Ok(self
             .symcc
-            .check_always_allows(&pset.policies, symenv)
+            .check_unsat(
+                |symenv| verify_always_allows(&pset.policy_set(), symenv),
+                symenv,
+            )
+            .await?)
+    }
+
+    /// Similar to [`Self::check_always_allows`], but returns a counterexample
+    /// that is denied by `pset`.
+    pub async fn check_always_allows_with_counterexample(
+        &mut self,
+        pset: &WellTypedPolicies,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        Ok(self
+            .symcc
+            .check_sat(
+                |symenv| verify_always_allows(&pset.policy_set(), symenv),
+                symenv,
+                pset.policy_set().policies(),
+            )
             .await?)
     }
 
@@ -186,7 +272,27 @@ impl<S: Solver> CedarSymCompiler<S> {
     ) -> Result<bool> {
         Ok(self
             .symcc
-            .check_always_denies(&pset.policies, symenv)
+            .check_unsat(
+                |symenv| verify_always_denies(&pset.policy_set(), symenv),
+                symenv,
+            )
+            .await?)
+    }
+
+    /// Similar to [`Self::check_always_denies`], but returns a counterexample
+    /// that is allowed by `pset`.
+    pub async fn check_always_denies_with_counterexample(
+        &mut self,
+        pset: &WellTypedPolicies,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        Ok(self
+            .symcc
+            .check_sat(
+                |symenv| verify_always_denies(&pset.policy_set(), symenv),
+                symenv,
+                pset.policy_set().policies(),
+            )
             .await?)
     }
 
@@ -203,7 +309,31 @@ impl<S: Solver> CedarSymCompiler<S> {
     ) -> Result<bool> {
         Ok(self
             .symcc
-            .check_equivalent(&pset1.policies, &pset2.policies, symenv)
+            .check_unsat(
+                |symenv| verify_equivalent(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                symenv,
+            )
+            .await?)
+    }
+
+    /// Similar to [`Self::check_equivalent`], but returns a counterexample
+    /// on which the authorization decisions of `pset1` and `pset2` differ.
+    pub async fn check_equivalent_with_counterexample(
+        &mut self,
+        pset1: &WellTypedPolicies,
+        pset2: &WellTypedPolicies,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        Ok(self
+            .symcc
+            .check_sat(
+                |symenv| verify_equivalent(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                symenv,
+                pset1
+                    .policy_set()
+                    .policies()
+                    .chain(pset2.policy_set().policies()),
+            )
             .await?)
     }
 
@@ -222,24 +352,30 @@ impl<S: Solver> CedarSymCompiler<S> {
     ) -> Result<bool> {
         Ok(self
             .symcc
-            .check_disjoint(&pset1.policies, &pset2.policies, symenv)
+            .check_unsat(
+                |symenv| verify_disjoint(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                symenv,
+            )
             .await?)
     }
 
-    /// Returns [`Some`] iff there is any well-formed pair of
-    /// concrete [`Request`] and [`Entities`] in the symbolic
-    /// environment that is allowed by `pset`.
-    pub async fn check_sat(
+    /// Similar to [`Self::check_disjoint`], but returns a counterexample
+    /// that is allowed by both `pset1` and `pset2`.
+    pub async fn check_disjoint_with_counterexample(
         &mut self,
-        pset: &PolicySet,
+        pset1: &WellTypedPolicies,
+        pset2: &WellTypedPolicies,
         symenv: &SymEnv,
-    ) -> Result<Option<(Request, Entities)>> {
+    ) -> Result<Option<Env>> {
         Ok(self
             .symcc
             .check_sat(
-                |symenv| verify_sat(pset.as_ref(), symenv),
+                |symenv| verify_disjoint(&pset1.policy_set(), &pset2.policy_set(), symenv),
                 symenv,
-                pset.as_ref(),
+                pset1
+                    .policy_set()
+                    .policies()
+                    .chain(pset2.policy_set().policies()),
             )
             .await?)
     }
