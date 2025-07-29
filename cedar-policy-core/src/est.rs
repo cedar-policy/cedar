@@ -338,8 +338,8 @@ impl Clause {
 
     /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
     /// has_principal/has_resource tells us whether there is a principal/resource slot in the scope
-    /// so we know when a slot is allowed to appear in the condition 
-    /// an error is thrown otherwise if there is a slot not in the scope but in the condition 
+    /// so we know when a slot is allowed to appear in the condition
+    /// an error is thrown otherwise if there is a slot not in the scope but in the condition
     fn try_into_ast(
         self,
         has_principal: bool,
