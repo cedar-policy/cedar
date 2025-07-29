@@ -23,9 +23,12 @@ use std::io;
 
 use cedar_policy::{EntityId, EntityUid};
 use itertools::Itertools;
+use num_bigint::BigUint;
+
 use thiserror::Error;
 
-use crate::symcc::type_abbrevs::ExtType;
+use crate::symcc;
+use crate::symcc::type_abbrevs::{ExtType, Width};
 
 use super::bitvec::BitVec;
 use super::encoder::Encoder;
@@ -96,6 +99,9 @@ pub enum DecodeError {
 
     #[error("Unexpected unary function form: {0}")]
     UnexpectedUnaryFunctionForm(SExpr),
+
+    #[error("Unexpected symcc result error: {0}.")]
+    UnexpectedSymccResult(#[from] symcc::result::Error),
 }
 
 /// Types of tokens
@@ -214,13 +220,16 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                                 let num = u128::from_str_radix(&num, 2)?;
 
                                 // Do a sign-extension from i<width> to i<128>
-                                let num = if width != 0 && (1u128 << (width - 1)) & num != 0 {
+                                let num = if width != 0 && (1u128 << width - 1) & num != 0 {
                                     ((u128::MAX << width) | num) as i128
                                 } else {
                                     num as i128
                                 };
 
-                                tokens.push(Token::Atom(SExpr::BitVec(BitVec::of_int(width, num))));
+                                tokens.push(Token::Atom(SExpr::BitVec(
+                                    BitVec::of_int(width as Width, num.into())
+                                        .map_err(DecodeError::UnexpectedSymccResult)?,
+                                )));
                             }
 
                             // TODO: support #x...
@@ -416,7 +425,14 @@ impl TermType {
     pub fn default_literal(&self) -> Term {
         match self {
             TermType::Bool => Term::Prim(TermPrim::Bool(false)),
-            TermType::Bitvec { n } => Term::Prim(TermPrim::Bitvec(BitVec::of_int(*n, 0))),
+            TermType::Bitvec { n } =>
+            {
+                #[allow(
+                    clippy::unwrap_used,
+                    reason = "Assume the bit-vectors have the same width by construction for now."
+                )]
+                Term::Prim(TermPrim::Bitvec(BitVec::of_nat(*n, BigUint::ZERO).unwrap()))
+            }
             TermType::String => Term::Prim(TermPrim::String("".to_string())),
 
             TermType::Entity { ety } =>
@@ -518,7 +534,7 @@ impl SExpr {
                     [SExpr::Symbol(app), SExpr::Symbol(bit_vec), SExpr::Numeral(n)]
                         if app == "_" && bit_vec == "BitVec" =>
                     {
-                        Ok(TermType::Bitvec { n: *n as usize })
+                        Ok(TermType::Bitvec { n: *n as Width })
                     } // TODO: overflow?
 
                     // (Option x)

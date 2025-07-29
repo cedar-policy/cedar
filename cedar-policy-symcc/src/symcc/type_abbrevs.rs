@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+use num_bigint::{BigInt, BigUint};
 use ref_cast::RefCast;
 use smol_str::SmolStr;
 use std::{cmp::Ordering, ops::Deref};
@@ -21,10 +22,11 @@ pub type EntityType = cedar_policy::EntityTypeName;
 pub type EntityID = cedar_policy::EntityId;
 pub type EntityUID = cedar_policy::EntityUid;
 pub type Attr = SmolStr;
-// pub type ExtType = SmolStr;
-pub type Nat = usize;
-pub type Prim = cedar_policy_core::ast::Literal;
 
+pub type Nat = BigUint;
+pub type Int = BigInt;
+pub type Prim = cedar_policy_core::ast::Literal;
+pub type Width = u32;
 /// Convert `ast::EntityType` into `EntityType` in O(1)
 pub fn core_entity_type_into_entity_type(
     entity_type: &cedar_policy_core::ast::EntityType,
@@ -45,23 +47,28 @@ pub enum ExtType {
     Duration,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct Fin<const UPPER_LIMIT: u128> {
-    pub v: u128,
+pub fn nat(v: u32) -> Nat {
+    BigUint::from(v)
 }
 
-impl<const UPPER_LIMIT: u128> Fin<UPPER_LIMIT> {
-    pub const fn new(v: u128) -> Self {
-        assert!(v < UPPER_LIMIT);
-        Self { v }
-    }
+/// Natural numbers less than some upper bound (corresponds to the Lean Fin type)
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct Fin {
+    upper_bound: Nat,
+    v: Nat,
+}
 
-    pub const fn try_new(v: u128) -> Option<Self> {
-        if v < UPPER_LIMIT {
-            Some(Self { v })
+impl Fin {
+    pub fn try_new(upper_bound: Nat, v: Nat) -> Option<Self> {
+        if v < upper_bound {
+            Some(Self { upper_bound, v })
         } else {
             None
         }
+    }
+
+    pub fn to_nat(&self) -> Nat {
+        self.v.clone()
     }
 }
 
