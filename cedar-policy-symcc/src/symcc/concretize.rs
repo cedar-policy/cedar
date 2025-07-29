@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request};
 use cedar_policy_core::ast::{
-    Context, Entity, EntityAttrEvaluationError, Literal, Set, Value, ValueKind,
+    Context, Entity, EntityAttrEvaluationError, Expr, Literal, Set, Value, ValueKind
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
 use cedar_policy_core::extensions::Extensions;
@@ -32,6 +32,7 @@ use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 
+use crate::symcc::enforcer::footprint;
 use crate::symcc::ext::Ext;
 use crate::symcc::factory;
 use crate::symcc::type_abbrevs::ExtType;
@@ -420,10 +421,14 @@ impl SymEntities {
 
 impl SymEnv {
     /// Concretizes a literal SymEnv to a Context
-    pub fn concretize(&self) -> Result<(Request, Entities), ConcretizeError> {
+    pub fn concretize<'a>(&self, exprs: impl Iterator<Item = &'a Expr>) -> Result<(Request, Entities), ConcretizeError> {
         let mut uids = BTreeSet::new();
         self.request.get_all_entity_uids(&mut uids);
         self.entities.get_all_entity_uids(&mut uids);
+
+        for term in exprs.flat_map(|e| footprint(e, self).collect::<Vec<_>>()) {
+            term.get_all_entity_uids(&mut uids);
+        }
 
         Ok((self.request.concretize()?, self.entities.concretize(&uids)?))
     }

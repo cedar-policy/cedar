@@ -190,12 +190,10 @@ async fn assert_does_not_always_deny<S: Solver>(
         Ok(false) => (),
         Err(e) => panic!("{e}"),
     }
-    println!("{}", typed_pset);
     match compiler.check_always_denies_with_counterexample(&typed_pset, &envs.symenv).await.unwrap() {
         Some((request, entities)) => {
             // Check that the counterexample is correct
             let resp1 = Authorizer::new().is_authorized(&request, pset, &entities);
-            eprintln!("{request} {}: {resp1:?}", entities.as_ref().to_json_value().unwrap());
             assert!(resp1.decision() == Decision::Allow,
                 "check_always_denies_with_counterexample returned an invalid counterexample");
         }
@@ -1157,8 +1155,8 @@ async fn historical_regression_tests() {
     assert_does_not_always_deny(&mut compiler, &pset1, &envs).await;
     assert_does_not_always_allow(&mut compiler, &pset2, &envs).await;
     assert_does_not_always_deny(&mut compiler, &pset2, &envs).await;
-    // assert_does_not_always_allow(&mut compiler, &pset3, &envs).await;
-    // assert_does_not_always_deny(&mut compiler, &pset3, &envs).await;
+    assert_does_not_always_allow(&mut compiler, &pset3, &envs).await;
+    assert_does_not_always_deny(&mut compiler, &pset3, &envs).await;
 }
 
 /// Regression test for a bug discovered 2025-03-24.
