@@ -364,17 +364,17 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
             let Ok(old_uri) = file.old_uri.parse::<Uri>() else {
                 continue;
             };
-            let Some(doc) = self.documents.get(&old_uri) else {
-                continue;
-            };
-            let Some(schema) = doc.clone().into_schema() else {
-                continue;
-            };
-            drop(doc);
             let Ok(new_uri) = file.new_uri.parse::<Uri>() else {
                 continue;
             };
-            let _ = schema.update_linked_documents(Some(&new_uri));
+            let Some((_, mut doc)) = self.documents.remove(&old_uri) else {
+                continue;
+            };
+            if let Some(schema) = doc.clone().into_schema() {
+                let _ = schema.update_linked_documents(Some(&new_uri));
+            }
+            doc.set_uri(new_uri.clone());
+            self.documents.insert(new_uri.clone(), doc.clone());
         }
 
         let _ = self.client.code_lens_refresh().await;
