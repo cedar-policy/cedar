@@ -84,6 +84,17 @@ pub fn parse(s: &str) -> Option<Decimal> {
     }
 }
 
+impl std::fmt::Display for Decimal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}.{}",
+            self.0 / i64::pow(10, DECIMAL_DIGITS),
+            (self.0 % i64::pow(10, DECIMAL_DIGITS)).abs()
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::symcc::extension_types::decimal::{parse, Decimal};
