@@ -19,7 +19,8 @@ use crate::entities::{conformance::typecheck_restricted_expr_against_schematype,
 use crate::extensions::Extensions;
 use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use crate::validator::{
-    err::SchemaError, json_schema::Type as JSONSchemaType, types::Type as ValidatorType, RawName,
+    err::SchemaError, json_schema::Type as JSONSchemaType,
+    json_schema_type_to_validator_type_without_schema, types::Type as ValidatorType, RawName,
     ValidatorSchema,
 };
 use annotation::{Annotation, Annotations};
@@ -382,9 +383,10 @@ impl Template {
     }
 
     /// Validates that the values provided for the generalized slots are of the types annotated
-    pub fn link_time_type_checking(
+    pub fn link_time_type_checking_with_schema(
         template: &Template,
         schema: &ValidatorSchema,
+        values: &HashMap<SlotId, EntityUID>,
         generalized_values: &HashMap<SlotId, RestrictedExpr>,
     ) -> Result<(), LinkingError> {
         let validator_generalized_slots_annotation = GeneralizedSlotsAnnotation::from_iter(
@@ -393,6 +395,31 @@ impl Template {
                 .map(|(k, v)| (k.clone(), v.clone())),
         )
         .into_validator_generalized_slots_annotation(schema)?;
+
+        for (slot, entity_uid) in values {
+            let restricted_expr = &RestrictedExpr::val(entity_uid.clone());
+
+            if let Some(validator_type) = validator_generalized_slots_annotation.get(slot) {
+                let borrowed_restricted_expr = restricted_expr.as_borrowed();
+                #[allow(clippy::expect_used)]
+                let schema_ty = &SchemaType::try_from(validator_type.clone()).expect(
+                    "This should never happen as expected_ty is a statically annotated type",
+                );
+                let extensions = Extensions::all_available();
+                typecheck_restricted_expr_against_schematype(
+                    borrowed_restricted_expr,
+                    schema_ty,
+                    extensions,
+                )
+                .map_err(|_| {
+                    LinkingError::ValueProvidedForSlotIsNotOfTypeSpecified {
+                        slot: slot.clone(),
+                        value: restricted_expr.clone(),
+                        ty: validator_type.clone(),
+                    }
+                })?
+            }
+        }
 
         for (slot, restricted_expr) in generalized_values {
             let validator_type = validator_generalized_slots_annotation.get(slot).ok_or(
@@ -420,6 +447,83 @@ impl Template {
         Ok(())
     }
 
+    /// Validates that the values provided for the generalized slots are of the types annotated
+    pub fn link_time_type_checking_without_schema(
+        template: &Template,
+        values: &HashMap<SlotId, EntityUID>,
+        generalized_values: &HashMap<SlotId, RestrictedExpr>,
+    ) -> Result<(), LinkingError> {
+        let generalized_slots_annotation = GeneralizedSlotsAnnotation::from_iter(
+            template
+                .generalized_slots_annotation()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
+
+        for (slot, entity_uid) in values {
+            let restricted_expr = &RestrictedExpr::val(entity_uid.clone());
+
+            if let Some(raw_type) = generalized_slots_annotation.get(slot) {
+                let extensions = Extensions::all_available();
+
+                let validator_type = json_schema_type_to_validator_type_without_schema(
+                    raw_type.clone(),
+                    extensions,
+                )?;
+
+                let borrowed_restricted_expr = restricted_expr.as_borrowed();
+                #[allow(clippy::expect_used)]
+                let schema_ty = &SchemaType::try_from(validator_type.clone()).expect(
+                    "This should never happen as expected_ty is a statically annotated type",
+                );
+
+                typecheck_restricted_expr_against_schematype(
+                    borrowed_restricted_expr,
+                    schema_ty,
+                    extensions,
+                )
+                .map_err(|_| {
+                    LinkingError::ValueProvidedForSlotIsNotOfTypeSpecified {
+                        slot: slot.clone(),
+                        value: restricted_expr.clone(),
+                        ty: validator_type.clone(),
+                    }
+                })?
+            }
+        }
+
+        for (slot, restricted_expr) in generalized_values {
+            let raw_type =
+                generalized_slots_annotation
+                    .get(slot)
+                    .ok_or(LinkingError::ArityError {
+                        unbound_values: vec![slot.clone()],
+                        extra_values: vec![],
+                    })?;
+            let extensions = Extensions::all_available();
+
+            let validator_type =
+                json_schema_type_to_validator_type_without_schema(raw_type.clone(), extensions)?;
+
+            let borrowed_restricted_expr = restricted_expr.as_borrowed();
+            #[allow(clippy::expect_used)]
+            let schema_ty = &SchemaType::try_from(validator_type.clone())
+                .expect("This should never happen as expected_ty is a statically annotated type");
+
+            typecheck_restricted_expr_against_schematype(
+                borrowed_restricted_expr,
+                schema_ty,
+                extensions,
+            )
+            .map_err(|_| LinkingError::ValueProvidedForSlotIsNotOfTypeSpecified {
+                slot: slot.clone(),
+                value: restricted_expr.clone(),
+                ty: validator_type.clone(),
+            })?
+        }
+
+        Ok(())
+    }
+
     /// Attempt to create a template-linked policy from this template.
     /// This will fail if values for all open slots are not given.
     /// `new_instance_id` is the `PolicyId` for the created template-linked policy.
@@ -434,10 +538,18 @@ impl Template {
         Template::check_binding(&template, &values, &generalized_values)
             .and_then(|_| {
                 if let Some(schema) = schema {
-                    Template::link_time_type_checking(&template, schema, &generalized_values)
+                    Template::link_time_type_checking_with_schema(
+                        &template,
+                        schema,
+                        &values,
+                        &generalized_values,
+                    )
                 } else {
-                    // Chore: When a user does not use a schema
-                    Ok(())
+                    Template::link_time_type_checking_without_schema(
+                        &template,
+                        &values,
+                        &generalized_values,
+                    )
                 }
             })
             .map(|_| Policy::new(template, Some(new_id), values, generalized_values))

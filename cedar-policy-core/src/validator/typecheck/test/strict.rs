@@ -54,7 +54,7 @@ fn assert_typechecks_strict(
         mode: ValidationMode::Strict,
         policy_id: &expr_id_placeholder(),
         request_env,
-        generalized_slots_to_validator_type_position: &ValidatorGeneralizedSlotsAnnotation::new(),
+        validator_generalized_slots_annotation: &ValidatorGeneralizedSlotsAnnotation::new(),
     };
     let mut errs = Vec::new();
     let answer =
@@ -82,7 +82,7 @@ fn assert_strict_type_error(
         mode: ValidationMode::Strict,
         policy_id: &expr_id_placeholder(),
         request_env,
-        generalized_slots_to_validator_type_position: &ValidatorGeneralizedSlotsAnnotation::new(),
+        validator_generalized_slots_annotation: &ValidatorGeneralizedSlotsAnnotation::new(),
     };
     let mut errs = Vec::new();
     let answer =
@@ -176,8 +176,7 @@ fn strict_typecheck_catches_regular_type_error() {
             mode: ValidationMode::Strict,
             policy_id: &expr_id_placeholder(),
             request_env: &q,
-            generalized_slots_to_validator_type_position: &ValidatorGeneralizedSlotsAnnotation::new(
-            ),
+            validator_generalized_slots_annotation: &ValidatorGeneralizedSlotsAnnotation::new(),
         };
         let mut errs = Vec::new();
         typechecker.expect_type(

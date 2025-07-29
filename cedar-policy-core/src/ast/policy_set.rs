@@ -965,6 +965,74 @@ mod test {
         assert!(r.is_ok())
     }
 
+    #[test]
+    fn generalized_link_without_schema() {
+        let mut pset = PolicySet::new();
+        let template = parser::parse_policy_or_template(
+            Some(PolicyID::from_string("t")),
+            "template(?value: __cedar::Long) => 
+            permit(principal, 
+            action, 
+            resource) when { ?value == 8 };",
+        )
+        .expect("Failed to parse");
+        pset.add_template(template).expect("Add failed");
+
+        let env: HashMap<SlotId, EntityUID> = HashMap::from([]);
+
+        let generalized_slot = SlotId::generalized_slot("value".parse().unwrap());
+        let generalized_value: RestrictedExpr = r#"Test::"test""#.parse().expect("Failed to parse");
+        let generalized_env: HashMap<SlotId, RestrictedExpr> =
+            HashMap::from([(generalized_slot.clone(), generalized_value.clone())]);
+
+        let r = pset.link(
+            PolicyID::from_string("t"),
+            PolicyID::from_string("id"),
+            env,
+            generalized_env,
+            None,
+        );
+
+        match r {
+            Ok(_) => panic!("Should have failed due to value provided not being of specified type"),
+            Err(LinkingError::ValueProvidedForSlotIsNotOfTypeSpecified { slot, value, ty }) => {
+                assert_eq!(slot, generalized_slot.clone());
+                assert_eq!(value, generalized_value.clone());
+                assert_eq!(ty, Type::primitive_long())
+            }
+            Err(e) => panic!("Incorrect error: {e}"),
+        };
+
+        let mut pset = PolicySet::new();
+        let template = parser::parse_policy_or_template(
+            Some(PolicyID::from_string("t")),
+            "template(?generalized: Person) =>
+                permit(principal, 
+                action, 
+                resource) when { principal == ?generalized };",
+        )
+        .expect("Failed to parse");
+        pset.add_template(template).expect("Add failed");
+
+        let env: HashMap<SlotId, EntityUID> = HashMap::from([]);
+
+        let generalized_slot = SlotId::generalized_slot("generalized".parse().unwrap());
+        let generalized_value: RestrictedExpr =
+            RestrictedExpr::val(EntityUID::with_eid_and_type("Person", "alice").unwrap());
+        let generalized_env: HashMap<SlotId, RestrictedExpr> =
+            HashMap::from([(generalized_slot.clone(), generalized_value.clone())]);
+
+        let r = pset.link(
+            PolicyID::from_string("t"),
+            PolicyID::from_string("id"),
+            env,
+            generalized_env,
+            None,
+        );
+
+        assert!(r.is_ok())
+    }
+
     /// This test focuses on `PolicySet::add()`, while other tests mostly use
     /// `PolicySet::add_static()` and `PolicySet::link()`.
     #[test]

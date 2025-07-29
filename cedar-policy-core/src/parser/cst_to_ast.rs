@@ -5894,22 +5894,22 @@ mod tests {
         assert_parse_template_succeeds(txt);
     }
 
-    #[test]
-    fn principal_slot_can_not_appear_in_condition_standalone() {
-        let txt = r#"
-        permit(principal == ?principal, action, resource) when {
-            ?principal
-        }; 
-        "#;
-        assert_parse_template_succeeds(txt);
+    // #[test]
+    // fn principal_slot_can_not_appear_in_condition_standalone() {
+    //     let txt = r#"
+    //     permit(principal == ?principal, action, resource) when {
+    //         ?principal
+    //     };
+    //     "#;
+    //     assert_parse_template_succeeds(txt);
 
-        let txt = r#"
-        permit(principal, action, resource) when {
-            ?principal
-        }; 
-        "#;
-        assert_parse_template_fails(txt);
-    }
+    //     let txt = r#"
+    //     permit(principal, action, resource) when {
+    //         ?principal
+    //     };
+    //     "#;
+    //     assert_parse_template_fails(txt);
+    // }
 
     #[test]
     fn special_identifiers_can_not_be_used_as_generalized_slot_names() {

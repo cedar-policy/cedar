@@ -61,10 +61,7 @@ impl GeneralizedSlotsAnnotation {
             .map(|(k, ty)| -> Result<_, SchemaError> {
                 Ok((
                     k,
-                    schema.json_schema_type_to_validator_type(
-                        ty.clone(),
-                        Extensions::all_available(),
-                    )?,
+                    schema.json_schema_type_to_validator_type(ty, Extensions::all_available())?,
                 ))
             })
             .collect();

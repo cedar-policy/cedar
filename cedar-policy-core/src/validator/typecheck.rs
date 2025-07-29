@@ -147,12 +147,12 @@ impl<'a> Typechecker<'a> {
     ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
         self.apply_typecheck_fn_by_request_env(
             t,
-            |request_env, policy_id, expr, generalized_slots_to_validator_type_position| {
+            |request_env, policy_id, expr, validator_generalized_slots_annotation| {
                 self.single_env_typechecking(
                     request_env,
                     policy_id,
                     expr,
-                    generalized_slots_to_validator_type_position,
+                    validator_generalized_slots_annotation,
                 )
             },
         )
@@ -163,7 +163,7 @@ impl<'a> Typechecker<'a> {
         request_env: &RequestEnv<'_>,
         policy_id: &PolicyID,
         expr: &Expr,
-        generalized_slots_to_validator_type_position: &ValidatorGeneralizedSlotsAnnotation,
+        validator_generalized_slots_annotation: &ValidatorGeneralizedSlotsAnnotation,
     ) -> PolicyCheck {
         let mut type_errors = Vec::new();
         let single_env_typechecker = SingleEnvTypechecker {
@@ -172,7 +172,7 @@ impl<'a> Typechecker<'a> {
             mode: self.mode,
             policy_id,
             request_env,
-            generalized_slots_to_validator_type_position,
+            validator_generalized_slots_annotation,
         };
         let empty_prior_capability = CapabilitySet::new();
         let ans = single_env_typechecker.expect_type(
@@ -201,7 +201,7 @@ impl<'a> Typechecker<'a> {
         t: &'b Template,
         request_env: &RequestEnv<'b>,
     ) -> PolicyCheck {
-        let generalized_slots_to_validator_type_position = GeneralizedSlotsAnnotation::from_iter(
+        let validator_generalized_slots_annotation = GeneralizedSlotsAnnotation::from_iter(
             t.generalized_slots_annotation()
                 .map(|(k, v)| (k.clone(), v.clone())),
         )
@@ -212,7 +212,7 @@ impl<'a> Typechecker<'a> {
             request_env,
             t.id(),
             &t.condition(),
-            &generalized_slots_to_validator_type_position,
+            &validator_generalized_slots_annotation,
         )
     }
 
@@ -231,7 +231,7 @@ impl<'a> Typechecker<'a> {
         // compute `.condition()` just once, and cache it here
         let cond = t.condition();
 
-        let generalized_slots_to_validator_type_position = GeneralizedSlotsAnnotation::from_iter(
+        let validator_generalized_slots_annotation = GeneralizedSlotsAnnotation::from_iter(
             t.generalized_slots_annotation()
                 .map(|(k, v)| (k.clone(), v.clone())),
         )
@@ -248,7 +248,7 @@ impl<'a> Typechecker<'a> {
                         &linked_e,
                         t.id(),
                         &cond,
-                        &generalized_slots_to_validator_type_position,
+                        &validator_generalized_slots_annotation,
                     );
                     (linked_e, check)
                 })
@@ -356,7 +356,7 @@ struct SingleEnvTypechecker<'a> {
     policy_id: &'a PolicyID,
     /// The single env which we're performing typechecking for
     request_env: &'a RequestEnv<'a>,
-    generalized_slots_to_validator_type_position: &'a ValidatorGeneralizedSlotsAnnotation,
+    validator_generalized_slots_annotation: &'a ValidatorGeneralizedSlotsAnnotation,
 }
 
 impl<'a> SingleEnvTypechecker<'a> {
@@ -422,7 +422,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             ExprKind::Slot(slotid) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(
                     if let Some(validator_ty) = self
-                        .generalized_slots_to_validator_type_position
+                        .validator_generalized_slots_annotation
                         .get(slotid)
                     {
                         validator_ty.clone()

@@ -1152,6 +1152,54 @@ impl ValidatorSchema {
     }
 }
 
+/// Construct a [`Type`] from [`json_schema::Type<RawName>`] without a schema
+pub fn json_schema_type_to_validator_type_without_schema(
+    ty: json_schema::Type<RawName>,
+    extensions: &Extensions<'_>,
+) -> Result<Type> {
+    let fragments = std::iter::once(cedar_fragment(extensions)).collect::<Vec<_>>();
+
+    let mut all_defs = AllDefs::new(|| fragments.iter());
+
+    let mut common_types = HashMap::new();
+
+    let primitive_types: Vec<_> = fragments
+        .into_iter()
+        .map(|frag| frag.fully_qualify_type_references(&all_defs))
+        .partition_nonempty()?;
+
+    for ns_def in primitive_types.into_iter().flat_map(|f| f.0.into_iter()) {
+        for (name, ty) in ns_def.common_types.defs {
+            match common_types.entry(name) {
+                Entry::Vacant(v) => v.insert(ty),
+                Entry::Occupied(o) => {
+                    return Err(DuplicateCommonTypeError {
+                        ty: o.key().clone(),
+                    }
+                    .into());
+                }
+            };
+        }
+    }
+
+    for entity_type in ty.common_type_references() {
+        if !all_defs.is_defined_as_common(&entity_type.clone().qualify_with(None)) {
+            all_defs.mark_as_defined_as_entity_type(entity_type.clone().qualify_with(None));
+        }
+    }
+
+    let resolver = CommonTypeResolver::new(&common_types);
+    let common_types: HashMap<&InternalName, ValidatorType> = resolver.resolve(extensions)?;
+
+    let conditional_ty = ty.conditionally_qualify_type_references(None);
+    let internal_ty = conditional_ty.fully_qualify_type_references(&all_defs)?;
+    let unresolved = try_jsonschema_type_into_validator_type(internal_ty, extensions, None)?;
+
+    unresolved
+        .resolve_common_type_refs(&common_types)
+        .map(|t| t.ty)
+}
+
 /// Used to write a schema implicitly overriding the default handling of action
 /// groups.
 #[derive(Debug, Clone, Deserialize)]

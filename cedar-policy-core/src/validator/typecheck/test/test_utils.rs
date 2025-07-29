@@ -117,8 +117,7 @@ impl Typechecker<'_> {
             mode: self.mode,
             policy_id,
             request_env: &request_env,
-            generalized_slots_to_validator_type_position: &ValidatorGeneralizedSlotsAnnotation::new(
-            ),
+            validator_generalized_slots_annotation: &ValidatorGeneralizedSlotsAnnotation::new(),
         };
         let mut type_errors = Vec::new();
         let ans = typechecker.typecheck(&CapabilitySet::new(), e, &mut type_errors);
