@@ -59,8 +59,7 @@ use thiserror::Error;
 use verifier::Asserts;
 
 use encoder::Encoder;
-pub use verifier::verify_sat;
-use verifier::{
+pub use verifier::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
     verify_never_errors,
 };
@@ -118,7 +117,7 @@ impl<S: Solver> SymCompiler<S> {
     /// and returns `true` if the result is unsatisfiable. The function `vc` is
     /// expected to produce a list of terms type `Bool` that are well-formed
     /// with respect to the `symenv`.
-    async fn check_unsat(
+    pub async fn check_unsat(
         &mut self,
         vc: impl FnOnce(&SymEnv) -> std::result::Result<Asserts, result::Error>,
         symenv: &SymEnv,
@@ -157,12 +156,13 @@ impl<S: Solver> SymCompiler<S> {
         }
     }
 
-    /// Checks satisfiability, and then returns the model (as a pair of [`Request`] and [`Entities`])
+    /// Checks satisfiability, and then returns the model (as a pair of [`Request`] and [`Entities`]);
+    /// For soundness, `policies` must include all policies involved in the verification condition.
     pub async fn check_sat(
         &mut self,
         vc: impl FnOnce(&SymEnv) -> std::result::Result<Asserts, result::Error>,
         symenv: &SymEnv,
-        policy_set: &PolicySet,
+        policies: impl Iterator<Item = &Policy>,
     ) -> Result<Option<(Request, Entities)>> {
         let asserts = vc(symenv)?;
         if asserts.iter().any(|assert| *assert == false.into()) {
@@ -205,8 +205,7 @@ impl<S: Solver> SymCompiler<S> {
                     let model = parse_sexpr(model_str.as_bytes())?;
                     let interp = model.decode_model(&id_maps)?;
                     let interp = interp.repair_as_counterexample(
-                        policy_set
-                            .policies()
+                        policies
                             .map(|p| p.condition())
                             .collect::<Vec<_>>()
                             .iter(),
@@ -218,80 +217,6 @@ impl<S: Solver> SymCompiler<S> {
                 Decision::Unknown => Err(Error::SolverUnknown),
             }
         }
-    }
-
-    /// Returns true iff `policy` does not error on any well-formed input in the `symenv`.
-    pub async fn check_never_errors(&mut self, policy: &Policy, symenv: &SymEnv) -> Result<bool> {
-        self.check_unsat(|symenv| verify_never_errors(policy, symenv), symenv)
-            .await
-    }
-
-    /// Returns true iff the authorization decision of `policies1` implies that
-    /// of `policies2` for every well-formed input in the `symenv`. That is,
-    /// every input allowed by `policies1` is allowed by `policies2`;
-    /// `policies2` is either more permissive than, or equivalent to, `policies1`.
-    pub async fn check_implies(
-        &mut self,
-        policies1: &PolicySet,
-        policies2: &PolicySet,
-        symenv: &SymEnv,
-    ) -> Result<bool> {
-        self.check_unsat(
-            |symenv| verify_implies(policies1, policies2, symenv),
-            symenv,
-        )
-        .await
-    }
-
-    /// Returns true iff `policies` allows all well-formed inputs in the `symenv`.
-    pub async fn check_always_allows(
-        &mut self,
-        policies: &PolicySet,
-        symenv: &SymEnv,
-    ) -> Result<bool> {
-        self.check_unsat(|symenv| verify_always_allows(policies, symenv), symenv)
-            .await
-    }
-
-    /// Returns true iff `policies` denies all well-formed inputs in the `symenv`.
-    pub async fn check_always_denies(
-        &mut self,
-        policies: &PolicySet,
-        symenv: &SymEnv,
-    ) -> Result<bool> {
-        self.check_unsat(|symenv| verify_always_denies(policies, symenv), symenv)
-            .await
-    }
-
-    /// Returns true iff `policies1` and `policies2` produce the same
-    /// authorization decision on all well-formed inputs in the `symenv`.
-    pub async fn check_equivalent(
-        &mut self,
-        policies1: &PolicySet,
-        policies2: &PolicySet,
-        symenv: &SymEnv,
-    ) -> Result<bool> {
-        self.check_unsat(
-            |symenv| verify_equivalent(policies1, policies2, symenv),
-            symenv,
-        )
-        .await
-    }
-
-    /// Returns true iff there is no well-formed input in the `symenv` that is allowed by both
-    /// `policies1` and `policies2`. If this returns `false`, then there is at least one well-formed
-    /// input that is allowed by both `policies1` and `policies2`.
-    pub async fn check_disjoint(
-        &mut self,
-        policies1: &PolicySet,
-        policies2: &PolicySet,
-        symenv: &SymEnv,
-    ) -> Result<bool> {
-        self.check_unsat(
-            |symenv| verify_disjoint(policies1, policies2, symenv),
-            symenv,
-        )
-        .await
     }
 }
 

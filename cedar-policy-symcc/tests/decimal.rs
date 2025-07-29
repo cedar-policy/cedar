@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 use cedar_policy::{Schema, Validator};
-use cedar_policy_symcc::{solver::LocalSolver, SymCompiler, SymEnv};
+use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler, SymEnv, WellTypedPolicies};
 mod utils;
 
 fn sample_schema() -> Schema {
@@ -36,9 +36,13 @@ fn sample_schema() -> Schema {
     )
 }
 
+fn request_env_for_sample_schema() -> cedar_policy::RequestEnv {
+    utils::req_env_from_strs("User", "Action::\"View\"", "Thing")
+}
+
 fn symenv_for_sample_schema() -> SymEnv {
     let schema = sample_schema();
-    let req_env = utils::req_env_from_strs("User", "Action::\"View\"", "Thing");
+    let req_env = request_env_for_sample_schema();
     SymEnv::new(&schema, &req_env).unwrap()
 }
 
@@ -54,12 +58,15 @@ async fn x_lte_max() {
         &validator,
     );
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
+
+    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
 
     assert!(
         compiler
-            .check_equivalent(pset1.as_ref(), pset2.as_ref(), &symenv)
+            .check_equivalent(&pset1, &pset2, &symenv)
             .await
             .unwrap(),
         "True: x lessThanOrEqual 922337203685477.5807"
@@ -78,12 +85,15 @@ async fn max_gte_x() {
         &validator,
     );
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
+
+    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
 
     assert!(
         compiler
-            .check_equivalent(pset1.as_ref(), pset2.as_ref(), &symenv)
+            .check_equivalent(&pset1, &pset2, &symenv)
             .await
             .unwrap(),
         "True: 922337203685477.5807 greaterThanOrEqual x"
@@ -102,12 +112,15 @@ async fn x_gte_min() {
         &validator,
     );
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
+
+    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
 
     assert!(
         compiler
-            .check_equivalent(pset1.as_ref(), pset2.as_ref(), &symenv)
+            .check_equivalent(&pset1, &pset2, &symenv)
             .await
             .unwrap(),
         "True: x greaterThanOrEqual -922337203685477.5808"
@@ -126,12 +139,15 @@ async fn min_lte_x() {
         &validator,
     );
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
+
+    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
 
     assert!(
         compiler
-            .check_equivalent(pset1.as_ref(), pset2.as_ref(), &symenv)
+            .check_equivalent(&pset1, &pset2, &symenv)
             .await
             .unwrap(),
         "True: -922337203685477.5808 lessThanOrEqual x"
@@ -158,12 +174,15 @@ async fn x_ne_max_impl_x_lt_max() {
         &validator,
     );
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
+
+    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
 
     assert!(
         compiler
-            .check_implies(pset1.as_ref(), pset2.as_ref(), &symenv)
+            .check_implies(&pset1, &pset2, &symenv)
             .await
             .unwrap(),
         "Implies: x != 922337203685477.5807 ==> x lessThan 922337203685477.5807"
@@ -190,12 +209,15 @@ async fn x_ne_min_impl_x_gt_min() {
         &validator,
     );
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
+
+    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
 
     assert!(
         compiler
-            .check_implies(pset1.as_ref(), pset2.as_ref(), &symenv)
+            .check_implies(&pset1, &pset2, &symenv)
             .await
             .unwrap(),
         "Implies: x != -922337203685477.5808 ==> x greaterThan -922337203685477.5808"
@@ -222,12 +244,15 @@ async fn x_lt_y_impl_y_gt_x() {
         &validator,
     );
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
+
+    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
 
     assert!(
         compiler
-            .check_implies(pset1.as_ref(), pset2.as_ref(), &symenv)
+            .check_implies(&pset1, &pset2, &symenv)
             .await
             .unwrap(),
         "Implies: x lessThan y ==> y greaterThan x"
@@ -254,12 +279,15 @@ async fn x_lte_y_impl_y_gte_x() {
         &validator,
     );
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
+
+    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
 
     assert!(
         compiler
-            .check_implies(pset1.as_ref(), pset2.as_ref(), &symenv)
+            .check_implies(&pset1, &pset2, &symenv)
             .await
             .unwrap(),
         "Implies: x lessThanOrEqual y ==> y greaterThanOrEqual x"
@@ -287,12 +315,15 @@ async fn x_lte_y_and_y_lte_x_impl_x_eq_y() {
         &validator,
     );
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
+
+    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
 
     assert!(
         compiler
-            .check_implies(pset1.as_ref(), pset2.as_ref(), &symenv)
+            .check_implies(&pset1, &pset2, &symenv)
             .await
             .unwrap(),
         "Implies: x lessThanOrEqual y && y lessThanOrEqual x ==> x = y"
@@ -320,12 +351,15 @@ async fn x_lt_y_and_y_lt_z_impl_z_gt_x() {
         &validator,
     );
 
-    let mut compiler = SymCompiler::new(LocalSolver::cvc5().unwrap());
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let symenv = symenv_for_sample_schema();
+
+    let pset1 = WellTypedPolicies::from_policies(&pset1, &request_env_for_sample_schema(), &sample_schema()).unwrap();
+    let pset2 = WellTypedPolicies::from_policies(&pset2, &request_env_for_sample_schema(), &sample_schema()).unwrap();
 
     assert!(
         compiler
-            .check_implies(pset1.as_ref(), pset2.as_ref(), &symenv)
+            .check_implies(&pset1, &pset2, &symenv)
             .await
             .unwrap(),
         "Implies: x lessThan y && x lessThan z ==> z greaterThan x"
