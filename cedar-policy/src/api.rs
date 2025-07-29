@@ -428,7 +428,7 @@ impl Entities {
 
     /// Test if two entity hierarchies are structurally equal. The hierarchies
     /// must contain the same set of entity ids, and the entities with each id
-    /// must be structurally equal (decided [`Entity::deep_eq`]). Ancestor
+    /// must be structurally equal (decided by [`Entity::deep_eq`]). Ancestor
     /// equality between entities is always decided by comparing the transitive
     /// closure of ancestor and not direct parents.
     pub fn deep_eq(&self, other: &Self) -> bool {
