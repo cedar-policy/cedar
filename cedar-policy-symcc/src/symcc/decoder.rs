@@ -717,10 +717,15 @@ impl SExpr {
                         match &args[0] {
                             // Decimal
                             SExpr::Symbol(s) if s == "Decimal" && args.len() == 2 => {
-                                if let SExpr::BitVec(BitVec { width: 64, v }) = &args[1] {
-                                    Ok(Term::Prim(TermPrim::Ext(Ext::Decimal {
-                                        d: Decimal(*v as i64),
-                                    })))
+                                if let SExpr::BitVec(bv) = &args[1] {
+                                    if bv.width() == 64 {
+                                        Ok(Term::Prim(TermPrim::Ext(Ext::Decimal {
+                                            d: Decimal(bv.to_int().try_into()
+                                                .or(Err(DecodeError::UnknownLiteral(self.clone())))?),
+                                        })))
+                                    } else {
+                                        Err(DecodeError::UnknownLiteral(self.clone()))
+                                    }
                                 } else {
                                     Err(DecodeError::UnknownLiteral(self.clone()))
                                 }
