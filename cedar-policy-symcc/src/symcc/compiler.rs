@@ -1178,32 +1178,30 @@ mod datetime_tests {
             31536000000,
         );
         // Tests with toDate will not work until BitVec::srem is implemented
-        //        test_valid_datetime_simpl_expr(
-        //            r#"datetime("1970-01-01T09:30:00Z").toDate()"#,
-        //            0,
-        //        );
-        //        test_valid_datetime_simpl_expr(
-        //            r#"datetime("1970-01-02T10:30:00.001Z").toDate()"#,
-        //            86400000,
-        //        );
-        //        test_valid_datetime_simpl_expr(
-        //            r#"datetime("1969-12-31T10:30:00.001Z").toDate()"#,
-        //            -86400000,
-        //        );
-        //        test_valid_datetime_simpl_expr(
-        //            r#"
-        //            datetime("1969-12-31T10:30:00.001Z").toDate()
-        //            .offset(duration("1d1h29m59s999ms"))
-        //            "#,
-        //            86400000,
-        //        );
+        test_valid_datetime_simpl_expr(r#"datetime("1970-01-01T09:30:00Z").toDate()"#, 0);
+        test_valid_datetime_simpl_expr(
+            r#"datetime("1970-01-02T10:30:00.001Z").toDate()"#,
+            86400000,
+        );
+        test_valid_datetime_simpl_expr(
+            r#"datetime("1969-12-31T10:30:00.001Z").toDate()"#,
+            -86400000,
+        );
+        test_valid_datetime_simpl_expr(
+            r#"
+            datetime("1969-12-31T10:30:00.001Z")
+            .offset(duration("2d1h29m59s999ms"))
+            .toDate()
+            "#,
+            86400000,
+        );
     }
 
     #[test]
     fn test_duration_simpl_expr() {
         // Tests with toTime will not work until BitVec::srem is implemented
-        // test_valid_duration_simpl_expr(r#"datetime("1970-01-01").toTime()"#, 0);
-        // test_valid_duration_simpl_expr(r#"datetime("1969-12-31T00:01:00Z").toTime()"#, 60000);
+        test_valid_duration_simpl_expr(r#"datetime("1970-01-01").toTime()"#, 0);
+        test_valid_duration_simpl_expr(r#"datetime("1969-12-31T00:01:00Z").toTime()"#, 60000);
         test_valid_duration_simpl_expr(
             r#"
             datetime("1973-01-02T01:23:19Z")
