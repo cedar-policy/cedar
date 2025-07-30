@@ -1381,6 +1381,12 @@ impl PrincipalConstraint {
             PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => Self {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
             },
+            PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot(_)) => Self {
+                constraint: PrincipalOrResourceConstraint::IsIn(
+                    entity_type,
+                    EntityReference::EUID(euid),
+                ),
+            },
             _ => self,
         }
     }
@@ -1487,6 +1493,12 @@ impl ResourceConstraint {
             },
             PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => Self {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
+            },
+            PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot(_)) => Self {
+                constraint: PrincipalOrResourceConstraint::IsIn(
+                    entity_type,
+                    EntityReference::EUID(euid),
+                ),
             },
             _ => self,
         }

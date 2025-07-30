@@ -3321,6 +3321,149 @@ mod test {
     }
 
     #[test]
+    fn linked_template_is_in_ast_to_est() {
+        let template = r#"
+            permit(
+                principal is XYZCorp::User in ?principal,
+                action == Action::"view",
+                resource in ?resource
+            ) when {
+                principal in resource.owners
+            };
+        "#;
+
+        let cst = parser::text_to_cst::parse_policy(template).unwrap();
+        let ast: ast::Template = cst
+            .to_policy_template(ast::PolicyID::from_string("test"))
+            .unwrap();
+
+        let policy = ast::Template::link(
+            std::sync::Arc::new(ast),
+            ast::PolicyID::from_string("test"),
+            HashMap::from_iter([
+                (
+                    ast::SlotId::principal(),
+                    r#"XYZCorp::User::"12UA45""#.parse().unwrap(),
+                ),
+                (ast::SlotId::resource(), r#"Folder::"abc""#.parse().unwrap()),
+            ]),
+        )
+        .unwrap();
+
+        let est: Policy = policy.into();
+
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "is",
+                        "entity_type": "XYZCorp::User",
+                        "in": { "entity": { "type": "XYZCorp::User", "id": "12UA45" } },
+                },
+                "action": {
+                    "op": "==",
+                    "entity": { "type": "Action", "id": "view" },
+                },
+                "resource": {
+                    "op": "in",
+                    "entity": { "type": "Folder", "id": "abc" },
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "in": {
+                                "left": {
+                                    "Var": "principal"
+                                },
+                                "right": {
+                                    ".": {
+                                        "left": {
+                                            "Var": "resource"
+                                        },
+                                        "attr": "owners"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
+            }
+        );
+        let linked_json = serde_json::to_value(est).unwrap();
+        assert_eq!(
+            linked_json,
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&linked_json).unwrap(),
+        );
+
+        let template = r#"
+            permit(
+                principal is User in ?principal,
+                action,
+                resource is Doc in ?resource
+            );
+        "#;
+
+        let cst = parser::text_to_cst::parse_policy(template).unwrap();
+        let ast: ast::Template = cst
+            .to_policy_template(ast::PolicyID::from_string("test"))
+            .unwrap();
+
+        let policy = ast::Template::link(
+            std::sync::Arc::new(ast),
+            ast::PolicyID::from_string("test"),
+            HashMap::from_iter([
+                (
+                    ast::SlotId::principal(),
+                    r#"User::"alice""#.parse().unwrap(),
+                ),
+                (ast::SlotId::resource(), r#"Doc::"abc""#.parse().unwrap()),
+            ]),
+        )
+        .unwrap();
+
+        let est: Policy = policy.into();
+
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "is",
+                    "entity_type": "User",
+                    "in": { "entity": { "type": "User", "id": "alice" } }
+                },
+                "action": {
+                    "op": "All"
+                },
+                "resource": {
+                    "op": "is",
+                    "entity_type": "Doc",
+                    "in": { "entity": { "type": "Doc", "id": "abc" } }
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "Value": true
+                        }
+                    }
+                ],
+            }
+        );
+        let linked_json = serde_json::to_value(est).unwrap();
+        assert_eq!(
+            linked_json,
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&linked_json).unwrap(),
+        );
+    }
+
+    #[test]
     fn eid_with_nulls() {
         let policy = r#"
             permit(
