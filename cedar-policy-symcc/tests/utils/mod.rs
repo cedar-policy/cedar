@@ -23,9 +23,10 @@
 use std::str::FromStr;
 
 use cedar_policy::{
-    Authorizer, Decision, Policy, PolicyId, PolicySet, RequestEnv, Schema, ValidationMode,
-    Validator,
+    Authorizer, Decision, Entities, Policy, PolicyId, PolicySet, RequestEnv, Schema,
+    ValidationMode, Validator,
 };
+use cedar_policy_core::{ast::RequestSchema, extensions::Extensions};
 use cedar_policy_symcc::{
     solver::Solver, CedarSymCompiler, Env, SymEnv, WellTypedPolicies, WellTypedPolicy,
 };
@@ -151,6 +152,9 @@ pub async fn assert_does_not_always_allow<S: Solver>(
     }
     match compiler.check_always_allows_with_counterexample(&typed_pset, &envs.symenv).await.unwrap() {
         Some(Env { request, entities }) => {
+            // Check that the request/entities pass validation
+            envs.schema.as_ref().validate_request(request.as_ref(), Extensions::all_available()).unwrap();
+            Entities::from_entities(entities.clone(), Some(envs.schema)).unwrap();
             // Check that the counterexample is correct
             let resp1 = Authorizer::new().is_authorized(&request, pset, &entities);
             assert!(resp1.decision() == Decision::Deny,
@@ -193,6 +197,9 @@ pub async fn assert_does_not_always_deny<S: Solver>(
     }
     match compiler.check_always_denies_with_counterexample(&typed_pset, &envs.symenv).await.unwrap() {
         Some(Env { request, entities }) => {
+            // Check that the request/entities pass validation
+            envs.schema.as_ref().validate_request(request.as_ref(), Extensions::all_available()).unwrap();
+            Entities::from_entities(entities.clone(), Some(envs.schema)).unwrap();
             // Check that the counterexample is correct
             let resp1 = Authorizer::new().is_authorized(&request, pset, &entities);
             assert!(resp1.decision() == Decision::Allow,
@@ -242,6 +249,9 @@ pub async fn assert_not_equivalent<S: Solver>(
     }
     match compiler.check_equivalent_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
         Some(Env { request, entities }) => {
+            // Check that the request/entities pass validation
+            envs.schema.as_ref().validate_request(request.as_ref(), Extensions::all_available()).unwrap();
+            Entities::from_entities(entities.clone(), Some(envs.schema)).unwrap();
             // Check that the counterexample is correct
             let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
             let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
@@ -293,6 +303,9 @@ pub async fn assert_does_not_imply<S: Solver>(
     }
     match compiler.check_implies_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
         Some(Env { request, entities }) => {
+            // Check that the request/entities pass validation
+            envs.schema.as_ref().validate_request(request.as_ref(), Extensions::all_available()).unwrap();
+            Entities::from_entities(entities.clone(), Some(envs.schema)).unwrap();
             // Check that the counterexample is correct
             let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
             let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
@@ -344,6 +357,9 @@ pub async fn assert_not_disjoint<S: Solver>(
     }
     match compiler.check_disjoint_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
         Some(Env { request, entities }) => {
+            // Check that the request/entities pass validation
+            envs.schema.as_ref().validate_request(request.as_ref(), Extensions::all_available()).unwrap();
+            Entities::from_entities(entities.clone(), Some(envs.schema)).unwrap();
             // Check that the counterexample is correct
             let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
             let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
