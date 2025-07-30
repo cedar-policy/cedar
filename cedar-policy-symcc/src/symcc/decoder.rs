@@ -437,7 +437,7 @@ impl TermType {
             TermType::String => Term::Prim(TermPrim::String("".to_string())),
 
             TermType::Entity { ety } => {
-                // If the entity has an enum type, we return the first enum
+                // If the entity is an enum type, we return the first enum
                 let eid = if let Some(SymEntityData {
                     members: Some(eids),
                     ..
@@ -446,7 +446,7 @@ impl TermType {
                     if let Some(eid) = eids.first() {
                         eid
                     } else {
-                        "" // This case should not happen on a valid `SymEnv`
+                        "" // This case should not happen on a well-formed `SymEnv`
                     }
                 } else {
                     ""
