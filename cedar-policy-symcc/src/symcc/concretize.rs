@@ -23,11 +23,11 @@ use std::sync::Arc;
 
 use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request};
 use cedar_policy_core::ast::{
-    Context, Entity, EntityAttrEvaluationError, Expr, Literal, Name, PartialValue, Set, Value,
-    ValueKind,
+    Context, Entity, EntityAttrEvaluationError, Expr, Extension, Literal, Name, PartialValue, Set,
+    Value, ValueKind,
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
-use cedar_policy_core::extensions::{decimal, Extensions};
+use cedar_policy_core::extensions::{datetime, decimal, Extensions};
 use num_bigint::{BigInt, TryFromBigIntError};
 use ref_cast::RefCast;
 use smol_str::SmolStr;
@@ -149,6 +149,24 @@ impl TryFrom<&Term> for BTreeSet<String> {
     }
 }
 
+/// A utility function to call an extension function
+fn call_extension_func(
+    ext: &Extension,
+    name: &str,
+    args: &[Value],
+) -> Result<Value, ConcretizeError> {
+    let name = Name::parse_unqualified_name(name).or(Err(ConcretizeError::ExtensionError))?;
+    match ext
+        .get_func(&name)
+        .ok_or(ConcretizeError::ExtensionError)?
+        .call(args)
+        .or(Err(ConcretizeError::ExtensionError))?
+    {
+        PartialValue::Value(v) => Ok(v),
+        _ => Err(ConcretizeError::ExtensionError),
+    }
+}
+
 impl TryFrom<&Term> for Value {
     type Error = ConcretizeError;
 
@@ -173,26 +191,37 @@ impl TryFrom<&Term> for Value {
             )),
 
             Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => {
-                let name = Name::parse_unqualified_name("decimal")
-                    .or(Err(ConcretizeError::ExtensionError))?;
-                match decimal::extension()
-                    .get_func(&name)
-                    .ok_or(ConcretizeError::ExtensionError)?
-                    .call(&[format!("{}", d).into()])
-                    .or(Err(ConcretizeError::ExtensionError))?
-                {
-                    PartialValue::Value(v) => Ok(v),
-                    _ => Err(ConcretizeError::ExtensionError),
-                }
+                call_extension_func(&decimal::extension(), "decimal", &[format!("{}", d).into()])
+            }
+
+            Term::Prim(TermPrim::Ext(Ext::Datetime { dt })) => {
+                // First construct `datetime("1970-01-01")`
+                let epoch = call_extension_func(
+                    &datetime::extension(),
+                    "datetime",
+                    &["1970-01-01".into()],
+                )?;
+                // Then construct the actual datetime as an offset duration
+                let offset: i128 = dt.into();
+                let offset = call_extension_func(
+                    &datetime::extension(),
+                    "duration",
+                    &[format!("{}ms", offset).into()],
+                )?;
+                // Finally call the offset function to construct the right datetime value
+                call_extension_func(&datetime::extension(), "offset", &[epoch, offset])
+            }
+
+            Term::Prim(TermPrim::Ext(Ext::Duration { d })) => {
+                let offset: i128 = d.into();
+                call_extension_func(
+                    &datetime::extension(),
+                    "duration",
+                    &[format!("{}ms", offset).into()],
+                )
             }
 
             // TODO: concretize extension values
-            Term::Prim(TermPrim::Ext(Ext::Datetime { dt: _ })) => {
-                Err(ConcretizeError::ExtensionNotImplemented(ExtType::DateTime))
-            }
-            Term::Prim(TermPrim::Ext(Ext::Duration { d: _ })) => {
-                Err(ConcretizeError::ExtensionNotImplemented(ExtType::Duration))
-            }
             Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: _ })) => {
                 Err(ConcretizeError::ExtensionNotImplemented(ExtType::IpAddr))
             }
