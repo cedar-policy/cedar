@@ -193,7 +193,13 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 )
                 .await
             }
-            ExtType::DateTime => Err(anyhow::anyhow!("Datetime types are not yet supported")),
+            ExtType::DateTime => {
+                self.declare_type(
+                    "Datetime",
+                    ["(Datetime (datetimeVal (_ BitVec 64)))".to_string()],
+                )
+                .await
+            }
         }
     }
 
