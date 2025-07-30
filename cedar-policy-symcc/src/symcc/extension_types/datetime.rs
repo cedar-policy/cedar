@@ -341,6 +341,18 @@ impl Default for Duration {
     }
 }
 
+impl From<Duration> for i128 {
+    fn from(d: Duration) -> Self {
+        i128::from(d.val)
+    }
+}
+
+impl From<&Duration> for i128 {
+    fn from(d: &Duration) -> Self {
+        i128::from(d.val)
+    }
+}
+
 impl From<i128> for Duration {
     fn from(bv_inner: i128) -> Self {
         Self {
