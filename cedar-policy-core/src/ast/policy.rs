@@ -1389,7 +1389,8 @@ impl PrincipalConstraint {
     pub fn get_slot(self) -> Option<Slot> {
         match self.constraint {
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot(l))
-            | PrincipalOrResourceConstraint::In(EntityReference::Slot(l)) => Some(Slot {
+            | PrincipalOrResourceConstraint::In(EntityReference::Slot(l))
+            | PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(l)) => Some(Slot {
                 id: SlotId::principal(),
                 loc: l,
             }),
@@ -1508,7 +1509,8 @@ impl ResourceConstraint {
     pub fn get_slot(self) -> Option<Slot> {
         match self.constraint {
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot(l))
-            | PrincipalOrResourceConstraint::In(EntityReference::Slot(l)) => Some(Slot {
+            | PrincipalOrResourceConstraint::In(EntityReference::Slot(l))
+            | PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(l)) => Some(Slot {
                 id: SlotId::resource(),
                 loc: l,
             }),
