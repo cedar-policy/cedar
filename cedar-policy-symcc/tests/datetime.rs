@@ -17,7 +17,8 @@ use cedar_policy::{Schema, Validator};
 use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
 
 use crate::utils::{
-    assert_does_not_always_allow, assert_does_not_imply, assert_implies, Environments,
+    assert_always_allows, assert_does_not_always_allow, assert_does_not_always_deny,
+    assert_does_not_imply, assert_implies, Environments,
 };
 mod utils;
 
@@ -177,22 +178,16 @@ async fn to_date_eq() {
 }
 
 #[tokio::test]
-async fn to_date_lt() {
+async fn to_time_nonnegative() {
     let validator = Validator::new(sample_schema());
-    let pset1 = utils::pset_from_text(
+    let pset = utils::pset_from_text(
         r#"permit(principal, action, resource) when {
-            context.x == datetime("2025-07-30T12:11:00Z")
-        };"#,
-        &validator,
-    );
-    let pset2 = utils::pset_from_text(
-        r#"permit(principal, action, resource) when {
-            context.x.toDate() == datetime("2025-07-30")
+            context.x.toTime() >= duration("0ms")
         };"#,
         &validator,
     );
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let schema = sample_schema();
     let envs = env_for_sample_schema(&schema);
-    assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
+    assert_always_allows(&mut compiler, &pset, &envs).await;
 }
