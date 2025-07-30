@@ -826,6 +826,53 @@ async fn rename_linked_schema_send_diagnostics() {
 }
 
 #[tokio::test]
+async fn remove_schema_assoc_no_diagnostics() {
+    let backend = Backend::new(MockClient::new());
+
+    let schema_src =
+        "entity User { age: Long }; action Action appliesTo {principal: User, resource: User};";
+    let old_schema_uri = open_test_document(
+        &backend,
+        "file:///test/old_schema.cedarschema",
+        "cedarschema",
+        schema_src,
+    )
+    .await;
+
+    let policy_src = "permit(principal, action, resource) when { principal.age > 18 };";
+    let policy_uri =
+        open_test_document(&backend, "file:///test/policy.cedar", "cedar", policy_src).await;
+
+    associate_schema(&backend, &policy_uri, &old_schema_uri).await;
+
+    assert_eq!(get_diagnostics(&backend, &policy_uri), Vec::new());
+
+    let command_params = ExecuteCommandParams {
+        command: "cedar.removeSchemaAssociation".to_string(),
+        arguments: vec![serde_json::Value::String(policy_uri.to_string())],
+        work_done_progress_params: WorkDoneProgressParams::default(),
+    };
+
+    let _ = backend.execute_command(command_params).await.unwrap();
+
+    // introducing an error, but there's no longer a schema to detect it
+    let policy_change_params = DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier {
+            uri: policy_uri.clone(),
+            version: 2,
+        },
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "permit(principal, action, resource) when { principal.agee > 18 };".to_string(),
+        }],
+    };
+    backend.did_change(policy_change_params).await;
+
+    assert_eq!(get_diagnostics(&backend, &policy_uri), Vec::new());
+}
+
+#[tokio::test]
 async fn delete_schema_no_diagnostics() {
     let backend = Backend::new(MockClient::new());
 
@@ -855,6 +902,7 @@ async fn delete_schema_no_diagnostics() {
     backend.will_delete_files(delete_params).await.unwrap();
     assert!(!backend.documents.contains_key(&old_schema_uri));
 
+    // introducing an error, but there's no longer a schema to detect it
     let policy_change_params = DidChangeTextDocumentParams {
         text_document: VersionedTextDocumentIdentifier {
             uri: policy_uri.clone(),
@@ -1002,6 +1050,26 @@ async fn schema_to_cedar() {
         "namespace ns {\n  entity E;\n}\n",
         transformed["text"].as_str().unwrap()
     );
+}
+
+#[tokio::test]
+async fn transform_schema_on_policy_error() {
+    let backend = Backend::new(MockClient::new());
+
+    let policy_src = "permit(principal, action, resource) when { principal.age > 18 };";
+    let policy_uri =
+        open_test_document(&backend, "file:///test/policy.cedar", "cedar", policy_src).await;
+
+    let command_params = ExecuteCommandParams {
+        command: "cedar.transformSchema".to_string(),
+        arguments: vec![serde_json::json!({
+            "schema_uri": policy_uri.to_string()
+        })],
+        work_done_progress_params: WorkDoneProgressParams::default(),
+    };
+
+    let transformed = backend.execute_command(command_params).await;
+    assert_eq!(Ok(None), transformed);
 }
 
 #[tokio::test]
