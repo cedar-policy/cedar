@@ -451,7 +451,6 @@ impl TermType {
                 } else {
                     ""
                 };
-                eprintln!("ety: {}, eid: {}, {:?}", ety, eid, env.entities.get(ety));
                 Term::Prim(TermPrim::Entity(EntityUid::from_type_name_and_id(
                     ety.clone(),
                     EntityId::new(eid),
