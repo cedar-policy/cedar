@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 use cedar_policy::{Schema, Validator};
-use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler, SymEnv, WellTypedPolicies};
+use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
+
+use crate::utils::{assert_does_not_imply, assert_equivalent, assert_implies, Environments};
 mod utils;
 
 fn sample_schema() -> Schema {
@@ -36,14 +38,8 @@ fn sample_schema() -> Schema {
     )
 }
 
-fn request_env_for_sample_schema() -> cedar_policy::RequestEnv {
-    utils::req_env_from_strs("User", "Action::\"View\"", "Thing")
-}
-
-fn symenv_for_sample_schema() -> SymEnv {
-    let schema = sample_schema();
-    let req_env = request_env_for_sample_schema();
-    SymEnv::new(&schema, &req_env).unwrap()
+fn env_for_sample_schema<'a>(schema: &'a Schema) -> Environments<'a> {
+    Environments::new(&schema, "User", "Action::\"View\"", "Thing")
 }
 
 #[tokio::test]
@@ -57,30 +53,10 @@ async fn x_lte_max() {
         r#"permit(principal, action, resource) when {context.x.lessThanOrEqual(decimal("922337203685477.5807"))};"#,
         &validator,
     );
-
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let symenv = symenv_for_sample_schema();
-
-    let pset1 = WellTypedPolicies::from_policies(
-        &pset1,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-    let pset2 = WellTypedPolicies::from_policies(
-        &pset2,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-
-    assert!(
-        compiler
-            .check_equivalent(&pset1, &pset2, &symenv)
-            .await
-            .unwrap(),
-        "True: x lessThanOrEqual 922337203685477.5807"
-    );
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_equivalent(&mut compiler, &pset1, &pset2, &envs).await;
 }
 
 #[tokio::test]
@@ -94,30 +70,10 @@ async fn max_gte_x() {
         r#"permit(principal, action, resource) when {decimal("922337203685477.5807").greaterThanOrEqual(context.x)};"#,
         &validator,
     );
-
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let symenv = symenv_for_sample_schema();
-
-    let pset1 = WellTypedPolicies::from_policies(
-        &pset1,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-    let pset2 = WellTypedPolicies::from_policies(
-        &pset2,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-
-    assert!(
-        compiler
-            .check_equivalent(&pset1, &pset2, &symenv)
-            .await
-            .unwrap(),
-        "True: 922337203685477.5807 greaterThanOrEqual x"
-    );
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_equivalent(&mut compiler, &pset1, &pset2, &envs).await;
 }
 
 #[tokio::test]
@@ -131,30 +87,10 @@ async fn x_gte_min() {
         r#"permit(principal, action, resource) when {context.x.greaterThanOrEqual(decimal("-922337203685477.5808"))};"#,
         &validator,
     );
-
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let symenv = symenv_for_sample_schema();
-
-    let pset1 = WellTypedPolicies::from_policies(
-        &pset1,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-    let pset2 = WellTypedPolicies::from_policies(
-        &pset2,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-
-    assert!(
-        compiler
-            .check_equivalent(&pset1, &pset2, &symenv)
-            .await
-            .unwrap(),
-        "True: x greaterThanOrEqual -922337203685477.5808"
-    );
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_equivalent(&mut compiler, &pset1, &pset2, &envs).await;
 }
 
 #[tokio::test]
@@ -168,30 +104,10 @@ async fn min_lte_x() {
         r#"permit(principal, action, resource) when {decimal("-922337203685477.5808").lessThanOrEqual(context.x)};"#,
         &validator,
     );
-
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let symenv = symenv_for_sample_schema();
-
-    let pset1 = WellTypedPolicies::from_policies(
-        &pset1,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-    let pset2 = WellTypedPolicies::from_policies(
-        &pset2,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-
-    assert!(
-        compiler
-            .check_equivalent(&pset1, &pset2, &symenv)
-            .await
-            .unwrap(),
-        "True: -922337203685477.5808 lessThanOrEqual x"
-    );
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_equivalent(&mut compiler, &pset1, &pset2, &envs).await;
 }
 
 #[tokio::test]
@@ -213,30 +129,10 @@ async fn x_ne_max_impl_x_lt_max() {
         };"#,
         &validator,
     );
-
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let symenv = symenv_for_sample_schema();
-
-    let pset1 = WellTypedPolicies::from_policies(
-        &pset1,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-    let pset2 = WellTypedPolicies::from_policies(
-        &pset2,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-
-    assert!(
-        compiler
-            .check_implies(&pset1, &pset2, &symenv)
-            .await
-            .unwrap(),
-        "Implies: x != 922337203685477.5807 ==> x lessThan 922337203685477.5807"
-    );
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
 }
 
 #[tokio::test]
@@ -258,30 +154,10 @@ async fn x_ne_min_impl_x_gt_min() {
         };"#,
         &validator,
     );
-
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let symenv = symenv_for_sample_schema();
-
-    let pset1 = WellTypedPolicies::from_policies(
-        &pset1,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-    let pset2 = WellTypedPolicies::from_policies(
-        &pset2,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-
-    assert!(
-        compiler
-            .check_implies(&pset1, &pset2, &symenv)
-            .await
-            .unwrap(),
-        "Implies: x != -922337203685477.5808 ==> x greaterThan -922337203685477.5808"
-    );
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
 }
 
 #[tokio::test]
@@ -303,30 +179,10 @@ async fn x_lt_y_impl_y_gt_x() {
         };"#,
         &validator,
     );
-
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let symenv = symenv_for_sample_schema();
-
-    let pset1 = WellTypedPolicies::from_policies(
-        &pset1,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-    let pset2 = WellTypedPolicies::from_policies(
-        &pset2,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-
-    assert!(
-        compiler
-            .check_implies(&pset1, &pset2, &symenv)
-            .await
-            .unwrap(),
-        "Implies: x lessThan y ==> y greaterThan x"
-    );
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
 }
 
 #[tokio::test]
@@ -348,30 +204,10 @@ async fn x_lte_y_impl_y_gte_x() {
         };"#,
         &validator,
     );
-
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let symenv = symenv_for_sample_schema();
-
-    let pset1 = WellTypedPolicies::from_policies(
-        &pset1,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-    let pset2 = WellTypedPolicies::from_policies(
-        &pset2,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-
-    assert!(
-        compiler
-            .check_implies(&pset1, &pset2, &symenv)
-            .await
-            .unwrap(),
-        "Implies: x lessThanOrEqual y ==> y greaterThanOrEqual x"
-    );
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
 }
 
 #[tokio::test]
@@ -394,30 +230,10 @@ async fn x_lte_y_and_y_lte_x_impl_x_eq_y() {
         };"#,
         &validator,
     );
-
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let symenv = symenv_for_sample_schema();
-
-    let pset1 = WellTypedPolicies::from_policies(
-        &pset1,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-    let pset2 = WellTypedPolicies::from_policies(
-        &pset2,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-
-    assert!(
-        compiler
-            .check_implies(&pset1, &pset2, &symenv)
-            .await
-            .unwrap(),
-        "Implies: x lessThanOrEqual y && y lessThanOrEqual x ==> x = y"
-    );
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
 }
 
 #[tokio::test]
@@ -440,28 +256,43 @@ async fn x_lt_y_and_y_lt_z_impl_z_gt_x() {
         };"#,
         &validator,
     );
-
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let symenv = symenv_for_sample_schema();
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
+    assert_does_not_imply(&mut compiler, &pset2, &pset1, &envs).await;
+}
 
-    let pset1 = WellTypedPolicies::from_policies(
-        &pset1,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-    let pset2 = WellTypedPolicies::from_policies(
-        &pset2,
-        &request_env_for_sample_schema(),
-        &sample_schema(),
-    )
-    .unwrap();
-
-    assert!(
-        compiler
-            .check_implies(&pset1, &pset2, &symenv)
-            .await
-            .unwrap(),
-        "Implies: x lessThan y && x lessThan z ==> z greaterThan x"
+#[tokio::test]
+async fn min_x_model() {
+    let validator = Validator::new(sample_schema());
+    let pset1 = utils::pset_from_text(
+        r#"permit(principal, action, resource) when {context.x.lessThanOrEqual(decimal("-922337203685477.5808"))};"#,
+        &validator,
     );
+    let pset2 = utils::pset_from_text(
+        r#"permit(principal, action, resource) when {decimal("-922337203685477.5808") != context.x};"#,
+        &validator,
+    );
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_does_not_imply(&mut compiler, &pset1, &pset2, &envs).await;
+}
+
+#[tokio::test]
+async fn max_x_model() {
+    let validator = Validator::new(sample_schema());
+    let pset1 = utils::pset_from_text(
+        r#"permit(principal, action, resource) when {context.x.greaterThanOrEqual(decimal("922337203685477.5807"))};"#,
+        &validator,
+    );
+    let pset2 = utils::pset_from_text(
+        r#"permit(principal, action, resource) when {decimal("922337203685477.5807") != context.x};"#,
+        &validator,
+    );
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let schema = sample_schema();
+    let envs = env_for_sample_schema(&schema);
+    assert_does_not_imply(&mut compiler, &pset1, &pset2, &envs).await;
 }
