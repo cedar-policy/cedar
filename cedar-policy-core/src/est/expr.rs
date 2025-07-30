@@ -22,8 +22,9 @@ use crate::ast::Infallible;
 use crate::ast::{self, BoundedDisplay, EntityUID};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
-    CedarValueJson, FnAndArgs,
+    CedarValueJson, EntityUidJson, FnAndArgs,
 };
+use crate::est::LinkingError;
 use crate::expr_builder::ExprBuilder;
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
@@ -870,6 +871,174 @@ impl Expr {
                     let mut new_v = vec![];
                     for e in v {
                         new_v.push(e.sub_entity_literals(mapping)?);
+                    }
+                    new_m.insert(k, new_v);
+                }
+                Ok(Expr::ExtFuncCall(ExtFuncCall { call: new_m }))
+            }
+        }
+    }
+
+    /// Instantiate all the slots in an expression with their values
+    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
+        match self {
+            Expr::ExprNoExt(e) => match e {
+                v @ ExprNoExt::Value(_) => Ok(Expr::ExprNoExt(v)),
+                v @ ExprNoExt::Var(_) => Ok(Expr::ExprNoExt(v)),
+                ExprNoExt::Slot(slot) => match vals.get(&slot) {
+                    Some(e) => {
+                        let literal = CedarValueJson::from_lit(
+                            e.clone()
+                                .into_euid(|| JsonDeserializationErrorContext::Unknown)?
+                                .into(),
+                        );
+                        Ok(Expr::ExprNoExt(ExprNoExt::Value(literal)))
+                    }
+                    None => Err(LinkingError::MissedSlot { slot }),
+                },
+                ExprNoExt::Not { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Not {
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).link(vals)?),
+                })),
+                ExprNoExt::Neg { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Neg {
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).link(vals)?),
+                })),
+                ExprNoExt::Eq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Eq {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::NotEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::NotEq {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::In { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::In {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::Less { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Less {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::LessEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::LessEq {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::Greater { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Greater {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::GreaterEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::GreaterEq {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::And { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::And {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::Or { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Or {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::Add { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Add {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::Sub { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Sub {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::Mul { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Mul {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::Contains { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Contains {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::ContainsAll { left, right } => {
+                    Ok(Expr::ExprNoExt(ExprNoExt::ContainsAll {
+                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                        right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    }))
+                }
+                ExprNoExt::ContainsAny { left, right } => {
+                    Ok(Expr::ExprNoExt(ExprNoExt::ContainsAny {
+                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                        right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    }))
+                }
+                ExprNoExt::IsEmpty { arg } => Ok(Expr::ExprNoExt(ExprNoExt::IsEmpty {
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).link(vals)?),
+                })),
+                ExprNoExt::GetTag { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::GetTag {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::HasTag { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::HasTag {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                })),
+                ExprNoExt::GetAttr { left, attr } => Ok(Expr::ExprNoExt(ExprNoExt::GetAttr {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    attr,
+                })),
+                ExprNoExt::HasAttr { left, attr } => Ok(Expr::ExprNoExt(ExprNoExt::HasAttr {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    attr,
+                })),
+                ExprNoExt::Like { left, pattern } => Ok(Expr::ExprNoExt(ExprNoExt::Like {
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    pattern,
+                })),
+                ExprNoExt::Is {
+                    left,
+                    entity_type,
+                    in_expr,
+                } => match in_expr {
+                    Some(in_expr) => Ok(Expr::ExprNoExt(ExprNoExt::Is {
+                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                        entity_type,
+                        in_expr: Some(Arc::new(Arc::unwrap_or_clone(in_expr).link(vals)?)),
+                    })),
+                    None => Ok(Expr::ExprNoExt(ExprNoExt::Is {
+                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                        entity_type,
+                        in_expr: None,
+                    })),
+                },
+                ExprNoExt::If {
+                    cond_expr,
+                    then_expr,
+                    else_expr,
+                } => Ok(Expr::ExprNoExt(ExprNoExt::If {
+                    cond_expr: Arc::new(Arc::unwrap_or_clone(cond_expr).link(vals)?),
+                    then_expr: Arc::new(Arc::unwrap_or_clone(then_expr).link(vals)?),
+                    else_expr: Arc::new(Arc::unwrap_or_clone(else_expr).link(vals)?),
+                })),
+                ExprNoExt::Set(v) => {
+                    let mut new_v = vec![];
+                    for e in v {
+                        new_v.push(e.link(vals)?);
+                    }
+                    Ok(Expr::ExprNoExt(ExprNoExt::Set(new_v)))
+                }
+                ExprNoExt::Record(m) => {
+                    let mut new_m = BTreeMap::new();
+                    for (k, v) in m {
+                        new_m.insert(k, v.link(vals)?);
+                    }
+                    Ok(Expr::ExprNoExt(ExprNoExt::Record(new_m)))
+                }
+                #[cfg(feature = "tolerant-ast")]
+                ExprNoExt::Error(_) => Err(LinkingError::InvalidJSON(
+                    JsonDeserializationError::ASTErrorNode,
+                )),
+            },
+            Expr::ExtFuncCall(e_fn_call) => {
+                let mut new_m = HashMap::new();
+                for (k, v) in e_fn_call.call {
+                    let mut new_v = vec![];
+                    for e in v {
+                        new_v.push(e.link(vals)?);
                     }
                     new_m.insert(k, new_v);
                 }

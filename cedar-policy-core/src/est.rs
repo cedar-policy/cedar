@@ -138,9 +138,11 @@ impl Clause {
     /// Fill in any slots in the clause using the values in `vals`. Throws an
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings.
-    pub fn link(self, _vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
-        // currently, slots are not allowed in clauses
-        Ok(self)
+    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
+        match self {
+            Clause::When(e) => Ok(Clause::When(e.link(vals)?)),
+            Clause::Unless(e) => Ok(Clause::Unless(e.link(vals)?)),
+        }
     }
 
     /// Substitute entity literals
@@ -3341,6 +3343,88 @@ mod test {
             }
         );
         let linked_json = serde_json::to_value(linked).unwrap();
+        assert_eq!(
+            linked_json,
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&linked_json).unwrap(),
+        );
+    }
+
+    #[test]
+    fn link_with_slots_in_condition() {
+        let template = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource in ?resource
+            ) when {
+                ?principal in resource.owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+
+        let linked_est = est
+            .link(&HashMap::from_iter([
+                (
+                    ast::SlotId::principal(),
+                    EntityUidJson::new("XYZCorp::User", "12UA45"),
+                ),
+                (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
+            ]))
+            .expect("did fill all the slots");
+
+        let old_est = linked_est.clone();
+        let roundtripped = est_roundtrip(linked_est.clone());
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
+
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "==",
+                    "entity": { "type": "XYZCorp::User", "id": "12UA45" },
+                },
+                "action": {
+                    "op": "==",
+                    "entity": { "type": "Action", "id": "view" },
+                },
+                "resource": {
+                    "op": "in",
+                    "entity": { "type": "Folder", "id": "abc" },
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "in": {
+                                "left": {
+                                    "Value": {
+                                        "__entity": { "type": "XYZCorp::User", "id": "12UA45" }
+                                    }
+                                },
+                                "right": {
+                                    ".": {
+                                        "left": {
+                                            "Var": "resource"
+                                        },
+                                        "attr": "owners"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
+            }
+        );
+        let linked_json = serde_json::to_value(linked_est).unwrap();
         assert_eq!(
             linked_json,
             expected_json,

@@ -15,7 +15,7 @@
  */
 
 use crate::ast;
-use crate::entities::json::err::JsonDeserializationError;
+use crate::entities::json::err::{JsonDeserializationError, JsonSerializationError};
 use crate::parser::err::{parse_errors, ParseErrors};
 use crate::parser::unescape;
 use miette::Diagnostic;
@@ -104,7 +104,7 @@ pub enum PolicySetFromJsonError {
 }
 
 /// Errors while linking a policy
-#[derive(Debug, PartialEq, Eq, Diagnostic, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum LinkingError {
     /// Template contains this slot, but a value wasn't provided for it
     #[error("failed to link template: no value provided for `{slot}`")]
@@ -112,6 +112,16 @@ pub enum LinkingError {
         /// Slot which didn't have a value provided for it
         slot: ast::SlotId,
     },
+
+    /// Encounter JSON Serialization error when linking
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnableToSerializeJSONValueProvided(#[from] JsonSerializationError),
+
+    /// Encountered JSON deserialization error when linking
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidJSON(#[from] JsonDeserializationError),
 }
 
 impl From<ast::UnexpectedSlotError> for FromJsonError {
