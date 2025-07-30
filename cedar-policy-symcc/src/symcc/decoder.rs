@@ -736,9 +736,10 @@ impl SExpr {
                             SExpr::Symbol(s) if s == "Datetime" && args.len() == 2 => {
                                 if let SExpr::BitVec(bv) = &args[1] {
                                     if bv.width() == 64 {
-                                        let dt: i128 = bv.to_int().try_into().or(Err(
-                                            DecodeError::UnknownLiteral(self.clone()),
-                                        ))?;
+                                        let dt: i128 = bv
+                                            .to_int()
+                                            .try_into()
+                                            .or(Err(DecodeError::UnknownLiteral(self.clone())))?;
                                         Ok(Term::Prim(TermPrim::Ext(Ext::Datetime {
                                             dt: dt.into(),
                                         })))
@@ -754,12 +755,11 @@ impl SExpr {
                             SExpr::Symbol(s) if s == "Duration" && args.len() == 2 => {
                                 if let SExpr::BitVec(bv) = &args[1] {
                                     if bv.width() == 64 {
-                                        let d: i128 = bv.to_int().try_into().or(Err(
-                                            DecodeError::UnknownLiteral(self.clone()),
-                                        ))?;
-                                        Ok(Term::Prim(TermPrim::Ext(Ext::Duration {
-                                            d: d.into(),
-                                        })))
+                                        let d: i128 = bv
+                                            .to_int()
+                                            .try_into()
+                                            .or(Err(DecodeError::UnknownLiteral(self.clone())))?;
+                                        Ok(Term::Prim(TermPrim::Ext(Ext::Duration { d: d.into() })))
                                     } else {
                                         Err(DecodeError::UnknownLiteral(self.clone()))
                                     }

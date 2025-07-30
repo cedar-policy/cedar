@@ -23,7 +23,8 @@ use std::sync::Arc;
 
 use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request};
 use cedar_policy_core::ast::{
-    Context, Entity, EntityAttrEvaluationError, Expr, Extension, Literal, Name, PartialValue, Set, Value, ValueKind
+    Context, Entity, EntityAttrEvaluationError, Expr, Extension, Literal, Name, PartialValue, Set,
+    Value, ValueKind,
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
 use cedar_policy_core::extensions::{datetime, decimal, Extensions};
@@ -149,9 +150,12 @@ impl TryFrom<&Term> for BTreeSet<String> {
 }
 
 /// A utility function to call an extension function
-fn call_extension_func(ext: &Extension, name: &str, args: &[Value]) -> Result<Value, ConcretizeError> {
-    let name = Name::parse_unqualified_name(name)
-        .or(Err(ConcretizeError::ExtensionError))?;
+fn call_extension_func(
+    ext: &Extension,
+    name: &str,
+    args: &[Value],
+) -> Result<Value, ConcretizeError> {
+    let name = Name::parse_unqualified_name(name).or(Err(ConcretizeError::ExtensionError))?;
     match ext
         .get_func(&name)
         .ok_or(ConcretizeError::ExtensionError)?
@@ -187,11 +191,7 @@ impl TryFrom<&Term> for Value {
             )),
 
             Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => {
-                call_extension_func(
-                    &decimal::extension(),
-                    "decimal",
-                    &[format!("{}", d).into()],
-                )
+                call_extension_func(&decimal::extension(), "decimal", &[format!("{}", d).into()])
             }
 
             Term::Prim(TermPrim::Ext(Ext::Datetime { dt })) => {
@@ -209,13 +209,9 @@ impl TryFrom<&Term> for Value {
                     &[format!("{}ms", offset).into()],
                 )?;
                 // Finally call the offset function to construct the right datetime value
-                call_extension_func(
-                    &datetime::extension(),
-                    "offset",
-                    &[epoch, offset],
-                )
+                call_extension_func(&datetime::extension(), "offset", &[epoch, offset])
             }
-            
+
             Term::Prim(TermPrim::Ext(Ext::Duration { d })) => {
                 let offset: i128 = d.into();
                 call_extension_func(

@@ -16,7 +16,9 @@
 use cedar_policy::{Schema, Validator};
 use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
 
-use crate::utils::{assert_does_not_always_allow, assert_does_not_imply, assert_implies, Environments};
+use crate::utils::{
+    assert_does_not_always_allow, assert_does_not_imply, assert_implies, Environments,
+};
 mod utils;
 
 fn sample_schema() -> Schema {

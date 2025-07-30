@@ -1178,10 +1178,7 @@ mod datetime_tests {
             31536000000,
         );
         // Tests with toDate will not work until BitVec::srem is implemented
-        test_valid_datetime_simpl_expr(
-            r#"datetime("1970-01-01T09:30:00Z").toDate()"#,
-            0,
-        );
+        test_valid_datetime_simpl_expr(r#"datetime("1970-01-01T09:30:00Z").toDate()"#, 0);
         test_valid_datetime_simpl_expr(
             r#"datetime("1970-01-02T10:30:00.001Z").toDate()"#,
             86400000,

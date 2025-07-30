@@ -14,15 +14,16 @@
  * limitations under the License.
  */
 use cedar_policy::{Policy, PolicySet, Schema, Validator};
-use cedar_policy_symcc::{
-    solver::LocalSolver,
-    CedarSymCompiler,
-};
+use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
 
 mod utils;
 use utils::Environments;
 
-use crate::utils::{assert_always_allows, assert_always_denies, assert_disjoint, assert_does_not_always_allow, assert_does_not_always_deny, assert_does_not_imply, assert_equivalent, assert_implies, assert_never_errors, assert_not_disjoint, assert_not_equivalent};
+use crate::utils::{
+    assert_always_allows, assert_always_denies, assert_disjoint, assert_does_not_always_allow,
+    assert_does_not_always_deny, assert_does_not_imply, assert_equivalent, assert_implies,
+    assert_never_errors, assert_not_disjoint, assert_not_equivalent,
+};
 
 fn sample_schema() -> Schema {
     utils::schema_from_cedarstr(

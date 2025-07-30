@@ -22,8 +22,13 @@
 //! Utilities shared by various tests throughout the package
 use std::str::FromStr;
 
-use cedar_policy::{Policy, PolicyId, PolicySet, RequestEnv, Schema, ValidationMode, Validator, Authorizer, Decision};
-use cedar_policy_symcc::{solver::Solver, CedarSymCompiler, Env, SymEnv, WellTypedPolicies, WellTypedPolicy};
+use cedar_policy::{
+    Authorizer, Decision, Policy, PolicyId, PolicySet, RequestEnv, Schema, ValidationMode,
+    Validator,
+};
+use cedar_policy_symcc::{
+    solver::Solver, CedarSymCompiler, Env, SymEnv, WellTypedPolicies, WellTypedPolicy,
+};
 
 #[track_caller]
 pub fn pretty_panic<T>(e: impl miette::Diagnostic + Send + Sync + 'static) -> T {
