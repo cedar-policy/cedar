@@ -17,8 +17,8 @@ use cedar_policy::{Schema, Validator};
 use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
 
 use crate::utils::{
-    assert_always_allows, assert_does_not_always_allow, assert_does_not_always_deny,
-    assert_does_not_imply, assert_implies, Environments,
+    assert_always_allows, assert_does_not_always_allow, assert_does_not_imply, assert_implies,
+    Environments,
 };
 mod utils;
 
