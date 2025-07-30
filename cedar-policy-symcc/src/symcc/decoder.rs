@@ -27,8 +27,9 @@ use num_bigint::BigUint;
 
 use thiserror::Error;
 
-use crate::symcc;
+use crate::symcc::env::SymEntityData;
 use crate::symcc::type_abbrevs::{ExtType, Width};
+use crate::{symcc, SymEnv};
 
 use super::bitvec::BitVec;
 use super::encoder::Encoder;
@@ -422,7 +423,7 @@ impl IdMaps {
 impl TermType {
     /// Default literal of a type.
     /// Used as placeholders for SMT partial applications.
-    pub fn default_literal(&self) -> Term {
+    pub fn default_literal(&self, env: &SymEnv) -> Term {
         match self {
             TermType::Bool => Term::Prim(TermPrim::Bool(false)),
             TermType::Bitvec { n } =>
@@ -435,12 +436,25 @@ impl TermType {
             }
             TermType::String => Term::Prim(TermPrim::String("".to_string())),
 
-            TermType::Entity { ety } =>
-            // TODO: if the entity has an enum type, this should return the first enum
-            {
+            TermType::Entity { ety } => {
+                // If the entity has an enum type, we return the first enum
+                let eid = if let Some(SymEntityData {
+                    members: Some(eids),
+                    ..
+                }) = env.entities.get(ety)
+                {
+                    if let Some(eid) = eids.first() {
+                        eid
+                    } else {
+                        "" // This case should not happen on a valid `SymEnv`
+                    }
+                } else {
+                    ""
+                };
+                eprintln!("ety: {}, eid: {}, {:?}", ety, eid, env.entities.get(ety));
                 Term::Prim(TermPrim::Entity(EntityUid::from_type_name_and_id(
                     ety.clone(),
-                    EntityId::new(""),
+                    EntityId::new(eid),
                 )))
             }
 
@@ -469,7 +483,7 @@ impl TermType {
 
             TermType::Record { rty } => Term::Record(
                 rty.iter()
-                    .map(|(k, v)| (k.clone(), v.default_literal()))
+                    .map(|(k, v)| (k.clone(), v.default_literal(env)))
                     .collect(),
             ),
         }
@@ -478,12 +492,12 @@ impl TermType {
 
 impl Uuf {
     /// Similar to [`TermType::default_literal`], but for [`Uuf`].
-    pub fn default_udf(&self) -> Udf {
+    pub fn default_udf(&self, env: &SymEnv) -> Udf {
         Udf {
             arg: self.arg.clone(),
             out: self.out.clone(),
             table: BTreeMap::new(),
-            default: self.out.default_literal(),
+            default: self.out.default_literal(env),
         }
     }
 }
@@ -938,7 +952,11 @@ impl SExpr {
     }
 
     /// Decodes the output of `(get-model)` to as [`Interpretation`].
-    pub fn decode_model(&self, id_maps: &IdMaps) -> Result<Interpretation, DecodeError> {
+    pub fn decode_model<'a>(
+        &self,
+        env: &'a SymEnv,
+        id_maps: &IdMaps,
+    ) -> Result<Interpretation<'a>, DecodeError> {
         let SExpr::App(cmds) = self else {
             return Err(DecodeError::UnexpectedModel);
         };
@@ -984,7 +1002,7 @@ impl SExpr {
             }
         }
 
-        Ok(Interpretation { vars, funs })
+        Ok(Interpretation { vars, funs, env })
     }
 }
 
