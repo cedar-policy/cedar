@@ -3321,7 +3321,7 @@ mod test {
     }
 
     #[test]
-    fn linked_template_is_in_ast_to_est() {
+    fn ast_to_est_with_linked_template_using_is_in_operator_1() {
         let template = r#"
             permit(
                 principal is XYZCorp::User in ?principal,
@@ -3398,7 +3398,10 @@ mod test {
             serde_json::to_string_pretty(&expected_json).unwrap(),
             serde_json::to_string_pretty(&linked_json).unwrap(),
         );
+    }
 
+    #[test]
+    fn ast_to_est_with_linked_template_using_is_in_operator_2() {
         let template = r#"
             permit(
                 principal is User in ?principal,

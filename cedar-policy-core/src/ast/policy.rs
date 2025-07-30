@@ -1387,7 +1387,12 @@ impl PrincipalConstraint {
                     EntityReference::EUID(euid),
                 ),
             },
-            _ => self,
+            // enumerated so it is clearer what other variants there are
+            PrincipalOrResourceConstraint::Is(_)
+            | PrincipalOrResourceConstraint::Any
+            | PrincipalOrResourceConstraint::Eq(EntityReference::EUID(_))
+            | PrincipalOrResourceConstraint::In(EntityReference::EUID(_))
+            | PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(_)) => self,
         }
     }
 }
@@ -1500,7 +1505,12 @@ impl ResourceConstraint {
                     EntityReference::EUID(euid),
                 ),
             },
-            _ => self,
+            // enumerated so it is clearer what other variants there are
+            PrincipalOrResourceConstraint::Is(_)
+            | PrincipalOrResourceConstraint::Any
+            | PrincipalOrResourceConstraint::Eq(EntityReference::EUID(_))
+            | PrincipalOrResourceConstraint::In(EntityReference::EUID(_))
+            | PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(_)) => self,
         }
     }
 }
