@@ -204,7 +204,7 @@ pub fn to_date(dt: Term) -> Term {
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]
     let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000).unwrap()));
-    let dt_val = ext_datetime_val(dt);
+    let dt_val = ext_datetime_val(dt.clone());
     ite(
         bvsle(zero.clone(), dt_val.clone()),
         some_of(ext_datetime_of_bitvec(bvmul(
@@ -213,7 +213,7 @@ pub fn to_date(dt: Term) -> Term {
         ))),
         ite(
             eq(bvsrem(dt_val.clone(), ms_per_day.clone()), zero),
-            some_of(dt_val.clone()),
+            some_of(dt.clone()),
             if_false(
                 bvsmulo(
                     bvsub(bvsdiv(dt_val.clone(), ms_per_day.clone()), one.clone()),
