@@ -31,12 +31,13 @@ use crate::symcc::{
     },
     result,
 };
-use cedar_policy_core::validator::ValidatorEntityType;
 use cedar_policy_core::validator::ValidatorSchema;
 use cedar_policy_core::validator::{
     types::{Attributes, EntityRecordKind, OpenTag, Type},
     ValidatorActionId,
 };
+use cedar_policy_core::validator::{ValidatorEntityType, ValidatorEntityTypeKind};
+use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
 
@@ -177,46 +178,69 @@ impl SymEntityData {
         validator_ety: &ValidatorEntityType,
         schema: &ValidatorSchema,
     ) -> Result<Self, result::Error> {
-        let sch = EntitySchemaEntry::of_schema(ety, validator_ety, schema);
-        let attrs_uuf = Uuf(op::Uuf {
-            id: format!("attrs[{ety}]"),
-            arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
-            out: TermType::of_type(record(sch.attrs))?,
-        });
-        let ancs_uuf = |anc_ty: &EntityType| {
-            Uuf(op::Uuf {
-                id: format!("ancs[{ety}, {anc_ty}]"),
-                arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
-                out: TermType::set_of(entity(anc_ty.clone())), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
-            })
-        };
-        let sym_tags = |tag_ty: Type| -> Result<SymTags, result::Error> {
-            Ok(SymTags {
-                keys: Uuf(op::Uuf {
-                    id: format!("tagKeys[{ety}]"),
+        match EntitySchemaEntry::of_schema(ety, validator_ety, schema) {
+            // Corresponds to `SymEntityData.ofStandardEntityType` in Lean
+            EntitySchemaEntry::Standard(sch) => {
+                let attrs_uuf = Uuf(op::Uuf {
+                    id: format!("attrs[{ety}]"),
                     arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
-                    out: TermType::set_of(TermType::String),
-                }),
-                vals: Uuf(op::Uuf {
-                    id: format!("tagVals[{ety}]"),
-                    arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
-                    out: TermType::of_type(tag_ty)?,
-                }),
-            })
-        };
-        Ok(SymEntityData {
-            attrs: attrs_uuf,
-            ancestors: sch
-                .ancestors
-                .into_iter()
-                .map(|anc_ty| {
-                    let uuf = ancs_uuf(&anc_ty);
-                    (anc_ty, uuf)
+                    out: TermType::of_type(record(sch.attrs))?,
+                });
+                let ancs_uuf = |anc_ty: &EntityType| {
+                    Uuf(op::Uuf {
+                        id: format!("ancs[{ety}, {anc_ty}]"),
+                        arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
+                        out: TermType::set_of(entity(anc_ty.clone())), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
+                    })
+                };
+                let sym_tags = |tag_ty: Type| -> Result<SymTags, result::Error> {
+                    Ok(SymTags {
+                        keys: Uuf(op::Uuf {
+                            id: format!("tagKeys[{ety}]"),
+                            arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
+                            out: TermType::set_of(TermType::String),
+                        }),
+                        vals: Uuf(op::Uuf {
+                            id: format!("tagVals[{ety}]"),
+                            arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
+                            out: TermType::of_type(tag_ty)?,
+                        }),
+                    })
+                };
+
+                Ok(SymEntityData {
+                    attrs: attrs_uuf,
+                    ancestors: sch
+                        .ancestors
+                        .into_iter()
+                        .map(|anc_ty| {
+                            let uuf = ancs_uuf(&anc_ty);
+                            (anc_ty, uuf)
+                        })
+                        .collect(),
+                    members: None,
+                    tags: sch.tags.map(sym_tags).transpose()?,
                 })
-                .collect(),
-            members: None,
-            tags: sch.tags.map(sym_tags).transpose()?,
-        })
+            }
+
+            // Corresponds to `SymEntityData.ofEnumEntityType` in Lean
+            EntitySchemaEntry::Enum(eids) => {
+                let attrs_udf = Udf(function::Udf {
+                    arg: entity(ety.clone()),
+                    out: TermType::Record {
+                        rty: BTreeMap::new(),
+                    },
+                    table: BTreeMap::new(),
+                    default: Term::Record(BTreeMap::new()),
+                });
+                Ok(SymEntityData {
+                    attrs: attrs_udf,
+                    ancestors: BTreeMap::new(),
+                    members: Some(eids.iter().map(|s| s.to_string()).collect()),
+                    tags: None,
+                })
+            }
+        }
     }
 
     fn of_action_type<'a>(
@@ -403,10 +427,15 @@ fn record(attrs: Attributes) -> Type {
 }
 
 // From `Validation/Types.lean`
-struct EntitySchemaEntry {
+struct StandardEntitySchemaEntry {
     ancestors: BTreeSet<EntityType>,
     attrs: Attributes,
     tags: Option<Type>,
+}
+
+enum EntitySchemaEntry {
+    Standard(StandardEntitySchemaEntry),
+    Enum(BTreeSet<SmolStr>),
 }
 
 impl EntitySchemaEntry {
@@ -415,7 +444,13 @@ impl EntitySchemaEntry {
         validator_ety: &ValidatorEntityType,
         schema: &ValidatorSchema,
     ) -> Self {
-        EntitySchemaEntry {
+        if let Some(entry) = schema.get_entity_type(ety.as_ref()) {
+            if let ValidatorEntityTypeKind::Enum(eids) = &entry.kind {
+                return EntitySchemaEntry::Enum(eids.iter().cloned().collect());
+            }
+        }
+
+        EntitySchemaEntry::Standard(StandardEntitySchemaEntry {
             // Reverse the descendants relation to get the ancestors relation
             ancestors: schema
                 .entity_types()
@@ -425,7 +460,7 @@ impl EntitySchemaEntry {
                 .collect(),
             attrs: validator_ety.attributes().clone(),
             tags: validator_ety.tag_type().cloned(),
-        }
+        })
     }
 }
 

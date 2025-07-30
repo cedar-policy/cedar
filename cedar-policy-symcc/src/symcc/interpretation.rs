@@ -36,29 +36,29 @@ use super::{factory, SymEnv};
 /// - A map from variables (principal, action, resource, context) to literals
 /// - A map from UUF to UDFs
 #[derive(Debug)]
-pub struct Interpretation {
+pub struct Interpretation<'a> {
     pub vars: BTreeMap<TermVar, Term>,
     pub funs: BTreeMap<Uuf, Udf>,
+    pub env: &'a SymEnv,
 }
 
-impl Default for Interpretation {
-    /// The default interpretation is empty, i.e.,
-    /// any variable or UUF is interpted as the default of their types.
-    fn default() -> Self {
+impl<'a> Interpretation<'a> {
+    pub fn default(env: &'a SymEnv) -> Self {
         Self {
             vars: BTreeMap::new(),
             funs: BTreeMap::new(),
+            env: env,
         }
     }
 }
 
-impl Interpretation {
+impl<'a> Interpretation<'a> {
     /// Interprets variables as terms, and use the default literal if not found.
     pub fn interpret_var(&self, var: &TermVar) -> Term {
         self.vars
             .get(var)
             .cloned()
-            .unwrap_or_else(|| var.ty.default_literal())
+            .unwrap_or_else(|| var.ty.default_literal(&self.env))
     }
 
     /// Interprets uninterpreted functions as interpreted functions, and use the
@@ -67,7 +67,7 @@ impl Interpretation {
         self.funs
             .get(fun)
             .cloned()
-            .unwrap_or_else(|| fun.default_udf())
+            .unwrap_or_else(|| fun.default_udf(&self.env))
     }
 
     /// Our acyclicity constraints only apply to the footprint,
@@ -78,16 +78,12 @@ impl Interpretation {
     /// ancestor functions taht are not in the footprint to empty sets
     ///
     /// Corresponds to `Interpretation.cex` in `Counterexample.lean`
-    pub fn repair_as_counterexample<'a>(
-        &self,
-        exprs: impl Iterator<Item = &'a Expr>,
-        env: &SymEnv,
-    ) -> Self {
+    pub fn repair_as_counterexample<'b>(&self, exprs: impl Iterator<Item = &'b Expr>) -> Self {
         let mut footprint_uids = BTreeSet::new();
 
         // Interpret every term in the footprint to collect concrete EUIDs
         // occurring in them
-        for term in exprs.flat_map(|e| footprint(e, env).collect::<Vec<_>>()) {
+        for term in exprs.flat_map(|e| footprint(e, self.env).collect::<Vec<_>>()) {
             term.interpret(self)
                 .get_all_entity_uids(&mut footprint_uids);
         }
@@ -95,7 +91,7 @@ impl Interpretation {
         let mut funs = self.funs.clone();
 
         // Repair all ancestor functions
-        for (ety, ent_data) in env.entities.iter() {
+        for (ety, ent_data) in self.env.entities.iter() {
             for fun in ent_data.ancestors.values() {
                 if let UnaryFunction::Uuf(uuf) = fun {
                     funs.insert(
@@ -109,6 +105,7 @@ impl Interpretation {
         Self {
             vars: self.vars.clone(),
             funs,
+            env: self.env,
         }
     }
 }
@@ -119,7 +116,7 @@ impl Uuf {
         &self,
         arg_ety: &EntityTypeName,
         footprints: &BTreeSet<EntityUID>,
-        interp: &Interpretation,
+        interp: &Interpretation<'_>,
     ) -> Udf {
         // Get the current, potentially incorrect interpretation
         let udf = interp.interpret_fun(self);
@@ -140,7 +137,7 @@ impl Uuf {
 
         Udf {
             table: new_table,
-            default: udf.out.default_literal(), // i.e., empty set
+            default: udf.out.default_literal(&interp.env), // i.e., empty set
             ..udf
         }
     }
@@ -149,7 +146,7 @@ impl Uuf {
 impl Term {
     /// Recursively interprets a term, substituting variables with
     /// their interpretations.
-    pub fn interpret(&self, interp: &Interpretation) -> Term {
+    pub fn interpret(&self, interp: &Interpretation<'_>) -> Term {
         match self {
             Term::Prim(..) | Term::None(..) => self.clone(),
             Term::Var(var) => interp.interpret_var(var),
@@ -270,7 +267,7 @@ impl Term {
                     let arg = arg.interpret(interp);
 
                     if let Term::None(ty) = arg {
-                        ty.default_literal()
+                        ty.default_literal(&interp.env)
                     } else {
                         factory::option_get(arg)
                     }
@@ -315,7 +312,7 @@ impl Term {
 
 impl SymRequest {
     /// Interprets a [`SymRequest`] with the given interpretation.
-    pub fn interpret(&self, interp: &Interpretation) -> SymRequest {
+    pub fn interpret(&self, interp: &Interpretation<'_>) -> SymRequest {
         SymRequest {
             principal: self.principal.interpret(interp),
             action: self.action.interpret(interp),
@@ -327,7 +324,7 @@ impl SymRequest {
 
 impl UnaryFunction {
     /// Interprets a [`UnaryFunction`] with the given interpretation.
-    pub fn interpret(&self, interp: &Interpretation) -> UnaryFunction {
+    pub fn interpret(&self, interp: &Interpretation<'_>) -> UnaryFunction {
         match self {
             UnaryFunction::Udf(..) => self.clone(),
             UnaryFunction::Uuf(uuf) => UnaryFunction::Udf(interp.interpret_fun(uuf)),
@@ -337,7 +334,7 @@ impl UnaryFunction {
 
 impl SymTags {
     /// Interprets a [`SymTags`] with the given interpretation.
-    pub fn interpret(&self, interp: &Interpretation) -> SymTags {
+    pub fn interpret(&self, interp: &Interpretation<'_>) -> SymTags {
         SymTags {
             keys: self.keys.interpret(interp),
             vals: self.vals.interpret(interp),
@@ -347,7 +344,7 @@ impl SymTags {
 
 impl SymEntityData {
     /// Interpret a [`SymEntityData`] with the given interpretation.
-    pub fn interpret(&self, interp: &Interpretation) -> SymEntityData {
+    pub fn interpret(&self, interp: &Interpretation<'_>) -> SymEntityData {
         SymEntityData {
             attrs: self.attrs.interpret(interp),
             ancestors: self
@@ -363,7 +360,7 @@ impl SymEntityData {
 
 impl SymEntities {
     /// Interpret a [`SymEntities`] with the given interpretation.
-    pub fn interpret(&self, interp: &Interpretation) -> SymEntities {
+    pub fn interpret(&self, interp: &Interpretation<'_>) -> SymEntities {
         SymEntities(
             self.0
                 .iter()
@@ -375,7 +372,7 @@ impl SymEntities {
 
 impl SymEnv {
     /// Interpret a [`SymEnv`] with the given interpretation.
-    pub fn interpret(&self, interp: &Interpretation) -> SymEnv {
+    pub fn interpret(&self, interp: &Interpretation<'_>) -> SymEnv {
         SymEnv {
             entities: self.entities.interpret(interp),
             request: self.request.interpret(interp),
