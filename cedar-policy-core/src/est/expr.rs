@@ -1060,6 +1060,76 @@ impl Expr {
             Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ASTErrorNode),
         }
     }
+
+    /// Returns true if expr has a slot
+    pub fn has_slot(&self) -> bool {
+        match self {
+            Expr::ExprNoExt(ExprNoExt::Value(..)) => false,
+            Expr::ExprNoExt(ExprNoExt::Var(..)) => false,
+            Expr::ExprNoExt(ExprNoExt::Slot(..)) => true,
+            Expr::ExprNoExt(ExprNoExt::Not { arg }) => arg.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::Neg { arg }) => arg.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::Eq { left, right }) => left.has_slot() || right.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::NotEq { left, right }) => {
+                left.has_slot() || right.has_slot()
+            }
+            Expr::ExprNoExt(ExprNoExt::In { left, right }) => left.has_slot() || right.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::Less { left, right }) => left.has_slot() || right.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::LessEq { left, right }) => {
+                left.has_slot() || right.has_slot()
+            }
+            Expr::ExprNoExt(ExprNoExt::Greater { left, right }) => {
+                left.has_slot() || right.has_slot()
+            }
+            Expr::ExprNoExt(ExprNoExt::GreaterEq { left, right }) => {
+                left.has_slot() || right.has_slot()
+            }
+            Expr::ExprNoExt(ExprNoExt::And { left, right }) => left.has_slot() || right.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::Or { left, right }) => left.has_slot() || right.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::Add { left, right }) => left.has_slot() || right.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::Sub { left, right }) => left.has_slot() || right.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => left.has_slot() || right.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::Contains { left, right }) => {
+                left.has_slot() || right.has_slot()
+            }
+            Expr::ExprNoExt(ExprNoExt::ContainsAll { left, right }) => {
+                left.has_slot() || right.has_slot()
+            }
+            Expr::ExprNoExt(ExprNoExt::ContainsAny { left, right }) => {
+                left.has_slot() || right.has_slot()
+            }
+            Expr::ExprNoExt(ExprNoExt::IsEmpty { arg }) => arg.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::GetTag { left, right }) => {
+                left.has_slot() || right.has_slot()
+            }
+            Expr::ExprNoExt(ExprNoExt::HasTag { left, right }) => {
+                left.has_slot() || right.has_slot()
+            }
+            Expr::ExprNoExt(ExprNoExt::GetAttr { left, .. }) => left.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::HasAttr { left, .. }) => left.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::Like { left, .. }) => left.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::Is { left, in_expr, .. }) => match in_expr {
+                Some(right) => left.has_slot() || right.has_slot(),
+                None => left.has_slot(),
+            },
+            Expr::ExprNoExt(ExprNoExt::If {
+                cond_expr,
+                then_expr,
+                else_expr,
+            }) => cond_expr.has_slot() || then_expr.has_slot() || else_expr.has_slot(),
+            Expr::ExprNoExt(ExprNoExt::Set(elements)) => {
+                elements.iter().any(|expr| expr.has_slot())
+            }
+            Expr::ExprNoExt(ExprNoExt::Record(map)) => map
+                .iter()
+                .fold(false, |init, (_, expr)| init || expr.has_slot()),
+            Expr::ExtFuncCall(ExtFuncCall { call }) => call.iter().fold(false, |init, (_, v)| {
+                init || (v.iter().any(|expr| expr.has_slot()))
+            }),
+            #[cfg(feature = "tolerant-ast")]
+            Expr::ExprNoExt(ExprNoExt::Error(_)) => false,
+        }
+    }
 }
 
 impl From<ast::Literal> for Expr {

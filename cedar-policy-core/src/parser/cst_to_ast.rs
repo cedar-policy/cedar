@@ -325,7 +325,8 @@ impl Node<Option<cst::Policy>> {
         let maybe_conds = match policy.extract_scope() {
             Ok((p, _, r)) => {
                 let slots_in_scope: HashSet<ast::Slot> =
-                    HashSet::from_iter(p.as_expr().slots().chain(r.as_expr().slots()));
+                    HashSet::from_iter(vec![p.get_slot(), r.get_slot()].into_iter().flatten());
+
                 ParseErrors::transpose(policy.conds.iter().map(|c| {
                     let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
                     let slot_errs =

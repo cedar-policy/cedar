@@ -157,8 +157,10 @@ impl Clause {
 
     /// Returns true if this clause has a slot.
     pub fn has_slot(&self) -> bool {
-        // currently, slots are not allowed in clauses
-        false
+        match self {
+            Clause::When(e) => e.has_slot(),
+            Clause::Unless(e) => e.has_slot(),
+        }
     }
 }
 
@@ -280,13 +282,13 @@ impl Policy {
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
         let id = id.unwrap_or_else(|| ast::PolicyID::from_string("JSON policy"));
-        let has_principal = self.principal.has_slot();
-        let has_resource = self.resource.has_slot();
+        let has_principal_slot = self.principal.has_slot();
+        let has_resource_slot = self.resource.has_slot();
 
         let mut conditions_iter = self
             .conditions
             .into_iter()
-            .map(|cond| cond.try_into_ast(has_principal, has_resource, &id));
+            .map(|cond| cond.try_into_ast(has_principal_slot, has_resource_slot, &id));
         let conditions = match conditions_iter.next() {
             None => ast::Expr::val(true),
             Some(first) => ast::ExprBuilder::with_data(())
@@ -317,13 +319,13 @@ impl Policy {
 impl Clause {
     fn filter_slots(
         e: ast::Expr,
-        has_principal: bool,
-        has_resource: bool,
+        has_principal_slot: bool,
+        has_resource_slot: bool,
         is_when: bool,
     ) -> Result<ast::Expr, FromJsonError> {
         for slot in e.slots() {
-            if (slot.id.is_principal() && !has_principal)
-                || (slot.id.is_resource() && !has_resource)
+            if (slot.id.is_principal() && !has_principal_slot)
+                || (slot.id.is_resource() && !has_resource_slot)
             {
                 return Err(FromJsonError::SlotsNotInScopeInConditionClause(
                     parse_errors::SlotsNotInScopeInConditionClause {
@@ -337,23 +339,26 @@ impl Clause {
     }
 
     /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
-    /// has_principal/has_resource tells us whether there is a principal/resource slot in the scope
+    /// has_principal_slot/has_resource_slot tells us whether there is a principal/resource slot in the scope
     /// so we know when a slot is allowed to appear in the condition
     /// an error is thrown otherwise if there is a slot not in the scope but in the condition
     fn try_into_ast(
         self,
-        has_principal: bool,
-        has_resource: bool,
+        has_principal_slot: bool,
+        has_resource_slot: bool,
         id: &ast::PolicyID,
     ) -> Result<ast::Expr, FromJsonError> {
         match self {
-            Clause::When(expr) => {
-                Self::filter_slots(expr.try_into_ast(id)?, has_principal, has_resource, true)
-            }
+            Clause::When(expr) => Self::filter_slots(
+                expr.try_into_ast(id)?,
+                has_principal_slot,
+                has_resource_slot,
+                true,
+            ),
             Clause::Unless(expr) => Self::filter_slots(
                 ast::Expr::not(expr.try_into_ast(id)?),
-                has_principal,
-                has_resource,
+                has_principal_slot,
+                has_resource_slot,
                 false,
             ),
         }
@@ -4746,6 +4751,46 @@ mod test {
             .unwrap();
         let est: Policy = cst.try_into().unwrap();
         assert!(!est.is_template(), "Static policy marked as template");
+    }
+
+    #[test]
+    fn template_condition_has_slot() {
+        let template: &'static str = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource
+            ) when {
+                ?principal in resource.owners && ?principal has owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let has_slot = est.conditions.iter().any(|c| c.has_slot());
+        assert!(has_slot, "Policy condition not marked as having a slot");
+
+        let template: &'static str = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource
+            ) when {
+                principal == resource.owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let has_slot = est.conditions.iter().any(|c| c.has_slot());
+        assert!(
+            !has_slot,
+            "Policy condition marked as having a slot when it does not have a slot"
+        )
     }
 }
 
