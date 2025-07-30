@@ -125,7 +125,7 @@ pub(crate) fn schema_symbols(schema_info: &SchemaInfo) -> Option<Vec<DocumentSym
 
     // Create common type symbols
     let common_type_symbols: Vec<DocumentSymbol> = validator
-        .common_types()
+        .common_types_extended()
         .filter_map(|ct| {
             ct.name_loc
                 .as_ref()
