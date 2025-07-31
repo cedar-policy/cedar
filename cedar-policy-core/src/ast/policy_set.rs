@@ -649,7 +649,6 @@ mod test {
             PrincipalConstraint, ResourceConstraint,
         },
         parser,
-        validator::{json_schema, types::Type, RawName},
     };
 
     use std::collections::HashMap;
