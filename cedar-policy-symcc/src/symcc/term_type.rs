@@ -19,28 +19,29 @@ use crate::symcc::result;
 
 use super::{entity_tag::EntityTag, type_abbrevs::*};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub enum TermType {
     Bool,
     Bitvec { n: Width },
     String,
-    Option { ty: Box<TermType> },
+    Option { ty: Arc<TermType> },
     Entity { ety: EntityType },
-    Set { ty: Box<TermType> },
-    Record { rty: BTreeMap<Attr, TermType> },
+    Set { ty: Arc<TermType> },
+    Record { rty: Arc<BTreeMap<Attr, TermType>> },
     Ext { xty: ExtType },
 }
 
 impl TermType {
     /// No corresponding Lean function; convenience constructor used in Rust
     pub fn set_of(ty: TermType) -> Self {
-        Self::Set { ty: Box::new(ty) }
+        Self::Set { ty: Arc::new(ty) }
     }
 
     pub fn tag_for(ety: EntityType) -> Self {
         Self::Record {
-            rty: EntityTag::mk(TermType::Entity { ety }, TermType::String).0,
+            rty: Arc::new(EntityTag::mk(TermType::Entity { ety }, TermType::String).0),
         }
     }
 
@@ -108,23 +109,25 @@ impl TermType {
                     } => {
                         if open_attributes == OpenTag::ClosedAttributes {
                             Ok(TermType::Record {
-                                rty: attrs
-                                    .into_iter()
-                                    .map(|(k, v)| {
-                                        match Self::of_type(v.attr_type) {
-                                            Ok(vt) => Ok((
-                                                k,
-                                                //Inlining ofRecordType and ofQualifiedType here
-                                                if v.is_required {
-                                                    vt
-                                                } else {
-                                                    TermType::Option { ty: Box::new(vt) }
-                                                },
-                                            )),
-                                            Err(e) => Err(e),
-                                        }
-                                    })
-                                    .collect::<Result<_, _>>()?,
+                                rty: Arc::new(
+                                    attrs
+                                        .into_iter()
+                                        .map(|(k, v)| {
+                                            match Self::of_type(v.attr_type) {
+                                                Ok(vt) => Ok((
+                                                    k,
+                                                    //Inlining ofRecordType and ofQualifiedType here
+                                                    if v.is_required {
+                                                        vt
+                                                    } else {
+                                                        TermType::Option { ty: Arc::new(vt) }
+                                                    },
+                                                )),
+                                                Err(e) => Err(e),
+                                            }
+                                        })
+                                        .collect::<Result<_, _>>()?,
+                                ),
                             })
                         } else {
                             // Attributes should be closed
@@ -162,7 +165,7 @@ impl TermType {
             }
             Type::Set { element_type } => match element_type {
                 Some(element_type) => Ok(TermType::Set {
-                    ty: Box::new(Self::of_type(*element_type)?),
+                    ty: Arc::new(Self::of_type(*element_type)?),
                 }),
                 // Empty set. Unable to deduce type
                 None => Err(result::Error::UnsupportedError),
