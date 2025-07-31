@@ -1273,4 +1273,26 @@ mod datetime_tests {
         test_valid_bool_simpl_expr(r#"duration("-1ms") < duration("-2ms")"#, false);
         test_valid_bool_simpl_expr(r#"duration("8d") <= duration("80109s")"#, false);
     }
+
+    #[test]
+    fn test_ipaddr_simpl_comp_expr() {
+        test_valid_bool_simpl_expr(r#"ip("192.168.0.1").isInRange(ip("192.168.0.1/24"))"#, true);
+        test_valid_bool_simpl_expr(r#"ip("192.168.0.1").isInRange(ip("192.168.0.1/28"))"#, true);
+        test_valid_bool_simpl_expr(r#"ip("192.168.0.75").isInRange(ip("192.168.0.1/24"))"#, true);
+        test_valid_bool_simpl_expr(r#"ip("192.168.0.75").isInRange(ip("192.168.0.1/28"))"#, false);
+        test_valid_bool_simpl_expr(r#"ip("1:2:3:4::").isInRange(ip("1:2:3:4::/48"))"#, true);
+        test_valid_bool_simpl_expr(r#"ip("192.168.0.1").isInRange(ip("1:2:3:4::"))"#, false);
+        test_valid_bool_simpl_expr(r#"ip("192.168.1.1").isInRange(ip("192.168.0.1/24"))"#, false);
+        test_valid_bool_simpl_expr(r#"ip("127.0.0.1").isMulticast()"#, false);
+        test_valid_bool_simpl_expr(r#"ip("ff00::2").isMulticast()"#, true);
+        test_valid_bool_simpl_expr(r#"ip("127.0.0.2").isLoopback()"#, true);
+        test_valid_bool_simpl_expr(r#"ip("::1").isLoopback()"#, true);
+        test_valid_bool_simpl_expr(r#"ip("::2").isLoopback()"#, false);
+        test_valid_bool_simpl_expr(r#"ip("127.0.0.1/24").isIpv6()"#, false);
+        test_valid_bool_simpl_expr(r#"ip("ffee::/64").isIpv6()"#, true);
+        test_valid_bool_simpl_expr(r#"ip("::1").isIpv6()"#, true);
+        test_valid_bool_simpl_expr(r#"ip("127.0.0.1").isIpv4()"#, true);
+        test_valid_bool_simpl_expr(r#"ip("::1").isIpv4()"#, false);
+        test_valid_bool_simpl_expr(r#"ip("127.0.0.1/24").isIpv4()"#, true);
+    }
 }
