@@ -40,6 +40,7 @@ use cedar_policy_core::validator::{ValidatorEntityType, ValidatorEntityTypeKind}
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
+use std::sync::Arc;
 
 /// A symbolic request is analogous to a concrete request. It binds
 /// request variables to Terms.
@@ -67,7 +68,7 @@ impl SymRequest {
                 id: "resource".to_string(),
                 ty: TermType::Bool,
             }),
-            context: Term::Record(BTreeMap::new()),
+            context: Term::Record(Arc::new(BTreeMap::new())),
         }
     }
 
@@ -228,10 +229,10 @@ impl SymEntityData {
                 let attrs_udf = Udf(function::Udf {
                     arg: entity(ety.clone()),
                     out: TermType::Record {
-                        rty: BTreeMap::new(),
+                        rty: Arc::new(BTreeMap::new()),
                     },
                     table: BTreeMap::new(),
-                    default: Term::Record(BTreeMap::new()),
+                    default: Term::Record(Arc::new(BTreeMap::new())),
                 });
                 Ok(SymEntityData {
                     attrs: attrs_udf,
@@ -252,10 +253,10 @@ impl SymEntityData {
         let attrs_udf = Udf(function::Udf {
             arg: entity(act_ty.clone()),
             out: TermType::Record {
-                rty: BTreeMap::new(),
+                rty: Arc::new(BTreeMap::new()),
             },
             table: BTreeMap::new(),
-            default: Term::Record(BTreeMap::new()),
+            default: Term::Record(Arc::new(BTreeMap::new())),
         });
         let term_of_type = |ety: EntityType, uid: EntityUID| -> Option<Term> {
             if uid.type_name() == &ety {
@@ -266,10 +267,11 @@ impl SymEntityData {
         };
         let ancs_term = |anc_ty: &EntityType, ancs: &BTreeSet<EntityUID>| -> Term {
             Term::Set {
-                elts: ancs
-                    .iter()
-                    .filter_map(|anc| term_of_type(anc_ty.clone(), anc.clone()))
-                    .collect(),
+                elts: Arc::new(
+                    ancs.iter()
+                        .filter_map(|anc| term_of_type(anc_ty.clone(), anc.clone()))
+                        .collect(),
+                ),
                 elts_ty: TermType::set_of(entity(anc_ty.clone())),
             }
         };
@@ -287,7 +289,7 @@ impl SymEntityData {
                     })
                     .collect(),
                 default: Term::Set {
-                    elts: BTreeSet::new(),
+                    elts: Arc::new(BTreeSet::new()),
                     elts_ty: TermType::set_of(entity(anc_ty.clone())),
                 },
             })
