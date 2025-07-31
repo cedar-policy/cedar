@@ -19,6 +19,7 @@
 //! an Interpretation.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use cedar_policy::EntityTypeName;
 use cedar_policy_core::ast::Expr;
@@ -150,18 +151,18 @@ impl Term {
         match self {
             Term::Prim(..) | Term::None(..) => self.clone(),
             Term::Var(var) => interp.interpret_var(var),
-            Term::Some(t) => Term::Some(Box::new(t.interpret(interp))),
+            Term::Some(t) => Term::Some(Arc::new(t.interpret(interp))),
 
             Term::Set { elts, elts_ty } => Term::Set {
-                elts: elts.iter().map(|t| t.interpret(interp)).collect(),
+                elts: Arc::new(elts.iter().map(|t| t.interpret(interp)).collect()),
                 elts_ty: elts_ty.clone(),
             },
 
-            Term::Record(rec) => Term::Record(
+            Term::Record(rec) => Term::Record(Arc::new(
                 rec.iter()
                     .map(|(k, v)| (k.clone(), v.interpret(interp)))
                     .collect(),
-            ),
+            )),
 
             Term::App { op, args, ret_ty } => match (op, args.as_slice()) {
                 (Op::Not, [arg]) => factory::not(arg.interpret(interp)),
@@ -302,7 +303,7 @@ impl Term {
                 // interpret the arguments
                 (op, args) => Term::App {
                     op: op.clone(),
-                    args: args.iter().map(|t| t.interpret(interp)).collect(),
+                    args: Arc::new(args.iter().map(|t| t.interpret(interp)).collect()),
                     ret_ty: ret_ty.clone(),
                 },
             },
