@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use std::sync::Arc;
+
 use super::term_type::TermType;
 use super::type_abbrevs::*;
 
@@ -132,7 +134,7 @@ impl ExtOp {
                 }] =>
             {
                 Some(TermType::Option {
-                    ty: Box::new(TermType::Bitvec { n: 5 }),
+                    ty: Arc::new(TermType::Bitvec { n: 5 }),
                 })
             }
             ExtOp::IpaddrAddrV6
@@ -306,7 +308,7 @@ impl Op {
                 reason = "List of length 1 should not error on first call to next()"
             )]
             Op::OptionGet if l.len() == 1 => match l.into_iter().next().unwrap() {
-                TermType::Option { ty } => Some(*ty),
+                TermType::Option { ty } => Some(Arc::unwrap_or_clone(ty)),
                 _ => None,
             },
             // PANIC SAFETY

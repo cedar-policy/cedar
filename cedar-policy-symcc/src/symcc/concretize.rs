@@ -307,7 +307,7 @@ impl Term {
             }
 
             Term::Set { elts, .. } => {
-                for t in elts {
+                for t in elts.iter() {
                     t.get_all_entity_uids(uids);
                 }
             }
@@ -319,7 +319,7 @@ impl Term {
             }
 
             Term::App { args, .. } => {
-                for t in args {
+                for t in args.iter() {
                     t.get_all_entity_uids(uids);
                 }
             }
