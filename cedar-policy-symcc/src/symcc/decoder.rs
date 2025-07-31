@@ -28,6 +28,9 @@ use num_bigint::BigUint;
 use thiserror::Error;
 
 use crate::symcc::env::SymEntityData;
+use crate::symcc::extension_types::ipaddr::{
+    CIDRv4, CIDRv6, IPv4Addr, IPv4Prefix, IPv6Addr, IPv6Prefix,
+};
 use crate::symcc::type_abbrevs::{ExtType, Width};
 use crate::{symcc, SymEnv};
 
@@ -221,11 +224,13 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                                 let num = u128::from_str_radix(&num, 2)?;
 
                                 // Do a sign-extension from i<width> to i<128>
-                                let num = if width != 0 && (1u128 << width - 1) & num != 0 {
-                                    ((u128::MAX << width) | num) as i128
-                                } else {
-                                    num as i128
-                                };
+                                let num =
+                                    if width != 0 && width < 128 && (1u128 << width - 1) & num != 0
+                                    {
+                                        ((u128::MAX << width) | num) as i128
+                                    } else {
+                                        num as i128
+                                    };
 
                                 tokens.push(Token::Atom(SExpr::BitVec(
                                     BitVec::of_int(width as Width, num.into())
@@ -781,6 +786,39 @@ impl SExpr {
                                 }
                             }
 
+                            // IPv4/IPv6
+                            SExpr::Symbol(s) if (s == "V4" || s == "V6") && args.len() == 3 => {
+                                let addr = args[1].decode_literal(id_maps)?;
+                                let prefix = args[2].decode_literal(id_maps)?;
+
+                                let addr = match addr {
+                                    Term::Prim(TermPrim::Bitvec(bv)) => bv,
+                                    _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
+                                };
+                                let prefix = match prefix {
+                                    Term::Some(t) => match *t {
+                                        Term::Prim(TermPrim::Bitvec(bv)) => Some(bv),
+                                        _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
+                                    },
+                                    Term::None(..) => None,
+                                    _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
+                                };
+
+                                Ok(Term::Prim(TermPrim::Ext(Ext::Ipaddr {
+                                    ip: if s == "V4" {
+                                        IPNet::V4(CIDRv4 {
+                                            addr: IPv4Addr { val: addr },
+                                            prefix: IPv4Prefix { val: prefix },
+                                        })
+                                    } else {
+                                        IPNet::V6(CIDRv6 {
+                                            addr: IPv6Addr { val: addr },
+                                            prefix: IPv6Prefix { val: prefix },
+                                        })
+                                    },
+                                })))
+                            }
+
                             SExpr::Symbol(s) => {
                                 match (id_maps.types.get(s), &args[1..]) {
                                     // Entity UID
@@ -830,7 +868,6 @@ impl SExpr {
                                 }
                             }
 
-                            // TODO: Duration, Datetime, V4, V6
                             _ => Err(DecodeError::UnknownLiteral(self.clone())),
                         }
                     }
