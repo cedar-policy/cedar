@@ -595,7 +595,6 @@ pub fn ext_ipaddr_is_v4(t: Term) -> Term {
 pub fn ext_ipaddr_addr_v4(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V4(v4) })) => v4.addr.val.into(),
-        // Ext::Ipaddr { ip }.into(),
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrAddrV4),
             args: vec![t],
