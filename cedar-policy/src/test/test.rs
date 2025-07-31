@@ -1863,6 +1863,31 @@ mod entity_validate_tests {
         );
     }
 
+    #[test]
+    fn from_entities_action_with_unexpected_tags() {
+        let (schema, _) = Schema::from_cedarschema_str("action Act;").unwrap();
+        let entity = Entity::new_with_tags(
+            EntityUid::from_str(r#"Action::"Act""#).unwrap(),
+            [],
+            [],
+            [("foo".into(), RestrictedExpression::new_bool(false))],
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"definition of action `Action::"Act"` does not match its schema declaration"#)
+                        .help(r#"to use the schema's definition of `Action::"Act"`, simply omit it from the entities input data"#)
+                        .build()
+                );
+            }
+        );
+    }
+
     /// Record inside entity doesn't conform to schema
     #[test]
     #[cfg(feature = "partial-validate")]
@@ -8310,6 +8335,25 @@ mod deep_eq {
             EntityUid::from_str(r#"E::"a""#).unwrap(),
             HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(true))]),
             HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        assert_not_deep_eq!(entity, &other);
+    }
+
+    #[test]
+    fn not_deep_eq_tags() {
+        let entity = Entity::new_with_tags(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            [],
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+            [("foo".into(), RestrictedExpression::new_bool(false))],
+        )
+        .unwrap();
+        let other = Entity::new_with_tags(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            [],
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+            [("foo".into(), RestrictedExpression::new_bool(true))],
         )
         .unwrap();
         assert_not_deep_eq!(entity, &other);
