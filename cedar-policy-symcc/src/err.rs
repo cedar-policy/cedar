@@ -40,3 +40,10 @@ impl From<crate::symcc::Error> for Error {
         }
     }
 }
+
+impl From<crate::symcc::result::Error> for Error {
+    fn from(err: crate::symcc::result::Error) -> Self {
+        let err: crate::symcc::Error = err.into();
+        err.into()
+    }
+}

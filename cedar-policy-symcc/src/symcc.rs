@@ -29,6 +29,9 @@ mod env;
 mod ext;
 mod extension_types;
 mod extfun;
+#[cfg(feature = "term")]
+pub mod factory;
+#[cfg(not(feature = "term"))]
 mod factory;
 mod function;
 mod interpretation;
@@ -56,7 +59,7 @@ use cedar_policy_core::validator::{
 };
 use solver::{Decision, Solver};
 use thiserror::Error;
-use verifier::Asserts;
+pub use verifier::Asserts;
 
 use encoder::Encoder;
 pub use verifier::{
@@ -66,6 +69,9 @@ pub use verifier::{
 
 use crate::symcc::concretize::ConcretizeError;
 pub use crate::symcc::concretize::Env;
+
+#[cfg(feature = "term")]
+pub use crate::symcc::{term::Term, term_type::TermType};
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
@@ -214,6 +220,167 @@ impl<S: Solver> SymCompiler<S> {
                 Decision::Unknown => Err(Error::SolverUnknown),
             }
         }
+    }
+
+    /// Returns true iff `policy` does not error on any well-formed input in the `symenv`.
+    pub async fn check_never_errors(&mut self, policy: &Policy, symenv: &SymEnv) -> Result<bool> {
+        self.check_unsat(|symenv| verify_never_errors(policy, symenv), symenv)
+            .await
+    }
+
+    /// Returns some counterexample iff [`Self::check_never_errors`] is false.
+    pub async fn check_never_errors_with_counterexample(
+        &mut self,
+        policy: &Policy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.check_sat(
+            |symenv| verify_never_errors(policy, symenv),
+            symenv,
+            std::iter::once(policy),
+        )
+        .await
+    }
+
+    /// Returns true iff the authorization decision of `policies1` implies that
+    /// of `policies2` for every well-formed input in the `symenv`. That is,
+    /// every input allowed by `policies1` is allowed by `policies2`;
+    /// `policies2` is either more permissive than, or equivalent to, `policies1`.
+    pub async fn check_implies(
+        &mut self,
+        policies1: &PolicySet,
+        policies2: &PolicySet,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.check_unsat(
+            |symenv| verify_implies(policies1, policies2, symenv),
+            symenv,
+        )
+        .await
+    }
+
+    /// Returns some counterexample iff [`Self::check_implies`] is false.
+    pub async fn check_implies_with_counterexample(
+        &mut self,
+        policies1: &PolicySet,
+        policies2: &PolicySet,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.check_sat(
+            |symenv| verify_implies(policies1, policies2, symenv),
+            symenv,
+            policies1.policies().chain(policies2.policies()),
+        )
+        .await
+    }
+
+    /// Returns true iff `policies` allows all well-formed inputs in the `symenv`.
+    pub async fn check_always_allows(
+        &mut self,
+        policies: &PolicySet,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.check_unsat(|symenv| verify_always_allows(policies, symenv), symenv)
+            .await
+    }
+
+    /// Returns some counterexample iff [`Self::check_always_allows`] is false.
+    pub async fn check_always_allows_with_counterexample(
+        &mut self,
+        policies: &PolicySet,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.check_sat(
+            |symenv| verify_always_allows(policies, symenv),
+            symenv,
+            policies.policies(),
+        )
+        .await
+    }
+
+    /// Returns true iff `policies` denies all well-formed inputs in the `symenv`.
+    pub async fn check_always_denies(
+        &mut self,
+        policies: &PolicySet,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.check_unsat(|symenv| verify_always_denies(policies, symenv), symenv)
+            .await
+    }
+
+    /// Returns some counterexample iff [`Self::check_always_denies`] is false.
+    pub async fn check_always_denies_with_counterexample(
+        &mut self,
+        policies: &PolicySet,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.check_sat(
+            |symenv| verify_always_denies(policies, symenv),
+            symenv,
+            policies.policies(),
+        )
+        .await
+    }
+
+    /// Returns true iff `policies1` and `policies2` produce the same
+    /// authorization decision on all well-formed inputs in the `symenv`.
+    pub async fn check_equivalent(
+        &mut self,
+        policies1: &PolicySet,
+        policies2: &PolicySet,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.check_unsat(
+            |symenv| verify_equivalent(policies1, policies2, symenv),
+            symenv,
+        )
+        .await
+    }
+
+    /// Returns some counterexample iff [`Self::check_equivalent`] is false.
+    pub async fn check_equivalent_with_counterexample(
+        &mut self,
+        policies1: &PolicySet,
+        policies2: &PolicySet,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.check_sat(
+            |symenv| verify_equivalent(policies1, policies2, symenv),
+            symenv,
+            policies1.policies().chain(policies2.policies()),
+        )
+        .await
+    }
+
+    /// Returns true iff there is no well-formed input in the `symenv` that is allowed by both
+    /// `policies1` and `policies2`. If this returns `false`, then there is at least one well-formed
+    /// input that is allowed by both `policies1` and `policies2`.
+    pub async fn check_disjoint(
+        &mut self,
+        policies1: &PolicySet,
+        policies2: &PolicySet,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.check_unsat(
+            |symenv| verify_disjoint(policies1, policies2, symenv),
+            symenv,
+        )
+        .await
+    }
+
+    /// Returns some counterexample iff [`Self::check_disjoint`] is false.
+    pub async fn check_disjoint_with_counterexample(
+        &mut self,
+        policies1: &PolicySet,
+        policies2: &PolicySet,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.check_sat(
+            |symenv| verify_disjoint(policies1, policies2, symenv),
+            symenv,
+            policies1.policies().chain(policies2.policies()),
+        )
+        .await
     }
 }
 
