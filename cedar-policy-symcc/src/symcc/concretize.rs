@@ -27,7 +27,7 @@ use cedar_policy_core::ast::{
     Value, ValueKind,
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
-use cedar_policy_core::extensions::{datetime, decimal, Extensions};
+use cedar_policy_core::extensions::{datetime, decimal, ipaddr, Extensions};
 use num_bigint::{BigInt, TryFromBigIntError};
 use ref_cast::RefCast;
 use smol_str::SmolStr;
@@ -221,9 +221,8 @@ impl TryFrom<&Term> for Value {
                 )
             }
 
-            // TODO: concretize extension values
-            Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: _ })) => {
-                Err(ConcretizeError::ExtensionNotImplemented(ExtType::IpAddr))
+            Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip })) => {
+                call_extension_func(&ipaddr::extension(), "ip", &[format!("{}", ip).into()])
             }
 
             Term::Set { elts, .. } => Ok(Value::new(
@@ -353,8 +352,6 @@ impl UnaryFunction {
 impl SymEntityData {
     /// Concretizes a particular entity.
     pub fn concretize(&self, euid: &EntityUid) -> Result<Entity, ConcretizeError> {
-        // TODO: in case of an entity enum, check if the EUID is valid
-
         let tuid = Term::Prim(TermPrim::Entity(euid.clone()));
 
         let concrete_attrs = factory::app(self.attrs.clone(), tuid.clone()).try_into_record()?;

@@ -78,7 +78,11 @@ pub fn subnet_width(w: Width, prefix: Term) -> Term {
     let n = 2_u32.pow(w);
     ite(
         is_none(prefix.clone()),
-        0.into(),
+        #[allow(
+            clippy::unwrap_used,
+            reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
+        )]
+        BitVec::of_nat(n, nat(0)).unwrap().into(),
         bvsub(
             #[allow(
                 clippy::unwrap_used,
@@ -91,9 +95,15 @@ pub fn subnet_width(w: Width, prefix: Term) -> Term {
 }
 
 pub fn range(w: Width, ip_addr: Term, prefix: Term) -> (Term, Term) {
+    let n = 2_u32.pow(w);
     let width = subnet_width(w, prefix);
+    #[allow(
+        clippy::unwrap_used,
+        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
+    )]
+    let one: Term = BitVec::of_nat(n, nat(1)).unwrap().into();
     let lo = bvshl(bvlshr(ip_addr, width.clone()), width.clone());
-    let hi = bvsub(bvadd(lo.clone(), bvshl(1.into(), width)), 1.into());
+    let hi = bvsub(bvadd(lo.clone(), bvshl(one.clone(), width)), one);
     (lo, hi)
 }
 
