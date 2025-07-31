@@ -24,7 +24,10 @@
 //!
 //! For more technical details, see comments in SymCC/Enforcer.lean.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use cedar_policy_core::ast::{Expr, ExprKind};
 
@@ -145,24 +148,26 @@ fn footprints<'a>(exprs: impl IntoIterator<Item = &'a Expr>, env: &SymEnv) -> BT
 /// Returns the acyclicity constraint for the given term
 fn acyclicity(t: &Term, es: &SymEntities) -> Term {
     match t.type_of() {
-        TermType::Option { ty } if matches!(*ty, TermType::Entity { .. }) => match *ty {
-            TermType::Entity { ety } => match es.ancestors_of_type(&ety, &ety) {
-                Some(f) => {
-                    let t_unwrapped = option_get(t.clone());
-                    implies(
-                        is_some(t.clone()),
-                        not(set_member(t_unwrapped.clone(), app(f.clone(), t_unwrapped))),
-                    )
-                }
-                None => true.into(),
-            },
-            // PANIC SAFETY
-            #[allow(
-                clippy::unreachable,
-                reason = "Code already checks that matches entity_type"
-            )]
-            _ => unreachable!("already checked it matches TermType::Entity above"),
-        },
+        TermType::Option { ty } if matches!(*ty, TermType::Entity { .. }) => {
+            match Arc::unwrap_or_clone(ty) {
+                TermType::Entity { ety } => match es.ancestors_of_type(&ety, &ety) {
+                    Some(f) => {
+                        let t_unwrapped = option_get(t.clone());
+                        implies(
+                            is_some(t.clone()),
+                            not(set_member(t_unwrapped.clone(), app(f.clone(), t_unwrapped))),
+                        )
+                    }
+                    None => true.into(),
+                },
+                // PANIC SAFETY
+                #[allow(
+                    clippy::unreachable,
+                    reason = "Code already checks that matches entity_type"
+                )]
+                _ => unreachable!("already checked it matches TermType::Entity above"),
+            }
+        }
         _ => true.into(),
     }
 }
@@ -197,26 +202,28 @@ fn transitivity(t1: &Term, t2: &Term, es: &SymEntities) -> Term {
         true.into()
     } else {
         match (t1.type_of(), t2.type_of()) {
-            (TermType::Option { ty: ty1 }, TermType::Option { ty: ty2 }) => match (*ty1, *ty2) {
-                (TermType::Entity { ety: ety1 }, TermType::Entity { ety: ety2 }) => {
-                    match (es.ancestors_of_type(&ety1, &ety2), es.ancestors(&ety2)) {
-                        (Some(f12), Some(anc2)) => {
-                            let t1_unwrapped = option_get(t1.clone());
-                            let t2_unwrapped = option_get(t2.clone());
-                            implies(
-                                is_ancestor(
-                                    t2_unwrapped.clone(),
-                                    t1_unwrapped.clone(),
-                                    f12.clone(),
-                                ),
-                                are_ancestors(&t2_unwrapped, anc2, &t1_unwrapped, &ety1),
-                            )
+            (TermType::Option { ty: ty1 }, TermType::Option { ty: ty2 }) => {
+                match (Arc::unwrap_or_clone(ty1), Arc::unwrap_or_clone(ty2)) {
+                    (TermType::Entity { ety: ety1 }, TermType::Entity { ety: ety2 }) => {
+                        match (es.ancestors_of_type(&ety1, &ety2), es.ancestors(&ety2)) {
+                            (Some(f12), Some(anc2)) => {
+                                let t1_unwrapped = option_get(t1.clone());
+                                let t2_unwrapped = option_get(t2.clone());
+                                implies(
+                                    is_ancestor(
+                                        t2_unwrapped.clone(),
+                                        t1_unwrapped.clone(),
+                                        f12.clone(),
+                                    ),
+                                    are_ancestors(&t2_unwrapped, anc2, &t1_unwrapped, &ety1),
+                                )
+                            }
+                            (_, _) => true.into(),
                         }
-                        (_, _) => true.into(),
                     }
+                    (_, _) => true.into(),
                 }
-                (_, _) => true.into(),
-            },
+            }
             (_, _) => true.into(),
         }
     }

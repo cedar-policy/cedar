@@ -34,7 +34,10 @@ use super::ext::Ext;
 use super::op::Op;
 use super::term_type::TermType;
 use super::type_abbrevs::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct TermVar {
@@ -56,15 +59,15 @@ pub enum Term {
     Prim(TermPrim),
     Var(TermVar),
     None(TermType),
-    Some(Box<Term>),
+    Some(Arc<Term>),
     Set {
-        elts: BTreeSet<Term>,
+        elts: Arc<BTreeSet<Term>>,
         elts_ty: TermType,
     },
-    Record(BTreeMap<Attr, Term>),
+    Record(Arc<BTreeMap<Attr, Term>>),
     App {
         op: Op,
-        args: Vec<Term>,
+        args: Arc<Vec<Term>>,
         ret_ty: TermType,
     },
 }
@@ -160,16 +163,16 @@ impl Term {
             Term::Prim(l) => l.type_of(),
             Term::Var(v) => v.ty.clone(),
             Term::None(ty) => TermType::Option {
-                ty: Box::new(ty.clone()),
+                ty: Arc::new(ty.clone()),
             },
             Term::Some(t) => TermType::Option {
-                ty: Box::new(t.type_of()),
+                ty: Arc::new(t.type_of()),
             },
             Term::Set { elts_ty, .. } => TermType::Set {
-                ty: Box::new(elts_ty.clone()),
+                ty: Arc::new(elts_ty.clone()),
             },
             Term::Record(m) => {
-                let rty = m.iter().map(|(k, v)| (k.clone(), v.type_of())).collect();
+                let rty = Arc::new(m.iter().map(|(k, v)| (k.clone(), v.type_of())).collect());
                 TermType::Record { rty }
             }
             Term::App { ret_ty, .. } => ret_ty.clone(),

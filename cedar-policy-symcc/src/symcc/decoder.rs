@@ -20,6 +20,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::Display;
 use std::io;
+use std::sync::Arc;
 
 use cedar_policy::{EntityId, EntityUid};
 use itertools::Itertools;
@@ -478,18 +479,18 @@ impl TermType {
                 })),
             },
 
-            TermType::Option { ty } => Term::None(*ty.clone()),
+            TermType::Option { ty } => Term::None(ty.as_ref().clone()),
 
             TermType::Set { ty } => Term::Set {
-                elts: BTreeSet::new(),
-                elts_ty: *ty.clone(),
+                elts: Arc::new(BTreeSet::new()),
+                elts_ty: ty.as_ref().clone(),
             },
 
-            TermType::Record { rty } => Term::Record(
+            TermType::Record { rty } => Term::Record(Arc::new(
                 rty.iter()
                     .map(|(k, v)| (k.clone(), v.default_literal(env)))
                     .collect(),
-            ),
+            )),
         }
     }
 }
@@ -558,13 +559,13 @@ impl SExpr {
                     // (Option x)
                     [SExpr::Symbol(option), param] if option == "Option" => {
                         let ty = param.decode_type(id_maps)?;
-                        Ok(TermType::Option { ty: Box::new(ty) })
+                        Ok(TermType::Option { ty: Arc::new(ty) })
                     }
 
                     // (Set x)
                     [SExpr::Symbol(set), param] if set == "Set" => {
                         let ty = param.decode_type(id_maps)?;
-                        Ok(TermType::Set { ty: Box::new(ty) })
+                        Ok(TermType::Set { ty: Arc::new(ty) })
                     }
 
                     _ => Err(DecodeError::UnknownType(self.clone())),
@@ -647,7 +648,7 @@ impl SExpr {
                         if as_tok == "as" && none == "none" =>
                     {
                         match typ.decode_type(id_maps)? {
-                            TermType::Option { ty } => Ok(Term::None(*ty)),
+                            TermType::Option { ty } => Ok(Term::None(Arc::unwrap_or_clone(ty))),
                             _ => Err(DecodeError::InvalidOptionType(typ.clone())),
                         }
                     }
@@ -664,7 +665,7 @@ impl SExpr {
                             && as_some_typ[1].is_symbol("some") =>
                     {
                         let ty = as_some_typ[2].decode_type(id_maps)?;
-                        let val = Term::Some(Box::new(val.decode_literal(id_maps)?));
+                        let val = Term::Some(Arc::new(val.decode_literal(id_maps)?));
                         let val_ty = val.type_of();
 
                         if val_ty != ty {
@@ -682,8 +683,8 @@ impl SExpr {
 
                         match ty {
                             TermType::Set { ty } => Ok(Term::Set {
-                                elts: BTreeSet::new(),
-                                elts_ty: *ty,
+                                elts: Arc::new(BTreeSet::new()),
+                                elts_ty: Arc::unwrap_or_clone(ty),
                             }),
                             _ => Err(DecodeError::InvalidSetType(typ.clone())),
                         }
@@ -694,7 +695,7 @@ impl SExpr {
                         let val = val.decode_literal(id_maps)?;
                         let val_ty = val.type_of();
                         Ok(Term::Set {
-                            elts: BTreeSet::from([val]),
+                            elts: Arc::new(BTreeSet::from([val])),
                             elts_ty: val_ty,
                         })
                     }
@@ -719,7 +720,7 @@ impl SExpr {
                                 },
                                 Term::Set { elts: elts2, .. },
                             ) => Ok(Term::Set {
-                                elts: elts1.union(&elts2).cloned().collect(),
+                                elts: Arc::new(elts1.union(&elts2).cloned().collect()),
                                 elts_ty,
                             }),
 
@@ -796,7 +797,7 @@ impl SExpr {
                                     _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
                                 };
                                 let prefix = match prefix {
-                                    Term::Some(t) => match *t {
+                                    Term::Some(t) => match Arc::unwrap_or_clone(t) {
                                         Term::Prim(TermPrim::Bitvec(bv)) => Some(bv),
                                         _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
                                     },
@@ -861,7 +862,7 @@ impl SExpr {
                                                 .insert(field_name.clone(), decoded_field.clone());
                                         }
 
-                                        Ok(Term::Record(record))
+                                        Ok(Term::Record(Arc::new(record)))
                                     }
 
                                     _ => Err(DecodeError::UnknownLiteral(self.clone())),
