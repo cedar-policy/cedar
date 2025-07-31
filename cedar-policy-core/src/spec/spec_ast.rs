@@ -89,7 +89,7 @@ pub type Attr = Seq<char>;
 
 pub enum Value {
     Prim { p: Prim },
-    Set { s: FiniteSet<Value> }, // TODO switch to vstd finite set when it lands
+    Set { s: FiniteSet<Value> },
     Record { m: Map<Attr, Value> },
     Ext { x: () } // TODO(Pratap): extensions
     // Ext { x: Ext } // TODO(Pratap): extensions

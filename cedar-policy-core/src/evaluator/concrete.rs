@@ -850,7 +850,7 @@ impl<'e> Evaluator<'e> {
             res matches Ok(v) ==> spec_ast::valueset_as_entity_uid(s@) matches Ok(euid_set) && FiniteSet::from_seq(v@.map_values(|euid: EntityUID| euid@)) == euid_set,
             res is Err ==> spec_ast::valueset_as_entity_uid(s@) is Err,
     {
-        s.authoritative
+        s.authoritative()
             .iter()
             .map(|val| Ok(val.get_as_entity()?.clone()))
             .collect::<Result<Vec<EntityUID>>>()

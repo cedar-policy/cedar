@@ -38,7 +38,9 @@ use smol_str::SmolStr;
 
 use crate::spec::{spec_ast, spec_evaluator};
 use crate::verus_utils::*;
-use vstd::prelude::{unreached, verus, View};
+
+use vstd::pervasive::unreached;
+use vstd::prelude::{verus, View};
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
@@ -927,7 +929,8 @@ impl<'e> Evaluator<'e> {
             ValueKind::Lit(Literal::EntityUID(uid)) => vec![Arc::unwrap_or_clone(uid)],
             // we assume that iterating the `authoritative` BTreeSet is
             // approximately the same cost as iterating the `fast` HashSet
-            ValueKind::Set(Set { authoritative, .. }) => authoritative
+            ValueKind::Set(set) => set
+                .authoritative()
                 .iter()
                 .map(|val| Ok(val.get_as_entity()?.clone()))
                 .collect::<Result<Vec<EntityUID>>>()?,

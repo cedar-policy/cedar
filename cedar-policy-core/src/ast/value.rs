@@ -88,7 +88,7 @@ clone_spec_for!(ValueKind);
 // we have to just implement BTreeMapView manually for each monomorphized BTreeMap we want
 impl BTreeMapView for BTreeMap<SmolStr, Value> {
     type V = Map<Seq<char>, spec_ast::Value>;
-    uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
+    uninterp spec fn view(&self) -> Self::V; // just axiomatize it for now
 }
 
 #[verifier::external_body]
@@ -484,10 +484,9 @@ verus! {
 /// `Value`'s internal representation of a `Set`
 #[derive(Debug, Clone)]
 #[verifier::external_derive]
-#[verifier::external_body]
 pub struct Set {
     /// the values in the set, stored in a `BTreeSet`
-    pub authoritative: Arc<BTreeSet<Value>>,
+    authoritative: Arc<BTreeSet<Value>>,
     /// if possible, `HashSet<Literal>` representation of the set.
     /// (This is possible if all the elements are literals.)
     /// Some operations are much faster in this case.
@@ -498,16 +497,35 @@ pub struct Set {
     /// optimize e.g. equality checks between sets: for instance, we know
     /// that if one set has `fast` and another does not, the sets can't be
     /// equal.)
-    pub fast: Option<Arc<HashSet<Literal>>>,
+    fast: Option<Arc<HashSet<Literal>>>,
 }
 
 impl View for Set {
     type V = FiniteSet<spec_ast::Value>;
 
-    // TODO: can eventually use this to enforce the FastRepr invariant
-    // (once HashSet and BTreeSet are supported)
-    uninterp spec fn view(&self) -> FiniteSet<spec_ast::Value>;
+    closed spec fn view(&self) -> FiniteSet<spec_ast::Value> {
+        self.authoritative.view()
+    }
 }
+
+impl Set {
+    #[verifier::type_invariant]
+    pub closed spec fn fast_repr(&self) -> bool {
+        (forall |v: spec_ast::Value| self.authoritative@.contains(v) ==> v is Prim) ==> ({
+            &&& self.fast matches Some(fast)
+            &&& FiniteSet::from_set(fast@.map(|l: Literal| l@)) == self.authoritative@.map(|v: spec_ast::Value| v->p)
+        })
+    }
+}
+
+
+// Since we can't write `impl<V:View> BTreeSetView for BTreeSet<V>` or similar,
+// we have to just implement BTreeSetView manually for each monomorphized BTreeSet we want
+impl BTreeSetView for BTreeSet<Value> {
+    type V = FiniteSet<spec_ast::Value>; // not generic, but works here
+    uninterp spec fn view(&self) -> Self::V; // just axiomatize it for now
+}
+
 
 }
 
@@ -552,6 +570,12 @@ impl Set {
 
     verus! {
 
+    #[verifier::external_body]
+    pub fn authoritative(&self) -> Arc<BTreeSet<Value>> {
+        self.authoritative
+    }
+
+
     /// Get the number of items in the set
     #[verifier::external_body]
     pub fn len(&self) -> (l: usize)
@@ -561,7 +585,6 @@ impl Set {
     }
 
     /// Convenience method to check if a set is empty
-    #[verifier::external_body]
     pub fn is_empty(&self) -> (b: bool)
         ensures b == (self@.is_empty())
     {

@@ -21,8 +21,7 @@
 
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
-use std::collections::BTreeMap;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::hash::Hash;
 use std::sync::Arc;
 #[cfg(verus_keep_ghost)]
@@ -135,12 +134,15 @@ verus! {
 
 // Misc stdlib stuff
 
+#[cfg(verus_keep_ghost)]
 pub assume_specification<T: Clone, A: std::alloc::Allocator>[Arc::unwrap_or_clone](arc: Arc<T, A>) -> (inner: T)
     ensures inner == arc;
 
+#[cfg(verus_keep_ghost)]
 pub assume_specification<T: ?Sized, A: std::alloc::Allocator>[Arc::as_ref](arc: &Arc<T, A>) -> (a_ref: &T)
     ensures a_ref == arc;
 
+#[cfg(verus_keep_ghost)]
 pub assume_specification<T>[<T as From<T>>::from](t: T) -> (new_t: T)
     ensures new_t == t;
 
@@ -216,6 +218,24 @@ pub trait BTreeMapView {
     }
 }
 
+// BTreeSet
+
+#[cfg(verus_keep_ghost)]
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+#[verifier::reject_recursive_types(A)]
+pub struct ExBTreeSet<T, A: std::alloc::Allocator + Clone>(BTreeSet<T, A>);
+
+
+/// Like `impl<V:View> View for BTreeSet<V>`,
+/// but we can't write that explicitly due to trait orphan rules
+pub trait BTreeSetView {
+    type V;
+    spec fn view(&self) -> Self::V;
+}
+
+
 // Doesn't work for BTreeMap<SmolStr, V> because SmolStr doesn't implement View, but SmolStrView;
 // so we just manually implement BTreeMapView for each map type we want
 // impl<K:View, V:View> BTreeMapView for BTreeMap<K, V> {
@@ -249,7 +269,9 @@ impl<T> FiniteSet<T> {
         self.s.len() == 0
     }
 
-    pub uninterp spec fn len(&self) -> nat;
+    pub closed spec fn len(&self) -> nat {
+        self.s.len()
+    }
 
     pub open spec fn all(&self, pred: spec_fn(T) -> bool) -> bool {
         forall |x: T| self.contains(x) ==> pred(x)
@@ -259,18 +281,46 @@ impl<T> FiniteSet<T> {
         exists |x: T| self.contains(x) && pred(x)
     }
 
-    pub uninterp spec fn map<B>(self, f: spec_fn(T) -> B) -> FiniteSet<B>;
+    pub closed spec fn map<B>(self, f: spec_fn(T) -> B) -> FiniteSet<B> {
+        FiniteSet { s: self.s.map_values(f).remove_duplicates(seq![]) }
+    }
 
-    pub uninterp spec fn contains(self, t: T) -> bool;
+    pub closed spec fn contains(self, t: T) -> bool {
+        self.s.contains(t)
+    }
 
-    pub uninterp spec fn subset_of(self, s2: FiniteSet<T>) -> bool;
+    pub closed spec fn subset_of(self, s2: FiniteSet<T>) -> bool {
+        forall |x: T| self.contains(x) ==> s2.contains(x)
+    }
 
-    pub uninterp spec fn intersect(self, s2: FiniteSet<T>) -> FiniteSet<T>;
+    pub closed spec fn intersect(self, s2: FiniteSet<T>) -> FiniteSet<T> {
+        FiniteSet { s: self.s.filter(|x: T| s2.contains(x)) } // neither has duplicates
+    }
 
-    pub uninterp spec fn from_seq(s: Seq<T>) -> FiniteSet<T>;
+    pub closed spec fn from_seq(s: Seq<T>) -> FiniteSet<T> {
+        FiniteSet { s: s.remove_duplicates(seq![]) }
+    }
 
-    pub broadcast axiom fn finiteset_from_seq_contains_spec(s:Seq<T>, t: T)
-        ensures s.contains(t) <==> #[trigger] Self::from_seq(s).contains(t);
+    pub closed spec fn from_set(set: Set<T>) -> FiniteSet<T> {
+        FiniteSet { s: set.to_seq() } // no duplicates
+    }
+
+    pub broadcast proof fn finiteset_from_seq_contains_spec(s:Seq<T>, t: T)
+        ensures s.contains(t) <==> #[trigger] Self::from_seq(s).contains(t)
+    {
+        assert(s + seq![] =~= s);
+        s.lemma_remove_duplicates_properties(seq![]);
+    }
+
+    pub broadcast proof fn finiteset_map_contains_spec<B>(self, f: spec_fn(T) -> B, t: T)
+        ensures self.contains(t) ==> #[trigger] self.map(f).contains(f(t))
+    {
+        if self.contains(t) {
+            let i = choose |i:int| 0 <= i < self.s.len() && self.s[i] == t;
+            assert(self.s.map_values(f)[i] == f(t));
+            self.s.map_values(f).lemma_remove_duplicates_properties(seq![]);
+        }
+    }
 }
 
 
