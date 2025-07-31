@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use crate::{
-    ast::{EntityUID, Expr, PolicyID, Template},
+    ast::{EntityUID, Expr, GeneralizedSlotsAnnotation, PolicyID, Template},
     extensions::Extensions,
     parser::{parse_policy, parse_policy_or_template, IntoMaybeLoc},
 };
@@ -219,6 +219,114 @@ fn simple_schema_file_1() -> json_schema::NamespaceDefinition<RawName> {
     .expect("Expected valid schema")
 }
 
+fn simple_schema_file_2() -> json_schema::NamespaceDefinition<RawName> {
+    serde_json::from_value(serde_json::json!(
+        {
+            "entityTypes": {
+                "Disk": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "owner": { "type": "String", "required": true}
+                        }
+                    }
+                },
+                "Folder": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "owner": { "type": "String", "required": true}
+                        }
+                    }
+                },
+                "Document": {
+                    "memberOfTypes": [ "Folder" ],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "owner": { "type": "String", "required": true}
+                        }
+                    }
+                },
+                "Person": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "age": { "type": "String", "required": false}
+                        }
+                    }
+                },
+                "Long": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "age": { "type": "String", "required": true}
+                        }
+                    }
+                }
+            },
+            "commonTypes": {
+                "PersonInfo": {
+                    "type": "Record",
+                    "attributes": {
+                        "name": { "type": "String", "required": false},
+                        "age": { "type": "Long", "required": true},
+                    }
+                }
+            },
+            "actions": {
+                "Navigate": {
+                    "memberOf": [],
+                    "appliesTo": {
+                        "principalTypes": ["Person"],
+                        "resourceTypes": ["Disk", "Folder", "Document"]
+                    }
+                }
+            }
+        }
+    ))
+    .expect("Expected valid schema")
+}
+
+fn simple_schema_file_3() -> json_schema::Fragment<RawName> {
+    json_schema::Fragment::from_json_str(
+        r#"
+            { "N::S": {
+                "entityTypes": {
+                    "Foo": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "name": { "type": "String" }
+                            }
+                        }
+                    },
+                    "Bar": {},
+                    "Other": {}
+                },
+                "actions": {
+                  "baz": {
+                    "appliesTo": {
+                      "principalTypes": [ "Bar" ],
+                      "resourceTypes": [ "Foo", "Other" ]
+                    }
+                  }
+                }
+            }}
+            "#,
+    )
+    .expect("Expected valid schema")
+}
+
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typechecks_permissive_simple_schema(p: impl Into<Arc<Template>>) {
     assert_policy_typechecks_for_mode(simple_schema_file(), p, ValidationMode::Permissive)
@@ -246,8 +354,15 @@ fn policy_checked_in_multiple_envs() {
     let schema = simple_schema_file()
         .try_into()
         .expect("Failed to construct schema.");
+    let validator_generalized_slots_annotation = GeneralizedSlotsAnnotation::from_iter(
+        t.generalized_slots_annotation()
+            .map(|(k, v)| (k.clone(), v.clone())),
+    )
+    .into_validator_generalized_slots_annotation(&schema)
+    .unwrap();
     let typechecker = Typechecker::new(&schema, ValidationMode::default());
-    let env_checks = typechecker.typecheck_by_request_env(&t);
+    let env_checks =
+        typechecker.typecheck_by_request_env(&t, &validator_generalized_slots_annotation);
     // There are 3 possible envs in schema:
     // - User, "view_photo", Photo
     // - Group, "view_photo", Photo
@@ -270,7 +385,14 @@ fn policy_checked_in_multiple_envs() {
         .try_into()
         .expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::default());
-    let env_checks = typechecker.typecheck_by_request_env(&t);
+    let validator_generalized_slots_annotation = GeneralizedSlotsAnnotation::from_iter(
+        t.generalized_slots_annotation()
+            .map(|(k, v)| (k.clone(), v.clone())),
+    )
+    .into_validator_generalized_slots_annotation(&schema)
+    .unwrap();
+    let env_checks =
+        typechecker.typecheck_by_request_env(&t, &validator_generalized_slots_annotation);
     // With the new action, policy is always false for the other two
     assert!(
         env_checks
@@ -1469,5 +1591,166 @@ mod templates {
             let t = parse_policy_or_template(None, template).unwrap();
             assert_policy_typecheck_fails(s.clone(), t);
         }
+    }
+}
+
+mod generalized_templates {
+    use super::*;
+
+    #[test]
+    fn generalized_slot_in_condition_with_type_annotation() {
+        assert_policy_typechecks(
+            simple_schema_file_2(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?folder: Folder) => 
+              permit(
+              principal == ?principal, 
+              action, 
+              resource in ?resource) when 
+              { resource in ?folder || 
+               (action == Action::"Navigate" && 
+               ?folder in resource) };"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn generalized_slot_in_condition_with_record_type() {
+        assert_policy_typechecks(
+            simple_schema_file_2(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?person: { name: String, age: Bool }) => 
+              permit(
+              principal,
+              action == Action::"Navigate", 
+              resource) when 
+              { ?person.name == resource.owner && 
+                ?person.age == true
+                };"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn generalized_slot_with_common_type_as_type_annotation() {
+        assert_policy_typechecks(
+            simple_schema_file_2(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?person: PersonInfo) => 
+              permit(
+              principal,
+              action == Action::"Navigate", 
+              resource) when 
+              { ?person has name && ?person.name == "Alice" ||
+                ?person.age == 8
+                };"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn generalized_slot_with_shadowing_of_primitive_type() {
+        assert_policy_typechecks(
+            simple_schema_file_2(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?person: Long) => 
+              permit(
+              principal,
+              action == Action::"Navigate", 
+              resource) when 
+              { ?person.age == "8" };"#,
+            )
+            .unwrap(),
+        );
+
+        assert_policy_typechecks(
+            simple_schema_file_2(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?person: __cedar::Long) => 
+              permit(
+              principal,
+              action == Action::"Navigate", 
+              resource) when 
+              { ?person == 8 };"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn type_annotation_for_slot_in_scope() {
+        assert_policy_typechecks(
+            simple_schema_file_2(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?resource: Folder) => 
+              permit(
+              principal,
+              action == Action::"Navigate", 
+              resource == ?resource);"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn generalized_slot_with_namespace_type_annotations() {
+        assert_policy_typechecks(
+            simple_schema_file_3(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?foo: N::S::Foo) => 
+              permit(
+              principal,
+              action, 
+              resource) when { ?foo.name == "FOO" };"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn type_annotations_on_principal_slot() {
+        assert_policy_typecheck_fails(
+            simple_schema_file_3(),
+            parse_policy_or_template(
+                None,
+                r#"
+              permit(
+              principal,
+              action, 
+              resource == ?resource) when { ?resource.name == "FOO" };"#,
+            )
+            .unwrap(),
+        );
+
+        assert_policy_typechecks(
+            simple_schema_file_3(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?resource: N::S::Foo) => 
+              permit(
+              principal,
+              action, 
+              resource == ?resource) when { ?resource.name == "FOO" };"#,
+            )
+            .unwrap(),
+        );
     }
 }

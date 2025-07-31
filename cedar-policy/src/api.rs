@@ -3044,17 +3044,27 @@ fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item
         &s.0,
         cedar_policy_core::validator::ValidationMode::default(),
     );
-    tc.typecheck_by_request_env(ast)
-        .into_iter()
-        .filter_map(|(env, pc)| {
-            if matches!(pc, PolicyCheck::Success(_)) {
-                Some(env.into())
-            } else {
-                None
-            }
-        })
-        .collect::<BTreeSet<_>>()
-        .into_iter()
+    let maybe_validator_generalized_slots_annotation = ast::GeneralizedSlotsAnnotation::from_iter(
+        ast.generalized_slots_annotation()
+            .map(|(k, v)| (k.clone(), v.clone())),
+    )
+    .into_validator_generalized_slots_annotation(&s.0);
+
+    match maybe_validator_generalized_slots_annotation {
+        Ok(validator_generalized_slots_annotation) => tc
+            .typecheck_by_request_env(ast, &validator_generalized_slots_annotation)
+            .into_iter()
+            .filter_map(|(env, pc)| {
+                if matches!(pc, PolicyCheck::Success(_)) {
+                    Some(env.into())
+                } else {
+                    None
+                }
+            })
+            .collect::<BTreeSet<_>>()
+            .into_iter(),
+        Err(_) => BTreeSet::new().into_iter(),
+    }
 }
 
 /// Policy template datatype
@@ -5048,7 +5058,11 @@ pub fn eval_expression(
     let eval = Evaluator::new(request.0.clone(), &entities.0, all_ext);
     Ok(EvalResult::from(
         // Evaluate under the empty slot map, as an expression should not have slots
-        eval.interpret(&expr.0, &ast::SlotEnv::new())?,
+        eval.interpret(
+            &expr.0,
+            &ast::SlotEnv::new(),
+            &ast::GeneralizedSlotEnv::new(),
+        )?,
     ))
 }
 

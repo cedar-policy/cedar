@@ -212,7 +212,7 @@ impl Validator {
         // `Policy::resource_constraint()` return a copy of the constraint with
         // the slot filled by the appropriate value.
         Some(
-            self.validate_entity_types_in_slots(p.id(), p.env())
+            self.validate_entity_types_in_slots(p.id(), p.env(), p.generalized_env())
                 .chain(self.validate_linked_action_application(p)),
         )
     }

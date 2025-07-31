@@ -36,7 +36,7 @@
 use super::err::{parse_errors, ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
-use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
+use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4, flatten_tuple_5};
 use super::{cst, AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
@@ -47,6 +47,9 @@ use crate::ast::{
 };
 use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
+use crate::validator::{
+    cedar_schema::to_json_schema, json_schema::Type as JSONSchemaType, RawName,
+};
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use nonempty::NonEmpty;
@@ -322,6 +325,29 @@ impl Node<Option<cst::Policy>> {
         // convert scope
         let maybe_scope = policy.extract_scope();
 
+        let (contains_slot_in_principal, contains_slot_in_resource) = match &maybe_scope {
+            Ok((p, _, r)) => (p.has_slot(), r.has_slot()),
+            Err(_) => (false, false),
+        };
+
+        // maximally get all the slots in the condition, any errors will have already been caught by maybe_cond
+        let cond_slots = policy
+            .conds
+            .iter()
+            .filter_map(|c| match c.to_expr::<ast::ExprBuilder<()>>() {
+                Ok((e, _)) => Some(e),
+                Err(_) => None,
+            })
+            .flat_map(|e| e.slots().collect::<Vec<ast::Slot>>())
+            .collect();
+
+        // get generalized_slots_annotation
+        let maybe_generalized_slots_annotation = policy.get_generalized_slots_annotation(
+            contains_slot_in_principal,
+            contains_slot_in_resource,
+            cond_slots,
+        );
+
         // convert conditions
         let maybe_conds = match policy.extract_scope() {
             Ok((p, _, r)) => {
@@ -330,19 +356,19 @@ impl Node<Option<cst::Policy>> {
 
                 ParseErrors::transpose(policy.conds.iter().map(|c| {
                     let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
-                    let slot_errs =
-                        e.slots()
-                            .filter(|slot| !slots_in_scope.contains(slot))
-                            .map(|slot| {
-                                ToASTError::new(
-                                    ToASTErrorKind::slots_not_in_scope_in_condition_clause(
-                                        slot.clone(),
-                                        if is_when { "when" } else { "unless" },
-                                    ),
-                                    slot.loc,
-                                )
-                                .into()
-                            });
+                    let slot_errs = e
+                        .principal_and_resource_slots()
+                        .filter(|slot| !slots_in_scope.contains(slot))
+                        .map(|slot| {
+                            ToASTError::new(
+                                ToASTErrorKind::slots_not_in_scope_in_condition_clause(
+                                    slot.clone(),
+                                    if is_when { "when" } else { "unless" },
+                                ),
+                                slot.loc,
+                            )
+                            .into()
+                        });
 
                     match ParseErrors::from_iter(slot_errs) {
                         Some(errs) => Err(errs),
@@ -356,11 +382,23 @@ impl Node<Option<cst::Policy>> {
             })),
         };
 
-        let (effect, annotations, (principal, action, resource), conds) =
-            flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
+        let (
+            effect,
+            annotations,
+            generalized_slots_annotation,
+            (principal, action, resource),
+            conds,
+        ) = flatten_tuple_5(
+            maybe_effect,
+            maybe_annotations,
+            maybe_generalized_slots_annotation,
+            maybe_scope,
+            maybe_conds,
+        )?;
         Ok(construct_template_policy(
             id,
             annotations.into(),
+            generalized_slots_annotation,
             effect,
             principal,
             action,
@@ -436,6 +474,29 @@ impl Node<Option<cst::Policy>> {
         // convert scope
         let maybe_scope = policy.extract_scope_tolerant_ast();
 
+        let (contains_slot_in_principal, contains_slot_in_resource) = match &maybe_scope {
+            Ok((p, _, r)) => (p.has_slot(), r.has_slot()),
+            Err(_) => (false, false),
+        };
+
+        // maximally get all the slots in the condition, any errors will have already been caught by maybe_cond
+        let cond_slots = policy
+            .conds
+            .iter()
+            .filter_map(|c| match c.to_expr::<ast::ExprBuilder<()>>() {
+                Ok((e, _)) => Some(e),
+                Err(_) => None,
+            })
+            .flat_map(|e| e.slots().collect::<Vec<ast::Slot>>())
+            .collect();
+
+        // get generalized_slots_annotation
+        let maybe_generalized_slots_annotation = policy.get_generalized_slots_annotation(
+            contains_slot_in_principal,
+            contains_slot_in_resource,
+            cond_slots,
+        );
+
         // convert conditions
         let maybe_conds = match policy.extract_scope_tolerant_ast() {
             Ok((p, _, r)) => {
@@ -443,19 +504,19 @@ impl Node<Option<cst::Policy>> {
                     HashSet::from_iter(p.as_expr().slots().chain(r.as_expr().slots()));
                 ParseErrors::transpose(policy.conds.iter().map(|c| {
                     let (e, is_when) = c.to_expr::<ExprWithErrsBuilder<()>>()?;
-                    let slot_errs =
-                        e.slots()
-                            .filter(|slot| !slots_in_scope.contains(slot))
-                            .map(|slot| {
-                                ToASTError::new(
-                                    ToASTErrorKind::slots_not_in_scope_in_condition_clause(
-                                        slot.clone(),
-                                        if is_when { "when" } else { "unless" },
-                                    ),
-                                    slot.loc,
-                                )
-                                .into()
-                            });
+                    let slot_errs = e
+                        .principal_and_resource_slots()
+                        .filter(|slot| !slots_in_scope.contains(slot))
+                        .map(|slot| {
+                            ToASTError::new(
+                                ToASTErrorKind::slots_not_in_scope_in_condition_clause(
+                                    slot.clone(),
+                                    if is_when { "when" } else { "unless" },
+                                ),
+                                slot.loc,
+                            )
+                            .into()
+                        });
 
                     match ParseErrors::from_iter(slot_errs) {
                         Some(errs) => Err(errs),
@@ -469,11 +530,23 @@ impl Node<Option<cst::Policy>> {
             })),
         };
 
-        let (effect, annotations, (principal, action, resource), conds) =
-            flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
+        let (
+            effect,
+            annotations,
+            generalized_slots_annotation,
+            (principal, action, resource),
+            conds,
+        ) = flatten_tuple_5(
+            maybe_effect,
+            maybe_annotations,
+            maybe_generalized_slots_annotation,
+            maybe_scope,
+            maybe_conds,
+        )?;
         Ok(construct_template_policy(
             id,
             annotations.into(),
+            generalized_slots_annotation,
             effect,
             principal,
             action,
@@ -702,6 +775,109 @@ impl cst::PolicyImpl {
         match ParseErrors::flatten(all_errs) {
             Some(errs) => Err(errs),
             None => Ok(annotations),
+        }
+    }
+
+    /// Get the generalized_slots_annotation from the `cst::Policy`
+    pub fn get_generalized_slots_annotation(
+        &self,
+        contains_slot_in_principal: bool,
+        contains_slot_in_resource: bool,
+        slots_in_cond: HashSet<ast::Slot>,
+    ) -> Result<GeneralizedSlotsAnnotation> {
+        let mut generalized_slots_annotation: BTreeMap<ast::SlotId, JSONSchemaType<RawName>> =
+            BTreeMap::new();
+        let mut all_errs: Vec<ParseErrors> = vec![];
+
+        let cst_generalized_slots_annotation = match &self.generalized_slots_annotation {
+            Some(n) => n.try_as_inner()?.values.clone(),
+            None => vec![],
+        };
+
+        for node in cst_generalized_slots_annotation {
+            let loc = node.loc.clone();
+            let slot_type_pair = match node.try_into_inner() {
+                Ok(slot_type_pair) => slot_type_pair,
+                Err(e) => {
+                    all_errs.push(e.into());
+                    continue;
+                }
+            };
+
+            let ast_slot = match ast::SlotId::try_from(&slot_type_pair.slot) {
+                Ok(ast_slot) => ast_slot,
+                Err(e) => {
+                    all_errs.push(e);
+                    continue;
+                }
+            };
+
+            use std::collections::btree_map::Entry;
+
+            match generalized_slots_annotation.entry(ast_slot.clone()) {
+                Entry::Occupied(oentry) => {
+                    all_errs.push(
+                        ToASTError::new(
+                            ToASTErrorKind::DuplicateGeneralizedSlotAnnotation(
+                                oentry.key().clone(),
+                            ),
+                            loc,
+                        )
+                        .into(),
+                    );
+                }
+
+                Entry::Vacant(ventry) => {
+                    match slot_type_pair.ty.try_as_inner() {
+                        Ok(ty) => {
+                            let t = to_json_schema::cedar_type_to_json_type(Node {
+                                node: ty.clone(),
+                                loc: None,
+                            });
+                            ventry.insert(t);
+                        }
+                        Err(e) => {
+                            all_errs.push(e.into());
+                        }
+                    };
+                }
+            }
+        }
+
+        for slot in generalized_slots_annotation.keys() {
+            if !(slots_in_cond).contains(&ast::Slot {
+                id: slot.clone(),
+                loc: None,
+            }) && !(slot.is_principal() && contains_slot_in_principal)
+                && !(slot.is_resource() && contains_slot_in_resource)
+            {
+                all_errs.push(
+                    ToASTError::new(
+                        ToASTErrorKind::GeneralizedSlotIsAnnotatedNotUsed(slot.clone()),
+                        None,
+                    )
+                    .into(),
+                )
+            }
+        }
+
+        for slot in slots_in_cond {
+            if slot.id.is_generalized_slot()
+                && !(generalized_slots_annotation.contains_key(&slot.id))
+            {
+                all_errs.push(ToASTError::new(
+                    ToASTErrorKind::slots_in_condition_clause_not_in_generalized_slots_annotation(
+                        slot.clone(),
+                    ),
+                    slot.loc,
+                )
+                .into())
+            }
+        }
+
+        match ParseErrors::flatten(all_errs) {
+            Some(errs) => Err(errs),
+            None => Ok(generalized_slots_annotation.into()),
         }
     }
 }
@@ -2135,24 +2311,38 @@ impl Node<Option<cst::Primary>> {
 
 impl Node<Option<cst::Slot>> {
     fn into_expr<Build: ExprBuilder>(self) -> Result<Build::Expr> {
-        match self.try_as_inner()?.try_into() {
+        match (&self).try_into() {
             Ok(slot_id) => Ok(Build::new()
                 .with_maybe_source_loc(self.loc.as_loc_ref())
                 .slot(slot_id)),
-            Err(e) => Err(self.to_ast_err(e).into()),
+            Err(e) => Err(e),
         }
     }
 }
 
-impl TryFrom<&cst::Slot> for ast::SlotId {
-    type Error = ToASTErrorKind;
-
-    fn try_from(slot: &cst::Slot) -> std::result::Result<Self, Self::Error> {
+impl TryFrom<&Node<Option<cst::Slot>>> for ast::ValidSlotId {
+    type Error = ParseErrors;
+    fn try_from(node: &Node<Option<cst::Slot>>) -> std::result::Result<Self, Self::Error> {
+        let slot = node.try_as_inner()?;
         match slot {
-            cst::Slot::Principal => Ok(ast::SlotId::principal()),
-            cst::Slot::Resource => Ok(ast::SlotId::resource()),
-            cst::Slot::Other(slot) => Err(ToASTErrorKind::InvalidSlot(slot.clone())),
+            cst::Slot::Principal => Ok(ast::ValidSlotId::Principal),
+            cst::Slot::Resource => Ok(ast::ValidSlotId::Resource),
+            cst::Slot::Other(s) => match s.as_ref() {
+                "action" | "context" => Err(ToASTError::new(
+                    ToASTErrorKind::ReservedSlotName(slot.to_string().to_smolstr()),
+                    node.loc.clone(),
+                )
+                .into()),
+                _ => Ok(ast::ValidSlotId::GeneralizedSlot(s.parse()?)),
+            },
         }
+    }
+}
+
+impl TryFrom<&Node<Option<cst::Slot>>> for ast::SlotId {
+    type Error = ParseErrors;
+    fn try_from(slot: &Node<Option<cst::Slot>>) -> std::result::Result<Self, Self::Error> {
+        slot.try_into().map(ast::SlotId)
     }
 }
 
@@ -2369,6 +2559,7 @@ impl Node<Option<cst::RecInit>> {
 fn construct_template_policy(
     id: ast::PolicyID,
     annotations: ast::Annotations,
+    generalized_slots_annotation: ast::GeneralizedSlotsAnnotation,
     effect: ast::Effect,
     principal: ast::PrincipalConstraint,
     action: ast::ActionConstraint,
@@ -2381,7 +2572,7 @@ fn construct_template_policy(
             id,
             loc.into_maybe_loc(),
             annotations,
-            GeneralizedSlotsAnnotation::new(), // Chore: This will be changed when we edit the parser
+            generalized_slots_annotation,
             effect,
             principal,
             action,
@@ -2544,6 +2735,29 @@ mod tests {
         let result = text_to_cst::parse_policy(text)
             .expect("failed parser")
             .to_policy(ast::PolicyID::from_string("id"));
+        match result {
+            Ok(policy) => {
+                panic!("conversion to AST should have failed, but succeeded with:\n{policy}")
+            }
+            Err(errs) => errs,
+        }
+    }
+
+    #[track_caller]
+    fn assert_parse_template_succeeds(text: &str) -> ast::Template {
+        text_to_cst::parse_policy(text)
+            .expect("failed parser")
+            .to_template(ast::PolicyID::from_string("id"))
+            .unwrap_or_else(|errs| {
+                panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
+            })
+    }
+
+    #[track_caller]
+    fn assert_parse_template_fails(text: &str) -> ParseErrors {
+        let result = text_to_cst::parse_policy(text)
+            .expect("failed parser")
+            .to_template(ast::PolicyID::from_string("id"));
         match result {
             Ok(policy) => {
                 panic!("conversion to AST should have failed, but succeeded with:\n{policy}")
@@ -3698,6 +3912,184 @@ mod tests {
     }
 
     #[test]
+    fn generalized_slots_annotation() {
+        let txt = r#"
+        template(?age: Long) =>
+        permit(principal, action, resource) when {
+            ?age == 5
+        };
+        "#;
+        assert_parse_template_succeeds(txt);
+
+        let txt = r#"
+        template(?age: Long, ?age: String) =>
+        permit(principal, action, resource) when {
+            ?age == 5
+        };
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?age: Long, ?age: Long) =>
+        permit(principal, action, resource) when {
+            ?age == 5
+        };
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?age: Long) =>
+        permit(principal, action, resource) when {
+            ?invalid == 5
+        };
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        permit(principal, action, resource) when {
+            ?invalid == 5
+        };
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?age: Long, ?age: Long) =>
+        permit(principal, action, resource) when {
+            ?invalid == 5
+        };
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slot_can_be_duplicated_in_the_cond() {
+        let txt = r#"
+        template(?age: Long) =>
+        permit(principal, action, resource) when {
+            ?age == 8 || ?age == 5 
+        };
+        "#;
+        assert_parse_template_succeeds(txt);
+    }
+
+    #[test]
+    fn generalized_slot_annotations_can_be_principal_or_resource() {
+        let txt = r#"
+        template(?principal: University::Department) => 
+        permit(principal == ?principal, action, resource); 
+        "#;
+        assert_parse_template_succeeds(txt);
+
+        let txt = r#"
+        template(?resource: University::Department) => 
+        permit(principal, action, resource == ?resource); 
+        "#;
+        assert_parse_template_succeeds(txt);
+
+        let txt = r#"
+        template(?principal: University::Department, ?resource: University::Department) => 
+        permit(principal == ?principal, action, resource == ?resource); 
+        "#;
+        assert_parse_template_succeeds(txt);
+    }
+
+    #[test]
+    fn special_identifiers_can_not_be_used_as_generalized_slot_names() {
+        let txt = r#"
+        template(?action: Long, ?context: Long) =>
+        permit(principal, action, resource);
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        permit(principal == ?action, action, resource);
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        permit(principal, action, resource == ?context);
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slots_annotation_can_not_have_duplicate_slots() {
+        let txt = r#"
+        template(?age: Long, ?age: Long) =>
+        permit(principal, action, resource) unless {
+            ?age == 8
+        };
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?age: Long, ?age: String) =>
+        permit(principal, action, resource); 
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slot_can_not_be_duplicated_in_scope() {
+        let txt = r#"
+        permit(principal == ?age, action, resource == ?age);
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?name: University::Department) =>
+        forbid(principal == ?name, action, resource == ?name);
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        permit(principal == ?principal, action, resource == ?principal);
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slot_in_annotation_must_be_used() {
+        let txt = r#"
+        template(?temp: Long) => 
+        permit(principal, action, resource); 
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?temp: Long, ?rand: String) => 
+        permit(principal, action, resource); 
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slot_in_cond_not_in_scope_no_type() {
+        let txt = r#"
+        permit(principal, action, resource) unless {
+            ?cond 
+        }; 
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?value: Long) => 
+        permit(principal, action, resource) when {
+            ?value == 8 && ?cond
+        }; 
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn flipped_principal_resource_in_the_scope_is_not_valid() {
+        let txt = r#"
+        permit(principal == ?resource, action, resource == ?principal); 
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
     fn var_type() {
         assert_parse_policy_succeeds(
             r#"
@@ -4793,9 +5185,9 @@ mod tests {
             (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
                 ExpectedErrorMessageBuilder::error(
-                    "`?foo` is not a valid template slot",
+                    "found template slot ?foo in the condition clause but it does not have a type annotation",
                 ).help(
-                    "a template slot may only be `?principal` or `?resource`",
+                    "generalized slots that appear in the condition clause require a type annotation",
                 ).exactly_one_underline("?foo").build(),
             ),
 
@@ -6190,9 +6582,9 @@ mod tests {
             (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
                 ExpectedErrorMessageBuilder::error(
-                    "`?foo` is not a valid template slot",
+                    "found template slot ?foo in the condition clause but it does not have a type annotation",
                 ).help(
-                    "a template slot may only be `?principal` or `?resource`",
+                    "generalized slots that appear in the condition clause require a type annotation",
                 ).exactly_one_underline("?foo").build(),
             ),
 

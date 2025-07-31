@@ -293,6 +293,15 @@ pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
     cst.to_valid_ident()
 }
 
+/// parse a slot
+///
+/// Private to this crate. Users outside Core should use `ValidSlotId`'s `FromStr` impl
+/// or its constructors
+pub(crate) fn parse_slot(slot: &str) -> Result<ast::ValidSlotId, err::ParseErrors> {
+    let cst = text_to_cst::parse_slot(slot)?;
+    (&cst).try_into()
+}
+
 /// parse an `AnyId`
 ///
 /// Private to this crate. Users outside Core should use `AnyId`'s `FromStr` impl
@@ -893,8 +902,8 @@ mod tests {
                 resource == ?blah
             };
             "#;
-        let error = ExpectedErrorMessageBuilder::error("`?blah` is not a valid template slot")
-            .help("a template slot may only be `?principal` or `?resource`")
+        let error = ExpectedErrorMessageBuilder::error("found template slot ?blah in the condition clause but it does not have a type annotation")
+            .help("generalized slots that appear in the condition clause require a type annotation")
             .exactly_one_underline("?blah")
             .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
@@ -1001,8 +1010,8 @@ mod tests {
                 resource == ?blah
             };
             "#;
-        let error = ExpectedErrorMessageBuilder::error("`?blah` is not a valid template slot")
-            .help("a template slot may only be `?principal` or `?resource`")
+        let error = ExpectedErrorMessageBuilder::error("found template slot ?blah in the condition clause but it does not have a type annotation")
+            .help("generalized slots that appear in the condition clause require a type annotation")
             .exactly_one_underline("?blah")
             .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
@@ -1172,7 +1181,7 @@ mod tests {
             "@if(\"a\")",
             "unexpected end of input",
             "",
-            "expected `@` or identifier",
+            "expected `@`, `template`, or identifier",
         );
         // AST actually requires `principal` (`action`, `resource`, resp.). In
         // the `principal` case we also claim to expect `)` because an empty scope

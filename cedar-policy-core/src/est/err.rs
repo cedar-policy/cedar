@@ -50,7 +50,7 @@ pub enum FromJsonError {
     /// EST contained a template slot for `action`. This is not currently allowed
     #[error("slots are not allowed for actions")]
     ActionSlot,
-    /// EST contained a template slot in policy condition
+    /// EST contained a template slot in policy condition but not in the scope
     #[error(transparent)]
     #[diagnostic(transparent)]
     SlotsNotInScopeInConditionClause(#[from] parse_errors::SlotsNotInScopeInConditionClause),

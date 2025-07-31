@@ -1694,6 +1694,16 @@ impl PrincipalConstraint {
         }
     }
 
+    /// Return if the principal constraint has a slot
+    pub fn has_slot(&self) -> bool {
+        match self.constraint {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_))
+            | PrincipalOrResourceConstraint::In(EntityReference::Slot(_))
+            | PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_)) => true,
+            _ => false,
+        }
+    }
+
     /// If the principal constraint has a slot, return it
     pub fn get_slot(self) -> Option<Slot> {
         match self.constraint {
@@ -1811,6 +1821,16 @@ impl ResourceConstraint {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
             },
             _ => self,
+        }
+    }
+
+    /// Return if the resource constraint has a slot
+    pub fn has_slot(&self) -> bool {
+        match self.constraint {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_))
+            | PrincipalOrResourceConstraint::In(EntityReference::Slot(_))
+            | PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_)) => true,
+            _ => false,
         }
     }
 

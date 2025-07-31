@@ -328,6 +328,14 @@ impl From<PrincipalOrResource> for SlotId {
     }
 }
 
+impl FromStr for SlotId {
+    type Err = ParseErrors;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        crate::parser::parse_slot(s).map(SlotId)
+    }
+}
+
 impl std::fmt::Display for SlotId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -352,6 +360,14 @@ impl std::fmt::Display for ValidSlotId {
             ValidSlotId::GeneralizedSlot(id) => id.as_ref(),
         };
         write!(f, "?{s}")
+    }
+}
+
+impl FromStr for ValidSlotId {
+    type Err = ParseErrors;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        crate::parser::parse_slot(s)
     }
 }
 

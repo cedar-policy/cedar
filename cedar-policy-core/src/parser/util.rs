@@ -61,3 +61,18 @@ pub fn flatten_tuple_4<T1, T2, T3, T4>(
         flatten_tuple_2(flatten_tuple_2(flatten_tuple_2(res1, res2), res3), res4)?;
     Ok((v1, v2, v3, v4))
 }
+
+/// Combine five `Result`s into a single `Result`
+pub fn flatten_tuple_5<T1, T2, T3, T4, T5>(
+    res1: Result<T1>,
+    res2: Result<T2>,
+    res3: Result<T3>,
+    res4: Result<T4>,
+    res5: Result<T5>,
+) -> Result<(T1, T2, T3, T4, T5)> {
+    let ((((v1, v2), v3), v4), v5) = flatten_tuple_2(
+        flatten_tuple_2(flatten_tuple_2(flatten_tuple_2(res1, res2), res3), res4),
+        res5,
+    )?;
+    Ok((v1, v2, v3, v4, v5))
+}

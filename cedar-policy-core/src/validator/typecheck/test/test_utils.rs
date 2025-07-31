@@ -21,7 +21,10 @@ use cool_asserts::assert_matches;
 use itertools::Itertools;
 use std::{collections::HashSet, hash::Hash, sync::Arc};
 
-use crate::ast::{Context, EntityUID, Expr, PolicyID, Request, Template, ACTION_ENTITY_TYPE};
+use crate::ast::{
+    Context, EntityUID, Expr, PolicyID, Request, Template, ValidatorGeneralizedSlotsAnnotation,
+    ACTION_ENTITY_TYPE,
+};
 use crate::entities::{err::EntitiesError, Entities, EntityJsonParser, TCComputation};
 use crate::extensions::Extensions;
 use crate::parser::{IntoMaybeLoc, Loc, MaybeLoc};
@@ -83,7 +86,8 @@ impl Type {
 
 impl Typechecker<'_> {
     /// Typecheck an expression outside the context of a policy. This is
-    /// currently only used for testing.
+    /// currently only used for testing. This should only be used with expressions
+    /// that do not have generalized slots.
     ///
     /// `policy_id`: Policy ID to associate with this `Expr`, for the purposes
     /// of reporting the policy ID in validation errors
@@ -108,12 +112,14 @@ impl Typechecker<'_> {
             principal_slot: None,
             resource_slot: None,
         };
+
         let typechecker = SingleEnvTypechecker {
             schema: self.schema,
             extensions: self.extensions,
             mode: self.mode,
             policy_id,
             request_env: &request_env,
+            validator_generalized_slots_annotation: &ValidatorGeneralizedSlotsAnnotation::default(),
         };
         let mut type_errors = Vec::new();
         let ans = typechecker.typecheck(&CapabilitySet::new(), e, &mut type_errors);

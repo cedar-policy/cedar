@@ -22,7 +22,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::{
-    ast::{EntityUID, Expr, PolicyID},
+    ast::{EntityUID, Expr, PolicyID, ValidatorGeneralizedSlotsAnnotation},
     extensions::Extensions,
     parser::{parse_policy_or_template, IntoMaybeLoc, Loc},
 };
@@ -40,6 +40,7 @@ use super::test_utils::{
     assert_exactly_one_diagnostic, assert_policy_typecheck_fails, expr_id_placeholder, get_loc,
 };
 
+// This function should only be used for type checking templates without generalized slots
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
     schema: json_schema::Fragment<RawName>,
@@ -54,6 +55,7 @@ fn assert_typechecks_strict(
         mode: ValidationMode::Strict,
         policy_id: &expr_id_placeholder(),
         request_env,
+        validator_generalized_slots_annotation: &ValidatorGeneralizedSlotsAnnotation::default(),
     };
     let mut errs = Vec::new();
     let answer =
@@ -66,6 +68,7 @@ fn assert_typechecks_strict(
     );
 }
 
+// This function should only be used for type checking templates without generalized slots
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_strict_type_error(
     schema: json_schema::Fragment<RawName>,
@@ -81,6 +84,7 @@ fn assert_strict_type_error(
         mode: ValidationMode::Strict,
         policy_id: &expr_id_placeholder(),
         request_env,
+        validator_generalized_slots_annotation: &ValidatorGeneralizedSlotsAnnotation::default(),
     };
     let mut errs = Vec::new();
     let answer =
@@ -174,6 +178,7 @@ fn strict_typecheck_catches_regular_type_error() {
             mode: ValidationMode::Strict,
             policy_id: &expr_id_placeholder(),
             request_env: &q,
+            validator_generalized_slots_annotation: &ValidatorGeneralizedSlotsAnnotation::default(),
         };
         let mut errs = Vec::new();
         typechecker.expect_type(

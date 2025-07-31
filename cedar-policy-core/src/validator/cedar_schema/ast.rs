@@ -18,7 +18,7 @@ use std::{collections::BTreeMap, iter::once};
 
 use crate::{
     ast::{Annotation, Annotations, AnyId, Id, InternalName},
-    parser::{AsLocRef, Loc, MaybeLoc, Node},
+    parser::{self, AsLocRef, Loc, MaybeLoc, Node},
 };
 use itertools::{Either, Itertools};
 use nonempty::NonEmpty;
@@ -146,6 +146,19 @@ impl From<Path> for InternalName {
 impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.node)
+    }
+}
+
+impl TryFrom<&Node<Option<parser::cst::Name>>> for Path {
+    type Error = parser::err::ParseErrors;
+    fn try_from(node: &Node<Option<parser::cst::Name>>) -> Result<Self, Self::Error> {
+        let value = node.try_as_inner()?;
+        let basename = value.name.to_valid_ident()?;
+
+        let namespace: Result<Vec<_>, _> =
+            value.path.iter().map(|id| id.to_valid_ident()).collect();
+
+        Ok(Self::new(basename, namespace?, None))
     }
 }
 
@@ -290,7 +303,7 @@ pub struct EnumEntityDecl {
 }
 
 /// Type definitions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     /// A set of types
     Set(Box<Node<Type>>),
@@ -323,7 +336,7 @@ impl<N> From<PrimitiveType> for json_schema::TypeVariant<N> {
 
 /// Attribute declarations, used in records and entity types.
 /// One [`AttrDecl`] is one key-value pair.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttrDecl {
     /// Name of this attribute
     pub name: Node<SmolStr>,

@@ -18,8 +18,9 @@
 
 use crate::{
     ast::{
-        self, ActionConstraint, Eid, EntityReference, EntityUID, Policy, PolicyID,
-        PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
+        self, ActionConstraint, Eid, EntityReference, EntityUID, GeneralizedSlotEnv, Policy,
+        PolicyID, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv,
+        Template,
     },
     entities::conformance::is_valid_enumerated_entity,
     fuzzy_match::fuzzy_search,
@@ -128,6 +129,7 @@ impl Validator {
         &'a self,
         policy_id: &'a PolicyID,
         slots: &'a SlotEnv,
+        generalized_slots: &'a GeneralizedSlotEnv,
     ) -> impl Iterator<Item = ValidationError> + 'a {
         // All valid entity types in the schema. These will be used to generate
         // suggestion when an entity type is not found.
@@ -137,7 +139,13 @@ impl Validator {
             .map(ToString::to_string)
             .collect::<Vec<_>>();
 
-        slots.values().filter_map(move |euid| {
+        let all_entity_values = slots.values().chain(
+            generalized_slots
+                .values()
+                .filter_map(|restricted_expr| restricted_expr.as_euid()),
+        );
+
+        all_entity_values.filter_map(move |euid| {
             let entity_type = euid.entity_type();
             if !self.schema.is_known_entity_type(entity_type) {
                 let actual_entity_type = entity_type.to_string();
@@ -433,7 +441,10 @@ mod test {
     use std::collections::{HashMap, HashSet};
 
     use crate::{
-        ast::{Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint, ResourceConstraint},
+        ast::{
+            Effect, Eid, EntityUID, Expr, Literal, PolicyID, PrincipalConstraint,
+            ResourceConstraint, RestrictedExpr,
+        },
         est::Annotations,
         parser::{parse_policy, parse_policy_or_template},
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
@@ -715,9 +726,61 @@ mod test {
             .expect("Expected entity UID to parse.");
         let env = HashMap::from([(ast::SlotId::principal(), undefined_euid)]);
 
+        let generalized_env = HashMap::from([]);
+
         let validator = Validator::new(schema);
         let notes: Vec<ValidationError> = validator
-            .validate_entity_types_in_slots(&PolicyID::from_string("0"), &env)
+            .validate_entity_types_in_slots(&PolicyID::from_string("0"), &env, &generalized_env)
+            .collect();
+
+        assert_eq!(1, notes.len());
+        match notes.first() {
+            Some(ValidationError::UnrecognizedEntityType(UnrecognizedEntityType {
+                actual_entity_type,
+                suggested_entity_type,
+                ..
+            })) => {
+                assert_eq!("Undefined", actual_entity_type);
+                assert_eq!(
+                    "User",
+                    suggested_entity_type
+                        .as_ref()
+                        .expect("Expected a suggested entity type")
+                );
+            }
+            _ => panic!("Unexpected variant of ValidationErrorKind."),
+        };
+    }
+
+    #[test]
+    fn undefined_entity_type_in_generalized_env() {
+        let p_name = "User";
+        let schema_file = json_schema::NamespaceDefinition::new(
+            [(
+                p_name.parse().unwrap(),
+                json_schema::StandardEntityType {
+                    member_of_types: vec![],
+                    shape: json_schema::AttributesOrContext::default(),
+                    tags: None,
+                }
+                .into(),
+            )],
+            [],
+        );
+        let schema = schema_file.try_into().expect("Invalid schema");
+
+        let undefined_euid: EntityUID = "Undefined::\"foo\""
+            .parse()
+            .expect("Expected entity UID to parse.");
+        let env = HashMap::from([]);
+        let generalized_env = HashMap::from([(
+            ast::SlotId::generalized_slot("generalized".parse().unwrap()),
+            RestrictedExpr::val(Literal::from(undefined_euid)),
+        )]);
+
+        let validator = Validator::new(schema);
+        let notes: Vec<ValidationError> = validator
+            .validate_entity_types_in_slots(&PolicyID::from_string("0"), &env, &generalized_env)
             .collect();
 
         assert_eq!(1, notes.len());
