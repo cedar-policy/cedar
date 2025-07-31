@@ -23,7 +23,7 @@
 
 use core::prelude::v1;
 
-pub use crate::spec::spec_ast::*;
+pub use crate::spec::{spec_ast::*, spec_pattern::*};
 pub use crate::verus_utils::*;
 use regex::escape;
 #[cfg(verus_keep_ghost)]
@@ -48,8 +48,7 @@ pub open spec fn apply_1(u: UnaryOp, v: Value) -> SpecResult<Value> {
         (UnaryOp::Not, Value::Prim { p: Prim::Bool { b }}) => Ok(Value::bool(!b)),
         (UnaryOp::Neg, Value::Prim { p: Prim::Int { i }}) => int_or_err(checked_neg(i)),
         (UnaryOp::IsEmpty, Value::Set { s }) => Ok(Value::bool(s.is_empty())),
-        // TODO: patterns
-        // (UnaryOp::Like { p }, Value::Prim { p: Prim::String { s }}) => Ok(Value::prim(Prim::pbool(wildcard_match(s, p))))
+        (UnaryOp::Like { p }, Value::Prim { p: Prim::String { s }}) => Ok(Value::prim(Prim::pbool(wildcard_match(s, p)))),
         (UnaryOp::Is { ety }, Value::Prim { p: Prim::EntityUID { uid }}) => Ok(Value::bool(ety == uid.ty)),
         (_, _) => Err(Error::TypeError)
     }

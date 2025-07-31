@@ -296,12 +296,10 @@ impl<T> ExprKind<T> {
                 }
             },
             ExprKind::Like { expr, pattern } => {
-                // TODO(Pratap): support patterns, something like:
-                // spec_ast::Expr::UnaryApp {
-                //     uop: spec_ast::UnaryOp::Like { p: pattern@ },
-                //     expr: Box::new(expr@)
-                // }
-                arbitrary()
+                spec_ast::Expr::UnaryApp {
+                    uop: spec_ast::UnaryOp::Like { p: pattern@ },
+                    expr: Box::new(expr.view_aux())
+                }
             },
             ExprKind::Is { expr, entity_type } => {
                 spec_ast::Expr::UnaryApp {

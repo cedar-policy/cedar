@@ -19,3 +19,4 @@
 pub mod spec_ast;
 pub mod spec_authorizer;
 pub mod spec_evaluator;
+pub mod spec_pattern;

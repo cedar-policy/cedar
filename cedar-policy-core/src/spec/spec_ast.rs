@@ -19,6 +19,7 @@
 #![allow(missing_debug_implementations)] // vstd types Seq/Set/Map don't impl Debug
 #![allow(missing_docs)] // just for now
 
+pub use crate::spec::spec_pattern::*;
 pub use crate::verus_utils::*;
 pub use vstd::{map::*, prelude::*, seq::*, set::*};
 
@@ -230,7 +231,7 @@ pub enum UnaryOp {
     Not,
     Neg,
     IsEmpty,
-    // Like { p: Pattern }, // TODO(pratap): handle patterns later
+    Like { p: Pattern },
     Is { ety: EntityType },
 }
 

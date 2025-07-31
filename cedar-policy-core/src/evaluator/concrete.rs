@@ -429,14 +429,9 @@ impl<'e> Evaluator<'e> {
                     &val,
                 )),
             },
-            // ExprKind::Like { expr, pattern } => {
-            //     let v = self.interpret(expr, slots)?;
-            //     Ok((pattern.wildcard_match(v.get_as_string()?)).into())
-            // }
             ExprKind::Like { expr, pattern } => {
-                // TODO: handle patterns
-                assume(false);
-                unreached()
+                let v = self.interpret(expr, slots)?;
+                Ok((pattern.wildcard_match(v.get_as_string()?.as_str())).into())
             }
             ExprKind::Is { expr, entity_type } => {
                 let v = self.interpret(expr, slots)?;

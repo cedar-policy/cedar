@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
+use crate::spec::spec_pattern;
+use crate::verus_utils::clone_spec_for;
 use std::sync::Arc;
 use vstd::prelude::*;
 
+verus! {
+
 /// Represent an element in a pattern literal (the RHS of the like operation)
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
+#[verifier::external_derive]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PatternElem {
     /// A character literal
@@ -27,21 +32,35 @@ pub enum PatternElem {
     Wildcard,
 }
 
-verus! {
+impl View for PatternElem {
+    type V = spec_pattern::PatElem;
+    open spec fn view(&self) -> Self::V {
+        match self {
+            PatternElem::Char(c) => spec_pattern::PatElem::JustChar { c: *c },
+            PatternElem::Wildcard => spec_pattern::PatElem::Star,
+        }
+    }
+}
+
+clone_spec_for!(PatternElem);
 
 /// Represent a pattern literal (the RHS of the like operator)
 /// Also provides an implementation of the Display trait as well as a wildcard matching method.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 #[verifier::external_derive]
-#[verifier::external_body]
 pub struct Pattern {
     /// A vector of pattern elements
     elems: Arc<Vec<PatternElem>>,
 }
 
-// don't yet want to declare View on Pattern, so we don't use `clone_spec_for!`
-pub assume_specification[<Pattern as Clone>::clone](this: &Pattern) -> (other: Pattern)
-    ensures this == other;
+impl View for Pattern {
+    type V = spec_pattern::Pattern;
+    closed spec fn view(&self) -> Self::V {
+        self.elems@.map_values(|p: PatternElem| p@)
+    }
+}
+
+clone_spec_for!(Pattern);
 
 }
 
@@ -51,9 +70,15 @@ impl Pattern {
         Self { elems }
     }
 
+    verus! {
+
     /// Getter to the wrapped vector
-    pub fn get_elems(&self) -> &[PatternElem] {
+    pub fn get_elems(&self) -> (elems: &[PatternElem])
+        ensures elems@.map_values(|p: PatternElem| p@) == self@
+    {
         &self.elems
+    }
+
     }
 
     /// Iterate over pattern elements
@@ -103,24 +128,58 @@ impl std::fmt::Display for Pattern {
     }
 }
 
+verus! {
+
 impl PatternElem {
-    fn match_char(self, text_char: char) -> bool {
+    fn match_char(self, text_char: char) -> (b: bool)
+        ensures b == (spec_pattern::char_match(text_char, self@) || self@ is Star)
+    {
         match self {
             PatternElem::Char(c) => text_char == c,
             PatternElem::Wildcard => true,
         }
     }
-    fn is_wildcard(self) -> bool {
+
+    fn is_wildcard(self) -> (b: bool)
+        ensures b == (self@ is Star)
+    {
         matches!(self, PatternElem::Wildcard)
     }
 }
 
+}
+
+verus! {
+// Wrappers for unsupported stdlib operations on strings
+
+#[verifier::external_body]
+fn str_is_empty(s: &str) -> (b: bool)
+    ensures b == (s@.len() == 0)
+{
+    s.is_empty()
+}
+
+#[verifier::external_body]
+fn collect_chars(s: &str) -> (v: Vec<char>)
+    ensures v@ == s@
+{
+    s.chars().collect()
+}
+
+}
+
 impl Pattern {
+    verus! {
+
     /// Find if the argument text matches the pattern
-    pub fn wildcard_match(&self, text: &str) -> bool {
+    #[verifier::exec_allows_no_decreases_clause]
+    pub fn wildcard_match(&self, text: &str) -> (b: bool)
+        ensures b == spec_pattern::wildcard_match(text@, self@)
+    {
         let pattern = self.get_elems();
-        if pattern.is_empty() {
-            return text.is_empty();
+        // if pattern.is_empty() { // Verus doesn't support `is_empty`
+        if pattern.len() == 0 {
+            return str_is_empty(text); // text.is_empty();
         }
 
         // Copying the strings into vectors requires extra space, but has two benefits:
@@ -131,7 +190,7 @@ impl Pattern {
         // 2. It provides an unambiguous length. In general for a string s,
         //    s.len() is not the same as s.chars().count(). The length of these
         //    created vectors will match .chars().count()
-        let text: Vec<char> = text.chars().collect();
+        let text: Vec<char> = collect_chars(text); // text.chars.collect();
 
         let mut i: usize = 0; // index into text
         let mut j: usize = 0; // index into pattern
@@ -170,6 +229,8 @@ impl Pattern {
 
         j == pattern_len
     }
+
+    } // verus!
 }
 
 #[cfg(test)]
