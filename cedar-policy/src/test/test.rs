@@ -7304,11 +7304,6 @@ mod policy_manipulation_functions_tests {
             mapping.clone(),
         );
         assert_entity_sub(
-            r#"permit(principal, action, resource) when { User::"Alice".isEmpty() };"#,
-            r#"permit(principal, action, resource) when { User::"Bob".isEmpty() };"#,
-            mapping.clone(),
-        );
-        assert_entity_sub(
             r#"permit(principal, action, resource) when { User::"Alice".getTag(User::"Alice") };"#,
             r#"permit(principal, action, resource) when { User::"Bob".getTag(User::"Bob") };"#,
             mapping.clone(),

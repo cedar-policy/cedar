@@ -452,10 +452,12 @@ impl std::fmt::Display for Clause {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::ast::SlotId;
     use crate::parser::{self, parse_policy_or_template_to_est};
     use crate::test_utils::*;
     use cool_asserts::assert_matches;
     use serde_json::json;
+    use std::collections::HashMap;
 
     /// helper function to just do EST data structure --> JSON --> EST data structure.
     /// This roundtrip should be lossless for all policies.
@@ -530,6 +532,23 @@ mod test {
             .node
             .expect("Node should not be empty");
         cst.try_into().expect("Failed to convert to EST")
+    }
+
+    #[track_caller]
+    fn cst_to_est_link_roundtrip(
+        policy_str: &str,
+        expected_policy_str: &str,
+        vals: &HashMap<SlotId, EntityUidJson>,
+    ) {
+        let cst = parser::text_to_cst::parse_policy(policy_str)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+
+        let new_policy = est.link(vals).unwrap();
+
+        assert_eq!(new_policy.to_string(), expected_policy_str);
     }
 
     #[test]
@@ -3431,6 +3450,155 @@ mod test {
             "\nExpected:\n{}\n\nActual:\n{}\n\n",
             serde_json::to_string_pretty(&expected_json).unwrap(),
             serde_json::to_string_pretty(&linked_json).unwrap(),
+        );
+    }
+
+    #[test]
+    fn link_with_slots_in_condition_cst_to_est_roundtrip() {
+        let vals = &HashMap::from_iter([(
+            SlotId::principal(),
+            r#"User::"Bob""#.parse::<ast::EntityUID>().unwrap().into(),
+        )]);
+
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal == User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" == User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { !?principal };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { !User::"Bob" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { -(?principal) };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { -(User::"Bob") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal != User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" != User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal < User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" < User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal <= User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" <= User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal > User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" > User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal >= User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" >= User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal && User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" && User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal || User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" || User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal + User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" + User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal - User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" - User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal * User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" * User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when {  ?principal.contains(User::"Alice")  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".contains(User::"Alice") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when {  ?principal.containsAll(User::"Alice")  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".containsAll(User::"Alice") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when {  ?principal.containsAny(User::"Alice")  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".containsAny(User::"Alice") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal.isEmpty()  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".isEmpty() };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal.getTag(User::"Alice")  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".getTag(User::"Alice") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal.hasTag(User::"Alice")  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".hasTag(User::"Alice") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal.attr };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob"["attr"] };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal has attr };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" has "attr" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal like "*" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" like "*" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal is User };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" is User };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal is User in User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" is User in User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { if ?principal then User::"Alice" else User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { if User::"Bob" then User::"Alice" else User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { [?principal] };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { [User::"Bob"] };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { {a: ?principal} };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { {"a": User::"Bob"} };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal.lessThan(User::"Alice") };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".lessThan(User::"Alice") };"#,
+            vals,
         );
     }
 
