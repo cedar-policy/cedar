@@ -71,7 +71,10 @@ use crate::symcc::concretize::ConcretizeError;
 pub use crate::symcc::concretize::Env;
 
 #[cfg(feature = "term")]
-pub use crate::symcc::{term::Term, term_type::TermType};
+pub use crate::symcc::{
+    term::{Term, TermVar},
+    term_type::TermType,
+};
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]

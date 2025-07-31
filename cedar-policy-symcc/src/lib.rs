@@ -329,11 +329,11 @@ impl<S: Solver> CedarSymCompiler<S> {
 
 /// Experimental features to compile various verification tasks to [`Term`] and [`Asserts`] directly.
 #[cfg(feature = "term")]
-mod term {
+mod term_feature {
     use super::*;
 
-    pub use super::symcc::{Asserts, Term, TermType};
-    pub use symcc::factory;
+    pub use super::symcc::{Asserts, Term, TermType, TermVar};
+    pub use symcc::factory as term;
     pub use symcc::{
         verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent,
         verify_implies, verify_never_errors,
@@ -358,11 +358,11 @@ mod term {
             &mut self,
             asserts: Asserts,
             symenv: &SymEnv,
-            policies: impl Iterator<Item = &Policy>,
+            policies: impl Iterator<Item = &cedar_policy_core::ast::Policy>,
         ) -> Result<Option<Env>> {
             Ok(self
                 .symcc
-                .check_sat(|_| Ok(asserts), symenv, policies.map(|p| p.as_ref()))
+                .check_sat(|_| Ok(asserts), symenv, policies)
                 .await?)
         }
 
@@ -456,4 +456,4 @@ mod term {
 }
 
 #[cfg(feature = "term")]
-pub use term::*;
+pub use term_feature::*;
