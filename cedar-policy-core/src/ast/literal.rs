@@ -62,6 +62,18 @@ impl View for Literal {
     }
 }
 
+impl Literal {
+    // This needs to be an axiom to Verus, becuase Verus doesn't reason properly about `PartialEq`.
+    // The `PartialEq` for Literal should respect this property (because `PartialEq` for SmolStr and
+    // for `EntityUID` do), but we can't prove it
+    pub broadcast proof fn axiom_literal_view_injective(l1: Literal, l2: Literal)
+        requires #[trigger] l1@ == #[trigger] l2@
+        ensures l1 == l2
+    {
+        admit()
+    }
+}
+
 clone_spec_for!(Literal);
 
 } // verus!

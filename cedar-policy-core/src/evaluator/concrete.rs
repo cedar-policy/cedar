@@ -703,7 +703,7 @@ impl<'e> Evaluator<'e> {
             }
         })
     {
-        broadcast use FiniteSet::finiteset_from_seq_contains_spec;
+        broadcast use FiniteSet::group_finiteset_properties;
         let ghost entity1_view = match entity1 { Some(e) => Some(e@), None => None };
 
         // `rhs` is a list of all the UIDs for which we need to
@@ -754,7 +754,7 @@ impl<'e> Evaluator<'e> {
                 // forall |es: spec_ast::Entities| #[trigger] es.get(uid1@) == entity1_view ==>
                 //     !FiniteSet::from_seq(rhs_spec.elements.take(rhs_spec.pos)).any(|u: EntityUID| spec_evaluator::in_e(uid1@, u@, es)),
         {
-            broadcast use FiniteSet::finiteset_from_seq_contains_spec;
+            broadcast use FiniteSet::group_finiteset_properties;
             proof {
                 assert(rhs@.map_values(|euid: EntityUID| euid@).contains(uid2@)) by {
                     assert(rhs@.contains(uid2));

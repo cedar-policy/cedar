@@ -265,8 +265,8 @@ impl<T> FiniteSet<T> {
         self.s.no_duplicates()
     }
 
-    pub closed spec fn is_empty(self) -> bool {
-        self.s.len() == 0
+    pub open spec fn is_empty(self) -> bool {
+        self.len() == 0
     }
 
     pub closed spec fn len(&self) -> nat {
@@ -289,7 +289,7 @@ impl<T> FiniteSet<T> {
         self.s.contains(t)
     }
 
-    pub closed spec fn subset_of(self, s2: FiniteSet<T>) -> bool {
+    pub open spec fn subset_of(self, s2: FiniteSet<T>) -> bool {
         forall |x: T| self.contains(x) ==> s2.contains(x)
     }
 
@@ -305,14 +305,21 @@ impl<T> FiniteSet<T> {
         FiniteSet { s: set.to_seq() } // no duplicates
     }
 
-    pub broadcast proof fn finiteset_from_seq_contains_spec(s:Seq<T>, t: T)
+    pub broadcast proof fn lemma_finiteset_from_seq_contains_spec(s: Seq<T>, t: T)
         ensures s.contains(t) <==> #[trigger] Self::from_seq(s).contains(t)
     {
         assert(s + seq![] =~= s);
         s.lemma_remove_duplicates_properties(seq![]);
     }
 
-    pub broadcast proof fn finiteset_map_contains_spec<B>(self, f: spec_fn(T) -> B, t: T)
+    pub broadcast proof fn lemma_finiteset_from_set_contains_spec(s: Set<T>, t: T)
+        requires s.finite()
+        ensures s.contains(t) <==> #[trigger] Self::from_set(s).contains(t)
+    {
+        lemma_set_to_seq_contains(s, t);
+    }
+
+    pub broadcast proof fn lemma_finiteset_map_contains_spec<B>(self, f: spec_fn(T) -> B, t: T)
         ensures self.contains(t) ==> #[trigger] self.map(f).contains(f(t))
     {
         if self.contains(t) {
@@ -320,6 +327,67 @@ impl<T> FiniteSet<T> {
             assert(self.s.map_values(f)[i] == f(t));
             self.s.map_values(f).lemma_remove_duplicates_properties(seq![]);
         }
+    }
+
+    pub broadcast proof fn lemma_finiteset_map_contains_spec_rev<B>(self, f: spec_fn(T) -> B, b: B)
+        ensures #[trigger] self.map(f).contains(b) ==> (exists |t: T| self.contains(t) && f(t) == b)
+    {
+        if self.map(f).contains(b) {
+            self.s.map_values(f).lemma_remove_duplicates_properties(seq![]);
+            assert(self.s.map_values(f).contains(b));
+            let i = choose |i:int| 0 <= i < self.s.map_values(f).len() && self.s.map_values(f)[i] == b;
+            assert(f(self.s[i]) == b);
+            assert(self.contains(self.s[i]));
+        }
+    }
+
+    pub broadcast proof fn lemma_finiteset_intersect_contains_spec(self, other: FiniteSet<T>, t: T)
+        ensures #[trigger] self.intersect(other).contains(t) <==> self.contains(t) && other.contains(t)
+    {
+        if self.intersect(other).contains(t) {
+            self.s.lemma_filter_contains_rev(|x: T| other.contains(x), t);
+        }
+    }
+
+    pub broadcast proof fn lemma_empty_not_contains(self)
+        requires #[trigger] self.is_empty()
+        ensures forall |t:T| !(#[trigger] self.contains(t))
+    {
+        assert(self.s =~= seq![]);
+    }
+
+    pub broadcast proof fn lemma_not_empty_contains(self)
+        requires !(#[trigger] self.is_empty())
+        ensures exists |t:T| #[trigger] self.contains(t)
+    {
+        assert(self.s.len() > 0);
+        assert(self.contains(self.s[0]));
+    }
+
+    pub broadcast proof fn lemma_empty_intersect(self, other: FiniteSet<T>)
+        requires #[trigger] self.intersect(other).is_empty()
+        ensures
+            forall |t:T| #[trigger] self.contains(t) ==> !other.contains(t),
+            forall |t:T| #[trigger] other.contains(t) ==> !self.contains(t),
+    {
+        self.intersect(other).lemma_empty_not_contains();
+        assert forall |t:T| #[trigger] self.contains(t) implies !other.contains(t) by {
+            self.lemma_finiteset_intersect_contains_spec(other, t);
+        };
+        assert forall |t:T| #[trigger] other.contains(t) implies !self.contains(t) by {
+            self.lemma_finiteset_intersect_contains_spec(other, t);
+        };
+    }
+
+    pub broadcast group group_finiteset_properties {
+        FiniteSet::lemma_finiteset_from_seq_contains_spec,
+        FiniteSet::lemma_finiteset_from_set_contains_spec,
+        FiniteSet::lemma_finiteset_map_contains_spec,
+        FiniteSet::lemma_finiteset_map_contains_spec_rev,
+        FiniteSet::lemma_finiteset_intersect_contains_spec,
+        FiniteSet::lemma_empty_not_contains,
+        FiniteSet::lemma_not_empty_contains,
+        FiniteSet::lemma_empty_intersect,
     }
 }
 
@@ -410,6 +478,30 @@ pub proof fn assoc_list_insert_spec<K,V>(assoc_list: Seq<(K,V)>, k: K, v: V)
 // Helper lemmas (should be in vstd)
 
 verus! {
+
+pub proof fn lemma_set_to_seq_contains<A>(s: Set<A>, t: A)
+    requires s.finite()
+    ensures s.contains(t) <==> #[trigger] s.to_seq().contains(t)
+    decreases s.len()
+{
+    broadcast use vstd::set_lib::group_set_properties;
+    broadcast use vstd::seq_lib::group_seq_properties;
+    reveal_with_fuel(Set::to_seq, 1);
+    if s.len() > 0 {
+        assert(s.to_seq().len() > 0);
+        let x = s.choose();
+        assert(s.to_seq().contains(x));
+        if x != t {
+            lemma_set_to_seq_contains(s.remove(x), t);
+            if s.contains(t) {
+                assert(s.remove(x).contains(t));
+            } else {
+                assert(!s.remove(x).contains(t));
+            }
+        }
+    }
+}
+
 
 pub proof fn lemma_map_insert_map_values<K,V,U>(m: Map<K,V>, k: K, v: V, f: spec_fn(V) -> U)
     ensures

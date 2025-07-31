@@ -28,7 +28,10 @@ use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
 
+use vstd::assert_by_contradiction;
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use vstd::std_specs::hash::*;
 
 verus! {
 
@@ -481,6 +484,67 @@ impl TryFrom<Expr> for ValueKind {
 
 verus! {
 
+// Axiomatization of BTreeSet<Value>
+// we can't attach `assume_specification`s since we don't `impl View` for all BTreeSets,
+// so we just write wrapper functions
+
+// Since we can't write `impl<V:View> BTreeSetView for BTreeSet<V>` or similar,
+// we have to just implement BTreeSetView manually for each monomorphized BTreeSet we want
+impl BTreeSetView for BTreeSet<Value> {
+    type V = FiniteSet<spec_ast::Value>; // not generic, but works here
+    uninterp spec fn view(&self) -> Self::V; // just axiomatize it for now
+}
+
+#[verifier::external_body]
+fn btreeset_value_len(s: &BTreeSet<Value>) -> (len: usize)
+    ensures len as nat == s@.len()
+{
+    s.len()
+}
+#[verifier::external_body]
+fn btreeset_value_contains(s: &BTreeSet<Value>, v: &Value) -> (b: bool)
+    ensures b == s@.contains(v@)
+{
+    s.contains(&v)
+}
+
+#[verifier::external_body]
+fn btreeset_value_subset_of(s1: &BTreeSet<Value>, s2: &BTreeSet<Value>) -> (b: bool)
+    ensures b == (s1@.subset_of(s2@))
+{
+    s1.is_subset(&s2)
+}
+
+#[verifier::external_body]
+fn btreeset_value_is_disjoint(s1: &BTreeSet<Value>, s2: &BTreeSet<Value>) -> (b: bool)
+    ensures b == (s1@.intersect(s2@).is_empty())
+{
+    s1.is_disjoint(&s2)
+}
+
+
+// These HashSet functions are not yet supported in Verus
+// They should be specified in terms of DeepView, but
+
+#[verifier::external_body]
+fn hashset_literal_subset_of(s1: &HashSet<Literal>, s2: &HashSet<Literal>) -> (b: bool)
+    ensures b == s1@.subset_of(s2@)
+{
+    s1.is_subset(&s2)
+}
+
+#[verifier::external_body]
+fn hashset_literal_is_disjoint(s1: &HashSet<Literal>, s2: &HashSet<Literal>) -> (b: bool)
+    ensures b == s1@.intersect(s2@).is_empty()
+{
+    s1.is_disjoint(&s2)
+}
+
+
+} // verus!
+
+verus! {
+
 /// `Value`'s internal representation of a `Set`
 #[derive(Debug, Clone)]
 #[verifier::external_derive]
@@ -511,21 +575,13 @@ impl View for Set {
 impl Set {
     #[verifier::type_invariant]
     pub closed spec fn fast_repr(&self) -> bool {
-        (forall |v: spec_ast::Value| self.authoritative@.contains(v) ==> v is Prim) ==> ({
-            &&& self.fast matches Some(fast)
-            &&& FiniteSet::from_set(fast@.map(|l: Literal| l@)) == self.authoritative@.map(|v: spec_ast::Value| v->p)
-        })
+        &&& (obeys_key_model::<Literal>() && builds_valid_hashers::<std::hash::RandomState>()) // Verus well-formedness assumptions for HashMap
+        &&& self.fast is Some <==> (forall |v: spec_ast::Value| self.authoritative@.contains(v) ==> v is Prim)
+        &&& self.fast matches Some(fast) ==> (
+            forall |v: spec_ast::Value| #[trigger] self.authoritative@.contains(v) <==> v is Prim && fast@.map(|l:Literal| l@).contains(v->p)
+        )
     }
 }
-
-
-// Since we can't write `impl<V:View> BTreeSetView for BTreeSet<V>` or similar,
-// we have to just implement BTreeSetView manually for each monomorphized BTreeSet we want
-impl BTreeSetView for BTreeSet<Value> {
-    type V = FiniteSet<spec_ast::Value>; // not generic, but works here
-    uninterp spec fn view(&self) -> Self::V; // just axiomatize it for now
-}
-
 
 }
 
@@ -577,11 +633,11 @@ impl Set {
 
 
     /// Get the number of items in the set
-    #[verifier::external_body]
     pub fn len(&self) -> (l: usize)
         ensures l as nat == self@.len()
     {
-        self.authoritative.len()
+        // self.authoritative.len()
+        btreeset_value_len(&self.authoritative)
     }
 
     /// Convenience method to check if a set is empty
@@ -601,55 +657,123 @@ impl Set {
     verus! {
 
     /// Subset test
-    #[verifier::external_body]
     pub fn is_subset(&self, other: &Set) -> (b: bool)
         ensures b == (self@.subset_of(other@))
     {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(other);
+            broadcast use FiniteSet::group_finiteset_properties;
+        }
         match (&self.fast, &other.fast) {
             // both sets are in fast form, ie, they only contain literals.
             // Fast hashset-based implementation.
-            (Some(ls1), Some(ls2)) => ls1.is_subset(ls2.as_ref()),
+            (Some(ls1), Some(ls2)) => {
+                // ls1.is_subset(ls2.as_ref()),
+                proof {
+                    assert(ls1@.subset_of(ls2@) ==> self.authoritative@.subset_of(other.authoritative@));
+                    assert(!ls1@.subset_of(ls2@) ==> !self.authoritative@.subset_of(other.authoritative@)) by {
+                        if !ls1@.subset_of(ls2@) {
+                            assert(exists |l: Literal| ls1@.contains(l) && !ls2@.contains(l));
+                            let l = choose |l: Literal| ls1@.contains(l) && !ls2@.contains(l);
+                            assert(self.authoritative@.contains(spec_ast::Value::prim(l@)));
+                            assert(!ls2@.map(|l: Literal| l@).contains(l@)) by {
+                                broadcast use Literal::axiom_literal_view_injective;
+                            }
+                            assert(!other.authoritative@.contains(spec_ast::Value::prim(l@)));
+                        }
+                    }
+                }
+                hashset_literal_subset_of(&ls1, &ls2)
+            },
             // `self` contains non-literal(s), `other` is all-literal.
             // The invariant about `Set::fast` should allow us to conclude that
             // the result is `false`
             (None, Some(_)) => false,
             // one or both sets are in slow form, ie, contain a non-literal.
             // Fallback to slow implementation.
-            _ => self.authoritative.is_subset(&other.authoritative),
+            _ => btreeset_value_subset_of(&self.authoritative, &other.authoritative), // self.authoritative.is_subset(&other.authoritative),
         }
     }
 
     /// Disjointness test
-    #[verifier::external_body]
     pub fn is_disjoint(&self, other: &Set) -> (b: bool)
         ensures b == (self@.intersect(other@).is_empty())
     {
+        proof {
+            use_type_invariant(self);
+            use_type_invariant(other);
+            broadcast use FiniteSet::group_finiteset_properties;
+        }
         match (&self.fast, &other.fast) {
             // both sets are in fast form, ie, they only contain literals.
             // Fast hashset-based implementation.
-            (Some(ls1), Some(ls2)) => ls1.is_disjoint(ls2.as_ref()),
+            (Some(ls1), Some(ls2)) => {
+                // ls1.is_disjoint(ls2.as_ref())
+                proof {
+                    assert(ls1@.intersect(ls2@).is_empty() ==> self.authoritative@.intersect(other.authoritative@).is_empty()) by {
+                        if ls1@.intersect(ls2@).is_empty() {
+                            assert_by_contradiction!(self.authoritative@.intersect(other.authoritative@).is_empty(), {
+                                assert(exists |v: spec_ast::Value| self.authoritative@.contains(v) && other.authoritative@.contains(v));
+                                let v = choose |v: spec_ast::Value| self.authoritative@.contains(v) && other.authoritative@.contains(v);
+                                let l1 = choose |l1:Literal| #[trigger] ls1@.contains(l1) && l1@ == v->p;
+                                let l2 = choose |l2:Literal| #[trigger] ls2@.contains(l2) && l2@ == v->p;
+                                assert(l1 == l2) by {
+                                    broadcast use Literal::axiom_literal_view_injective;
+                                };
+                                assert(ls1@.intersect(ls2@).contains(l1));
+                            })
+                        }
+                    };
+                    assert(!ls1@.intersect(ls2@).is_empty() ==> !self.authoritative@.intersect(other.authoritative@).is_empty()) by {
+                        if !ls1@.intersect(ls2@).is_empty() {
+                            assert(exists |l: Literal| ls1@.contains(l) && ls2@.contains(l));
+                            let l = choose |l: Literal| ls1@.contains(l) && ls2@.contains(l);
+                            assert(self.authoritative@.contains(spec_ast::Value::prim(l@)));
+                            assert(other.authoritative@.contains(spec_ast::Value::prim(l@)));
+                        }
+                    }
+                }
+                hashset_literal_is_disjoint(&ls1, &ls2)
+            },
             // one or both sets are in slow form, ie, contain a non-literal.
             // Fallback to slow implementation.
-            _ => self.authoritative.is_disjoint(&other.authoritative),
+            _ => btreeset_value_is_disjoint(&self.authoritative, &other.authoritative), // self.authoritative.is_disjoint(&other.authoritative),
         }
     }
 
     /// Membership test
-    #[verifier::external_body]
     pub fn contains(&self, value: &Value) -> (b: bool)
         ensures b == (self@.contains(value@))
     {
+        proof {
+            use_type_invariant(self);
+            broadcast use FiniteSet::group_finiteset_properties;
+        }
         match (&self.fast, &value.value) {
             // both sets are in fast form, ie, they only contain literals.
             // Fast hashset-based implementation.
-            (Some(ls), ValueKind::Lit(lit)) => ls.contains(lit),
+            (Some(ls), ValueKind::Lit(lit)) => {
+                proof {
+                    assert(value@ is Prim && lit@ == value@->p);
+                    assert(ls@.contains(*lit) ==> self@.contains(value@));
+                    assert(!ls@.contains(*lit) ==> !self@.contains(value@)) by {
+                        if !ls@.contains(*lit) {
+                            assert(!ls@.map(|l: Literal| l@).contains(lit@)) by {
+                                broadcast use Literal::axiom_literal_view_injective;
+                            }
+                        }
+                    }
+                }
+                ls.contains(lit)
+            },
             // Set is all-literal but `value` is not a literal
             // The invariant about `Set::fast` should allow us to conclude that
             // the result is `false`
             (Some(_), _) => false,
             // Set contains a non-literal
             // Fallback to slow implementation.
-            _ => self.authoritative.contains(value),
+            _ => btreeset_value_contains(&self.authoritative, value), // self.authoritative.contains(value),
         }
     }
 
