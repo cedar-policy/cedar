@@ -24,6 +24,8 @@
 //! environment: using this reduction for verification will neither miss bugs
 //! (soundness) nor produce false positives (completeness).
 
+use std::sync::Arc;
+
 use cedar_policy_core::ast::Var;
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp};
 
@@ -161,7 +163,7 @@ pub fn compile_in_ent(t1: Term, t2: Term, ancs: Option<UnaryFunction>) -> Term {
 pub fn compile_in_set(t: Term, ts: Term, ancs: Option<UnaryFunction>) -> Term {
     let is_in1 = if (ts.type_of()
         == TermType::Set {
-            ty: Box::new(t.type_of()),
+            ty: Arc::new(t.type_of()),
         }) {
         factory::set_member(t.clone(), ts.clone())
     } else {
@@ -258,19 +260,21 @@ pub fn compile_app2(op2: &BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Res
             t2,
             es.ancestors_of_type(&ety1, &ety2).cloned(),
         ))),
-        (In, Entity { ety: ety1 }, Set { ty }) if matches!(*ty, Entity { .. }) => match *ty {
-            Entity { ety: ety2 } => Ok(some_of(compile_in_set(
-                t1,
-                t2,
-                es.ancestors_of_type(&ety1, &ety2).cloned(),
-            ))),
-            // PANIC SAFETY
-            #[allow(
-                clippy::unreachable,
-                reason = "Code is unreachable due to above match that type must be an Entity"
-            )]
-            _ => unreachable!("We just matched with entity type above"),
-        },
+        (In, Entity { ety: ety1 }, Set { ty }) if matches!(*ty, Entity { .. }) => {
+            match Arc::unwrap_or_clone(ty) {
+                Entity { ety: ety2 } => Ok(some_of(compile_in_set(
+                    t1,
+                    t2,
+                    es.ancestors_of_type(&ety1, &ety2).cloned(),
+                ))),
+                // PANIC SAFETY
+                #[allow(
+                    clippy::unreachable,
+                    reason = "Code is unreachable due to above match that type must be an Entity"
+                )]
+                _ => unreachable!("We just matched with entity type above"),
+            }
+        }
         (HasTag, Entity { ety }, String) => compile_has_tag(t1, t2, es.tags(&ety)),
         (GetTag, Entity { ety }, String) => compile_get_tag(t1, t2, es.tags(&ety)),
         (_, _, _) => Err(Error::TypeError),
@@ -409,7 +413,7 @@ pub fn compile_record(ats: Vec<(Attr, Term)>) -> Result<Term> {
 
 pub fn compile_call0(mk: impl Fn(String) -> Option<Ext>, arg: Term) -> Result<Term> {
     match arg {
-        Term::Some(t) => match *t {
+        Term::Some(t) => match Arc::unwrap_or_clone(t) {
             Term::Prim(TermPrim::String(s)) => match mk(s) {
                 Some(v) => Ok(some_of(v.into())),
                 None => Err(Error::TypeError),
@@ -423,7 +427,7 @@ pub fn compile_call0(mk: impl Fn(String) -> Option<Ext>, arg: Term) -> Result<Te
 // Use directly for encoding calls that can error
 pub fn compile_call1_error(xty: ExtType, enc: impl Fn(Term) -> Term, t1: Term) -> Result<Term> {
     let ty = TermType::Option {
-        ty: Box::new(TermType::Ext { xty }),
+        ty: Arc::new(TermType::Ext { xty }),
     };
     if t1.type_of() == ty {
         Ok(if_some(t1.clone(), enc(option_get(t1))))
@@ -447,10 +451,10 @@ pub fn compile_call2_error(
     t2: Term,
 ) -> Result<Term> {
     let ty1 = TermType::Option {
-        ty: Box::new(TermType::Ext { xty: xty1 }),
+        ty: Arc::new(TermType::Ext { xty: xty1 }),
     };
     let ty2 = TermType::Option {
-        ty: Box::new(TermType::Ext { xty: xty2 }),
+        ty: Arc::new(TermType::Ext { xty: xty2 }),
     };
     if t1.type_of() == ty1 && t2.type_of() == ty2 {
         Ok(if_some(
@@ -754,7 +758,7 @@ mod decimal_tests {
     fn test_valid(str: &str, rep: i64) {
         assert_eq!(
             compile(&dec_lit(str), &sym_env()),
-            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Ext(
+            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
                 Ext::Decimal { d: Decimal(rep) }
             ))))),
             "{str}"
@@ -778,7 +782,7 @@ mod decimal_tests {
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
         assert_eq!(
             compile(&parse_expr(str), &sym_env()),
-            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Bool(res))))),
+            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res))))),
             "{str}"
         )
     }
@@ -927,7 +931,7 @@ mod datetime_tests {
     fn test_valid_datetime_constructor(str: &str, rep: i64) {
         assert_eq!(
             compile(&datetime_lit(str), &datetime_sym_env()),
-            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Ext(
+            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
                 Ext::Datetime {
                     dt: Datetime::from(i128::from(rep))
                 }
@@ -950,7 +954,7 @@ mod datetime_tests {
     fn test_valid_duration_constructor(str: &str, rep: i64) {
         assert_eq!(
             compile(&duration_lit(str), &duration_sym_env()),
-            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Ext(
+            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
                 Ext::Duration {
                     d: Duration::from(i128::from(rep))
                 }
@@ -1132,7 +1136,7 @@ mod datetime_tests {
     fn test_valid_datetime_simpl_expr(str: &str, rep: i64) {
         assert_eq!(
             compile(&parse_expr(str), &datetime_sym_env()),
-            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Ext(
+            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
                 Ext::Datetime {
                     dt: Datetime::from(i128::from(rep))
                 }
@@ -1145,7 +1149,7 @@ mod datetime_tests {
     fn test_valid_duration_simpl_expr(str: &str, rep: i64) {
         assert_eq!(
             compile(&parse_expr(str), &duration_sym_env()),
-            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Ext(
+            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
                 Ext::Duration {
                     d: Duration::from(i128::from(rep))
                 }
@@ -1157,7 +1161,7 @@ mod datetime_tests {
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
         assert_eq!(
             compile(&parse_expr(str), &datetime_sym_env()),
-            Ok(Term::Some(Box::new(Term::Prim(TermPrim::Bool(res))))),
+            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res))))),
             "{str}"
         )
     }

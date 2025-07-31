@@ -241,7 +241,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     TermType::Ext { xty } => self.declare_ext_type(xty).await?.into(),
                     TermType::Record { rty } => {
                         let mut record_type = vec![];
-                        for (k, v) in rty {
+                        for (k, v) in rty.iter() {
                             record_type.push((k.clone(), self.encode_type(v).await?));
                         }
                         self.declare_record_type(record_type.iter()).await?
@@ -432,7 +432,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             }
             Term::Set { elts, .. } => {
                 let mut encoded_terms = vec![];
-                for elt in elts {
+                for elt in elts.iter() {
                     encoded_terms.push(self.encode_term(elt).await?);
                 }
                 self.define_set(&ty_enc, encoded_terms.iter().map(|s| s.as_str()))
@@ -484,10 +484,11 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             }
             Term::App { op, args, .. } => {
                 let mut encoded_terms = vec![];
-                for arg in args {
+                for arg in args.iter() {
                     encoded_terms.push(self.encode_term(arg).await?);
                 }
-                self.define_app(&ty_enc, op, encoded_terms, args).await?
+                self.define_app(&ty_enc, op, encoded_terms, args.iter())
+                    .await?
             }
         };
         self.terms.insert(t.clone(), enc.clone());
