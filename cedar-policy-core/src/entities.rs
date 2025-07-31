@@ -1016,6 +1016,34 @@ mod json_parsing_tests {
     }
 
     #[test]
+    fn add_inconsistent_duplicate_tags() {
+        let parser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+
+        let initial = parser.single_from_json_value(serde_json::json!({"uid":{ "type" : "Test", "id" : "jeff" }, "attrs": {}, "tags" : {"t": 1}, "parents" : []})).unwrap();
+        let initial_entities = Entities::from_entities(
+            [initial],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            &Extensions::all_available(),
+        )
+        .unwrap();
+
+        let dup = parser.single_from_json_value(serde_json::json!({"uid":{ "type" : "Test", "id" : "jeff" }, "attrs": {}, "tags" : {}, "parents" : []})).unwrap();
+        let err = initial_entities
+            .add_entities(
+                [Arc::new(dup)],
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .err()
+            .unwrap();
+
+        assert_matches!(err, EntitiesError::Duplicate(d) => assert_eq!(d.euid(), &r#"Test::"jeff""#.parse().unwrap()));
+    }
+
+    #[test]
     fn simple_entities_correct() {
         let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
