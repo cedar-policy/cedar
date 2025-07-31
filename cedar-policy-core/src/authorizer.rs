@@ -192,7 +192,7 @@ impl std::fmt::Debug for Authorizer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ast::Annotations;
+    use crate::ast::{Annotations, GeneralizedSlotsAnnotation};
     use crate::parser;
 
     /// Sanity unit test case for is_authorized.
@@ -277,6 +277,7 @@ mod test {
             pid,
             None,
             Annotations::new(),
+            GeneralizedSlotsAnnotation::new(),
             e,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -293,6 +294,7 @@ mod test {
             pid,
             None,
             Annotations::new(),
+            GeneralizedSlotsAnnotation::new(),
             effect,
             PrincipalConstraint::any(),
             ActionConstraint::any(),

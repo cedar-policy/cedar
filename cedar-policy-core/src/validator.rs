@@ -425,10 +425,14 @@ mod test {
                 None,
             ),
         );
+
+        let generalized_env = HashMap::new();
         set.link(
             ast::PolicyID::from_string("template"),
             ast::PolicyID::from_string("link1"),
             values,
+            generalized_env,
+            None,
         )
         .expect("Linking failed!");
         let result = validator.validate(&set, ValidationMode::default());
@@ -444,10 +448,14 @@ mod test {
                 None,
             ),
         );
+
+        let generalized_env = HashMap::new();
         set.link(
             ast::PolicyID::from_string("template"),
             ast::PolicyID::from_string("link2"),
             values,
+            generalized_env,
+            None,
         )
         .expect("Linking failed!");
         let result = validator.validate(&set, ValidationMode::default());
@@ -478,10 +486,14 @@ mod test {
                 None,
             ),
         );
+
+        let generalized_env = HashMap::new();
         set.link(
             ast::PolicyID::from_string("template"),
             ast::PolicyID::from_string("link3"),
             values,
+            generalized_env,
+            None,
         )
         .expect("Linking failed!");
         let result = validator.validate(&set, ValidationMode::default());

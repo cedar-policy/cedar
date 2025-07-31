@@ -309,6 +309,7 @@ impl Policy {
                     )
                 })
                 .collect(),
+            ast::GeneralizedSlotsAnnotation::new(), // Chore: We will include this when we include the EST functionality
             self.effect,
             self.principal.try_into()?,
             self.action.try_into()?,

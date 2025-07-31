@@ -41,8 +41,9 @@ use super::{cst, AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
-    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
-    PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
+    self, ActionConstraint, CallStyle, GeneralizedSlotsAnnotation, Integer, PatternElem,
+    PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint,
+    UnreservedId,
 };
 use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
@@ -2160,6 +2161,7 @@ impl From<ast::SlotId> for cst::Slot {
         match slot {
             ast::SlotId(ast::ValidSlotId::Principal) => cst::Slot::Principal,
             ast::SlotId(ast::ValidSlotId::Resource) => cst::Slot::Resource,
+            ast::SlotId(ast::ValidSlotId::GeneralizedSlot(id)) => cst::Slot::Other(id.to_smolstr()),
         }
     }
 }
@@ -2379,6 +2381,7 @@ fn construct_template_policy(
             id,
             loc.into_maybe_loc(),
             annotations,
+            GeneralizedSlotsAnnotation::new(), // Chore: This will be changed when we edit the parser
             effect,
             principal,
             action,

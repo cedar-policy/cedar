@@ -453,7 +453,9 @@ impl<'e> Evaluator<'e> {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Slot(id) => slots
                 .get(id)
-                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc.into_maybe_loc()))
+                .ok_or_else(|| {
+                    err::EvaluationError::unlinked_slot(id.clone(), loc.into_maybe_loc())
+                })
                 .map(|euid| PartialValue::from(euid.clone())),
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate(*v)),
@@ -4903,10 +4905,13 @@ pub(crate) mod test {
             .expect("Template already present in PolicySet");
         let mut values = HashMap::new();
         values.insert(SlotId::principal(), EntityUID::with_eid("p"));
+        let generalized_env = HashMap::new();
         pset.link(
             PolicyID::from_string("template"),
             PolicyID::from_string("instance"),
             values,
+            generalized_env,
+            None,
         )
         .expect("Linking failed!");
         let q = Request::new(
