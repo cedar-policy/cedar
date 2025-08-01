@@ -28,11 +28,12 @@ mod annotation;
 pub use annotation::*;
 
 use crate::ast::EntityUID;
-use crate::ast::{self, Annotation};
+use crate::ast::{self, Annotation, GeneralizedSlotsAnnotation};
 use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
+use crate::entities::CedarValueJson;
 use crate::expr_builder::ExprBuilder;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
+use crate::parser::util::{flatten_tuple_2, flatten_tuple_5};
 #[cfg(feature = "tolerant-ast")]
 use crate::parser::Loc;
 use crate::parser::{cst, IntoMaybeLoc};
@@ -70,6 +71,9 @@ pub struct Policy {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     annotations: Annotations,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "GeneralizedSlotsAnnotation::is_empty")]
+    generalized_slots_annotation: GeneralizedSlotsAnnotation,
 }
 
 /// Serde JSON structure for a `when` or `unless` clause in the EST format
@@ -91,7 +95,11 @@ impl Policy {
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings -- and in particular if
     /// `self` is an inline policy (in which case it is returned unchanged).
-    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
+    pub fn link(
+        self,
+        vals: &HashMap<ast::SlotId, EntityUidJson>,
+        generalized_vals: &HashMap<ast::SlotId, CedarValueJson>,
+    ) -> Result<Self, LinkingError> {
         Ok(Policy {
             effect: self.effect,
             principal: self.principal.link(vals)?,
@@ -100,9 +108,11 @@ impl Policy {
             conditions: self
                 .conditions
                 .into_iter()
-                .map(|clause| clause.link(vals))
+                .map(|clause| clause.link(vals, generalized_vals))
                 .collect::<Result<Vec<_>, _>>()?,
             annotations: self.annotations,
+            // After linking we should not know that this was policy is template linked
+            generalized_slots_annotation: GeneralizedSlotsAnnotation::default(),
         })
     }
 
@@ -122,6 +132,7 @@ impl Policy {
                 .map(|clause| clause.sub_entity_literals(mapping))
                 .collect::<Result<Vec<_>, _>>()?,
             annotations: self.annotations,
+            generalized_slots_annotation: self.generalized_slots_annotation,
         })
     }
 
@@ -138,9 +149,15 @@ impl Clause {
     /// Fill in any slots in the clause using the values in `vals`. Throws an
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings.
-    pub fn link(self, _vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
-        // currently, slots are not allowed in clauses
-        Ok(self)
+    pub fn link(
+        self,
+        vals: &HashMap<ast::SlotId, EntityUidJson>,
+        generalized_vals: &HashMap<ast::SlotId, CedarValueJson>,
+    ) -> Result<Self, LinkingError> {
+        match self {
+            Clause::When(e) => Ok(Clause::When(e.link(vals, generalized_vals)?)),
+            Clause::Unless(e) => Ok(Clause::Unless(e.link(vals, generalized_vals)?)),
+        }
     }
 
     /// Substitute entity literals
@@ -157,8 +174,10 @@ impl Clause {
 
     /// Returns true if this clause has a slot.
     pub fn has_slot(&self) -> bool {
-        // currently, slots are not allowed in clauses
-        false
+        match self {
+            Clause::When(e) => e.has_slot(),
+            Clause::Unless(e) => e.has_slot(),
+        }
     }
 }
 
@@ -184,6 +203,30 @@ impl TryFrom<cst::Policy> for Policy {
                 loc: l.into_maybe_loc(),
             })
         });
+
+        let (contains_slot_in_principal, contains_slot_in_resource) = match &maybe_scope {
+            Ok((p, _, r)) => (p.has_slot(), r.has_slot()),
+            Err(_) => (false, false),
+        };
+
+        // maximally get all the slots in the condition, any errors will have already been caught by maybe_cond
+        let cond_slots = policy
+            .conds
+            .iter()
+            .filter_map(|c| match c.to_expr::<ast::ExprBuilder<()>>() {
+                Ok((e, _)) => Some(e),
+                Err(_) => None,
+            })
+            .flat_map(|e| e.slots().collect::<Vec<ast::Slot>>())
+            .collect();
+
+        // get generalized_slots_annotation
+        let maybe_generalized_slots_annotation = policy.get_generalized_slots_annotation(
+            contains_slot_in_principal,
+            contains_slot_in_resource,
+            cond_slots,
+        );
+
         let maybe_conditions = ParseErrors::transpose(policy.conds.into_iter().map(|node| {
             let (cond, loc) = node.into_inner();
             let cond = cond.ok_or_else(|| {
@@ -192,9 +235,16 @@ impl TryFrom<cst::Policy> for Policy {
             cond.try_into()
         }));
 
-        let (effect, annotations, (principal, action, resource), conditions) = flatten_tuple_4(
+        let (
+            effect,
+            annotations,
+            generalized_slots_annotation,
+            (principal, action, resource),
+            conditions,
+        ) = flatten_tuple_5(
             maybe_effect,
             maybe_annotations,
+            maybe_generalized_slots_annotation,
             maybe_scope,
             maybe_conditions,
         )?;
@@ -205,6 +255,7 @@ impl TryFrom<cst::Policy> for Policy {
             resource: resource.into(),
             conditions,
             annotations: Annotations(annotations),
+            generalized_slots_annotation,
         })
     }
 }
@@ -280,10 +331,13 @@ impl Policy {
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
         let id = id.unwrap_or_else(|| ast::PolicyID::from_string("JSON policy"));
+        let has_principal_slot = self.principal.has_slot();
+        let has_resource_slot = self.resource.has_slot();
+
         let mut conditions_iter = self
             .conditions
             .into_iter()
-            .map(|cond| cond.try_into_ast(&id));
+            .map(|cond| cond.try_into_ast(has_principal_slot, has_resource_slot, &id));
         let conditions = match conditions_iter.next() {
             None => ast::Expr::val(true),
             Some(first) => ast::ExprBuilder::with_data(())
@@ -302,6 +356,7 @@ impl Policy {
                     )
                 })
                 .collect(),
+            ast::GeneralizedSlotsAnnotation::new(), // Chore: We will include this when we include the EST functionality
             self.effect,
             self.principal.try_into()?,
             self.action.try_into()?,
@@ -312,25 +367,50 @@ impl Policy {
 }
 
 impl Clause {
-    fn filter_slots(e: ast::Expr, is_when: bool) -> Result<ast::Expr, FromJsonError> {
-        let first_slot = e.slots().next();
-        if let Some(slot) = first_slot {
-            Err(parse_errors::SlotsInConditionClause {
-                slot,
-                clause_type: if is_when { "when" } else { "unless" },
+    fn filter_slots(
+        e: ast::Expr,
+        has_principal_slot: bool,
+        has_resource_slot: bool,
+        is_when: bool,
+    ) -> Result<ast::Expr, FromJsonError> {
+        for slot in e.slots() {
+            if (slot.id.is_principal() && !has_principal_slot)
+                || (slot.id.is_resource() && !has_resource_slot)
+            {
+                return Err(FromJsonError::SlotsNotInScopeInConditionClause(
+                    parse_errors::SlotsNotInScopeInConditionClause {
+                        slot,
+                        clause_type: if is_when { "when" } else { "unless" },
+                    },
+                ));
             }
-            .into())
-        } else {
-            Ok(e)
         }
+        Ok(e)
     }
+
     /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
-    fn try_into_ast(self, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+    /// has_principal_slot/has_resource_slot tells us whether there is a principal/resource slot in the scope
+    /// so we know when a slot is allowed to appear in the condition
+    /// an error is thrown otherwise if there is a slot not in the scope but in the condition
+    fn try_into_ast(
+        self,
+        has_principal_slot: bool,
+        has_resource_slot: bool,
+        id: &ast::PolicyID,
+    ) -> Result<ast::Expr, FromJsonError> {
         match self {
-            Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id)?, true),
-            Clause::Unless(expr) => {
-                Self::filter_slots(ast::Expr::not(expr.try_into_ast(id)?), false)
-            }
+            Clause::When(expr) => Self::filter_slots(
+                expr.try_into_ast(id)?,
+                has_principal_slot,
+                has_resource_slot,
+                true,
+            ),
+            Clause::Unless(expr) => Self::filter_slots(
+                ast::Expr::not(expr.try_into_ast(id)?),
+                has_principal_slot,
+                has_resource_slot,
+                false,
+            ),
         }
     }
 }
@@ -352,6 +432,10 @@ impl From<ast::Policy> for Policy {
                     .map(|(k, v)| (k.clone(), Some(v.clone())))
                     .collect(),
             ),
+            generalized_slots_annotation: ast
+                .generalized_slots_annotation()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
         }
     }
 }
@@ -373,6 +457,10 @@ impl From<ast::Template> for Policy {
                     .map(|(k, v)| (k.clone(), Some(v.clone())))
                     .collect(),
             ),
+            generalized_slots_annotation: ast
+                .generalized_slots_annotation()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
         }
     }
 }
@@ -391,6 +479,17 @@ impl std::fmt::Display for Policy {
                 write!(f, "({v})")?;
             }
             writeln!(f)?;
+        }
+        if self.generalized_slots_annotation.iter().count() > 0 {
+            write!(
+                f,
+                "template({}) => ",
+                self.generalized_slots_annotation
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", k, v))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )?;
         }
         write!(
             f,
@@ -3239,7 +3338,7 @@ mod test {
         let est: Policy = cst.try_into().unwrap();
         let err = est
             .clone()
-            .link(&HashMap::from_iter([]))
+            .link(&HashMap::from_iter([]), &HashMap::from_iter([]))
             .expect_err("didn't fill all the slots");
         expect_err(
             "",
@@ -3251,10 +3350,13 @@ mod test {
         );
         let err = est
             .clone()
-            .link(&HashMap::from_iter([(
-                ast::SlotId::principal(),
-                EntityUidJson::new("XYZCorp::User", "12UA45"),
-            )]))
+            .link(
+                &HashMap::from_iter([(
+                    ast::SlotId::principal(),
+                    EntityUidJson::new("XYZCorp::User", "12UA45"),
+                )]),
+                &HashMap::from_iter([]),
+            )
             .expect_err("didn't fill all the slots");
         expect_err(
             "",
@@ -3265,13 +3367,16 @@ mod test {
             .build(),
         );
         let linked = est
-            .link(&HashMap::from_iter([
-                (
-                    ast::SlotId::principal(),
-                    EntityUidJson::new("XYZCorp::User", "12UA45"),
-                ),
-                (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
-            ]))
+            .link(
+                &HashMap::from_iter([
+                    (
+                        ast::SlotId::principal(),
+                        EntityUidJson::new("XYZCorp::User", "12UA45"),
+                    ),
+                    (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
+                ]),
+                &HashMap::from_iter([]),
+            )
             .expect("did fill all the slots");
         let expected_json = json!(
             {
@@ -3318,6 +3423,156 @@ mod test {
             serde_json::to_string_pretty(&expected_json).unwrap(),
             serde_json::to_string_pretty(&linked_json).unwrap(),
         );
+    }
+
+    #[test]
+    fn link_with_slots_in_condition() {
+        let template = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource in ?resource
+            ) when {
+                ?principal in resource.owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+
+        let linked_est = est
+            .link(
+                &HashMap::from_iter([
+                    (
+                        ast::SlotId::principal(),
+                        EntityUidJson::new("XYZCorp::User", "12UA45"),
+                    ),
+                    (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
+                ]),
+                &HashMap::from_iter([]),
+            )
+            .expect("did fill all the slots");
+
+        let old_est = linked_est.clone();
+        let roundtripped = est_roundtrip(linked_est.clone());
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
+
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "==",
+                    "entity": { "type": "XYZCorp::User", "id": "12UA45" },
+                },
+                "action": {
+                    "op": "==",
+                    "entity": { "type": "Action", "id": "view" },
+                },
+                "resource": {
+                    "op": "in",
+                    "entity": { "type": "Folder", "id": "abc" },
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "in": {
+                                "left": {
+                                    "Value": {
+                                        "__entity": { "type": "XYZCorp::User", "id": "12UA45" }
+                                    }
+                                },
+                                "right": {
+                                    ".": {
+                                        "left": {
+                                            "Var": "resource"
+                                        },
+                                        "attr": "owners"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
+            }
+        );
+        let linked_json = serde_json::to_value(linked_est).unwrap();
+        assert_eq!(
+            linked_json,
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&linked_json).unwrap(),
+        );
+    }
+
+    #[test]
+    fn roundtrip_generalized_slots_annotations() {
+        let policy = r#"
+        template(?age: Long, ?test: Long) => 
+        permit(principal, 
+        action, 
+        resource) 
+        when 
+        { ?age == ?test };"#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [{
+                    "kind": "when",
+                    "body": {
+                        "==": {
+                        "left": {
+                            "Slot": "?age"
+                        },
+                        "right": {
+                            "Slot": "?test"
+                        }
+                        }
+                    }
+                }],
+                "generalized_slots_annotation": {
+                    "?age": {
+                        "type": "EntityOrCommon",
+                        "name": "Long"
+                    },
+                    "?test": {
+                        "type": "EntityOrCommon",
+                        "name": "Long"
+                    },
+                }
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let old_est = est.clone();
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
     }
 
     #[test]
@@ -3575,6 +3830,39 @@ mod test {
                 );
             }
         );
+
+        let template = json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        "==": {
+                            "left": { "Var": "principal" },
+                            "right": { "Slot": "?principal" }
+                        }
+                    }
+                }
+            ]
+        });
+
+        let est: Policy = serde_json::from_value(template).unwrap();
+        let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
+        assert_matches!(
+            ast,
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("found template slot ?principal in a `when` clause")
+                    .help("?principal needs to appear in the scope to appear in the condition of the template")
+                    .build(),
+                );
+            }
+        )
     }
 
     #[test]
@@ -4265,7 +4553,9 @@ mod test {
                 .node
                 .unwrap();
             let est: Policy = cst.try_into().unwrap();
-            let err = est.clone().link(&HashMap::from_iter([]));
+            let err = est
+                .clone()
+                .link(&HashMap::from_iter([]), &HashMap::from_iter([]));
             assert_matches!(
                 err,
                 Err(e) => {
@@ -4277,10 +4567,13 @@ mod test {
                     );
                 }
             );
-            let err = est.clone().link(&HashMap::from_iter([(
-                ast::SlotId::principal(),
-                EntityUidJson::new("User", "alice"),
-            )]));
+            let err = est.clone().link(
+                &HashMap::from_iter([(
+                    ast::SlotId::principal(),
+                    EntityUidJson::new("User", "alice"),
+                )]),
+                &HashMap::from_iter([]),
+            );
             assert_matches!(
                 err,
                 Err(e) => {
@@ -4293,13 +4586,16 @@ mod test {
                 }
             );
             let linked = est
-                .link(&HashMap::from_iter([
-                    (
-                        ast::SlotId::principal(),
-                        EntityUidJson::new("User", "alice"),
-                    ),
-                    (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
-                ]))
+                .link(
+                    &HashMap::from_iter([
+                        (
+                            ast::SlotId::principal(),
+                            EntityUidJson::new("User", "alice"),
+                        ),
+                        (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
+                    ]),
+                    &HashMap::from_iter([]),
+                )
                 .expect("did fill all the slots");
             let expected_json = json!(
                 {
@@ -4338,7 +4634,7 @@ mod test {
                 .node
                 .unwrap();
             let est: Policy = cst.try_into().unwrap();
-            let linked = est.link(&HashMap::new()).unwrap();
+            let linked = est.link(&HashMap::new(), &HashMap::new()).unwrap();
             let expected_json = json!(
                 {
                     "effect": "permit",
@@ -4543,6 +4839,92 @@ mod test {
         }
     }
 
+    mod generalized_templates {
+
+        use super::*;
+
+        #[test]
+        fn is_template_generalized_slots_in_condition() {
+            let template = r#"
+            template(?age: Long) => 
+            permit(
+                principal,
+                action == Action::"view",
+                resource
+            ) when {
+                ?age == 8
+            };"#;
+            let cst = parser::text_to_cst::parse_policy(template)
+                .unwrap()
+                .node
+                .unwrap();
+            let est: Policy = cst.try_into().unwrap();
+
+            assert!(
+                est.is_template(),
+                "Policy with age slot not marked as template"
+            );
+        }
+
+        #[test]
+        fn link_with_generalized_template() {
+            let template = r#"
+            template(?slot: Bool) =>
+            permit(
+                principal,
+                action == Action::"view",
+                resource 
+            ) when { ?slot };"#;
+            let cst = parser::text_to_cst::parse_policy(template)
+                .unwrap()
+                .node
+                .unwrap();
+            let est: Policy = cst.try_into().unwrap();
+            let linked = est
+                .clone()
+                .link(
+                    &HashMap::from_iter([]),
+                    &HashMap::from_iter([(
+                        ast::SlotId::generalized_slot("slot".parse().unwrap()),
+                        CedarValueJson::Bool(true),
+                    )]),
+                )
+                .expect("did fill all the slots");
+
+            let expected_json = json!(
+                {
+                    "effect": "permit",
+                    "principal": {
+                        "op": "All",
+                    },
+                    "action": {
+                        "op": "==",
+                        "entity": { "type": "Action", "id": "view" },
+                    },
+                    "resource": {
+                        "op": "All",
+                    },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "Value": true
+                            }
+                        }
+                    ],
+                }
+            );
+            let linked_json = serde_json::to_value(linked).unwrap();
+            assert_eq!(
+                linked_json,
+                expected_json,
+                "\nExpected:\n{}\n\nActual:\n{}\n\n",
+                serde_json::to_string_pretty(&expected_json).unwrap(),
+                serde_json::to_string_pretty(&linked_json).unwrap(),
+            );
+        }
+    }
+
     #[test]
     fn extended_has() {
         let policy_text = r#"
@@ -4688,6 +5070,46 @@ mod test {
             .unwrap();
         let est: Policy = cst.try_into().unwrap();
         assert!(!est.is_template(), "Static policy marked as template");
+    }
+
+    #[test]
+    fn template_condition_has_slot() {
+        let template: &'static str = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource
+            ) when {
+                ?principal in resource.owners && ?principal has owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let has_slot = est.conditions.iter().any(|c| c.has_slot());
+        assert!(has_slot, "Policy condition not marked as having a slot");
+
+        let template: &'static str = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource
+            ) when {
+                principal == resource.owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let has_slot = est.conditions.iter().any(|c| c.has_slot());
+        assert!(
+            !has_slot,
+            "Policy condition marked as having a slot when it does not have a slot"
+        )
     }
 }
 

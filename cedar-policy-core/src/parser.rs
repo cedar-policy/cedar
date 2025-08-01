@@ -293,6 +293,15 @@ pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
     cst.to_valid_ident()
 }
 
+/// parse a slot
+///
+/// Private to this crate. Users outside Core should use `ValidSlotId`'s `FromStr` impl
+/// or its constructors
+pub(crate) fn parse_slot(slot: &str) -> Result<ast::ValidSlotId, err::ParseErrors> {
+    let cst = text_to_cst::parse_slot(slot)?;
+    (&cst).try_into()
+}
+
 /// parse an `AnyId`
 ///
 /// Private to this crate. Users outside Core should use `AnyId`'s `FromStr` impl
@@ -813,11 +822,12 @@ mod tests {
                 resource == ?resource
             };
             "#;
-        let slot_in_when_clause =
-            ExpectedErrorMessageBuilder::error("found template slot ?resource in a `when` clause")
-                .help("slots are currently unsupported in `when` clauses")
-                .exactly_one_underline("?resource")
-                .build();
+        let slot_in_when_clause = ExpectedErrorMessageBuilder::error(
+            "found template slot ?resource in a `when` clause",
+        )
+        .help("?resource needs to appear in the scope to appear in the condition of the template")
+        .exactly_one_underline("?resource")
+        .build();
         let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?resource",
         )
@@ -852,11 +862,12 @@ mod tests {
                 resource == ?principal
             };
             "#;
-        let slot_in_when_clause =
-            ExpectedErrorMessageBuilder::error("found template slot ?principal in a `when` clause")
-                .help("slots are currently unsupported in `when` clauses")
-                .exactly_one_underline("?principal")
-                .build();
+        let slot_in_when_clause = ExpectedErrorMessageBuilder::error(
+            "found template slot ?principal in a `when` clause",
+        )
+        .help("?principal needs to appear in the scope to appear in the condition of the template")
+        .exactly_one_underline("?principal")
+        .build();
         let unexpected_template = ExpectedErrorMessageBuilder::error(
             "expected a static policy, got a template containing the slot ?principal",
         )
@@ -891,8 +902,8 @@ mod tests {
                 resource == ?blah
             };
             "#;
-        let error = ExpectedErrorMessageBuilder::error("`?blah` is not a valid template slot")
-            .help("a template slot may only be `?principal` or `?resource`")
+        let error = ExpectedErrorMessageBuilder::error("found template slot ?blah in the condition clause but it does not have a type annotation")
+            .help("generalized slots that appear in the condition clause require a type annotation")
             .exactly_one_underline("?blah")
             .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
@@ -922,7 +933,7 @@ mod tests {
         let slot_in_unless_clause = ExpectedErrorMessageBuilder::error(
             "found template slot ?resource in a `unless` clause",
         )
-        .help("slots are currently unsupported in `unless` clauses")
+        .help("?resource needs to appear in the scope to appear in the condition of the template")
         .exactly_one_underline("?resource")
         .build();
         let unexpected_template = ExpectedErrorMessageBuilder::error(
@@ -962,7 +973,7 @@ mod tests {
         let slot_in_unless_clause = ExpectedErrorMessageBuilder::error(
             "found template slot ?principal in a `unless` clause",
         )
-        .help("slots are currently unsupported in `unless` clauses")
+        .help("?principal needs to appear in the scope to appear in the condition of the template")
         .exactly_one_underline("?principal")
         .build();
         let unexpected_template = ExpectedErrorMessageBuilder::error(
@@ -999,8 +1010,8 @@ mod tests {
                 resource == ?blah
             };
             "#;
-        let error = ExpectedErrorMessageBuilder::error("`?blah` is not a valid template slot")
-            .help("a template slot may only be `?principal` or `?resource`")
+        let error = ExpectedErrorMessageBuilder::error("found template slot ?blah in the condition clause but it does not have a type annotation")
+            .help("generalized slots that appear in the condition clause require a type annotation")
             .exactly_one_underline("?blah")
             .build();
         assert_matches!(parse_policy(None, src), Err(e) => {
@@ -1029,15 +1040,16 @@ mod tests {
                 resource == ?resource
             };
             "#;
-        let slot_in_when_clause =
-            ExpectedErrorMessageBuilder::error("found template slot ?resource in a `when` clause")
-                .help("slots are currently unsupported in `when` clauses")
-                .exactly_one_underline("?resource")
-                .build();
+        let slot_in_when_clause = ExpectedErrorMessageBuilder::error(
+            "found template slot ?resource in a `when` clause",
+        )
+        .help("?resource needs to appear in the scope to appear in the condition of the template")
+        .exactly_one_underline("?resource")
+        .build();
         let slot_in_unless_clause = ExpectedErrorMessageBuilder::error(
             "found template slot ?resource in a `unless` clause",
         )
-        .help("slots are currently unsupported in `unless` clauses")
+        .help("?resource needs to appear in the scope to appear in the condition of the template")
         .exactly_one_underline("?resource")
         .build();
         let unexpected_template = ExpectedErrorMessageBuilder::error(
@@ -1169,7 +1181,7 @@ mod tests {
             "@if(\"a\")",
             "unexpected end of input",
             "",
-            "expected `@` or identifier",
+            "expected `@`, `template`, or identifier",
         );
         // AST actually requires `principal` (`action`, `resource`, resp.). In
         // the `principal` case we also claim to expect `)` because an empty scope

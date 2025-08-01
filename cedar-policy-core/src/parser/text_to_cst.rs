@@ -120,6 +120,7 @@ lazy_static::lazy_static! {
     static ref PRIMARY_PARSER: grammar::PrimaryParser = grammar::PrimaryParser::new();
     static ref NAME_PARSER: grammar::NameParser = grammar::NameParser::new();
     static ref IDENT_PARSER: grammar::IdentParser = grammar::IdentParser::new();
+    static ref SLOT_PARSER: grammar::SlotParser = grammar::SlotParser::new();
 }
 
 /// Create CST for multiple policies from text
@@ -160,6 +161,11 @@ pub fn parse_name(text: &str) -> Result<Node<Option<cst::Name>>, err::ParseError
 /// Parse text as an identifier, or fail if it does not parse as an identifier
 pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErrors> {
     parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, true, text)
+}
+
+/// Parse text as a slot, or fail if it does not parse as a slot
+pub fn parse_slot(text: &str) -> Result<Node<Option<cst::Slot>>, err::ParseErrors> {
+    parse_collect_errors(&*SLOT_PARSER, grammar::SlotParser::parse, true, text)
 }
 
 /// Create CST for multiple policies from text, but without retaining source information
@@ -892,7 +898,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `/`")
-                .exactly_one_underline_with_label("/", "expected `@` or identifier")
+                .exactly_one_underline_with_label("/", "expected `@`, `template`, or identifier")
                 .build(),
         );
         let src = r#"
@@ -1147,7 +1153,10 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `-`")
-                .exactly_one_underline_with_label("-", "expected `(`, `@`, or identifier")
+                .exactly_one_underline_with_label(
+                    "-",
+                    "expected `(`, `@`, `template`, or identifier",
+                )
                 .build(),
         );
 
@@ -1176,7 +1185,10 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `+`")
-                .exactly_one_underline_with_label("+", "expected `(`, `@`, or identifier")
+                .exactly_one_underline_with_label(
+                    "+",
+                    "expected `(`, `@`, `template`, or identifier",
+                )
                 .build(),
         );
     }
@@ -1809,5 +1821,195 @@ mod tests {
         "#;
         let e = assert_parse_succeeds(parse_expr_tolerant, src);
         assert!(matches!(e, Expr::Expr(_)));
+    }
+
+    #[test]
+    fn generalized_templates() {
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        template(?age: Long) =>
+        permit(principal, action, resource) when {
+            ?temp == 5
+        };
+        "#,
+        );
+
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal == ?resources, action, resource) when {
+            principal has true.if
+        };
+        "#,
+        );
+
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource == ?principals) when {
+            principal has true.if
+        };
+        "#,
+        );
+
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        template(?age: Long, ?date: datetime) => 
+        permit(principal, action, resource) when {
+            ?age == 8 && ?date == context.date
+        };
+        "#,
+        );
+
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        @first("annotation")
+        template(?age: Long, ?date: datetime) => 
+        permit(principal, action, resource) when {
+            ?age == 8 && ?date == context.date
+        };
+        "#,
+        );
+
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        @first("annotation")
+        template(?age: Long, ?entity: Group::jane_friends) => 
+        permit(principal, action, resource) when {
+            ?age == 8 && entity in Group
+        };
+        "#,
+        );
+
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        @first("annotation")
+        @second("annotation")
+        template(?age: Long, ?date: datetime) => 
+        permit(principal, action, resource) when {
+            ?age == 8 && ?date == context.date
+        };
+        "#,
+        );
+
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        template(?age: Long, ?date: datetime) => 
+        @second("annotation")
+        permit(principal, action, resource) when {
+            ?age == 8 && ?date == context.date
+        };
+        "#,
+        );
+
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        template(?age: Long ?date: datetime) => 
+        permit(principal, action, resource) when {
+            ?age == 8 && ?date == context.date
+        };
+        "#,
+        );
+
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        template(?age: Long, ?date: datetime)  
+        permit(principal, action, resource) when {
+            ?age == 8 && ?date == context.date
+        };
+        "#,
+        );
+
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        template(?age?: Long, ?date: datetime)  
+        permit(principal, action, resource) when {
+            ?age == 8 && ?date == context.date
+        };
+        "#,
+        );
+    }
+
+    #[test]
+    fn generalized_template_set_types() {
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        template(?age: Set<Long>, ?date: Set<datetime>) => 
+        permit(principal, action, resource) when {
+            ?age == 8 && ?date == context.date
+        };
+        "#,
+        );
+
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        template(?districts: Set<School::District>) => 
+        permit(principal, action, resource); 
+        "#,
+        );
+    }
+
+    #[test]
+    fn generalized_templates_record_types() {
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        template(?info: { date: datetime, name: String }) => 
+        permit(principal, action, resource); 
+        "#,
+        );
+
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        template(?info: { date: datetime, name: { test: Bool, age: Long } }, ?record: { district?: School::District }) => 
+        permit(principal, action, resource); 
+        "#,
+        );
+
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        template(?info: { date: datetime, name: { test: Bool, age: Long } }, ?record: { district?: School::District }) => 
+        permit(principal, action, resource) when {
+            ?info.name.test 
+        }; 
+        "#,
+        );
+
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        template(?info: { date?: datetime, name: String, }) => 
+        permit(principal, action, resource); 
+        "#,
+        );
+
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        template(?info: { date?: datetime, name: }) => 
+        permit(principal, action, resource); 
+        "#,
+        );
+
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        template(?info: { date?: datetime, name: String ) => 
+        permit(principal, action, resource); 
+        "#,
+        );
     }
 }

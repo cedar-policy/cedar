@@ -16,9 +16,9 @@
 
 use super::Policy;
 use super::PolicySetFromJsonError;
-use crate::ast::{self, EntityUID, PolicyID, SlotId};
+use crate::ast::{self, EntityUID, PolicyID, RestrictedExpr, SlotId};
 use crate::entities::json::err::JsonDeserializationErrorContext;
-use crate::entities::json::EntityUidJson;
+use crate::entities::{json::EntityUidJson, CedarValueJson};
 use crate::parser::cst::Policies;
 use crate::parser::err::ParseErrors;
 use crate::parser::Node;
@@ -56,9 +56,25 @@ impl PolicySet {
             .filter_map(|link| {
                 if &link.new_id == id {
                     self.get_template(&link.template_id).and_then(|template| {
-                        let unwrapped_est_vals: HashMap<SlotId, EntityUidJson> =
-                            link.values.iter().map(|(k, v)| (*k, v.into())).collect();
-                        template.link(&unwrapped_est_vals).ok()
+                        let unwrapped_est_vals: HashMap<SlotId, EntityUidJson> = link
+                            .values
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.into()))
+                            .collect();
+
+                        let unwrapped_est_generalized_vals: HashMap<SlotId, CedarValueJson> = link
+                            .generalized_values
+                            .iter()
+                            .map(|(k, v)| {
+                                (
+                                    k.clone(),
+                                    #[allow(clippy::expect_used)]
+                                    CedarValueJson::from_expr(v.as_borrowed()).expect("Conversion should only be done if policyset is well formed"),
+                                )
+                            })
+                            .collect();
+
+                        template.link(&unwrapped_est_vals, &unwrapped_est_generalized_vals).ok()
                     })
                 } else {
                     None
@@ -91,6 +107,10 @@ pub struct TemplateLink {
     /// Mapping between slots and entity uids
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,EntityUidJson<TemplateLinkContext>>")]
     pub values: HashMap<SlotId, EntityUID>,
+    /// Mapping between generalized slots and restricted expr
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,CedarValueJson>")]
+    #[serde(default)]
+    pub generalized_values: HashMap<SlotId, RestrictedExpr>,
 }
 
 /// Statically set the deserialization error context to be deserialization of a template link
@@ -122,9 +142,10 @@ impl TryFrom<PolicySet> for ast::PolicySet {
             template_id,
             new_id,
             values,
+            generalized_values,
         } in value.template_links
         {
-            ast_pset.link(template_id, new_id, values)?;
+            ast_pset.link(template_id, new_id, values, generalized_values, None)?;
         }
 
         Ok(ast_pset)

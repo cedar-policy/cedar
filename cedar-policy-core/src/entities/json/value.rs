@@ -135,6 +135,31 @@ impl<'de> Deserialize<'de> for CedarValueJson {
     }
 }
 
+impl<'de> DeserializeAs<'de, RestrictedExpr> for CedarValueJson {
+    fn deserialize_as<D>(deserializer: D) -> Result<RestrictedExpr, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+        // We don't know the context that called us, so we'll rely on the statically set context
+        let context = || JsonDeserializationErrorContext::Unknown;
+        let cedar_value_json = CedarValueJson::deserialize(deserializer)?;
+        let restricted_expr = cedar_value_json.into_expr(context).map_err(Error::custom)?;
+        Ok(restricted_expr)
+    }
+}
+
+impl SerializeAs<RestrictedExpr> for CedarValueJson {
+    fn serialize_as<S>(source: &RestrictedExpr, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::Error;
+        let json = CedarValueJson::from_expr(source.as_borrowed()).map_err(Error::custom)?;
+        json.serialize(serializer)
+    }
+}
+
 impl From<RawCedarValueJson> for CedarValueJson {
     fn from(value: RawCedarValueJson) -> Self {
         match value {

@@ -93,6 +93,12 @@ impl ValidationResult {
 // This is NOT a publicly exported error type.
 #[derive(Clone, Debug, Diagnostic, Error, Hash, Eq, PartialEq)]
 pub enum ValidationError {
+    /// The Schema is incompatible with the slot type annotations.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    IncompatibleSchemaWithSlotAnnotations(
+        #[from] validation_errors::IncompatibleSchemaWithSlotTypeAnnotations,
+    ),
     /// A policy contains an entity type that is not declared in the schema.
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -174,6 +180,16 @@ pub enum ValidationError {
 }
 
 impl ValidationError {
+    pub(crate) fn incompatible_schema_with_slot_type_annotations(
+        source_loc: MaybeLoc,
+        policy_id: PolicyID,
+    ) -> Self {
+        validation_errors::IncompatibleSchemaWithSlotTypeAnnotations {
+            source_loc,
+            policy_id,
+        }
+        .into()
+    }
     pub(crate) fn unrecognized_entity_type(
         source_loc: MaybeLoc,
         policy_id: PolicyID,

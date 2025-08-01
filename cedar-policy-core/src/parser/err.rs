@@ -148,11 +148,28 @@ pub enum ToASTErrorKind {
     /// conflicting annotations
     #[error("duplicate annotation: @{0}")]
     DuplicateAnnotation(ast::AnyId),
-    /// Returned when a policy contains template slots in a when/unless clause.
-    /// This is not currently supported; see [RFC 3](https://github.com/cedar-policy/rfcs/pull/3).
+    /// Returned when we attempt to parse a policy with repeated slot names in
+    /// generalized slot annotations
+    #[error("duplicate generalized slots annotation: @{0}")]
+    DuplicateGeneralizedSlotAnnotation(ast::SlotId),
+    /// Returned when a generalized slot appears in the condition of the template
+    /// but does not have a type annotation
     #[error(transparent)]
     #[diagnostic(transparent)]
-    SlotsInConditionClause(#[from] parse_errors::SlotsInConditionClause),
+    SlotInConditionClauseNotInGeneralizedSlotsAnnotation(
+        #[from] parse_errors::SlotInConditionClauseNotInGeneralizedSlotsAnnotation,
+    ),
+    /// Return when a generalized slot appears in the generalized slots annotation
+    /// but is not used within the template
+    #[error("{0} slot is given a type annotation, however it is not used with the template")]
+    GeneralizedSlotIsAnnotatedNotUsed(ast::SlotId),
+    /// Returned when a policy contains template slots in a when/unless clause but not in the scope.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    SlotsNotInScopeInConditionClause(#[from] parse_errors::SlotsNotInScopeInConditionClause),
+    /// Returned when a user tries to use a reserved slot name
+    #[error("{0} is not a valid slot name")]
+    ReservedSlotName(SmolStr),
     /// Returned when a policy is missing one of the three required scope elements
     /// (`principal`, `action`, and `resource`)
     #[error("this policy is missing the `{0}` variable in the scope")]
@@ -455,9 +472,17 @@ impl ToASTErrorKind {
         }
     }
 
-    /// Constructor for the [`ToASTErrorKind::SlotsInConditionClause`] error
-    pub fn slots_in_condition_clause(slot: ast::Slot, clause_type: &'static str) -> Self {
-        parse_errors::SlotsInConditionClause { slot, clause_type }.into()
+    /// Constructor for the [`ToASTErrorKind::SlotInConditionClauseNotInGeneralizedSlotsAnnotation`] error
+    pub fn slots_in_condition_clause_not_in_generalized_slots_annotation(slot: ast::Slot) -> Self {
+        parse_errors::SlotInConditionClauseNotInGeneralizedSlotsAnnotation { slot }.into()
+    }
+
+    /// Constructor for the [`ToASTErrorKind::SlotsNotInScopeInConditionClause`] error
+    pub fn slots_not_in_scope_in_condition_clause(
+        slot: ast::Slot,
+        clause_type: &'static str,
+    ) -> Self {
+        parse_errors::SlotsNotInScopeInConditionClause { slot, clause_type }.into()
     }
 
     /// Constructor for the [`ToASTErrorKind::ExpectedStaticPolicy`] error
@@ -546,15 +571,25 @@ pub mod parse_errors {
         }
     }
 
-    /// Details about a `SlotsInConditionClause` error.
+    /// Details about a `SlotsNotInScopeInConditionClause` error.
     #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
     #[error("found template slot {} in a `{clause_type}` clause", slot.id)]
-    #[diagnostic(help("slots are currently unsupported in `{clause_type}` clauses"))]
-    pub struct SlotsInConditionClause {
+    #[diagnostic(help("{} needs to appear in the scope to appear in the condition of the template", slot.id))]
+    pub struct SlotsNotInScopeInConditionClause {
         /// Slot that was found in a when/unless clause
         pub(crate) slot: ast::Slot,
         /// Clause type, e.g. "when" or "unless"
         pub(crate) clause_type: &'static str,
+    }
+
+    /// Details about a `SlotInConditionClauseNotInGeneralizedSlotsAnnotation`
+    #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+    #[error("found template slot {} in the condition clause but it does not have a type annotation", slot.id)]
+    #[diagnostic(help(
+        "generalized slots that appear in the condition clause require a type annotation"
+    ))]
+    pub struct SlotInConditionClauseNotInGeneralizedSlotsAnnotation {
+        pub(crate) slot: ast::Slot,
     }
 
     /// Details about an `InvalidActionType` error.
@@ -768,6 +803,7 @@ lazy_static! {
             "ACTION",
             "RESOURCE",
             "CONTEXT",
+            "SET",
         ]),
         identifier_sentinel: "IDENTIFIER",
         first_set_identifier_tokens: HashSet::from(["TRUE", "FALSE", "IF"]),
