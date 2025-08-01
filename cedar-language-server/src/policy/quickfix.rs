@@ -42,8 +42,11 @@ pub fn policy_quickfix_code_actions(
                 };
 
                 // Create a workspace edit
-                let mut changes = HashMap::new();
-                changes.insert(uri.clone(), vec![edit]);
+                #[expect(
+                    clippy::mutable_key_type,
+                    reason = "type required by tower_lsp_server::lsp_types::WorkspaceEdit"
+                )]
+                let changes = HashMap::from([(uri.clone(), vec![edit])]);
                 let workspace_edit = WorkspaceEdit {
                     changes: Some(changes),
                     document_changes: None,
