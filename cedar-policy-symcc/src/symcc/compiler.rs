@@ -62,7 +62,7 @@ fn compile_prim(p: &Prim, es: &SymEntities) -> Result<Term> {
     }
 }
 
-fn compile_var(v: &Var, req: &SymRequest) -> Result<Term> {
+fn compile_var(v: Var, req: &SymRequest) -> Result<Term> {
     match v {
         Var::Principal => {
             if req.principal.type_of().is_entity_type() {
@@ -95,7 +95,7 @@ fn compile_var(v: &Var, req: &SymRequest) -> Result<Term> {
     }
 }
 
-fn compile_app1(op1: &UnaryOp, t: Term) -> Result<Term> {
+fn compile_app1(op1: UnaryOp, t: Term) -> Result<Term> {
     match (op1, t.type_of()) {
         (UnaryOp::Not, TermType::Bool) => Ok(some_of(factory::not(t))),
         (UnaryOp::Neg, TermType::Bitvec { n: 64 }) => Ok(factory::if_false(
@@ -192,7 +192,7 @@ pub fn compile_get_tag(entity: Term, tag: Term, tags: Option<&Option<SymTags>>) 
     }
 }
 
-pub fn compile_app2(op2: &BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Result<Term> {
+pub fn compile_app2(op2: BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Result<Term> {
     use BinaryOp::*;
     use ExtType::*;
     use TermType::*;
@@ -606,7 +606,7 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
 pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
     match x.expr_kind() {
         ExprKind::Lit(l) => compile_prim(l, &env.entities),
-        ExprKind::Var(v) => compile_var(v, &env.request),
+        ExprKind::Var(v) => compile_var(*v, &env.request),
         ExprKind::Slot(_) => Err(Error::UnsupportedError), // analyzing templates is not supported
         ExprKind::Unknown(_) => Err(Error::UnsupportedError), // analyzing partial expressions is not supported
         ExprKind::If {
@@ -624,7 +624,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
         } => compile_or(compile(x1, env)?, compile(x2, env)),
         ExprKind::UnaryApp { op, arg } => {
             let t1 = compile(arg, env)?;
-            Ok(if_some(t1.clone(), compile_app1(op, option_get(t1))?))
+            Ok(if_some(t1.clone(), compile_app1(*op, option_get(t1))?))
         }
         ExprKind::BinaryApp { op, arg1, arg2 } => {
             let t1 = compile(arg1, env)?;
@@ -633,7 +633,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
                 t1.clone(),
                 if_some(
                     t2.clone(),
-                    compile_app2(op, option_get(t1), option_get(t2), &env.entities)?,
+                    compile_app2(*op, option_get(t1), option_get(t2), &env.entities)?,
                 ),
             ))
         }

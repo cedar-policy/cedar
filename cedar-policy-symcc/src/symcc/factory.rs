@@ -366,7 +366,7 @@ pub fn bvnego(t: Term) -> Term {
                 clippy::unwrap_used,
                 reason = "By construction bit-vectors have non-zero width."
             )]
-            BitVec::overflows(bv.width(), -bv.to_int()).unwrap().into()
+            BitVec::overflows(bv.width(), &-bv.to_int()).unwrap().into()
         }
         t => Term::App {
             op: Op::Bvnego,
@@ -384,7 +384,7 @@ pub fn bvso(op: Op, f: &BVOp, t1: Term, t2: Term) -> Term {
                 clippy::unwrap_used,
                 reason = "Assert above guarantees same bit-vector width."
             )]
-            BitVec::overflows(bv1.width(), f(&bv1, &bv2).unwrap().to_int())
+            BitVec::overflows(bv1.width(), &f(&bv1, &bv2).unwrap().to_int())
                 .unwrap()
                 .into()
         }

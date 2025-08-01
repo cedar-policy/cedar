@@ -543,14 +543,14 @@ fn encode_bitvec(bv: &BitVec) -> String {
 
 fn encode_ipaddr_prefix_v4(pre: &IPv4Prefix) -> String {
     match &pre.val {
-        Some(pre) => format!("(some {})", encode_bitvec(&pre)),
+        Some(pre) => format!("(some {})", encode_bitvec(pre)),
         None => format!("(as none (Option (_ BitVec {V4_WIDTH})))"),
     }
 }
 
 fn encode_ipaddr_prefix_v6(pre: &IPv6Prefix) -> String {
     match &pre.val {
-        Some(pre) => format!("(some {})", encode_bitvec(&pre)),
+        Some(pre) => format!("(some {})", encode_bitvec(pre)),
         None => format!("(as none (Option (_ BitVec {V6_WIDTH})))"),
     }
 }

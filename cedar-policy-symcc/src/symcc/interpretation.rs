@@ -48,18 +48,18 @@ impl<'a> Interpretation<'a> {
         Self {
             vars: BTreeMap::new(),
             funs: BTreeMap::new(),
-            env: env,
+            env,
         }
     }
 }
 
-impl<'a> Interpretation<'a> {
+impl Interpretation<'_> {
     /// Interprets variables as terms, and use the default literal if not found.
     pub fn interpret_var(&self, var: &TermVar) -> Term {
         self.vars
             .get(var)
             .cloned()
-            .unwrap_or_else(|| var.ty.default_literal(&self.env))
+            .unwrap_or_else(|| var.ty.default_literal(self.env))
     }
 
     /// Interprets uninterpreted functions as interpreted functions, and use the
@@ -68,7 +68,7 @@ impl<'a> Interpretation<'a> {
         self.funs
             .get(fun)
             .cloned()
-            .unwrap_or_else(|| fun.default_udf(&self.env))
+            .unwrap_or_else(|| fun.default_udf(self.env))
     }
 
     /// Our acyclicity constraints only apply to the footprint,
@@ -138,7 +138,7 @@ impl Uuf {
 
         Udf {
             table: new_table,
-            default: udf.out.default_literal(&interp.env), // i.e., empty set
+            default: udf.out.default_literal(interp.env), // i.e., empty set
             ..udf
         }
     }
@@ -268,7 +268,7 @@ impl Term {
                     let arg = arg.interpret(interp);
 
                     if let Term::None(ty) = arg {
-                        ty.default_literal(&interp.env)
+                        ty.default_literal(interp.env)
                     } else {
                         factory::option_get(arg)
                     }
