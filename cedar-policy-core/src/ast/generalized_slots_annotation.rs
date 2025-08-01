@@ -26,10 +26,10 @@ use serde::{Deserialize, Serialize};
 
 /// Struct storing the pairs of SlotId's and their corresponding type
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Serialize, Deserialize)]
-pub struct GeneralizedSlotsAnnotation(BTreeMap<SlotId, JSONSchemaType<RawName>>);
+pub struct GeneralizedSlotsDeclaration(BTreeMap<SlotId, JSONSchemaType<RawName>>);
 
-impl GeneralizedSlotsAnnotation {
-    /// Create a new empty `GeneralizedSlotsAnnotation` (with no slots)
+impl GeneralizedSlotsDeclaration {
+    /// Create a new empty `GeneralizedSlotsDeclaration` (with no slots)
     pub fn new() -> Self {
         Self(BTreeMap::new())
     }
@@ -54,7 +54,7 @@ impl GeneralizedSlotsAnnotation {
     pub fn into_validator_generalized_slots_annotation(
         self,
         schema: &ValidatorSchema,
-    ) -> Result<ValidatorGeneralizedSlotsAnnotation, SchemaError> {
+    ) -> Result<ValidatorGeneralizedSlotsDeclaration, SchemaError> {
         let validator_generalized_slots_annotation: Result<BTreeMap<_, _>, SchemaError> = self
             .0
             .into_iter()
@@ -69,19 +69,19 @@ impl GeneralizedSlotsAnnotation {
     }
 }
 
-impl Default for GeneralizedSlotsAnnotation {
+impl Default for GeneralizedSlotsDeclaration {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl FromIterator<(SlotId, JSONSchemaType<RawName>)> for GeneralizedSlotsAnnotation {
+impl FromIterator<(SlotId, JSONSchemaType<RawName>)> for GeneralizedSlotsDeclaration {
     fn from_iter<T: IntoIterator<Item = (SlotId, JSONSchemaType<RawName>)>>(iter: T) -> Self {
         Self(BTreeMap::from_iter(iter))
     }
 }
 
-impl From<BTreeMap<SlotId, JSONSchemaType<RawName>>> for GeneralizedSlotsAnnotation {
+impl From<BTreeMap<SlotId, JSONSchemaType<RawName>>> for GeneralizedSlotsDeclaration {
     fn from(value: BTreeMap<SlotId, JSONSchemaType<RawName>>) -> Self {
         Self(value)
     }
@@ -89,28 +89,28 @@ impl From<BTreeMap<SlotId, JSONSchemaType<RawName>>> for GeneralizedSlotsAnnotat
 
 /// Struct storing the pairs of SlotId's and their corresponding validator types
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Debug, Hash)]
-pub struct ValidatorGeneralizedSlotsAnnotation(BTreeMap<SlotId, ValidatorType>);
+pub struct ValidatorGeneralizedSlotsDeclaration(BTreeMap<SlotId, ValidatorType>);
 
-impl FromIterator<(SlotId, ValidatorType)> for ValidatorGeneralizedSlotsAnnotation {
+impl FromIterator<(SlotId, ValidatorType)> for ValidatorGeneralizedSlotsDeclaration {
     fn from_iter<T: IntoIterator<Item = (SlotId, ValidatorType)>>(iter: T) -> Self {
         Self(BTreeMap::from_iter(iter))
     }
 }
 
-impl From<BTreeMap<SlotId, ValidatorType>> for ValidatorGeneralizedSlotsAnnotation {
+impl From<BTreeMap<SlotId, ValidatorType>> for ValidatorGeneralizedSlotsDeclaration {
     fn from(value: BTreeMap<SlotId, ValidatorType>) -> Self {
         Self(value)
     }
 }
 
-impl Default for ValidatorGeneralizedSlotsAnnotation {
+impl Default for ValidatorGeneralizedSlotsDeclaration {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ValidatorGeneralizedSlotsAnnotation {
-    /// Create a new empty `ValidatorGeneralizedSlotsAnnotation` (with no slots)
+impl ValidatorGeneralizedSlotsDeclaration {
+    /// Create a new empty `ValidatorGeneralizedSlotsDeclaration` (with no slots)
     pub fn new() -> Self {
         Self(BTreeMap::new())
     }
