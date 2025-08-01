@@ -585,6 +585,7 @@ impl SExpr {
     }
 
     /// Decodes an [`SExpr`] as an entity UID or record.
+    /// Corresponds to `SExpr.decodeLit.constructEntityOrRecord` in Lean.
     fn decode_entity_or_record(
         &self,
         id_maps: &IdMaps,
@@ -635,6 +636,7 @@ impl SExpr {
     }
 
     /// Helper function to decode more complex applications as literals.
+    /// Corresponds to `SExpr.decodeLit.construct` in Lean.
     fn decode_literal_app(&self, id_maps: &IdMaps, args: &[SExpr]) -> Result<Term, DecodeError> {
         match args {
             // Sometimes cvc5 does not simplify the terms in the model,
