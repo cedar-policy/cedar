@@ -48,6 +48,7 @@ pub open spec fn wildcard(pat_elem: PatElem) -> bool {
 // The Lean version of this function uses a dynamic programming cache for efficiency (since the Lean code actually is run)
 // Verus specs are never run, so we don't bother with the cache
 // i = text index, j = pattern index
+// wildcard_match_idx(text, pattern, i, j) means that text[i..] matches pattern[j..]
 pub open spec fn wildcard_match_idx(text: Seq<char>, pattern: Pattern, i: int, j: int) -> bool
     decreases text.len() - i, pattern.len() - j
 {
@@ -73,6 +74,72 @@ pub open spec fn wildcard_match_idx(text: Seq<char>, pattern: Pattern, i: int, j
 
 pub open spec fn wildcard_match(text: Seq<char>, pattern: Pattern) -> bool {
     wildcard_match_idx(text, pattern, 0, 0)
+}
+
+}
+
+////////////////////////////////////////////////
+// Helper definitions and lemmas for patterns //
+////////////////////////////////////////////////
+verus! {
+
+// Alternative version of `wildcard_match` recursing from the end, rather than the beginning
+
+pub open spec fn wildcard_match_rev_idx(text: Seq<char>, pattern: Pattern, i: int, j: int) -> bool
+    decreases i, j
+{
+    if i < 0 || i > text.len() || j < 0 || j > pattern.len() {
+        arbitrary()
+    } else if i == 0 && j == 0 {
+        // empty pattern matches empty string
+        true
+    } else if i == 0 {
+        // all of the pattern should be wildcards
+        wildcard(pattern[j]) && wildcard_match_rev_idx(text, pattern, i, j-1)
+    } else if j == 0 {
+        // the pattern is empty and there are still some text characters to match
+        false
+    } else if wildcard(pattern[j]) {
+        // either we can match zero characters with the wildcard (decrement j),
+        // or we can match one character with the wildcard (decrement i) and continue using it
+        wildcard_match_rev_idx(text, pattern, i, j-1) || wildcard_match_rev_idx(text, pattern, i-1, j)
+    } else {
+        // we must match the character exactly and continue
+        char_match(text[i], pattern[j]) && wildcard_match_rev_idx(text, pattern, i-1, j-1)
+    }
+}
+
+pub proof fn lemma_wildcard_match_idx_rev_idx_equiv_aux(text: Seq<char>, pattern: Pattern, i: int, j: int)
+    ensures wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j)
+    decreases i, j
+{
+    admit()
+    // reveal_with_fuel(wildcard_match_idx, 2);
+    // reveal_with_fuel(wildcard_match_rev_idx, 2);
+    // if i == 0 && j == 0 {
+    //     // empty pattern matches empty string
+    //     assert(wildcard_match_rev_idx(text, pattern, i, j));
+    //     assert(wildcard_match_idx(text, pattern, 0, 0));
+    // } else if i == 0 {
+    //     // all of the pattern should be wildcards
+    //     assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
+    // } else if j == 0 {
+    //     // the pattern is empty and there are still some text characters to match
+    //     assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
+    // } else if wildcard(pattern[j]) {
+    //     // either we can match zero characters with the wildcard (decrement j),
+    //     // or we can match one character with the wildcard (decrement i) and continue using it
+    //     assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
+    // } else {
+    //     // we must match the character exactly and continue
+    //     assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
+    // }
+}
+
+pub proof fn lemma_wildcard_match_idx_rev_idx_equiv(text: Seq<char>, pattern: Pattern)
+    ensures wildcard_match_idx(text, pattern, 0, 0) == wildcard_match_rev_idx(text, pattern, text.len() as int, pattern.len() as int)
+{
+    lemma_wildcard_match_idx_rev_idx_equiv_aux(text, pattern, text.len() as int, pattern.len() as int);
 }
 
 }

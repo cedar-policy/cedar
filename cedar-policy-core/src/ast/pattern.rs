@@ -172,7 +172,7 @@ impl Pattern {
     verus! {
 
     /// Find if the argument text matches the pattern
-    #[verifier::exec_allows_no_decreases_clause]
+    #[verifier::loop_isolation(false)]
     pub fn wildcard_match(&self, text: &str) -> (b: bool)
         ensures b == spec_pattern::wildcard_match(text@, self@)
     {
@@ -201,7 +201,25 @@ impl Pattern {
         let text_len = text.len();
         let pattern_len = pattern.len();
 
-        while i < text_len && (!contains_star || star_idx != pattern_len - 1) {
+        reveal_with_fuel(spec_pattern::wildcard_match_rev_idx, 1);
+        let ghost spec_pattern = pattern@.map_values(|p: PatternElem| p@);
+        proof {
+            spec_pattern::lemma_wildcard_match_idx_rev_idx_equiv(text@, spec_pattern);
+        }
+
+        while i < text_len && (!contains_star || star_idx != pattern_len - 1)
+            invariant
+                text_len == text@.len(),
+                pattern_len == spec_pattern.len(),
+                0 <= i <= text_len,
+                0 <= j <= pattern_len,
+                0 <= star_idx <= j,
+                j > 0 ==> star_idx < j,
+                0 <= tmp_idx <= i,
+                contains_star ==> spec_pattern[star_idx as int] is Star,
+                spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int),
+            decreases text_len - tmp_idx, pattern_len - j, text_len - i
+        {
             // PANIC SAFETY `j` is checked to be less than length
             #[allow(clippy::indexing_slicing)]
             if j < pattern_len && pattern[j].is_wildcard() {
@@ -209,21 +227,36 @@ impl Pattern {
                 star_idx = j;
                 tmp_idx = i;
                 j += 1;
+                assert(spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int));
             } else if j < pattern_len && pattern[j].match_char(text[i]) {
                 i += 1;
                 j += 1;
+                assert(spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int));
             } else if contains_star {
                 j = star_idx + 1;
                 i = tmp_idx + 1;
                 tmp_idx = i;
+                assert(spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int));
             } else {
                 return false;
             }
         }
 
+        assert(i == text_len || (contains_star && star_idx == pattern_len - 1));
+        // Either we reached the end of the text (i == text_len),
+        // or we have a star and it's at the end of the pattern (contains_star && star_idx == pattern_len - 1)
+
         // PANIC SAFETY `j` is checked to be less than length
         #[allow(clippy::indexing_slicing)]
-        while j < pattern_len && pattern[j].is_wildcard() {
+        while j < pattern_len && pattern[j].is_wildcard()
+            invariant
+                0 <= j <= pattern_len,
+                0 <= star_idx <= j,
+                j > 0 ==> star_idx < j,
+                contains_star ==> spec_pattern[star_idx as int] is Star,
+                spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int),
+            decreases pattern_len - j
+        {
             j += 1;
         }
 
