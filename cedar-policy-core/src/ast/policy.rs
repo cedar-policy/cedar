@@ -1384,6 +1384,19 @@ impl PrincipalConstraint {
             _ => self,
         }
     }
+
+    /// If the principal constraint has a slot, return it
+    pub fn get_slot(self) -> Option<Slot> {
+        match self.constraint {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(l))
+            | PrincipalOrResourceConstraint::In(EntityReference::Slot(l))
+            | PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(l)) => Some(Slot {
+                id: SlotId::principal(),
+                loc: l,
+            }),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for PrincipalConstraint {
@@ -1489,6 +1502,19 @@ impl ResourceConstraint {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
             },
             _ => self,
+        }
+    }
+
+    /// If the resource constraint has a slot, return it
+    pub fn get_slot(self) -> Option<Slot> {
+        match self.constraint {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(l))
+            | PrincipalOrResourceConstraint::In(EntityReference::Slot(l))
+            | PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(l)) => Some(Slot {
+                id: SlotId::resource(),
+                loc: l,
+            }),
+            _ => None,
         }
     }
 }
@@ -2365,7 +2391,7 @@ mod test {
                 .exactly_one_underline("?principal")
                 .build()
             );
-            assert_eq!(e.len(), 2);
+            assert_eq!(e.len(), 1);
         });
     }
 

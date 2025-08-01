@@ -138,9 +138,11 @@ impl Clause {
     /// Fill in any slots in the clause using the values in `vals`. Throws an
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings.
-    pub fn link(self, _vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
-        // currently, slots are not allowed in clauses
-        Ok(self)
+    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
+        match self {
+            Clause::When(e) => Ok(Clause::When(e.link(vals)?)),
+            Clause::Unless(e) => Ok(Clause::Unless(e.link(vals)?)),
+        }
     }
 
     /// Substitute entity literals
@@ -157,8 +159,10 @@ impl Clause {
 
     /// Returns true if this clause has a slot.
     pub fn has_slot(&self) -> bool {
-        // currently, slots are not allowed in clauses
-        false
+        match self {
+            Clause::When(e) => e.has_slot(),
+            Clause::Unless(e) => e.has_slot(),
+        }
     }
 }
 
@@ -280,10 +284,13 @@ impl Policy {
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
         let id = id.unwrap_or_else(|| ast::PolicyID::from_string("JSON policy"));
+        let has_principal_slot = self.principal.has_slot();
+        let has_resource_slot = self.resource.has_slot();
+
         let mut conditions_iter = self
             .conditions
             .into_iter()
-            .map(|cond| cond.try_into_ast(&id));
+            .map(|cond| cond.try_into_ast(has_principal_slot, has_resource_slot, &id));
         let conditions = match conditions_iter.next() {
             None => ast::Expr::val(true),
             Some(first) => ast::ExprBuilder::with_data(())
@@ -312,25 +319,50 @@ impl Policy {
 }
 
 impl Clause {
-    fn filter_slots(e: ast::Expr, is_when: bool) -> Result<ast::Expr, FromJsonError> {
-        let first_slot = e.slots().next();
-        if let Some(slot) = first_slot {
-            Err(parse_errors::SlotsInConditionClause {
-                slot,
-                clause_type: if is_when { "when" } else { "unless" },
+    fn filter_slots(
+        e: ast::Expr,
+        has_principal_slot: bool,
+        has_resource_slot: bool,
+        is_when: bool,
+    ) -> Result<ast::Expr, FromJsonError> {
+        for slot in e.slots() {
+            if (slot.id.is_principal() && !has_principal_slot)
+                || (slot.id.is_resource() && !has_resource_slot)
+            {
+                return Err(FromJsonError::SlotsNotInScopeInConditionClause(
+                    parse_errors::SlotsNotInScopeInConditionClause {
+                        slot,
+                        clause_type: if is_when { "when" } else { "unless" },
+                    },
+                ));
             }
-            .into())
-        } else {
-            Ok(e)
         }
+        Ok(e)
     }
+
     /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
-    fn try_into_ast(self, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+    /// has_principal_slot/has_resource_slot tells us whether there is a principal/resource slot in the scope
+    /// so we know when a slot is allowed to appear in the condition
+    /// an error is thrown otherwise if there is a slot not in the scope but in the condition
+    fn try_into_ast(
+        self,
+        has_principal_slot: bool,
+        has_resource_slot: bool,
+        id: &ast::PolicyID,
+    ) -> Result<ast::Expr, FromJsonError> {
         match self {
-            Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id)?, true),
-            Clause::Unless(expr) => {
-                Self::filter_slots(ast::Expr::not(expr.try_into_ast(id)?), false)
-            }
+            Clause::When(expr) => Self::filter_slots(
+                expr.try_into_ast(id)?,
+                has_principal_slot,
+                has_resource_slot,
+                true,
+            ),
+            Clause::Unless(expr) => Self::filter_slots(
+                ast::Expr::not(expr.try_into_ast(id)?),
+                has_principal_slot,
+                has_resource_slot,
+                false,
+            ),
         }
     }
 }
@@ -420,10 +452,12 @@ impl std::fmt::Display for Clause {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::ast::SlotId;
     use crate::parser::{self, parse_policy_or_template_to_est};
     use crate::test_utils::*;
     use cool_asserts::assert_matches;
     use serde_json::json;
+    use std::collections::HashMap;
 
     /// helper function to just do EST data structure --> JSON --> EST data structure.
     /// This roundtrip should be lossless for all policies.
@@ -498,6 +532,23 @@ mod test {
             .node
             .expect("Node should not be empty");
         cst.try_into().expect("Failed to convert to EST")
+    }
+
+    #[track_caller]
+    fn cst_to_est_link_roundtrip(
+        policy_str: &str,
+        expected_policy_str: &str,
+        vals: &HashMap<SlotId, EntityUidJson>,
+    ) {
+        let cst = parser::text_to_cst::parse_policy(policy_str)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+
+        let new_policy = est.link(vals).unwrap();
+
+        assert_eq!(new_policy.to_string(), expected_policy_str);
     }
 
     #[test]
@@ -3321,6 +3372,237 @@ mod test {
     }
 
     #[test]
+    fn link_with_slots_in_condition() {
+        let template = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource in ?resource
+            ) when {
+                ?principal in resource.owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+
+        let linked_est = est
+            .link(&HashMap::from_iter([
+                (
+                    ast::SlotId::principal(),
+                    EntityUidJson::new("XYZCorp::User", "12UA45"),
+                ),
+                (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
+            ]))
+            .expect("did fill all the slots");
+
+        let old_est = linked_est.clone();
+        let roundtripped = est_roundtrip(linked_est.clone());
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
+
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "==",
+                    "entity": { "type": "XYZCorp::User", "id": "12UA45" },
+                },
+                "action": {
+                    "op": "==",
+                    "entity": { "type": "Action", "id": "view" },
+                },
+                "resource": {
+                    "op": "in",
+                    "entity": { "type": "Folder", "id": "abc" },
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "in": {
+                                "left": {
+                                    "Value": {
+                                        "__entity": { "type": "XYZCorp::User", "id": "12UA45" }
+                                    }
+                                },
+                                "right": {
+                                    ".": {
+                                        "left": {
+                                            "Var": "resource"
+                                        },
+                                        "attr": "owners"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
+            }
+        );
+        let linked_json = serde_json::to_value(linked_est).unwrap();
+        assert_eq!(
+            linked_json,
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&linked_json).unwrap(),
+        );
+    }
+
+    #[test]
+    fn link_with_slots_in_condition_cst_to_est_roundtrip() {
+        let vals = &HashMap::from_iter([(
+            SlotId::principal(),
+            r#"User::"Bob""#.parse::<ast::EntityUID>().unwrap().into(),
+        )]);
+
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal == User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" == User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { !?principal };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { !User::"Bob" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { -(?principal) };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { -(User::"Bob") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal != User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" != User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal < User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" < User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal <= User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" <= User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal > User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" > User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal >= User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" >= User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal && User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" && User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal || User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" || User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal + User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" + User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal - User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" - User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal * User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" * User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when {  ?principal.contains(User::"Alice")  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".contains(User::"Alice") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when {  ?principal.containsAll(User::"Alice")  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".containsAll(User::"Alice") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when {  ?principal.containsAny(User::"Alice")  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".containsAny(User::"Alice") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal.isEmpty()  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".isEmpty() };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal.getTag(User::"Alice")  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".getTag(User::"Alice") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal.hasTag(User::"Alice")  };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".hasTag(User::"Alice") };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal.attr };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob"["attr"] };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal has attr };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" has "attr" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal like "*" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" like "*" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal is User };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" is User };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal is User in User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob" is User in User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { if ?principal then User::"Alice" else User::"Alice" };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { if User::"Bob" then User::"Alice" else User::"Alice" };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { [?principal] };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { [User::"Bob"] };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { {a: ?principal} };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { {"a": User::"Bob"} };"#,
+            vals,
+        );
+        cst_to_est_link_roundtrip(
+            r#"permit(principal == ?principal, action, resource) when { ?principal.lessThan(User::"Alice") };"#,
+            r#"permit(principal == User::"Bob", action, resource) when { User::"Bob".lessThan(User::"Alice") };"#,
+            vals,
+        );
+    }
+
+    #[test]
     fn eid_with_nulls() {
         let policy = r#"
             permit(
@@ -3575,6 +3857,39 @@ mod test {
                 );
             }
         );
+
+        let template = json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        "==": {
+                            "left": { "Var": "principal" },
+                            "right": { "Slot": "?principal" }
+                        }
+                    }
+                }
+            ]
+        });
+
+        let est: Policy = serde_json::from_value(template).unwrap();
+        let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
+        assert_matches!(
+            ast,
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("found template slot ?principal in a `when` clause")
+                    .help("?principal needs to appear in the scope to appear in the condition of the template")
+                    .build(),
+                );
+            }
+        )
     }
 
     #[test]
@@ -4688,6 +5003,46 @@ mod test {
             .unwrap();
         let est: Policy = cst.try_into().unwrap();
         assert!(!est.is_template(), "Static policy marked as template");
+    }
+
+    #[test]
+    fn template_condition_has_slot() {
+        let template: &'static str = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource
+            ) when {
+                ?principal in resource.owners && ?principal has owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let has_slot = est.conditions.iter().any(|c| c.has_slot());
+        assert!(has_slot, "Policy condition not marked as having a slot");
+
+        let template: &'static str = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource
+            ) when {
+                principal == resource.owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let has_slot = est.conditions.iter().any(|c| c.has_slot());
+        assert!(
+            !has_slot,
+            "Policy condition marked as having a slot when it does not have a slot"
+        )
     }
 }
 

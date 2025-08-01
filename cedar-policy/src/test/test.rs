@@ -5447,7 +5447,7 @@ mod issue_606 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
                     .source("found template slot ?principal in a `when` clause")
-                    .help("slots are currently unsupported in `when` clauses")
+                    .help("?principal needs to appear in the scope to appear in the condition of the template")
                     .build(),
             );
         });
@@ -7321,11 +7321,6 @@ mod policy_manipulation_functions_tests {
         assert_entity_sub(
             r#"permit(principal, action, resource) when { User::"Alice".containsAny(User::"Alice") };"#,
             r#"permit(principal, action, resource) when { User::"Bob".containsAny(User::"Bob") };"#,
-            mapping.clone(),
-        );
-        assert_entity_sub(
-            r#"permit(principal, action, resource) when { User::"Alice".isEmpty() };"#,
-            r#"permit(principal, action, resource) when { User::"Bob".isEmpty() };"#,
             mapping.clone(),
         );
         assert_entity_sub(
