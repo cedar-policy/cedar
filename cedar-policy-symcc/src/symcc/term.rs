@@ -35,8 +35,7 @@ use super::op::Op;
 use super::term_type::TermType;
 use super::type_abbrevs::*;
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+    collections::{BTreeMap, BTreeSet}, ops::Deref, sync::Arc
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
@@ -55,30 +54,63 @@ pub enum TermPrim {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
-pub enum Term {
+pub struct Term(Arc<TermX>);
+
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+pub enum TermX {
     Prim(TermPrim),
     Var(TermVar),
     None(TermType),
-    Some(Arc<Term>),
+    Some(Term),
     Set {
-        elts: Arc<BTreeSet<Term>>,
+        elts: BTreeSet<Term>,
         elts_ty: TermType,
     },
-    Record(Arc<BTreeMap<Attr, Term>>),
+    Record(BTreeMap<Attr, Term>),
     App {
         op: Op,
-        args: Arc<Vec<Term>>,
+        args: Vec<Term>,
         ret_ty: TermType,
     },
+}
+
+impl Term {
+    pub fn new(t: TermX) -> Self {
+        Term(Arc::new(t))
+    }
+
+    pub fn to_owned(self) -> TermX {
+        Arc::unwrap_or_clone(self.0)
+    }
+}
+
+impl Deref for Term {
+    type Target = TermX;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<TermX> for Term {
+    fn as_ref(&self) -> &TermX {
+        &self.0
+    }
+}
+
+impl Into<Term> for TermX {
+    fn into(self) -> Term {
+        Term::new(self)
+    }
 }
 
 // Corresponding to the `Coe` instances in Lean
 impl From<bool> for Term {
     fn from(b: bool) -> Self {
         if b {
-            Term::Prim(TermPrim::Bool(true))
+            Term::new(TermX::Prim(TermPrim::Bool(true)))
         } else {
-            Term::Prim(TermPrim::Bool(false))
+            Term::new(TermX::Prim(TermPrim::Bool(false)))
         }
     }
 }
@@ -89,46 +121,46 @@ impl From<i64> for Term {
             clippy::expect_used,
             reason = "Cannot panic because bitwidth passed in is non-zero."
         )]
-        Term::Prim(TermPrim::Bitvec(
+        Term::new(TermX::Prim(TermPrim::Bitvec(
             BitVec::of_int(64, i.into())
                 .expect("Cannot panic because bitwidth passed in is non-zero."),
-        ))
+        )))
     }
 }
 
 impl From<BitVec> for Term {
     fn from(bv: BitVec) -> Self {
-        Term::Prim(TermPrim::Bitvec(bv))
+        Term::new(TermX::Prim(TermPrim::Bitvec(bv)))
     }
 }
 
 impl From<String> for Term {
     fn from(s: String) -> Self {
-        Term::Prim(TermPrim::String(s))
+        Term::new(TermX::Prim(TermPrim::String(s)))
     }
 }
 
 impl From<SmolStr> for Term {
     fn from(s: SmolStr) -> Self {
-        Term::Prim(TermPrim::String(s.into()))
+        Term::new(TermX::Prim(TermPrim::String(s.into())))
     }
 }
 
 impl From<EntityUID> for Term {
     fn from(uid: EntityUID) -> Self {
-        Term::Prim(TermPrim::Entity(uid))
+        Term::new(TermX::Prim(TermPrim::Entity(uid)))
     }
 }
 
 impl From<Ext> for Term {
     fn from(ext: Ext) -> Self {
-        Term::Prim(TermPrim::Ext(ext))
+        Term::new(TermX::Prim(TermPrim::Ext(ext)))
     }
 }
 
 impl From<TermVar> for Term {
     fn from(v: TermVar) -> Self {
-        Term::Var(v)
+        Term::new(TermX::Var(v))
     }
 }
 
@@ -157,35 +189,35 @@ impl TermPrim {
     }
 }
 
-impl Term {
+impl TermX {
     pub fn type_of(&self) -> TermType {
         match self {
-            Term::Prim(l) => l.type_of(),
-            Term::Var(v) => v.ty.clone(),
-            Term::None(ty) => TermType::Option {
+            TermX::Prim(l) => l.type_of(),
+            TermX::Var(v) => v.ty.clone(),
+            TermX::None(ty) => TermType::Option {
                 ty: Arc::new(ty.clone()),
             },
-            Term::Some(t) => TermType::Option {
+            TermX::Some(t) => TermType::Option {
                 ty: Arc::new(t.type_of()),
             },
-            Term::Set { elts_ty, .. } => TermType::Set {
+            TermX::Set { elts_ty, .. } => TermType::Set {
                 ty: Arc::new(elts_ty.clone()),
             },
-            Term::Record(m) => {
+            TermX::Record(m) => {
                 let rty = Arc::new(m.iter().map(|(k, v)| (k.clone(), v.type_of())).collect());
                 TermType::Record { rty }
             }
-            Term::App { ret_ty, .. } => ret_ty.clone(),
+            TermX::App { ret_ty, .. } => ret_ty.clone(),
         }
     }
 
     pub fn is_literal(&self) -> bool {
         match self {
-            Term::Prim(_) => true,
-            Term::None(_) => true,
-            Term::Some(t) => t.is_literal(),
-            Term::Set { elts, .. } => elts.iter().all(Term::is_literal),
-            Term::Record(m) => m.values().all(Term::is_literal),
+            TermX::Prim(_) => true,
+            TermX::None(_) => true,
+            TermX::Some(t) => t.is_literal(),
+            TermX::Set { elts, .. } => elts.iter().all(|t| t.is_literal()),
+            TermX::Record(m) => m.values().all(|t| t.is_literal()),
             _ => false,
         }
     }

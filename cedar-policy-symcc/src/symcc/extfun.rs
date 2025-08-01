@@ -32,8 +32,7 @@ use crate::symcc::{
     factory::{
         bvmul, bvsaddo, bvsmulo, bvsrem, bvssubo, eq, ext_datetime_of_bitvec, ext_datetime_val,
         ext_duration_of_bitvec, if_false, some_of,
-    },
-    type_abbrevs::{nat, Width},
+    }, term::TermX, type_abbrevs::{nat, Width}
 };
 
 use super::{
@@ -141,7 +140,7 @@ pub fn is_in_range(t1: Term, t2: Term) -> Term {
 }
 
 pub fn ip_term(ip: IPNet) -> Term {
-    Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip }))
+    Term::new(TermX::Prim(TermPrim::Ext(Ext::Ipaddr { ip })))
 }
 
 pub fn in_range_lit(t: Term, cidr4: IPNet, cidr6: IPNet) -> Term {
@@ -203,17 +202,17 @@ pub fn to_date(dt: Term) -> Term {
         clippy::unwrap_used,
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]
-    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0).unwrap()));
+    let zero = Term::new(TermX::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0).unwrap())));
     #[allow(
         clippy::unwrap_used,
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]
-    let one = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 1).unwrap()));
+    let one = Term::new(TermX::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 1).unwrap())));
     #[allow(
         clippy::unwrap_used,
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]
-    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000).unwrap()));
+    let ms_per_day = Term::new(TermX::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000).unwrap())));
     let dt_val = ext_datetime_val(dt.clone());
     ite(
         bvsle(zero.clone(), dt_val.clone()),
@@ -243,12 +242,12 @@ pub fn to_time(dt: Term) -> Term {
         clippy::unwrap_used,
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]
-    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0).unwrap()));
+    let zero = Term::new(TermX::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0).unwrap())));
     #[allow(
         clippy::unwrap_used,
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]
-    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000).unwrap()));
+    let ms_per_day = Term::new(TermX::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000).unwrap())));
     let dt_val = ext_datetime_val(dt);
     ext_duration_of_bitvec(ite(
         bvsle(zero.clone(), dt_val.clone()),

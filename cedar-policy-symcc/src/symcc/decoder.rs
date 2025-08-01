@@ -32,6 +32,7 @@ use crate::symcc::env::SymEntityData;
 use crate::symcc::extension_types::ipaddr::{
     CIDRv4, CIDRv6, IPv4Addr, IPv4Prefix, IPv6Addr, IPv6Prefix,
 };
+use crate::symcc::term::TermX;
 use crate::symcc::type_abbrevs::{ExtType, Width};
 use crate::{symcc, SymEnv};
 
@@ -395,7 +396,7 @@ impl IdMaps {
         }
 
         for (term, enc) in &encoder.terms {
-            if let Term::Var(var) = term {
+            if let TermX::Var(var) = term.as_ref() {
                 vars.insert(enc.clone(), var.clone());
             }
         }
@@ -431,16 +432,16 @@ impl TermType {
     /// Used as placeholders for SMT partial applications.
     pub fn default_literal(&self, env: &SymEnv) -> Term {
         match self {
-            TermType::Bool => Term::Prim(TermPrim::Bool(false)),
+            TermType::Bool => TermX::Prim(TermPrim::Bool(false)).into(),
             TermType::Bitvec { n } =>
             {
                 #[allow(
                     clippy::unwrap_used,
                     reason = "Assume the bit-vectors have the same width by construction for now."
                 )]
-                Term::Prim(TermPrim::Bitvec(BitVec::of_nat(*n, BigUint::ZERO).unwrap()))
+                TermX::Prim(TermPrim::Bitvec(BitVec::of_nat(*n, BigUint::ZERO).unwrap())).into()
             }
-            TermType::String => Term::Prim(TermPrim::String("".to_string())),
+            TermType::String => TermX::Prim(TermPrim::String("".to_string())).into(),
 
             TermType::Entity { ety } => {
                 // If the entity is an enum type, we return the first enum
@@ -457,40 +458,40 @@ impl TermType {
                 } else {
                     ""
                 };
-                Term::Prim(TermPrim::Entity(EntityUid::from_type_name_and_id(
+                TermX::Prim(TermPrim::Entity(EntityUid::from_type_name_and_id(
                     ety.clone(),
                     EntityId::new(eid),
-                )))
+                ))).into()
             }
 
             TermType::Ext { xty } => match xty {
-                ExtType::Decimal => Term::Prim(TermPrim::Ext(Ext::Decimal { d: Decimal(0) })),
+                ExtType::Decimal => TermX::Prim(TermPrim::Ext(Ext::Decimal { d: Decimal(0) })).into(),
 
-                ExtType::DateTime => Term::Prim(TermPrim::Ext(Ext::Datetime {
+                ExtType::DateTime => TermX::Prim(TermPrim::Ext(Ext::Datetime {
                     dt: Datetime::default(),
-                })),
+                })).into(),
 
-                ExtType::Duration => Term::Prim(TermPrim::Ext(Ext::Duration {
+                ExtType::Duration => TermX::Prim(TermPrim::Ext(Ext::Duration {
                     d: Duration::default(),
-                })),
+                })).into(),
 
-                ExtType::IpAddr => Term::Prim(TermPrim::Ext(Ext::Ipaddr {
+                ExtType::IpAddr => TermX::Prim(TermPrim::Ext(Ext::Ipaddr {
                     ip: IPNet::default(),
-                })),
+                })).into(),
             },
 
-            TermType::Option { ty } => Term::None(ty.as_ref().clone()),
+            TermType::Option { ty } => TermX::None(ty.as_ref().clone()).into(),
 
-            TermType::Set { ty } => Term::Set {
-                elts: Arc::new(BTreeSet::new()),
+            TermType::Set { ty } => TermX::Set {
+                elts: BTreeSet::new(),
                 elts_ty: ty.as_ref().clone(),
-            },
+            }.into(),
 
-            TermType::Record { rty } => Term::Record(Arc::new(
+            TermType::Record { rty } => TermX::Record(
                 rty.iter()
                     .map(|(k, v)| (k.clone(), v.default_literal(env)))
                     .collect(),
-            )),
+            ).into(),
         }
     }
 }
@@ -579,18 +580,18 @@ impl SExpr {
     /// Decodse a literal (with only SMT constants and no bound variables).
     pub fn decode_literal(&self, id_maps: &IdMaps) -> Result<Term, DecodeError> {
         match self {
-            SExpr::BitVec(bv) => Ok(Term::Prim(TermPrim::Bitvec(bv.clone()))),
-            SExpr::String(s) => Ok(Term::Prim(TermPrim::String(s.clone()))),
+            SExpr::BitVec(bv) => Ok(TermX::Prim(TermPrim::Bitvec(bv.clone())).into()),
+            SExpr::String(s) => Ok(TermX::Prim(TermPrim::String(s.clone())).into()),
 
-            SExpr::Symbol(s) if s == "true" => Ok(Term::Prim(TermPrim::Bool(true))),
-            SExpr::Symbol(s) if s == "false" => Ok(Term::Prim(TermPrim::Bool(false))),
+            SExpr::Symbol(s) if s == "true" => Ok(TermX::Prim(TermPrim::Bool(true)).into()),
+            SExpr::Symbol(s) if s == "false" => Ok(TermX::Prim(TermPrim::Bool(false)).into()),
 
             // Entity enum
             SExpr::Symbol(e) => id_maps
                 .enums
                 .get(e)
                 .cloned()
-                .map(|uid| Term::Prim(TermPrim::Entity(uid)))
+                .map(|uid| TermX::Prim(TermPrim::Entity(uid)).into())
                 .ok_or_else(|| DecodeError::UnknownLiteral(self.clone())),
 
             // More complex applications
@@ -648,7 +649,7 @@ impl SExpr {
                         if as_tok == "as" && none == "none" =>
                     {
                         match typ.decode_type(id_maps)? {
-                            TermType::Option { ty } => Ok(Term::None(Arc::unwrap_or_clone(ty))),
+                            TermType::Option { ty } => Ok(TermX::None(Arc::unwrap_or_clone(ty)).into()),
                             _ => Err(DecodeError::InvalidOptionType(typ.clone())),
                         }
                     }
@@ -665,7 +666,7 @@ impl SExpr {
                             && as_some_typ[1].is_symbol("some") =>
                     {
                         let ty = as_some_typ[2].decode_type(id_maps)?;
-                        let val = Term::Some(Arc::new(val.decode_literal(id_maps)?));
+                        let val = Term::new(TermX::Some(val.decode_literal(id_maps)?));
                         let val_ty = val.type_of();
 
                         if val_ty != ty {
@@ -682,10 +683,10 @@ impl SExpr {
                         let ty = typ.decode_type(id_maps)?;
 
                         match ty {
-                            TermType::Set { ty } => Ok(Term::Set {
-                                elts: Arc::new(BTreeSet::new()),
+                            TermType::Set { ty } => Ok(TermX::Set {
+                                elts: BTreeSet::new(),
                                 elts_ty: Arc::unwrap_or_clone(ty),
-                            }),
+                            }.into()),
                             _ => Err(DecodeError::InvalidSetType(typ.clone())),
                         }
                     }
@@ -694,10 +695,10 @@ impl SExpr {
                     [SExpr::Symbol(set_singleton), val] if set_singleton == "set.singleton" => {
                         let val = val.decode_literal(id_maps)?;
                         let val_ty = val.type_of();
-                        Ok(Term::Set {
-                            elts: Arc::new(BTreeSet::from([val])),
+                        Ok(TermX::Set {
+                            elts: BTreeSet::from([val]),
                             elts_ty: val_ty,
-                        })
+                        }.into())
                     }
 
                     // (set.union <set1> <set2>)
@@ -711,20 +712,20 @@ impl SExpr {
                             return Err(DecodeError::UnmatchedType(set1_ty, set2_ty));
                         }
 
-                        match (set1, set2) {
+                        match (set1.to_owned(), set2.to_owned()) {
                             // Merge two set literals
                             (
-                                Term::Set {
+                                TermX::Set {
                                     elts: elts1,
                                     elts_ty,
                                 },
-                                Term::Set { elts: elts2, .. },
-                            ) => Ok(Term::Set {
-                                elts: Arc::new(elts1.union(&elts2).cloned().collect()),
+                                TermX::Set { elts: elts2, .. },
+                            ) => Ok(TermX::Set {
+                                elts: elts1.union(&elts2).cloned().collect(),
                                 elts_ty,
-                            }),
+                            }.into()),
 
-                            (set1, set2) => Err(DecodeError::SetUnionNonLiterals(set1, set2)),
+                            (set1, set2) => Err(DecodeError::SetUnionNonLiterals(set1.into(), set2.into())),
                         }
                     }
                     // PANIC SAFETY
@@ -738,11 +739,11 @@ impl SExpr {
                             SExpr::Symbol(s) if s == "Decimal" && args.len() == 2 => {
                                 if let SExpr::BitVec(bv) = &args[1] {
                                     if bv.width() == 64 {
-                                        Ok(Term::Prim(TermPrim::Ext(Ext::Decimal {
+                                        Ok(TermX::Prim(TermPrim::Ext(Ext::Decimal {
                                             d: Decimal(bv.to_int().try_into().or(Err(
                                                 DecodeError::UnknownLiteral(self.clone()),
                                             ))?),
-                                        })))
+                                        })).into())
                                     } else {
                                         Err(DecodeError::UnknownLiteral(self.clone()))
                                     }
@@ -759,9 +760,9 @@ impl SExpr {
                                             .to_int()
                                             .try_into()
                                             .or(Err(DecodeError::UnknownLiteral(self.clone())))?;
-                                        Ok(Term::Prim(TermPrim::Ext(Ext::Datetime {
+                                        Ok(TermX::Prim(TermPrim::Ext(Ext::Datetime {
                                             dt: dt.into(),
-                                        })))
+                                        })).into())
                                     } else {
                                         Err(DecodeError::UnknownLiteral(self.clone()))
                                     }
@@ -778,7 +779,7 @@ impl SExpr {
                                             .to_int()
                                             .try_into()
                                             .or(Err(DecodeError::UnknownLiteral(self.clone())))?;
-                                        Ok(Term::Prim(TermPrim::Ext(Ext::Duration { d: d.into() })))
+                                        Ok(TermX::Prim(TermPrim::Ext(Ext::Duration { d: d.into() })).into())
                                     } else {
                                         Err(DecodeError::UnknownLiteral(self.clone()))
                                     }
@@ -792,20 +793,20 @@ impl SExpr {
                                 let addr = args[1].decode_literal(id_maps)?;
                                 let prefix = args[2].decode_literal(id_maps)?;
 
-                                let addr = match addr {
-                                    Term::Prim(TermPrim::Bitvec(bv)) => bv,
+                                let addr = match addr.to_owned() {
+                                    TermX::Prim(TermPrim::Bitvec(bv)) => bv,
                                     _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
                                 };
-                                let prefix = match prefix {
-                                    Term::Some(t) => match Arc::unwrap_or_clone(t) {
-                                        Term::Prim(TermPrim::Bitvec(bv)) => Some(bv),
+                                let prefix = match prefix.to_owned() {
+                                    TermX::Some(t) => match t.to_owned() {
+                                        TermX::Prim(TermPrim::Bitvec(bv)) => Some(bv),
                                         _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
                                     },
-                                    Term::None(..) => None,
+                                    TermX::None(..) => None,
                                     _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
                                 };
 
-                                Ok(Term::Prim(TermPrim::Ext(Ext::Ipaddr {
+                                Ok(TermX::Prim(TermPrim::Ext(Ext::Ipaddr {
                                     ip: if s == "V4" {
                                         IPNet::V4(CIDRv4 {
                                             addr: IPv4Addr { val: addr },
@@ -817,7 +818,7 @@ impl SExpr {
                                             prefix: IPv6Prefix { val: prefix },
                                         })
                                     },
-                                })))
+                                })).into())
                             }
 
                             SExpr::Symbol(s) => {
@@ -828,7 +829,7 @@ impl SExpr {
                                             ety.clone(),
                                             EntityId::new(e),
                                         );
-                                        Ok(Term::Prim(TermPrim::Entity(uid)))
+                                        Ok(TermX::Prim(TermPrim::Entity(uid)).into())
                                     }
 
                                     // Record
@@ -862,7 +863,7 @@ impl SExpr {
                                                 .insert(field_name.clone(), decoded_field.clone());
                                         }
 
-                                        Ok(Term::Record(Arc::new(record)))
+                                        Ok(TermX::Record(record).into())
                                     }
 
                                     _ => Err(DecodeError::UnknownLiteral(self.clone())),

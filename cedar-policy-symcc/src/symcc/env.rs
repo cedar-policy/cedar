@@ -21,7 +21,7 @@
 
 use crate::symcc::op;
 use crate::symcc::tags::SymTags;
-use crate::symcc::term::{Term, TermPrim, TermVar};
+use crate::symcc::term::{Term, TermPrim, TermVar, TermX};
 use crate::symcc::term_type::TermType;
 use crate::symcc::type_abbrevs::*;
 use crate::symcc::{
@@ -55,20 +55,22 @@ pub struct SymRequest {
 impl SymRequest {
     #[cfg(test)]
     pub fn empty_sym_req() -> Self {
+        use crate::symcc::term::TermX;
+
         SymRequest {
-            principal: Term::Var(TermVar {
+            principal: Term::new(TermX::Var(TermVar {
                 id: "principal".to_string(),
                 ty: TermType::Bool,
-            }),
-            action: Term::Var(TermVar {
+            })),
+            action: Term::new(TermX::Var(TermVar {
                 id: "action".to_string(),
                 ty: TermType::Bool,
-            }),
-            resource: Term::Var(TermVar {
+            })),
+            resource: Term::new(TermX::Var(TermVar {
                 id: "resource".to_string(),
                 ty: TermType::Bool,
-            }),
-            context: Term::Record(Arc::new(BTreeMap::new())),
+            })),
+            context: Term::new(TermX::Record(BTreeMap::new())),
         }
     }
 
@@ -232,7 +234,7 @@ impl SymEntityData {
                         rty: Arc::new(BTreeMap::new()),
                     },
                     table: BTreeMap::new(),
-                    default: Term::Record(Arc::new(BTreeMap::new())),
+                    default: Term::new(TermX::Record(BTreeMap::new())),
                 });
                 Ok(SymEntityData {
                     attrs: attrs_udf,
@@ -256,24 +258,22 @@ impl SymEntityData {
                 rty: Arc::new(BTreeMap::new()),
             },
             table: BTreeMap::new(),
-            default: Term::Record(Arc::new(BTreeMap::new())),
+            default: Term::new(TermX::Record(BTreeMap::new())),
         });
         let term_of_type = |ety: EntityType, uid: EntityUID| -> Option<Term> {
             if uid.type_name() == &ety {
-                Some(Term::Prim(TermPrim::Entity(uid)))
+                Some(Term::new(TermX::Prim(TermPrim::Entity(uid))))
             } else {
                 None
             }
         };
         let ancs_term = |anc_ty: &EntityType, ancs: &BTreeSet<EntityUID>| -> Term {
-            Term::Set {
-                elts: Arc::new(
-                    ancs.iter()
-                        .filter_map(|anc| term_of_type(anc_ty.clone(), anc.clone()))
-                        .collect(),
-                ),
+            Term::new(TermX::Set {
+                elts: ancs.iter()
+                    .filter_map(|anc| term_of_type(anc_ty.clone(), anc.clone()))
+                    .collect(),
                 elts_ty: TermType::set_of(entity(anc_ty.clone())),
-            }
+            })
         };
         let ancs_udf = |anc_ty: &EntityType| -> UnaryFunction {
             Udf(function::Udf {
@@ -288,10 +288,10 @@ impl SymEntityData {
                         ))
                     })
                     .collect(),
-                default: Term::Set {
-                    elts: Arc::new(BTreeSet::new()),
+                default: Term::new(TermX::Set {
+                    elts: BTreeSet::new(),
                     elts_ty: TermType::set_of(entity(anc_ty.clone())),
-                },
+                }),
             })
         };
         let acts = sch
@@ -370,23 +370,23 @@ impl SymRequest {
     /// Creates a symbolic request for the given request type.
     fn of_request_type(req_ty: &RequestType<'_>) -> Result<Self, result::Error> {
         Ok(Self {
-            principal: Term::Var(TermVar {
+            principal: Term::new(TermX::Var(TermVar {
                 id: "principal".to_string(),
                 ty: TermType::Entity {
                     ety: req_ty.principal.clone(),
                 },
-            }),
-            action: Term::Prim(TermPrim::Entity(req_ty.action.clone())),
-            resource: Term::Var(TermVar {
+            })),
+            action: Term::new(TermX::Prim(TermPrim::Entity(req_ty.action.clone()))),
+            resource: Term::new(TermX::Var(TermVar {
                 id: "resource".to_string(),
                 ty: TermType::Entity {
                     ety: req_ty.resource.clone(),
                 },
-            }),
-            context: Term::Var(TermVar {
+            })),
+            context: Term::new(TermX::Var(TermVar {
                 id: "context".to_string(),
                 ty: TermType::of_type(record(req_ty.context.clone()))?,
-            }),
+            })),
         })
     }
 }

@@ -21,9 +21,10 @@ use solver::Solver;
 use symcc::SymCompiler;
 pub use symcc::{solver, Env, Environment, Interpretation, SmtLibScript, SymEnv};
 use symcc::{
-    verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
+    verify_always_allows, verify_disjoint, verify_equivalent, verify_implies,
     verify_never_errors, well_typed_policies, well_typed_policy,
 };
+pub use symcc::verify_always_denies;
 
 use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
 

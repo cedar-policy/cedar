@@ -29,6 +29,8 @@ use std::sync::Arc;
 use cedar_policy_core::ast::Var;
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp};
 
+use crate::symcc::term::TermX;
+
 use super::bitvec::BitVec;
 use super::env::{SymEntities, SymEnv, SymRequest};
 use super::ext::Ext;
@@ -317,9 +319,9 @@ pub fn compile_get_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
 }
 
 pub fn compile_if(t1: Term, r2: Result<Term>, r3: Result<Term>) -> Result<Term> {
-    match (&t1, t1.type_of()) {
-        (Term::Some(it), _) if matches!(**it, Term::Prim(TermPrim::Bool(true))) => r2,
-        (Term::Some(it), _) if matches!(**it, Term::Prim(TermPrim::Bool(false))) => r3,
+    match (t1.as_ref(), t1.type_of()) {
+        (TermX::Some(it), _) if matches!(**it, TermX::Prim(TermPrim::Bool(true))) => r2,
+        (TermX::Some(it), _) if matches!(**it, TermX::Prim(TermPrim::Bool(false))) => r3,
         (_, TermType::Option { ty }) if matches!(*ty, TermType::Bool) => {
             let t2 = r2?;
             let t3 = r3?;
@@ -337,8 +339,8 @@ pub fn compile_if(t1: Term, r2: Result<Term>, r3: Result<Term>) -> Result<Term> 
 }
 
 pub fn compile_and(t1: Term, r2: Result<Term>) -> Result<Term> {
-    match (&t1, t1.type_of()) {
-        (Term::Some(it), _) if matches!(**it, Term::Prim(TermPrim::Bool(false))) => Ok(t1),
+    match (t1.as_ref(), t1.type_of()) {
+        (TermX::Some(it), _) if matches!(**it, TermX::Prim(TermPrim::Bool(false))) => Ok(t1),
         (_, TermType::Option { ty: ity }) if matches!(*ity, TermType::Bool) => {
             let t2 = r2?;
             if matches!(t2.type_of(), TermType::Option { ty } if matches!(*ty, TermType::Bool)) {
@@ -355,8 +357,8 @@ pub fn compile_and(t1: Term, r2: Result<Term>) -> Result<Term> {
 }
 
 pub fn compile_or(t1: Term, r2: Result<Term>) -> Result<Term> {
-    match (&t1, t1.type_of()) {
-        (Term::Some(it), _) if matches!(**it, Term::Prim(TermPrim::Bool(true))) => Ok(t1),
+    match (t1.as_ref(), t1.type_of()) {
+        (TermX::Some(it), _) if matches!(**it, TermX::Prim(TermPrim::Bool(true))) => Ok(t1),
         (_, TermType::Option { ty: ity }) if matches!(*ity, TermType::Bool) => {
             let t2 = r2?;
             if matches!(t2.type_of(), TermType::Option { ty } if matches!(*ty, TermType::Bool)) {
@@ -412,9 +414,9 @@ pub fn compile_record(ats: Vec<(Attr, Term)>) -> Result<Term> {
 }
 
 pub fn compile_call0(mk: impl Fn(String) -> Option<Ext>, arg: Term) -> Result<Term> {
-    match arg {
-        Term::Some(t) => match Arc::unwrap_or_clone(t) {
-            Term::Prim(TermPrim::String(s)) => match mk(s) {
+    match arg.to_owned() {
+        TermX::Some(t) => match t.to_owned() {
+            TermX::Prim(TermPrim::String(s)) => match mk(s) {
                 Some(v) => Ok(some_of(v.into())),
                 None => Err(Error::TypeError),
             },
@@ -758,9 +760,9 @@ mod decimal_tests {
     fn test_valid(str: &str, rep: i64) {
         assert_eq!(
             compile(&dec_lit(str), &sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
+            Ok(TermX::Some(TermX::Prim(TermPrim::Ext(
                 Ext::Decimal { d: Decimal(rep) }
-            ))))),
+            )).into()).into()),
             "{str}"
         );
     }
@@ -782,7 +784,7 @@ mod decimal_tests {
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
         assert_eq!(
             compile(&parse_expr(str), &sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res))))),
+            Ok(TermX::Some(TermX::Prim(TermPrim::Bool(res)).into()).into()),
             "{str}"
         )
     }
@@ -931,11 +933,11 @@ mod datetime_tests {
     fn test_valid_datetime_constructor(str: &str, rep: i64) {
         assert_eq!(
             compile(&datetime_lit(str), &datetime_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
+            Ok(TermX::Some(TermX::Prim(TermPrim::Ext(
                 Ext::Datetime {
                     dt: Datetime::from(i128::from(rep))
                 }
-            ))))),
+            )).into()).into()),
             "{str}"
         );
     }
@@ -954,11 +956,11 @@ mod datetime_tests {
     fn test_valid_duration_constructor(str: &str, rep: i64) {
         assert_eq!(
             compile(&duration_lit(str), &duration_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
+            Ok(TermX::Some(TermX::Prim(TermPrim::Ext(
                 Ext::Duration {
                     d: Duration::from(i128::from(rep))
                 }
-            ))))),
+            )).into()).into()),
             "{str}"
         );
     }
@@ -1136,11 +1138,11 @@ mod datetime_tests {
     fn test_valid_datetime_simpl_expr(str: &str, rep: i64) {
         assert_eq!(
             compile(&parse_expr(str), &datetime_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
+            Ok(TermX::Some(TermX::Prim(TermPrim::Ext(
                 Ext::Datetime {
                     dt: Datetime::from(i128::from(rep))
                 }
-            ))))),
+            )).into()).into()),
             "{str}"
         )
     }
@@ -1149,11 +1151,11 @@ mod datetime_tests {
     fn test_valid_duration_simpl_expr(str: &str, rep: i64) {
         assert_eq!(
             compile(&parse_expr(str), &duration_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
+            Ok(TermX::Some(TermX::Prim(TermPrim::Ext(
                 Ext::Duration {
                     d: Duration::from(i128::from(rep))
                 }
-            ))))),
+            )).into()).into()),
             "{str}"
         )
     }
@@ -1161,7 +1163,7 @@ mod datetime_tests {
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
         assert_eq!(
             compile(&parse_expr(str), &datetime_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res))))),
+            Ok(TermX::Some(TermX::Prim(TermPrim::Bool(res)).into()).into()),
             "{str}"
         )
     }

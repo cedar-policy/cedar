@@ -36,6 +36,7 @@ use thiserror::Error;
 use crate::symcc::enforcer::footprint;
 use crate::symcc::ext::Ext;
 use crate::symcc::factory;
+use crate::symcc::term::TermX;
 use crate::symcc::type_abbrevs::ExtType;
 
 use super::env::{SymEntities, SymEntityData, SymRequest};
@@ -95,7 +96,7 @@ impl TryFrom<&Term> for EntityUid {
     type Error = ConcretizeError;
 
     fn try_from(term: &Term) -> Result<Self, Self::Error> {
-        if let Term::Prim(TermPrim::Entity(uid)) = term {
+        if let TermX::Prim(TermPrim::Entity(uid)) = term.as_ref() {
             Ok(uid.clone())
         } else {
             Err(ConcretizeError::NotLiteralEntity(term.clone()))
@@ -109,7 +110,7 @@ impl TryFrom<&Term> for BTreeSet<EntityUid> {
     type Error = ConcretizeError;
 
     fn try_from(term: &Term) -> Result<Self, Self::Error> {
-        if let Term::Set { elts, .. } = term {
+        if let TermX::Set { elts, .. } = term.as_ref(){
             Ok(elts
                 .iter()
                 .map(|t| t.try_into())
@@ -125,7 +126,7 @@ impl TryFrom<&Term> for String {
     type Error = ConcretizeError;
 
     fn try_from(term: &Term) -> Result<Self, Self::Error> {
-        if let Term::Prim(TermPrim::String(s)) = term {
+        if let TermX::Prim(TermPrim::String(s)) = term.as_ref() {
             Ok(s.clone())
         } else {
             Err(ConcretizeError::NotLiteralString(term.clone()))
@@ -138,7 +139,7 @@ impl TryFrom<&Term> for BTreeSet<String> {
     type Error = ConcretizeError;
 
     fn try_from(term: &Term) -> Result<Self, Self::Error> {
-        if let Term::Set { elts, .. } = term {
+        if let TermX::Set { elts, .. } = term.as_ref() {
             Ok(elts
                 .iter()
                 .map(|t| t.try_into())
@@ -171,30 +172,30 @@ impl TryFrom<&Term> for Value {
     type Error = ConcretizeError;
 
     fn try_from(term: &Term) -> Result<Self, Self::Error> {
-        match term {
-            Term::Prim(TermPrim::Bool(b)) => {
+        match term.as_ref() {
+            TermX::Prim(TermPrim::Bool(b)) => {
                 Ok(Value::new(ValueKind::Lit(Literal::Bool(*b)), None))
             }
 
-            Term::Prim(TermPrim::Bitvec(v)) => Ok(Value::new(
+            TermX::Prim(TermPrim::Bitvec(v)) => Ok(Value::new(
                 ValueKind::Lit(Literal::Long(v.to_int().try_into()?)),
                 None,
             )),
 
-            Term::Prim(TermPrim::String(s)) => {
+            TermX::Prim(TermPrim::String(s)) => {
                 Ok(Value::new(ValueKind::Lit(Literal::String(s.into())), None))
             }
 
-            Term::Prim(TermPrim::Entity(uid)) => Ok(Value::new(
+            TermX::Prim(TermPrim::Entity(uid)) => Ok(Value::new(
                 ValueKind::Lit(Literal::EntityUID(Arc::new(uid.clone().into()))),
                 None,
             )),
 
-            Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => {
+            TermX::Prim(TermPrim::Ext(Ext::Decimal { d })) => {
                 call_extension_func(&decimal::extension(), "decimal", &[format!("{}", d).into()])
             }
 
-            Term::Prim(TermPrim::Ext(Ext::Datetime { dt })) => {
+            TermX::Prim(TermPrim::Ext(Ext::Datetime { dt })) => {
                 // First construct `datetime("1970-01-01")`
                 let epoch = call_extension_func(
                     &datetime::extension(),
@@ -212,7 +213,7 @@ impl TryFrom<&Term> for Value {
                 call_extension_func(&datetime::extension(), "offset", &[epoch, offset])
             }
 
-            Term::Prim(TermPrim::Ext(Ext::Duration { d })) => {
+            TermX::Prim(TermPrim::Ext(Ext::Duration { d })) => {
                 let offset: i128 = d.into();
                 call_extension_func(
                     &datetime::extension(),
@@ -221,11 +222,11 @@ impl TryFrom<&Term> for Value {
                 )
             }
 
-            Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip })) => {
+            TermX::Prim(TermPrim::Ext(Ext::Ipaddr { ip })) => {
                 call_extension_func(&ipaddr::extension(), "ip", &[format!("{}", ip).into()])
             }
 
-            Term::Set { elts, .. } => Ok(Value::new(
+            TermX::Set { elts, .. } => Ok(Value::new(
                 ValueKind::Set(Set::new(
                     elts.iter()
                         .map(|t| t.try_into())
@@ -234,13 +235,13 @@ impl TryFrom<&Term> for Value {
                 None,
             )),
 
-            Term::Record(rec) => Ok(Value::new(
+            TermX::Record(rec) => Ok(Value::new(
                 ValueKind::Record(Arc::new(
                     rec.iter()
                         .map(|(k, v)| {
-                            if let Term::Some(t) = v {
-                                Ok(Some((k.clone(), t.as_ref().try_into()?)))
-                            } else if let Term::None(_) = v {
+                            if let TermX::Some(t) = v.as_ref() {
+                                Ok(Some((k.clone(), t.try_into()?)))
+                            } else if let TermX::None(_) = v.as_ref() {
                                 // None fields are simply ignored
                                 Ok(None)
                             } else {
@@ -297,28 +298,28 @@ impl Term {
 
     /// Collect all entity UIDs occurring in the term
     pub(crate) fn get_all_entity_uids(&self, uids: &mut BTreeSet<EntityUid>) {
-        match self {
-            Term::Prim(TermPrim::Entity(uid)) => {
+        match self.as_ref() {
+            TermX::Prim(TermPrim::Entity(uid)) => {
                 uids.insert(uid.clone());
             }
 
-            Term::Some(t) => {
+            TermX::Some(t) => {
                 t.get_all_entity_uids(uids);
             }
 
-            Term::Set { elts, .. } => {
+            TermX::Set { elts, .. } => {
                 for t in elts.iter() {
                     t.get_all_entity_uids(uids);
                 }
             }
 
-            Term::Record(rec) => {
+            TermX::Record(rec) => {
                 for t in rec.values() {
                     t.get_all_entity_uids(uids);
                 }
             }
 
-            Term::App { args, .. } => {
+            TermX::App { args, .. } => {
                 for t in args.iter() {
                     t.get_all_entity_uids(uids);
                 }
@@ -352,7 +353,7 @@ impl UnaryFunction {
 impl SymEntityData {
     /// Concretizes a particular entity.
     pub fn concretize(&self, euid: &EntityUid) -> Result<Entity, ConcretizeError> {
-        let tuid = Term::Prim(TermPrim::Entity(euid.clone()));
+        let tuid = Term::new(TermX::Prim(TermPrim::Entity(euid.clone())));
 
         let concrete_attrs = factory::app(self.attrs.clone(), tuid.clone()).try_into_record()?;
 
@@ -382,7 +383,7 @@ impl SymEntityData {
                 .map(|k| {
                     // Using get_tag_unchecked here since we know already that k is in the key set
                     let val: Value = (&tags
-                        .get_tag_unchecked(tuid.clone(), Term::Prim(TermPrim::String(k.clone()))))
+                        .get_tag_unchecked(tuid.clone(), TermX::Prim(TermPrim::String(k.clone())).into()))
                         .try_into()?;
 
                     Ok((k.into(), val.into()))

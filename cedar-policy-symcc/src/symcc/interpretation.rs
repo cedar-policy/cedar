@@ -19,10 +19,11 @@
 //! an Interpretation.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 use cedar_policy::EntityTypeName;
 use cedar_policy_core::ast::Expr;
+
+use crate::symcc::term::TermX;
 
 use super::enforcer::footprint;
 use super::env::{SymEntities, SymEntityData, SymRequest};
@@ -127,7 +128,7 @@ impl Uuf {
             .iter()
             .filter_map(|uid| {
                 if uid.type_name() == arg_ety {
-                    let t = Term::Prim(TermPrim::Entity(uid.clone()));
+                    let t = Term::new(TermX::Prim(TermPrim::Entity(uid.clone())));
                     // In the domain of this ancestor function
                     Some((t.clone(), factory::app(UnaryFunction::Udf(udf.clone()), t)))
                 } else {
@@ -148,23 +149,23 @@ impl Term {
     /// Recursively interprets a term, substituting variables with
     /// their interpretations.
     pub fn interpret(&self, interp: &Interpretation<'_>) -> Term {
-        match self {
-            Term::Prim(..) | Term::None(..) => self.clone(),
-            Term::Var(var) => interp.interpret_var(var),
-            Term::Some(t) => Term::Some(Arc::new(t.interpret(interp))),
+        match self.as_ref() {
+            TermX::Prim(..) | TermX::None(..) => self.clone(),
+            TermX::Var(var) => interp.interpret_var(var),
+            TermX::Some(t) => Term::new(TermX::Some(t.interpret(interp))),
 
-            Term::Set { elts, elts_ty } => Term::Set {
-                elts: Arc::new(elts.iter().map(|t| t.interpret(interp)).collect()),
+            TermX::Set { elts, elts_ty } => Term::new(TermX::Set {
+                elts: elts.iter().map(|t| t.interpret(interp)).collect(),
                 elts_ty: elts_ty.clone(),
-            },
+            }),
 
-            Term::Record(rec) => Term::Record(Arc::new(
+            TermX::Record(rec) => Term::new(TermX::Record(
                 rec.iter()
                     .map(|(k, v)| (k.clone(), v.interpret(interp)))
                     .collect(),
             )),
 
-            Term::App { op, args, ret_ty } => match (op, args.as_slice()) {
+            TermX::App { op, args, ret_ty } => match (op, args.as_slice()) {
                 (Op::Not, [arg]) => factory::not(arg.interpret(interp)),
                 (Op::And, [arg1, arg2]) => {
                     factory::and(arg1.interpret(interp), arg2.interpret(interp))
@@ -267,7 +268,7 @@ impl Term {
                 (Op::OptionGet, [arg]) => {
                     let arg = arg.interpret(interp);
 
-                    if let Term::None(ty) = arg {
+                    if let TermX::None(ty) = arg.as_ref() {
                         ty.default_literal(&interp.env)
                     } else {
                         factory::option_get(arg)
@@ -301,11 +302,11 @@ impl Term {
 
                 // Otherwise leave the application as it but
                 // interpret the arguments
-                (op, args) => Term::App {
+                (op, args) => Term::new(TermX::App {
                     op: op.clone(),
-                    args: Arc::new(args.iter().map(|t| t.interpret(interp)).collect()),
+                    args: args.iter().map(|t| t.interpret(interp)).collect(),
                     ret_ty: ret_ty.clone(),
-                },
+                }),
             },
         }
     }

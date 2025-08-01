@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use crate::symcc::term::TermX;
+
 use super::bitvec::BitVec;
 use super::entity_tag::EntityTag;
 use super::ext::Ext;
@@ -33,67 +35,67 @@ use std::sync::Arc;
 // ---------- Checked term constructors ----------
 
 pub fn none_of(ty: TermType) -> Term {
-    Term::None(ty)
+    Term::new(TermX::None(ty))
 }
 
 pub fn some_of(t: Term) -> Term {
-    Term::Some(Arc::new(t))
+    Term::new(TermX::Some(t))
 }
 
 pub fn set_of(ts: impl IntoIterator<Item = Term>, elts_ty: TermType) -> Term {
-    Term::Set {
-        elts: Arc::new(ts.into_iter().collect()),
+    Term::new(TermX::Set {
+        elts: ts.into_iter().collect(),
         elts_ty,
-    }
+    })
 }
 
 pub fn record_of(ats: impl IntoIterator<Item = (Attr, Term)>) -> Term {
-    Term::Record(Arc::new(ats.into_iter().collect()))
+    Term::new(TermX::Record(ats.into_iter().collect()))
 }
 
 pub fn tag_of(entity: Term, tag: Term) -> Term {
-    Term::Record(Arc::new(EntityTag::mk(entity, tag).0))
+    Term::new(TermX::Record(EntityTag::mk(entity, tag).0))
 }
 
 // ---------- SMTLib core theory of equality with uninterpreted functions (`UF`) ----------
 
 pub fn not(t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Bool(b)) => (!b).into(),
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Bool(b)) => (!b).into(),
         // PANIC SAFETY
         #[allow(
             clippy::unwrap_used,
             reason = "List of length 1 should not panic when unwrapping first element"
         )]
-        Term::App {
+        TermX::App {
             op: Op::Not, args, ..
-        } if args.len() == 1 => Arc::unwrap_or_clone(args).into_iter().next().unwrap(),
-        t => Term::App {
+        } if args.len() == 1 => args.into_iter().next().unwrap(),
+        t => Term::new(TermX::App {
             op: Op::Not,
-            args: Arc::new(vec![t]),
+            args: vec![Term::new(t)],
             ret_ty: TermType::Bool,
-        },
+        }),
     }
 }
 
 pub fn opposites(t1: &Term, t2: &Term) -> bool {
-    match (t1, t2) {
+    match (t1.as_ref(), t2.as_ref()) {
         // PANIC SAFETY: List of length 1 should not error when indexed by 0
         #[allow(clippy::indexing_slicing)]
         (
             t1,
-            Term::App {
+            TermX::App {
                 op: Op::Not, args, ..
             },
-        ) if args.len() == 1 => t1 == &args[0],
+        ) if args.len() == 1 => t1 == args[0].as_ref(),
         // PANIC SAFETY: List of length 2 should not error when indexed by 0 or 1
         #[allow(clippy::indexing_slicing)]
         (
-            Term::App {
+            TermX::App {
                 op: Op::Not, args, ..
             },
             t2,
-        ) if args.len() == 1 => &args[0] == t2,
+        ) if args.len() == 1 => args[0].as_ref() == t2,
         (_, _) => false,
     }
 }
@@ -106,11 +108,11 @@ pub fn and(t1: Term, t2: Term) -> Term {
     } else if t1 == false.into() || t2 == false.into() || opposites(&t1, &t2) {
         false.into()
     } else {
-        Term::App {
+        Term::new(TermX::App {
             op: Op::And,
-            args: Arc::new(vec![t1, t2]),
+            args: vec![t1, t2],
             ret_ty: TermType::Bool,
-        }
+        })
     }
 }
 
@@ -122,11 +124,11 @@ pub fn or(t1: Term, t2: Term) -> Term {
     } else if t1 == true.into() || t2 == true.into() || opposites(&t1, &t2) {
         true.into()
     } else {
-        Term::App {
+        Term::new(TermX::App {
             op: Op::Or,
-            args: Arc::new(vec![t1, t2]),
+            args: vec![t1, t2],
             ret_ty: TermType::Bool,
-        }
+        })
     }
 }
 
@@ -149,19 +151,19 @@ pub fn eq(t1: Term, t2: Term) -> Term {
         } else if t2 == false.into() && t1.type_of() == TermType::Bool {
             not(t1)
         } else {
-            Term::App {
+            Term::new(TermX::App {
                 op: Op::Eq,
-                args: Arc::new(vec![t1, t2]),
+                args: vec![t1, t2],
                 ret_ty: TermType::Bool,
-            }
+            })
         }
     };
-    match (t1, t2) {
-        (Term::Some(t1), Term::Some(t2)) => {
-            simplify(Arc::unwrap_or_clone(t1), Arc::unwrap_or_clone(t2))
+    match (t1.to_owned(), t2.to_owned()) {
+        (TermX::Some(t1), TermX::Some(t2)) => {
+            simplify(t1, t2)
         }
-        (Term::Some(_), Term::None(_)) | (Term::None(_), Term::Some(_)) => false.into(),
-        (t1, t2) => simplify(t1, t2),
+        (TermX::Some(_), TermX::None(_)) | (TermX::None(_), TermX::Some(_)) => false.into(),
+        (t1, t2) => simplify(t1.into(), t2.into()),
     }
 }
 
@@ -172,28 +174,25 @@ pub fn ite(t1: Term, t2: Term, t3: Term) -> Term {
         } else if t1 == false.into() {
             t3
         } else {
-            match (t2, t3) {
-                (Term::Prim(TermPrim::Bool(true)), Term::Prim(TermPrim::Bool(false))) => t1,
-                (Term::Prim(TermPrim::Bool(false)), Term::Prim(TermPrim::Bool(true))) => not(t1),
-                (t2, Term::Prim(TermPrim::Bool(false))) => and(t1, t2),
-                (Term::Prim(TermPrim::Bool(true)), t3) => or(t1, t3),
+            match (t2.to_owned(), t3.to_owned()) {
+                (TermX::Prim(TermPrim::Bool(true)), TermX::Prim(TermPrim::Bool(false))) => t1,
+                (TermX::Prim(TermPrim::Bool(false)), TermX::Prim(TermPrim::Bool(true))) => not(t1),
+                (t2, TermX::Prim(TermPrim::Bool(false))) => and(t1, t2.into()),
+                (TermX::Prim(TermPrim::Bool(true)), t3) => or(t1, t3.into()),
                 (t2, t3) => {
                     let ret_ty = t2.type_of();
-                    Term::App {
+                    Term::new(TermX::App {
                         op: Op::Ite,
-                        args: Arc::new(vec![t1, t2, t3]),
+                        args: vec![t1, t2.into(), t3.into()],
                         ret_ty,
-                    }
+                    })
                 }
             }
         }
     };
-    match (t2, t3) {
-        (Term::Some(t2), Term::Some(t3)) => Term::Some(Arc::new(simplify(
-            Arc::unwrap_or_clone(t2),
-            Arc::unwrap_or_clone(t3),
-        ))),
-        (t2, t3) => simplify(t2, t3),
+    match (t2.to_owned(), t3.to_owned()) {
+        (TermX::Some(t2), TermX::Some(t3)) => Term::new(TermX::Some(simplify(t2, t3))),
+        (t2, t3) => simplify(t2.into(), t3.into()),
     }
 }
 
@@ -205,11 +204,11 @@ pub fn app(f: UnaryFunction, t: Term) -> Term {
     match f {
         UnaryFunction::Uuf(f) => {
             let ret_ty = f.out.clone();
-            Term::App {
+            Term::new(TermX::App {
                 op: Op::Uuf(f),
-                args: Arc::new(vec![t]),
+                args: vec![t],
                 ret_ty,
-            }
+            })
         }
         UnaryFunction::Udf(f) => {
             if t.is_literal() {
@@ -234,27 +233,27 @@ pub fn app(f: UnaryFunction, t: Term) -> Term {
 // fully concrete input, the symbolic compiler returns a fully concrete output.
 
 pub fn bvneg(t: Term) -> Term {
-    match t {
+    match t.to_owned() {
         #[allow(clippy::unwrap_used, reason = "BitVec::neg cannot return error.")]
-        Term::Prim(TermPrim::Bitvec(b)) => b.neg().unwrap().into(),
+        TermX::Prim(TermPrim::Bitvec(b)) => b.neg().unwrap().into(),
         // this optimization is not present in the Lean
         // PANIC SAFETY
         #[allow(
             clippy::unwrap_used,
             reason = "List of length 1 should not panic when unwrapping first element"
         )]
-        Term::App {
+        TermX::App {
             op: Op::Bvneg,
             args,
             ..
-        } if args.len() == 1 => Arc::unwrap_or_clone(args).into_iter().next().unwrap(),
+        } if args.len() == 1 => args.into_iter().next().unwrap(),
         t => {
             let ret_ty = t.type_of();
-            Term::App {
+            Term::new(TermX::App {
                 op: Op::Bvneg,
-                args: Arc::new(vec![t]),
+                args: vec![t.into()],
                 ret_ty,
-            }
+            })
         }
     }
 }
@@ -263,21 +262,21 @@ type Comparator = dyn Fn(&BitVec, &BitVec) -> Result<bool, super::result::Error>
 type BVOp = dyn Fn(&BitVec, &BitVec) -> Result<BitVec, super::result::Error>;
 
 pub fn bvapp(op: Op, f: &BVOp, t1: Term, t2: Term) -> Term {
-    match (t1, t2) {
+    match (t1.to_owned(), t2.to_owned()) {
         #[allow(
             clippy::unwrap_used,
             reason = "Assume the bit-vectors have the same width by construction for now."
         )]
-        (Term::Prim(TermPrim::Bitvec(b1)), Term::Prim(TermPrim::Bitvec(b2))) => {
+        (TermX::Prim(TermPrim::Bitvec(b1)), TermX::Prim(TermPrim::Bitvec(b2))) => {
             (f(&b1, &b2)).unwrap().into()
         }
         (t1, t2) => {
             let ret_ty = t1.type_of();
-            Term::App {
+            Term::new(TermX::App {
                 op,
-                args: Arc::new(vec![t1, t2]),
+                args: vec![t1.into(), t2.into()],
                 ret_ty,
-            }
+            })
         }
     }
 }
@@ -325,19 +324,19 @@ pub fn bvlshr(t1: Term, t2: Term) -> Term {
 }
 
 fn bvcmp(op: Op, comp: &Comparator, t1: Term, t2: Term) -> Term {
-    match (t1, t2) {
+    match (t1.to_owned(), t2.to_owned()) {
         #[allow(
             clippy::unwrap_used,
             reason = "Assume the bit-vectors have the same width by construction for now."
         )]
-        (Term::Prim(TermPrim::Bitvec(bv1)), Term::Prim(TermPrim::Bitvec(bv2))) => {
+        (TermX::Prim(TermPrim::Bitvec(bv1)), TermX::Prim(TermPrim::Bitvec(bv2))) => {
             comp(&bv1, &bv2).unwrap().into()
         }
-        (t1, t2) => Term::App {
+        (t1, t2) => Term::new(TermX::App {
             op,
-            args: Arc::new(vec![t1, t2]),
+            args: vec![t1.into(), t2.into()],
             ret_ty: TermType::Bool,
-        },
+        }),
     }
 }
 
@@ -359,8 +358,8 @@ pub fn bvule(t1: Term, t2: Term) -> Term {
 
 /// Does negation overflow
 pub fn bvnego(t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Bitvec(bv)) =>
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Bitvec(bv)) =>
         {
             #[allow(
                 clippy::unwrap_used,
@@ -368,17 +367,17 @@ pub fn bvnego(t: Term) -> Term {
             )]
             BitVec::overflows(bv.width(), -bv.to_int()).unwrap().into()
         }
-        t => Term::App {
+        t => Term::new(TermX::App {
             op: Op::Bvnego,
-            args: Arc::new(vec![t]),
+            args: vec![t.into()],
             ret_ty: TermType::Bool,
-        },
+        }),
     }
 }
 
 pub fn bvso(op: Op, f: &BVOp, t1: Term, t2: Term) -> Term {
-    match (t1, t2) {
-        (Term::Prim(TermPrim::Bitvec(bv1)), Term::Prim(TermPrim::Bitvec(bv2))) => {
+    match (t1.to_owned(), t2.to_owned()) {
+        (TermX::Prim(TermPrim::Bitvec(bv1)), TermX::Prim(TermPrim::Bitvec(bv2))) => {
             assert!(bv1.width() == bv2.width());
             #[allow(
                 clippy::unwrap_used,
@@ -388,11 +387,11 @@ pub fn bvso(op: Op, f: &BVOp, t1: Term, t2: Term) -> Term {
                 .unwrap()
                 .into()
         }
-        (t1, t2) => Term::App {
+        (t1, t2) => Term::new(TermX::App {
             op,
-            args: Arc::new(vec![t1, t2]),
+            args: vec![t1.into(), t2.into()],
             ret_ty: TermType::Bool,
-        },
+        }),
     }
 }
 
@@ -413,8 +412,8 @@ pub fn bvsmulo(t1: Term, t2: Term) -> Term {
 ///
 /// This function adds `n` to the existing width. It does not pad the width to `n`.
 pub fn zero_extend(n: Width, t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Bitvec(bv)) =>
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Bitvec(bv)) =>
         {
             #[allow(
                 clippy::unwrap_used,
@@ -424,12 +423,12 @@ pub fn zero_extend(n: Width, t: Term) -> Term {
         }
         t => {
             match t.type_of() {
-                TermType::Bitvec { n: cur_width } => Term::App {
+                TermType::Bitvec { n: cur_width } => Term::new(TermX::App {
                     op: Op::ZeroExtend(n),
-                    args: Arc::new(vec![t]),
+                    args: vec![t.into()],
                     ret_ty: TermType::Bitvec { n: cur_width + n },
-                },
-                _ => t, // should be ruled out by callers
+                }),
+                _ => t.into(), // should be ruled out by callers
             }
         }
     }
@@ -438,14 +437,14 @@ pub fn zero_extend(n: Width, t: Term) -> Term {
 // // ---------- CVC theory of finite sets (`FS`) ----------
 
 pub fn set_member(t: Term, ts: Term) -> Term {
-    match ts {
-        Term::Set { elts, .. } if elts.is_empty() => false.into(),
-        Term::Set { elts, .. } if t.is_literal() && ts.is_literal() => elts.contains(&t).into(),
-        ts => Term::App {
+    match ts.as_ref() {
+        TermX::Set { elts, .. } if elts.is_empty() => false.into(),
+        TermX::Set { elts, .. } if t.is_literal() && ts.is_literal() => elts.contains(&t).into(),
+        _ => Term::new(TermX::App {
             op: Op::SetMember,
-            args: Arc::new(vec![t, ts]),
+            args: vec![t, ts],
             ret_ty: TermType::Bool,
-        },
+        }),
     }
 }
 
@@ -453,18 +452,18 @@ pub fn set_subset(sub: Term, sup: Term) -> Term {
     if sub == sup {
         true.into()
     } else {
-        match (&sub, &sup) {
-            (Term::Set { elts, .. }, _) if elts.is_empty() => true.into(),
-            (sub @ Term::Set { elts: sub_elts, .. }, sup @ Term::Set { elts: sup_elts, .. })
+        match (sub.as_ref(), sup.as_ref()) {
+            (TermX::Set { elts, .. }, _) if elts.is_empty() => true.into(),
+            (sub @ TermX::Set { elts: sub_elts, .. }, sup @ TermX::Set { elts: sup_elts, .. })
                 if sub.is_literal() && sup.is_literal() =>
             {
-                sub_elts.is_subset(sup_elts).into()
+                sub_elts.is_subset(&sup_elts).into()
             }
-            (_, _) => Term::App {
+            (_, _) => Term::new(TermX::App {
                 op: Op::SetSubset,
-                args: Arc::new(vec![sub, sup]),
+                args: vec![sub, sup],
                 ret_ty: TermType::Bool,
-            },
+            }),
         }
     }
 }
@@ -473,42 +472,42 @@ pub fn set_inter(ts1: Term, ts2: Term) -> Term {
     if ts1 == ts2 {
         ts1
     } else {
-        match (&ts1, &ts2) {
-            (Term::Set { ref elts, .. }, _) if elts.is_empty() => ts1,
-            (_, Term::Set { ref elts, .. }) if elts.is_empty() => ts2,
+        match (ts1.as_ref(), ts2.as_ref()) {
+            (TermX::Set { elts, .. }, _) if elts.is_empty() => ts1,
+            (_, TermX::Set { elts, .. }) if elts.is_empty() => ts2,
             (
-                Term::Set {
+                TermX::Set {
                     elts: elts1,
                     elts_ty,
                 },
-                Term::Set { elts: elts2, .. },
-            ) if ts1.is_literal() && ts2.is_literal() => Term::Set {
-                elts: Arc::new(elts1.intersection(elts2).cloned().collect()),
+                TermX::Set { elts: elts2, .. },
+            ) if ts1.is_literal() && ts2.is_literal() => Term::new(TermX::Set {
+                elts: elts1.intersection(&elts2).cloned().collect(),
                 elts_ty: elts_ty.clone(),
-            },
+            }),
             (_, _) => {
                 let ret_ty = ts1.type_of();
-                Term::App {
+                Term::new(TermX::App {
                     op: Op::SetInter,
-                    args: Arc::new(vec![ts1, ts2]),
+                    args: vec![ts1, ts2],
                     ret_ty,
-                }
+                })
             }
         }
     }
 }
 
 pub fn set_is_empty(t: Term) -> Term {
-    match t {
-        Term::Set { elts, .. } if elts.is_empty() => true.into(),
-        Term::Set { elts, .. } if !elts.is_empty() => false.into(),
+    match t.to_owned() {
+        TermX::Set { elts, .. } if elts.is_empty() => true.into(),
+        TermX::Set { elts, .. } if !elts.is_empty() => false.into(),
         ts => match ts.type_of() {
             TermType::Set { ty } => eq(
-                ts,
-                Term::Set {
-                    elts: Arc::new(BTreeSet::new()),
+                ts.into(),
+                Term::new(TermX::Set {
+                    elts: BTreeSet::new(),
                     elts_ty: Arc::unwrap_or_clone(ty),
-                },
+                }),
             ),
             _ => false.into(),
         },
@@ -523,32 +522,32 @@ pub fn set_intersects(ts1: Term, ts2: Term) -> Term {
 // // ---------- Core ADT operators with a trusted mapping to SMT ----------
 
 pub fn option_get(t: Term) -> Term {
-    match t {
-        Term::Some(t) => Arc::unwrap_or_clone(t),
+    match t.to_owned() {
+        TermX::Some(t) => t,
         t => match t.type_of() {
-            TermType::Option { ty } => Term::App {
+            TermType::Option { ty } => Term::new(TermX::App {
                 op: Op::OptionGet,
-                args: Arc::new(vec![t]),
+                args: vec![t.into()],
                 ret_ty: Arc::unwrap_or_clone(ty),
-            },
-            _ => t,
+            }),
+            _ => t.into(),
         },
     }
 }
 
 pub fn record_get(t: Term, a: &Attr) -> Term {
-    match &t {
-        Term::Record(r) => match r.get(a) {
+    match t.as_ref() {
+        TermX::Record(r) => match r.get(a) {
             Some(ta) => ta.clone(),
             None => t,
         },
         _ => match t.type_of() {
             TermType::Record { rty } => match rty.get(a) {
-                Some(ty) => Term::App {
+                Some(ty) => Term::new(TermX::App {
                     op: Op::RecordGet(a.clone()),
-                    args: Arc::new(vec![t]),
+                    args: vec![t],
                     ret_ty: ty.clone(),
-                },
+                }),
                 None => t,
             },
             _ => t,
@@ -557,181 +556,181 @@ pub fn record_get(t: Term, a: &Attr) -> Term {
 }
 
 pub fn string_like(t: Term, p: OrdPattern) -> Term {
-    match t {
-        Term::Prim(TermPrim::String(s)) => p.wildcard_match(&s).into(),
-        _ => Term::App {
+    match t.as_ref() {
+        TermX::Prim(TermPrim::String(s)) => p.wildcard_match(&s).into(),
+        _ => Term::new(TermX::App {
             op: Op::StringLike(p),
-            args: Arc::new(vec![t]),
+            args: vec![t],
             ret_ty: TermType::Bool,
-        },
+        }),
     }
 }
 
 // // ---------- Extension ADT operators with a trusted mapping to SMT ----------
 
 pub fn ext_decimal_val(t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Ext(Ext::Decimal { d })) =>
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Ext(Ext::Decimal { d })) =>
         {
             #[allow(
                 clippy::unwrap_used,
                 reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
             )]
-            Term::Prim(TermPrim::Bitvec(BitVec::of_int(64, d.0.into()).unwrap()))
+            Term::new(TermX::Prim(TermPrim::Bitvec(BitVec::of_int(64, d.0.into()).unwrap())))
         }
-        t => Term::App {
+        t => Term::new(TermX::App {
             op: Op::Ext(ExtOp::DecimalVal),
-            args: Arc::new(vec![t]),
+            args: vec![t.into()],
             ret_ty: TermType::Bitvec { n: 64 },
-        },
+        }),
     }
 }
 
 pub fn ext_ipaddr_is_v4(t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip })) => ip.is_v4().into(),
-        t => Term::App {
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Ext(Ext::Ipaddr { ip })) => ip.is_v4().into(),
+        t => Term::new(TermX::App {
             op: Op::Ext(ExtOp::IpaddrIsV4),
-            args: Arc::new(vec![t]),
+            args: vec![t.into()],
             ret_ty: TermType::Bool,
-        },
+        }),
     }
 }
 
 pub fn ext_ipaddr_addr_v4(t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V4(v4) })) => v4.addr.val.into(),
-        t => Term::App {
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V4(v4) })) => v4.addr.val.into(),
+        t => Term::new(TermX::App {
             op: Op::Ext(ExtOp::IpaddrAddrV4),
-            args: Arc::new(vec![t]),
+            args: vec![t.into()],
             ret_ty: TermType::Bitvec { n: 32 },
-        },
+        }),
     }
 }
 
 pub fn ext_ipaddr_prefix_v4(t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V4(v4) })) => match v4.prefix.val {
-            None => Term::None(TermType::Bitvec { n: 5 }),
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V4(v4) })) => match v4.prefix.val {
+            None => Term::new(TermX::None(TermType::Bitvec { n: 5 })),
             Some(p) => some_of(p.into()),
         },
-        t => Term::App {
+        t => Term::new(TermX::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV4),
-            args: Arc::new(vec![t]),
+            args: vec![t.into()],
             ret_ty: TermType::Option {
                 ty: Arc::new(TermType::Bitvec { n: 5 }),
             },
-        },
+        }),
     }
 }
 
 pub fn ext_ipaddr_addr_v6(t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V6(v6) })) => v6.addr.val.into(),
-        t => Term::App {
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V6(v6) })) => v6.addr.val.into(),
+        t => Term::new(TermX::App {
             op: Op::Ext(ExtOp::IpaddrAddrV6),
-            args: Arc::new(vec![t]),
+            args: vec![t.into()],
             ret_ty: TermType::Bitvec { n: 128 },
-        },
+        }),
     }
 }
 
 pub fn ext_ipaddr_prefix_v6(t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V6(v6) })) => match v6.prefix.val {
-            None => Term::None(TermType::Bitvec { n: 7 }),
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V6(v6) })) => match v6.prefix.val {
+            None => Term::new(TermX::None(TermType::Bitvec { n: 7 })),
             Some(p) => some_of(p.into()),
         },
-        t => Term::App {
+        t => Term::new(TermX::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV6),
-            args: Arc::new(vec![t]),
+            args: vec![t.into()],
             ret_ty: TermType::Option {
                 ty: Arc::new(TermType::Bitvec { n: 7 }),
             },
-        },
+        }),
     }
 }
 
 pub fn ext_datetime_val(t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Ext(Ext::Datetime { dt })) =>
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Ext(Ext::Datetime { dt })) =>
         {
             #[allow(
                 clippy::unwrap_used,
                 reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
             )]
-            Term::Prim(TermPrim::Bitvec(BitVec::of_i128(64, dt.into()).unwrap()))
+            Term::new(TermX::Prim(TermPrim::Bitvec(BitVec::of_i128(64, dt.into()).unwrap())))
         }
-        t => Term::App {
+        t => Term::new(TermX::App {
             op: Op::Ext(ExtOp::DatetimeVal),
-            args: Arc::new(vec![t]),
+            args: vec![t.into()],
             ret_ty: TermType::Bitvec { n: 64 },
-        },
+        }),
     }
 }
 
 pub fn ext_datetime_of_bitvec(t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 => {
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 => {
             // PANIC SAFETY: If condition ensures the value will fit in 128 bits.
             #[allow(clippy::unwrap_used)]
-            Term::Prim(TermPrim::Ext(Ext::Datetime {
+            Term::new(TermX::Prim(TermPrim::Ext(Ext::Datetime {
                 dt: Datetime::from(bv.to_int().to_i128().unwrap()),
-            }))
+            })))
         }
-        _ => Term::App {
+        t => Term::new(TermX::App {
             op: Op::Ext(ExtOp::DatetimeOfBitVec),
-            args: Arc::new(vec![t]),
+            args: vec![t.into()],
             ret_ty: TermType::Ext {
                 xty: ExtType::DateTime,
             },
-        },
+        }),
     }
 }
 
 pub fn ext_duration_val(t: Term) -> Term {
-    match t {
+    match t.to_owned() {
         #[allow(
             clippy::unwrap_used,
             reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
         )]
-        Term::Prim(TermPrim::Ext(Ext::Duration { d })) => Term::Prim(TermPrim::Bitvec(
+        TermX::Prim(TermPrim::Ext(Ext::Duration { d })) => Term::new(TermX::Prim(TermPrim::Bitvec(
             BitVec::of_i128(64, d.to_milliseconds().into()).unwrap(),
-        )),
-        t => Term::App {
+        ))),
+        t => Term::new(TermX::App {
             op: Op::Ext(ExtOp::DurationVal),
-            args: Arc::new(vec![t]),
+            args: vec![t.into()],
             ret_ty: TermType::Bitvec { n: 64 },
-        },
+        }),
     }
 }
 
 pub fn ext_duration_of_bitvec(t: Term) -> Term {
-    match t {
-        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 => {
+    match t.to_owned() {
+        TermX::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 => {
             // PANIC SAFETY: If condition ensures the value will fit in 128 bits.
             #[allow(clippy::unwrap_used)]
-            Term::Prim(TermPrim::Ext(Ext::Duration {
+            Term::new(TermX::Prim(TermPrim::Ext(Ext::Duration {
                 d: Duration::from(bv.to_int().to_i128().unwrap()),
-            }))
+            })))
         }
-        _ => Term::App {
+        t => Term::new(TermX::App {
             op: Op::Ext(ExtOp::DurationOfBitVec),
-            args: Arc::new(vec![t]),
+            args: vec![t.into()],
             ret_ty: TermType::Ext {
                 xty: ExtType::Duration,
             },
-        },
+        }),
     }
 }
 
 // ---------- Helper functions for constructing compound terms ----------
 
 pub fn is_none(t: Term) -> Term {
-    match &t {
-        Term::None(_) => true.into(),
-        Term::Some(_) => false.into(),
-        Term::App {
+    match t.as_ref() {
+        TermX::None(_) => true.into(),
+        TermX::Some(_) => false.into(),
+        TermX::App {
             op: Op::Ite, args, ..
         } => {
             #[cfg(test)]
@@ -741,18 +740,18 @@ pub fn is_none(t: Term) -> Term {
                 clippy::indexing_slicing,
                 reason = "Ite should have 3 args. Since term is constructed it should have 3 args"
             )]
-            match (&args[0], &args[1], &args[2]) {
-                (_, Term::Some(_), Term::Some(_)) => false.into(),
-                (g, Term::Some(_), Term::None(_)) => not(g.clone()),
-                (g, Term::None(_), Term::Some(_)) => g.clone(),
+            match (args[1].as_ref(), args[2].as_ref()) {
+                (TermX::Some(_), TermX::Some(_)) => false.into(),
+                (TermX::Some(_), TermX::None(_)) => not(args[0].clone()),
+                (TermX::None(_), TermX::Some(_)) => args[0].clone(),
                 _ => match t.type_of() {
-                    TermType::Option { ty } => eq(t, Term::None(Arc::unwrap_or_clone(ty))),
+                    TermType::Option { ty } => eq(t, TermX::None(Arc::unwrap_or_clone(ty)).into()),
                     _ => false.into(),
                 },
             }
         }
         _ => match t.type_of() {
-            TermType::Option { ty } => eq(t, Term::None(Arc::unwrap_or_clone(ty))),
+            TermType::Option { ty } => eq(t, TermX::None(Arc::unwrap_or_clone(ty)).into()),
             _ => false.into(),
         },
     }
@@ -797,7 +796,7 @@ mod test {
 
     #[test]
     fn create_terms() {
-        let my_term = Term::Prim(TermPrim::Bool(true));
+        let my_term = Term::new(TermX::Prim(TermPrim::Bool(true)));
         let not_my_term = not(my_term.clone());
 
         assert_ne!(my_term, not_my_term);

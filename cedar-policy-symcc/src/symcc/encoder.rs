@@ -76,7 +76,7 @@ use super::{
     type_abbrevs::*,
 };
 
-use crate::symcc::extension_types::ipaddr::{V4_WIDTH, V6_WIDTH};
+use crate::symcc::{extension_types::ipaddr::{V4_WIDTH, V6_WIDTH}, term::TermX};
 
 #[derive(Debug)]
 pub struct Encoder<'a, S> {
@@ -406,9 +406,9 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             return Ok(enc.clone());
         }
         let ty_enc = self.encode_type(&t.type_of()).await?;
-        let enc = match &t {
-            Term::Var(v) => self.declare_var(v, &ty_enc).await?,
-            Term::Prim(p) => match p {
+        let enc = match t.as_ref() {
+            TermX::Var(v) => self.declare_var(v, &ty_enc).await?,
+            TermX::Prim(p) => match p {
                 TermPrim::Bool(b) => {
                     if *b {
                         "true".to_string()
@@ -421,16 +421,16 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 TermPrim::Entity(e) => self.define_entity(&ty_enc, e).await?,
                 TermPrim::Ext(x) => self.define_term(&ty_enc, &encode_ext(x)).await?,
             },
-            Term::None(_) => {
+            TermX::None(_) => {
                 self.define_term(&ty_enc, &format!("(as none {ty_enc})"))
                     .await?
             }
-            Term::Some(t1) => {
+            TermX::Some(t1) => {
                 let encoded_term = self.encode_term(t1).await?;
                 self.define_term(&ty_enc, &format!("(some {encoded_term})"))
                     .await?
             }
-            Term::Set { elts, .. } => {
+            TermX::Set { elts, .. } => {
                 let mut encoded_terms = vec![];
                 for elt in elts.iter() {
                     encoded_terms.push(self.encode_term(elt).await?);
@@ -438,7 +438,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 self.define_set(&ty_enc, encoded_terms.iter().map(|s| s.as_str()))
                     .await?
             }
-            Term::Record(ats) => {
+            TermX::Record(ats) => {
                 let mut encoded_terms = vec![];
                 for t in ats.values() {
                     encoded_terms.push(self.encode_term(t).await?);
@@ -446,7 +446,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 self.define_record(&ty_enc, encoded_terms.iter().map(|s| s.as_str()))
                     .await?
             }
-            Term::App {
+            TermX::App {
                 op: Op::Bvnego,
                 args,
                 ret_ty: TermType::Bool,
@@ -482,7 +482,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     }
                 }
             }
-            Term::App { op, args, .. } => {
+            TermX::App { op, args, .. } => {
                 let mut encoded_terms = vec![];
                 for arg in args.iter() {
                     encoded_terms.push(self.encode_term(arg).await?);

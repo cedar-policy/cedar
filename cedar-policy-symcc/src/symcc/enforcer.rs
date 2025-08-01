@@ -31,6 +31,8 @@ use std::{
 
 use cedar_policy_core::ast::{Expr, ExprKind};
 
+use crate::symcc::term::TermX;
+
 use super::{
     compiler::compile,
     env::{SymEntities, SymEnv},
@@ -52,9 +54,9 @@ fn of_branch<'a>(
     ft3: impl IntoIterator<Item = Term> + 'a,
     env: &SymEnv,
 ) -> Box<dyn Iterator<Item = Term> + 'a> {
-    match compile(x1, env) {
-        Ok(Term::Some(t)) if *t == true.into() => Box::new(ft2.into_iter()),
-        Ok(Term::Some(t)) if *t == false.into() => Box::new(ft3.into_iter()),
+    match compile(x1, env).map(|t| t.to_owned()) {
+        Ok(TermX::Some(t)) if t == true.into() => Box::new(ft2.into_iter()),
+        Ok(TermX::Some(t)) if t == false.into() => Box::new(ft3.into_iter()),
         Ok(_) => Box::new(ft1.into_iter().chain(ft2).chain(ft3)),
         Err(_) => Box::new(std::iter::empty()),
     }
