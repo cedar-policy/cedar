@@ -880,113 +880,126 @@ impl Expr {
     }
 
     /// Instantiate all the slots in an expression with their values
-    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
+    pub fn link(
+        self,
+        vals: &HashMap<ast::SlotId, EntityUidJson>,
+        generalized_vals: &HashMap<ast::SlotId, CedarValueJson>,
+    ) -> Result<Self, LinkingError> {
         match self {
             Expr::ExprNoExt(e) => match e {
                 v @ ExprNoExt::Value(_) => Ok(Expr::ExprNoExt(v)),
                 v @ ExprNoExt::Var(_) => Ok(Expr::ExprNoExt(v)),
-                ExprNoExt::Slot(slot) => match vals.get(&slot) {
-                    Some(e) => {
-                        let literal = CedarValueJson::from_lit(
-                            e.clone()
-                                .into_euid(|| JsonDeserializationErrorContext::Unknown)?
-                                .into(),
-                        );
-                        Ok(Expr::ExprNoExt(ExprNoExt::Value(literal)))
+                ExprNoExt::Slot(slot) => {
+                    if slot.is_generalized_slot() {
+                        match generalized_vals.get(&slot) {
+                            Some(expr) => Ok(Expr::ExprNoExt(ExprNoExt::Value(expr.clone()))),
+                            None => Err(LinkingError::MissedSlot { slot }),
+                        }
+                    } else {
+                        match vals.get(&slot) {
+                            Some(e) => {
+                                let literal = CedarValueJson::from_lit(
+                                    e.clone()
+                                        .into_euid(|| JsonDeserializationErrorContext::Unknown)?
+                                        .into(),
+                                );
+                                Ok(Expr::ExprNoExt(ExprNoExt::Value(literal)))
+                            }
+                            None => Err(LinkingError::MissedSlot { slot }),
+                        }
                     }
-                    None => Err(LinkingError::MissedSlot { slot }),
-                },
+                }
                 ExprNoExt::Not { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Not {
-                    arg: Arc::new(Arc::unwrap_or_clone(arg).link(vals)?),
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::Neg { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Neg {
-                    arg: Arc::new(Arc::unwrap_or_clone(arg).link(vals)?),
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::Eq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Eq {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::NotEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::NotEq {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::In { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::In {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::Less { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Less {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::LessEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::LessEq {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::Greater { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Greater {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::GreaterEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::GreaterEq {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::And { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::And {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::Or { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Or {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::Add { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Add {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::Sub { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Sub {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::Mul { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Mul {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::Contains { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Contains {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::ContainsAll { left, right } => {
                     Ok(Expr::ExprNoExt(ExprNoExt::ContainsAll {
-                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                        right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                        right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                     }))
                 }
                 ExprNoExt::ContainsAny { left, right } => {
                     Ok(Expr::ExprNoExt(ExprNoExt::ContainsAny {
-                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                        right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                        right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                     }))
                 }
                 ExprNoExt::IsEmpty { arg } => Ok(Expr::ExprNoExt(ExprNoExt::IsEmpty {
-                    arg: Arc::new(Arc::unwrap_or_clone(arg).link(vals)?),
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::GetTag { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::GetTag {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::HasTag { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::HasTag {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
-                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).link(vals, generalized_vals)?),
                 })),
                 ExprNoExt::GetAttr { left, attr } => Ok(Expr::ExprNoExt(ExprNoExt::GetAttr {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
                     attr,
                 })),
                 ExprNoExt::HasAttr { left, attr } => Ok(Expr::ExprNoExt(ExprNoExt::HasAttr {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
                     attr,
                 })),
                 ExprNoExt::Like { left, pattern } => Ok(Expr::ExprNoExt(ExprNoExt::Like {
-                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
                     pattern,
                 })),
                 ExprNoExt::Is {
@@ -995,12 +1008,14 @@ impl Expr {
                     in_expr,
                 } => match in_expr {
                     Some(in_expr) => Ok(Expr::ExprNoExt(ExprNoExt::Is {
-                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
                         entity_type,
-                        in_expr: Some(Arc::new(Arc::unwrap_or_clone(in_expr).link(vals)?)),
+                        in_expr: Some(Arc::new(
+                            Arc::unwrap_or_clone(in_expr).link(vals, generalized_vals)?,
+                        )),
                     })),
                     None => Ok(Expr::ExprNoExt(ExprNoExt::Is {
-                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                        left: Arc::new(Arc::unwrap_or_clone(left).link(vals, generalized_vals)?),
                         entity_type,
                         in_expr: None,
                     })),
@@ -1010,21 +1025,27 @@ impl Expr {
                     then_expr,
                     else_expr,
                 } => Ok(Expr::ExprNoExt(ExprNoExt::If {
-                    cond_expr: Arc::new(Arc::unwrap_or_clone(cond_expr).link(vals)?),
-                    then_expr: Arc::new(Arc::unwrap_or_clone(then_expr).link(vals)?),
-                    else_expr: Arc::new(Arc::unwrap_or_clone(else_expr).link(vals)?),
+                    cond_expr: Arc::new(
+                        Arc::unwrap_or_clone(cond_expr).link(vals, generalized_vals)?,
+                    ),
+                    then_expr: Arc::new(
+                        Arc::unwrap_or_clone(then_expr).link(vals, generalized_vals)?,
+                    ),
+                    else_expr: Arc::new(
+                        Arc::unwrap_or_clone(else_expr).link(vals, generalized_vals)?,
+                    ),
                 })),
                 ExprNoExt::Set(v) => {
                     let mut new_v = vec![];
                     for e in v {
-                        new_v.push(e.link(vals)?);
+                        new_v.push(e.link(vals, generalized_vals)?);
                     }
                     Ok(Expr::ExprNoExt(ExprNoExt::Set(new_v)))
                 }
                 ExprNoExt::Record(m) => {
                     let mut new_m = BTreeMap::new();
                     for (k, v) in m {
-                        new_m.insert(k, v.link(vals)?);
+                        new_m.insert(k, v.link(vals, generalized_vals)?);
                     }
                     Ok(Expr::ExprNoExt(ExprNoExt::Record(new_m)))
                 }
@@ -1038,7 +1059,7 @@ impl Expr {
                 for (k, v) in e_fn_call.call {
                     let mut new_v = vec![];
                     for e in v {
-                        new_v.push(e.link(vals)?);
+                        new_v.push(e.link(vals, generalized_vals)?);
                     }
                     new_m.insert(k, new_v);
                 }

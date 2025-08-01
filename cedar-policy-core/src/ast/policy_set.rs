@@ -518,7 +518,6 @@ impl PolicySet {
                     id: template_id.clone(),
                 })?;
         let r = Template::link(t, new_id.clone(), values, generalized_values, schema)?;
-
         // Both maps must not contain the `new_id`
         match (
             self.links.entry(new_id.clone()),

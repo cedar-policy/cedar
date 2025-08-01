@@ -1314,7 +1314,7 @@ impl Node<Option<cst::Cond>> {
     /// `true` if the cond is a `when` clause, `false` if it is an `unless`
     /// clause. (The returned `expr` is already adjusted for this, the `bool` is
     /// for information only.)
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<(Build::Expr, bool)> {
+    pub fn to_expr<Build: ExprBuilder>(&self) -> Result<(Build::Expr, bool)> {
         let cond = self.try_as_inner()?;
         let is_when = cond.cond.to_cond_is_when()?;
 

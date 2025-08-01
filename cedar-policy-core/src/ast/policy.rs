@@ -409,10 +409,32 @@ impl Template {
             .map(|(slot, entity_uid)| (slot.clone(), RestrictedExpr::val(entity_uid.clone())))
             .collect();
 
-        for (slot, restricted_expr) in generalized_values
-            .iter()
-            .chain(values_restricted_expr.iter())
-        {
+        // we treat values differently because their type annotations are optional
+        for (slot, restricted_expr) in values_restricted_expr {
+            let maybe_validator_type = validator_generalized_slots_annotation.get(&slot);
+            if let Some(validator_type) = maybe_validator_type {
+                let borrowed_restricted_expr = restricted_expr.as_borrowed();
+                #[allow(clippy::expect_used)]
+                let schema_ty = &SchemaType::try_from(validator_type.clone()).expect(
+                    "This should never happen as expected_ty is a statically annotated type",
+                );
+                let extensions = Extensions::all_available();
+                typecheck_restricted_expr_against_schematype(
+                    borrowed_restricted_expr,
+                    schema_ty,
+                    extensions,
+                )
+                .map_err(|_| {
+                    LinkingError::ValueProvidedForSlotIsNotOfTypeSpecified {
+                        slot: slot.clone(),
+                        value: restricted_expr.clone(),
+                        ty: validator_type.clone(),
+                    }
+                })?
+            }
+        }
+
+        for (slot, restricted_expr) in generalized_values {
             let validator_type = validator_generalized_slots_annotation.get(slot).ok_or(
                 LinkingError::ArityError {
                     unbound_values: vec![slot.clone()],
