@@ -55,7 +55,7 @@ pub trait ExprVisitor {
         match expr.expr_kind() {
             ExprKind::Lit(lit) => self.visit_literal(lit, loc),
             ExprKind::Var(var) => self.visit_var(*var, loc),
-            ExprKind::Slot(slot) => self.visit_slot(*slot, loc),
+            ExprKind::Slot(slot) => self.visit_slot(slot.clone(), loc),
             ExprKind::Unknown(unknown) => self.visit_unknown(unknown, loc),
             ExprKind::If {
                 test_expr,

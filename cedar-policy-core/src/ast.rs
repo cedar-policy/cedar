@@ -54,5 +54,7 @@ mod expr_iterator;
 pub use expr_iterator::*;
 mod annotation;
 pub use annotation::*;
+mod generalized_slots_declaration;
+pub use generalized_slots_declaration::*;
 mod expr_visitor;
 pub use expr_visitor::*;

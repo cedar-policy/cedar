@@ -293,7 +293,7 @@ impl<T> Expr<T> {
         self.subexpressions()
             .filter_map(|exp| match &exp.expr_kind {
                 ExprKind::Slot(slotid) => Some(Slot {
-                    id: *slotid,
+                    id: slotid.clone(),
                     loc: exp.source_loc().into_maybe_loc(),
                 }),
                 _ => None,
@@ -1842,7 +1842,7 @@ mod test {
         let e = Expr::slot(SlotId::principal());
         let p = SlotId::principal();
         let r = SlotId::resource();
-        let set: HashSet<SlotId> = HashSet::from_iter([p]);
+        let set: HashSet<SlotId> = HashSet::from_iter([p.clone()]);
         assert_eq!(set, e.slots().map(|slot| slot.id).collect::<HashSet<_>>());
         let e = Expr::or(
             Expr::slot(SlotId::principal()),
