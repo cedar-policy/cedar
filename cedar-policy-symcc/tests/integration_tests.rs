@@ -1884,7 +1884,7 @@ async fn cex_test_simple_model_trivial() {
 
 /// Tests enum default literal support
 #[tokio::test]
-async fn cex_enum() {
+async fn cex_enum_default() {
     let schema = utils::schema_from_cedarstr(
         r#"
         entity User enum [ "Alice", "Bob" ];
@@ -1929,4 +1929,154 @@ async fn cex_enum_decode() {
     let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
 
     assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+}
+
+/// Tests more complex enum usage
+#[tokio::test]
+async fn cex_enum_record() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity Group enum [ "normal", "admin" ];
+        entity User enum [ "Alice", "Bob" ];
+        entity Document {
+            owner: User,
+        };
+        action view appliesTo {
+            principal: [User],
+            resource: [Document],
+            context: {
+                group: Group
+            }
+        };
+        "#,
+    );
+    let validator = Validator::new(schema.clone());
+
+    let pset = utils::pset_from_text(
+        r#"permit(principal, action, resource) when {
+            resource.owner == principal &&
+            context.group == Group::"admin"
+        };"#,
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+}
+
+/// Tests that enum constructors are distinct
+#[tokio::test]
+async fn cex_enum_no_confusion() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity Group enum [ "normal", "admin", "visitor" ];
+        entity User enum [ "Alice", "Bob" ];
+        entity Document {
+            owner: User,
+        };
+        action view appliesTo {
+            principal: [User],
+            resource: [Document],
+            context: {
+                group: Group
+            }
+        };
+        "#,
+    );
+    let validator = Validator::new(schema.clone());
+
+    let pset = utils::pset_from_text(
+        r#"permit(principal, action, resource) when {
+            Group::"normal" != Group::"admin" &&
+            Group::"visitor" != Group::"normal" &&
+            Group::"admin" != Group::"visitor"
+        };"#,
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+
+    assert_always_allows(&mut compiler, &pset, &envs).await;
+}
+
+/// Tests that enum constructors are the only possible values
+#[tokio::test]
+async fn cex_enum_no_junk() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity Group enum [ "normal", "admin", "visitor" ];
+        entity User enum [ "Alice", "Bob" ];
+        entity Document {
+            owner: User,
+        };
+        action view appliesTo {
+            principal: [User],
+            resource: [Document],
+            context: {
+                group: Group
+            }
+        };
+        "#,
+    );
+    let validator = Validator::new(schema.clone());
+
+    let pset = utils::pset_from_text(
+        r#"permit(principal, action, resource) when {
+            context.group == Group::"admin" ||
+            context.group == Group::"normal" ||
+            context.group == Group::"visitor"
+        };"#,
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+
+    assert_always_allows(&mut compiler, &pset, &envs).await;
+}
+
+/// Tests more complicated enum usage in sets
+#[tokio::test]
+async fn cex_enum_set() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity User enum [ "Alice", "Bob", "Charlie" ];
+        entity Document;
+        action view appliesTo {
+            principal: [User],
+            resource: [Document],
+            context: {
+                users1: Set<User>,
+                users2: Set<User>
+            }
+        };
+        "#,
+    );
+    let validator = Validator::new(schema.clone());
+
+    let pset1 = utils::pset_from_text(
+        r#"permit(principal, action, resource) when {
+            context.users1.contains(User::"Alice") &&
+            context.users1.contains(User::"Bob") &&
+            context.users1.contains(User::"Charlie") &&
+            context.users2.contains(User::"Alice") &&
+            context.users2.contains(User::"Bob") &&
+            context.users2.contains(User::"Charlie")
+        };"#,
+        &validator,
+    );
+    let pset2 = utils::pset_from_text(
+        r#"permit(principal, action, resource) when {
+            context.users1 == context.users2
+        };"#,
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+
+    assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
 }
