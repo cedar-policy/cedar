@@ -1882,7 +1882,7 @@ async fn cex_test_simple_model_trivial() {
     assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
 }
 
-/// Tests enum support
+/// Tests enum default literal support
 #[tokio::test]
 async fn cex_enum() {
     let schema = utils::schema_from_cedarstr(
@@ -1898,6 +1898,32 @@ async fn cex_enum() {
     let validator = Validator::new(schema.clone());
 
     let pset = utils::pset_from_text(r#"permit(principal, action, resource);"#, &validator);
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+}
+
+/// Tests enum decoding support
+#[tokio::test]
+async fn cex_enum_decode() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity User enum [ "Alice", "Bob" ];
+        entity Document;
+        action view appliesTo {
+            principal: [User],
+            resource: [Document]
+        };
+        "#,
+    );
+    let validator = Validator::new(schema.clone());
+
+    let pset = utils::pset_from_text(
+        r#"permit(principal == User::"Bob", action, resource);"#,
+        &validator,
+    );
 
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
