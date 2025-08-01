@@ -194,23 +194,21 @@ impl Datetime {
     }
 }
 
-impl From<Datetime> for i128 {
+impl From<Datetime> for i64 {
     fn from(dt: Datetime) -> Self {
-        i128::from(dt.val)
+        dt.val
     }
 }
 
-impl From<&Datetime> for i128 {
+impl From<&Datetime> for i64 {
     fn from(dt: &Datetime) -> Self {
-        i128::from(dt.val)
+        dt.val
     }
 }
 
-impl From<i128> for Datetime {
-    fn from(bv_inner: i128) -> Self {
-        Self {
-            val: bv_inner as i64,
-        }
+impl From<i64> for Datetime {
+    fn from(bv_inner: i64) -> Self {
+        Self { val: bv_inner }
     }
 }
 
@@ -341,23 +339,21 @@ impl Default for Duration {
     }
 }
 
-impl From<Duration> for i128 {
+impl From<Duration> for i64 {
     fn from(d: Duration) -> Self {
-        i128::from(d.val)
+        d.val
     }
 }
 
-impl From<&Duration> for i128 {
+impl From<&Duration> for i64 {
     fn from(d: &Duration) -> Self {
-        i128::from(d.val)
+        d.val
     }
 }
 
-impl From<i128> for Duration {
-    fn from(bv_inner: i128) -> Self {
-        Self {
-            val: bv_inner as i64,
-        }
+impl From<i64> for Duration {
+    fn from(bv_inner: i64) -> Self {
+        Self { val: bv_inner }
     }
 }
 

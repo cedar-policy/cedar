@@ -202,7 +202,7 @@ impl TryFrom<&Term> for Value {
                     &["1970-01-01".into()],
                 )?;
                 // Then construct the actual datetime as an offset duration
-                let offset: i128 = dt.into();
+                let offset: i64 = dt.into();
                 let offset = call_extension_func(
                     &datetime::extension(),
                     "duration",
@@ -213,7 +213,7 @@ impl TryFrom<&Term> for Value {
             }
 
             Term::Prim(TermPrim::Ext(Ext::Duration { d })) => {
-                let offset: i128 = d.into();
+                let offset: i64 = d.into();
                 call_extension_func(
                     &datetime::extension(),
                     "duration",
