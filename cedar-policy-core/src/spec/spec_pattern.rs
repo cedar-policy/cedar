@@ -139,6 +139,8 @@ pub proof fn lemma_wildcard_match_idx_rev_idx_equiv_aux(text: Seq<char>, pattern
 pub proof fn lemma_wildcard_match_idx_rev_idx_equiv(text: Seq<char>, pattern: Pattern)
     ensures wildcard_match_idx(text, pattern, 0, 0) == wildcard_match_rev_idx(text, pattern, text.len() as int, pattern.len() as int)
 {
+    assert(text.subrange(0, text.len() as int) =~= text);
+    assert(pattern.subrange(0, pattern.len() as int) =~= pattern);
     lemma_wildcard_match_idx_rev_idx_equiv_aux(text, pattern, text.len() as int, pattern.len() as int);
 }
 
