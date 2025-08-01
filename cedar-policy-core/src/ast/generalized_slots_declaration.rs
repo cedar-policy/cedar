@@ -49,13 +49,13 @@ impl GeneralizedSlotsDeclaration {
         self.0.is_empty()
     }
 
-    /// Converts the types of generalized slots annotation to
+    /// Converts the types of generalized_slots_declaration to
     /// use validator types so that they can be used by the typechecker
-    pub fn into_validator_generalized_slots_annotation(
+    pub fn into_validator_generalized_slots_declaration(
         self,
         schema: &ValidatorSchema,
     ) -> Result<ValidatorGeneralizedSlotsDeclaration, SchemaError> {
-        let validator_generalized_slots_annotation: Result<BTreeMap<_, _>, SchemaError> = self
+        let validator_generalized_slots_declaration: Result<BTreeMap<_, _>, SchemaError> = self
             .0
             .into_iter()
             .map(|(k, ty)| -> Result<_, SchemaError> {
@@ -65,7 +65,7 @@ impl GeneralizedSlotsDeclaration {
                 ))
             })
             .collect();
-        Ok(validator_generalized_slots_annotation?.into())
+        Ok(validator_generalized_slots_declaration?.into())
     }
 }
 
