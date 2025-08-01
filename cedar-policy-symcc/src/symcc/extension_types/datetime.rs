@@ -209,7 +209,10 @@ impl From<&Datetime> for i128 {
 impl From<i128> for Datetime {
     fn from(bv_inner: i128) -> Self {
         Self {
-            #[allow(clippy::cast_possible_truncation)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "Only used for converting from 64-bit wide `BitVec`, so it should't overflow"
+            )]
             val: bv_inner as i64,
         }
     }
@@ -357,7 +360,10 @@ impl From<&Duration> for i128 {
 impl From<i128> for Duration {
     fn from(bv_inner: i128) -> Self {
         Self {
-            #[allow(clippy::cast_possible_truncation)]
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "Only used for converting from 64-bit wide `BitVec`, so it should't overflow"
+            )]
             val: bv_inner as i64,
         }
     }

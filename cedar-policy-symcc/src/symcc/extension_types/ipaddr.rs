@@ -392,8 +392,7 @@ impl Default for IPNet {
 fn parse_prefix_nat(s: &str, digits: &Nat, size: &Nat) -> Option<Fin> {
     let len = s.len();
     // Check length and leading zero constraints
-    #[allow(clippy::cast_possible_truncation)]
-    if &nat(len as u32) <= digits && (!s.starts_with('0') || s == "0") {
+    if &BigUint::from(len) <= digits && (!s.starts_with('0') || s == "0") {
         // Parse to number and validate range
         match s.parse::<Nat>() {
             Ok(n) if &n <= size => Fin::try_new(size + nat(1), n),
