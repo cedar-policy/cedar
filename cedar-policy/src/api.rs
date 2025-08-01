@@ -2998,12 +2998,15 @@ pub(crate) fn fold_partition<T, A, B, E>(
 }
 
 /// The "type" of a [`Request`], i.e., the [`EntityTypeName`]s of principal
-/// and resource, and the [`EntityUid`] of action
+/// and resource, the [`EntityUid`] of action, and [`Option<EntityTypeName>`]s
+/// of principal slot and resource slot
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RequestEnv {
     pub(crate) principal: EntityTypeName,
     pub(crate) action: EntityUid,
     pub(crate) resource: EntityTypeName,
+    pub(crate) principal_slot: Option<EntityTypeName>,
+    pub(crate) resource_slot: Option<EntityTypeName>,
 }
 
 impl RequestEnv {
@@ -3013,8 +3016,28 @@ impl RequestEnv {
             principal,
             action,
             resource,
+            principal_slot: None,
+            resource_slot: None,
         }
     }
+
+    /// Construct a [`RequestEnv`] that contains slots in the scope
+    pub fn new_request_env_with_slots(
+        principal: EntityTypeName,
+        action: EntityUid,
+        resource: EntityTypeName,
+        principal_slot: Option<EntityTypeName>,
+        resource_slot: Option<EntityTypeName>,
+    ) -> Self {
+        Self {
+            principal,
+            action,
+            resource,
+            principal_slot,
+            resource_slot,
+        }
+    }
+
     /// Get the principal type name
     pub fn principal(&self) -> &EntityTypeName {
         &self.principal
@@ -3029,6 +3052,16 @@ impl RequestEnv {
     pub fn resource(&self) -> &EntityTypeName {
         &self.resource
     }
+
+    /// Get the principal slot type name
+    pub fn principal_slot(&self) -> Option<&EntityTypeName> {
+        self.principal_slot.as_ref()
+    }
+
+    /// Get the resource slot type name
+    pub fn resource_slot(&self) -> Option<&EntityTypeName> {
+        self.resource_slot.as_ref()
+    }
 }
 
 #[doc(hidden)]
@@ -3039,11 +3072,15 @@ impl From<cedar_policy_core::validator::types::RequestEnv<'_>> for RequestEnv {
                 principal,
                 action,
                 resource,
+                principal_slot,
+                resource_slot,
                 ..
             } => Self {
                 principal: principal.clone().into(),
                 action: action.clone().into(),
                 resource: resource.clone().into(),
+                principal_slot: principal_slot.map(EntityTypeName::from),
+                resource_slot: resource_slot.map(EntityTypeName::from),
             },
             // PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
             #[allow(clippy::unreachable)]
