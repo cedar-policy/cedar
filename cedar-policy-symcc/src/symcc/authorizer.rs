@@ -25,11 +25,11 @@ use crate::symcc::{
 };
 
 pub fn satisfied_with_effect(
-    effect: &Effect,
+    effect: Effect,
     policy: &Policy,
     env: &SymEnv,
 ) -> Result<Option<Term>, result::Error> {
-    if policy.effect() == *effect {
+    if policy.effect() == effect {
         Ok(Some(compile(&policy.condition(), env)?))
     } else {
         Ok(None)
@@ -42,7 +42,7 @@ pub fn any_satisfied(terms: impl Iterator<Item = Term>) -> Term {
 }
 
 pub fn satisfied_policies(
-    effect: &Effect,
+    effect: Effect,
     policies: &PolicySet,
     env: &SymEnv,
 ) -> Result<Term, result::Error> {
@@ -55,7 +55,7 @@ pub fn satisfied_policies(
 }
 
 pub fn is_authorized(policies: &PolicySet, env: &SymEnv) -> Result<Term, result::Error> {
-    let forbids = satisfied_policies(&Effect::Forbid, policies, env)?;
-    let permits = satisfied_policies(&Effect::Permit, policies, env)?;
+    let forbids = satisfied_policies(Effect::Forbid, policies, env)?;
+    let permits = satisfied_policies(Effect::Permit, policies, env)?;
     Ok(and(permits, not(forbids)))
 }

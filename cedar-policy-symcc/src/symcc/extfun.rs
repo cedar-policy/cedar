@@ -223,7 +223,7 @@ pub fn to_date(dt: Term) -> Term {
         ))),
         ite(
             eq(bvsrem(dt_val.clone(), ms_per_day.clone()), zero),
-            some_of(dt.clone()),
+            some_of(dt),
             if_false(
                 bvsmulo(
                     bvsub(bvsdiv(dt_val.clone(), ms_per_day.clone()), one.clone()),
