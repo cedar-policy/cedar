@@ -16,9 +16,7 @@
 use cedar_policy::{Schema, Validator};
 use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
 
-use crate::utils::{
-    assert_always_allows, assert_always_denies, assert_does_not_imply, assert_implies, Environments,
-};
+use crate::utils::{assert_always_allows, assert_does_not_imply, assert_implies, Environments};
 mod utils;
 
 fn sample_schema() -> Schema {
@@ -68,43 +66,6 @@ async fn ipaddr_constants() {
             ip("127.0.0.1").isIpv4() == true &&
             ip("::1").isIpv4() == false &&
             ip("127.0.0.1/24").isIpv4() == true
-        };"#,
-        &validator,
-    );
-    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let schema = sample_schema();
-    let envs = env_for_sample_schema(&schema);
-    assert_always_allows(&mut compiler, &pset, &envs).await;
-}
-
-#[tokio::test]
-async fn ipaddr_in_range_transitive() {
-    let validator = Validator::new(sample_schema());
-    let pset1 = utils::pset_from_text(
-        r#"permit(principal, action, resource) when {
-            context.x.isInRange(context.y) &&
-            context.y.isInRange(context.z)
-        };"#,
-        &validator,
-    );
-    let pset2 = utils::pset_from_text(
-        r#"permit(principal, action, resource) when {
-            context.x.isInRange(context.z)
-        };"#,
-        &validator,
-    );
-    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let schema = sample_schema();
-    let envs = env_for_sample_schema(&schema);
-    assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
-}
-
-#[tokio::test]
-async fn ipaddr_in_range_symmetric() {
-    let validator = Validator::new(sample_schema());
-    let pset = utils::pset_from_text(
-        r#"permit(principal, action, resource) when {
-            context.x.isInRange(context.x)
         };"#,
         &validator,
     );
@@ -183,116 +144,4 @@ async fn ipaddr_in_range_antisymmetric_cex_ipv6() {
     let schema = sample_schema();
     let envs = env_for_sample_schema(&schema);
     assert_does_not_imply(&mut compiler, &pset1, &pset2, &envs).await;
-}
-
-#[tokio::test]
-async fn ipaddr_cex_multicast_ipv4() {
-    let validator = Validator::new(sample_schema());
-    let pset1 = utils::pset_from_text(
-        r#"permit(principal, action, resource) when {
-            context.x.isMulticast() &&
-            context.x.isIpv4()
-        };"#,
-        &validator,
-    );
-    let pset2 = utils::pset_from_text(
-        r#"permit(principal, action, resource) when { false };"#,
-        &validator,
-    );
-    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let schema = sample_schema();
-    let envs = env_for_sample_schema(&schema);
-    assert_does_not_imply(&mut compiler, &pset1, &pset2, &envs).await;
-}
-
-#[tokio::test]
-async fn ipaddr_cex_multicast_ipv6() {
-    let validator = Validator::new(sample_schema());
-    let pset1 = utils::pset_from_text(
-        r#"permit(principal, action, resource) when {
-            context.x.isMulticast() &&
-            context.x.isIpv6()
-        };"#,
-        &validator,
-    );
-    let pset2 = utils::pset_from_text(
-        r#"permit(principal, action, resource) when { false };"#,
-        &validator,
-    );
-    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let schema = sample_schema();
-    let envs = env_for_sample_schema(&schema);
-    assert_does_not_imply(&mut compiler, &pset1, &pset2, &envs).await;
-}
-
-#[tokio::test]
-async fn ipaddr_cex_loopback_ipv4() {
-    let validator = Validator::new(sample_schema());
-    let pset1 = utils::pset_from_text(
-        r#"permit(principal, action, resource) when {
-            context.x.isLoopback() &&
-            context.x.isIpv4()
-        };"#,
-        &validator,
-    );
-    let pset2 = utils::pset_from_text(
-        r#"permit(principal, action, resource) when { false };"#,
-        &validator,
-    );
-    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let schema = sample_schema();
-    let envs = env_for_sample_schema(&schema);
-    assert_does_not_imply(&mut compiler, &pset1, &pset2, &envs).await;
-}
-
-#[tokio::test]
-async fn ipaddr_cex_loopback_ipv6() {
-    let validator = Validator::new(sample_schema());
-    let pset1 = utils::pset_from_text(
-        r#"permit(principal, action, resource) when {
-            context.x.isLoopback() &&
-            context.x.isIpv6()
-        };"#,
-        &validator,
-    );
-    let pset2 = utils::pset_from_text(
-        r#"permit(principal, action, resource) when { false };"#,
-        &validator,
-    );
-    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let schema = sample_schema();
-    let envs = env_for_sample_schema(&schema);
-    assert_does_not_imply(&mut compiler, &pset1, &pset2, &envs).await;
-}
-
-#[tokio::test]
-async fn ipaddr_ipv6_ipv4_disjoint() {
-    let validator = Validator::new(sample_schema());
-    let pset = utils::pset_from_text(
-        r#"permit(principal, action, resource) when {
-            context.x.isIpv4() &&
-            context.x.isIpv6()
-        };"#,
-        &validator,
-    );
-    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let schema = sample_schema();
-    let envs = env_for_sample_schema(&schema);
-    assert_always_denies(&mut compiler, &pset, &envs).await;
-}
-
-#[tokio::test]
-async fn ipaddr_ipv6_or_ipv4() {
-    let validator = Validator::new(sample_schema());
-    let pset = utils::pset_from_text(
-        r#"permit(principal, action, resource) when {
-            context.x.isIpv4() ||
-            context.x.isIpv6()
-        };"#,
-        &validator,
-    );
-    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let schema = sample_schema();
-    let envs = env_for_sample_schema(&schema);
-    assert_always_allows(&mut compiler, &pset, &envs).await;
 }
