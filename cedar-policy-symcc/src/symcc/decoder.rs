@@ -786,10 +786,10 @@ impl SExpr {
             [SExpr::Symbol(datetime), SExpr::BitVec(bv)]
                 if datetime == "Datetime" && bv.width() == 64 =>
             {
-                let dt: i128 = bv
+                let dt: i64 = bv
                     .to_int()
                     .try_into()
-                    .map_err(|_| DecodeError::UnknownLiteral(self.clone()))?;
+                    .map_err(|_| DecodeError::IntegerOverflow)?;
                 Ok(Term::Prim(TermPrim::Ext(Ext::Datetime { dt: dt.into() })))
             }
 
@@ -797,10 +797,10 @@ impl SExpr {
             [SExpr::Symbol(duration), SExpr::BitVec(bv)]
                 if duration == "Duration" && bv.width() == 64 =>
             {
-                let d: i128 = bv
+                let d: i64 = bv
                     .to_int()
                     .try_into()
-                    .map_err(|_| DecodeError::UnknownLiteral(self.clone()))?;
+                    .map_err(|_| DecodeError::IntegerOverflow)?;
                 Ok(Term::Prim(TermPrim::Ext(Ext::Duration { d: d.into() })))
             }
 

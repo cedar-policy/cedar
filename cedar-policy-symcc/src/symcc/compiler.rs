@@ -933,7 +933,7 @@ mod datetime_tests {
             compile(&datetime_lit(str), &datetime_sym_env()),
             Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
                 Ext::Datetime {
-                    dt: Datetime::from(i128::from(rep))
+                    dt: Datetime::from(rep)
                 }
             ))))),
             "{str}"
@@ -956,7 +956,7 @@ mod datetime_tests {
             compile(&duration_lit(str), &duration_sym_env()),
             Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
                 Ext::Duration {
-                    d: Duration::from(i128::from(rep))
+                    d: Duration::from(rep)
                 }
             ))))),
             "{str}"
@@ -1138,7 +1138,7 @@ mod datetime_tests {
             compile(&parse_expr(str), &datetime_sym_env()),
             Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
                 Ext::Datetime {
-                    dt: Datetime::from(i128::from(rep))
+                    dt: Datetime::from(rep)
                 }
             ))))),
             "{str}"
@@ -1151,7 +1151,7 @@ mod datetime_tests {
             compile(&parse_expr(str), &duration_sym_env()),
             Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
                 Ext::Duration {
-                    d: Duration::from(i128::from(rep))
+                    d: Duration::from(rep)
                 }
             ))))),
             "{str}"

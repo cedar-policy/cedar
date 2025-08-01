@@ -592,7 +592,7 @@ fn encode_ext(e: &Ext) -> String {
                 clippy::unwrap_used,
                 reason = "Cannot panic because bitwidth is non-zero."
             )]
-            let bv_enc = encode_bitvec(&BitVec::of_i128(64, dt.into()).unwrap());
+            let bv_enc = encode_bitvec(&BitVec::of_i128(64, i64::from(dt).into()).unwrap());
             format!("(Datetime {bv_enc})")
         }
     }

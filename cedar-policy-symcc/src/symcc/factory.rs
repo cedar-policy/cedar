@@ -660,7 +660,9 @@ pub fn ext_datetime_val(t: Term) -> Term {
                 clippy::unwrap_used,
                 reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
             )]
-            Term::Prim(TermPrim::Bitvec(BitVec::of_i128(64, dt.into()).unwrap()))
+            Term::Prim(TermPrim::Bitvec(
+                BitVec::of_i128(64, i64::from(dt).into()).unwrap(),
+            ))
         }
         t => Term::App {
             op: Op::Ext(ExtOp::DatetimeVal),
@@ -673,10 +675,10 @@ pub fn ext_datetime_val(t: Term) -> Term {
 pub fn ext_datetime_of_bitvec(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 => {
-            // PANIC SAFETY: If condition ensures the value will fit in 128 bits.
+            // PANIC SAFETY: If condition ensures the value will fit in 64 bits.
             #[allow(clippy::unwrap_used)]
             Term::Prim(TermPrim::Ext(Ext::Datetime {
-                dt: Datetime::from(bv.to_int().to_i128().unwrap()),
+                dt: Datetime::from(bv.to_int().to_i64().unwrap()),
             }))
         }
         _ => Term::App {
@@ -709,10 +711,10 @@ pub fn ext_duration_val(t: Term) -> Term {
 pub fn ext_duration_of_bitvec(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 => {
-            // PANIC SAFETY: If condition ensures the value will fit in 128 bits.
+            // PANIC SAFETY: If condition ensures the value will fit in 64 bits.
             #[allow(clippy::unwrap_used)]
             Term::Prim(TermPrim::Ext(Ext::Duration {
-                d: Duration::from(bv.to_int().to_i128().unwrap()),
+                d: Duration::from(bv.to_int().to_i64().unwrap()),
             }))
         }
         _ => Term::App {
