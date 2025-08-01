@@ -69,6 +69,9 @@ pub enum DecodeError {
     #[error("Trailing tokens")]
     TrailingTokens,
 
+    #[error("Integer overflow")]
+    IntegerOverflow,
+
     #[error("Model of unexpected form returned by the solver")]
     UnexpectedModel,
 
@@ -225,16 +228,20 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                                 let num = u128::from_str_radix(&num, 2)?;
 
                                 // Do a sign-extension from i<width> to i<128>
-                                let num =
-                                    if width != 0 && width < 128 && (1u128 << width - 1) & num != 0
-                                    {
-                                        ((u128::MAX << width) | num) as i128
-                                    } else {
-                                        num as i128
-                                    };
+                                let num = if width != 0
+                                    && width < 128
+                                    && (1u128 << (width - 1)) & num != 0
+                                {
+                                    ((u128::MAX << width) | num) as i128
+                                } else {
+                                    num as i128
+                                };
+
+                                let width = Width::try_from(width)
+                                    .map_err(|_| DecodeError::IntegerOverflow)?;
 
                                 tokens.push(Token::Atom(SExpr::BitVec(
-                                    BitVec::of_int(width as Width, num.into())
+                                    BitVec::of_int(width, num.into())
                                         .map_err(DecodeError::UnexpectedSymccResult)?,
                                 )));
                             }
@@ -553,8 +560,9 @@ impl SExpr {
                     [SExpr::Symbol(app), SExpr::Symbol(bit_vec), SExpr::Numeral(n)]
                         if app == "_" && bit_vec == "BitVec" =>
                     {
-                        Ok(TermType::Bitvec { n: *n as Width })
-                    } // TODO: overflow?
+                        let n = Width::try_from(*n).map_err(|_| DecodeError::IntegerOverflow)?;
+                        Ok(TermType::Bitvec { n })
+                    }
 
                     // (Option x)
                     [SExpr::Symbol(option), param] if option == "Option" => {
@@ -576,6 +584,264 @@ impl SExpr {
         }
     }
 
+    /// Decodes an [`SExpr`] as an entity UID or record.
+    /// Corresponds to `SExpr.decodeLit.constructEntityOrRecord` in Lean.
+    fn decode_entity_or_record(
+        &self,
+        id_maps: &IdMaps,
+        name: &str,
+        args: &[SExpr],
+    ) -> Result<Term, DecodeError> {
+        match (id_maps.types.get(name), args) {
+            // Entity UID
+            (Some(TermType::Entity { ety }), [SExpr::String(e)]) => {
+                let uid = EntityUid::from_type_name_and_id(ety.clone(), EntityId::new(e));
+                Ok(Term::Prim(TermPrim::Entity(uid)))
+            }
+
+            // Record
+            (Some(TermType::Record { rty }), fields) => {
+                // Decode each field
+                let decoded_fields = fields
+                    .iter()
+                    .map(|field| field.decode_literal(id_maps))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                if decoded_fields.len() != rty.len() {
+                    return Err(DecodeError::UnmatchedRecordType);
+                }
+
+                let mut record = BTreeMap::new();
+
+                // Check the type of each field and collect them into `record`
+                for (decoded_field, (field_name, field_ty)) in decoded_fields.iter().zip(rty.iter())
+                {
+                    let decoded_field_ty = decoded_field.type_of();
+
+                    if &decoded_field_ty != field_ty {
+                        return Err(DecodeError::UnmatchedFieldType(
+                            decoded_field_ty,
+                            field_ty.clone(),
+                        ));
+                    }
+
+                    record.insert(field_name.clone(), decoded_field.clone());
+                }
+
+                Ok(Term::Record(Arc::new(record)))
+            }
+
+            _ => Err(DecodeError::UnknownLiteral(self.clone())),
+        }
+    }
+
+    /// Helper function to decode more complex applications as literals.
+    /// Corresponds to `SExpr.decodeLit.construct` in Lean.
+    fn decode_literal_app(&self, id_maps: &IdMaps, args: &[SExpr]) -> Result<Term, DecodeError> {
+        match args {
+            // Sometimes cvc5 does not simplify the terms in the model,
+            // and having these custom interpreters alleviates such issues
+            // (e.g., https://github.com/cvc5/cvc5/issues/11928).
+
+            // (not <v>)
+            [SExpr::Symbol(not_tok), v] if not_tok == "not" => {
+                Ok(factory::not(v.decode_literal(id_maps)?))
+            }
+
+            // (or <v1> <v2>)
+            [SExpr::Symbol(or_tok), v1, v2] if or_tok == "or" => Ok(factory::or(
+                v1.decode_literal(id_maps)?,
+                v2.decode_literal(id_maps)?,
+            )),
+
+            // (= <v1> <v2>)
+            [SExpr::Symbol(eq_tok), v1, v2] if eq_tok == "=" => Ok(factory::eq(
+                v1.decode_literal(id_maps)?,
+                v2.decode_literal(id_maps)?,
+            )),
+
+            // (ite <cond> <then> <else>)
+            [SExpr::Symbol(ite_tok), cond, true_branch, false_branch] if ite_tok == "ite" => {
+                Ok(factory::ite(
+                    cond.decode_literal(id_maps)?,
+                    true_branch.decode_literal(id_maps)?,
+                    false_branch.decode_literal(id_maps)?,
+                ))
+            }
+
+            // (bvnego <v1>)
+            [SExpr::Symbol(bvnego_tok), v] if bvnego_tok == "bvnego" => {
+                Ok(factory::bvnego(v.decode_literal(id_maps)?))
+            }
+
+            // (bvsaddo <v1> <v2>)
+            [SExpr::Symbol(bvsaddo_tok), v1, v2] if bvsaddo_tok == "bvsaddo" => Ok(
+                factory::bvsaddo(v1.decode_literal(id_maps)?, v2.decode_literal(id_maps)?),
+            ),
+
+            // (bvsmulo <v1> <v2>)
+            [SExpr::Symbol(bvsmulo_tok), v1, v2] if bvsmulo_tok == "bvsmulo" => Ok(
+                factory::bvsmulo(v1.decode_literal(id_maps)?, v2.decode_literal(id_maps)?),
+            ),
+
+            // (as none <typ>)
+            [SExpr::Symbol(as_tok), SExpr::Symbol(none), typ]
+                if as_tok == "as" && none == "none" =>
+            {
+                match typ.decode_type(id_maps)? {
+                    TermType::Option { ty } => Ok(Term::None(Arc::unwrap_or_clone(ty))),
+                    _ => Err(DecodeError::InvalidOptionType(typ.clone())),
+                }
+            }
+
+            // ((as some <typ>) <val>)
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "Slice of length 3 can be indexed by 0-2"
+            )]
+            [SExpr::App(as_some_typ), val]
+                if as_some_typ.len() == 3
+                    && as_some_typ[0].is_symbol("as")
+                    && as_some_typ[1].is_symbol("some") =>
+            {
+                let ty = as_some_typ[2].decode_type(id_maps)?;
+                let val = Term::Some(Arc::new(val.decode_literal(id_maps)?));
+                let val_ty = val.type_of();
+
+                if val_ty != ty {
+                    return Err(DecodeError::UnmatchedType(val_ty, ty));
+                }
+
+                Ok(val)
+            }
+
+            // (as set.empty <set_typ>)
+            [SExpr::Symbol(as_tok), SExpr::Symbol(set_empty), typ]
+                if as_tok == "as" && set_empty == "set.empty" =>
+            {
+                let ty = typ.decode_type(id_maps)?;
+
+                match ty {
+                    TermType::Set { ty } => Ok(Term::Set {
+                        elts: Arc::new(BTreeSet::new()),
+                        elts_ty: Arc::unwrap_or_clone(ty),
+                    }),
+                    _ => Err(DecodeError::InvalidSetType(typ.clone())),
+                }
+            }
+
+            // (set.singleton <val>)
+            [SExpr::Symbol(set_singleton), val] if set_singleton == "set.singleton" => {
+                let val = val.decode_literal(id_maps)?;
+                let val_ty = val.type_of();
+                Ok(Term::Set {
+                    elts: Arc::new(BTreeSet::from([val])),
+                    elts_ty: val_ty,
+                })
+            }
+
+            // (set.union <set1> <set2>)
+            [SExpr::Symbol(set_union), set1, set2] if set_union == "set.union" => {
+                let set1 = set1.decode_literal(id_maps)?;
+                let set2 = set2.decode_literal(id_maps)?;
+                let set1_ty = set1.type_of();
+                let set2_ty = set2.type_of();
+
+                if set1_ty != set2_ty {
+                    return Err(DecodeError::UnmatchedType(set1_ty, set2_ty));
+                }
+
+                match (set1, set2) {
+                    // Merge two set literals
+                    (
+                        Term::Set {
+                            elts: elts1,
+                            elts_ty,
+                        },
+                        Term::Set { elts: elts2, .. },
+                    ) => Ok(Term::Set {
+                        elts: Arc::new(elts1.union(&elts2).cloned().collect()),
+                        elts_ty,
+                    }),
+
+                    (set1, set2) => Err(DecodeError::SetUnionNonLiterals(set1, set2)),
+                }
+            }
+
+            // Decimal
+            [SExpr::Symbol(decimal), SExpr::BitVec(bv)]
+                if decimal == "Decimal" && bv.width() == 64 =>
+            {
+                Ok(Term::Prim(TermPrim::Ext(Ext::Decimal {
+                    d: Decimal(
+                        bv.to_int()
+                            .try_into()
+                            .map_err(|_| DecodeError::UnknownLiteral(self.clone()))?,
+                    ),
+                })))
+            }
+
+            // Datetime
+            [SExpr::Symbol(datetime), SExpr::BitVec(bv)]
+                if datetime == "Datetime" && bv.width() == 64 =>
+            {
+                let dt: i64 = bv
+                    .to_int()
+                    .try_into()
+                    .map_err(|_| DecodeError::IntegerOverflow)?;
+                Ok(Term::Prim(TermPrim::Ext(Ext::Datetime { dt: dt.into() })))
+            }
+
+            // Duration
+            [SExpr::Symbol(duration), SExpr::BitVec(bv)]
+                if duration == "Duration" && bv.width() == 64 =>
+            {
+                let d: i64 = bv
+                    .to_int()
+                    .try_into()
+                    .map_err(|_| DecodeError::IntegerOverflow)?;
+                Ok(Term::Prim(TermPrim::Ext(Ext::Duration { d: d.into() })))
+            }
+
+            // IPv4/IPv6
+            [SExpr::Symbol(ip), addr, prefix] if (ip == "V4" || ip == "V6") => {
+                let addr = match addr.decode_literal(id_maps)? {
+                    Term::Prim(TermPrim::Bitvec(bv)) => bv,
+                    _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
+                };
+                let prefix = match prefix.decode_literal(id_maps)? {
+                    Term::Some(t) => match Arc::unwrap_or_clone(t) {
+                        Term::Prim(TermPrim::Bitvec(bv)) => Some(bv),
+                        _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
+                    },
+                    Term::None(..) => None,
+                    _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
+                };
+                Ok(Term::Prim(TermPrim::Ext(Ext::Ipaddr {
+                    ip: if ip == "V4" {
+                        IPNet::V4(CIDRv4 {
+                            addr: IPv4Addr { val: addr },
+                            prefix: IPv4Prefix { val: prefix },
+                        })
+                    } else {
+                        IPNet::V6(CIDRv6 {
+                            addr: IPv6Addr { val: addr },
+                            prefix: IPv6Prefix { val: prefix },
+                        })
+                    },
+                })))
+            }
+
+            // Entity UID or record
+            [SExpr::Symbol(name), rest_args @ ..] => {
+                self.decode_entity_or_record(id_maps, name, rest_args)
+            }
+
+            _ => Err(DecodeError::UnknownLiteral(self.clone())),
+        }
+    }
+
     /// Decodse a literal (with only SMT constants and no bound variables).
     pub fn decode_literal(&self, id_maps: &IdMaps) -> Result<Term, DecodeError> {
         match self {
@@ -594,288 +860,7 @@ impl SExpr {
                 .ok_or_else(|| DecodeError::UnknownLiteral(self.clone())),
 
             // More complex applications
-            SExpr::App(args) => {
-                match args.as_slice() {
-                    // Sometimes cvc5 does not simplify the terms in the model
-                    // having these custom interpreters alleviates such issues
-                    // (e.g., https://github.com/cvc5/cvc5/issues/11928).
-
-                    // (not <v>)
-                    [SExpr::Symbol(not_tok), v] if not_tok == "not" => {
-                        Ok(factory::not(v.decode_literal(id_maps)?))
-                    }
-
-                    // (or <v1> <v2>)
-                    [SExpr::Symbol(or_tok), v1, v2] if or_tok == "or" => Ok(factory::or(
-                        v1.decode_literal(id_maps)?,
-                        v2.decode_literal(id_maps)?,
-                    )),
-
-                    // (= <v1> <v2>)
-                    [SExpr::Symbol(eq_tok), v1, v2] if eq_tok == "=" => Ok(factory::eq(
-                        v1.decode_literal(id_maps)?,
-                        v2.decode_literal(id_maps)?,
-                    )),
-
-                    // (ite <cond> <then> <else>)
-                    [SExpr::Symbol(ite_tok), cond, true_branch, false_branch]
-                        if ite_tok == "ite" =>
-                    {
-                        Ok(factory::ite(
-                            cond.decode_literal(id_maps)?,
-                            true_branch.decode_literal(id_maps)?,
-                            false_branch.decode_literal(id_maps)?,
-                        ))
-                    }
-
-                    // (bvnego <v1>)
-                    [SExpr::Symbol(bvnego_tok), v] if bvnego_tok == "bvnego" => {
-                        Ok(factory::bvnego(v.decode_literal(id_maps)?))
-                    }
-
-                    // (bvsaddo <v1> <v2>)
-                    [SExpr::Symbol(bvsaddo_tok), v1, v2] if bvsaddo_tok == "bvsaddo" => Ok(
-                        factory::bvsaddo(v1.decode_literal(id_maps)?, v2.decode_literal(id_maps)?),
-                    ),
-
-                    // (bvsmulo <v1> <v2>)
-                    [SExpr::Symbol(bvsmulo_tok), v1, v2] if bvsmulo_tok == "bvsmulo" => Ok(
-                        factory::bvsmulo(v1.decode_literal(id_maps)?, v2.decode_literal(id_maps)?),
-                    ),
-
-                    // (as none <typ>)
-                    [SExpr::Symbol(as_tok), SExpr::Symbol(none), typ]
-                        if as_tok == "as" && none == "none" =>
-                    {
-                        match typ.decode_type(id_maps)? {
-                            TermType::Option { ty } => Ok(Term::None(Arc::unwrap_or_clone(ty))),
-                            _ => Err(DecodeError::InvalidOptionType(typ.clone())),
-                        }
-                    }
-
-                    // ((as some <typ>) <val>)
-                    // PANIC SAFETY
-                    #[allow(
-                        clippy::indexing_slicing,
-                        reason = "Slice of length 3 can be indexed by 0-2"
-                    )]
-                    [SExpr::App(as_some_typ), val]
-                        if as_some_typ.len() == 3
-                            && as_some_typ[0].is_symbol("as")
-                            && as_some_typ[1].is_symbol("some") =>
-                    {
-                        let ty = as_some_typ[2].decode_type(id_maps)?;
-                        let val = Term::Some(Arc::new(val.decode_literal(id_maps)?));
-                        let val_ty = val.type_of();
-
-                        if val_ty != ty {
-                            return Err(DecodeError::UnmatchedType(val_ty, ty));
-                        }
-
-                        Ok(val)
-                    }
-
-                    // (as set.empty <set_typ>)
-                    [SExpr::Symbol(as_tok), SExpr::Symbol(set_empty), typ]
-                        if as_tok == "as" && set_empty == "set.empty" =>
-                    {
-                        let ty = typ.decode_type(id_maps)?;
-
-                        match ty {
-                            TermType::Set { ty } => Ok(Term::Set {
-                                elts: Arc::new(BTreeSet::new()),
-                                elts_ty: Arc::unwrap_or_clone(ty),
-                            }),
-                            _ => Err(DecodeError::InvalidSetType(typ.clone())),
-                        }
-                    }
-
-                    // (set.singleton <val>)
-                    [SExpr::Symbol(set_singleton), val] if set_singleton == "set.singleton" => {
-                        let val = val.decode_literal(id_maps)?;
-                        let val_ty = val.type_of();
-                        Ok(Term::Set {
-                            elts: Arc::new(BTreeSet::from([val])),
-                            elts_ty: val_ty,
-                        })
-                    }
-
-                    // (set.union <set1> <set2>)
-                    [SExpr::Symbol(set_union), set1, set2] if set_union == "set.union" => {
-                        let set1 = set1.decode_literal(id_maps)?;
-                        let set2 = set2.decode_literal(id_maps)?;
-                        let set1_ty = set1.type_of();
-                        let set2_ty = set2.type_of();
-
-                        if set1_ty != set2_ty {
-                            return Err(DecodeError::UnmatchedType(set1_ty, set2_ty));
-                        }
-
-                        match (set1, set2) {
-                            // Merge two set literals
-                            (
-                                Term::Set {
-                                    elts: elts1,
-                                    elts_ty,
-                                },
-                                Term::Set { elts: elts2, .. },
-                            ) => Ok(Term::Set {
-                                elts: Arc::new(elts1.union(&elts2).cloned().collect()),
-                                elts_ty,
-                            }),
-
-                            (set1, set2) => Err(DecodeError::SetUnionNonLiterals(set1, set2)),
-                        }
-                    }
-                    // PANIC SAFETY
-                    #[allow(
-                        clippy::indexing_slicing,
-                        reason = "Non-empty slice can be indexed by 0"
-                    )]
-                    args if !args.is_empty() && matches!(args[0], SExpr::Symbol(_)) => {
-                        match &args[0] {
-                            // Decimal
-                            SExpr::Symbol(s) if s == "Decimal" && args.len() == 2 => {
-                                if let SExpr::BitVec(bv) = &args[1] {
-                                    if bv.width() == 64 {
-                                        Ok(Term::Prim(TermPrim::Ext(Ext::Decimal {
-                                            d: Decimal(bv.to_int().try_into().or(Err(
-                                                DecodeError::UnknownLiteral(self.clone()),
-                                            ))?),
-                                        })))
-                                    } else {
-                                        Err(DecodeError::UnknownLiteral(self.clone()))
-                                    }
-                                } else {
-                                    Err(DecodeError::UnknownLiteral(self.clone()))
-                                }
-                            }
-
-                            // Datetime
-                            SExpr::Symbol(s) if s == "Datetime" && args.len() == 2 => {
-                                if let SExpr::BitVec(bv) = &args[1] {
-                                    if bv.width() == 64 {
-                                        let dt: i128 = bv
-                                            .to_int()
-                                            .try_into()
-                                            .or(Err(DecodeError::UnknownLiteral(self.clone())))?;
-                                        Ok(Term::Prim(TermPrim::Ext(Ext::Datetime {
-                                            dt: dt.into(),
-                                        })))
-                                    } else {
-                                        Err(DecodeError::UnknownLiteral(self.clone()))
-                                    }
-                                } else {
-                                    Err(DecodeError::UnknownLiteral(self.clone()))
-                                }
-                            }
-
-                            // Duration
-                            SExpr::Symbol(s) if s == "Duration" && args.len() == 2 => {
-                                if let SExpr::BitVec(bv) = &args[1] {
-                                    if bv.width() == 64 {
-                                        let d: i128 = bv
-                                            .to_int()
-                                            .try_into()
-                                            .or(Err(DecodeError::UnknownLiteral(self.clone())))?;
-                                        Ok(Term::Prim(TermPrim::Ext(Ext::Duration { d: d.into() })))
-                                    } else {
-                                        Err(DecodeError::UnknownLiteral(self.clone()))
-                                    }
-                                } else {
-                                    Err(DecodeError::UnknownLiteral(self.clone()))
-                                }
-                            }
-
-                            // IPv4/IPv6
-                            SExpr::Symbol(s) if (s == "V4" || s == "V6") && args.len() == 3 => {
-                                let addr = args[1].decode_literal(id_maps)?;
-                                let prefix = args[2].decode_literal(id_maps)?;
-
-                                let addr = match addr {
-                                    Term::Prim(TermPrim::Bitvec(bv)) => bv,
-                                    _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
-                                };
-                                let prefix = match prefix {
-                                    Term::Some(t) => match Arc::unwrap_or_clone(t) {
-                                        Term::Prim(TermPrim::Bitvec(bv)) => Some(bv),
-                                        _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
-                                    },
-                                    Term::None(..) => None,
-                                    _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
-                                };
-
-                                Ok(Term::Prim(TermPrim::Ext(Ext::Ipaddr {
-                                    ip: if s == "V4" {
-                                        IPNet::V4(CIDRv4 {
-                                            addr: IPv4Addr { val: addr },
-                                            prefix: IPv4Prefix { val: prefix },
-                                        })
-                                    } else {
-                                        IPNet::V6(CIDRv6 {
-                                            addr: IPv6Addr { val: addr },
-                                            prefix: IPv6Prefix { val: prefix },
-                                        })
-                                    },
-                                })))
-                            }
-
-                            SExpr::Symbol(s) => {
-                                match (id_maps.types.get(s), &args[1..]) {
-                                    // Entity UID
-                                    (Some(TermType::Entity { ety }), [SExpr::String(e)]) => {
-                                        let uid = EntityUid::from_type_name_and_id(
-                                            ety.clone(),
-                                            EntityId::new(e),
-                                        );
-                                        Ok(Term::Prim(TermPrim::Entity(uid)))
-                                    }
-
-                                    // Record
-                                    (Some(TermType::Record { rty }), fields) => {
-                                        // Decode each field
-                                        let decoded_fields = fields
-                                            .iter()
-                                            .map(|field| field.decode_literal(id_maps))
-                                            .collect::<Result<Vec<_>, _>>()?;
-
-                                        if decoded_fields.len() != rty.len() {
-                                            return Err(DecodeError::UnmatchedRecordType);
-                                        }
-
-                                        let mut record = BTreeMap::new();
-
-                                        // Check the type of each field and collect them into `record`
-                                        for (decoded_field, (field_name, field_ty)) in
-                                            decoded_fields.iter().zip(rty.iter())
-                                        {
-                                            let decoded_field_ty = decoded_field.type_of();
-
-                                            if &decoded_field_ty != field_ty {
-                                                return Err(DecodeError::UnmatchedFieldType(
-                                                    decoded_field_ty,
-                                                    field_ty.clone(),
-                                                ));
-                                            }
-
-                                            record
-                                                .insert(field_name.clone(), decoded_field.clone());
-                                        }
-
-                                        Ok(Term::Record(Arc::new(record)))
-                                    }
-
-                                    _ => Err(DecodeError::UnknownLiteral(self.clone())),
-                                }
-                            }
-
-                            _ => Err(DecodeError::UnknownLiteral(self.clone())),
-                        }
-                    }
-
-                    _ => Err(DecodeError::UnknownLiteral(self.clone())),
-                }
-            }
+            SExpr::App(args) => self.decode_literal_app(id_maps, args),
 
             _ => Err(DecodeError::UnknownLiteral(self.clone())),
         }

@@ -126,6 +126,7 @@ impl IPv6Addr {
     }
 
     // Helper method that does not exist in the corresponding Lean code
+    #[allow(clippy::too_many_arguments)]
     pub fn mk_u16(a0: u16, a1: u16, a2: u16, a3: u16, a4: u16, a5: u16, a6: u16, a7: u16) -> Self {
         #[allow(
             clippy::unwrap_used,
@@ -388,13 +389,13 @@ impl Default for IPNet {
     }
 }
 
-fn parse_prefix_nat(s: &str, digits: Nat, size: Nat) -> Option<Fin> {
+fn parse_prefix_nat(s: &str, digits: &Nat, size: &Nat) -> Option<Fin> {
     let len = s.len();
     // Check length and leading zero constraints
-    if nat(len as u32) <= digits && (!s.starts_with('0') || s == "0") {
+    if &BigUint::from(len) <= digits && (!s.starts_with('0') || s == "0") {
         // Parse to number and validate range
         match s.parse::<Nat>() {
-            Ok(n) if n <= size => Fin::try_new(size + nat(1), n),
+            Ok(n) if &n <= size => Fin::try_new(size + nat(1), n),
             _ => None,
         }
     } else {
@@ -459,7 +460,7 @@ fn parse_ipv4_net(s: &str) -> Option<IPNet> {
         }
         [addr, prefix] => {
             let v4 = parse_segs_v4(addr)?;
-            let pre = parse_prefix_nat(prefix, nat(2), nat(V4_SIZE))?;
+            let pre = parse_prefix_nat(prefix, &nat(2), &nat(V4_SIZE))?;
             Some(IPNet::V4(CIDRv4 {
                 addr: v4,
                 prefix: IPv4Prefix::of_nat(pre.to_nat()),
@@ -523,7 +524,7 @@ fn parse_segs_v6(s: &str) -> Option<IPv6Addr> {
                 let mut result = ns1;
                 #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
                 let bv_zero = BitVec::of_u128(16, 0).unwrap();
-                result.extend(std::iter::repeat(bv_zero).take(8 - len));
+                result.extend(std::iter::repeat_n(bv_zero, 8 - len));
                 result.extend(ns2);
                 Some(result)
             } else {
@@ -558,7 +559,7 @@ fn parse_ipv6_net(s: &str) -> Option<IPNet> {
         }
         [addr, prefix] => {
             let v6 = parse_segs_v6(addr)?;
-            let pre = parse_prefix_nat(prefix, nat(3), nat(V6_SIZE))?;
+            let pre = parse_prefix_nat(prefix, &nat(3), &nat(V6_SIZE))?;
             Some(IPNet::V6(CIDRv6 {
                 addr: v6,
                 prefix: IPv6Prefix::of_nat(pre.to_nat()),

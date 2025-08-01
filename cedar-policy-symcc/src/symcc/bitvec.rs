@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use std::{sync::LazyLock, u128};
+use std::sync::LazyLock;
 
 use crate::symcc::{
     result::Error,
@@ -188,8 +188,8 @@ impl BitVec {
         }
     }
 
-    pub fn overflows(n: Width, i: Int) -> Result<bool> {
-        Ok(i < BitVec::signed_min(n)? || i > BitVec::signed_max(n)?)
+    pub fn overflows(n: Width, i: &Int) -> Result<bool> {
+        Ok(i < &BitVec::signed_min(n)? || i > &BitVec::signed_max(n)?)
     }
 
     ////
@@ -799,10 +799,10 @@ mod tests {
         assert_eq!(BitVec::signed_max(4).unwrap(), BigInt::from(7)); // 2^(4-1) - 1
 
         // Test overflow detection
-        assert!(BitVec::overflows(4, BigInt::from(8)).unwrap()); // 8 overflows 4-bit signed
-        assert!(BitVec::overflows(4, BigInt::from(-9)).unwrap()); // -9 overflows 4-bit signed
-        assert!(!BitVec::overflows(4, BigInt::from(7)).unwrap()); // 7 doesn't overflow
-        assert!(!BitVec::overflows(4, BigInt::from(-8)).unwrap()); // -8 doesn't overflow
+        assert!(BitVec::overflows(4, &BigInt::from(8)).unwrap()); // 8 overflows 4-bit signed
+        assert!(BitVec::overflows(4, &BigInt::from(-9)).unwrap()); // -9 overflows 4-bit signed
+        assert!(!BitVec::overflows(4, &BigInt::from(7)).unwrap()); // 7 doesn't overflow
+        assert!(!BitVec::overflows(4, &BigInt::from(-8)).unwrap()); // -8 doesn't overflow
 
         // Test int_min
         let min = BitVec::int_min(4).unwrap();

@@ -199,7 +199,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         Ok(self
             .symcc
             .check_unsat(
-                |symenv| verify_implies(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                |symenv| verify_implies(pset1.policy_set(), pset2.policy_set(), symenv),
                 symenv,
             )
             .await?)
@@ -216,7 +216,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         Ok(self
             .symcc
             .check_sat(
-                |symenv| verify_implies(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                |symenv| verify_implies(pset1.policy_set(), pset2.policy_set(), symenv),
                 symenv,
                 pset1
                     .policy_set()
@@ -238,7 +238,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         Ok(self
             .symcc
             .check_unsat(
-                |symenv| verify_always_allows(&pset.policy_set(), symenv),
+                |symenv| verify_always_allows(pset.policy_set(), symenv),
                 symenv,
             )
             .await?)
@@ -254,7 +254,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         Ok(self
             .symcc
             .check_sat(
-                |symenv| verify_always_allows(&pset.policy_set(), symenv),
+                |symenv| verify_always_allows(pset.policy_set(), symenv),
                 symenv,
                 pset.policy_set().policies(),
             )
@@ -273,7 +273,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         Ok(self
             .symcc
             .check_unsat(
-                |symenv| verify_always_denies(&pset.policy_set(), symenv),
+                |symenv| verify_always_denies(pset.policy_set(), symenv),
                 symenv,
             )
             .await?)
@@ -289,7 +289,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         Ok(self
             .symcc
             .check_sat(
-                |symenv| verify_always_denies(&pset.policy_set(), symenv),
+                |symenv| verify_always_denies(pset.policy_set(), symenv),
                 symenv,
                 pset.policy_set().policies(),
             )
@@ -310,7 +310,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         Ok(self
             .symcc
             .check_unsat(
-                |symenv| verify_equivalent(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                |symenv| verify_equivalent(pset1.policy_set(), pset2.policy_set(), symenv),
                 symenv,
             )
             .await?)
@@ -327,7 +327,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         Ok(self
             .symcc
             .check_sat(
-                |symenv| verify_equivalent(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                |symenv| verify_equivalent(pset1.policy_set(), pset2.policy_set(), symenv),
                 symenv,
                 pset1
                     .policy_set()
@@ -353,7 +353,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         Ok(self
             .symcc
             .check_unsat(
-                |symenv| verify_disjoint(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                |symenv| verify_disjoint(pset1.policy_set(), pset2.policy_set(), symenv),
                 symenv,
             )
             .await?)
@@ -370,7 +370,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         Ok(self
             .symcc
             .check_sat(
-                |symenv| verify_disjoint(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                |symenv| verify_disjoint(pset1.policy_set(), pset2.policy_set(), symenv),
                 symenv,
                 pset1
                     .policy_set()
