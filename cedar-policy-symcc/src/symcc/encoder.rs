@@ -154,7 +154,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 let mks: Vec<_> = members
                     .iter()
                     .enumerate()
-                    .map(|(i, _)| enum_id(&ety_id, i))
+                    .map(|(i, _)| format!("({})", enum_id(&ety_id, i)))
                     .collect();
                 self.declare_type(&ety_id, mks).await.map(Into::into)
             }
