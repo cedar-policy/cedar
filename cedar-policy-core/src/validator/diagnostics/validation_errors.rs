@@ -136,9 +136,9 @@ pub struct InvalidActionApplication {
     pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
-    /// `true` if changing `==` to `in` wouuld fix the principal clause
+    /// `true` if changing `==` to `in` would fix the principal clause
     pub would_in_fix_principal: bool,
-    /// `true` if changing `==` to `in` wouuld fix the resource clause
+    /// `true` if changing `==` to `in` would fix the resource clause
     pub would_in_fix_resource: bool,
 }
 

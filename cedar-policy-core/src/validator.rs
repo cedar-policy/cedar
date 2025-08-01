@@ -554,8 +554,10 @@ mod test {
 
 #[cfg(test)]
 mod enumerated_entity_types {
+    use std::collections::HashMap;
+
     use crate::{
-        ast::{Eid, EntityUID, ExprBuilder, PolicyID},
+        ast::{Eid, EntityUID, ExprBuilder, PolicyID, PolicySet, SlotId, Template},
         expr_builder::ExprBuilder as _,
         extensions::Extensions,
         parser::parse_policy_or_template,
@@ -581,7 +583,8 @@ mod enumerated_entity_types {
                             },
                             "Bar": {
                                 "memberOfTypes": ["Foo"],
-                            }
+                            },
+                            "Other": { },
                         },
                         "actions": {
                             "a": {
@@ -608,6 +611,28 @@ mod enumerated_entity_types {
             validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert!(errors.collect_vec().is_empty());
+    }
+
+    #[test]
+    fn link() {
+        let schema = schema();
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal in ?principal, action == Action::"a", resource);"#,
+        )
+        .unwrap();
+        let policy = Template::link(
+            std::sync::Arc::new(template),
+            PolicyID::from_string("test"),
+            HashMap::from_iter([(SlotId::principal(), r#"Other::"foo""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut policy_set = PolicySet::new();
+        let _ = policy_set.add(policy);
+        let validator = Validator::new(schema);
+        let result = validator.validate(&policy_set, crate::validator::ValidationMode::Strict);
+
+        assert_eq!(result.validation_errors().collect_vec().len(), 1);
     }
 
     #[test]
