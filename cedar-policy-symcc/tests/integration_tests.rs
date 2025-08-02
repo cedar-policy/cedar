@@ -1732,7 +1732,7 @@ async fn cex_test_simple_model() {
         r#"permit(principal, action == Action::"eat", resource) when {
             context.hungry_level >= resource.min_hungry_level
         };
-        
+
         forbid(principal == User::"alice", action == Action::"eat", resource);
         "#,
         &validator,
@@ -1768,7 +1768,7 @@ async fn cex_test_simple_model_ancestor() {
         r#"permit(principal in UserGroup::"chef", action == Action::"eat", resource) when {
             context.hungry_level >= resource.min_hungry_level
         };
-        
+
         forbid(principal == User::"alice", action == Action::"eat", resource);
         "#,
         &validator,
@@ -1842,7 +1842,7 @@ async fn cex_test_simple_model_ancestor_ite() {
             && principal != User::"alice"
             && !(User::"alice" in UserGroup::"chef")
         };
-        
+
         forbid(principal == User::"alice", action == Action::"eat", resource);
         "#,
         &validator,
