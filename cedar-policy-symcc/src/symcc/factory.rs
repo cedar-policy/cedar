@@ -206,7 +206,7 @@ pub fn app(f: UnaryFunction, t: Term) -> Term {
         UnaryFunction::Uuf(f) => {
             let ret_ty = f.out.clone();
             Term::App {
-                op: Op::Uuf(f),
+                op: Op::Uuf(Arc::new(f)),
                 args: Arc::new(vec![t]),
                 ret_ty,
             }
