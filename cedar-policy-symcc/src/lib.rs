@@ -369,6 +369,21 @@ mod term_feature {
         /// Compiles the verification task of [`Self::check_never_errors`] to the unsatisfiability
         /// of the returned [`Asserts`]  without actually calling an SMT solver.
         ///
+        /// For any `compiler: CedarSymCompiler` and `symenv: &SymvEnv`, the result of
+        /// ```no_compile
+        /// compiler.check_unsat(compiler.compile_never_errors(policy, symenv), symenv)
+        /// ```
+        /// should be the same as `compiler.check_never_errors(policy, symenv)`.
+        ///
+        /// Similarly, the result of
+        /// ```no_compile
+        /// compiler.check_sat(
+        ///     compiler.compile_never_errors(policy, symenv),
+        ///     symenv,
+        ///     std::iter::once(policy.policy()))
+        /// ```
+        /// should be the same as `compiler.check_never_errors_with_counterexample(policy, symenv)`.
+        ///
         /// NOTE: This is an experimental feature that may break or change in the future.
         pub fn compile_never_errors(
             &self,
@@ -378,8 +393,9 @@ mod term_feature {
             Ok(verify_never_errors(policy.policy(), symenv)?)
         }
 
-        /// Compiles the verification task of [`Self::check_implies`] to the unsatisfiability
-        /// of the returned [`Asserts`] without actually calling an SMT solver.
+        /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
+        /// [`Self::check_implies`] to the unsatisfiability of the returned [`Asserts`]
+        /// without actually calling an SMT solver.
         ///
         /// NOTE: This is an experimental feature that may break or change in the future.
         pub fn compile_implies(
@@ -395,8 +411,9 @@ mod term_feature {
             )?)
         }
 
-        /// Compiles the verification task of [`Self::check_always_allows`] to the unsatisfiability
-        /// of the returned [`Asserts`] without actually calling an SMT solver.
+        /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
+        /// [`Self::check_always_allows`] to the unsatisfiability of the returned [`Asserts`]
+        /// without actually calling an SMT solver.
         ///
         /// NOTE: This is an experimental feature that may break or change in the future.
         pub fn compile_always_allows(
@@ -407,8 +424,9 @@ mod term_feature {
             Ok(verify_always_allows(pset.policy_set(), symenv)?)
         }
 
-        /// Compiles the verification task of [`Self::check_always_denies`] to the unsatisfiability
-        /// of the returned [`Asserts`] without actually calling an SMT solver.
+        /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
+        /// [`Self::check_always_denies`] to the unsatisfiability of the returned [`Asserts`]
+        /// without actually calling an SMT solver.
         ///
         /// NOTE: This is an experimental feature that may break or change in the future.
         pub fn compile_always_denies(
@@ -419,8 +437,9 @@ mod term_feature {
             Ok(verify_always_denies(pset.policy_set(), symenv)?)
         }
 
-        /// Compiles the verification task of [`Self::check_equivalent`] to the unsatisfiability
-        /// of the returned [`Asserts`] without actually calling an SMT solver.
+        /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
+        /// [`Self::check_equivalent`] to the unsatisfiability of the returned [`Asserts`]
+        /// without actually calling an SMT solver.
         ///
         /// NOTE: This is an experimental feature that may break or change in the future.
         pub fn compile_equivalent(
@@ -436,8 +455,9 @@ mod term_feature {
             )?)
         }
 
-        /// Compiles the verification task of [`Self::check_disjoint`] to the unsatisfiability
-        /// of the returned [`Asserts`] without actually calling an SMT solver.
+        /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
+        /// [`Self::check_disjoint`] to the unsatisfiability of the returned [`Asserts`]
+        /// without actually calling an SMT solver.
         ///
         /// NOTE: This is an experimental feature that may break or change in the future.
         pub fn compile_disjoint(
