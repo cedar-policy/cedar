@@ -50,7 +50,7 @@ pub enum Op {
     Or,
     Eq,
     Ite,
-    Uuf(Uuf),
+    Uuf(Arc<Uuf>),
     //   ---------- SMTLib theory of finite bitvectors (`BV`) ----------
     Bvneg,
     Bvadd,
@@ -212,7 +212,7 @@ impl Op {
             )]
             Op::Uuf(f) if l.len() == 1 => {
                 if f.arg == l[0] {
-                    Some(f.out)
+                    Some(Arc::unwrap_or_clone(f).out)
                 } else {
                     None
                 }
