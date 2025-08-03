@@ -1287,9 +1287,11 @@ mod string_encode_decode_test {
             "\u{ffff}",
             "\u{0}",
             "\u{a01b}",
+            "abc\u{29999}d",
         ];
 
         assert_eq!(encode_string("\u{33333}"), None);
+        assert_eq!(encode_string("abc\u{30000}d"), None);
 
         for s in strs {
             let enc = encode_string(s).unwrap();
