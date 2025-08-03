@@ -526,8 +526,9 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     }
 }
 
-// `num_codes` in cvc5
-// https://github.com/cvc5/cvc5/blob/b78e7ed23348659db52a32765ad181ae0c26bbd5/src/util/string.h#L53
+/// The maximum Unicode code point supported in SMT-LIB 2.7.
+/// Also see `num_codes` in cvc5:
+/// https://github.com/cvc5/cvc5/blob/b78e7ed23348659db52a32765ad181ae0c26bbd5/src/util/string.h#L53
 pub const SMT_LIB_MAX_CODE_POINT: u32 = 196607;
 
 /// This function needs to encode unicode strings with two levels of
