@@ -28,6 +28,7 @@ use num_bigint::BigUint;
 
 use thiserror::Error;
 
+use crate::symcc::encoder::SMT_LIB_MAX_CODE_POINT;
 use crate::symcc::env::SymEntityData;
 use crate::symcc::extension_types::ipaddr::{
     CIDRv4, CIDRv6, IPv4Addr, IPv4Prefix, IPv6Addr, IPv6Prefix,
@@ -59,6 +60,9 @@ pub enum DecodeError {
 
     #[error("Invalid UTF-8 sequence: {0}")]
     UTF8Error(#[from] std::string::FromUtf8Error),
+
+    #[error("Failed to parse string: {0:?}")]
+    StringParseError(Vec<u8>),
 
     #[error("Invalid numeric token: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
@@ -130,6 +134,166 @@ pub enum SExpr {
     App(Vec<SExpr>),
 }
 
+/// As another string-theory-level escape sequence,
+/// we need to convert any of the following to the
+/// corresponding Unicode character
+/// (see https://smt-lib.org/theories-UnicodeStrings.shtml):
+///   \ud₃d₂d₁d₀  
+///   \u{d₀}
+///   \u{d₁d₀}
+///   \u{d₂d₁d₀}
+///   \u{d₃d₂d₁d₀}
+///   \u{d₄d₃d₂d₁d₀}
+///
+/// This function also converts the parser-level escape sequence
+/// `""` to `"`.
+///
+/// See also:
+/// - The (left) inverse: `encode_string`
+/// - The concrete C++ implementation in cvc5, which this function mimics
+///   https://github.com/cvc5/cvc5/blob/b78e7ed23348659db52a32765ad181ae0c26bbd5/src/util/string.cpp#L136
+fn decode_string(s: &[u8]) -> Option<String> {
+    let mut i: usize = 0;
+    let mut esc_quote = Vec::with_capacity(s.len());
+
+    // Handle parser-level escape sequence `""` => `"`
+    // (in SMT-LIB 2.7 standard)
+    while i < s.len() {
+        // PANIC SAFETY
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "i < s.len() thus indexing by i should not panic"
+        )]
+        let c = s[i];
+
+        // PANIC SAFETY
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "i + 1 < s.len() thus indexing by i + 1 should not panic"
+        )]
+        if c == b'"' && i + 1 < s.len() && s[i + 1] == b'"' {
+            esc_quote.push(b'"');
+            i += 2;
+        } else {
+            esc_quote.push(c);
+            i += 1;
+        }
+    }
+
+    // Now handle string-theory-level escape sequences
+    let mut out = String::with_capacity(esc_quote.len());
+
+    // Tries to convert the byte to a hexadecimal value
+    let to_hex = |c: u8| {
+        if b'0' <= c && c <= b'9' {
+            Some((c - b'0') as u32)
+        } else if b'a' <= c && c <= b'f' {
+            Some((c - b'a' + 10) as u32)
+        } else if b'A' <= c && c <= b'F' {
+            Some((c - b'A' + 10) as u32)
+        } else {
+            None
+        }
+    };
+
+    i = 0;
+    while i < esc_quote.len() {
+        // PANIC SAFETY
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "i < esc_quote.len() thus indexing by i should not panic"
+        )]
+        let c = esc_quote[i];
+
+        if c != b'\\' {
+            out.push(c as char);
+            i += 1;
+            continue;
+        }
+
+        let esc_start = i;
+        let mut is_esc = false;
+
+        // PANIC SAFETY
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "i + 1 < esc_quote.len() thus indexing by i + 1 should not panic"
+        )]
+        if i + 1 < esc_quote.len() && esc_quote[i + 1] == b'u' {
+            i += 2;
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "i < esc_quote.len() thus indexing by i should not panic"
+            )]
+            if i < esc_quote.len() && esc_quote[i] == b'{' {
+                i += 1;
+
+                // Code point value
+                let mut v: u32 = 0;
+
+                // Find the closing brace in range [i + 1, i + 5]
+                let mut j = i;
+                let mut failed = false;
+                #[allow(
+                    clippy::indexing_slicing,
+                    reason = "j < esc_quote.len() thus indexing by j should not panic"
+                )]
+                while j < esc_quote.len() && esc_quote[j] != b'}' && j <= i + 5 {
+                    if let Some(d) = to_hex(esc_quote[j]) {
+                        v = (v << 4) | d;
+                        j += 1;
+                    } else {
+                        failed = true;
+                        break;
+                    }
+                }
+
+                // At least one digit is required
+                if j > i && !failed {
+                    #[allow(
+                        clippy::indexing_slicing,
+                        reason = "j < esc_quote.len() thus indexing by j should not panic"
+                    )]
+                    if j < esc_quote.len() && esc_quote[j] == b'}' && v <= SMT_LIB_MAX_CODE_POINT {
+                        // Found the closing brace
+                        out.push(char::from_u32(v)?);
+                        is_esc = true;
+                        i = j + 1;
+                    }
+                }
+            } else {
+                // No brace, we expect exactly 4 hex digits
+                if i + 3 < esc_quote.len() {
+                    #[allow(
+                        clippy::indexing_slicing,
+                        reason = "i + 3 < esc_quote.len() thus indexing by i .. i + 3 should not panic"
+                    )]
+                    if let (Some(d1), Some(d2), Some(d3), Some(d4)) = (
+                        to_hex(esc_quote[i]),
+                        to_hex(esc_quote[i + 1]),
+                        to_hex(esc_quote[i + 2]),
+                        to_hex(esc_quote[i + 3]),
+                    ) {
+                        out.push(char::from_u32(d1 << 12 | d2 << 8 | d3 << 4 | d4)?);
+                        is_esc = true;
+                        i += 4;
+                    }
+                }
+            }
+        }
+
+        // If we fail to parse the escape sequence,
+        // treat `\` as a normal character
+        if !is_esc {
+            out.push(c as char);
+            i = esc_start + 1;
+        }
+    }
+
+    Some(out)
+}
+
 /// Tokenizes a string of SMT-LIB 2 S-expressions
 /// Reference: https://smtlib.github.io/jSMTLIB/SMTLIBTutorial.pdf, Table 3.1
 fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
@@ -167,9 +331,10 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                             clippy::indexing_slicing,
                             reason = "invariant str_start <= i and i <= src.len() thus slicing should not panic"
                         )]
-                        tokens.push(Token::Atom(SExpr::String(
-                            String::from_utf8(src[str_start..i].to_vec())?.replace("\"\"", "\""),
-                        )));
+                        let lit = decode_string(&src[str_start..i]).ok_or_else(|| {
+                            DecodeError::StringParseError(src[str_start..i].to_vec())
+                        })?;
+                        tokens.push(Token::Atom(SExpr::String(lit)));
                         in_str = false;
                         i += 1;
                     }
@@ -1036,6 +1201,99 @@ impl Display for SExpr {
             SExpr::String(s) => write!(f, "\"{}\"", s),
             SExpr::Symbol(s) => write!(f, "{}", s),
             SExpr::App(exprs) => write!(f, "({})", exprs.iter().map(|e| e.to_string()).join(" ")),
+        }
+    }
+}
+
+#[cfg(test)]
+mod string_encode_decode_test {
+    use crate::symcc::encoder::encode_string;
+
+    use super::*;
+
+    #[test]
+    fn test_string_decode() {
+        assert_eq!(decode_string(b"").unwrap(), "");
+        assert_eq!(decode_string(b"hello").unwrap(), "hello");
+        assert_eq!(decode_string(b"\"\"hello\"\"").unwrap(), "\"hello\"");
+        // Invalid unicode escape sequences with braces
+        assert_eq!(decode_string(b"\\u").unwrap(), "\\u");
+        assert_eq!(decode_string(b"\\u{").unwrap(), "\\u{");
+        assert_eq!(decode_string(b"\\u{1").unwrap(), "\\u{1");
+        assert_eq!(decode_string(b"\\u{1d").unwrap(), "\\u{1d");
+        assert_eq!(decode_string(b"\\u{1dc").unwrap(), "\\u{1dc");
+        assert_eq!(decode_string(b"\\u{1dce").unwrap(), "\\u{1dce");
+        assert_eq!(decode_string(b"\\u{1dcx}").unwrap(), "\\u{1dcx}");
+        assert_eq!(decode_string(b"\\u{1dcef").unwrap(), "\\u{1dcef");
+        assert_eq!(decode_string(b"\\u\"\"").unwrap(), "\\u\"");
+        assert_eq!(decode_string(b"\\u{32344}").unwrap(), "\\u{32344}");
+        // Invalid unicode escape sequences without braces
+        assert_eq!(decode_string(b"\\u123").unwrap(), "\\u123");
+        assert_eq!(decode_string(b"\\u12").unwrap(), "\\u12");
+        assert_eq!(decode_string(b"\\u**").unwrap(), "\\u**");
+        assert_eq!(decode_string(b"\\u0").unwrap(), "\\u0");
+        // Other invalid escape sequences
+        assert_eq!(decode_string(b"\\x").unwrap(), "\\x");
+        assert_eq!(decode_string(b"\\n").unwrap(), "\\n");
+        assert_eq!(decode_string(b"\\t\\n\\u").unwrap(), "\\t\\n\\u");
+        // Valid escape sequences
+        assert_eq!(decode_string(b"\\u{1dcef}").unwrap(), "\u{1dcef}");
+        assert_eq!(decode_string(b"\\u{1DcEf}").unwrap(), "\u{1dcef}");
+        assert_eq!(decode_string(b"\\u{1dce}").unwrap(), "\u{1dce}");
+        assert_eq!(decode_string(b"\\\\u{1dce}").unwrap(), "\\\u{1dce}");
+        assert_eq!(decode_string(b"\\u1234").unwrap(), "\u{1234}");
+        assert_eq!(decode_string(b"\\uffff").unwrap(), "\u{ffff}");
+        assert_eq!(decode_string(b"\\u{0}").unwrap(), "\u{0}");
+        assert_eq!(decode_string(b"\\u{01}").unwrap(), "\u{01}");
+        assert_eq!(decode_string(b"\\u{a01}").unwrap(), "\u{a01}");
+        assert_eq!(decode_string(b"\\u{a01b}").unwrap(), "\u{a01b}");
+    }
+
+    #[test]
+    fn test_string_encode() {
+        let strs = [
+            "",
+            "hello",
+            "\"hello\"",
+            "\\u",
+            "\\u{",
+            "\\u{1",
+            "\\u{1d",
+            "\\u{1dc",
+            "\\u{1dce",
+            "\\u{1dcx}",
+            "\\u{1dcef",
+            "\\u\"\"",
+            "\\u{32344}",
+            "\\u123",
+            "\\u12",
+            "\\u**",
+            "\\u0",
+            "\\x",
+            "\\n",
+            "\\t\\n\\u",
+            "\\u{1dcef}",
+            "\\u{1DcEf}",
+            "\\u{1dce}",
+            "\\\\u{1dce}",
+            "\\u1234",
+            "\\uffff",
+            "\\u{0}",
+            "\\u{01}",
+            "\\u{a01}",
+            "\\u{a01b}",
+            "\u{1dcef}",
+            "\u{1dce}",
+            "\u{ffff}",
+            "\u{0}",
+            "\u{a01b}",
+        ];
+
+        assert_eq!(encode_string("\u{33333}"), None);
+
+        for s in strs {
+            let enc = encode_string(s).unwrap();
+            assert_eq!(decode_string(&enc.as_bytes()[1..enc.len() - 1]).unwrap(), s);
         }
     }
 }

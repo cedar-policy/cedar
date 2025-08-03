@@ -335,6 +335,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     &format!(
                         "({ty_enc} {})",
                         encode_string(<EntityID as AsRef<str>>::as_ref(entity.id()))
+                            .ok_or(anyhow!("unable to encode entity id in SMT as it exceeds the max supported code point: {:?}", entity.id()))?
                     ),
                 )
                 .await
@@ -417,7 +418,8 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     }
                 }
                 TermPrim::Bitvec(bv) => encode_bitvec(bv),
-                TermPrim::String(s) => encode_string(s),
+                TermPrim::String(s) => encode_string(s)
+                    .ok_or(anyhow!("unable to encode string in SMT as it exceeds the max supported code point: {:?}", s))?,
                 TermPrim::Entity(e) => self.define_entity(&ty_enc, e).await?,
                 TermPrim::Ext(x) => self.define_term(&ty_enc, &encode_ext(x)).await?,
             },
@@ -524,17 +526,45 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     }
 }
 
-// /-
-// String printing has to be done carefully in the presence of
-// non-ASCII characters.  See the SMTLib standard for the details:
-// https://smtlib.cs.uiowa.edu/theories-UnicodeStrings.shtml. Here,
-// we're assuming ASCII strings for simplicity.
-//
-// According to the standard, `""` is the only escape sequence
-// in strings, which is interpreted as a single `"` character.
-// -/
-fn encode_string(s: &str) -> String {
-    format!("\"{}\"", s.replace("\"", "\"\""))
+// `num_codes` in cvc5
+// https://github.com/cvc5/cvc5/blob/b78e7ed23348659db52a32765ad181ae0c26bbd5/src/util/string.h#L53
+pub const SMT_LIB_MAX_CODE_POINT: u32 = 196608;
+
+/// This function needs to encode unicode strings with two levels of
+/// escape sequences:
+/// - At the string theory level, we need to encode all non-printable
+///   unicode characters as `\u{xxxx}`, where a character is printable
+///   if its code point is within [32, 126] (see also the note on string
+///   literals in https://smt-lib.org/theories-UnicodeStrings.shtml).
+/// - At the parser level, we need to replace any single `"` character
+///   with `""`, according to the SMT-LIB 2.7 standard on string literals:
+///   https://smt-lib.org/papers/smt-lib-reference-v2.7-r2025-07-07.pdf
+///
+/// Note in particular that `\\` is NOT an escape sequence,
+/// so cvc5 will read `\\u{0}` as a two-character string with
+/// characters `\u{5c}` and `\0`.
+pub(super) fn encode_string(s: &str) -> Option<String> {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        if c == '"' {
+            out.push_str("\"\"");
+        } else if c == '\\' {
+            // This is to avoid unexpectedly escape some characters
+            out.push_str("\\u{5c}");
+        } else if 32 as char <= c && c <= 126 as char {
+            out.push(c);
+        } else {
+            // Encode non-printable character
+            if c as u32 > SMT_LIB_MAX_CODE_POINT {
+                return None; // Invalid code point for SMT-LIB
+            }
+
+            out.push_str(&format!("\\u{{{:x}}}", c as u32));
+        }
+    }
+    out.push('"');
+    Some(out)
 }
 
 fn encode_bitvec(bv: &BitVec) -> String {
