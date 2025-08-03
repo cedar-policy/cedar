@@ -235,6 +235,8 @@ fn decode_string(s: &[u8]) -> Option<String> {
                 // Find the closing brace in range [i + 1, i + 5]
                 let mut j = i;
                 let mut failed = false;
+
+                // PANIC SAFETY
                 #[allow(
                     clippy::indexing_slicing,
                     reason = "j < esc_quote.len() thus indexing by j should not panic"
@@ -251,6 +253,7 @@ fn decode_string(s: &[u8]) -> Option<String> {
 
                 // At least one digit is required
                 if j > i && !failed {
+                    // PANIC SAFETY
                     #[allow(
                         clippy::indexing_slicing,
                         reason = "j < esc_quote.len() thus indexing by j should not panic"
@@ -265,6 +268,7 @@ fn decode_string(s: &[u8]) -> Option<String> {
             } else {
                 // No brace, we expect exactly 4 hex digits
                 if i + 3 < esc_quote.len() {
+                    // PANIC SAFETY
                     #[allow(
                         clippy::indexing_slicing,
                         reason = "i + 3 < esc_quote.len() thus indexing by i .. i + 3 should not panic"
