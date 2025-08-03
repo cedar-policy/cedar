@@ -18,12 +18,14 @@
 
 #![cfg(feature = "term")]
 
+use std::sync::Arc;
+
 use cedar_policy::{Authorizer, Schema, Validator};
 use cedar_policy_symcc::{
-    solver::LocalSolver, term, CedarSymCompiler, TermType, TermVar, WellTypedPolicies,
+    solver::LocalSolver, term, CedarSymCompiler, Term, TermType, TermVar, WellTypedPolicies,
 };
 
-use crate::utils::Environments;
+use crate::utils::{assert_always_allows, assert_does_not_always_deny, Environments};
 mod utils;
 
 fn sample_schema() -> Schema {
@@ -167,4 +169,86 @@ async fn term_always_denies_cex() {
         .unwrap();
     let resp = Authorizer::new().is_authorized(&cex.request, &pset, &cex.entities);
     assert_eq!(resp.decision(), cedar_policy::Decision::Allow);
+}
+
+/// Tests modifying some parts of SymEnv
+#[tokio::test]
+async fn term_cex_custom_symenv() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity User;
+        entity Document;
+        action view appliesTo {
+            principal: [User],
+            resource: [Document],
+            context: {
+                user: User
+            }
+        };
+        "#,
+    );
+    let validator = Validator::new(schema.clone());
+    let pset = utils::pset_from_text(
+        r#"permit(principal, action, resource) when { principal == context.user };"#,
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let mut envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+
+    // Fix `context.user` to be the same as `principal`
+    envs.symenv.request.context = Term::Record(Arc::new(
+        [("user".into(), envs.symenv.request.principal.clone())]
+            .into_iter()
+            .collect(),
+    ));
+
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+    assert_always_allows(&mut compiler, &pset, &envs).await;
+}
+
+/// Tests modifying some parts of SymEnv
+#[tokio::test]
+async fn term_cex_custom_symenv_set() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity User;
+        entity Document;
+        action view appliesTo {
+            principal: [User],
+            resource: [Document],
+            context: {
+                users: Set<User>
+            }
+        };
+        "#,
+    );
+    let validator = Validator::new(schema.clone());
+    let pset = utils::pset_from_text(
+        r#"permit(principal, action, resource) when { context.users.contains(principal) };"#,
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let mut envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+
+    // Fix `context.users` to be `[principal]`
+    envs.symenv.request.context = Term::Record(Arc::new(
+        [(
+            "users".into(),
+            Term::Set {
+                elts: Arc::new(
+                    [envs.symenv.request.principal.clone()]
+                        .into_iter()
+                        .collect(),
+                ),
+                elts_ty: envs.symenv.request.principal.type_of(),
+            },
+        )]
+        .into_iter()
+        .collect(),
+    ));
+
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+    assert_always_allows(&mut compiler, &pset, &envs).await;
 }

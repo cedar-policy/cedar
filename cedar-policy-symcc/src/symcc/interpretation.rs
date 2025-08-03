@@ -380,3 +380,190 @@ impl SymEnv {
         }
     }
 }
+
+#[cfg(test)]
+mod interpret_test {
+    use std::str::FromStr;
+
+    use cedar_policy::{RequestEnv, Schema};
+
+    use crate::symcc::compiler::compile;
+
+    use super::*;
+
+    #[track_caller]
+    pub fn pretty_panic<T>(e: impl miette::Diagnostic + Send + Sync + 'static) -> T {
+        panic!("{:?}", miette::Report::new(e))
+    }
+
+    fn test_schema() -> Schema {
+        let schema = r#"
+            entity Thing;
+            entity User in [User];
+            action View appliesTo {
+                principal: [User],
+                resource: [Thing],
+                context: {
+                    x: Long,
+                    y: Long,
+                    a: Bool,
+                    b: Bool,
+                    dt1: datetime,
+                    dt2: datetime,
+                    d1: duration,
+                    d2: duration,
+                    ip1: ipaddr,
+                    ip2: ipaddr,
+                    ip3: ipaddr,
+                    s1: Set<Long>,
+                    s2: Set<Long>,
+                    dc1: decimal,
+                    dc2: decimal,
+                    str: String,
+                }
+            };
+        "#;
+        Schema::from_cedarschema_str(schema)
+            .unwrap_or_else(pretty_panic)
+            .0
+    }
+
+    fn request_env() -> RequestEnv {
+        RequestEnv::new(
+            "User".parse().unwrap(),
+            "Action::\"View\"".parse().unwrap(),
+            "Thing".parse().unwrap(),
+        )
+    }
+
+    fn sym_env() -> SymEnv {
+        SymEnv::new(&test_schema(), &request_env()).expect("Malformed sym env.")
+    }
+
+    fn parse_expr(str: &str) -> Expr {
+        Expr::from_str(str).expect(format!("Could not parse expression: {str}").as_str())
+    }
+
+    fn test_valid_bool_interp_expr(str: &str, interp: &Interpretation<'_>, res: bool) {
+        let term = compile(&parse_expr(str), &sym_env()).unwrap();
+        let term_interp = term.interpret(interp);
+        assert_eq!(
+            term_interp,
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res)))),
+            "{str}"
+        );
+        // Check idempotency
+        assert_eq!(term_interp, term_interp.interpret(interp));
+    }
+
+    #[test]
+    fn test_interp_term_builtin() {
+        let symenv = sym_env();
+        let interp = Interpretation::default(&symenv);
+        test_valid_bool_interp_expr(
+            "context.x + context.y == context.y + context.x",
+            &interp,
+            true,
+        );
+        test_valid_bool_interp_expr(
+            "context.x + context.y == context.y + context.x",
+            &interp,
+            true,
+        );
+        test_valid_bool_interp_expr(
+            "context.x < context.y || context.x == context.y || context.x > context.y",
+            &interp,
+            true,
+        );
+        test_valid_bool_interp_expr(
+            "context.x * context.y == context.y * context.x",
+            &interp,
+            true,
+        );
+        test_valid_bool_interp_expr("--context.x == context.x", &interp, true);
+        test_valid_bool_interp_expr(
+            "(!context.a && !context.b) == !(context.a || context.b)",
+            &interp,
+            true,
+        );
+        test_valid_bool_interp_expr(
+            "(if context.a then context.x else context.y) == (if !context.a then context.y else context.x)",
+            &interp,
+            true,
+        );
+        test_valid_bool_interp_expr("context.x + 1 == context.x", &interp, false);
+        test_valid_bool_interp_expr(r#"context.str like "*""#, &interp, true);
+    }
+
+    #[test]
+    fn test_interp_term_set() {
+        let symenv = sym_env();
+        let interp = Interpretation::default(&symenv);
+        test_valid_bool_interp_expr(
+            "!(context.s1.containsAll(context.s2) && context.s2.containsAll(context.s1)) || context.s1 == context.s2",
+            &interp,
+            true,
+        );
+        test_valid_bool_interp_expr(
+            "!(context.s1.containsAll(context.s2) && context.s2.contains(10)) || context.s1.contains(10)",
+            &interp,
+            true,
+        );
+        test_valid_bool_interp_expr(
+            "!(context.s1.contains(10) && context.s2.contains(10)) || context.s1.containsAny(context.s2)",
+            &interp,
+            true,
+        );
+    }
+
+    #[test]
+    fn test_interp_term_decimal() {
+        let symenv = sym_env();
+        let interp = Interpretation::default(&symenv);
+        test_valid_bool_interp_expr(
+            "context.dc1.lessThan(context.dc2) || context.dc1 == context.dc2 || context.dc1.greaterThan(context.dc2)",
+            &interp,
+            true,
+        );
+    }
+
+    #[test]
+    fn test_interp_term_datetime() {
+        let symenv = sym_env();
+        let interp = Interpretation::default(&symenv);
+        test_valid_bool_interp_expr(
+            "context.dt1.offset(context.d1).offset(context.d2) == context.dt1.offset(context.d2).offset(context.d1)",
+            &interp,
+            true,
+        );
+        test_valid_bool_interp_expr(
+            r#"
+            !(context.dt1 >= context.dt2 && context.dt2 >= datetime("1970-01-01")) ||
+            context.dt1.durationSince(context.dt2) >= duration("0ms")
+            "#,
+            &interp,
+            true,
+        );
+    }
+
+    #[test]
+    fn test_interp_term_ipaddr() {
+        let symenv = sym_env();
+        let interp = Interpretation::default(&symenv);
+        test_valid_bool_interp_expr(
+            "context.ip1.isIpv4() || context.ip1.isIpv6()",
+            &interp,
+            true,
+        );
+        test_valid_bool_interp_expr(
+            "!(context.ip1.isIpv4() && context.ip1.isIpv6())",
+            &interp,
+            true,
+        );
+        test_valid_bool_interp_expr(
+            "!(context.ip1.isInRange(context.ip2) && context.ip2.isInRange(context.ip3)) || context.ip1.isInRange(context.ip3)",
+            &interp,
+            true,
+        );
+    }
+}
