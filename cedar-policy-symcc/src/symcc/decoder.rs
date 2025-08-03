@@ -185,12 +185,12 @@ fn decode_string(s: &[u8]) -> Option<String> {
 
     // Tries to convert the byte to a hexadecimal value
     let to_hex = |c: u8| {
-        if b'0' <= c && c <= b'9' {
-            Some((c - b'0') as u32)
-        } else if b'a' <= c && c <= b'f' {
-            Some((c - b'a' + 10) as u32)
-        } else if b'A' <= c && c <= b'F' {
-            Some((c - b'A' + 10) as u32)
+        if c.is_ascii_digit() {
+            Some(u32::from(c - b'0'))
+        } else if (b'a'..=b'f').contains(&c) {
+            Some(u32::from(c - b'a' + 10))
+        } else if (b'A'..=b'F').contains(&c) {
+            Some(u32::from(c - b'A' + 10))
         } else {
             None
         }

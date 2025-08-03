@@ -61,6 +61,7 @@ use anyhow::anyhow;
 use async_recursion::async_recursion;
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write;
 
 use cedar_policy_core::ast::PatternElem;
 
@@ -335,7 +336,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     &format!(
                         "({ty_enc} {})",
                         encode_string(<EntityID as AsRef<str>>::as_ref(entity.id()))
-                            .ok_or(anyhow!("unable to encode entity id in SMT as it exceeds the max supported code point: {:?}", entity.id()))?
+                            .ok_or_else(|| anyhow!("unable to encode entity id in SMT as it exceeds the max supported code point: {:?}", entity.id()))?
                     ),
                 )
                 .await
@@ -419,7 +420,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 }
                 TermPrim::Bitvec(bv) => encode_bitvec(bv),
                 TermPrim::String(s) => encode_string(s)
-                    .ok_or(anyhow!("unable to encode string in SMT as it exceeds the max supported code point: {:?}", s))?,
+                    .ok_or_else(|| anyhow!("unable to encode string in SMT as it exceeds the max supported code point: {:?}", s))?,
                 TermPrim::Entity(e) => self.define_entity(&ty_enc, e).await?,
                 TermPrim::Ext(x) => self.define_term(&ty_enc, &encode_ext(x)).await?,
             },
@@ -560,8 +561,7 @@ pub(super) fn encode_string(s: &str) -> Option<String> {
             if c as u32 > SMT_LIB_MAX_CODE_POINT {
                 return None; // Invalid code point for SMT-LIB
             }
-
-            out.push_str(&format!("\\u{{{:x}}}", c as u32));
+            write!(out, "\\u{{{:x}}}", c as u32).unwrap();
         }
     }
     out.push('"');
