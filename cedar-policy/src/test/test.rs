@@ -8397,7 +8397,7 @@ mod deep_eq {
     fn deep_eq_same_hierachy() {
         let es = Entities::from_entities(
             [Entity::new_no_attrs(
-                EntityUid::from_strs("test", "A").clone(),
+                EntityUid::from_strs("test", "A"),
                 HashSet::new(),
             )],
             None,
@@ -8410,7 +8410,7 @@ mod deep_eq {
     fn not_deep_eq_hierarchy_different_attributes() {
         let es = Entities::from_entities(
             [Entity::new_no_attrs(
-                EntityUid::from_strs("test", "A").clone(),
+                EntityUid::from_strs("test", "A"),
                 HashSet::new(),
             )],
             None,
@@ -8418,7 +8418,7 @@ mod deep_eq {
         .unwrap();
         let other = Entities::from_entities(
             [Entity::new(
-                EntityUid::from_strs("test", "A").clone(),
+                EntityUid::from_strs("test", "A"),
                 HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
                 HashSet::new(),
             )
@@ -8433,7 +8433,7 @@ mod deep_eq {
     fn not_deep_eq_hierarchy_different_ids() {
         let es = Entities::from_entities(
             [Entity::new_no_attrs(
-                EntityUid::from_strs("test", "A").clone(),
+                EntityUid::from_strs("test", "A"),
                 HashSet::new(),
             )],
             None,
@@ -8441,7 +8441,7 @@ mod deep_eq {
         .unwrap();
         let other = Entities::from_entities(
             [Entity::new_no_attrs(
-                EntityUid::from_strs("test", "B").clone(),
+                EntityUid::from_strs("test", "B"),
                 HashSet::new(),
             )],
             None,
@@ -8454,15 +8454,15 @@ mod deep_eq {
     fn not_deep_eq_hierarchy_different_num_entities() {
         let es = Entities::from_entities(
             [
-                Entity::new_no_attrs(EntityUid::from_strs("test", "A").clone(), HashSet::new()),
-                Entity::new_no_attrs(EntityUid::from_strs("test", "B").clone(), HashSet::new()),
+                Entity::new_no_attrs(EntityUid::from_strs("test", "A"), HashSet::new()),
+                Entity::new_no_attrs(EntityUid::from_strs("test", "B"), HashSet::new()),
             ],
             None,
         )
         .unwrap();
         let other = Entities::from_entities(
             [Entity::new_no_attrs(
-                EntityUid::from_strs("test", "A").clone(),
+                EntityUid::from_strs("test", "A"),
                 HashSet::new(),
             )],
             None,
