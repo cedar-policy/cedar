@@ -53,7 +53,7 @@ macro_rules! encode_prop {
 /// Encodes the given property as a policy verification task.
 /// All variables need to be prefixed with `$`, but otherwise
 /// the property can be arbitrary well-typed Cedar expression.
-macro_rules! assert_prop_no_enum {
+macro_rules! assert_prop_no_schema {
     // For all concrete values of the bound variables,
     // the property does not error and evaluate to true.
     ($schema_prelude:expr, forall |$($var:ident : $typ:tt),*| $($prop:tt)+) => {
@@ -92,41 +92,19 @@ macro_rules! assert_prop_no_enum {
     };
 }
 
-macro_rules! gen_enum_variants {
-    ($variant:ident) => {
-        concat!('"', stringify!($variant), "\"")
-    };
-    ($variant:ident, $($rest:ident),+) => {
-        concat!('"', stringify!($variant), "\", ", gen_enum_variants!($($rest),+))
-    };
-}
-
-/// Helper macro to generate enum entity declarations.
-macro_rules! gen_enum_decls {
-    ($(($name:ident, $($variant:ident),+))*) => {
-        concat!(
-            $(
-                "entity ", stringify!($name), " enum [ ",
-                    gen_enum_variants!($($variant),+),
-                " ]; "
-            ),*
-        )
-    };
-}
-
-/// Same as `assert_prop_no_enum`, but the input can be optionally prefixed with enum declarations.
+/// Same as `assert_prop_no_schema`, but the input can be optionally prefixed with additional schema declarations.
 macro_rules! assert_prop {
-    ($(enum $name:ident { $($variant:ident),+ $(,)? })* forall $($rest:tt)+) => {
-        assert_prop_no_enum!(gen_enum_decls!($(($name, $($variant),+))*), forall $($rest)+)
+    ($(schema { $($schema:tt)* })? forall $($rest:tt)+) => {
+        assert_prop_no_schema!(concat!($(stringify!($($schema)*))?), forall $($rest)+)
     };
-    ($(enum $name:ident { $($variant:ident),+ $(,)? })* forall_or_error $($rest:tt)+) => {
-        assert_prop_no_enum!(gen_enum_decls!($(($name, $($variant),+))*), forall_or_error $($rest)+)
+    ($(schema { $($schema:tt)* })? forall_or_error $($rest:tt)+) => {
+        assert_prop_no_schema!(concat!($(stringify!($($schema)*))?), forall_or_error $($rest)+)
     };
-    ($(enum $name:ident { $($variant:ident),+ $(,)? })* exists $($rest:tt)+) => {
-        assert_prop_no_enum!(gen_enum_decls!($(($name, $($variant),+))*), exists $($rest)+)
+    ($(schema { $($schema:tt)* })? exists $($rest:tt)+) => {
+        assert_prop_no_schema!(concat!($(stringify!($($schema)*))?), exists $($rest)+)
     };
-    ($(enum $name:ident { $($variant:ident),+ $(,)? })* exists_error $($rest:tt)+) => {
-        assert_prop_no_enum!(gen_enum_decls!($(($name, $($variant),+))*), exists_error $($rest)+)
+    ($(schema { $($schema:tt)* })? exists_error $($rest:tt)+) => {
+        assert_prop_no_schema!(concat!($(stringify!($($schema)*))?), exists_error $($rest)+)
     };
 }
 
@@ -139,6 +117,27 @@ macro_rules! check_prop {
         }
     };
 }
+
+check_prop!(prop_hierarchy_acyclic1,
+    schema {
+        entity U1 in [U2];
+        entity U2 in [U1];
+    }
+    forall |a : U1, b : U2| !($a in $b && $b in $a));
+
+check_prop!(prop_hierarchy_acyclic2,
+    schema {
+        entity U1 in [U1];
+    }
+    forall |a : U1, b : U1| !($a in $b && $b in $a) || $a == $b);
+
+check_prop!(prop_hierarchy_transitive,
+    schema {
+        entity U1 in [U2];
+        entity U2 in [U3];
+        entity U3;
+    }
+    forall |a : U1, b : U2, c : U3| !($a in $b && $b in $c) || $a in $c);
 
 check_prop!(prop_ipaddr_in_range_transitive,
     forall |a : ipaddr, b : ipaddr, c : ipaddr|
@@ -209,11 +208,15 @@ check_prop!(prop_long_mul_commute,
     forall_or_error |a : Long, b : Long| $a * $b == $b * $a);
 
 check_prop!(prop_enum_no_junk,
-    enum E { A, B, C }
+    schema {
+        entity E enum [ "A", "B", "C" ];
+    }
     forall |a : E| $a == E::"A" || $a == E::"B" || $a == E::"C");
 
 check_prop!(prop_enum_set_eq,
-    enum E { A, B }
+    schema {
+        entity E enum [ "A", "B" ];
+    }
     forall |a : { x: Set<E> }, b : { x: Set<E> }|
         !(
             $a.x.contains(E::"A") &&
@@ -225,3 +228,27 @@ check_prop!(prop_enum_set_eq,
 
 check_prop!(prop_record_optional,
     exists |a : { x?: Long }, b : { x?: Long }| $b has "x" || $a == $b);
+
+check_prop!(prop_set_subset_eq,
+    forall |a : { x: Set<Long> }, b : { x: Set<Long> }|
+        !(
+            $a.x.containsAll($b.x) &&
+            $b.x.containsAll($a.x)
+        ) ||
+        $a.x == $b.x);
+
+check_prop!(prop_set_subset_mem,
+    forall |a : { x: Set<Long> }, b : { x: Set<Long> }, c : Long|
+        !(
+            $a.x.containsAll($b.x) &&
+            $b.x.contains($c)
+        ) ||
+        $a.x.contains($c));
+
+check_prop!(prop_set_intersect,
+    forall |a : { x: Set<Long> }, b : { x: Set<Long> }, c : Long|
+        !(
+            $a.x.contains($c) &&
+            $b.x.contains($c)
+        ) ||
+        $a.x.containsAny($b.x));
