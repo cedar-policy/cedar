@@ -1235,6 +1235,7 @@ mod string_encode_decode_test {
         assert_eq!(decode_string(b"\\u123").unwrap(), "\\u123");
         assert_eq!(decode_string(b"\\u12").unwrap(), "\\u12");
         assert_eq!(decode_string(b"\\u**").unwrap(), "\\u**");
+        assert_eq!(decode_string(b"\\u****").unwrap(), "\\u****");
         assert_eq!(decode_string(b"\\u0").unwrap(), "\\u0");
         // Other invalid escape sequences
         assert_eq!(decode_string(b"\\x").unwrap(), "\\x");
