@@ -33,6 +33,7 @@ tokio = { version = "1.0", features = ["rt", "macros"] } # for `tokio::test` uni
 
 [features]
 term = [] # Exports the internal `Term` interface for more custom queries
+experimental = ["term"]
 
 [lints]
 workspace = true
