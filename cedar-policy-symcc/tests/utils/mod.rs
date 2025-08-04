@@ -29,6 +29,7 @@ use cedar_policy::{
 use cedar_policy_core::{ast::RequestSchema, extensions::Extensions};
 use cedar_policy_symcc::{
     solver::Solver, CedarSymCompiler, Env, SymEnv, WellTypedPolicies, WellTypedPolicy,
+    WellTypedTemplates,
 };
 
 #[track_caller]
@@ -81,6 +82,24 @@ pub fn req_env_from_strs(principal_ty: &str, action: &str, resource_ty: &str) ->
     )
 }
 
+/// Parse a request env with slots from text, panicking if it fails to parse
+#[track_caller]
+pub fn req_env_with_slots_from_strs(
+    principal_ty: &str,
+    action: &str,
+    resource_ty: &str,
+    principal_slot_ty: Option<&str>,
+    resource_slot_ty: Option<&str>,
+) -> RequestEnv {
+    RequestEnv::new_request_env_with_slots(
+        principal_ty.parse().unwrap(),
+        action.parse().unwrap(),
+        resource_ty.parse().unwrap(),
+        principal_slot_ty.map(|ty| ty.parse().unwrap()),
+        resource_slot_ty.map(|ty| ty.parse().unwrap()),
+    )
+}
+
 #[derive(Debug)]
 pub struct Environments<'a> {
     pub schema: &'a Schema,
@@ -93,6 +112,31 @@ impl<'a> Environments<'a> {
     #[track_caller]
     pub fn new(schema: &'a Schema, principal_ty: &str, action: &str, resource_ty: &str) -> Self {
         let req_env = req_env_from_strs(principal_ty, action, resource_ty);
+        let symenv = SymEnv::new(schema, &req_env).unwrap();
+        Self {
+            schema,
+            req_env,
+            symenv,
+        }
+    }
+
+    /// Create a new Environments instance from a schema and principal, action, resource, principal_slot, and resource_slot strings
+    #[track_caller]
+    pub fn new_with_slots(
+        schema: &'a Schema,
+        principal_ty: &str,
+        action: &str,
+        resource_ty: &str,
+        principal_slot_ty: Option<&str>,
+        resource_slot_ty: Option<&str>,
+    ) -> Self {
+        let req_env = req_env_with_slots_from_strs(
+            principal_ty,
+            action,
+            resource_ty,
+            principal_slot_ty,
+            resource_slot_ty,
+        );
         let symenv = SymEnv::new(schema, &req_env).unwrap();
         Self {
             schema,
@@ -367,5 +411,116 @@ pub async fn assert_not_disjoint<S: Solver>(
                 "check_disjoint_with_counterexample returned an invalid counterexample");
         }
         _ => panic!("check_disjoint is false, but check_disjoint_with_counterexample returned no counterexample"),
+    }
+}
+
+pub async fn assert_implies_templates<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    pset1: &PolicySet,
+    pset2: &PolicySet,
+    envs: &Environments<'_>,
+) {
+    let pset1 = WellTypedTemplates::from_templates(pset1, &envs.req_env, envs.schema).unwrap();
+    let pset2 = WellTypedTemplates::from_templates(pset2, &envs.req_env, envs.schema).unwrap();
+    match compiler
+        .check_implies_templates(&pset1, &pset2, &envs.symenv)
+        .await
+    {
+        Ok(true) => (),
+        Ok(false) => panic!("assert_implies failed for:\n{pset1}\n{pset2}"),
+        Err(e) => panic!("{e}"),
+    }
+    assert!(
+        compiler
+            .check_implies_with_counterexample_templates(&pset1, &pset2, &envs.symenv)
+            .await
+            .unwrap()
+            .is_none(),
+        "check_implies_templates is true, but check_implies_with_counterexample_templates returned a counterexample",
+    );
+}
+
+pub async fn assert_always_denies_templates<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    pset: &PolicySet,
+    envs: &Environments<'_>,
+) {
+    let pset = WellTypedTemplates::from_templates(pset, &envs.req_env, envs.schema).unwrap();
+    match compiler
+        .check_always_denies_templates(&pset, &envs.symenv)
+        .await
+    {
+        Ok(true) => (),
+        Ok(false) => panic!("assert_always_denies failed for:\n{pset}"),
+        Err(e) => panic!("{e}"),
+    }
+    assert!(
+        compiler.check_always_denies_with_counterexample_templates(&pset, &envs.symenv).await.unwrap().is_none(),
+        "check_always_denies_templates is true, but check_always_denies_with_counterexample_templates returned a counterexample",
+    );
+}
+
+pub async fn assert_equivalent_templates<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    pset1: &PolicySet,
+    pset2: &PolicySet,
+    envs: &Environments<'_>,
+) {
+    let pset1 = WellTypedTemplates::from_templates(pset1, &envs.req_env, envs.schema).unwrap();
+    let pset2 = WellTypedTemplates::from_templates(pset2, &envs.req_env, envs.schema).unwrap();
+    match compiler
+        .check_equivalent_templates(&pset1, &pset2, &envs.symenv)
+        .await
+    {
+        Ok(true) => (),
+        Ok(false) => panic!("assert_equivalent failed for:\n{pset1}\n{pset2}"),
+        Err(e) => panic!("{e}"),
+    }
+    assert!(
+        compiler.check_equivalent_with_counterexample_templates(&pset1, &pset2, &envs.symenv).await.unwrap().is_none(),
+        "check_equivalent is true, but check_equivalent_with_counterexample_templates returned a counterexample",
+    );
+}
+
+pub async fn assert_disjoint_templates<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    pset1: &PolicySet,
+    pset2: &PolicySet,
+    envs: &Environments<'_>,
+) {
+    let pset1 = WellTypedTemplates::from_templates(pset1, &envs.req_env, envs.schema).unwrap();
+    let pset2 = WellTypedTemplates::from_templates(pset2, &envs.req_env, envs.schema).unwrap();
+    match compiler
+        .check_disjoint_templates(&pset1, &pset2, &envs.symenv)
+        .await
+    {
+        Ok(true) => (),
+        Ok(false) => panic!("assert_disjoint failed for:\n{pset1}\n{pset2}"),
+        Err(e) => panic!("{e}"),
+    }
+    assert!(
+        compiler
+            .check_disjoint_with_counterexample_templates(&pset1, &pset2, &envs.symenv)
+            .await
+            .unwrap()
+            .is_none(),
+        "check_disjoint is true, but check_disjoint_with_counterexample_templates returned a counterexample",
+    );
+}
+
+pub async fn assert_possible_template_instantiation_satisfies_request<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    pset: &PolicySet,
+    request: &cedar_policy::Request,
+    envs: &Environments<'_>,
+) {
+    let pset = WellTypedTemplates::from_templates(pset, &envs.req_env, envs.schema).unwrap();
+    match compiler
+        .check_possible_template_instantiation_satisfies_request(&pset, &envs.symenv, request)
+        .await
+    {
+        Ok(Some(_)) => (),
+        Ok(None) => panic!("assert_possible_template_instantiation_satisfies_request failed for:\n{pset}\n{request}"),
+        Err(e) => panic!("{e}"),
     }
 }

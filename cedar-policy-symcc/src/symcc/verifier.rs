@@ -27,8 +27,8 @@ use crate::symcc::factory::{and, eq, implies, is_some, not};
 use crate::symcc::result;
 use crate::symcc::term::Term;
 
-use cedar_policy::Effect;
-use cedar_policy_core::ast::{Expr, Policy, PolicyID, PolicySet, Value};
+use cedar_policy::{Effect, Request};
+use cedar_policy_core::ast::{Expr, Literal, Policy, PolicyID, PolicySet, Value, Var};
 
 pub type Asserts = Vec<Term>;
 type Result<T> = std::result::Result<T, result::Error>;
@@ -136,4 +136,54 @@ pub fn verify_disjoint(
 ) -> Result<Asserts> {
     let disjoint = |t1: Term, t2: Term| not(and(t1, t2));
     verify_is_authorized(disjoint, policies1, policies2, env)
+}
+
+/// Returns asserts that are satisfiable iff there exists a request environment that
+/// results in the templates in `policies` being instantiated to evaluate to true.
+/// This checks if there ever exists a way a template can be
+/// instantiated that satisfies your request.
+pub fn verify_possible_template_instantiation_satisfies_request(
+    policies: &PolicySet,
+    env: &SymEnv,
+    req: &Request,
+) -> Result<Asserts> {
+    let term = is_authorized(policies, env)?;
+    let xs: Vec<Expr> = policies.templates().map(|t| t.condition()).collect();
+    let assumptions = enforce(xs.iter(), env);
+
+    let principal: cedar_policy_core::ast::EntityUID = req
+        .principal()
+        .ok_or(result::Error::InvalidRequest)?
+        .clone()
+        .into();
+    let action: cedar_policy_core::ast::EntityUID = req
+        .action()
+        .ok_or(result::Error::InvalidRequest)?
+        .clone()
+        .into();
+    let resource: cedar_policy_core::ast::EntityUID = req
+        .resource()
+        .ok_or(result::Error::InvalidRequest)?
+        .clone()
+        .into();
+
+    let principal_assert = eq(
+        compile(&Expr::val(Literal::from(principal)), env)?,
+        compile(&Expr::var(Var::Principal), env)?,
+    );
+
+    let action_assert = eq(
+        compile(&Expr::val(Literal::from(action)), env)?,
+        compile(&Expr::var(Var::Action), env)?,
+    );
+
+    let resource_assert = eq(
+        compile(&Expr::val(Literal::from(resource)), env)?,
+        compile(&Expr::var(Var::Resource), env)?,
+    );
+
+    Ok(assumptions
+        .into_iter()
+        .chain([term, principal_assert, action_assert, resource_assert])
+        .collect())
 }

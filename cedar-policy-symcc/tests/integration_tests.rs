@@ -13,16 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use cedar_policy::{Policy, PolicySet, Schema, Validator};
+use cedar_policy::{Context, Policy, PolicySet, Request, Schema, Validator};
 use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
 
 mod utils;
 use utils::Environments;
 
 use crate::utils::{
-    assert_always_allows, assert_always_denies, assert_disjoint, assert_does_not_always_allow,
-    assert_does_not_always_deny, assert_does_not_imply, assert_equivalent, assert_implies,
-    assert_never_errors, assert_not_disjoint, assert_not_equivalent,
+    assert_always_allows, assert_always_denies, assert_always_denies_templates, assert_disjoint,
+    assert_disjoint_templates, assert_does_not_always_allow, assert_does_not_always_deny,
+    assert_does_not_imply, assert_equivalent, assert_equivalent_templates, assert_implies,
+    assert_implies_templates, assert_never_errors, assert_not_disjoint, assert_not_equivalent,
+    assert_possible_template_instantiation_satisfies_request,
 };
 
 fn sample_schema() -> Schema {
@@ -1145,6 +1147,101 @@ async fn decimal() {
     assert_does_not_imply(&mut compiler, &pset5, &pset4, &envs).await;
     assert_not_disjoint(&mut compiler, &pset4, &pset5, &envs).await;
     assert_disjoint(&mut compiler, &pset3, &pset5, &envs).await;
+}
+
+/// analysis results about `templates`
+#[tokio::test]
+async fn templates() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity User {
+            name: String
+        };
+        entity File {
+            name: String,
+            owner: User,
+            private: Bool,
+            is_photo: Bool
+        };
+        action action appliesTo {
+            principal: [User],
+            resource: [File]
+        };
+    "#,
+    );
+
+    let validator = Validator::new(schema);
+
+    let pset1 = utils::pset_from_text(
+        r#"
+        permit(principal == ?principal, action, resource) when 
+        { false };
+    "#,
+        &validator,
+    );
+
+    let pset2 = utils::pset_from_text(
+        r#"
+        permit(principal == ?principal, action, resource) when 
+        { resource.name == "f1" || principal.name == "Alice" };
+    "#,
+        &validator,
+    );
+
+    let pset3 = utils::pset_from_text(
+        r#"
+        permit(principal == ?principal, action, resource) when 
+        { principal.name == "Alice" || resource.name == "f1" };
+    "#,
+        &validator,
+    );
+
+    let pset4 = utils::pset_from_text(
+        r#"
+        permit(principal == ?principal, action, resource) when 
+        { principal.name == "Alice" && (resource.private == true || resource.private == false) };
+    "#,
+        &validator,
+    );
+
+    let pset5 = utils::pset_from_text(
+        r#"
+        permit(principal == ?principal, action, resource) when 
+        { principal.name == "Bob" };
+    "#,
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new_with_slots(
+        validator.schema(),
+        "User",
+        "Action::\"action\"",
+        "File",
+        Some("User"),
+        None,
+    );
+
+    let request = Request::new(
+        r#"User::"Alice""#.parse().unwrap(),
+        r#"Action::"action""#.parse().unwrap(),
+        r#"File::"f1""#.parse().unwrap(),
+        Context::empty(),
+        None,
+    )
+    .unwrap();
+
+    assert_possible_template_instantiation_satisfies_request(
+        &mut compiler,
+        &pset2,
+        &request,
+        &envs,
+    )
+    .await;
+    assert_always_denies_templates(&mut compiler, &pset1, &envs).await;
+    assert_equivalent_templates(&mut compiler, &pset2, &pset3, &envs).await;
+    assert_implies_templates(&mut compiler, &pset4, &pset3, &envs).await;
+    assert_disjoint_templates(&mut compiler, &pset4, &pset5, &envs).await;
 }
 
 /// Tests that the analyzer understands transitivity and `in`

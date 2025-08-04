@@ -27,7 +27,7 @@
 use std::sync::Arc;
 
 use cedar_policy_core::ast::Var;
-use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp};
+use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, SlotId, UnaryOp};
 
 use super::bitvec::BitVec;
 use super::env::{SymEntities, SymEnv, SymRequest};
@@ -92,6 +92,22 @@ fn compile_var(v: &Var, req: &SymRequest) -> Result<Term> {
                 Err(Error::TypeError)
             }
         }
+    }
+}
+
+fn compile_slot(slot: &SlotId, req: &SymRequest) -> Result<Term> {
+    if slot.is_principal() {
+        match &req.principal_slot {
+            Some(term) if term.type_of().is_entity_type() => Ok(some_of(term.clone())),
+            _ => Err(Error::PrincipalSlotTypeNotProvided),
+        }
+    } else if slot.is_resource() {
+        match &req.resource_slot {
+            Some(term) if term.type_of().is_entity_type() => Ok(some_of(term.clone())),
+            _ => Err(Error::ResourceSlotTypeNotProvided),
+        }
+    } else {
+        Err(Error::UnsupportedError)
     }
 }
 
@@ -607,7 +623,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
     match x.expr_kind() {
         ExprKind::Lit(l) => compile_prim(l, &env.entities),
         ExprKind::Var(v) => compile_var(v, &env.request),
-        ExprKind::Slot(_) => Err(Error::UnsupportedError), // analyzing templates is not supported
+        ExprKind::Slot(slot) => compile_slot(slot, &env.request),
         ExprKind::Unknown(_) => Err(Error::UnsupportedError), // analyzing partial expressions is not supported
         ExprKind::If {
             test_expr: x1,

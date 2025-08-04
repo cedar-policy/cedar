@@ -92,8 +92,7 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
     // PANIC SAFETY
     #[allow(clippy::unimplemented, reason = "Should fail at an earlier stage")]
     match x.expr_kind() {
-        ExprKind::Lit(_) | ExprKind::Var(_) => of_entity(x),
-        ExprKind::Slot(_) => unimplemented!("analyzing templates is not currently supported"),
+        ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) => of_entity(x),
         ExprKind::Unknown(_) => {
             unimplemented!("analyzing partial expressions is not currently supported")
         }

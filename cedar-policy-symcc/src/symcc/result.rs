@@ -35,4 +35,10 @@ pub enum Error {
     UnsupportedError,
     #[error("unreachableError: {0}")]
     Unreachable(String),
+    #[error("invalidRequest")]
+    InvalidRequest,
+    #[error("principalSlotTypeNotProvided")]
+    PrincipalSlotTypeNotProvided,
+    #[error("resourceSlotTypeNotProvided")]
+    ResourceSlotTypeNotProvided,
 }

@@ -50,7 +50,10 @@ pub use env::{Environment, SymEnv};
 pub use interpretation::Interpretation;
 pub use smtlib_script::SmtLibScript;
 
-use cedar_policy_core::ast::{ExprBuilder, Policy, PolicySet};
+use cedar_policy_core::ast::{
+    ActionConstraint, Annotations, ExprBuilder, Policy, PolicySet, PrincipalConstraint,
+    ResourceConstraint, Template,
+};
 use cedar_policy_core::validator::{
     typecheck::Typechecker, types::RequestEnv, ValidationError, ValidationMode,
 };
@@ -61,7 +64,7 @@ use verifier::Asserts;
 use encoder::Encoder;
 pub use verifier::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
-    verify_never_errors,
+    verify_never_errors, verify_possible_template_instantiation_satisfies_request,
 };
 
 use crate::symcc::concretize::ConcretizeError;
@@ -85,6 +88,9 @@ pub enum Error {
     /// Policy is not well-typed.
     #[error("Policy is not well typed.")]
     PolicyNotWellTyped { errs: Vec<ValidationError> },
+    /// Template is not well-typed.
+    #[error("Template is not well typed.")]
+    TemplateNotWellTyped { errs: Vec<ValidationError> },
     #[error("Failed to decode model: {0}")]
     DecodeModel(#[from] DecodeError),
     #[error("Failed to concretize interpretation: {0}")]
@@ -215,6 +221,65 @@ impl<S: Solver> SymCompiler<S> {
             }
         }
     }
+
+    /// Checks satisfiability, and then returns the model (as a pair of [`Request`] and [`Entities`]);
+    /// For soundness, `templates` must include all templates involved in the verification condition.
+    pub async fn check_sat_templates(
+        &mut self,
+        vc: impl FnOnce(&SymEnv) -> std::result::Result<Asserts, result::Error>,
+        symenv: &SymEnv,
+        templates: impl Iterator<Item = &Template>,
+    ) -> Result<Option<Env>> {
+        let asserts = vc(symenv)?;
+        if asserts.iter().any(|assert| *assert == false.into()) {
+            // some assert has been reduced to constant-false by the symcc process.
+            // skip encoding and calling the solver.
+            Ok(None)
+        } else if asserts.iter().all(|assert| *assert == true.into()) {
+            let interp = Interpretation::default(symenv);
+            let exprs = templates.map(|t| t.condition()).collect::<Vec<_>>();
+            Ok(Some(symenv.interpret(&interp).concretize(exprs.iter())?))
+        } else {
+            self.solver
+                .smtlib_input()
+                .reset()
+                .await
+                .map_err(|err| Error::Encoding { err: err.into() })?;
+            self.solver
+                .smtlib_input()
+                .set_logic("ALL")
+                .await
+                .map_err(|err| Error::Encoding { err: err.into() })?;
+            self.solver
+                .smtlib_input()
+                .set_option("produce-models", "true")
+                .await
+                .map_err(|err| Error::Encoding { err: err.into() })?;
+            let mut encoder = Encoder::new(symenv, self.solver.smtlib_input())
+                .map_err(|err| Error::EncoderConstruction { err })?;
+            encoder
+                .encode(asserts)
+                .await
+                .map_err(|err| Error::Encoding { err })?;
+            let id_maps = IdMaps::from_encoder(&encoder);
+            match self.solver.check_sat().await? {
+                Decision::Unsat => Ok(None),
+                Decision::Sat => {
+                    let Some(model_str) = self.solver.get_model().await? else {
+                        return Ok(None);
+                    };
+
+                    let model = parse_sexpr(model_str.as_bytes())?;
+                    let exprs = templates.map(|t| t.condition()).collect::<Vec<_>>();
+                    let interp = model.decode_model(symenv, &id_maps)?;
+                    let interp = interp.repair_as_counterexample(exprs.iter());
+
+                    Ok(Some(symenv.interpret(&interp).concretize(exprs.iter())?))
+                }
+                Decision::Unknown => Err(Error::SolverUnknown),
+            }
+        }
+    }
 }
 
 /// The Cedar symbolic compiler assumes that it receives well-typed policies.  This
@@ -285,6 +350,63 @@ fn well_typed_policy_inner(
     }
 }
 
+pub fn well_typed_template(
+    template: &Template,
+    env: &cedar_policy::RequestEnv,
+    schema: &Schema,
+) -> Result<Template> {
+    let env =
+        to_validator_request_env(env, schema.as_ref()).ok_or_else(|| Error::ActionNotInSchema {
+            action: env.action().to_string(),
+        })?;
+    well_typed_template_inner(template, &env, schema)
+}
+
+fn well_typed_template_inner(
+    template: &Template,
+    env: &RequestEnv<'_>,
+    schema: &Schema,
+) -> Result<Template> {
+    let validator_schema = schema.as_ref();
+    let type_checker = Typechecker::new(validator_schema, ValidationMode::Strict);
+    let policy_check = type_checker.typecheck_by_single_request_env(template, env);
+    match policy_check {
+        cedar_policy_core::validator::typecheck::PolicyCheck::Success(expr) => Ok(Template::new(
+            template.id().clone(),
+            template.loc().cloned(),
+            Annotations::default(),
+            template.effect(),
+            PrincipalConstraint::any(),
+            ActionConstraint::any(),
+            ResourceConstraint::any(),
+            expr.into_expr::<ExprBuilder<()>>(),
+        )),
+        cedar_policy_core::validator::typecheck::PolicyCheck::Irrelevant(errs, expr) =>
+        // A policy could be irrelevant just for this environment, so unless there were errors we don't want to fail.
+        // Note that if the policy was irrelevant for all environments schema validation would have caught this
+        // before SymCC. The Lean implementation needs to be updated to match this behavior.
+        {
+            if errs.is_empty() {
+                Ok(Template::new(
+                    template.id().clone(),
+                    template.loc().cloned(),
+                    Annotations::default(),
+                    template.effect(),
+                    PrincipalConstraint::any(),
+                    ActionConstraint::any(),
+                    ResourceConstraint::any(),
+                    expr.into_expr::<ExprBuilder<()>>(),
+                ))
+            } else {
+                Err(Error::TemplateNotWellTyped { errs })
+            }
+        }
+        cedar_policy_core::validator::typecheck::PolicyCheck::Fail(errs) => {
+            Err(Error::TemplateNotWellTyped { errs })
+        }
+    }
+}
+
 pub fn well_typed_policies(
     policies: &PolicySet,
     env: &cedar_policy::RequestEnv,
@@ -307,6 +429,34 @@ pub fn well_typed_policies(
                 reason = "adding well-typed policy should not error"
             )]
             ps.into_iter().for_each(|p| res.add(p).unwrap());
+            Ok(res)
+        }
+        Err(err) => Err(err),
+    }
+}
+
+pub fn well_typed_templates(
+    templates: &PolicySet,
+    env: &cedar_policy::RequestEnv,
+    schema: &Schema,
+) -> Result<PolicySet> {
+    let env =
+        to_validator_request_env(env, schema.as_ref()).ok_or_else(|| Error::ActionNotInSchema {
+            action: env.action().to_string(),
+        })?;
+    let typed_templates: Result<Vec<Template>> = templates
+        .templates()
+        .map(|p| well_typed_template_inner(p, &env, schema))
+        .collect();
+    match typed_templates {
+        Ok(ps) => {
+            let mut res = PolicySet::new();
+            // PANIC SAFETY
+            #[allow(
+                clippy::unwrap_used,
+                reason = "adding well-typed policy should not error"
+            )]
+            ps.into_iter().for_each(|t| res.add_template(t).unwrap());
             Ok(res)
         }
         Err(err) => Err(err),

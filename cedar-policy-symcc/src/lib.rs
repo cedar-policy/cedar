@@ -22,10 +22,11 @@ use symcc::SymCompiler;
 pub use symcc::{solver, Env, Environment, Interpretation, SmtLibScript, SymEnv};
 use symcc::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
-    verify_never_errors, well_typed_policies, well_typed_policy,
+    verify_never_errors, verify_possible_template_instantiation_satisfies_request,
+    well_typed_policies, well_typed_policy, well_typed_template, well_typed_templates,
 };
 
-use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
+use cedar_policy::{Policy, PolicySet, Request, RequestEnv, Schema, Template};
 
 /// Cedar Symbolic Compiler paramatized by a solver `S`.
 #[derive(Clone, Debug)]
@@ -126,6 +127,86 @@ impl WellTypedPolicies {
 impl fmt::Display for WellTypedPolicies {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.policies)
+    }
+}
+
+#[derive(Debug)]
+pub struct WellTypedTemplate {
+    template: cedar_policy_core::ast::Template,
+}
+
+impl WellTypedTemplate {
+    /// Returns a reference to the underlying template
+    pub fn policy(&self) -> &cedar_policy_core::ast::Template {
+        &self.template
+    }
+
+    /// Creates a well-typed template with respect to the given request environment and schema.
+    /// This ensures that the template satisfies the `WellTyped` constraints required by the
+    /// symbolic compiler, by applying Cedar's typechecker transformations.
+    pub fn from_template(
+        template: &Template,
+        env: &RequestEnv,
+        schema: &Schema,
+    ) -> Result<WellTypedTemplate> {
+        well_typed_template(template.as_ref(), env, schema)
+            .map(|t| WellTypedTemplate { template: t })
+            .map_err(Error::Symcc)
+    }
+
+    /// Converts a [`Template`] to a [`WellTypedTemplate`] unchecked.
+    /// Note that SymCC may fail on the template produced by this function
+    /// even if it is validated.
+    pub fn from_template_unchecked(template: &Template) -> Self {
+        WellTypedTemplate {
+            template: template.as_ref().clone(),
+        }
+    }
+}
+
+impl fmt::Display for WellTypedTemplate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.template)
+    }
+}
+
+#[derive(Debug)]
+pub struct WellTypedTemplates {
+    templates: cedar_policy_core::ast::PolicySet,
+}
+
+impl WellTypedTemplates {
+    /// Returns a reference to the underlying policy set
+    pub fn policy_set(&self) -> &cedar_policy_core::ast::PolicySet {
+        &self.templates
+    }
+
+    /// Creates a well-typed policy set with respect to the given request environment and schema.
+    /// This ensures that the policies satisfy the `WellTyped` constraints required by the
+    /// symbolic compiler, by applying Cedar's typechecker transformations.
+    pub fn from_templates(
+        ps: &PolicySet,
+        env: &RequestEnv,
+        schema: &Schema,
+    ) -> Result<WellTypedTemplates> {
+        well_typed_templates(ps.as_ref(), env, schema)
+            .map(|ps| WellTypedTemplates { templates: ps })
+            .map_err(Error::Symcc)
+    }
+
+    /// Converts a [`PolicySet`] to a [`WellTypedTemplates`] unchecked.
+    /// Note that SymCC may fail on the policy set produced by this function
+    /// even if it is validated.
+    pub fn from_templates_unchecked(ps: &PolicySet) -> Self {
+        WellTypedTemplates {
+            templates: ps.as_ref().clone(),
+        }
+    }
+}
+
+impl fmt::Display for WellTypedTemplates {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.templates)
     }
 }
 
@@ -376,6 +457,193 @@ impl<S: Solver> CedarSymCompiler<S> {
                     .policy_set()
                     .policies()
                     .chain(pset2.policy_set().policies()),
+            )
+            .await?)
+    }
+
+    /// Returns true iff the authorization decision of `pset1` implies that of
+    /// `pset2` for every well-formed input in the `symenv`. That is, every
+    /// input allowed by `pset1` is allowed by `pset2`; `pset2` is either more
+    /// permissive than, or equivalent to, `pset1`.
+    ///
+    /// Like `SymCompiler::check_implies()`, but takes `cedar-policy` types
+    /// instead of internal types.
+    pub async fn check_implies_templates(
+        &mut self,
+        pset1: &WellTypedTemplates,
+        pset2: &WellTypedTemplates,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        Ok(self
+            .symcc
+            .check_unsat(
+                |symenv| verify_implies(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                symenv,
+            )
+            .await?)
+    }
+
+    /// Similar to [`Self::check_implies_templates`], but returns a counterexample
+    /// that is allowed by `pset1` but not by `pset2`.
+    pub async fn check_implies_with_counterexample_templates(
+        &mut self,
+        pset1: &WellTypedTemplates,
+        pset2: &WellTypedTemplates,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        Ok(self
+            .symcc
+            .check_sat(
+                |symenv| verify_implies(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                symenv,
+                pset1
+                    .policy_set()
+                    .policies()
+                    .chain(pset2.policy_set().policies()),
+            )
+            .await?)
+    }
+
+    /// Returns true iff `pset` denies all well-formed inputs in the `symenv`.
+    ///
+    /// Like `SymCompiler::check_always_denies()`, but takes `cedar-policy`
+    /// types instead of internal types.
+    pub async fn check_always_denies_templates(
+        &mut self,
+        pset: &WellTypedTemplates,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        Ok(self
+            .symcc
+            .check_unsat(
+                |symenv| verify_always_denies(&pset.policy_set(), symenv),
+                symenv,
+            )
+            .await?)
+    }
+
+    /// Similar to [`Self::check_always_denies_templates`], but returns a counterexample
+    /// that is allowed by `pset`.
+    pub async fn check_always_denies_with_counterexample_templates(
+        &mut self,
+        pset: &WellTypedTemplates,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        Ok(self
+            .symcc
+            .check_sat(
+                |symenv| verify_always_denies(&pset.policy_set(), symenv),
+                symenv,
+                pset.policy_set().policies(),
+            )
+            .await?)
+    }
+
+    /// Returns true iff `pset1` and `pset2` produce the same authorization
+    /// decision on all well-formed inputs in the `symenv`.
+    ///
+    /// Like `SymCompiler::check_equivalent()`, but takes `cedar-policy` types
+    /// instead of internal types.
+    pub async fn check_equivalent_templates(
+        &mut self,
+        pset1: &WellTypedTemplates,
+        pset2: &WellTypedTemplates,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        Ok(self
+            .symcc
+            .check_unsat(
+                |symenv| verify_equivalent(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                symenv,
+            )
+            .await?)
+    }
+
+    /// Similar to [`Self::check_equivalent_templates`], but returns a counterexample
+    /// on which the authorization decisions of `pset1` and `pset2` differ.
+    pub async fn check_equivalent_with_counterexample_templates(
+        &mut self,
+        pset1: &WellTypedTemplates,
+        pset2: &WellTypedTemplates,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        Ok(self
+            .symcc
+            .check_sat(
+                |symenv| verify_equivalent(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                symenv,
+                pset1
+                    .policy_set()
+                    .policies()
+                    .chain(pset2.policy_set().policies()),
+            )
+            .await?)
+    }
+
+    /// Returns true iff there is no well-formed input in the `symenv` that is
+    /// allowed by both `pset1` and `pset2`. If this returns `false`, then there
+    /// is at least one well-formed input that is allowed by both `pset1` and
+    /// `pset2`.
+    ///
+    /// Like `SymCompiler::check_disjoint()`, but takes `cedar-policy` types
+    /// instead of internal types.
+    pub async fn check_disjoint_templates(
+        &mut self,
+        pset1: &WellTypedTemplates,
+        pset2: &WellTypedTemplates,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        Ok(self
+            .symcc
+            .check_unsat(
+                |symenv| verify_disjoint(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                symenv,
+            )
+            .await?)
+    }
+
+    /// Similar to [`Self::check_disjoint_templates`], but returns a counterexample
+    /// that is allowed by both `pset1` and `pset2`.
+    pub async fn check_disjoint_with_counterexample_templates(
+        &mut self,
+        pset1: &WellTypedTemplates,
+        pset2: &WellTypedTemplates,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        Ok(self
+            .symcc
+            .check_sat(
+                |symenv| verify_disjoint(&pset1.policy_set(), &pset2.policy_set(), symenv),
+                symenv,
+                pset1
+                    .policy_set()
+                    .policies()
+                    .chain(pset2.policy_set().policies()),
+            )
+            .await?)
+    }
+
+    /// Returns an instance of a request environment such that there exists a template in pset
+    /// whose slots can be substituted to result in the request to evaluate to true.
+    /// If this is not possible it will return None
+    pub async fn check_possible_template_instantiation_satisfies_request(
+        &mut self,
+        pset: &WellTypedTemplates,
+        symenv: &SymEnv,
+        req: &Request,
+    ) -> Result<Option<Env>> {
+        Ok(self
+            .symcc
+            .check_sat_templates(
+                |symenv| {
+                    verify_possible_template_instantiation_satisfies_request(
+                        &pset.policy_set(),
+                        symenv,
+                        req,
+                    )
+                },
+                symenv,
+                pset.policy_set().templates(),
             )
             .await?)
     }

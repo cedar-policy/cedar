@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 use cedar_policy::Effect;
-use cedar_policy_core::ast::{Policy, PolicySet};
+use cedar_policy_core::ast::{Policy, PolicySet, Template};
 
 use crate::symcc::{
     compiler::compile,
@@ -31,6 +31,18 @@ pub fn satisfied_with_effect(
 ) -> Result<Option<Term>, result::Error> {
     if policy.effect() == *effect {
         Ok(Some(compile(&policy.condition(), env)?))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn satisfied_with_effect_template(
+    effect: &Effect,
+    template: &Template,
+    env: &SymEnv,
+) -> Result<Option<Term>, result::Error> {
+    if template.effect() == *effect {
+        Ok(Some(compile(&template.condition(), env)?))
     } else {
         Ok(None)
     }
@@ -54,8 +66,28 @@ pub fn satisfied_policies(
     Ok(any_satisfied(terms))
 }
 
+pub fn satsified_templates(
+    effect: &Effect,
+    policies: &PolicySet,
+    env: &SymEnv,
+) -> Result<Term, result::Error> {
+    let terms = policies
+        .templates()
+        .filter_map(|t| satisfied_with_effect_template(effect, t, env).transpose())
+        .collect::<Result<Vec<Term>, result::Error>>()?
+        .into_iter();
+    Ok(any_satisfied(terms))
+}
+
 pub fn is_authorized(policies: &PolicySet, env: &SymEnv) -> Result<Term, result::Error> {
-    let forbids = satisfied_policies(&Effect::Forbid, policies, env)?;
-    let permits = satisfied_policies(&Effect::Permit, policies, env)?;
-    Ok(and(permits, not(forbids)))
+    let forbids_policies = satisfied_policies(&Effect::Forbid, policies, env)?;
+    let permits_policies = satisfied_policies(&Effect::Permit, policies, env)?;
+
+    let forbids_template = satsified_templates(&Effect::Forbid, policies, env)?;
+    let permits_template = satsified_templates(&Effect::Permit, policies, env)?;
+
+    Ok(and(
+        or(permits_template, permits_policies),
+        and(not(forbids_policies), not(forbids_template)),
+    ))
 }
