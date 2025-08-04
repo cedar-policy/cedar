@@ -18,7 +18,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::ast::{Annotations, Effect, Policy, PolicyID};
+use crate::ast::{Annotations, Effect, Literal, Policy, PolicyID, ValueKind};
 use crate::validator::types::Type;
 use crate::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
@@ -168,6 +168,36 @@ pub enum ResidualKind {
     Set(Arc<Vec<Residual>>),
     /// Anonymous record (whose elements may be arbitrary expressions)
     Record(Arc<BTreeMap<SmolStr, Residual>>),
+}
+
+impl Residual {
+    /// If a residual is trivially true
+    pub fn is_true(&self) -> bool {
+        matches!(
+            self,
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        )
+    }
+
+    /// If a residual is trivially false
+    pub fn is_false(&self) -> bool {
+        matches!(
+            self,
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(false)),
+                    ..
+                },
+                ..
+            }
+        )
+    }
 }
 
 /// Conversion from `Residual` to `Expr` so that we can use the concrete evaluator for re-authorization
