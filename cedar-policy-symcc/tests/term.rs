@@ -16,13 +16,12 @@
 
 //! This module contains tests for the experimental `term` feature.
 
-#![cfg(feature = "term")]
-
 use std::sync::Arc;
 
 use cedar_policy::{Authorizer, Schema, Validator};
 use cedar_policy_symcc::{
-    solver::LocalSolver, term, CedarSymCompiler, Term, TermType, TermVar, WellTypedPolicies,
+    solver::LocalSolver, term, CedarSymCompiler, Term, TermType, TermVar, WellFormedAsserts,
+    WellTypedPolicies,
 };
 
 use crate::utils::{assert_always_allows, assert_does_not_always_deny, Environments};
@@ -58,18 +57,21 @@ async fn term_basic_arith_unsat() {
     assert_eq!(
         compiler
             .check_unsat(
-                vec![term::not(term::eq(
-                    TermVar {
-                        id: "x".to_string(),
-                        ty: TermType::Bitvec { n: 64 }
-                    }
-                    .into(),
-                    TermVar {
-                        id: "x".to_string(),
-                        ty: TermType::Bitvec { n: 64 }
-                    }
-                    .into(),
-                ))],
+                &WellFormedAsserts::from_asserts_unchecked(
+                    Arc::new(vec![term::not(term::eq(
+                        TermVar {
+                            id: "x".to_string(),
+                            ty: TermType::Bitvec { n: 64 }
+                        }
+                        .into(),
+                        TermVar {
+                            id: "x".to_string(),
+                            ty: TermType::Bitvec { n: 64 }
+                        }
+                        .into(),
+                    ))]),
+                    std::iter::empty()
+                ),
                 &envs.symenv,
             )
             .await
@@ -79,18 +81,21 @@ async fn term_basic_arith_unsat() {
     assert_eq!(
         compiler
             .check_unsat(
-                vec![term::not(term::eq(
-                    TermVar {
-                        id: "x".to_string(),
-                        ty: TermType::Bitvec { n: 64 }
-                    }
-                    .into(),
-                    TermVar {
-                        id: "y".to_string(),
-                        ty: TermType::Bitvec { n: 64 }
-                    }
-                    .into(),
-                ))],
+                &WellFormedAsserts::from_asserts_unchecked(
+                    Arc::new(vec![term::not(term::eq(
+                        TermVar {
+                            id: "x".to_string(),
+                            ty: TermType::Bitvec { n: 64 }
+                        }
+                        .into(),
+                        TermVar {
+                            id: "y".to_string(),
+                            ty: TermType::Bitvec { n: 64 }
+                        }
+                        .into(),
+                    ))]),
+                    std::iter::empty()
+                ),
                 &envs.symenv,
             )
             .await
@@ -100,23 +105,37 @@ async fn term_basic_arith_unsat() {
     assert_eq!(
         compiler
             .check_unsat(
-                vec![term::not(term::implies(
-                    term::and(
-                        term::bvsle(
-                            TermVar {
-                                id: "x".to_string(),
-                                ty: TermType::Bitvec { n: 64 }
-                            }
-                            .into(),
-                            TermVar {
-                                id: "y".to_string(),
-                                ty: TermType::Bitvec { n: 64 }
-                            }
-                            .into(),
+                &WellFormedAsserts::from_asserts_unchecked(
+                    Arc::new(vec![term::not(term::implies(
+                        term::and(
+                            term::bvsle(
+                                TermVar {
+                                    id: "x".to_string(),
+                                    ty: TermType::Bitvec { n: 64 }
+                                }
+                                .into(),
+                                TermVar {
+                                    id: "y".to_string(),
+                                    ty: TermType::Bitvec { n: 64 }
+                                }
+                                .into(),
+                            ),
+                            term::bvsle(
+                                TermVar {
+                                    id: "y".to_string(),
+                                    ty: TermType::Bitvec { n: 64 }
+                                }
+                                .into(),
+                                TermVar {
+                                    id: "z".to_string(),
+                                    ty: TermType::Bitvec { n: 64 }
+                                }
+                                .into(),
+                            ),
                         ),
                         term::bvsle(
                             TermVar {
-                                id: "y".to_string(),
+                                id: "x".to_string(),
                                 ty: TermType::Bitvec { n: 64 }
                             }
                             .into(),
@@ -126,20 +145,9 @@ async fn term_basic_arith_unsat() {
                             }
                             .into(),
                         ),
-                    ),
-                    term::bvsle(
-                        TermVar {
-                            id: "x".to_string(),
-                            ty: TermType::Bitvec { n: 64 }
-                        }
-                        .into(),
-                        TermVar {
-                            id: "z".to_string(),
-                            ty: TermType::Bitvec { n: 64 }
-                        }
-                        .into(),
-                    ),
-                )),],
+                    ))]),
+                    std::iter::empty(),
+                ),
                 &envs.symenv,
             )
             .await
@@ -163,7 +171,7 @@ async fn term_always_denies_cex() {
         .compile_always_denies(&typed_pset, &envs.symenv)
         .unwrap();
     let cex = compiler
-        .check_sat(asserts, &envs.symenv, typed_pset.policy_set().policies())
+        .check_sat(&asserts, &envs.symenv)
         .await
         .unwrap()
         .unwrap();

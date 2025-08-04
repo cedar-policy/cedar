@@ -143,12 +143,12 @@ pub enum SExpr {
 /// - Theory-level escape sequence for Unicode characters:
 ///   convert any of the following to the corresponding Unicode character
 ///   (see https://smt-lib.org/theories-UnicodeStrings.shtml):
-///     \ud₃d₂d₁d₀  
-///     \u{d₀}
-///     \u{d₁d₀}
-///     \u{d₂d₁d₀}
-///     \u{d₃d₂d₁d₀}
-///     \u{d₄d₃d₂d₁d₀}
+///   \ud₃d₂d₁d₀  
+///   \u{d₀}
+///   \u{d₁d₀}
+///   \u{d₂d₁d₀}
+///   \u{d₃d₂d₁d₀}
+///   \u{d₄d₃d₂d₁d₀}
 ///
 /// See also:
 /// - The (right) inverse: `encode_string`

@@ -29,10 +29,7 @@ mod env;
 mod ext;
 mod extension_types;
 mod extfun;
-#[cfg(feature = "term")]
 pub mod factory;
-#[cfg(not(feature = "term"))]
-mod factory;
 mod function;
 mod interpretation;
 mod op;
@@ -42,39 +39,38 @@ pub mod solver;
 mod tags;
 mod term;
 mod term_type;
-mod type_abbrevs;
+pub mod type_abbrevs;
 mod verifier;
 
 use cedar_policy::Schema;
 use decoder::{parse_sexpr, DecodeError, IdMaps};
 use env::to_validator_request_env;
-// public exports
-pub use env::{Environment, SymEnv};
-pub use interpretation::Interpretation;
-pub use smtlib_script::SmtLibScript;
 
 use cedar_policy_core::ast::{ExprBuilder, Policy, PolicySet};
 use cedar_policy_core::validator::{
     typecheck::Typechecker, types::RequestEnv, ValidationError, ValidationMode,
 };
+use concretize::ConcretizeError;
+use encoder::Encoder;
 use solver::{Decision, Solver};
 use thiserror::Error;
-pub use verifier::Asserts;
 
-use encoder::Encoder;
+pub use concretize::Env;
+pub use env::{Environment, SymEnv};
+pub use interpretation::Interpretation;
+pub use smtlib_script::SmtLibScript;
 pub use verifier::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
     verify_never_errors,
 };
 
-use crate::symcc::concretize::ConcretizeError;
-pub use crate::symcc::concretize::Env;
-
-#[cfg(feature = "term")]
-pub use crate::symcc::{
-    term::{Term, TermVar},
-    term_type::TermType,
-};
+// Public interface for `Term` and related types
+pub use bitvec::BitVec;
+pub use ext::Ext;
+pub use op::{ExtOp, Op, Uuf};
+pub use term::{Term, TermVar};
+pub use term_type::TermType;
+pub use verifier::Asserts;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
@@ -155,7 +151,7 @@ impl<S: Solver> SymCompiler<S> {
             let mut encoder = Encoder::new(symenv, self.solver.smtlib_input())
                 .map_err(|err| Error::EncoderConstruction { err })?;
             encoder
-                .encode(asserts)
+                .encode(asserts.iter())
                 .await
                 .map_err(|err| Error::Encoding { err })?;
             match self.solver.check_sat().await? {
@@ -202,7 +198,7 @@ impl<S: Solver> SymCompiler<S> {
             let mut encoder = Encoder::new(symenv, self.solver.smtlib_input())
                 .map_err(|err| Error::EncoderConstruction { err })?;
             encoder
-                .encode(asserts)
+                .encode(asserts.iter())
                 .await
                 .map_err(|err| Error::Encoding { err })?;
             let id_maps = IdMaps::from_encoder(&encoder);

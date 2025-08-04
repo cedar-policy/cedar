@@ -20,7 +20,14 @@ mod symcc;
 use solver::Solver;
 use symcc::SymCompiler;
 pub use symcc::{solver, Env, Environment, Interpretation, SmtLibScript, SymEnv};
-use symcc::{well_typed_policies, well_typed_policy};
+use symcc::{
+    verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
+    verify_never_errors, well_typed_policies, well_typed_policy,
+};
+
+pub use symcc::factory as term;
+pub use symcc::type_abbrevs::*;
+pub use symcc::{Asserts, BitVec, Ext, ExtOp, Op, Term, TermType, TermVar, Uuf};
 
 use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
 
@@ -327,153 +334,189 @@ impl<S: Solver> CedarSymCompiler<S> {
     }
 }
 
-/// Experimental features to compile various verification tasks to [`Term`] and [`Asserts`] directly.
-#[cfg(feature = "term")]
-mod term_feature {
-    use super::*;
+#[derive(Debug, Clone)]
+pub struct WellFormedAsserts<'a> {
+    asserts: Asserts,
+    /// Policies that have been used to generate the asserts.
+    footprint: Vec<&'a cedar_policy_core::ast::Policy>,
+}
 
-    pub use super::symcc::{Asserts, Term, TermType, TermVar};
-    pub use symcc::factory as term;
-    pub use symcc::{
-        verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent,
-        verify_implies, verify_never_errors,
-    };
+impl<'a> WellFormedAsserts<'a> {
+    /// Returns the underlying raw [`Asserts`].
+    pub fn asserts(&self) -> &Asserts {
+        &self.asserts
+    }
 
-    impl<S: Solver> CedarSymCompiler<S> {
-        /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
-        /// Returns `true` iff the asserts are unsatisfiable.
-        ///
-        /// NOTE: This is an experimental feature that may break or change in the future.
-        pub async fn check_unsat(&mut self, asserts: Asserts, symenv: &SymEnv) -> Result<bool> {
-            Ok(self.symcc.check_unsat(|_| Ok(asserts), symenv).await?)
-        }
-
-        /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
-        /// Returns some counterexample to the given symbolic assertions iff they are satisfiable.
-        ///
-        /// For soundness, all policies ever evaluated in the given `asserts` must be included in `policies`.
-        ///
-        /// NOTE: This is an experimental feature that may break or change in the future.
-        pub async fn check_sat(
-            &mut self,
-            asserts: Asserts,
-            symenv: &SymEnv,
-            policies: impl Iterator<Item = &cedar_policy_core::ast::Policy>,
-        ) -> Result<Option<Env>> {
-            Ok(self
-                .symcc
-                .check_sat(|_| Ok(asserts), symenv, policies)
-                .await?)
-        }
-
-        /// Compiles the verification task of [`Self::check_never_errors`] to the unsatisfiability
-        /// of the returned [`Asserts`]  without actually calling an SMT solver.
-        ///
-        /// For any `compiler: CedarSymCompiler` and `symenv: &SymvEnv`, the result of
-        /// ```no_compile
-        /// compiler.check_unsat(compiler.compile_never_errors(policy, symenv), symenv)
-        /// ```
-        /// should be the same as `compiler.check_never_errors(policy, symenv)`.
-        ///
-        /// Similarly, the result of
-        /// ```no_compile
-        /// compiler.check_sat(
-        ///     compiler.compile_never_errors(policy, symenv),
-        ///     symenv,
-        ///     std::iter::once(policy.policy()))
-        /// ```
-        /// should be the same as `compiler.check_never_errors_with_counterexample(policy, symenv)`.
-        ///
-        /// NOTE: This is an experimental feature that may break or change in the future.
-        pub fn compile_never_errors(
-            &self,
-            policy: &WellTypedPolicy,
-            symenv: &SymEnv,
-        ) -> Result<Asserts> {
-            Ok(verify_never_errors(policy.policy(), symenv)?)
-        }
-
-        /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
-        /// [`Self::check_implies`] to the unsatisfiability of the returned [`Asserts`]
-        /// without actually calling an SMT solver.
-        ///
-        /// NOTE: This is an experimental feature that may break or change in the future.
-        pub fn compile_implies(
-            &self,
-            pset1: &WellTypedPolicies,
-            pset2: &WellTypedPolicies,
-            symenv: &SymEnv,
-        ) -> Result<Asserts> {
-            Ok(verify_implies(
-                pset1.policy_set(),
-                pset2.policy_set(),
-                symenv,
-            )?)
-        }
-
-        /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
-        /// [`Self::check_always_allows`] to the unsatisfiability of the returned [`Asserts`]
-        /// without actually calling an SMT solver.
-        ///
-        /// NOTE: This is an experimental feature that may break or change in the future.
-        pub fn compile_always_allows(
-            &self,
-            pset: &WellTypedPolicies,
-            symenv: &SymEnv,
-        ) -> Result<Asserts> {
-            Ok(verify_always_allows(pset.policy_set(), symenv)?)
-        }
-
-        /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
-        /// [`Self::check_always_denies`] to the unsatisfiability of the returned [`Asserts`]
-        /// without actually calling an SMT solver.
-        ///
-        /// NOTE: This is an experimental feature that may break or change in the future.
-        pub fn compile_always_denies(
-            &self,
-            pset: &WellTypedPolicies,
-            symenv: &SymEnv,
-        ) -> Result<Asserts> {
-            Ok(verify_always_denies(pset.policy_set(), symenv)?)
-        }
-
-        /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
-        /// [`Self::check_equivalent`] to the unsatisfiability of the returned [`Asserts`]
-        /// without actually calling an SMT solver.
-        ///
-        /// NOTE: This is an experimental feature that may break or change in the future.
-        pub fn compile_equivalent(
-            &self,
-            pset1: &WellTypedPolicies,
-            pset2: &WellTypedPolicies,
-            symenv: &SymEnv,
-        ) -> Result<Asserts> {
-            Ok(verify_equivalent(
-                pset1.policy_set(),
-                pset2.policy_set(),
-                symenv,
-            )?)
-        }
-
-        /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
-        /// [`Self::check_disjoint`] to the unsatisfiability of the returned [`Asserts`]
-        /// without actually calling an SMT solver.
-        ///
-        /// NOTE: This is an experimental feature that may break or change in the future.
-        pub fn compile_disjoint(
-            &self,
-            pset1: &WellTypedPolicies,
-            pset2: &WellTypedPolicies,
-            symenv: &SymEnv,
-        ) -> Result<Asserts> {
-            Ok(verify_disjoint(
-                pset1.policy_set(),
-                pset2.policy_set(),
-                symenv,
-            )?)
+    /// Creates a new [`WellFormedAsserts`] from the given [`Asserts`]
+    /// without checking if it is well-formed.
+    ///
+    /// NOTE: Constructing [`WellFormedAsserts`] this way may lead to errors.
+    pub fn from_asserts_unchecked(
+        asserts: Asserts,
+        policies: impl Iterator<Item = &'a cedar_policy_core::ast::Policy>,
+    ) -> Self {
+        WellFormedAsserts {
+            asserts,
+            footprint: policies.collect(),
         }
     }
 }
 
-#[cfg(feature = "term")]
-pub use term_feature::*;
+/// Experimental features for directly compiling to and checking (un)satisfiability of `Asserts`/`Term`.
+impl<S: Solver> CedarSymCompiler<S> {
+    /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
+    /// Returns `true` iff the asserts are unsatisfiable.
+    ///
+    /// NOTE: This is an experimental feature that may break or change in the future.
+    pub async fn check_unsat(
+        &mut self,
+        asserts: &WellFormedAsserts<'_>,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        Ok(self
+            .symcc
+            .check_unsat(|_| Ok(asserts.asserts().clone()), symenv)
+            .await?)
+    }
+
+    /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
+    /// Returns some counterexample to the given symbolic assertions iff they are satisfiable.
+    ///
+    /// NOTE: This is an experimental feature that may break or change in the future.
+    pub async fn check_sat(
+        &mut self,
+        asserts: &WellFormedAsserts<'_>,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        Ok(self
+            .symcc
+            .check_sat(
+                |_| Ok(asserts.asserts().clone()),
+                symenv,
+                asserts.footprint.iter().copied(),
+            )
+            .await?)
+    }
+
+    /// Compiles the verification task of [`Self::check_never_errors`] to the unsatisfiability
+    /// of the returned [`WellFormedAsserts`]  without actually calling an SMT solver.
+    ///
+    /// For any `compiler: CedarSymCompiler` and `symenv: &SymvEnv`, the result of
+    /// ```no_compile
+    /// compiler.check_unsat(compiler.compile_never_errors(policy, symenv), symenv)
+    /// ```
+    /// should be the same as `compiler.check_never_errors(policy, symenv)`.
+    ///
+    /// Similarly, the result of
+    /// ```no_compile
+    /// compiler.check_sat(
+    ///     compiler.compile_never_errors(policy, symenv),
+    ///     symenv,
+    ///     std::iter::once(policy.policy()))
+    /// ```
+    /// should be the same as `compiler.check_never_errors_with_counterexample(policy, symenv)`.
+    ///
+    /// NOTE: This is an experimental feature that may break or change in the future.
+    pub fn compile_never_errors<'a>(
+        &self,
+        policy: &'a WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<WellFormedAsserts<'a>> {
+        Ok(WellFormedAsserts::from_asserts_unchecked(
+            verify_never_errors(policy.policy(), symenv)?,
+            std::iter::once(policy.policy()),
+        ))
+    }
+
+    /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
+    /// [`Self::check_implies`] to the unsatisfiability of the returned [`WellFormedAsserts`]
+    /// without actually calling an SMT solver.
+    ///
+    /// NOTE: This is an experimental feature that may break or change in the future.
+    pub fn compile_implies<'a>(
+        &self,
+        pset1: &'a WellTypedPolicies,
+        pset2: &'a WellTypedPolicies,
+        symenv: &SymEnv,
+    ) -> Result<WellFormedAsserts<'a>> {
+        Ok(WellFormedAsserts::from_asserts_unchecked(
+            verify_implies(pset1.policy_set(), pset2.policy_set(), symenv)?,
+            pset1
+                .policy_set()
+                .policies()
+                .chain(pset2.policy_set().policies()),
+        ))
+    }
+
+    /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
+    /// [`Self::check_always_allows`] to the unsatisfiability of the returned [`WellFormedAsserts`]
+    /// without actually calling an SMT solver.
+    ///
+    /// NOTE: This is an experimental feature that may break or change in the future.
+    pub fn compile_always_allows<'a>(
+        &self,
+        pset: &'a WellTypedPolicies,
+        symenv: &SymEnv,
+    ) -> Result<WellFormedAsserts<'a>> {
+        Ok(WellFormedAsserts::from_asserts_unchecked(
+            verify_always_allows(pset.policy_set(), symenv)?,
+            pset.policy_set().policies(),
+        ))
+    }
+
+    /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
+    /// [`Self::check_always_denies`] to the unsatisfiability of the returned [`WellFormedAsserts`]
+    /// without actually calling an SMT solver.
+    ///
+    /// NOTE: This is an experimental feature that may break or change in the future.
+    pub fn compile_always_denies<'a>(
+        &self,
+        pset: &'a WellTypedPolicies,
+        symenv: &SymEnv,
+    ) -> Result<WellFormedAsserts<'a>> {
+        Ok(WellFormedAsserts::from_asserts_unchecked(
+            verify_always_denies(pset.policy_set(), symenv)?,
+            pset.policy_set().policies(),
+        ))
+    }
+
+    /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
+    /// [`Self::check_equivalent`] to the unsatisfiability of the returned [`WellFormedAsserts`]
+    /// without actually calling an SMT solver.
+    ///
+    /// NOTE: This is an experimental feature that may break or change in the future.
+    pub fn compile_equivalent<'a>(
+        &self,
+        pset1: &'a WellTypedPolicies,
+        pset2: &'a WellTypedPolicies,
+        symenv: &SymEnv,
+    ) -> Result<WellFormedAsserts<'a>> {
+        Ok(WellFormedAsserts::from_asserts_unchecked(
+            verify_equivalent(pset1.policy_set(), pset2.policy_set(), symenv)?,
+            pset1
+                .policy_set()
+                .policies()
+                .chain(pset2.policy_set().policies()),
+        ))
+    }
+
+    /// Similar to [`Self::compile_never_errors`], but compiles the verification task of
+    /// [`Self::check_disjoint`] to the unsatisfiability of the returned [`WellFormedAsserts`]
+    /// without actually calling an SMT solver.
+    ///
+    /// NOTE: This is an experimental feature that may break or change in the future.
+    pub fn compile_disjoint<'a>(
+        &self,
+        pset1: &'a WellTypedPolicies,
+        pset2: &'a WellTypedPolicies,
+        symenv: &SymEnv,
+    ) -> Result<WellFormedAsserts<'a>> {
+        Ok(WellFormedAsserts::from_asserts_unchecked(
+            verify_disjoint(pset1.policy_set(), pset2.policy_set(), symenv)?,
+            pset1
+                .policy_set()
+                .policies()
+                .chain(pset2.policy_set().policies()),
+        ))
+    }
+}
