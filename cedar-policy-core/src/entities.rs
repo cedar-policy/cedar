@@ -2196,6 +2196,28 @@ mod json_parsing_tests {
             });
         });
     }
+
+    #[test]
+    fn serialize_unknown_no_error() {
+        let test = serde_json::json!([{
+            "uid" : { "type" : "A", "id" : "b" },
+            "attrs": {
+                "age":  {
+                    "__extn": {
+                        "fn": "unknown",
+                        "arg": "890.9"
+                    }
+                }
+            },
+            "parents": []
+        }]);
+        let eparser: EntityJsonParser<'_, '_, NoEntitiesSchema> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let x = eparser.from_json_value(test);
+        let y = x.unwrap().to_json_value();
+        // Should not error on reserialization
+        y.unwrap();
+    }
 }
 
 // PANIC SAFETY: Unit Test Code
