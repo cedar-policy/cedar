@@ -73,7 +73,7 @@ raw-parsing = ["cedar-policy-core/raw-parsing"]
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }
 cool_asserts = "2.0"
-criterion = "0.6"
+criterion = "0.7"
 globset = "0.4"
 cedar-policy-core = { version = "=4.5.0", features = [
     "test-util",
