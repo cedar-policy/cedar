@@ -21,31 +21,31 @@ pub mod err;
 pub mod evaluator;
 pub mod request;
 pub mod residual;
+pub mod response;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::ast::PolicyID;
 use crate::tpe::err::{NonstaticPolicyError, TPEError};
+use crate::tpe::response::{ResidualPolicy, Response};
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
     ValidatorSchema,
 };
 use crate::{ast::PolicySet, extensions::Extensions};
 
-use crate::tpe::{
-    entities::PartialEntities, evaluator::Evaluator, request::PartialRequest, residual::Residual,
-};
+use crate::tpe::{entities::PartialEntities, evaluator::Evaluator, request::PartialRequest};
 
 /// Type-aware partial-evaluation on a `PolicySet`.
 /// Both `request` and `entities` should be valid and hence be constructed
 /// using their safe constructors.
 /// Policies must be static.
-pub fn tpe_policies(
+pub fn is_authorized<'a>(
     ps: &PolicySet,
-    request: &PartialRequest,
-    entities: &PartialEntities,
-    schema: &ValidatorSchema,
-) -> std::result::Result<HashMap<PolicyID, Residual>, TPEError> {
+    request: &'a PartialRequest,
+    entities: &'a PartialEntities,
+    schema: &'a ValidatorSchema,
+) -> std::result::Result<Response<'a>, TPEError> {
     let env = request.find_request_env(schema)?;
     let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
     let mut exprs = HashMap::new();
@@ -75,10 +75,19 @@ pub fn tpe_policies(
         entities,
         extensions: Extensions::all_available(),
     };
-    Ok(exprs
-        .into_iter()
-        .map(|(id, expr)| (id.clone(), evaluator.interpret(&expr)))
-        .collect())
+    // PANIC SAFETY: `id` should exist in the policy set
+    #[allow(clippy::unwrap_used)]
+    Ok(Response::new(
+        exprs.into_iter().map(|(id, expr)| {
+            ResidualPolicy::new(
+                Arc::new(evaluator.interpret(&expr)),
+                Arc::new(ps.get(id).unwrap().clone()),
+            )
+        }),
+        request,
+        entities,
+        schema,
+    ))
 }
 
 #[cfg(test)]
@@ -103,7 +112,7 @@ mod tests {
         request::{PartialEntityUID, PartialRequest},
     };
 
-    use super::tpe_policies;
+    use super::is_authorized;
 
     fn rfc_policies() -> PolicySet {
         parse_policyset(
@@ -217,7 +226,7 @@ action Delete appliesTo {
         let schema = rfc_schema();
         let request = rfc_request();
         let entities = rfc_entities();
-        let residuals = tpe_policies(&policies, &request, &entities, &schema).unwrap();
+        let residuals = is_authorized(&policies, &request, &entities, &schema).unwrap();
         let id = AnyId::new_unchecked("id");
         let policy0 = policies
             .static_policies()
@@ -232,12 +241,12 @@ action Delete appliesTo {
             .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "2"))
             .unwrap();
         // resource["isPublic"]
-        assert_matches!(residuals.get(policy0.id()), Some(Residual::Partial{kind: ResidualKind::GetAttr { expr, attr }, ..}) => {
+        assert_matches!(residuals.get_residual(policy0.id()), Some(Residual::Partial{kind: ResidualKind::GetAttr { expr, attr }, ..}) => {
             assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Resource), .. });
             assert_eq!(attr, "isPublic");
         });
         // (resource["owner"]) == User::"Alice"
-        assert_matches!(residuals.get(policy1.id()), Some(Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }) => {
+        assert_matches!(residuals.get_residual(policy1.id()), Some(Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }) => {
             assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::GetAttr { expr, attr }, .. } => {
                 assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Resource), .. });
                 assert_eq!(attr, "owner");
@@ -248,7 +257,7 @@ action Delete appliesTo {
         });
         // false
         assert_matches!(
-            residuals.get(policy2.id()),
+            residuals.get_residual(policy2.id()),
             Some(Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(false)),
@@ -262,9 +271,12 @@ action Delete appliesTo {
 
 #[cfg(test)]
 mod tinytodo {
+    use std::collections::HashSet;
     use std::{collections::BTreeMap, sync::Arc};
 
-    use crate::ast::{Annotation, AnyId, BinaryOp, EntityUID, Literal, Value, ValueKind, Var};
+    use crate::ast::{
+        Annotation, AnyId, BinaryOp, EntityUID, Literal, PolicyID, Value, ValueKind, Var,
+    };
     use crate::tpe::residual::{Residual, ResidualKind};
     use crate::validator::ValidatorSchema;
     use crate::{
@@ -280,7 +292,7 @@ mod tinytodo {
         request::{PartialEntityUID, PartialRequest},
     };
 
-    use super::tpe_policies;
+    use super::is_authorized;
 
     #[track_caller]
     fn schema() -> ValidatorSchema {
@@ -414,7 +426,7 @@ when { principal in resource.editors };
         let schema = schema();
         let request = partial_request();
         let entities = partial_entities();
-        let residuals = tpe_policies(&policies, &request, &entities, &schema).unwrap();
+        let residuals = is_authorized(&policies, &request, &entities, &schema).unwrap();
         let id = AnyId::new_unchecked("id");
         let policy0 = policies
             .static_policies()
@@ -432,19 +444,25 @@ when { principal in resource.editors };
             .static_policies()
             .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "3"))
             .unwrap();
-        // false
-        assert_matches!(
-            residuals.get(policy0.id()),
-            Some(Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(false)),
-                    ..
-                },
-                ..
-            })
-        );
+        let false_permits: HashSet<&PolicyID> = residuals.false_permits().collect();
+        assert!(false_permits.len() == 2);
+        assert!(false_permits.contains(policy0.id()));
+        assert!(false_permits.contains(policy3.id()));
+        let false_forbids: HashSet<&PolicyID> = residuals.false_forbids().collect();
+        assert!(false_forbids.is_empty());
+        let true_permits: HashSet<&PolicyID> = residuals.satisfied_permits().collect();
+        assert!(true_permits.is_empty());
+        let true_forbids: HashSet<&PolicyID> = residuals.satisfied_forbids().collect();
+        assert!(true_forbids.is_empty());
+        let non_trivial_permits: HashSet<&PolicyID> = residuals.non_trival_permits().collect();
+        assert!(non_trivial_permits.len() == 2);
+        assert!(non_trivial_permits.contains(policy1.id()));
+        assert!(non_trivial_permits.contains(policy2.id()));
+        let non_trivial_forbids: HashSet<&PolicyID> = residuals.non_trival_forbids().collect();
+        assert!(non_trivial_forbids.is_empty());
+        assert_matches!(residuals.decision(), None);
         // (resource["owner"]) == User::"aaron"
-        assert_matches!(residuals.get(policy1.id()), Some(Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }) => {
+        assert_matches!(residuals.get_residual(policy1.id()), Some(Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }) => {
             assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::GetAttr { expr, attr }, .. } => {
                 assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Resource), .. });
                 assert_eq!(attr, "owner");
@@ -454,7 +472,7 @@ when { principal in resource.editors };
             });
         });
         // (User::"aaron" in (resource["readers"])) || (User::"aaron" in (resource["editors"]))
-        assert_matches!(residuals.get(policy2.id()), Some(Residual::Partial { kind: ResidualKind::Or{ left, right }, .. }) => {
+        assert_matches!(residuals.get_residual(policy2.id()), Some(Residual::Partial { kind: ResidualKind::Or{ left, right }, .. }) => {
                     assert_matches!(left.as_ref(), Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::In, arg1, arg2 }, .. } => {
         assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(uid)), ..}, .. } => {
                         assert_eq!(uid.as_ref(), &EntityUID::from_components("User".parse().unwrap(), Eid::new("aaron"), None));
@@ -474,16 +492,5 @@ when { principal in resource.editors };
                         });
                     });
                 });
-        // false
-        assert_matches!(
-            residuals.get(policy3.id()),
-            Some(Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(false)),
-                    ..
-                },
-                ..
-            })
-        );
     }
 }
