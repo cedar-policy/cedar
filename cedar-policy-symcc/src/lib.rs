@@ -335,13 +335,13 @@ impl<S: Solver> CedarSymCompiler<S> {
 }
 
 #[derive(Debug, Clone)]
-pub struct WellFormedAsserts<'a> {
+pub struct WellFormedAsserts {
     asserts: Asserts,
-    /// Policies that have been used to generate the asserts.
-    footprint: Vec<&'a cedar_policy_core::ast::Policy>,
+    /// All [`cedar_policy_core::ast::Expr`]s that have been compiled when generating the asserts.
+    footprint: Vec<cedar_policy_core::ast::Expr>,
 }
 
-impl<'a> WellFormedAsserts<'a> {
+impl WellFormedAsserts {
     /// Returns the underlying raw [`Asserts`].
     pub fn asserts(&self) -> &Asserts {
         &self.asserts
@@ -351,13 +351,13 @@ impl<'a> WellFormedAsserts<'a> {
     /// without checking if it is well-formed.
     ///
     /// NOTE: Constructing [`WellFormedAsserts`] this way may lead to errors.
-    pub fn from_asserts_unchecked(
+    pub fn from_asserts_unchecked<'a>(
         asserts: Asserts,
         policies: impl Iterator<Item = &'a cedar_policy_core::ast::Policy>,
     ) -> Self {
         WellFormedAsserts {
             asserts,
-            footprint: policies.collect(),
+            footprint: policies.map(|p| p.condition()).collect(),
         }
     }
 }
@@ -370,7 +370,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// NOTE: This is an experimental feature that may break or change in the future.
     pub async fn check_unsat(
         &mut self,
-        asserts: &WellFormedAsserts<'_>,
+        asserts: &WellFormedAsserts,
         symenv: &SymEnv,
     ) -> Result<bool> {
         Ok(self
@@ -385,7 +385,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// NOTE: This is an experimental feature that may break or change in the future.
     pub async fn check_sat(
         &mut self,
-        asserts: &WellFormedAsserts<'_>,
+        asserts: &WellFormedAsserts,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
         Ok(self
@@ -393,7 +393,7 @@ impl<S: Solver> CedarSymCompiler<S> {
             .check_sat(
                 |_| Ok(asserts.asserts().clone()),
                 symenv,
-                asserts.footprint.iter().copied(),
+                asserts.footprint.iter(),
             )
             .await?)
     }
@@ -417,11 +417,11 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// should be the same as `compiler.check_never_errors_with_counterexample(policy, symenv)`.
     ///
     /// NOTE: This is an experimental feature that may break or change in the future.
-    pub fn compile_never_errors<'a>(
+    pub fn compile_never_errors(
         &self,
-        policy: &'a WellTypedPolicy,
+        policy: &WellTypedPolicy,
         symenv: &SymEnv,
-    ) -> Result<WellFormedAsserts<'a>> {
+    ) -> Result<WellFormedAsserts> {
         Ok(WellFormedAsserts::from_asserts_unchecked(
             verify_never_errors(policy.policy(), symenv)?,
             std::iter::once(policy.policy()),
@@ -433,12 +433,12 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// without actually calling an SMT solver.
     ///
     /// NOTE: This is an experimental feature that may break or change in the future.
-    pub fn compile_implies<'a>(
+    pub fn compile_implies(
         &self,
-        pset1: &'a WellTypedPolicies,
-        pset2: &'a WellTypedPolicies,
+        pset1: &WellTypedPolicies,
+        pset2: &WellTypedPolicies,
         symenv: &SymEnv,
-    ) -> Result<WellFormedAsserts<'a>> {
+    ) -> Result<WellFormedAsserts> {
         Ok(WellFormedAsserts::from_asserts_unchecked(
             verify_implies(pset1.policy_set(), pset2.policy_set(), symenv)?,
             pset1
@@ -453,11 +453,11 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// without actually calling an SMT solver.
     ///
     /// NOTE: This is an experimental feature that may break or change in the future.
-    pub fn compile_always_allows<'a>(
+    pub fn compile_always_allows(
         &self,
-        pset: &'a WellTypedPolicies,
+        pset: &WellTypedPolicies,
         symenv: &SymEnv,
-    ) -> Result<WellFormedAsserts<'a>> {
+    ) -> Result<WellFormedAsserts> {
         Ok(WellFormedAsserts::from_asserts_unchecked(
             verify_always_allows(pset.policy_set(), symenv)?,
             pset.policy_set().policies(),
@@ -469,11 +469,11 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// without actually calling an SMT solver.
     ///
     /// NOTE: This is an experimental feature that may break or change in the future.
-    pub fn compile_always_denies<'a>(
+    pub fn compile_always_denies(
         &self,
-        pset: &'a WellTypedPolicies,
+        pset: &WellTypedPolicies,
         symenv: &SymEnv,
-    ) -> Result<WellFormedAsserts<'a>> {
+    ) -> Result<WellFormedAsserts> {
         Ok(WellFormedAsserts::from_asserts_unchecked(
             verify_always_denies(pset.policy_set(), symenv)?,
             pset.policy_set().policies(),
@@ -485,12 +485,12 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// without actually calling an SMT solver.
     ///
     /// NOTE: This is an experimental feature that may break or change in the future.
-    pub fn compile_equivalent<'a>(
+    pub fn compile_equivalent(
         &self,
-        pset1: &'a WellTypedPolicies,
-        pset2: &'a WellTypedPolicies,
+        pset1: &WellTypedPolicies,
+        pset2: &WellTypedPolicies,
         symenv: &SymEnv,
-    ) -> Result<WellFormedAsserts<'a>> {
+    ) -> Result<WellFormedAsserts> {
         Ok(WellFormedAsserts::from_asserts_unchecked(
             verify_equivalent(pset1.policy_set(), pset2.policy_set(), symenv)?,
             pset1
@@ -505,12 +505,12 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// without actually calling an SMT solver.
     ///
     /// NOTE: This is an experimental feature that may break or change in the future.
-    pub fn compile_disjoint<'a>(
+    pub fn compile_disjoint(
         &self,
-        pset1: &'a WellTypedPolicies,
-        pset2: &'a WellTypedPolicies,
+        pset1: &WellTypedPolicies,
+        pset2: &WellTypedPolicies,
         symenv: &SymEnv,
-    ) -> Result<WellFormedAsserts<'a>> {
+    ) -> Result<WellFormedAsserts> {
         Ok(WellFormedAsserts::from_asserts_unchecked(
             verify_disjoint(pset1.policy_set(), pset2.policy_set(), symenv)?,
             pset1
