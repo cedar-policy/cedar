@@ -56,86 +56,69 @@ async fn term_basic_arith_unsat() {
 
     assert_eq!(
         compiler
-            .check_unsat(
-                &WellFormedAsserts::from_asserts_unchecked(
-                    Arc::new(vec![term::not(term::eq(
-                        TermVar {
-                            id: "x".to_string(),
-                            ty: TermType::Bitvec { n: 64 }
-                        }
-                        .into(),
-                        TermVar {
-                            id: "x".to_string(),
-                            ty: TermType::Bitvec { n: 64 }
-                        }
-                        .into(),
-                    ))]),
-                    std::iter::empty()
-                ),
+            .check_unsat(&WellFormedAsserts::from_asserts_unchecked(
                 &envs.symenv,
-            )
+                Arc::new(vec![term::not(term::eq(
+                    TermVar {
+                        id: "x".to_string(),
+                        ty: TermType::Bitvec { n: 64 }
+                    }
+                    .into(),
+                    TermVar {
+                        id: "x".to_string(),
+                        ty: TermType::Bitvec { n: 64 }
+                    }
+                    .into(),
+                ))]),
+                std::iter::empty()
+            ),)
             .await
             .unwrap(),
         true
     );
     assert_eq!(
         compiler
-            .check_unsat(
-                &WellFormedAsserts::from_asserts_unchecked(
-                    Arc::new(vec![term::not(term::eq(
-                        TermVar {
-                            id: "x".to_string(),
-                            ty: TermType::Bitvec { n: 64 }
-                        }
-                        .into(),
-                        TermVar {
-                            id: "y".to_string(),
-                            ty: TermType::Bitvec { n: 64 }
-                        }
-                        .into(),
-                    ))]),
-                    std::iter::empty()
-                ),
+            .check_unsat(&WellFormedAsserts::from_asserts_unchecked(
                 &envs.symenv,
-            )
+                Arc::new(vec![term::not(term::eq(
+                    TermVar {
+                        id: "x".to_string(),
+                        ty: TermType::Bitvec { n: 64 }
+                    }
+                    .into(),
+                    TermVar {
+                        id: "y".to_string(),
+                        ty: TermType::Bitvec { n: 64 }
+                    }
+                    .into(),
+                ))]),
+                std::iter::empty()
+            ),)
             .await
             .unwrap(),
         false
     );
     assert_eq!(
         compiler
-            .check_unsat(
-                &WellFormedAsserts::from_asserts_unchecked(
-                    Arc::new(vec![term::not(term::implies(
-                        term::and(
-                            term::bvsle(
-                                TermVar {
-                                    id: "x".to_string(),
-                                    ty: TermType::Bitvec { n: 64 }
-                                }
-                                .into(),
-                                TermVar {
-                                    id: "y".to_string(),
-                                    ty: TermType::Bitvec { n: 64 }
-                                }
-                                .into(),
-                            ),
-                            term::bvsle(
-                                TermVar {
-                                    id: "y".to_string(),
-                                    ty: TermType::Bitvec { n: 64 }
-                                }
-                                .into(),
-                                TermVar {
-                                    id: "z".to_string(),
-                                    ty: TermType::Bitvec { n: 64 }
-                                }
-                                .into(),
-                            ),
-                        ),
+            .check_unsat(&WellFormedAsserts::from_asserts_unchecked(
+                &envs.symenv,
+                Arc::new(vec![term::not(term::implies(
+                    term::and(
                         term::bvsle(
                             TermVar {
                                 id: "x".to_string(),
+                                ty: TermType::Bitvec { n: 64 }
+                            }
+                            .into(),
+                            TermVar {
+                                id: "y".to_string(),
+                                ty: TermType::Bitvec { n: 64 }
+                            }
+                            .into(),
+                        ),
+                        term::bvsle(
+                            TermVar {
+                                id: "y".to_string(),
                                 ty: TermType::Bitvec { n: 64 }
                             }
                             .into(),
@@ -145,11 +128,22 @@ async fn term_basic_arith_unsat() {
                             }
                             .into(),
                         ),
-                    ))]),
-                    std::iter::empty(),
-                ),
-                &envs.symenv,
-            )
+                    ),
+                    term::bvsle(
+                        TermVar {
+                            id: "x".to_string(),
+                            ty: TermType::Bitvec { n: 64 }
+                        }
+                        .into(),
+                        TermVar {
+                            id: "z".to_string(),
+                            ty: TermType::Bitvec { n: 64 }
+                        }
+                        .into(),
+                    ),
+                ))]),
+                std::iter::empty(),
+            ),)
             .await
             .unwrap(),
         true
@@ -170,11 +164,7 @@ async fn term_always_denies_cex() {
     let asserts = compiler
         .compile_always_denies(&typed_pset, &envs.symenv)
         .unwrap();
-    let cex = compiler
-        .check_sat(&asserts, &envs.symenv)
-        .await
-        .unwrap()
-        .unwrap();
+    let cex = compiler.check_sat(&asserts).await.unwrap().unwrap();
     let resp = Authorizer::new().is_authorized(&cex.request, &pset, &cex.entities);
     assert_eq!(resp.decision(), cedar_policy::Decision::Allow);
 }
