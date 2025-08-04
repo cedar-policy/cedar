@@ -112,7 +112,7 @@ fn handle_resource_scope(policy: &Template, info: &ScopeVariableInfo) -> Complet
         | PrincipalOrResourceConstraint::IsIn(_, entity_reference) => create_binary_op_context(
             Op::in_entity(),
             resource_var,
-            entity_reference.into_expr(SlotId::principal()).into(),
+            entity_reference.into_expr(SlotId::resource()).into(),
         ),
 
         PrincipalOrResourceConstraint::Eq(entity_reference) => create_binary_op_context(

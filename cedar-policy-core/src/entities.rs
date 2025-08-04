@@ -112,6 +112,24 @@ impl Entities {
         self.entities.values().map(|e| e.as_ref())
     }
 
+    /// Test if two entity hierarchies are structurally equal. The hierarchies
+    /// must contain the same set of entity ids, and the entities with each id
+    /// must be structurally equal (decided by [`Entity::deep_eq`]). Ancestor
+    /// equality between entities is always decided by comparing the transitive
+    /// closure of ancestor and not direct parents.
+    pub fn deep_eq(&self, other: &Self) -> bool {
+        if self.mode != other.mode || self.entities.len() != other.entities.len() {
+            return false;
+        }
+
+        self.entities.iter().all(|(id, entity)| {
+            other
+                .entities
+                .get(id)
+                .map_or(false, |other_entity| entity.deep_eq(other_entity))
+        })
+    }
+
     /// Adds the [`crate::ast::Entity`]s in the iterator to this [`Entities`].
     /// Fails if
     ///  - there is a pair of non-identical entities in the passed iterator with the same Entity UID, or
@@ -563,7 +581,9 @@ pub enum TCComputation {
 #[allow(clippy::cognitive_complexity)]
 mod json_parsing_tests {
     use super::*;
-    use crate::{extensions::Extensions, test_utils::*, transitive_closure::TcError};
+    use crate::{
+        assert_deep_eq, extensions::Extensions, test_utils::*, transitive_closure::TcError,
+    };
     use cool_asserts::assert_matches;
     use std::collections::HashSet;
 
@@ -1013,6 +1033,34 @@ mod json_parsing_tests {
         // Check that an error occurs indicating that an inconsistent duplicate was found
         let expected = r#"Test::"jeff""#.parse().unwrap();
         assert_matches!(err, EntitiesError::Duplicate(d) => assert_eq!(d.euid(), &expected));
+    }
+
+    #[test]
+    fn add_inconsistent_duplicate_tags() {
+        let parser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+
+        let initial = parser.single_from_json_value(serde_json::json!({"uid":{ "type" : "Test", "id" : "jeff" }, "attrs": {}, "tags" : {"t": 1}, "parents" : []})).unwrap();
+        let initial_entities = Entities::from_entities(
+            [initial],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            &Extensions::all_available(),
+        )
+        .unwrap();
+
+        let dup = parser.single_from_json_value(serde_json::json!({"uid":{ "type" : "Test", "id" : "jeff" }, "attrs": {}, "tags" : {}, "parents" : []})).unwrap();
+        let err = initial_entities
+            .add_entities(
+                [Arc::new(dup)],
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .err()
+            .unwrap();
+
+        assert_matches!(err, EntitiesError::Duplicate(d) => assert_eq!(d.euid(), &r#"Test::"jeff""#.parse().unwrap()));
     }
 
     #[test]
@@ -1892,7 +1940,7 @@ mod json_parsing_tests {
     #[test]
     fn json_roundtripping() {
         let empty_entities = Entities::new();
-        assert_eq!(
+        assert_deep_eq!(
             empty_entities,
             roundtrip(&empty_entities).expect("should roundtrip without errors")
         );
@@ -1904,7 +1952,7 @@ mod json_parsing_tests {
             Extensions::none(),
         )
         .expect("Failed to construct entities");
-        assert_eq!(
+        assert_deep_eq!(
             entities,
             roundtrip(&entities).expect("should roundtrip without errors")
         );
@@ -1979,7 +2027,7 @@ mod json_parsing_tests {
             Extensions::all_available(),
         )
         .expect("Failed to construct entities");
-        assert_eq!(
+        assert_deep_eq!(
             entities,
             roundtrip(&entities).expect("should roundtrip without errors")
         );
