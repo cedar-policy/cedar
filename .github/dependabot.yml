@@ -13,6 +13,12 @@ updates:
     # Update all explicitly defined dependencies
     allow:
       - dependency-type: "all"
+    ignore:
+      # Due to a build error when updating from tsify 0.4.5, we are skipping the
+      # next release (0.5.5). Issue #1744 tracks an eventual upgrade to this
+      # version or a later version.
+      - dependency-name: "tsify"
+        versions: ["0.5.5"]
     # Group all updates into one pull request
     groups:
       rust-dependencies:
