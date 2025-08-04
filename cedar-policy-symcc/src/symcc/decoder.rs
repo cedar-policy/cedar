@@ -134,19 +134,21 @@ pub enum SExpr {
     App(Vec<SExpr>),
 }
 
-/// As another string-theory-level escape sequence,
-/// we need to convert any of the following to the
-/// corresponding Unicode character
-/// (see https://smt-lib.org/theories-UnicodeStrings.shtml):
-///   \ud₃d₂d₁d₀  
-///   \u{d₀}
-///   \u{d₁d₀}
-///   \u{d₂d₁d₀}
-///   \u{d₃d₂d₁d₀}
-///   \u{d₄d₃d₂d₁d₀}
+/// This function decodes a string encoded in SMT-LIB 2 format
+/// as a Rust string.
 ///
-/// This function also converts the parser-level escape sequence
-/// `""` to `"`.
+/// It handles two escape sequences:
+/// - Parser-level escape sequence `""` (which represents `"`)
+///   (per https://smt-lib.org/papers/smt-lib-reference-v2.7-r2025-07-07.pdf)
+/// - Theory-level escape sequence for Unicode characters:
+///   convert any of the following to the corresponding Unicode character
+///   (see https://smt-lib.org/theories-UnicodeStrings.shtml):
+///     \ud₃d₂d₁d₀  
+///     \u{d₀}
+///     \u{d₁d₀}
+///     \u{d₂d₁d₀}
+///     \u{d₃d₂d₁d₀}
+///     \u{d₄d₃d₂d₁d₀}
 ///
 /// See also:
 /// - The (right) inverse: `encode_string`
