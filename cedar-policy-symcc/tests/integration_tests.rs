@@ -2080,3 +2080,90 @@ async fn cex_enum_set() {
 
     assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
 }
+
+/// Tests unicode enum entities
+#[tokio::test]
+async fn entity_unicode_enum() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity User enum [ "🐼panda🐼", "🐶Leo🐶" ];
+        entity Document { owner: User };
+        action view appliesTo {
+            principal: [User],
+            resource: [Document]
+        };
+        "#,
+    );
+    let validator = Validator::new(schema.clone());
+
+    let pset = utils::pset_from_text(
+        r#"permit(principal, action, resource) when {
+            resource.owner == principal
+        };"#,
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+    assert_does_not_always_allow(&mut compiler, &pset, &envs).await;
+}
+
+/// Tests unicode entities
+#[tokio::test]
+async fn entity_unicode_uid() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity User;
+        entity Document { owner: User };
+        action view appliesTo {
+            principal: [User],
+            resource: [Document]
+        };
+        "#,
+    );
+    let validator = Validator::new(schema.clone());
+
+    let pset = utils::pset_from_text(
+        r#"permit(principal == User::"🐼panda🐼", action, resource) when {
+            resource.owner == principal
+        };"#,
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+    assert_does_not_always_allow(&mut compiler, &pset, &envs).await;
+}
+
+/// Tests entity UIDs with quotes in them
+#[tokio::test]
+async fn entity_uid_quote() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity User;
+        entity Document { owner: User };
+        action view appliesTo {
+            principal: [User],
+            resource: [Document]
+        };
+        "#,
+    );
+    let validator = Validator::new(schema.clone());
+
+    let pset = utils::pset_from_text(
+        r#"permit(principal == User::"\"panda\"", action, resource) when {
+            resource.owner == principal
+        };"#,
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+    assert_does_not_always_allow(&mut compiler, &pset, &envs).await;
+}
