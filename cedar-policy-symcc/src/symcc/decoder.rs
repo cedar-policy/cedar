@@ -149,42 +149,15 @@ pub enum SExpr {
 /// `""` to `"`.
 ///
 /// See also:
-/// - The (left) inverse: `encode_string`
+/// - The (right) inverse: `encode_string`
 /// - The concrete C++ implementation in cvc5, which this function mimics
 ///   https://github.com/cvc5/cvc5/blob/b78e7ed23348659db52a32765ad181ae0c26bbd5/src/util/string.cpp#L136
 fn decode_string(s: &[u8]) -> Option<String> {
-    let mut i: usize = 0;
-    let mut esc_quote = Vec::with_capacity(s.len());
-
-    // Handle parser-level escape sequence `""` => `"`
-    // (in SMT-LIB 2.7 standard)
-    while i < s.len() {
-        // PANIC SAFETY
-        #[allow(
-            clippy::indexing_slicing,
-            reason = "i < s.len() thus indexing by i should not panic"
-        )]
-        let c = s[i];
-
-        // PANIC SAFETY
-        #[allow(
-            clippy::indexing_slicing,
-            reason = "i + 1 < s.len() thus indexing by i + 1 should not panic"
-        )]
-        if c == b'"' && i + 1 < s.len() && s[i + 1] == b'"' {
-            esc_quote.push(b'"');
-            i += 2;
-        } else {
-            esc_quote.push(c);
-            i += 1;
-        }
-    }
-
     // Now handle string-theory-level escape sequences
-    let mut out = String::with_capacity(esc_quote.len());
+    let mut out = String::with_capacity(s.len());
 
-    // Tries to convert the byte to a hexadecimal value
-    let to_hex = |c: u8| {
+    // Helper function to read the byte as a hexadecimal digit
+    let as_hex = |c: u8| {
         if c.is_ascii_digit() {
             Some(u32::from(c - b'0'))
         } else if (b'a'..=b'f').contains(&c) {
@@ -196,18 +169,42 @@ fn decode_string(s: &[u8]) -> Option<String> {
         }
     };
 
-    i = 0;
-    while i < esc_quote.len() {
+    let mut i: usize = 0;
+
+    while i < s.len() {
         // PANIC SAFETY
         #[allow(
             clippy::indexing_slicing,
-            reason = "i < esc_quote.len() thus indexing by i should not panic"
+            reason = "i < s.len() thus indexing by i should not panic"
         )]
-        let c = esc_quote[i];
+        let c = s[i];
 
         if c != b'\\' {
-            out.push(c as char);
-            i += 1;
+            if c != b'"' {
+                out.push(c as char);
+                i += 1;
+            } else {
+                out.push('"');
+
+                // PANIC SAFETY
+                #[allow(
+                    clippy::indexing_slicing,
+                    reason = "i + 1 < s.len() thus indexing by i + 1 should not panic"
+                )]
+                if i + 1 < s.len() && s[i + 1] == b'"' {
+                    // `""` is interpreted as `"` (per SMT-LIB 2.7 standard).
+                    //
+                    // NOTE: In cvc5, this happens in a separate parser pass, but
+                    // we merge it with the theory-level escape sequence handling.
+                    // This is ok because `"` should not occur in any valid
+                    // theory-level escape sequence.
+                    i += 2;
+                } else {
+                    // This case is technically not allowed by the lexer,
+                    // but we silently accept it anyway.
+                    i += 1;
+                }
+            }
             continue;
         }
 
@@ -217,16 +214,16 @@ fn decode_string(s: &[u8]) -> Option<String> {
         // PANIC SAFETY
         #[allow(
             clippy::indexing_slicing,
-            reason = "i + 1 < esc_quote.len() thus indexing by i + 1 should not panic"
+            reason = "i + 1 < s.len() thus indexing by i + 1 should not panic"
         )]
-        if i + 1 < esc_quote.len() && esc_quote[i + 1] == b'u' {
+        if i + 1 < s.len() && s[i + 1] == b'u' {
             i += 2;
             // PANIC SAFETY
             #[allow(
                 clippy::indexing_slicing,
-                reason = "i < esc_quote.len() thus indexing by i should not panic"
+                reason = "i < s.len() thus indexing by i should not panic"
             )]
-            if i < esc_quote.len() && esc_quote[i] == b'{' {
+            if i < s.len() && s[i] == b'{' {
                 i += 1;
 
                 // Code point value
@@ -239,10 +236,10 @@ fn decode_string(s: &[u8]) -> Option<String> {
                 // PANIC SAFETY
                 #[allow(
                     clippy::indexing_slicing,
-                    reason = "j < esc_quote.len() thus indexing by j should not panic"
+                    reason = "j < s.len() thus indexing by j should not panic"
                 )]
-                while j < esc_quote.len() && esc_quote[j] != b'}' && j <= i + 5 {
-                    if let Some(d) = to_hex(esc_quote[j]) {
+                while j < s.len() && s[j] != b'}' && j <= i + 5 {
+                    if let Some(d) = as_hex(s[j]) {
                         v = (v << 4) | d;
                         j += 1;
                     } else {
@@ -256,9 +253,9 @@ fn decode_string(s: &[u8]) -> Option<String> {
                     // PANIC SAFETY
                     #[allow(
                         clippy::indexing_slicing,
-                        reason = "j < esc_quote.len() thus indexing by j should not panic"
+                        reason = "j < s.len() thus indexing by j should not panic"
                     )]
-                    if j < esc_quote.len() && esc_quote[j] == b'}' && v <= SMT_LIB_MAX_CODE_POINT {
+                    if j < s.len() && s[j] == b'}' && v <= SMT_LIB_MAX_CODE_POINT {
                         // Found the closing brace
                         out.push(char::from_u32(v)?);
                         is_esc = true;
@@ -267,17 +264,17 @@ fn decode_string(s: &[u8]) -> Option<String> {
                 }
             } else {
                 // No brace, we expect exactly 4 hex digits
-                if i + 3 < esc_quote.len() {
+                if i + 3 < s.len() {
                     // PANIC SAFETY
                     #[allow(
                         clippy::indexing_slicing,
-                        reason = "i + 3 < esc_quote.len() thus indexing by i .. i + 3 should not panic"
+                        reason = "i + 3 < s.len() thus indexing by i .. i + 3 should not panic"
                     )]
                     if let (Some(d1), Some(d2), Some(d3), Some(d4)) = (
-                        to_hex(esc_quote[i]),
-                        to_hex(esc_quote[i + 1]),
-                        to_hex(esc_quote[i + 2]),
-                        to_hex(esc_quote[i + 3]),
+                        as_hex(s[i]),
+                        as_hex(s[i + 1]),
+                        as_hex(s[i + 2]),
+                        as_hex(s[i + 3]),
                     ) {
                         out.push(char::from_u32(d1 << 12 | d2 << 8 | d3 << 4 | d4)?);
                         is_esc = true;
