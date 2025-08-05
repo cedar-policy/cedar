@@ -100,6 +100,59 @@ impl<'a> Environments<'a> {
             symenv,
         }
     }
+
+    /// Gets all possible request environments from a schema.
+    pub fn get_all_from_schema(schema: &'a Schema) -> Vec<Self> {
+        schema
+            .request_envs()
+            .map(|req_env| {
+                let symenv = SymEnv::new(schema, &req_env).unwrap();
+                Self {
+                    schema,
+                    req_env,
+                    symenv,
+                }
+            })
+            .collect()
+    }
+}
+
+/// Checks that the counterexample validates against the schema.
+fn assert_cex_valid(schema: &Schema, cex: &Env) {
+    schema
+        .as_ref()
+        .validate_request(cex.request.as_ref(), Extensions::all_available())
+        .unwrap();
+    Entities::from_entities(cex.entities.clone(), Some(schema)).unwrap();
+}
+
+pub async fn assert_never_errors_ok<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy: &Policy,
+    envs: &Environments<'_>,
+) -> bool {
+    let typed_policy = WellTypedPolicy::from_policy(policy, &envs.req_env, envs.schema).unwrap();
+    let res = compiler
+        .check_never_errors(&typed_policy, &envs.symenv)
+        .await
+        .unwrap();
+    let cex = compiler
+        .check_never_errors_with_counterexample(&typed_policy, &envs.symenv)
+        .await
+        .unwrap();
+    assert_eq!(res, cex.is_none());
+
+    if let Some(cex) = cex {
+        assert_cex_valid(envs.schema, &cex);
+        let pset = PolicySet::from_policies(std::iter::once(policy.clone())).unwrap();
+        let resp = Authorizer::new().is_authorized(&cex.request, &pset, &cex.entities);
+        assert!(
+            resp.diagnostics().errors().next().is_some(),
+            "check_never_errors_with_counterexample returned an invalid counterexample"
+        );
+    }
+
+    res
 }
 
 pub async fn assert_never_errors<S: Solver>(
@@ -107,16 +160,38 @@ pub async fn assert_never_errors<S: Solver>(
     policy: &Policy,
     envs: &Environments<'_>,
 ) {
-    let policy = WellTypedPolicy::from_policy(policy, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_never_errors(&policy, &envs.symenv).await {
-        Ok(true) => (),
-        Ok(false) => panic!("assert_never_errors failed for:\n{policy}"),
-        Err(e) => panic!("{e}"),
-    }
     assert!(
-        compiler.check_never_errors_with_counterexample(&policy, &envs.symenv).await.unwrap().is_none(),
-        "check_never_errors is true, but check_never_errors_with_counterexample returned a counterexample",
+        assert_never_errors_ok(compiler, policy, envs).await,
+        "assert_never_errors failed for:\n{policy}"
     );
+}
+
+pub async fn assert_always_allows_ok<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    pset: &PolicySet,
+    envs: &Environments<'_>,
+) -> bool {
+    let typed_pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
+    let res = compiler
+        .check_always_allows(&typed_pset, &envs.symenv)
+        .await
+        .unwrap();
+    let cex = compiler
+        .check_always_allows_with_counterexample(&typed_pset, &envs.symenv)
+        .await
+        .unwrap();
+    assert_eq!(res, cex.is_none());
+
+    if let Some(cex) = cex {
+        assert_cex_valid(envs.schema, &cex);
+        let resp = Authorizer::new().is_authorized(&cex.request, pset, &cex.entities);
+        assert!(
+            resp.decision() == Decision::Deny,
+            "check_always_allows_with_counterexample returned an invalid counterexample"
+        );
+    }
+
+    res
 }
 
 pub async fn assert_always_allows<S: Solver>(
@@ -124,15 +199,9 @@ pub async fn assert_always_allows<S: Solver>(
     pset: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_always_allows(&pset, &envs.symenv).await {
-        Ok(true) => (),
-        Ok(false) => panic!("assert_always_allows failed for:\n{pset}"),
-        Err(e) => panic!("{e}"),
-    }
     assert!(
-        compiler.check_always_allows_with_counterexample(&pset, &envs.symenv).await.unwrap().is_none(),
-        "check_always_allows is true, but check_always_allows_with_counterexample returned a counterexample",
+        assert_always_allows_ok(compiler, pset, envs).await,
+        "assert_always_allows failed for:\n{pset}"
     );
 }
 
@@ -141,27 +210,38 @@ pub async fn assert_does_not_always_allow<S: Solver>(
     pset: &PolicySet,
     envs: &Environments<'_>,
 ) {
+    assert!(
+        !assert_always_allows_ok(compiler, pset, envs).await,
+        "assert_does_not_always_allow failed for:\n{pset}"
+    );
+}
+
+pub async fn assert_always_denies_ok<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    pset: &PolicySet,
+    envs: &Environments<'_>,
+) -> bool {
     let typed_pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    match compiler
-        .check_always_allows(&typed_pset, &envs.symenv)
+    let res = compiler
+        .check_always_denies(&typed_pset, &envs.symenv)
         .await
-    {
-        Ok(true) => panic!("assert_does_not_always_allow failed for:\n{pset}"),
-        Ok(false) => (),
-        Err(e) => panic!("{e}"),
+        .unwrap();
+    let cex = compiler
+        .check_always_denies_with_counterexample(&typed_pset, &envs.symenv)
+        .await
+        .unwrap();
+    assert_eq!(res, cex.is_none());
+
+    if let Some(cex) = cex {
+        assert_cex_valid(envs.schema, &cex);
+        let resp = Authorizer::new().is_authorized(&cex.request, pset, &cex.entities);
+        assert!(
+            resp.decision() == Decision::Allow,
+            "check_always_denies_with_counterexample returned an invalid counterexample"
+        );
     }
-    match compiler.check_always_allows_with_counterexample(&typed_pset, &envs.symenv).await.unwrap() {
-        Some(Env { request, entities }) => {
-            // Check that the request/entities pass validation
-            envs.schema.as_ref().validate_request(request.as_ref(), Extensions::all_available()).unwrap();
-            Entities::from_entities(entities.clone(), Some(envs.schema)).unwrap();
-            // Check that the counterexample is correct
-            let resp1 = Authorizer::new().is_authorized(&request, pset, &entities);
-            assert!(resp1.decision() == Decision::Deny,
-                "check_always_allows_with_counterexample returned an invalid counterexample");
-        }
-        _ => panic!("check_always_allows is false, but check_always_allows_with_counterexample returned no counterexample"),
-    }
+
+    res
 }
 
 pub async fn assert_always_denies<S: Solver>(
@@ -169,15 +249,9 @@ pub async fn assert_always_denies<S: Solver>(
     pset: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_always_denies(&pset, &envs.symenv).await {
-        Ok(true) => (),
-        Ok(false) => panic!("assert_always_denies failed for:\n{pset}"),
-        Err(e) => panic!("{e}"),
-    }
     assert!(
-        compiler.check_always_denies_with_counterexample(&pset, &envs.symenv).await.unwrap().is_none(),
-        "check_always_denies is true, but check_always_denies_with_counterexample returned a counterexample",
+        assert_always_denies_ok(compiler, pset, envs).await,
+        "assert_always_denies failed for:\n{pset}"
     );
 }
 
@@ -186,27 +260,41 @@ pub async fn assert_does_not_always_deny<S: Solver>(
     pset: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let typed_pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    match compiler
-        .check_always_denies(&typed_pset, &envs.symenv)
+    assert!(
+        !assert_always_denies_ok(compiler, pset, envs).await,
+        "assert_does_not_always_deny failed for:\n{pset}"
+    );
+}
+
+pub async fn assert_equivalent_ok<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    pset1: &PolicySet,
+    pset2: &PolicySet,
+    envs: &Environments<'_>,
+) -> bool {
+    let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
+    let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
+    let res = compiler
+        .check_equivalent(&typed_pset1, &typed_pset2, &envs.symenv)
         .await
-    {
-        Ok(true) => panic!("assert_does_not_always_deny failed for:\n{pset}"),
-        Ok(false) => (),
-        Err(e) => panic!("{e}"),
+        .unwrap();
+    let cex = compiler
+        .check_equivalent_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv)
+        .await
+        .unwrap();
+    assert_eq!(res, cex.is_none());
+
+    if let Some(cex) = cex {
+        assert_cex_valid(envs.schema, &cex);
+        let resp1 = Authorizer::new().is_authorized(&cex.request, pset1, &cex.entities);
+        let resp2 = Authorizer::new().is_authorized(&cex.request, pset2, &cex.entities);
+        assert!(
+            resp1.decision() != resp2.decision(),
+            "check_equivalent_with_counterexample returned an invalid counterexample"
+        );
     }
-    match compiler.check_always_denies_with_counterexample(&typed_pset, &envs.symenv).await.unwrap() {
-        Some(Env { request, entities }) => {
-            // Check that the request/entities pass validation
-            envs.schema.as_ref().validate_request(request.as_ref(), Extensions::all_available()).unwrap();
-            Entities::from_entities(entities.clone(), Some(envs.schema)).unwrap();
-            // Check that the counterexample is correct
-            let resp1 = Authorizer::new().is_authorized(&request, pset, &entities);
-            assert!(resp1.decision() == Decision::Allow,
-                "check_always_denies_with_counterexample returned an invalid counterexample");
-        }
-        _ => panic!("check_always_denies is false, but check_always_denies_with_counterexample returned no counterexample"),
-    }
+
+    res
 }
 
 pub async fn assert_equivalent<S: Solver>(
@@ -215,19 +303,9 @@ pub async fn assert_equivalent<S: Solver>(
     pset2: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    match compiler
-        .check_equivalent(&pset1, &pset2, &envs.symenv)
-        .await
-    {
-        Ok(true) => (),
-        Ok(false) => panic!("assert_equivalent failed for:\n{pset1}\n{pset2}"),
-        Err(e) => panic!("{e}"),
-    }
     assert!(
-        compiler.check_equivalent_with_counterexample(&pset1, &pset2, &envs.symenv).await.unwrap().is_none(),
-        "check_equivalent is true, but check_equivalent_with_counterexample returned a counterexample",
+        assert_equivalent_ok(compiler, pset1, pset2, envs).await,
+        "assert_equivalent failed for:\n{pset1}\n{pset2}"
     );
 }
 
@@ -237,29 +315,41 @@ pub async fn assert_not_equivalent<S: Solver>(
     pset2: &PolicySet,
     envs: &Environments<'_>,
 ) {
+    assert!(
+        !assert_equivalent_ok(compiler, pset1, pset2, envs).await,
+        "assert_not_equivalent failed for:\n{pset1}\n{pset2}"
+    );
+}
+
+pub async fn assert_implies_ok<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    pset1: &PolicySet,
+    pset2: &PolicySet,
+    envs: &Environments<'_>,
+) -> bool {
     let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
     let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    match compiler
-        .check_equivalent(&typed_pset1, &typed_pset2, &envs.symenv)
+    let res = compiler
+        .check_implies(&typed_pset1, &typed_pset2, &envs.symenv)
         .await
-    {
-        Ok(true) => panic!("assert_not_equivalent failed for:\n{pset1}\n{pset2}"),
-        Ok(false) => (),
-        Err(e) => panic!("{e}"),
+        .unwrap();
+    let cex = compiler
+        .check_implies_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv)
+        .await
+        .unwrap();
+    assert_eq!(res, cex.is_none());
+
+    if let Some(cex) = cex {
+        assert_cex_valid(envs.schema, &cex);
+        let resp1 = Authorizer::new().is_authorized(&cex.request, pset1, &cex.entities);
+        let resp2 = Authorizer::new().is_authorized(&cex.request, pset2, &cex.entities);
+        assert!(
+            resp1.decision() == Decision::Allow && resp2.decision() == Decision::Deny,
+            "check_implies_with_counterexample returned an invalid counterexample"
+        );
     }
-    match compiler.check_equivalent_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
-        Some(Env { request, entities }) => {
-            // Check that the request/entities pass validation
-            envs.schema.as_ref().validate_request(request.as_ref(), Extensions::all_available()).unwrap();
-            Entities::from_entities(entities.clone(), Some(envs.schema)).unwrap();
-            // Check that the counterexample is correct
-            let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
-            let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
-            assert!(resp1.decision() != resp2.decision(),
-                "check_equivalent_with_counterexample returned an invalid counterexample");
-        }
-        _ => panic!("check_equivalent is false, but check_equivalent_with_counterexample returned no counterexample"),
-    }
+
+    res
 }
 
 pub async fn assert_implies<S: Solver>(
@@ -268,20 +358,9 @@ pub async fn assert_implies<S: Solver>(
     pset2: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_implies(&pset1, &pset2, &envs.symenv).await {
-        Ok(true) => (),
-        Ok(false) => panic!("assert_implies failed for:\n{pset1}\n{pset2}"),
-        Err(e) => panic!("{e}"),
-    }
     assert!(
-        compiler
-            .check_implies_with_counterexample(&pset1, &pset2, &envs.symenv)
-            .await
-            .unwrap()
-            .is_none(),
-        "check_implies is true, but check_implies_with_counterexample returned a counterexample",
+        assert_implies_ok(compiler, pset1, pset2, envs).await,
+        "assert_implies failed for:\n{pset1}\n{pset2}"
     );
 }
 
@@ -291,29 +370,41 @@ pub async fn assert_does_not_imply<S: Solver>(
     pset2: &PolicySet,
     envs: &Environments<'_>,
 ) {
+    assert!(
+        !assert_implies_ok(compiler, pset1, pset2, envs).await,
+        "assert_does_not_imply failed for:\n{pset1}\n{pset2}"
+    );
+}
+
+pub async fn assert_disjoint_ok<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    pset1: &PolicySet,
+    pset2: &PolicySet,
+    envs: &Environments<'_>,
+) -> bool {
     let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
     let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    match compiler
-        .check_implies(&typed_pset1, &typed_pset2, &envs.symenv)
+    let res = compiler
+        .check_disjoint(&typed_pset1, &typed_pset2, &envs.symenv)
         .await
-    {
-        Ok(true) => panic!("assert_does_not_imply failed for:\n{pset1}\n{pset2}"),
-        Ok(false) => (),
-        Err(e) => panic!("{e}"),
+        .unwrap();
+    let cex = compiler
+        .check_disjoint_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv)
+        .await
+        .unwrap();
+    assert_eq!(res, cex.is_none());
+
+    if let Some(cex) = cex {
+        assert_cex_valid(envs.schema, &cex);
+        let resp1 = Authorizer::new().is_authorized(&cex.request, pset1, &cex.entities);
+        let resp2 = Authorizer::new().is_authorized(&cex.request, pset2, &cex.entities);
+        assert!(
+            resp1.decision() == Decision::Allow && resp2.decision() == Decision::Allow,
+            "check_disjoint_with_counterexample returned an invalid counterexample"
+        );
     }
-    match compiler.check_implies_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
-        Some(Env { request, entities }) => {
-            // Check that the request/entities pass validation
-            envs.schema.as_ref().validate_request(request.as_ref(), Extensions::all_available()).unwrap();
-            Entities::from_entities(entities.clone(), Some(envs.schema)).unwrap();
-            // Check that the counterexample is correct
-            let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
-            let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
-            assert!(resp1.decision() == Decision::Allow && resp2.decision() == Decision::Deny,
-                "check_implies_with_counterexample returned an invalid counterexample");
-        }
-        _ => panic!("check_implies is false, but check_implies_with_counterexample returned no counterexample"),
-    }
+
+    res
 }
 
 pub async fn assert_disjoint<S: Solver>(
@@ -322,20 +413,9 @@ pub async fn assert_disjoint<S: Solver>(
     pset2: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
-    let pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    match compiler.check_disjoint(&pset1, &pset2, &envs.symenv).await {
-        Ok(true) => (),
-        Ok(false) => panic!("assert_disjoint failed for:\n{pset1}\n{pset2}"),
-        Err(e) => panic!("{e}"),
-    }
     assert!(
-        compiler
-            .check_disjoint_with_counterexample(&pset1, &pset2, &envs.symenv)
-            .await
-            .unwrap()
-            .is_none(),
-        "check_disjoint is true, but check_disjoint_with_counterexample returned a counterexample",
+        assert_disjoint_ok(compiler, pset1, pset2, envs).await,
+        "assert_disjoint failed for:\n{pset1}\n{pset2}"
     );
 }
 
@@ -345,27 +425,8 @@ pub async fn assert_not_disjoint<S: Solver>(
     pset2: &PolicySet,
     envs: &Environments<'_>,
 ) {
-    let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
-    let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    match compiler
-        .check_disjoint(&typed_pset1, &typed_pset2, &envs.symenv)
-        .await
-    {
-        Ok(true) => panic!("assert_not_disjoint failed for:\n{pset1}\n{pset2}"),
-        Ok(false) => (),
-        Err(e) => panic!("{e}"),
-    }
-    match compiler.check_disjoint_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv).await.unwrap() {
-        Some(Env { request, entities }) => {
-            // Check that the request/entities pass validation
-            envs.schema.as_ref().validate_request(request.as_ref(), Extensions::all_available()).unwrap();
-            Entities::from_entities(entities.clone(), Some(envs.schema)).unwrap();
-            // Check that the counterexample is correct
-            let resp1 = Authorizer::new().is_authorized(&request, pset1, &entities);
-            let resp2 = Authorizer::new().is_authorized(&request, pset2, &entities);
-            assert!(resp1.decision() == Decision::Allow && resp2.decision() == Decision::Allow,
-                "check_disjoint_with_counterexample returned an invalid counterexample");
-        }
-        _ => panic!("check_disjoint is false, but check_disjoint_with_counterexample returned no counterexample"),
-    }
+    assert!(
+        !assert_disjoint_ok(compiler, pset1, pset2, envs).await,
+        "assert_not_disjoint failed for:\n{pset1}\n{pset2}"
+    );
 }

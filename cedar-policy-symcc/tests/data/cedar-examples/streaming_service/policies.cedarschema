@@ -1,0 +1,49 @@
+// Types
+type Subscription = {
+  tier: String
+};
+type Profile = {
+  isKid: Bool
+};
+
+// Entities
+entity FreeMember;
+entity Subscriber = {
+  subscription: Subscription,
+  profile: Profile
+};
+entity Movie = {
+  isFree: Bool,
+  needsRentOrBuy: Bool,
+  isOscarNominated: Bool
+};
+entity Show = {
+  isFree: Bool,
+  releaseDate: datetime,
+  isEarlyAccess: Bool
+};
+
+// Actions for content in general
+action watch
+  appliesTo {
+    principal: [FreeMember, Subscriber],
+    resource: [Movie, Show],
+    context: {
+      now: {
+        datetime: datetime,
+        localTimeOffset: duration
+      }
+    }
+  };
+
+// Actions for movies only
+action rent, buy
+  appliesTo {
+    principal: [FreeMember, Subscriber],
+    resource: Movie,
+    context: {
+      now: {
+        datetime: datetime
+      }
+    }
+  };

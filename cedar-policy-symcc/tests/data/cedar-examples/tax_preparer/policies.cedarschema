@@ -1,0 +1,33 @@
+namespace Taxpreparer {
+  type orgInfo = {
+    organization: String,
+    serviceline: String,
+    location: String,
+  };
+  // A tax-preparing professional
+  entity Professional = { 
+    assigned_orgs: Set<orgInfo>,
+    location: String,
+  };
+  // A client's tax document
+  entity Document = {
+    serviceline: String,
+    location: String,
+    owner: Client,
+  };
+  // A client 
+  entity Client = {
+    organization: String
+  };
+  // The record of consent from a client to view a doc
+  type Consent = {
+    client: Client, 
+    team_region_list: Set<String>
+  };
+
+  action viewDocument appliesTo {
+    principal: [Professional],
+    resource: [Document],
+    context: { consent: Consent }
+  };
+}
