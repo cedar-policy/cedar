@@ -544,6 +544,11 @@ mod interpret_test {
             &interp,
             true,
         );
+        test_valid_bool_interp_expr(
+            r#"!(context.d1 >= duration("0ms")) || context.d1.toDays() <= context.d1.toMilliseconds()"#,
+            &interp,
+            true,
+        );
     }
 
     #[test]
