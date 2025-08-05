@@ -20,11 +20,21 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
   APIs, as regular parsing performance is degraded when the `raw-parsing` feature is enabled.
 - Implemented type-aware partial evaluation [RFC 95](https://github.com/cedar-policy/rfcs/pull/95), under the
   experimental flag `tpe`. (#1575)
+- Added `deep_eq` to the `Entity` and `Entities` structs to allow comparing these objects for structural equality. 
 
 ### Changed
 
 - Allow multiple argument extension function calls in entity JSON format. (#1697)
 - Bumped MSRV to 1.85 (#1683)
+
+### Fixed
+
+- Fixed multiple functions on `Entities` to correctly consider entity tags when determining whether two entities are identical.
+  These functions will now only consider two entities identical if they have the same identifiers, attributes, ancestors, and tags.
+  Attempting to create an `Entities` object where a duplicated entity identifier maps to two entities with different tags will now
+  result in an error. Attempting to validate an action entity with any tags will always result in an error. This change
+  specifically impacts `from_entities`, `add_entities`, `add_entities_from_json_file`, `add_entities_from_json_value`,
+  and `add_entities_from_json_str`.
 
 ## [4.5.0] - 2025-06-30
 Cedar Language Version: 4.4
