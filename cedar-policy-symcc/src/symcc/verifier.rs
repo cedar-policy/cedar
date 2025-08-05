@@ -19,6 +19,8 @@
 //! boolean terms whose conjunction is unsatisfiable if and only if the verified
 //! property holds.
 
+use std::sync::Arc;
+
 use crate::symcc::authorizer::is_authorized;
 use crate::symcc::compiler::compile;
 use crate::symcc::enforcer::enforce;
@@ -30,7 +32,7 @@ use crate::symcc::term::Term;
 use cedar_policy::Effect;
 use cedar_policy_core::ast::{Expr, Policy, PolicyID, PolicySet, Value};
 
-pub type Asserts = Vec<Term>;
+pub type Asserts = Arc<Vec<Term>>;
 type Result<T> = std::result::Result<T, result::Error>;
 
 /// Returns asserts that are unsatisfiable iff the evaluation of `policy`, represented as
@@ -43,10 +45,12 @@ pub fn verify_evaluate(
 ) -> Result<Asserts> {
     let policy_expr = policy.condition();
     let term = compile(&policy_expr, env)?;
-    Ok(enforce([&policy_expr], env)
-        .into_iter()
-        .chain([not(phi(term))])
-        .collect())
+    Ok(Arc::new(
+        enforce([&policy_expr], env)
+            .into_iter()
+            .chain([not(phi(term))])
+            .collect(),
+    ))
 }
 
 /// Returns asserts that are unsatisfiable iff the authorization decisions produced
@@ -66,10 +70,12 @@ pub fn verify_is_authorized(
         .chain(policies2.policies())
         .map(|p| p.condition())
         .collect();
-    Ok(enforce(xs.iter(), env)
-        .into_iter()
-        .chain([not(phi(term1, term2))])
-        .collect())
+    Ok(Arc::new(
+        enforce(xs.iter(), env)
+            .into_iter()
+            .chain([not(phi(term1, term2))])
+            .collect(),
+    ))
 }
 
 /// Returns asserts that are unsatisfiable iff `policy` does not error on any input in
