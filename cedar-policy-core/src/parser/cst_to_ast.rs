@@ -853,7 +853,7 @@ impl cst::PolicyImpl {
             {
                 all_errs.push(
                     ToASTError::new(
-                        ToASTErrorKind::GeneralizedSlotIsAnnotatedNotUsed(slot.clone()),
+                        ToASTErrorKind::GeneralizedSlotDeclarationNotUsed(slot.clone()),
                         None,
                     )
                     .into(),

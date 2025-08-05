@@ -162,7 +162,7 @@ pub enum ToASTErrorKind {
     /// Return when a generalized slot appears in the generalized_slots_declaration
     /// but is not used within the template
     #[error("{0} slot is given a type declaration, however it is not used with the template")]
-    GeneralizedSlotIsAnnotatedNotUsed(ast::SlotId),
+    GeneralizedSlotDeclarationNotUsed(ast::SlotId),
     /// Returned when a policy contains template slots in a when/unless clause but not in the scope.
     #[error(transparent)]
     #[diagnostic(transparent)]
