@@ -18,7 +18,7 @@
 //! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/SymCC.lean>.
 
 mod authorizer;
-mod bitvec;
+pub mod bitvec;
 mod compiler;
 mod concretize;
 mod decoder;
@@ -26,54 +26,43 @@ mod encoder;
 mod enforcer;
 mod entity_tag;
 mod env;
-mod ext;
-mod extension_types;
+pub mod ext;
+pub mod extension_types;
 mod extfun;
-#[cfg(feature = "term")]
 pub mod factory;
-#[cfg(not(feature = "term"))]
-mod factory;
 mod function;
 mod interpretation;
-mod op;
+pub mod op;
 pub mod result;
 mod smtlib_script;
 pub mod solver;
 mod tags;
-mod term;
-mod term_type;
-mod type_abbrevs;
-mod verifier;
+pub mod term;
+pub mod term_type;
+pub mod type_abbrevs;
+pub mod verifier;
 
 use cedar_policy::Schema;
 use decoder::{parse_sexpr, DecodeError, IdMaps};
 use env::to_validator_request_env;
-// public exports
-pub use env::{Environment, SymEnv};
-pub use interpretation::Interpretation;
-pub use smtlib_script::SmtLibScript;
 
-use cedar_policy_core::ast::{ExprBuilder, Policy, PolicySet};
+use cedar_policy_core::ast::{Expr, ExprBuilder, Policy, PolicySet};
 use cedar_policy_core::validator::{
     typecheck::Typechecker, types::RequestEnv, ValidationError, ValidationMode,
 };
+use concretize::ConcretizeError;
+use encoder::Encoder;
 use solver::{Decision, Solver};
 use thiserror::Error;
-pub use verifier::Asserts;
+use verifier::Asserts;
 
-use encoder::Encoder;
+pub use concretize::Env;
+pub use env::{Environment, SymEnv};
+pub use interpretation::Interpretation;
+pub use smtlib_script::SmtLibScript;
 pub use verifier::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
     verify_never_errors,
-};
-
-use crate::symcc::concretize::ConcretizeError;
-pub use crate::symcc::concretize::Env;
-
-#[cfg(feature = "term")]
-pub use crate::symcc::{
-    term::{Term, TermVar},
-    term_type::TermType,
 };
 
 #[allow(clippy::enum_variant_names)]
@@ -155,7 +144,7 @@ impl<S: Solver> SymCompiler<S> {
             let mut encoder = Encoder::new(symenv, self.solver.smtlib_input())
                 .map_err(|err| Error::EncoderConstruction { err })?;
             encoder
-                .encode(asserts)
+                .encode(asserts.iter())
                 .await
                 .map_err(|err| Error::Encoding { err })?;
             match self.solver.check_sat().await? {
@@ -167,12 +156,12 @@ impl<S: Solver> SymCompiler<S> {
     }
 
     /// Checks satisfiability, and then returns the model (as a pair of [`Request`] and [`Entities`]);
-    /// For soundness, `policies` must include all policies involved in the verification condition.
+    /// For soundness, `footprint` must include all expressions used for generating the verification condition.
     pub async fn check_sat(
         &mut self,
         vc: impl FnOnce(&SymEnv) -> std::result::Result<Asserts, result::Error>,
         symenv: &SymEnv,
-        policies: impl Iterator<Item = &Policy>,
+        footprint: impl Iterator<Item = &Expr>,
     ) -> Result<Option<Env>> {
         let asserts = vc(symenv)?;
         if asserts.iter().any(|assert| *assert == false.into()) {
@@ -181,8 +170,7 @@ impl<S: Solver> SymCompiler<S> {
             Ok(None)
         } else if asserts.iter().all(|assert| *assert == true.into()) {
             let interp = Interpretation::default(symenv);
-            let exprs = policies.map(|p| p.condition()).collect::<Vec<_>>();
-            Ok(Some(symenv.interpret(&interp).concretize(exprs.iter())?))
+            Ok(Some(symenv.interpret(&interp).concretize(footprint)?))
         } else {
             self.solver
                 .smtlib_input()
@@ -202,7 +190,7 @@ impl<S: Solver> SymCompiler<S> {
             let mut encoder = Encoder::new(symenv, self.solver.smtlib_input())
                 .map_err(|err| Error::EncoderConstruction { err })?;
             encoder
-                .encode(asserts)
+                .encode(asserts.iter())
                 .await
                 .map_err(|err| Error::Encoding { err })?;
             let id_maps = IdMaps::from_encoder(&encoder);
@@ -213,12 +201,14 @@ impl<S: Solver> SymCompiler<S> {
                         return Ok(None);
                     };
 
+                    let exprs = footprint.collect::<Vec<_>>();
                     let model = parse_sexpr(model_str.as_bytes())?;
-                    let exprs = policies.map(|p| p.condition()).collect::<Vec<_>>();
                     let interp = model.decode_model(symenv, &id_maps)?;
-                    let interp = interp.repair_as_counterexample(exprs.iter());
+                    let interp = interp.repair_as_counterexample(exprs.iter().copied());
 
-                    Ok(Some(symenv.interpret(&interp).concretize(exprs.iter())?))
+                    Ok(Some(
+                        symenv.interpret(&interp).concretize(exprs.into_iter())?,
+                    ))
                 }
                 Decision::Unknown => Err(Error::SolverUnknown),
             }
@@ -240,7 +230,7 @@ impl<S: Solver> SymCompiler<S> {
         self.check_sat(
             |symenv| verify_never_errors(policy, symenv),
             symenv,
-            std::iter::once(policy),
+            std::iter::once(&policy.condition()),
         )
         .await
     }
@@ -269,10 +259,15 @@ impl<S: Solver> SymCompiler<S> {
         policies2: &PolicySet,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
+        let footprint = policies1
+            .policies()
+            .chain(policies2.policies())
+            .map(|p| p.condition())
+            .collect::<Vec<_>>();
         self.check_sat(
             |symenv| verify_implies(policies1, policies2, symenv),
             symenv,
-            policies1.policies().chain(policies2.policies()),
+            footprint.iter(),
         )
         .await
     }
@@ -293,10 +288,14 @@ impl<S: Solver> SymCompiler<S> {
         policies: &PolicySet,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
+        let footprint = policies
+            .policies()
+            .map(|p| p.condition())
+            .collect::<Vec<_>>();
         self.check_sat(
             |symenv| verify_always_allows(policies, symenv),
             symenv,
-            policies.policies(),
+            footprint.iter(),
         )
         .await
     }
@@ -317,10 +316,14 @@ impl<S: Solver> SymCompiler<S> {
         policies: &PolicySet,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
+        let footprint = policies
+            .policies()
+            .map(|p| p.condition())
+            .collect::<Vec<_>>();
         self.check_sat(
             |symenv| verify_always_denies(policies, symenv),
             symenv,
-            policies.policies(),
+            footprint.iter(),
         )
         .await
     }
@@ -347,10 +350,15 @@ impl<S: Solver> SymCompiler<S> {
         policies2: &PolicySet,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
+        let footprint = policies1
+            .policies()
+            .chain(policies2.policies())
+            .map(|p| p.condition())
+            .collect::<Vec<_>>();
         self.check_sat(
             |symenv| verify_equivalent(policies1, policies2, symenv),
             symenv,
-            policies1.policies().chain(policies2.policies()),
+            footprint.iter(),
         )
         .await
     }
@@ -378,10 +386,15 @@ impl<S: Solver> SymCompiler<S> {
         policies2: &PolicySet,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
+        let footprint = policies1
+            .policies()
+            .chain(policies2.policies())
+            .map(|p| p.condition())
+            .collect::<Vec<_>>();
         self.check_sat(
             |symenv| verify_disjoint(policies1, policies2, symenv),
             symenv,
-            policies1.policies().chain(policies2.policies()),
+            footprint.iter(),
         )
         .await
     }
