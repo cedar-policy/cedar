@@ -190,7 +190,7 @@ impl Pattern {
         // 2. It provides an unambiguous length. In general for a string s,
         //    s.len() is not the same as s.chars().count(). The length of these
         //    created vectors will match .chars().count()
-        let text: Vec<char> = collect_chars(text); // text.chars.collect();
+        let text: Vec<char> = collect_chars(text); // text.chars().collect();
 
         let mut i: usize = 0; // index into text
         let mut j: usize = 0; // index into pattern
@@ -214,18 +214,13 @@ impl Pattern {
                 0 <= star_idx <= j,
                 j > 0 ==> star_idx < j,
                 0 <= tmp_idx <= i,
+                forall |jj: usize| 0 <= jj < spec_pattern.len() ==> (#[trigger] pattern[jj as int])@ == #[trigger] spec_pattern[jj as int],
                 forall |jj: usize| star_idx < jj < j ==> !(#[trigger] spec_pattern[jj as int] is Star),
                 contains_star ==> spec_pattern[star_idx as int] is Star,
                 spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int), // pattern[0..j] always matches text[0..i]
                 spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, tmp_idx as int, star_idx as int), // everything before the most recent star matches
                 // spec_pattern::wildcard_match_idx(text@, spec_pattern, 0int, 0int) ==>
                 //     spec_pattern::wildcard_match_idx(text@, spec_pattern, i as int, j as int),
-                /*
-                Should be something like:
-                    spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int), // pattern[0..j] always matches text[0..i]
-                    spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, tmp_idx, star_idx), // everything before the most recent star matches
-
-                 */
 
             decreases text_len - tmp_idx, pattern_len - j, text_len - i
         {
@@ -238,14 +233,10 @@ impl Pattern {
                 star_idx = j;
                 tmp_idx = i;
                 j += 1;
-                // assert(spec_pattern::wildcard_match_idx(text@, spec_pattern, 0int, 0int) ==>
-                //     spec_pattern::wildcard_match_idx(text@, spec_pattern, i as int, j as int));
             } else if j < pattern_len && pattern[j].match_char(text[i]) {
                 // pattern[j] matches text[i], so move forward in both (always consume a JustChar)
                 i += 1;
                 j += 1;
-                // assert(spec_pattern::wildcard_match_idx(text@, spec_pattern, 0int, 0int) ==>
-                //     spec_pattern::wildcard_match_idx(text@, spec_pattern, i as int, j as int));
             } else if contains_star {
                 // pattern[j] != text[i], but we have a star. We backtrack to the star (j = star_idx + 1, i = tmp_idx),
                 // consume one character from the text with the star (i = tmp_idx + 1), and store tmp_idx = i since
@@ -254,10 +245,21 @@ impl Pattern {
                 j = star_idx + 1;
                 i = tmp_idx + 1;
                 tmp_idx = i;
-                // assert(spec_pattern::wildcard_match_idx(text@, spec_pattern, 0int, 0int) ==>
-                //     spec_pattern::wildcard_match_idx(text@, spec_pattern, i as int, j as int));
             } else {
                 // pattern[j] != text[i], and we don't have any wildcards to backtrack to, so we can't match
+                proof { spec_pattern::lemma_wildcard_match_idx_rev_idx_equiv(text@, spec_pattern); }
+                proof {
+                    if j as int == spec_pattern.len() {
+
+                    } else if i == 0 {
+                        assert(!spec_pattern::wildcard(spec_pattern[j as int]));
+                        assert(!spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int));
+                    } else {
+                        assert(!spec_pattern::wildcard(spec_pattern[j as int]));
+                        assert(!spec_pattern::char_match(text@[i as int], spec_pattern[j as int]));
+                        assert(!spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int));
+                    }
+                }
                 return false;
             }
         }
@@ -274,6 +276,7 @@ impl Pattern {
                 0 <= star_idx <= j,
                 j > 0 ==> star_idx < j,
                 contains_star ==> spec_pattern[star_idx as int] is Star,
+                spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int), // pattern[0..j] always matches text[0..i]
                 spec_pattern::wildcard_match_idx(text@, spec_pattern, 0int, 0int) ==>
                     spec_pattern::wildcard_match_idx(text@, spec_pattern, i as int, j as int),
             decreases pattern_len - j
@@ -281,6 +284,7 @@ impl Pattern {
             j += 1;
         }
 
+        proof { spec_pattern::lemma_wildcard_match_idx_rev_idx_equiv(text@, spec_pattern); }
         j == pattern_len
     }
 

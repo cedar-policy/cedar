@@ -723,16 +723,6 @@ impl<'e> Evaluator<'e> {
         for uid2 in rhs_spec: rhs
             invariant
                 i == rhs_spec.pos,
-                // (match arg2@ {
-                //     spec_ast::Value::Prim { p: spec_ast::Prim::EntityUID { uid } } => {
-                //         rhs@.map_values(|euid: EntityUID| euid@) == seq![uid]
-                //     },
-                //     spec_ast::Value::Set { s: vs } => {
-                //         &&& spec_ast::valueset_as_entity_uid(vs) matches Ok(euid_set)
-                //         &&& FiniteSet::from_seq(rhs@.map_values(|euid: EntityUID| euid@)) == euid_set
-                //     }
-                //     _ => false // unreachable
-                // }),
                 (match arg2.value {
                     ValueKind::Lit(Literal::EntityUID(uid)) => {
                         rhs@ == seq![*uid]
@@ -746,8 +736,6 @@ impl<'e> Evaluator<'e> {
                 rhs_spec.elements == rhs@,
                 forall |euid: EntityUID| #[trigger] rhs_spec.elements.take(rhs_spec.pos).contains(euid) ==>
                     !(#[trigger] spec_evaluator::in_e_with_entity(uid1@, entity1_view, euid@)),
-                // forall |es: spec_ast::Entities| #[trigger] es.get(uid1@) == entity1_view ==>
-                //     !FiniteSet::from_seq(rhs_spec.elements.take(rhs_spec.pos)).any(|u: EntityUID| spec_evaluator::in_e(uid1@, u@, es)),
         {
             broadcast use FiniteSet::group_finiteset_properties;
             proof {
@@ -795,7 +783,6 @@ impl<'e> Evaluator<'e> {
             }
         }
         proof {
-            // TODO: can this proof be simplified?
             assert(i == rhs@.len() as int);
             assert(rhs@.take(i) =~= rhs@);
             assert(forall |euid: EntityUID| #[trigger] rhs@.contains(euid) ==> !(#[trigger] spec_evaluator::in_e_with_entity(uid1@, entity1_view, euid@)));
@@ -816,7 +803,6 @@ impl<'e> Evaluator<'e> {
                     assert(FiniteSet::from_seq(rhs@.map_values(|euid: EntityUID| euid@)) == euid_set);
                     assert(forall |euid: EntityUID| #[trigger] rhs@.contains(euid) ==> #[trigger] euid_set.contains(euid@));
                     assert_by_contradiction!( !euid_set.any(|u: spec_ast::EntityUID| spec_evaluator::in_e_with_entity(uid1@, entity1_view, u)), {
-                        // assert(euid_set.any(|u: spec_ast::EntityUID| spec_evaluator::in_e_with_entity(uid1@, entity1_view, u)));
                         assert(exists |u: spec_ast::EntityUID| #[trigger] euid_set.contains(u) && spec_evaluator::in_e_with_entity(uid1@, entity1_view, u));
                         let u = choose |u: spec_ast::EntityUID| #[trigger] euid_set.contains(u) && spec_evaluator::in_e_with_entity(uid1@, entity1_view, u);
                         assert(rhs@.map_values(|e: EntityUID| e@).contains(u));

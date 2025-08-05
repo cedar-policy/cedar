@@ -71,7 +71,7 @@ impl PolicySet {
     pub proof fn lemma_view_is_finite(&self)
         ensures self.view().finite()
     {
-        assert(self.links.view().dom().finite()); // TODO: Verus should know this? Can't have an infinite hashmap?
+        assert(self.links.view().dom().finite());
         vstd::map_lib::lemma_values_finite(self.links.view());
         assert(self.links.view().values().finite());
         self.links.view().values().lemma_map_finite(|p: Policy| p.view());

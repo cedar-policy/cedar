@@ -889,10 +889,3 @@ pub mod evaluation_errors {
 
 /// Type alias for convenience
 pub type Result<T> = std::result::Result<T, EvaluationError>;
-
-verus! {
-
-/// hack because Verus can't support `EvaluationError`
-pub type VerusResultHack<T> = std::result::Result<T, ()>;
-
-} // verus!

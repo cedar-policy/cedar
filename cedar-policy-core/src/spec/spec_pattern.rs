@@ -95,45 +95,51 @@ pub open spec fn wildcard_match_rev_idx(text: Seq<char>, pattern: Pattern, i: in
         true
     } else if i == 0 {
         // all of the pattern should be wildcards
-        wildcard(pattern[j]) && wildcard_match_rev_idx(text, pattern, i, j-1)
+        wildcard(pattern[j-1]) && wildcard_match_rev_idx(text, pattern, i, j-1)
     } else if j == 0 {
         // the pattern is empty and there are still some text characters to match
         false
-    } else if wildcard(pattern[j]) {
+    } else if wildcard(pattern[j-1]) {
         // either we can match zero characters with the wildcard (decrement j),
         // or we can match one character with the wildcard (decrement i) and continue using it
         wildcard_match_rev_idx(text, pattern, i, j-1) || wildcard_match_rev_idx(text, pattern, i-1, j)
     } else {
         // we must match the character exactly and continue
-        char_match(text[i], pattern[j]) && wildcard_match_rev_idx(text, pattern, i-1, j-1)
+        char_match(text[i-1], pattern[j-1]) && wildcard_match_rev_idx(text, pattern, i-1, j-1)
     }
 }
 
 pub proof fn lemma_wildcard_match_idx_rev_idx_equiv_aux(text: Seq<char>, pattern: Pattern, i: int, j: int)
+    requires
+        0 <= i <= text.len(),
+        0 <= j <= pattern.len(),
     ensures wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j)
     decreases i, j
 {
-    admit()
-    // reveal_with_fuel(wildcard_match_idx, 2);
-    // reveal_with_fuel(wildcard_match_rev_idx, 2);
-    // if i == 0 && j == 0 {
-    //     // empty pattern matches empty string
-    //     assert(wildcard_match_rev_idx(text, pattern, i, j));
-    //     assert(wildcard_match_idx(text, pattern, 0, 0));
-    // } else if i == 0 {
-    //     // all of the pattern should be wildcards
-    //     assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
-    // } else if j == 0 {
-    //     // the pattern is empty and there are still some text characters to match
-    //     assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
-    // } else if wildcard(pattern[j]) {
-    //     // either we can match zero characters with the wildcard (decrement j),
-    //     // or we can match one character with the wildcard (decrement i) and continue using it
-    //     assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
-    // } else {
-    //     // we must match the character exactly and continue
-    //     assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
-    // }
+    reveal_with_fuel(wildcard_match_idx, 2);
+    reveal_with_fuel(wildcard_match_rev_idx, 2);
+    if i == 0 && j == 0 {
+        // empty pattern matches empty string
+        assert(wildcard_match_rev_idx(text, pattern, i, j));
+        assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0));
+    } else if i == 0 {
+        // all of the pattern should be wildcards
+        lemma_wildcard_match_idx_rev_idx_equiv_aux(text, pattern, i, j-1);
+        assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
+    } else if j == 0 {
+        // the pattern is empty and there are still some text characters to match
+        assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
+    } else if wildcard(pattern[j-1]) {
+        // either we can match zero characters with the wildcard (decrement j),
+        // or we can match one character with the wildcard (decrement i) and continue using it
+        lemma_wildcard_match_idx_rev_idx_equiv_aux(text, pattern, i, j-1);
+        lemma_wildcard_match_idx_rev_idx_equiv_aux(text, pattern, i-1, j);
+        assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
+    } else {
+        // we must match the character exactly and continue
+        lemma_wildcard_match_idx_rev_idx_equiv_aux(text, pattern, i-1, j-1);
+        assert(wildcard_match_idx(text.subrange(0,i), pattern.subrange(0,j), 0, 0) == wildcard_match_rev_idx(text, pattern, i, j));
+    }
 }
 
 pub proof fn lemma_wildcard_match_idx_rev_idx_equiv(text: Seq<char>, pattern: Pattern)

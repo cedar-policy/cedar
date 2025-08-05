@@ -263,27 +263,6 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities, slot_env: SlotEnv
                 Ok(vmap) => Ok(Value::Record { m: vmap }),
                 Err(err) => Err(err),
             }
-            // // TODO: this doesn't guarantee which map entry's error will be returned, but does guarantee
-            // // that if any element in the map results in error, then some error will be returned.
-            // // This is analogous to the property checked by DRT, but may not be strong enough to verify the impl
-            // let entries_evaluated_rs = map.map_values(|mx: Expr| {
-            //     // Needed to prove termination
-            //     if map.dom().finite() && map.contains_value(mx) {
-            //         evaluate(mx, req, es, slot_env)
-            //     } else {
-            //         arbitrary()
-            //     }
-            // });
-            // if entries_evaluated_rs.values().any(|vr: SpecResult<Value>| vr is Err) {
-            //     // return one of the errors in the map
-            //     // entries_evaluated_rs.values().filter(|vr: SpecResult<Value>| vr is Err).choose()
-            //     let err_res = choose |vr: SpecResult<Value>| entries_evaluated_rs.contains_value(vr) && vr is Err;
-            //     Err(err_res->Err_0)
-            // } else {
-            //     let entries_evaluated =
-            //         entries_evaluated_rs.map_values(|x: SpecResult<Value>| x->Ok_0);
-            //     Ok(Value::Record { m: entries_evaluated })
-            // }
         },
         // TODO: case for ExtFun call
     }

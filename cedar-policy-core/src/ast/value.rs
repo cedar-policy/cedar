@@ -626,9 +626,10 @@ impl Set {
 
     verus! {
 
-    #[verifier::external_body]
-    pub fn authoritative(&self) -> Arc<BTreeSet<Value>> {
-        self.authoritative
+    pub fn authoritative(&self) -> (s: &Arc<BTreeSet<Value>>)
+        ensures s@ == self@
+    {
+        &self.authoritative
     }
 
 

@@ -260,8 +260,8 @@ pub struct FiniteSet<T> {
 
 
 impl<T> FiniteSet<T> {
-    #[verifier::type_invariant]
-    pub closed spec fn no_duplicates(self) -> bool {
+    // This should be a type invariant, but Verus doesn't have type invariants for spec types
+    closed spec fn no_duplicates(self) -> bool {
         self.s.no_duplicates()
     }
 
