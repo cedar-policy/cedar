@@ -31,7 +31,9 @@ Cedar Language Version: 4.4
 
 ### Added
 
-- Added `deep_eq` to the `Entity` and `Entities` structs to allow comparing these objects for structural equality. 
+- Added `deep_eq` to the `Entity` and `Entities` structs to allow comparing these objects for structural equality. (#1725)
+- Added the ability to serialize Unknown values to JSON. Matching the format that is currently
+  allowed for deserializing Unknown Values. (#1748)
 
 ### Changed
 
@@ -44,8 +46,8 @@ Cedar Language Version: 4.4
   Attempting to create an `Entities` object where a duplicated entity identifier maps to two entities with different tags will now
   result in an error. Attempting to validate an action entity with any tags will always result in an error. This change
   specifically impacts `from_entities`, `add_entities`, `add_entities_from_json_file`, `add_entities_from_json_value`,
-  and `add_entities_from_json_str`.
-- Fixed bug with template linked policies where previously, slots appearing within the `is in` operator were not correctly filled.
+  and `add_entities_from_json_str`. (#1725)
+- Fixed bug with template linked policies where previously, slots appearing within the `is in` operator were not correctly filled. (#1728)
 
 ## [4.5.0] - 2025-06-30
 Cedar Language Version: 4.4
