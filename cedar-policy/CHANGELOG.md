@@ -47,7 +47,8 @@ Cedar Language Version: 4.4
   result in an error. Attempting to validate an action entity with any tags will always result in an error. This change
   specifically impacts `from_entities`, `add_entities`, `add_entities_from_json_file`, `add_entities_from_json_value`,
   and `add_entities_from_json_str`. (#1725)
-- Fixed bug with template linked policies where previously, slots appearing within the `is in` operator were not correctly filled. (#1728)
+- Fixed bug with template linked policies where previously, slots appearing within the `is in` operator were not
+  correctly filled. This fix may cause some templates that would previously validate (in error) to no longer validate. (#1728)
 
 ## [4.5.0] - 2025-06-30
 Cedar Language Version: 4.4
