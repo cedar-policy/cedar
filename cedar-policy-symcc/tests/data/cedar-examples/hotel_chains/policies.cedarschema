@@ -1,0 +1,37 @@
+type PermissionsMap = {
+  hotelReservations: Set<Hotel>,
+  propertyReservations: Set<Property>,
+  // With unions, just have reservations: Set<Hotel|Property>
+  // Do similarly for PaymentDetails, Rates, etc.
+};
+entity User {
+  viewPermissions: PermissionsMap,
+  memberPermissions: PermissionsMap,
+  hotelAdminPermissions: Set<Hotel>,
+  propertyAdminPermissions: Set<Property>,
+  // With unions, just have adminPermissions: Set<Hotel|Property>
+};
+entity Property in [Hotel];
+entity Hotel in [Hotel];
+entity Reservation in [Property]; // PaymentDetails, Rates, etc. similar
+
+// ACTIONS: Reservations
+action viewReservation, updateReservation, grantAccessReservation
+  appliesTo {
+    principal: User,
+    resource: Reservation,
+  };
+
+// ACTIONS: Properties (plus, CreateReservation for a Property)
+action createReservation, viewProperty, updateProperty, grantAccessProperty
+  appliesTo {
+    principal: User,
+    resource: Property,
+  };
+
+// ACTIONS: Hotels (plus, CreateProperty for a Hotel)
+action createProperty, createHotel, viewHotel, updateHotel, grantAccessHotel
+  appliesTo {
+    principal: User,
+    resource: Hotel,
+  };

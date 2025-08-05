@@ -490,6 +490,7 @@ dependencies = [
  "num-traits",
  "rand 0.8.5",
  "ref-cast",
+ "rstest",
  "smol_str",
  "thiserror 2.0.12",
  "tokio",
