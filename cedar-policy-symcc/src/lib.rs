@@ -369,7 +369,19 @@ impl<'a> WellFormedAsserts<'a> {
     /// Creates a new [`WellFormedAsserts`] from the given [`Asserts`]
     /// without checking if it is well-formed.
     ///
-    /// NOTE: Constructing [`WellFormedAsserts`] this way may lead to errors.
+    /// NOTE: This is an experimental feature that allows manipulating/customizing
+    /// the underlying raw [`Asserts`] directly.
+    ///
+    /// The inputs should satisfy the following conditions for the query to be sound:
+    /// - `asserts` should be well-formed with respect to the `symenv`, in the
+    ///   sense of the definition in the Lean model:
+    ///   https://github.com/cedar-policy/cedar-spec/blob/7650a698e2a796b8c5b4118ac93d9e2874bc0807/cedar-lean/Cedar/Thm/SymCC/Data/Basic.lean#L463
+    ///   For example, if the variable `principal` is used in `asserts`,
+    ///   it should have the same type as `symenv.request.principal`.
+    /// - `policies` should include all policies ever compiled in the `asserts`,
+    ///   otherwise if a counterexample is generated from the query, it may not
+    ///   be well-formed (in particular, having an acyclic and transitive
+    ///   entity hierarchy).
     pub fn from_asserts_unchecked<'b>(
         symenv: &'a SymEnv,
         asserts: Asserts,
