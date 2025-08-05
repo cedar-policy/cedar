@@ -311,7 +311,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy"
-version = "4.5.0"
+version = "4.5.1"
 dependencies = [
  "cedar-policy-core 4.5.0",
  "cedar-policy-formatter 4.5.0",
@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-cli"
-version = "4.5.0"
+version = "4.5.1"
 dependencies = [
  "assert_cmd",
  "cedar-policy 4.5.0",
@@ -387,7 +387,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-core"
-version = "4.5.0"
+version = "4.5.1"
 dependencies = [
  "arbitrary",
  "chrono",
@@ -445,7 +445,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-formatter"
-version = "4.5.0"
+version = "4.5.1"
 dependencies = [
  "cedar-policy-core 4.5.0",
  "insta",
@@ -498,7 +498,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-testing"
-version = "4.5.0"
+version = "4.5.1"
 dependencies = [
  "assert_cmd",
  "cedar-policy 4.5.0",
@@ -511,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-wasm"
-version = "4.5.0"
+version = "4.5.1"
 dependencies = [
  "cedar-policy 4.5.0",
  "cedar-policy-core 4.5.0",
