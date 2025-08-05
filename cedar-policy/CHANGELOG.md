@@ -14,18 +14,30 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ### Added
 
+- Added `deep_eq` to the `Entity` and `Entities` structs to allow comparing these objects for structural equality. (#1723)
 - Added the `raw-parsing` feature flag which provides alternative parsing APIs (`parse_raw`) for
   `PolicySet`, `Policy`, and `Template`. These APIs don't retain source code information, trading detailed error
   reporting for reduced memory usage and faster parsing. The feature is only intended for use with raw parsing
   APIs, as regular parsing performance is degraded when the `raw-parsing` feature is enabled.
 - Implemented type-aware partial evaluation [RFC 95](https://github.com/cedar-policy/rfcs/pull/95), under the
   experimental flag `tpe`. (#1575)
-- Added `deep_eq` to the `Entity` and `Entities` structs to allow comparing these objects for structural equality. 
+
+### Changed
+
+- Bumped MSRV to 1.85 (#1683)
+
+## [4.5.1] - Coming soon
+
+Cedar Language Version: 4.4
+
+### Added
+
+- Added the ability to serialize Unknown values to JSON. Matching the format that is currently
+  allowed for deserializing Unknown Values. (#1748)
 
 ### Changed
 
 - Allow multiple argument extension function calls in entity JSON format. (#1697)
-- Bumped MSRV to 1.85 (#1683)
 
 ### Fixed
 
@@ -34,7 +46,9 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
   Attempting to create an `Entities` object where a duplicated entity identifier maps to two entities with different tags will now
   result in an error. Attempting to validate an action entity with any tags will always result in an error. This change
   specifically impacts `from_entities`, `add_entities`, `add_entities_from_json_file`, `add_entities_from_json_value`,
-  and `add_entities_from_json_str`.
+  and `add_entities_from_json_str`. (#1725)
+- Fixed bug with template linked policies where previously, slots appearing within the `is in` operator were not
+  correctly filled. This fix may cause some templates that would previously validate (in error) to no longer validate. (#1728)
 
 ## [4.5.0] - 2025-06-30
 Cedar Language Version: 4.4
