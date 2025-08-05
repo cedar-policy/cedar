@@ -1,0 +1,37 @@
+type Task = {
+    "id": Long,
+    "name": String,
+    "state": String,
+};
+
+type Tasks = Set<Task>;
+entity List in [Application] = {
+  "editors": Team,
+  "name": String,
+  "owner": User,
+  "readers": Team,
+  "tasks": Tasks,
+};
+entity Application enum ["TinyTodo"];
+entity User in [Team, Application] = {
+  "joblevel": Long,
+  "location": String,
+};
+entity Team in [Team, Application];
+
+action DeleteList, GetList, UpdateList appliesTo {
+  principal: [User],
+  resource: [List]
+};
+action CreateList, GetLists appliesTo {
+  principal: [User],
+  resource: [Application]
+};
+action CreateTask, UpdateTask, DeleteTask appliesTo {
+  principal: [User],
+  resource: [List]
+};
+action EditShare appliesTo {
+  principal: [User],
+  resource: [List]
+};
