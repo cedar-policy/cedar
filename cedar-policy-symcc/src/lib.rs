@@ -417,16 +417,13 @@ impl<S: Solver> CedarSymCompiler<S> {
     ///
     /// For any `compiler: CedarSymCompiler` and `symenv: &SymvEnv`, the result of
     /// ```no_compile
-    /// compiler.check_unsat(compiler.compile_never_errors(policy, symenv), symenv)
+    /// compiler.check_unsat(compiler.compile_never_errors(policy, symenv))
     /// ```
     /// should be the same as `compiler.check_never_errors(policy, symenv)`.
     ///
     /// Similarly, the result of
     /// ```no_compile
-    /// compiler.check_sat(
-    ///     compiler.compile_never_errors(policy, symenv),
-    ///     symenv,
-    ///     std::iter::once(policy.policy()))
+    /// compiler.check_sat(compiler.compile_never_errors(policy, symenv))
     /// ```
     /// should be the same as `compiler.check_never_errors_with_counterexample(policy, symenv)`.
     ///
