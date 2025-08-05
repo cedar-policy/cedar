@@ -342,7 +342,7 @@ impl Op {
             Op::Bvudiv => "bvudiv",
             Op::Bvsrem => "bvsrem",
             Op::Bvsmod => "bvsmod",
-            Op::Bvumod => "Bvurem",
+            Op::Bvumod => "bvurem",
             Op::Bvshl => "bvshl",
             Op::Bvlshr => "bvlshr",
             Op::Bvslt => "bvslt",
