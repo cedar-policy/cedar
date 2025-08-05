@@ -337,6 +337,7 @@ mod term_feature {
         ext::Ext,
         extension_types,
         op::{ExtOp, Op, Uuf},
+        result,
         type_abbrevs::{ExtType, OrdPattern},
         Asserts, Term, TermPrim, TermType, TermVar,
     };
