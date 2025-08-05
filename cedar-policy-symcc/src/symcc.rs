@@ -18,6 +18,9 @@
 //! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/SymCC.lean>.
 
 mod authorizer;
+#[cfg(feature = "term")]
+pub mod bitvec;
+#[cfg(not(feature = "term"))]
 mod bitvec;
 mod compiler;
 mod concretize;
@@ -26,7 +29,13 @@ mod encoder;
 mod enforcer;
 mod entity_tag;
 mod env;
+#[cfg(feature = "term")]
+pub mod ext;
+#[cfg(not(feature = "term"))]
 mod ext;
+#[cfg(feature = "term")]
+pub mod extension_types;
+#[cfg(not(feature = "term"))]
 mod extension_types;
 mod extfun;
 #[cfg(feature = "term")]
@@ -35,6 +44,9 @@ pub mod factory;
 mod factory;
 mod function;
 mod interpretation;
+#[cfg(feature = "term")]
+pub mod op;
+#[cfg(not(feature = "term"))]
 mod op;
 pub mod result;
 mod smtlib_script;
@@ -42,6 +54,9 @@ pub mod solver;
 mod tags;
 mod term;
 mod term_type;
+#[cfg(feature = "term")]
+pub mod type_abbrevs;
+#[cfg(not(feature = "term"))]
 mod type_abbrevs;
 mod verifier;
 
@@ -72,7 +87,7 @@ pub use crate::symcc::concretize::Env;
 
 #[cfg(feature = "term")]
 pub use crate::symcc::{
-    term::{Term, TermVar},
+    term::{Term, TermPrim, TermVar},
     term_type::TermType,
 };
 

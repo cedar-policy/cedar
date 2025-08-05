@@ -39,5 +39,5 @@ experimental = ["term"]
 workspace = true
 
 [patch.crates-io]
-cedar-policy = { path = "../cedar/cedar-policy" }
-cedar-policy-core = { path = "../cedar/cedar-policy-core" }
+cedar-policy = { path = "../cedar-policy" }
+cedar-policy-core = { path = "../cedar-policy-core" }

@@ -332,7 +332,14 @@ impl<S: Solver> CedarSymCompiler<S> {
 mod term_feature {
     use super::*;
 
-    pub use super::symcc::{Asserts, Term, TermType, TermVar};
+    pub use super::symcc::{
+        bitvec::BitVec,
+        ext::Ext,
+        extension_types,
+        op::{ExtOp, Op, Uuf},
+        type_abbrevs::{ExtType, OrdPattern},
+        Asserts, Term, TermPrim, TermType, TermVar,
+    };
     pub use symcc::factory as term;
     pub use symcc::{
         verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent,
