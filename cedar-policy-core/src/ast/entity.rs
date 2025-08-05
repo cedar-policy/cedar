@@ -645,6 +645,7 @@ impl Entity {
     pub(crate) fn deep_eq(&self, other: &Self) -> bool {
         self.uid == other.uid
             && self.attrs == other.attrs
+            && self.tags == other.tags
             && (self.ancestors().collect::<HashSet<_>>())
                 == (other.ancestors().collect::<HashSet<_>>())
     }
