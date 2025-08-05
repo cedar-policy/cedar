@@ -419,6 +419,14 @@ impl CedarValueJson {
                         .collect::<Result<_, JsonSerializationError>>()?,
                 ))
             }
+            // Serialize Unknown as a extension function with a single argument. The name of the unknown.
+            // This matches how Unknown is deserialized from JSON format.
+            ExprKind::Unknown(unknown) => Ok(Self::ExtnEscape {
+                __extn: FnAndArgs::Single {
+                    ext_fn: "unknown".into(),
+                    arg: Box::new(CedarValueJson::String(unknown.name.clone())),
+                },
+            }),
             kind => Err(JsonSerializationError::unexpected_restricted_expr_kind(
                 kind.clone(),
             )),

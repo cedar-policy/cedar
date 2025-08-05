@@ -2132,6 +2132,72 @@ mod json_parsing_tests {
             );
         });
     }
+
+    #[test]
+    fn multi_arg_ext_func_calls() {
+        let eparser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+
+        let json = serde_json::json!(
+            {
+                "uid": { "type": "User", "id": "alice "},
+                    "attrs": {
+                        "time": { "__extn": { "fn": "offset", "args": [{ "__extn": { "fn": "datetime", "arg": "1970-01-01" }}, { "__extn": { "fn": "duration", "arg": "1h" } }]}}
+                    },
+                    "parents": []
+            }
+        );
+
+        assert_matches!(eparser.single_from_json_value(json), Ok(entity) => {
+            assert_matches!(entity.get("time"), Some(PartialValue::Value(Value { value: ValueKind::ExtensionValue(v), .. })) => {
+                assert_eq!(v.func, "offset".parse().unwrap());
+                assert_eq!(v.args[0].to_string(), r#"datetime("1970-01-01")"#);
+                assert_eq!(v.args[1].to_string(), r#"duration("3600000ms")"#);
+            });
+        });
+
+        // It appears that additional attributes are simply ignored
+        // PR #1697 doesn't alter this behavior
+        let json = serde_json::json!(
+            {
+                "uid": { "type": "User", "id": "alice "},
+                    "attrs": {
+                        "time": { "__extn": { "fn": "offset", "args": [{ "__extn": { "fn": "datetime", "arg": "1970-01-01" }}, { "__extn": { "fn": "duration", "arg": "1h" } }], "aaargs": 42}}
+                    },
+                    "parents": []
+            }
+        );
+
+        assert_matches!(eparser.single_from_json_value(json), Ok(entity) => {
+            assert_matches!(entity.get("time"), Some(PartialValue::Value(Value { value: ValueKind::ExtensionValue(v), .. })) => {
+                assert_eq!(v.func, "offset".parse().unwrap());
+                assert_eq!(v.args[0].to_string(), r#"datetime("1970-01-01")"#);
+                assert_eq!(v.args[1].to_string(), r#"duration("3600000ms")"#);
+            });
+        });
+    }
+
+    #[test]
+    fn serialize_unknown_no_error() {
+        let test = serde_json::json!([{
+            "uid" : { "type" : "A", "id" : "b" },
+            "attrs": {
+                "age":  {
+                    "__extn": {
+                        "fn": "unknown",
+                        "arg": "890.9"
+                    }
+                }
+            },
+            "parents": []
+        }]);
+        let eparser: EntityJsonParser<'_, '_, NoEntitiesSchema> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let x = eparser.from_json_value(test);
+        let y = x.unwrap().to_json_value();
+        // Should not error on reserialization
+        y.unwrap();
+    }
 }
 
 // PANIC SAFETY: Unit Test Code
