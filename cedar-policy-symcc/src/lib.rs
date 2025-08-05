@@ -26,8 +26,20 @@ use symcc::{
 };
 
 pub use symcc::factory as term;
-pub use symcc::type_abbrevs::*;
-pub use symcc::{Asserts, BitVec, Ext, ExtOp, Op, Term, TermType, TermVar, Uuf};
+pub use symcc::{
+    bitvec::BitVec,
+    ext::Ext,
+    extension_types,
+    op::{ExtOp, Op, Uuf},
+    result,
+    term::Term,
+    term::TermPrim,
+    term::TermVar,
+    term_type::TermType,
+    type_abbrevs::*,
+    type_abbrevs::{ExtType, OrdPattern},
+    verifier::Asserts,
+};
 
 use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
 

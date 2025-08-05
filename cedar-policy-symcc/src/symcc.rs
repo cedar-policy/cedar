@@ -18,7 +18,7 @@
 //! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/SymCC.lean>.
 
 mod authorizer;
-mod bitvec;
+pub mod bitvec;
 mod compiler;
 mod concretize;
 mod decoder;
@@ -26,21 +26,21 @@ mod encoder;
 mod enforcer;
 mod entity_tag;
 mod env;
-mod ext;
-mod extension_types;
+pub mod ext;
+pub mod extension_types;
 mod extfun;
 pub mod factory;
 mod function;
 mod interpretation;
-mod op;
+pub mod op;
 pub mod result;
 mod smtlib_script;
 pub mod solver;
 mod tags;
-mod term;
-mod term_type;
+pub mod term;
+pub mod term_type;
 pub mod type_abbrevs;
-mod verifier;
+pub mod verifier;
 
 use cedar_policy::Schema;
 use decoder::{parse_sexpr, DecodeError, IdMaps};
@@ -54,6 +54,7 @@ use concretize::ConcretizeError;
 use encoder::Encoder;
 use solver::{Decision, Solver};
 use thiserror::Error;
+use verifier::Asserts;
 
 pub use concretize::Env;
 pub use env::{Environment, SymEnv};
@@ -63,14 +64,6 @@ pub use verifier::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
     verify_never_errors,
 };
-
-// Public interface for `Term` and related types
-pub use bitvec::BitVec;
-pub use ext::Ext;
-pub use op::{ExtOp, Op, Uuf};
-pub use term::{Term, TermVar};
-pub use term_type::TermType;
-pub use verifier::Asserts;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
