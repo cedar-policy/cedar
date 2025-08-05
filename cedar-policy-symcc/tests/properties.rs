@@ -146,6 +146,15 @@ check_prop!(prop_ipaddr_in_range_transitive,
 check_prop!(prop_ipaddr_in_range_symmetric,
     forall |a : ipaddr| $a.isInRange($a));
 
+check_prop!(prop_ipaddr_in_range_example_v4,
+    exists |a : ipaddr| $a.isInRange(ip("127.0.0.0/24")));
+
+check_prop!(prop_ipaddr_in_range_example_v6,
+    exists |a : ipaddr| $a.isInRange(ip("1:2:3:4::/48")));
+
+check_prop!(prop_ipaddr_set_example,
+    exists |a : { x: Set<ipaddr> }| $a.x.contains(ip("127.0.0.0/24")) && $a.x.contains(ip("1:2:3:4::/48")));
+
 check_prop!(prop_exists_ipv4,
     exists |a : ipaddr| $a.isIpv4());
 
@@ -187,6 +196,10 @@ check_prop!(prop_duration_since_nonnegative_or_error,
     forall_or_error |x : datetime, y : datetime|
         !($x >= $y) ||
         $x.durationSince($y) >= duration("0ms"));
+
+check_prop!(prop_duration_since_zero_eq,
+    forall_or_error |x : datetime, y : datetime|
+        !($x.durationSince($y) == duration("0ms")) || $x == $y);
 
 check_prop!(prop_datetime_offset_commute,
     forall_or_error |x : datetime, y : duration, z : duration|
@@ -252,3 +265,80 @@ check_prop!(prop_set_intersect,
             $b.x.contains($c)
         ) ||
         $a.x.containsAny($b.x));
+
+check_prop!(prop_empty_sets_eq,
+    forall |a : { x: Set<Long> }, b : { x: Set<Long> }|
+        !(
+            $a.x.isEmpty() &&
+            $b.x.isEmpty()
+        ) ||
+        $a.x == $b.x);
+
+check_prop!(prop_enum_no_ancs,
+    schema {
+        entity E1 enum [ "A" ];
+        entity E2;
+    }
+    forall |a : E1, b : E2|
+        !($a in $b));
+
+check_prop!(prop_no_tags,
+    schema { entity E1; }
+    forall |a : E1, s : String| !$a.hasTag($s));
+
+check_prop!(prop_to_mills_max,
+    exists |a : duration| $a.toMilliseconds() == 9223372036854775807);
+
+check_prop!(prop_to_mills_min,
+    exists |a : duration| $a.toMilliseconds() == -9223372036854775808);
+
+check_prop!(prop_to_secs_max,
+    exists |a : duration| $a.toSeconds() == 9223372036854775);
+
+check_prop!(prop_to_secs_min,
+    exists |a : duration| $a.toSeconds() == -9223372036854775);
+
+check_prop!(prop_to_secs_upper,
+    forall |a : duration| $a.toSeconds() <= 9223372036854775);
+
+check_prop!(prop_to_secs_lower,
+    forall |a : duration| $a.toSeconds() >= -9223372036854775);
+
+check_prop!(prop_to_mins_max,
+    exists |a : duration| $a.toMinutes() == 153722867280912);
+
+check_prop!(prop_to_mins_min,
+    exists |a : duration| $a.toMinutes() == -153722867280912);
+
+check_prop!(prop_to_mins_upper,
+    forall |a : duration| $a.toMinutes() <= 153722867280912);
+
+check_prop!(prop_to_mins_lower,
+    forall |a : duration| $a.toMinutes() >= -153722867280912);
+
+check_prop!(prop_to_hours_max,
+    exists |a : duration| $a.toHours() == 2562047788015);
+
+check_prop!(prop_to_hours_min,
+    exists |a : duration| $a.toHours() == -2562047788015);
+
+check_prop!(prop_to_hours_upper,
+    forall |a : duration| $a.toHours() <= 2562047788015);
+
+check_prop!(prop_to_hours_lower,
+    forall |a : duration| $a.toHours() >= -2562047788015);
+
+check_prop!(prop_to_days_max,
+    exists |a : duration| $a.toDays() == 106751991167);
+
+check_prop!(prop_to_days_min,
+    exists |a : duration| $a.toDays() == -106751991167);
+
+check_prop!(prop_to_days_upper,
+    forall |a : duration| $a.toDays() <= 106751991167);
+
+check_prop!(prop_to_days_lower,
+    forall |a : duration| $a.toDays() >= -106751991167);
+
+check_prop!(prop_str_empty_pattern,
+    forall |a : String, b : String| !($a like "" && $b like "") || $a == $b);
