@@ -31,7 +31,7 @@ use std::collections::HashMap;
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
 use crate::extensions::extension_initialization_errors::MultipleConstructorsSameSignatureError;
-use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
+use crate::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
