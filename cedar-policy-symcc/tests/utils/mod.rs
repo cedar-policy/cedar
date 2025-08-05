@@ -102,34 +102,18 @@ impl<'a> Environments<'a> {
     }
 
     /// Gets all possible request environments from a schema.
-    /// Adapted from CedarSymEvalCLI.
     pub fn get_all_from_schema(schema: &'a Schema) -> Vec<Self> {
-        let action_ids = schema
-            .action_entities()
-            .unwrap()
-            .into_iter()
-            .map(|action| action.uid());
-
-        let mut envs = Vec::new();
-
-        for action_id in action_ids {
-            if let Some(principal_types) = schema.principals_for_action(&action_id) {
-                for principal_type in principal_types {
-                    if let Some(resource_types) = schema.resources_for_action(&action_id) {
-                        for resource_type in resource_types {
-                            envs.push(Environments::new(
-                                schema,
-                                &principal_type.to_string(),
-                                &action_id.to_string(),
-                                &resource_type.to_string(),
-                            ));
-                        }
-                    }
+        schema
+            .request_envs()
+            .map(|req_env| {
+                let symenv = SymEnv::new(schema, &req_env).unwrap();
+                Self {
+                    schema,
+                    req_env,
+                    symenv,
                 }
-            }
-        }
-
-        envs
+            })
+            .collect()
     }
 }
 
