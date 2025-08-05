@@ -396,13 +396,13 @@ impl SymRequest {
             principal_slot: req_ty.principal_slot.clone().map(|ety| {
                 Term::Var(TermVar {
                     id: "?principal".to_string(),
-                    ty: TermType::Entity { ety },
+                    ty: TermType::Entity { ety: ety.clone() },
                 })
             }),
             resource_slot: req_ty.resource_slot.clone().map(|ety| {
                 Term::Var(TermVar {
                     id: "?resource".to_string(),
-                    ty: TermType::Entity { ety },
+                    ty: TermType::Entity { ety: ety.clone() },
                 })
             }),
         })
@@ -547,8 +547,8 @@ struct RequestType<'a> {
     action: &'a EntityUID,
     resource: &'a EntityType,
     context: &'a Attributes,
-    principal_slot: &'a Option<EntityType>,
-    resource_slot: &'a Option<EntityType>,
+    principal_slot: Option<&'a EntityType>,
+    resource_slot: Option<&'a EntityType>,
 }
 
 // From `Validation/Types.lean`
