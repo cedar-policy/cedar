@@ -510,7 +510,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     /// constructs an `Encoder` themselves with the `SymEnv`, then calls this.
     pub async fn encode(
         &mut self,
-        ts: impl IntoIterator<Item = Term>,
+        ts: impl IntoIterator<Item = &Term>,
     ) -> Result<(), anyhow::Error> {
         self.script
             .declare_datatype(
@@ -520,7 +520,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             )
             .await?;
         for t in ts {
-            let id = self.encode_term(&t).await?;
+            let id = self.encode_term(t).await?;
             self.script.assert(&id).await?;
         }
         Ok(())
