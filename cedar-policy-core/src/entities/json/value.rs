@@ -422,7 +422,7 @@ impl CedarValueJson {
             // Serialize Unknown as a extension function with a single argument. The name of the unknown.
             // This matches how Unknown is deserialized from JSON format.
             ExprKind::Unknown(unknown) => Ok(Self::ExtnEscape {
-                __extn: FnAndArgs::Single {
+                __extn: FnAndArg {
                     ext_fn: "unknown".into(),
                     arg: Box::new(CedarValueJson::String(unknown.name.clone())),
                 },
