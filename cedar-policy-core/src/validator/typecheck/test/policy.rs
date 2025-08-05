@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use crate::{
-    ast::{EntityUID, Expr, GeneralizedSlotsAnnotation, PolicyID, Template},
+    ast::{EntityUID, Expr, GeneralizedSlotsDeclaration, PolicyID, Template},
     extensions::Extensions,
     parser::{parse_policy, parse_policy_or_template, IntoMaybeLoc},
 };
@@ -354,15 +354,15 @@ fn policy_checked_in_multiple_envs() {
     let schema = simple_schema_file()
         .try_into()
         .expect("Failed to construct schema.");
-    let validator_generalized_slots_annotation = GeneralizedSlotsAnnotation::from_iter(
-        t.generalized_slots_annotation()
+    let validator_generalized_slots_declaration = GeneralizedSlotsDeclaration::from_iter(
+        t.generalized_slots_declaration()
             .map(|(k, v)| (k.clone(), v.clone())),
     )
-    .into_validator_generalized_slots_annotation(&schema)
+    .into_validator_generalized_slots_declaration(&schema)
     .unwrap();
     let typechecker = Typechecker::new(&schema, ValidationMode::default());
     let env_checks =
-        typechecker.typecheck_by_request_env(&t, &validator_generalized_slots_annotation);
+        typechecker.typecheck_by_request_env(&t, &validator_generalized_slots_declaration);
     // There are 3 possible envs in schema:
     // - User, "view_photo", Photo
     // - Group, "view_photo", Photo
@@ -385,14 +385,14 @@ fn policy_checked_in_multiple_envs() {
         .try_into()
         .expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::default());
-    let validator_generalized_slots_annotation = GeneralizedSlotsAnnotation::from_iter(
-        t.generalized_slots_annotation()
+    let validator_generalized_slots_declaration = GeneralizedSlotsDeclaration::from_iter(
+        t.generalized_slots_declaration()
             .map(|(k, v)| (k.clone(), v.clone())),
     )
-    .into_validator_generalized_slots_annotation(&schema)
+    .into_validator_generalized_slots_declaration(&schema)
     .unwrap();
     let env_checks =
-        typechecker.typecheck_by_request_env(&t, &validator_generalized_slots_annotation);
+        typechecker.typecheck_by_request_env(&t, &validator_generalized_slots_declaration);
     // With the new action, policy is always false for the other two
     assert!(
         env_checks

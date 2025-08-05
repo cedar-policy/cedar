@@ -41,7 +41,7 @@ use super::{cst, AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
-    self, ActionConstraint, CallStyle, GeneralizedSlotsAnnotation, Integer, PatternElem,
+    self, ActionConstraint, CallStyle, GeneralizedSlotsDeclaration, Integer, PatternElem,
     PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint,
     UnreservedId,
 };
@@ -341,8 +341,8 @@ impl Node<Option<cst::Policy>> {
             .flat_map(|e| e.slots().collect::<Vec<ast::Slot>>())
             .collect();
 
-        // get generalized_slots_annotation
-        let maybe_generalized_slots_annotation = policy.get_generalized_slots_annotation(
+        // get generalized_slots_declaration
+        let maybe_generalized_slots_declaration = policy.get_generalized_slots_declaration(
             contains_slot_in_principal,
             contains_slot_in_resource,
             cond_slots,
@@ -385,20 +385,20 @@ impl Node<Option<cst::Policy>> {
         let (
             effect,
             annotations,
-            generalized_slots_annotation,
+            generalized_slots_declaration,
             (principal, action, resource),
             conds,
         ) = flatten_tuple_5(
             maybe_effect,
             maybe_annotations,
-            maybe_generalized_slots_annotation,
+            maybe_generalized_slots_declaration,
             maybe_scope,
             maybe_conds,
         )?;
         Ok(construct_template_policy(
             id,
             annotations.into(),
-            generalized_slots_annotation,
+            generalized_slots_declaration,
             effect,
             principal,
             action,
@@ -490,8 +490,8 @@ impl Node<Option<cst::Policy>> {
             .flat_map(|e| e.slots().collect::<Vec<ast::Slot>>())
             .collect();
 
-        // get generalized_slots_annotation
-        let maybe_generalized_slots_annotation = policy.get_generalized_slots_annotation(
+        // get generalized_slots_declaration
+        let maybe_generalized_slots_declaration = policy.get_generalized_slots_declaration(
             contains_slot_in_principal,
             contains_slot_in_resource,
             cond_slots,
@@ -533,20 +533,20 @@ impl Node<Option<cst::Policy>> {
         let (
             effect,
             annotations,
-            generalized_slots_annotation,
+            generalized_slots_declaration,
             (principal, action, resource),
             conds,
         ) = flatten_tuple_5(
             maybe_effect,
             maybe_annotations,
-            maybe_generalized_slots_annotation,
+            maybe_generalized_slots_declaration,
             maybe_scope,
             maybe_conds,
         )?;
         Ok(construct_template_policy(
             id,
             annotations.into(),
-            generalized_slots_annotation,
+            generalized_slots_declaration,
             effect,
             principal,
             action,
@@ -778,23 +778,23 @@ impl cst::PolicyImpl {
         }
     }
 
-    /// Get the generalized_slots_annotation from the `cst::Policy`
-    pub fn get_generalized_slots_annotation(
+    /// Get the generalized_slots_declaration from the `cst::Policy`
+    pub fn get_generalized_slots_declaration(
         &self,
         contains_slot_in_principal: bool,
         contains_slot_in_resource: bool,
         slots_in_cond: HashSet<ast::Slot>,
-    ) -> Result<GeneralizedSlotsAnnotation> {
-        let mut generalized_slots_annotation: BTreeMap<ast::SlotId, JSONSchemaType<RawName>> =
+    ) -> Result<GeneralizedSlotsDeclaration> {
+        let mut generalized_slots_declaration: BTreeMap<ast::SlotId, JSONSchemaType<RawName>> =
             BTreeMap::new();
         let mut all_errs: Vec<ParseErrors> = vec![];
 
-        let cst_generalized_slots_annotation = match &self.generalized_slots_annotation {
+        let cst_generalized_slots_declaration = match &self.generalized_slots_declaration {
             Some(n) => n.try_as_inner()?.values.clone(),
             None => vec![],
         };
 
-        for node in cst_generalized_slots_annotation {
+        for node in cst_generalized_slots_declaration {
             let loc = node.loc.clone();
             let slot_type_pair = match node.try_into_inner() {
                 Ok(slot_type_pair) => slot_type_pair,
@@ -814,11 +814,11 @@ impl cst::PolicyImpl {
 
             use std::collections::btree_map::Entry;
 
-            match generalized_slots_annotation.entry(ast_slot.clone()) {
+            match generalized_slots_declaration.entry(ast_slot.clone()) {
                 Entry::Occupied(oentry) => {
                     all_errs.push(
                         ToASTError::new(
-                            ToASTErrorKind::DuplicateGeneralizedSlotAnnotation(
+                            ToASTErrorKind::DuplicateGeneralizedSlotTypeDeclaration(
                                 oentry.key().clone(),
                             ),
                             loc,
@@ -844,7 +844,7 @@ impl cst::PolicyImpl {
             }
         }
 
-        for slot in generalized_slots_annotation.keys() {
+        for slot in generalized_slots_declaration.keys() {
             if !(slots_in_cond).contains(&ast::Slot {
                 id: slot.clone(),
                 loc: None,
@@ -863,10 +863,10 @@ impl cst::PolicyImpl {
 
         for slot in slots_in_cond {
             if slot.id.is_generalized_slot()
-                && !(generalized_slots_annotation.contains_key(&slot.id))
+                && !(generalized_slots_declaration.contains_key(&slot.id))
             {
                 all_errs.push(ToASTError::new(
-                    ToASTErrorKind::slots_in_condition_clause_not_in_generalized_slots_annotation(
+                    ToASTErrorKind::slots_in_condition_clause_not_in_generalized_slots_declaration(
                         slot.clone(),
                     ),
                     slot.loc,
@@ -877,7 +877,7 @@ impl cst::PolicyImpl {
 
         match ParseErrors::flatten(all_errs) {
             Some(errs) => Err(errs),
-            None => Ok(generalized_slots_annotation.into()),
+            None => Ok(generalized_slots_declaration.into()),
         }
     }
 }
@@ -2559,7 +2559,7 @@ impl Node<Option<cst::RecInit>> {
 fn construct_template_policy(
     id: ast::PolicyID,
     annotations: ast::Annotations,
-    generalized_slots_annotation: ast::GeneralizedSlotsAnnotation,
+    generalized_slots_declaration: ast::GeneralizedSlotsDeclaration,
     effect: ast::Effect,
     principal: ast::PrincipalConstraint,
     action: ast::ActionConstraint,
@@ -2572,7 +2572,7 @@ fn construct_template_policy(
             id,
             loc.into_maybe_loc(),
             annotations,
-            generalized_slots_annotation,
+            generalized_slots_declaration,
             effect,
             principal,
             action,
@@ -3912,7 +3912,7 @@ mod tests {
     }
 
     #[test]
-    fn generalized_slots_annotation() {
+    fn generalized_slots_declaration() {
         let txt = r#"
         template(?age: Long) =>
         permit(principal, action, resource) when {
@@ -3973,7 +3973,7 @@ mod tests {
     }
 
     #[test]
-    fn generalized_slot_annotations_can_be_principal_or_resource() {
+    fn generalized_slot_declaration_can_be_principal_or_resource() {
         let txt = r#"
         template(?principal: University::Department) => 
         permit(principal == ?principal, action, resource); 
@@ -4013,7 +4013,7 @@ mod tests {
     }
 
     #[test]
-    fn generalized_slots_annotation_can_not_have_duplicate_slots() {
+    fn generalized_slots_declaration_can_not_have_duplicate_slots() {
         let txt = r#"
         template(?age: Long, ?age: Long) =>
         permit(principal, action, resource) unless {
@@ -5185,9 +5185,9 @@ mod tests {
             (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
                 ExpectedErrorMessageBuilder::error(
-                    "found template slot ?foo in the condition clause but it does not have a type annotation",
+                    "found template slot ?foo in the condition clause but it does not have a type declaration",
                 ).help(
-                    "generalized slots that appear in the condition clause require a type annotation",
+                    "generalized slots that appear in the condition clause require a type declaration",
                 ).exactly_one_underline("?foo").build(),
             ),
 
@@ -6582,9 +6582,9 @@ mod tests {
             (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
                 ExpectedErrorMessageBuilder::error(
-                    "found template slot ?foo in the condition clause but it does not have a type annotation",
+                    "found template slot ?foo in the condition clause but it does not have a type declaration",
                 ).help(
-                    "generalized slots that appear in the condition clause require a type annotation",
+                    "generalized slots that appear in the condition clause require a type declaration",
                 ).exactly_one_underline("?foo").build(),
             ),
 

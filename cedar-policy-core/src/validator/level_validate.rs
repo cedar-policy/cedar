@@ -19,7 +19,7 @@
 use super::*;
 use crate::validator::types::{EntityRecordKind, RequestEnv, Type};
 use crate::{
-    ast::{BinaryOp, Expr, ExprKind, GeneralizedSlotsAnnotation, Literal, PolicyID},
+    ast::{BinaryOp, Expr, ExprKind, GeneralizedSlotsDeclaration, Literal, PolicyID},
     parser::IntoMaybeLoc,
 };
 use smol_str::SmolStr;
@@ -78,15 +78,15 @@ impl Validator {
         if peekable_errors.peek().is_none() {
             let typechecker = Typechecker::new(&self.schema, mode);
             #[allow(clippy::expect_used)]
-            let validator_generalized_slots_annotation = GeneralizedSlotsAnnotation::from_iter(
-                p.generalized_slots_annotation()
+            let validator_generalized_slots_declaration = GeneralizedSlotsDeclaration::from_iter(
+                p.generalized_slots_declaration()
                     .map(|(k, v)| (k.clone(), v.clone())),
             )
-            .into_validator_generalized_slots_annotation(&self.schema)
+            .into_validator_generalized_slots_declaration(&self.schema)
             .expect("validate_policy has already done the check");
 
             let type_annotated_asts =
-                typechecker.typecheck_by_request_env(p, &validator_generalized_slots_annotation);
+                typechecker.typecheck_by_request_env(p, &validator_generalized_slots_declaration);
             let mut level_checker = LevelChecker {
                 policy_id: p.id(),
                 max_level: max_deref_level.into(),

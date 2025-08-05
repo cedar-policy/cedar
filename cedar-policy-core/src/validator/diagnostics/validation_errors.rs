@@ -39,15 +39,15 @@ use smol_str::SmolStr;
 
 /// Structure containing details about an incompatible schema error.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("for template `{policy_id}`, the schema is incompatible with the slot type annotation")]
-pub struct IncompatibleSchemaWithSlotTypeAnnotations {
+#[error("for template `{policy_id}`, the schema is incompatible with the slot type declaration")]
+pub struct IncompatibleSchemaWithSlotTypeDeclaration {
     /// Source location
     pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
 }
 
-impl Diagnostic for IncompatibleSchemaWithSlotTypeAnnotations {
+impl Diagnostic for IncompatibleSchemaWithSlotTypeDeclaration {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }
 

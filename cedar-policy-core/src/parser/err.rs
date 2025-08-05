@@ -149,19 +149,19 @@ pub enum ToASTErrorKind {
     #[error("duplicate annotation: @{0}")]
     DuplicateAnnotation(ast::AnyId),
     /// Returned when we attempt to parse a policy with repeated slot names in
-    /// generalized slot annotations
-    #[error("duplicate generalized slots annotation: @{0}")]
-    DuplicateGeneralizedSlotAnnotation(ast::SlotId),
+    /// generalized slot declaration
+    #[error("duplicate generalized_slots_declaration: @{0}")]
+    DuplicateGeneralizedSlotTypeDeclaration(ast::SlotId),
     /// Returned when a generalized slot appears in the condition of the template
-    /// but does not have a type annotation
+    /// but does not have a type declaration
     #[error(transparent)]
     #[diagnostic(transparent)]
-    SlotInConditionClauseNotInGeneralizedSlotsAnnotation(
-        #[from] parse_errors::SlotInConditionClauseNotInGeneralizedSlotsAnnotation,
+    SlotInConditionClauseNotInGeneralizedSlotsDeclaration(
+        #[from] parse_errors::SlotInConditionClauseNotInGeneralizedSlotsDeclaration,
     ),
-    /// Return when a generalized slot appears in the generalized slots annotation
+    /// Return when a generalized slot appears in the generalized_slots_declaration
     /// but is not used within the template
-    #[error("{0} slot is given a type annotation, however it is not used with the template")]
+    #[error("{0} slot is given a type declaration, however it is not used with the template")]
     GeneralizedSlotIsAnnotatedNotUsed(ast::SlotId),
     /// Returned when a policy contains template slots in a when/unless clause but not in the scope.
     #[error(transparent)]
@@ -472,9 +472,9 @@ impl ToASTErrorKind {
         }
     }
 
-    /// Constructor for the [`ToASTErrorKind::SlotInConditionClauseNotInGeneralizedSlotsAnnotation`] error
-    pub fn slots_in_condition_clause_not_in_generalized_slots_annotation(slot: ast::Slot) -> Self {
-        parse_errors::SlotInConditionClauseNotInGeneralizedSlotsAnnotation { slot }.into()
+    /// Constructor for the [`ToASTErrorKind::SlotInConditionClauseNotInGeneralizedSlotsDeclaration`] error
+    pub fn slots_in_condition_clause_not_in_generalized_slots_declaration(slot: ast::Slot) -> Self {
+        parse_errors::SlotInConditionClauseNotInGeneralizedSlotsDeclaration { slot }.into()
     }
 
     /// Constructor for the [`ToASTErrorKind::SlotsNotInScopeInConditionClause`] error
@@ -582,13 +582,13 @@ pub mod parse_errors {
         pub(crate) clause_type: &'static str,
     }
 
-    /// Details about a `SlotInConditionClauseNotInGeneralizedSlotsAnnotation`
+    /// Details about a `SlotInConditionClauseNotInGeneralizedSlotsDeclaration`
     #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
-    #[error("found template slot {} in the condition clause but it does not have a type annotation", slot.id)]
+    #[error("found template slot {} in the condition clause but it does not have a type declaration", slot.id)]
     #[diagnostic(help(
-        "generalized slots that appear in the condition clause require a type annotation"
+        "generalized slots that appear in the condition clause require a type declaration"
     ))]
-    pub struct SlotInConditionClauseNotInGeneralizedSlotsAnnotation {
+    pub struct SlotInConditionClauseNotInGeneralizedSlotsDeclaration {
         pub(crate) slot: ast::Slot,
     }
 

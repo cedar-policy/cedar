@@ -503,7 +503,7 @@ impl PolicySet {
     /// Errors for three reasons
     ///   1) The the passed SlotEnv or GeneralizedSlotEnv either does not match the slots in the templates
     ///   2) The passed link Id conflicts with an Id already in the set
-    ///   3) SlotEnv and GeneralizedSlotEnv do not conform to their type annotations
+    ///   3) SlotEnv and GeneralizedSlotEnv do not conform to their type declarations
     pub fn link(
         &mut self,
         template_id: PolicyID,
@@ -644,7 +644,7 @@ mod test {
     use super::*;
     use crate::{
         ast::{
-            annotation::Annotations, ActionConstraint, Effect, Expr, GeneralizedSlotsAnnotation,
+            annotation::Annotations, ActionConstraint, Effect, Expr, GeneralizedSlotsDeclaration,
             PrincipalConstraint, ResourceConstraint,
         },
         parser,
@@ -1022,7 +1022,7 @@ mod test {
             tid.clone(),
             None,
             Annotations::new(),
-            GeneralizedSlotsAnnotation::new(),
+            GeneralizedSlotsDeclaration::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -1264,7 +1264,7 @@ mod test {
             tid.clone(),
             None,
             Annotations::new(),
-            GeneralizedSlotsAnnotation::new(),
+            GeneralizedSlotsDeclaration::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),
@@ -1303,7 +1303,7 @@ mod test {
             id.clone(),
             None,
             Annotations::new(),
-            GeneralizedSlotsAnnotation::new(),
+            GeneralizedSlotsDeclaration::new(),
             Effect::Forbid,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -1333,7 +1333,7 @@ mod test {
             template_id.clone(),
             None,
             Annotations::new(),
-            GeneralizedSlotsAnnotation::new(),
+            GeneralizedSlotsDeclaration::new(),
             Effect::Forbid,
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),
@@ -1377,7 +1377,7 @@ mod test {
             id1.clone(),
             None,
             Annotations::new(),
-            GeneralizedSlotsAnnotation::new(),
+            GeneralizedSlotsDeclaration::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -1389,7 +1389,7 @@ mod test {
             tid1.clone(),
             None,
             Annotations::new(),
-            GeneralizedSlotsAnnotation::new(),
+            GeneralizedSlotsDeclaration::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -1410,7 +1410,7 @@ mod test {
             id2.clone(),
             None,
             Annotations::new(),
-            GeneralizedSlotsAnnotation::new(),
+            GeneralizedSlotsDeclaration::new(),
             Effect::Forbid,
             PrincipalConstraint::is_eq(Arc::new(EntityUID::with_eid("jane"))),
             ActionConstraint::any(),
@@ -1426,7 +1426,7 @@ mod test {
             tid2.clone(),
             None,
             Annotations::new(),
-            GeneralizedSlotsAnnotation::new(),
+            GeneralizedSlotsDeclaration::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),

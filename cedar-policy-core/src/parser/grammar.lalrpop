@@ -120,22 +120,22 @@ SlotType: Node<Option<cst::SlotType>> = {
         (Node::with_maybe_source_loc(Some(cst::SlotType{slot, ty}), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))))}, 
 }
 
-// GeneralizedSlotsAnnotation := { 'template' '(' ( SlotType { ',' SlotType } ) ')' '=>' }
-GeneralizedSlotsAnnotation: Node<Option<cst::GeneralizedSlotsAnnotation>> = {
-    <l:@L> "template" "(" <values: Comma<SlotType>> ")" "=>" <r:@R> => Node::with_maybe_source_loc(Some(cst::GeneralizedSlotsAnnotation{ values }), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src))))
+// GeneralizedSlotsDeclaration := { 'template' '(' ( SlotType { ',' SlotType } ) ')' '=>' }
+GeneralizedSlotsDeclaration: Node<Option<cst::GeneralizedSlotsDeclaration>> = {
+    <l:@L> "template" "(" <values: Comma<SlotType>> ")" "=>" <r:@R> => Node::with_maybe_source_loc(Some(cst::GeneralizedSlotsDeclaration{ values }), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src))))
 }
 
 // Policy := "label" ('permit' | 'forbid') '(' {VariableDef} ')' {Cond} ;
 pub Policy: Node<Option<cst::Policy>> = {
     <l:@L>
     <annotations:Annotation*>
-    <generalized_slots_annotation:GeneralizedSlotsAnnotation?>
+    <generalized_slots_declaration:GeneralizedSlotsDeclaration?>
     <effect:AnyIdent>
     "(" <variables: Comma<VariableDef>> ")"
     <conds:Cond*>
     ";"
     <r:@R>
-    => Node::with_maybe_source_loc(Some(cst::Policy::Policy(cst::PolicyImpl{ annotations,generalized_slots_annotation,effect,variables,conds })), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
+    => Node::with_maybe_source_loc(Some(cst::Policy::Policy(cst::PolicyImpl{ annotations,generalized_slots_declaration,effect,variables,conds })), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> <err:!> ";" <r:@R> => {
         // Tolerant AST creates a valid CST node representing the unparsable policy
         #[cfg(feature = "tolerant-ast")]
