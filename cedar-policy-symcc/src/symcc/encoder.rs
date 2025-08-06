@@ -334,7 +334,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 self.define_term(
                     ty_enc,
                     &format!(
-                        "({ty_enc} {})",
+                        "({ty_enc} \"{}\")",
                         encode_string(<EntityID as AsRef<str>>::as_ref(entity.id()))
                             .ok_or_else(|| anyhow!("unable to encode entity id in SMT as it exceeds the max supported code point: {:?}", entity.id()))?
                     ),
@@ -387,8 +387,15 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         match op {
             Op::RecordGet(a) => self.define_record_get(ty_enc, a, &args, &t).await,
             Op::StringLike(p) => {
-                self.define_term(ty_enc, &format!("(str.in_re {args} {})", encode_pattern(p)))
-                    .await
+                self.define_term(
+                    ty_enc,
+                    &format!(
+                        "(str.in_re {args} {})",
+                        encode_pattern(p)
+                            .ok_or_else(|| anyhow!("unable to encode pattern {:?} in SMT", p))?
+                    ),
+                )
+                .await
             }
             Op::Uuf(f) => {
                 let encoded_uuf = self.encode_uuf(f).await?;
@@ -419,8 +426,8 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     }
                 }
                 TermPrim::Bitvec(bv) => encode_bitvec(bv),
-                TermPrim::String(s) => encode_string(s)
-                    .ok_or_else(|| anyhow!("unable to encode string in SMT as it exceeds the max supported code point: {:?}", s))?,
+                TermPrim::String(s) => format!("\"{}\"", encode_string(s)
+                    .ok_or_else(|| anyhow!("unable to encode string in SMT as it exceeds the max supported code point: {:?}", s))?),
                 TermPrim::Entity(e) => self.define_entity(&ty_enc, e).await?,
                 TermPrim::Ext(x) => self.define_term(&ty_enc, &encode_ext(x)).await?,
             },
@@ -546,8 +553,7 @@ pub const SMT_LIB_MAX_CODE_POINT: u32 = 196607;
 /// so cvc5 will read `\\u{0}` as a two-character string with
 /// characters `\u{5c}` and `\0`.
 pub(super) fn encode_string(s: &str) -> Option<String> {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
+    let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         if c == '"' {
             out.push_str("\"\"");
@@ -564,7 +570,6 @@ pub(super) fn encode_string(s: &str) -> Option<String> {
             write!(out, "\\u{{{:x}}}", c as u32).unwrap();
         }
     }
-    out.push('"');
     Some(out)
 }
 
@@ -654,16 +659,16 @@ fn encode_op(op: &Op) -> String {
     }
 }
 
-fn encode_pat_elem(pat_elem: PatternElem) -> String {
-    match pat_elem {
+fn encode_pat_elem(pat_elem: PatternElem) -> Option<String> {
+    Some(match pat_elem {
         PatternElem::Wildcard => "(re.* re.allchar)".to_string(),
-        PatternElem::Char(c) => format!("(str.to_re \"{c}\")"),
-    }
+        PatternElem::Char(c) => format!("(str.to_re \"{}\")", encode_string(&c.to_string())?),
+    })
 }
 
-fn encode_pattern(pattern: &OrdPattern) -> String {
+fn encode_pattern(pattern: &OrdPattern) -> Option<String> {
     if pattern.get_elems().is_empty() {
-        "(str.to_re \"\")".to_string()
+        Some("(str.to_re \"\")".to_string())
     } else if pattern.get_elems().len() == 1 {
         // PANIC SAFETY
         #[allow(
@@ -672,10 +677,16 @@ fn encode_pattern(pattern: &OrdPattern) -> String {
         )]
         encode_pat_elem(pattern.get_elems()[0])
     } else {
-        format!(
+        Some(format!(
             "(re.++ {})",
-            pattern.iter().copied().map(encode_pat_elem).join(" ")
-        )
+            pattern
+                .iter()
+                .copied()
+                .map(encode_pat_elem)
+                .collect::<Option<Vec<_>>>()?
+                .into_iter()
+                .join(" ")
+        ))
     }
 }
 
