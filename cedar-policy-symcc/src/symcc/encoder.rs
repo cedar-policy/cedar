@@ -455,7 +455,10 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     }
                 }
                 TermPrim::Bitvec(bv) => encode_bitvec(bv),
-                TermPrim::String(s) => format!("\"{}\"", encode_string(s).ok_or_else(|| EncodeError::EncodeStringFailed(s.clone()))?),
+                TermPrim::String(s) => format!(
+                    "\"{}\"",
+                    encode_string(s).ok_or_else(|| EncodeError::EncodeStringFailed(s.clone()))?
+                ),
                 TermPrim::Entity(e) => self.define_entity(&ty_enc, e).await?,
                 TermPrim::Ext(x) => self.define_term(&ty_enc, &encode_ext(x)).await?,
             },
