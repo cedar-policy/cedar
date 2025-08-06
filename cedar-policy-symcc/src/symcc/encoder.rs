@@ -553,7 +553,7 @@ pub const SMT_LIB_MAX_CODE_POINT: u32 = 196607;
 /// so cvc5 will read `\\u{0}` as a two-character string with
 /// characters `\u{5c}` and `\0`.
 pub(super) fn encode_string(s: &str) -> Option<String> {
-    let mut out = String::with_capacity(s.len() + 2);
+    let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         if c == '"' {
             out.push_str("\"\"");
