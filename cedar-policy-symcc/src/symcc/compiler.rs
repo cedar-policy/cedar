@@ -37,14 +37,13 @@ use super::factory::{
     self, if_all_some, if_some, is_some, ite, option_get, record_get, record_of, some_of,
 };
 use super::function::UnaryFunction;
-use super::result::Error;
+use super::result::CompileError;
 use super::tags::SymTags;
 use super::term::{Term, TermPrim};
 use super::term_type::TermType;
 use super::type_abbrevs::*;
 
-//Utilities
-type Result<T> = std::result::Result<T, Error>;
+type Result<T> = std::result::Result<T, CompileError>;
 
 fn compile_prim(p: &Prim, es: &SymEntities) -> Result<Term> {
     match p {
@@ -56,7 +55,7 @@ fn compile_prim(p: &Prim, es: &SymEntities) -> Result<Term> {
             if es.is_valid_entity_uid(uid) {
                 Ok(some_of(uid.clone().into()))
             } else {
-                Err(Error::TypeError)
+                Err(CompileError::TypeError)
             }
         }
     }
@@ -68,28 +67,28 @@ fn compile_var(v: Var, req: &SymRequest) -> Result<Term> {
             if req.principal.type_of().is_entity_type() {
                 Ok(some_of(req.principal.clone()))
             } else {
-                Err(Error::TypeError)
+                Err(CompileError::TypeError)
             }
         }
         Var::Action => {
             if req.action.type_of().is_entity_type() {
                 Ok(some_of(req.action.clone()))
             } else {
-                Err(Error::TypeError)
+                Err(CompileError::TypeError)
             }
         }
         Var::Resource => {
             if req.resource.type_of().is_entity_type() {
                 Ok(some_of(req.resource.clone()))
             } else {
-                Err(Error::TypeError)
+                Err(CompileError::TypeError)
             }
         }
         Var::Context => {
             if req.context.type_of().is_record_type() {
                 Ok(some_of(req.context.clone()))
             } else {
-                Err(Error::TypeError)
+                Err(CompileError::TypeError)
             }
         }
     }
@@ -106,7 +105,7 @@ fn compile_app1(op1: UnaryOp, t: Term) -> Result<Term> {
         // No `like` or `is` cases here, because in Rust those are not
         // `UnaryOp`s, so we can't fully match the Lean.
         // In Rust we handle those in `compile_like()` and `compile_is()`.
-        (_, _) => Err(Error::TypeError),
+        (_, _) => Err(CompileError::TypeError),
     }
 }
 
@@ -115,7 +114,7 @@ fn compile_app1(op1: UnaryOp, t: Term) -> Result<Term> {
 fn compile_like(t: Term, pat: OrdPattern) -> Result<Term> {
     match t.type_of() {
         TermType::String => Ok(some_of(factory::string_like(t, pat))),
-        _ => Err(Error::TypeError),
+        _ => Err(CompileError::TypeError),
     }
 }
 
@@ -124,7 +123,7 @@ fn compile_like(t: Term, pat: OrdPattern) -> Result<Term> {
 fn compile_is(t: &Term, ety1: &EntityType) -> Result<Term> {
     match t.type_of() {
         TermType::Entity { ety: ety2 } => Ok(some_of((ety1 == &ety2).into())),
-        _ => Err(Error::TypeError),
+        _ => Err(CompileError::TypeError),
     }
 }
 
@@ -143,7 +142,7 @@ fn reducible_eq(ty1: &TermType, ty2: &TermType) -> Result<bool> {
     } else if ty1.is_prim_type() && ty2.is_prim_type() {
         Ok(false)
     } else {
-        Err(Error::TypeError)
+        Err(CompileError::TypeError)
     }
 }
 
@@ -176,18 +175,28 @@ pub fn compile_in_set(t: Term, ts: Term, ancs: Option<UnaryFunction>) -> Term {
     factory::or(is_in1, is_in2)
 }
 
-pub fn compile_has_tag(entity: Term, tag: Term, tags: Option<&Option<SymTags>>) -> Result<Term> {
+pub fn compile_has_tag(
+    entity: Term,
+    tag: Term,
+    tags: Option<&Option<SymTags>>,
+    ety: &EntityType,
+) -> Result<Term> {
     match tags {
-        None => Err(Error::NoSuchEntityType),
+        None => Err(CompileError::NoSuchEntityType(ety.clone())),
         Some(None) => Ok(some_of(false.into())),
         Some(Some(tags)) => Ok(some_of(tags.has_tag(entity, tag))),
     }
 }
 
-pub fn compile_get_tag(entity: Term, tag: Term, tags: Option<&Option<SymTags>>) -> Result<Term> {
+pub fn compile_get_tag(
+    entity: Term,
+    tag: Term,
+    tags: Option<&Option<SymTags>>,
+    ety: &EntityType,
+) -> Result<Term> {
     match tags {
-        None => Err(Error::NoSuchEntityType),
-        Some(None) => Err(Error::TypeError), // no tags declared
+        None => Err(CompileError::NoSuchEntityType(ety.clone())),
+        Some(None) => Err(CompileError::TypeError), // no tags declared
         Some(Some(tags)) => Ok(tags.get_tag(entity, tag)),
     }
 }
@@ -238,21 +247,21 @@ pub fn compile_app2(op2: BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Resu
             if *ty1 == ty2 {
                 Ok(some_of(factory::set_member(t2, t1)))
             } else {
-                Err(Error::TypeError)
+                Err(CompileError::TypeError)
             }
         }
         (ContainsAll, Set { ty: ty1 }, Set { ty: ty2 }) => {
             if *ty1 == *ty2 {
                 Ok(some_of(factory::set_subset(t2, t1)))
             } else {
-                Err(Error::TypeError)
+                Err(CompileError::TypeError)
             }
         }
         (ContainsAny, Set { ty: ty1 }, Set { ty: ty2 }) => {
             if *ty1 == *ty2 {
                 Ok(some_of(factory::set_intersects(t1, t2)))
             } else {
-                Err(Error::TypeError)
+                Err(CompileError::TypeError)
             }
         }
         (In, Entity { ety: ety1 }, Entity { ety: ety2 }) => Ok(some_of(compile_in_ent(
@@ -275,9 +284,9 @@ pub fn compile_app2(op2: BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Resu
                 _ => unreachable!("We just matched with entity type above"),
             }
         }
-        (HasTag, Entity { ety }, String) => compile_has_tag(t1, t2, es.tags(&ety)),
-        (GetTag, Entity { ety }, String) => compile_get_tag(t1, t2, es.tags(&ety)),
-        (_, _, _) => Err(Error::TypeError),
+        (HasTag, Entity { ety }, String) => compile_has_tag(t1, t2, es.tags(&ety), &ety),
+        (GetTag, Entity { ety }, String) => compile_get_tag(t1, t2, es.tags(&ety), &ety),
+        (_, _, _) => Err(CompileError::TypeError),
     }
 }
 
@@ -285,10 +294,10 @@ pub fn compile_attrs_of(t: Term, es: &SymEntities) -> Result<Term> {
     match t.type_of() {
         TermType::Entity { ety } => match es.attrs(&ety) {
             Some(attrs) => Ok(factory::app(attrs.clone(), t)),
-            None => Err(Error::NoSuchEntityType),
+            None => Err(CompileError::NoSuchEntityType(ety)),
         },
         TermType::Record { .. } => Ok(t),
-        _ => Err(Error::TypeError),
+        _ => Err(CompileError::TypeError),
     }
 }
 
@@ -300,7 +309,7 @@ pub fn compile_has_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
             Some(_) => Ok(true.into()),
             None => Ok(false.into()),
         },
-        _ => Err(Error::TypeError),
+        _ => Err(CompileError::TypeError),
     }
 }
 
@@ -310,9 +319,9 @@ pub fn compile_get_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
         TermType::Record { rty } => match rty.get(a) {
             Some(ty) if ty.is_option_type() => Ok(record_get(attrs, a)),
             Some(_) => Ok(some_of(record_get(attrs, a))),
-            None => Err(Error::NoSuchAttribute),
+            None => Err(CompileError::NoSuchAttribute(a.to_string())),
         },
-        _ => Err(Error::TypeError),
+        _ => Err(CompileError::TypeError),
     }
 }
 
@@ -329,10 +338,10 @@ pub fn compile_if(t1: Term, r2: Result<Term>, r3: Result<Term>) -> Result<Term> 
                     factory::ite(factory::option_get(t1), t2, t3),
                 ))
             } else {
-                Err(Error::TypeError)
+                Err(CompileError::TypeError)
             }
         }
-        (_, _) => Err(Error::TypeError),
+        (_, _) => Err(CompileError::TypeError),
     }
 }
 
@@ -347,10 +356,10 @@ pub fn compile_and(t1: Term, r2: Result<Term>) -> Result<Term> {
                     ite(option_get(t1), t2, some_of(false.into())),
                 ))
             } else {
-                Err(Error::TypeError)
+                Err(CompileError::TypeError)
             }
         }
-        (_, _) => Err(Error::TypeError),
+        (_, _) => Err(CompileError::TypeError),
     }
 }
 
@@ -365,16 +374,18 @@ pub fn compile_or(t1: Term, r2: Result<Term>) -> Result<Term> {
                     ite(option_get(t1), some_of(true.into()), t2),
                 ))
             } else {
-                Err(Error::TypeError)
+                Err(CompileError::TypeError)
             }
         }
-        (_, _) => Err(Error::TypeError),
+        (_, _) => Err(CompileError::TypeError),
     }
 }
 
 pub fn compile_set(ts: Vec<Term>) -> Result<Term> {
     if ts.is_empty() {
-        Err(Error::UnsupportedError) // Reject empty set literals
+        Err(CompileError::UnsupportedFeature(
+            "empty set literals are not supported".to_string(),
+        ))
     } else {
         // PANIC SAFETY
         #[allow(
@@ -392,10 +403,10 @@ pub fn compile_set(ts: Vec<Term>) -> Result<Term> {
                         )),
                     ))
                 } else {
-                    Err(Error::TypeError)
+                    Err(CompileError::TypeError)
                 }
             }
-            _ => Err(Error::TypeError),
+            _ => Err(CompileError::TypeError),
         }
     }
 }
@@ -416,11 +427,11 @@ pub fn compile_call0(mk: impl Fn(String) -> Option<Ext>, arg: Term) -> Result<Te
         Term::Some(t) => match Arc::unwrap_or_clone(t) {
             Term::Prim(TermPrim::String(s)) => match mk(s) {
                 Some(v) => Ok(some_of(v.into())),
-                None => Err(Error::TypeError),
+                None => Err(CompileError::TypeError),
             },
-            _ => Err(Error::TypeError),
+            _ => Err(CompileError::TypeError),
         },
-        _ => Err(Error::TypeError),
+        _ => Err(CompileError::TypeError),
     }
 }
 
@@ -432,7 +443,7 @@ pub fn compile_call1_error(xty: ExtType, enc: impl Fn(Term) -> Term, t1: Term) -
     if t1.type_of() == ty {
         Ok(if_some(t1.clone(), enc(option_get(t1))))
     } else {
-        Err(Error::TypeError)
+        Err(CompileError::TypeError)
     }
 }
 
@@ -462,7 +473,7 @@ pub fn compile_call2_error(
             if_some(t2.clone(), enc(option_get(t1), option_get(t2))),
         ))
     } else {
-        Err(Error::TypeError)
+        Err(CompileError::TypeError)
     }
 }
 
@@ -596,7 +607,7 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
             let t1 = extract_first(ts);
             compile_call1(ExtType::Duration, extfun::to_days, t1)
         }
-        (_, _) => Err(Error::TypeError),
+        (_, _) => Err(CompileError::TypeError),
     }
 }
 
@@ -607,8 +618,12 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
     match x.expr_kind() {
         ExprKind::Lit(l) => compile_prim(l, &env.entities),
         ExprKind::Var(v) => compile_var(*v, &env.request),
-        ExprKind::Slot(_) => Err(Error::UnsupportedError), // analyzing templates is not supported
-        ExprKind::Unknown(_) => Err(Error::UnsupportedError), // analyzing partial expressions is not supported
+        ExprKind::Slot(_) => Err(CompileError::UnsupportedFeature(
+            "templates/slots are not supported".to_string(),
+        )),
+        ExprKind::Unknown(_) => Err(CompileError::UnsupportedFeature(
+            "partial evaluation is not supported".to_string(),
+        )),
         ExprKind::If {
             test_expr: x1,
             then_expr: x2,
@@ -699,7 +714,7 @@ mod decimal_tests {
 
     use cedar_policy::{RequestEnv, Schema};
 
-    use crate::symcc::{extension_types::decimal::Decimal, result::Error};
+    use crate::symcc::{extension_types::decimal::Decimal, result::CompileError};
 
     use std::str::FromStr;
 
@@ -757,10 +772,10 @@ mod decimal_tests {
     #[track_caller]
     fn test_valid(str: &str, rep: i64) {
         assert_eq!(
-            compile(&dec_lit(str), &sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
-                Ext::Decimal { d: Decimal(rep) }
-            ))))),
+            compile(&dec_lit(str), &sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Decimal {
+                d: Decimal(rep)
+            })))),
             "{str}"
         );
     }
@@ -768,9 +783,11 @@ mod decimal_tests {
     #[track_caller]
     fn test_invalid(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&decimal_schema(), &request_env()).expect("Malformed sym env.");
-        assert_eq!(
-            compile(&dec_lit(str), &sym_env),
-            Err(Error::TypeError),
+        assert!(
+            matches!(
+                compile(&dec_lit(str), &sym_env),
+                Err(CompileError::TypeError),
+            ),
             "{msg}"
         );
     }
@@ -781,8 +798,8 @@ mod decimal_tests {
 
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
         assert_eq!(
-            compile(&parse_expr(str), &sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res))))),
+            compile(&parse_expr(str), &sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res)))),
             "{str}"
         )
     }
@@ -808,9 +825,11 @@ mod decimal_tests {
         test_invalid("922337203685477.5808", "overflow");
         test_invalid("-922337203685477.5809", "overflow");
         let s = Expr::get_attr(Expr::var(Var::Context), "s".into());
-        assert_eq!(
-            compile(&dec_expr(s), &sym_env()),
-            Err(Error::TypeError),
+        assert!(
+            matches!(
+                compile(&dec_expr(s), &sym_env()),
+                Err(CompileError::TypeError),
+            ),
             "Error: applying decimal constructor to a non-literal"
         );
     }
@@ -843,7 +862,7 @@ mod datetime_tests {
 
     use crate::symcc::{
         extension_types::datetime::{Datetime, Duration},
-        result::Error,
+        result::CompileError,
     };
 
     use super::*;
@@ -930,12 +949,10 @@ mod datetime_tests {
     #[track_caller]
     fn test_valid_datetime_constructor(str: &str, rep: i64) {
         assert_eq!(
-            compile(&datetime_lit(str), &datetime_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
-                Ext::Datetime {
-                    dt: Datetime::from(rep)
-                }
-            ))))),
+            compile(&datetime_lit(str), &datetime_sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Datetime {
+                dt: Datetime::from(rep)
+            })))),
             "{str}"
         );
     }
@@ -943,9 +960,11 @@ mod datetime_tests {
     #[track_caller]
     fn test_invalid_datetime_constructor(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&datetime_schema(), &request_env()).expect("Malformed sym env.");
-        assert_eq!(
-            compile(&datetime_lit(str), &sym_env),
-            Err(Error::TypeError),
+        assert!(
+            matches!(
+                compile(&datetime_lit(str), &sym_env),
+                Err(CompileError::TypeError),
+            ),
             "{msg}"
         );
     }
@@ -953,12 +972,10 @@ mod datetime_tests {
     #[track_caller]
     fn test_valid_duration_constructor(str: &str, rep: i64) {
         assert_eq!(
-            compile(&duration_lit(str), &duration_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
-                Ext::Duration {
-                    d: Duration::from(rep)
-                }
-            ))))),
+            compile(&duration_lit(str), &duration_sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Duration {
+                d: Duration::from(rep)
+            })))),
             "{str}"
         );
     }
@@ -966,9 +983,11 @@ mod datetime_tests {
     #[track_caller]
     fn test_invalid_duration_constructor(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&duration_schema(), &request_env()).expect("Malformed sym env.");
-        assert_eq!(
-            compile(&duration_lit(str), &sym_env),
-            Err(Error::TypeError),
+        assert!(
+            matches!(
+                compile(&duration_lit(str), &sym_env),
+                Err(CompileError::TypeError),
+            ),
             "{msg}"
         );
     }
@@ -1135,12 +1154,10 @@ mod datetime_tests {
     // Test that the str compiles and simplifies to a Datetime literal matching rep
     fn test_valid_datetime_simpl_expr(str: &str, rep: i64) {
         assert_eq!(
-            compile(&parse_expr(str), &datetime_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
-                Ext::Datetime {
-                    dt: Datetime::from(rep)
-                }
-            ))))),
+            compile(&parse_expr(str), &datetime_sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Datetime {
+                dt: Datetime::from(rep)
+            })))),
             "{str}"
         )
     }
@@ -1148,20 +1165,18 @@ mod datetime_tests {
     // Test that the str compiles and simplifies to a Duration literal matching rep
     fn test_valid_duration_simpl_expr(str: &str, rep: i64) {
         assert_eq!(
-            compile(&parse_expr(str), &duration_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
-                Ext::Duration {
-                    d: Duration::from(rep)
-                }
-            ))))),
+            compile(&parse_expr(str), &duration_sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Duration {
+                d: Duration::from(rep)
+            })))),
             "{str}"
         )
     }
 
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
         assert_eq!(
-            compile(&parse_expr(str), &datetime_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res))))),
+            compile(&parse_expr(str), &datetime_sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res)))),
             "{str}"
         )
     }

@@ -17,22 +17,36 @@
 //! This module would more typically be called `err` or similar, but we call it
 //! `result` to match the Lean
 
+use cedar_policy::EntityTypeName;
+use miette::Diagnostic;
 use thiserror::Error;
 
-#[allow(
-    clippy::enum_variant_names,
-    reason = "UnsupportedError reads better than just Unsupported"
-)]
-#[derive(Clone, Debug, PartialEq, Eq, Error)]
-pub enum Error {
-    #[error("noSuchEntityType")]
-    NoSuchEntityType,
-    #[error("noSuchAttribute")]
-    NoSuchAttribute,
-    #[error("typeError")]
+use super::bitvec::BitVecError;
+use super::extension_types::ipaddr::IPError;
+
+/// Errors that can occur during symbolic compilation.
+/// Corresponds to `Cedar.SymCC.Result.Error` in the Lean version.
+#[derive(Debug, Diagnostic, Error)]
+pub enum CompileError {
+    /// Failed to find an entity type.
+    #[error("entity type {0} does not exist")]
+    NoSuchEntityType(EntityTypeName),
+    /// Failed to find an attribute.
+    #[error("attribute {0} does not exist")]
+    NoSuchAttribute(String),
+    /// Type error when constructing a [`Term`].
+    #[error("term type error")]
     TypeError,
-    #[error("unsupportedError")]
-    UnsupportedError,
-    #[error("unreachableError: {0}")]
-    Unreachable(String),
+    /// Unsupported features.
+    #[error("unsupported feature in SymCC")]
+    UnsupportedFeature(String),
+    /// Bit-vector error.
+    #[error("bit-vector error ")]
+    BitVecError(#[from] BitVecError),
+    /// IP address error.
+    #[error("IP address error")]
+    IPError(#[from] IPError),
+    /// Context type is not a record.
+    #[error("context type is not a record")]
+    NonRecordContext,
 }
