@@ -342,3 +342,9 @@ check_prop!(prop_to_days_lower,
 
 check_prop!(prop_str_empty_pattern,
     forall |a : String, b : String| !($a like "" && $b like "") || $a == $b);
+
+check_prop!(prop_str_pattern_unicode,
+    forall |a : String, b : String| !($a like "🫠" && $b like "🫠") || $a == $b);
+
+check_prop!(prop_str_pattern_quote,
+    forall |a : String, b : String| !($a like "\"" && $b like "\"") || $a == $b);
