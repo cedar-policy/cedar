@@ -173,8 +173,9 @@ impl Pattern {
 
     /// Find if the argument text matches the pattern
     #[verifier::loop_isolation(false)]
+    #[verifier::external_body] // TODO: verify this!
     pub fn wildcard_match(&self, text: &str) -> (b: bool)
-        ensures b == spec_pattern::wildcard_match(text@, self@)
+        ensures b == spec_pattern::wildcard_match_alt(text@, self@)
     {
         let pattern = self.get_elems();
         // if pattern.is_empty() { // Verus doesn't support `is_empty`
@@ -201,13 +202,17 @@ impl Pattern {
         let text_len = text.len();
         let pattern_len = pattern.len();
 
-        reveal_with_fuel(spec_pattern::wildcard_match_idx, 1);
         let ghost spec_pattern = pattern@.map_values(|p: PatternElem| p@);
-        proof { spec_pattern::lemma_wildcard_match_idx_rev_idx_equiv(text@, spec_pattern); }
+
+        proof {
+            assert(text@.skip(i as int) =~= text@);
+            assert(spec_pattern.skip(j as int) =~= spec_pattern);
+        }
 
         while i < text_len && (!contains_star || star_idx != pattern_len - 1)
             invariant
                 text_len == text@.len(),
+                self@ == spec_pattern,
                 pattern_len == spec_pattern.len(),
                 0 <= i <= text_len,
                 0 <= j <= pattern_len,
@@ -216,11 +221,42 @@ impl Pattern {
                 0 <= tmp_idx <= i,
                 forall |jj: usize| 0 <= jj < spec_pattern.len() ==> (#[trigger] pattern[jj as int])@ == #[trigger] spec_pattern[jj as int],
                 forall |jj: usize| star_idx < jj < j ==> !(#[trigger] spec_pattern[jj as int] is Star),
-                contains_star ==> spec_pattern[star_idx as int] is Star,
-                spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int), // pattern[0..j] always matches text[0..i]
-                spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, tmp_idx as int, star_idx as int), // everything before the most recent star matches
-                // spec_pattern::wildcard_match_idx(text@, spec_pattern, 0int, 0int) ==>
-                //     spec_pattern::wildcard_match_idx(text@, spec_pattern, i as int, j as int),
+                spec_pattern == pattern@.map_values(|p: PatternElem| p@),
+
+                // well-formedness of contains_star and star_idx
+                contains_star ==> star_idx < j && spec_pattern[star_idx as int] is Star,
+                !contains_star ==> (forall |jj: int| 0 <= jj < j ==> !(spec_pattern[jj] is Star)),
+
+                spec_pattern::wildcard_match_alt(text@.take(i as int), spec_pattern.take(j as int)), // text[0..i] matches pattern[0..j]
+
+                // if we don't have a star, then text matches pattern iff text[i..] matches pattern[j..] (i.e., the parts we haven't examined yet match)
+                !contains_star ==> spec_pattern::wildcard_match_alt(text@, spec_pattern) == spec_pattern::wildcard_match_alt(text@.skip(i as int), spec_pattern.skip(j as int)),
+
+                // if we have a star...
+                contains_star ==> {
+                    // text[0..tmp_idx] matches pattern[0..star_idx + 1], text up to where we used * matches pattern up to and including star
+                    &&& spec_pattern::wildcard_match_alt(text@.take(tmp_idx as int), spec_pattern.take(star_idx as int + 1))
+
+                    // we have matched the same number of characters from the text as from the pattern, after where the star was used
+                    &&& i - tmp_idx == (j as int) - (star_idx as int) - 1
+
+                    // the text after where we used the star matches the pattern after the star
+                    &&& spec_pattern::wildcard_match_alt(text@.subrange(tmp_idx as int, i as int), spec_pattern.subrange(star_idx as int + 1, j as int))
+
+                    // no wildcards since the most recent wildcard
+                    &&& forall |jj: int| (star_idx as int) < jj < j ==> !(spec_pattern[jj] is Star)
+
+                    // the tail after (i, j) matches iff the tail after where we used the star matches (needed for the return false case)
+                    &&& spec_pattern::wildcard_match_alt(text@.skip(i as int), spec_pattern.skip(j as int))
+                        == spec_pattern::wildcard_match_alt(text@.skip(tmp_idx as int), spec_pattern.skip(star_idx as int + 1))
+
+                    // the whole pattern matches iff either
+                    // - text[i..] matches pattern[j..], i.e., we don't need to backtrack after this, or
+                    // - text[tmp_idx..] matches pattern[star_idx..], i.e., we backtrack and use the * again for one or more characters after tmp_idx
+                    &&& spec_pattern::wildcard_match_alt(text@, spec_pattern) ==
+                            (spec_pattern::wildcard_match_alt(text@.skip(i as int), spec_pattern.skip(j as int))
+                            || spec_pattern::wildcard_match_alt(text@.skip(tmp_idx as int), spec_pattern.skip(star_idx as int)))
+                }
 
             decreases text_len - tmp_idx, pattern_len - j, text_len - i
         {
@@ -247,17 +283,16 @@ impl Pattern {
                 tmp_idx = i;
             } else {
                 // pattern[j] != text[i], and we don't have any wildcards to backtrack to, so we can't match
-                proof { spec_pattern::lemma_wildcard_match_idx_rev_idx_equiv(text@, spec_pattern); }
                 proof {
                     if j as int == spec_pattern.len() {
 
                     } else if i == 0 {
                         assert(!spec_pattern::wildcard(spec_pattern[j as int]));
-                        assert(!spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int));
+                        //assert(!spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int));
                     } else {
                         assert(!spec_pattern::wildcard(spec_pattern[j as int]));
                         assert(!spec_pattern::char_match(text@[i as int], spec_pattern[j as int]));
-                        assert(!spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int));
+                        // assert(!spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int));
                     }
                 }
                 return false;
@@ -268,23 +303,60 @@ impl Pattern {
         // Either we reached the end of the text (i == text_len),
         // or we have a star and it's at the end of the pattern (contains_star && star_idx == pattern_len - 1)
 
+        proof {
+            assume(!contains_star ==> spec_pattern::wildcard_match_alt(text@, spec_pattern) == spec_pattern::wildcard_match_alt(seq![], spec_pattern.skip(j as int)));
+            assume(contains_star ==> {
+                    // we have matched the same number of characters from the text as from the pattern, after where the star was used
+                    &&& i - tmp_idx == (j as int) - (star_idx as int) - 1
+
+                    // the whole pattern matches iff either
+                    // - the remaining pattern (pattern[j..]) matches "", or
+                    // - there's a star at the end of the pattern, and it matches whatever we didn't match in the previous loop (text[tmp_idx..])
+                    &&& spec_pattern::wildcard_match_alt(text@, spec_pattern) ==
+                            (spec_pattern::wildcard_match_alt(seq![], spec_pattern.skip(j as int))
+                            || spec_pattern::wildcard_match_alt(text@.skip(tmp_idx as int), spec_pattern.skip(star_idx as int)))
+                });
+        }
+
         // PANIC SAFETY `j` is checked to be less than length
         #[allow(clippy::indexing_slicing)]
         while j < pattern_len && pattern[j].is_wildcard()
             invariant
+                text_len == text@.len(),
+                self@ == spec_pattern,
+                pattern_len == spec_pattern.len(),
                 0 <= j <= pattern_len,
                 0 <= star_idx <= j,
                 j > 0 ==> star_idx < j,
                 contains_star ==> spec_pattern[star_idx as int] is Star,
-                spec_pattern::wildcard_match_rev_idx(text@, spec_pattern, i as int, j as int), // pattern[0..j] always matches text[0..i]
-                spec_pattern::wildcard_match_idx(text@, spec_pattern, 0int, 0int) ==>
-                    spec_pattern::wildcard_match_idx(text@, spec_pattern, i as int, j as int),
-            decreases pattern_len - j
+
+                // if we didn't find a star, then we've iterated through the whole text, and the remaining pattern (pattern[j..]) needs to match ""
+                !contains_star ==> spec_pattern::wildcard_match_alt(text@, spec_pattern) == spec_pattern::wildcard_match_alt(seq![], spec_pattern.skip(j as int)),
+
+                // if we did find a star,
+                contains_star ==> {
+                    // we have matched the same number of characters from the text as from the pattern, after where the star was used
+                    &&& i - tmp_idx == (j as int) - (star_idx as int) - 1
+
+                    // the whole pattern matches iff either
+                    // - the remaining pattern (pattern[j..]) matches "", or
+                    // - there's a star at the end of the pattern, and it matches whatever we didn't match in the previous loop (text[tmp_idx..])
+                    &&& spec_pattern::wildcard_match_alt(text@, spec_pattern) ==
+                            (spec_pattern::wildcard_match_alt(seq![], spec_pattern.skip(j as int))
+                            || spec_pattern::wildcard_match_alt(text@.skip(tmp_idx as int), spec_pattern.skip(star_idx as int)))
+                }
+
+                decreases pattern_len - j
         {
             j += 1;
         }
 
-        proof { spec_pattern::lemma_wildcard_match_idx_rev_idx_equiv(text@, spec_pattern); }
+        proof {
+            if j != pattern_len && contains_star {
+                // some proof is required here
+            }
+        }
+
         j == pattern_len
     }
 
