@@ -236,24 +236,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "builtin"
-version = "0.1.0"
-source = "git+https://github.com/verus-lang/verus?branch=main#c3a505494dcbb0792c05817c8070b996d994fcde"
-
-[[package]]
-name = "builtin_macros"
-version = "0.1.0"
-source = "git+https://github.com/verus-lang/verus?branch=main#c3a505494dcbb0792c05817c8070b996d994fcde"
-dependencies = [
- "prettyplease_verus",
- "proc-macro2",
- "quote",
- "syn 2.0.101",
- "syn_verus",
- "synstructure",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -337,8 +319,6 @@ name = "cedar-policy-core"
 version = "4.4.0"
 dependencies = [
  "arbitrary",
- "builtin",
- "builtin_macros",
  "chrono",
  "cool_asserts",
  "educe",
@@ -360,6 +340,8 @@ dependencies = [
  "stacker",
  "thiserror",
  "tsify",
+ "verus_builtin",
+ "verus_builtin_macros",
  "vstd",
  "wasm-bindgen",
 ]
@@ -1641,15 +1623,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prettyplease_verus"
-version = "0.2.29"
-source = "git+https://github.com/verus-lang/verus?branch=main#c3a505494dcbb0792c05817c8070b996d994fcde"
-dependencies = [
- "proc-macro2",
- "syn_verus",
-]
-
-[[package]]
 name = "proc-macro-crate"
 version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2187,17 +2160,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "state_machines_macros"
-version = "0.1.0"
-source = "git+https://github.com/verus-lang/verus?branch=main#c3a505494dcbb0792c05817c8070b996d994fcde"
-dependencies = [
- "indexmap 1.9.3",
- "proc-macro2",
- "quote",
- "syn_verus",
-]
-
-[[package]]
 name = "string_cache"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2252,16 +2214,6 @@ name = "syn"
 version = "2.0.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ce2b7fc941b3a24138a0a7cf8e858bfc6a992e7978a068a5c760deb0ed43caf"
-dependencies = [
- "proc-macro2",
- "quote",
- "unicode-ident",
-]
-
-[[package]]
-name = "syn_verus"
-version = "2.0.96"
-source = "git+https://github.com/verus-lang/verus?branch=main#c3a505494dcbb0792c05817c8070b996d994fcde"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2550,13 +2502,61 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "verus_builtin"
+version = "0.1.0"
+source = "git+https://github.com/verus-lang/verus?rev=de72e8082d6be35bede615f1a838aa58d125319f#de72e8082d6be35bede615f1a838aa58d125319f"
+
+[[package]]
+name = "verus_builtin_macros"
+version = "0.1.0"
+source = "git+https://github.com/verus-lang/verus?rev=de72e8082d6be35bede615f1a838aa58d125319f#de72e8082d6be35bede615f1a838aa58d125319f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
+ "synstructure",
+ "verus_prettyplease",
+ "verus_syn",
+]
+
+[[package]]
+name = "verus_prettyplease"
+version = "0.2.29+verus"
+source = "git+https://github.com/verus-lang/verus?rev=de72e8082d6be35bede615f1a838aa58d125319f#de72e8082d6be35bede615f1a838aa58d125319f"
+dependencies = [
+ "proc-macro2",
+ "verus_syn",
+]
+
+[[package]]
+name = "verus_state_machines_macros"
+version = "0.1.0"
+source = "git+https://github.com/verus-lang/verus?rev=de72e8082d6be35bede615f1a838aa58d125319f#de72e8082d6be35bede615f1a838aa58d125319f"
+dependencies = [
+ "indexmap 1.9.3",
+ "proc-macro2",
+ "quote",
+ "verus_syn",
+]
+
+[[package]]
+name = "verus_syn"
+version = "2.0.96+verus"
+source = "git+https://github.com/verus-lang/verus?rev=de72e8082d6be35bede615f1a838aa58d125319f#de72e8082d6be35bede615f1a838aa58d125319f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
 name = "vstd"
 version = "0.1.0"
-source = "git+https://github.com/verus-lang/verus?branch=main#c3a505494dcbb0792c05817c8070b996d994fcde"
+source = "git+https://github.com/verus-lang/verus?rev=de72e8082d6be35bede615f1a838aa58d125319f#de72e8082d6be35bede615f1a838aa58d125319f"
 dependencies = [
- "builtin",
- "builtin_macros",
- "state_machines_macros",
+ "verus_builtin",
+ "verus_builtin_macros",
+ "verus_state_machines_macros",
 ]
 
 [[package]]
