@@ -20,8 +20,8 @@ use std::sync::Arc;
 
 use cedar_policy::{Authorizer, Schema, Validator};
 use cedar_policy_symcc::{
-    solver::LocalSolver, term, CedarSymCompiler, Term, TermType, TermVar, WellFormedAsserts,
-    WellTypedPolicies,
+    compile_always_denies, solver::LocalSolver, term, CedarSymCompiler, Term, TermType, TermVar,
+    WellFormedAsserts, WellTypedPolicies,
 };
 
 use crate::utils::{assert_always_allows, assert_does_not_always_deny, Environments};
@@ -161,9 +161,7 @@ async fn term_always_denies_cex() {
         &validator,
     );
     let typed_pset = WellTypedPolicies::from_policies(&pset, &envs.req_env, envs.schema).unwrap();
-    let asserts = compiler
-        .compile_always_denies(&typed_pset, &envs.symenv)
-        .unwrap();
+    let asserts = compile_always_denies(&typed_pset, &envs.symenv).unwrap();
     let cex = compiler.check_sat(&asserts).await.unwrap().unwrap();
     let resp = Authorizer::new().is_authorized(&cex.request, &pset, &cex.entities);
     assert_eq!(resp.decision(), cedar_policy::Decision::Allow);
