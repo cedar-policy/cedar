@@ -43,20 +43,21 @@ pub mod type_abbrevs;
 pub mod verifier;
 
 use cedar_policy::Schema;
-use decoder::{parse_sexpr, DecodeError, IdMaps};
+use decoder::{parse_sexpr, IdMaps};
 use env::to_validator_request_env;
 
 use cedar_policy_core::ast::{Expr, ExprBuilder, Policy, PolicySet};
-use cedar_policy_core::validator::{
-    typecheck::Typechecker, types::RequestEnv, ValidationError, ValidationMode,
-};
-use concretize::ConcretizeError;
+use cedar_policy_core::validator::{typecheck::Typechecker, types::RequestEnv, ValidationMode};
 use encoder::Encoder;
 use solver::{Decision, Solver};
-use thiserror::Error;
 use verifier::Asserts;
 
+use crate::err::Error;
+use crate::result::CompileError;
+
+pub use concretize::ConcretizeError;
 pub use concretize::Env;
+pub use decoder::DecodeError;
 pub use env::{Environment, SymEnv};
 pub use interpretation::Interpretation;
 pub use smtlib_script::SmtLibScript;
@@ -65,29 +66,6 @@ pub use verifier::{
     verify_never_errors,
 };
 
-#[allow(clippy::enum_variant_names)]
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("Action not found in Schema: {action}")]
-    ActionNotInSchema { action: String },
-    #[error(transparent)]
-    SymCC(#[from] result::Error),
-    #[error("Failed to construct encoder: {err}")]
-    EncoderConstruction { err: anyhow::Error },
-    #[error("Failed to encode terms: {err}")]
-    Encoding { err: anyhow::Error },
-    #[error(transparent)]
-    Solver(#[from] solver::Error),
-    #[error("Solver returned unknown")]
-    SolverUnknown,
-    /// Policy is not well-typed.
-    #[error("Policy is not well typed.")]
-    PolicyNotWellTyped { errs: Vec<ValidationError> },
-    #[error("Failed to decode model: {0}")]
-    DecodeModel(#[from] DecodeError),
-    #[error("Failed to concretize interpretation: {0}")]
-    ConcretizeError(#[from] ConcretizeError),
-}
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Corresponds to the `SolverM` monad in Lean
@@ -118,7 +96,7 @@ impl<S: Solver> SymCompiler<S> {
     /// with respect to the `symenv`.
     pub async fn check_unsat(
         &mut self,
-        vc: impl FnOnce(&SymEnv) -> std::result::Result<Asserts, result::Error>,
+        vc: impl FnOnce(&SymEnv) -> std::result::Result<Asserts, CompileError>,
         symenv: &SymEnv,
     ) -> Result<bool> {
         let asserts = vc(symenv)?;
@@ -135,18 +113,18 @@ impl<S: Solver> SymCompiler<S> {
                 .smtlib_input()
                 .reset()
                 .await
-                .map_err(|err| Error::Encoding { err: err.into() })?;
+                .map_err(|err| Error::EncodeError(err.into()))?;
             self.solver
                 .smtlib_input()
                 .set_logic("ALL")
                 .await
-                .map_err(|err| Error::Encoding { err: err.into() })?;
-            let mut encoder = Encoder::new(symenv, self.solver.smtlib_input())
-                .map_err(|err| Error::EncoderConstruction { err })?;
+                .map_err(|err| Error::EncodeError(err.into()))?;
+            let mut encoder =
+                Encoder::new(symenv, self.solver.smtlib_input()).map_err(Error::EncodeError)?;
             encoder
                 .encode(asserts.iter())
                 .await
-                .map_err(|err| Error::Encoding { err })?;
+                .map_err(Error::EncodeError)?;
             match self.solver.check_sat().await? {
                 Decision::Unsat => Ok(true),
                 Decision::Sat => Ok(false),
@@ -159,7 +137,7 @@ impl<S: Solver> SymCompiler<S> {
     /// For soundness, `footprint` must include all expressions used for generating the verification condition.
     pub async fn check_sat(
         &mut self,
-        vc: impl FnOnce(&SymEnv) -> std::result::Result<Asserts, result::Error>,
+        vc: impl FnOnce(&SymEnv) -> std::result::Result<Asserts, CompileError>,
         symenv: &SymEnv,
         footprint: impl Iterator<Item = &Expr>,
     ) -> Result<Option<Env>> {
@@ -176,23 +154,23 @@ impl<S: Solver> SymCompiler<S> {
                 .smtlib_input()
                 .reset()
                 .await
-                .map_err(|err| Error::Encoding { err: err.into() })?;
+                .map_err(|err| Error::EncodeError(err.into()))?;
             self.solver
                 .smtlib_input()
                 .set_logic("ALL")
                 .await
-                .map_err(|err| Error::Encoding { err: err.into() })?;
+                .map_err(|err| Error::EncodeError(err.into()))?;
             self.solver
                 .smtlib_input()
                 .set_option("produce-models", "true")
                 .await
-                .map_err(|err| Error::Encoding { err: err.into() })?;
-            let mut encoder = Encoder::new(symenv, self.solver.smtlib_input())
-                .map_err(|err| Error::EncoderConstruction { err })?;
+                .map_err(|err| Error::EncodeError(err.into()))?;
+            let mut encoder =
+                Encoder::new(symenv, self.solver.smtlib_input()).map_err(Error::EncodeError)?;
             encoder
                 .encode(asserts.iter())
                 .await
-                .map_err(|err| Error::Encoding { err })?;
+                .map_err(Error::EncodeError)?;
             let id_maps = IdMaps::from_encoder(&encoder);
             match self.solver.check_sat().await? {
                 Decision::Unsat => Ok(None),
@@ -421,10 +399,8 @@ pub fn well_typed_policy(
     env: &cedar_policy::RequestEnv,
     schema: &Schema,
 ) -> Result<Policy> {
-    let env =
-        to_validator_request_env(env, schema.as_ref()).ok_or_else(|| Error::ActionNotInSchema {
-            action: env.action().to_string(),
-        })?;
+    let env = to_validator_request_env(env, schema.as_ref())
+        .ok_or_else(|| Error::ActionNotInSchema(env.action().to_string()))?;
     well_typed_policy_inner(policy, &env, schema)
 }
 
@@ -437,16 +413,15 @@ fn well_typed_policy_inner(
     let type_checker = Typechecker::new(validator_schema, ValidationMode::Strict);
     let policy_check = type_checker.typecheck_by_single_request_env(policy.template(), env);
 
+    use cedar_policy_core::validator::typecheck::PolicyCheck::*;
     match policy_check {
-        cedar_policy_core::validator::typecheck::PolicyCheck::Success(expr) => {
-            Ok(Policy::from_when_clause(
-                policy.effect(),
-                expr.into_expr::<ExprBuilder<()>>(),
-                policy.id().clone(),
-                policy.loc().cloned(),
-            ))
-        }
-        cedar_policy_core::validator::typecheck::PolicyCheck::Irrelevant(errs, expr) =>
+        Success(expr) => Ok(Policy::from_when_clause(
+            policy.effect(),
+            expr.into_expr::<ExprBuilder<()>>(),
+            policy.id().clone(),
+            policy.loc().cloned(),
+        )),
+        Irrelevant(errs, expr) =>
         // A policy could be irrelevant just for this environment, so unless there were errors we don't want to fail.
         // Note that if the policy was irrelevant for all environments schema validation would have caught this
         // before SymCC. The Lean implementation needs to be updated to match this behavior.
@@ -462,9 +437,7 @@ fn well_typed_policy_inner(
                 Err(Error::PolicyNotWellTyped { errs })
             }
         }
-        cedar_policy_core::validator::typecheck::PolicyCheck::Fail(errs) => {
-            Err(Error::PolicyNotWellTyped { errs })
-        }
+        Fail(errs) => Err(Error::PolicyNotWellTyped { errs }),
     }
 }
 
@@ -473,10 +446,8 @@ pub fn well_typed_policies(
     env: &cedar_policy::RequestEnv,
     schema: &Schema,
 ) -> Result<PolicySet> {
-    let env =
-        to_validator_request_env(env, schema.as_ref()).ok_or_else(|| Error::ActionNotInSchema {
-            action: env.action().to_string(),
-        })?;
+    let env = to_validator_request_env(env, schema.as_ref())
+        .ok_or_else(|| Error::ActionNotInSchema(env.action().to_string()))?;
     let typed_policies: Result<Vec<Policy>> = policies
         .static_policies()
         .map(|p| well_typed_policy_inner(p, &env, schema))

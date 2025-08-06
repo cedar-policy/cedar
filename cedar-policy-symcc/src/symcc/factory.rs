@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use crate::result::CompileError;
+
 use super::bitvec::BitVec;
 use super::entity_tag::EntityTag;
 use super::ext::Ext;
@@ -259,10 +261,15 @@ pub fn bvneg(t: Term) -> Term {
     }
 }
 
-type Comparator = dyn Fn(&BitVec, &BitVec) -> Result<bool, super::result::Error>;
-type BVOp = dyn Fn(&BitVec, &BitVec) -> Result<BitVec, super::result::Error>;
+type Comparator<E> = dyn Fn(&BitVec, &BitVec) -> Result<bool, E>;
+type BVOp<E> = dyn Fn(&BitVec, &BitVec) -> Result<BitVec, E>;
 
-pub fn bvapp(op: Op, f: &BVOp, t1: Term, t2: Term) -> Term {
+pub fn bvapp<E: std::fmt::Debug + Into<CompileError>>(
+    op: Op,
+    f: &BVOp<E>,
+    t1: Term,
+    t2: Term,
+) -> Term {
     match (t1, t2) {
         #[allow(
             clippy::unwrap_used,
@@ -324,7 +331,12 @@ pub fn bvlshr(t1: Term, t2: Term) -> Term {
     bvapp(Op::Bvlshr, &BitVec::lshr, t1, t2)
 }
 
-fn bvcmp(op: Op, comp: &Comparator, t1: Term, t2: Term) -> Term {
+fn bvcmp<E: std::fmt::Debug + Into<CompileError>>(
+    op: Op,
+    comp: &Comparator<E>,
+    t1: Term,
+    t2: Term,
+) -> Term {
     match (t1, t2) {
         #[allow(
             clippy::unwrap_used,
@@ -376,7 +388,12 @@ pub fn bvnego(t: Term) -> Term {
     }
 }
 
-pub fn bvso(op: Op, f: &BVOp, t1: Term, t2: Term) -> Term {
+pub fn bvso<E: std::fmt::Debug + Into<CompileError>>(
+    op: Op,
+    f: &BVOp<E>,
+    t1: Term,
+    t2: Term,
+) -> Term {
     match (t1, t2) {
         (Term::Prim(TermPrim::Bitvec(bv1)), Term::Prim(TermPrim::Bitvec(bv2))) => {
             assert!(bv1.width() == bv2.width());

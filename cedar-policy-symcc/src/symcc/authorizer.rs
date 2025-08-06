@@ -20,7 +20,7 @@ use crate::symcc::{
     compiler::compile,
     env::SymEnv,
     factory::{and, eq, not, or, some_of},
-    result,
+    result::CompileError,
     term::Term,
 };
 
@@ -28,7 +28,7 @@ pub fn satisfied_with_effect(
     effect: Effect,
     policy: &Policy,
     env: &SymEnv,
-) -> Result<Option<Term>, result::Error> {
+) -> Result<Option<Term>, CompileError> {
     if policy.effect() == effect {
         Ok(Some(compile(&policy.condition(), env)?))
     } else {
@@ -45,16 +45,16 @@ pub fn satisfied_policies(
     effect: Effect,
     policies: &PolicySet,
     env: &SymEnv,
-) -> Result<Term, result::Error> {
+) -> Result<Term, CompileError> {
     let terms = policies
         .policies()
         .filter_map(|p| satisfied_with_effect(effect, p, env).transpose())
-        .collect::<Result<Vec<Term>, result::Error>>()?
+        .collect::<Result<Vec<Term>, CompileError>>()?
         .into_iter();
     Ok(any_satisfied(terms))
 }
 
-pub fn is_authorized(policies: &PolicySet, env: &SymEnv) -> Result<Term, result::Error> {
+pub fn is_authorized(policies: &PolicySet, env: &SymEnv) -> Result<Term, CompileError> {
     let forbids = satisfied_policies(Effect::Forbid, policies, env)?;
     let permits = satisfied_policies(Effect::Permit, policies, env)?;
     Ok(and(permits, not(forbids)))

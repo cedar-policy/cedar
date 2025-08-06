@@ -15,12 +15,11 @@
  */
 use std::sync::LazyLock;
 
-use crate::symcc::{
-    result::Error,
-    type_abbrevs::{Int, Nat, Width},
-};
+use crate::symcc::type_abbrevs::{Int, Nat, Width};
+use miette::Diagnostic;
 use num_bigint::{BigInt, BigUint, ToBigInt};
 use num_traits::cast::ToPrimitive;
+use thiserror::Error;
 
 /// Implementation of the Lean BitVec in Rust. The Lean version is a wrapper around a `Fin`,
 /// a finite natural number that is guaranteed to be less than 2^width. In our implementation
@@ -34,7 +33,24 @@ pub struct BitVec {
 
 pub static TWO: LazyLock<BigUint> = LazyLock::new(|| BigUint::from(2u128));
 
-type Result<T> = std::result::Result<T, Error>;
+/// Errors in [`BitVec`] operations.
+#[derive(Clone, Diagnostic, Debug, PartialEq, Eq, Error)]
+pub enum BitVecError {
+    /// Extract out of bounds
+    #[error("extract out of bounds")]
+    ExtractOutOfBounds,
+    /// Attempting to create a bit-vector with zero width
+    #[error("cannot create a bit-vector with zero width")]
+    ZeroWidthBitVec,
+    /// Mismatched bit-vector widths in various operations
+    #[error("mismatched bit-vector widths in {0}")]
+    MismatchedWidths(String),
+    /// Shifting by a value greater than the bit-width
+    #[error("shifting by a value greater than the bit-width")]
+    ShiftAmountTooLarge,
+}
+
+type Result<T> = std::result::Result<T, BitVecError>;
 
 impl BitVec {
     pub fn of_nat(width: Width, v: Nat) -> Result<Self> {
@@ -113,7 +129,7 @@ impl BitVec {
     // Return an integer representing the extracted bits from low to high, inclusive.
     pub fn extract_bits(&self, low: Width, high: Width) -> Result<Self> {
         if high >= self.width || low > high {
-            Err(Error::Unreachable("Out of bounds extract.".into()))
+            Err(BitVecError::ExtractOutOfBounds)
         } else {
             let rem = &self.v % TWO.pow(high + 1);
             let quotient = rem / TWO.pow(low);
@@ -125,9 +141,7 @@ impl BitVec {
 
     fn new(width: Width, val: Nat) -> Result<Self> {
         if width == 0 {
-            Err(Error::Unreachable(
-                "Cannot create bitvector with 0 width.".into(),
-            ))
+            Err(BitVecError::ZeroWidthBitVec)
         } else {
             let v = val % TWO.pow(width);
             Ok(BitVec { width, v })
@@ -164,7 +178,7 @@ impl BitVec {
 
     pub fn signed_min(n: Width) -> Result<Int> {
         if n == 0 {
-            Err(Error::Unreachable("Width has to be greater than 0.".into()))
+            Err(BitVecError::ZeroWidthBitVec)
         } else {
             // PANIC SAFETY
             #[allow(
@@ -177,7 +191,7 @@ impl BitVec {
 
     pub fn signed_max(n: Width) -> Result<Int> {
         if n == 0 {
-            Err(Error::Unreachable("Width has to be greater than 0.".into()))
+            Err(BitVecError::ZeroWidthBitVec)
         } else {
             // PANIC SAFETY
             #[allow(
@@ -214,9 +228,7 @@ impl BitVec {
     }
     pub fn slt(lhs: &Self, rhs: &Self) -> Result<bool> {
         if lhs.width != rhs.width {
-            Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ))
+            Err(BitVecError::MismatchedWidths("slt".into()))
         } else {
             Ok(lhs.to_int() < rhs.to_int())
         }
@@ -224,9 +236,7 @@ impl BitVec {
 
     pub fn sle(lhs: &Self, rhs: &Self) -> Result<bool> {
         if lhs.width != rhs.width {
-            Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ))
+            Err(BitVecError::MismatchedWidths("sle".into()))
         } else {
             Ok(lhs.to_int() <= rhs.to_int())
         }
@@ -234,9 +244,7 @@ impl BitVec {
 
     pub fn ule(lhs: &Self, rhs: &Self) -> Result<bool> {
         if lhs.width != rhs.width {
-            Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ))
+            Err(BitVecError::MismatchedWidths("ule".into()))
         } else {
             Ok(lhs.v <= rhs.v)
         }
@@ -244,9 +252,7 @@ impl BitVec {
 
     pub fn ult(lhs: &Self, rhs: &Self) -> Result<bool> {
         if lhs.width != rhs.width {
-            Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ))
+            Err(BitVecError::MismatchedWidths("ult".into()))
         } else {
             Ok(lhs.v < rhs.v)
         }
@@ -254,9 +260,7 @@ impl BitVec {
 
     pub fn add(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
-            Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ))
+            Err(BitVecError::MismatchedWidths("add".into()))
         } else {
             BitVec::of_nat(lhs.width, &lhs.v + &rhs.v)
         }
@@ -264,9 +268,7 @@ impl BitVec {
 
     pub fn sub(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
-            Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ))
+            Err(BitVecError::MismatchedWidths("sub".into()))
         } else {
             BitVec::add(lhs, &rhs.neg()?)
         }
@@ -274,9 +276,7 @@ impl BitVec {
 
     pub fn mul(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
-            Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ))
+            Err(BitVecError::MismatchedWidths("mul".into()))
         } else {
             BitVec::of_nat(lhs.width, &lhs.v * &rhs.v)
         }
@@ -285,9 +285,7 @@ impl BitVec {
     // semantics to match SMT bit-vector theory here: https://smt-lib.org/theories-FixedSizeBitVectors.shtml
     pub fn udiv(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
-            return Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ));
+            return Err(BitVecError::MismatchedWidths("udiv".into()));
         };
         if rhs.v == BigUint::ZERO {
             BitVec::all_ones(lhs.width)
@@ -299,9 +297,7 @@ impl BitVec {
     // semantics to match SMT bit-vector theory here: https://smt-lib.org/theories-FixedSizeBitVectors.shtml
     pub fn urem(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
-            return Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ));
+            return Err(BitVecError::MismatchedWidths("urem".into()));
         };
         if rhs.v == BigUint::ZERO {
             Ok(lhs.clone())
@@ -313,9 +309,7 @@ impl BitVec {
     // semantics to match SMT bit-vector logic here: https://smt-lib.org/logics-all.shtml
     pub fn sdiv(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
-            return Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ));
+            return Err(BitVecError::MismatchedWidths("sdiv".into()));
         };
         let lhs_msb = lhs.msb();
         let rhs_msb = rhs.msb();
@@ -334,9 +328,7 @@ impl BitVec {
     // semantics to match SMT bit-vector logic here: https://smt-lib.org/logics-all.shtml
     pub fn srem(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
-            return Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ));
+            return Err(BitVecError::MismatchedWidths("srem".into()));
         };
         let lhs_msb = lhs.msb();
         let rhs_msb = rhs.msb();
@@ -355,9 +347,7 @@ impl BitVec {
     // semantics to match SMT bit-vector logic here: https://smt-lib.org/logics-all.shtml
     pub fn smod(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
-            return Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ));
+            return Err(BitVecError::MismatchedWidths("smod".into()));
         };
         let lhs_msb = lhs.msb();
         let rhs_msb = rhs.msb();
@@ -388,28 +378,18 @@ impl BitVec {
 
     pub fn shl(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
-            return Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ));
+            return Err(BitVecError::MismatchedWidths("shl".into()));
         };
-        let shift_amount = rhs
-            .v
-            .to_u32()
-            .ok_or_else(|| Error::Unreachable("Shift amount too large to convert to u32".into()))?;
+        let shift_amount = rhs.v.to_u32().ok_or(BitVecError::ShiftAmountTooLarge)?;
         let val = &lhs.v * TWO.pow(shift_amount);
         BitVec::of_nat(lhs.width, val)
     }
 
     pub fn lshr(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
-            return Err(Error::Unreachable(
-                "Expected bitvectors of same bit-width".into(),
-            ));
+            return Err(BitVecError::MismatchedWidths("lshr".into()));
         };
-        let shift_amount = rhs
-            .v
-            .to_u32()
-            .ok_or_else(|| Error::Unreachable("Shift amount too large to convert to u32".into()))?;
+        let shift_amount = rhs.v.to_u32().ok_or(BitVecError::ShiftAmountTooLarge)?;
         let val = &lhs.v / TWO.pow(shift_amount);
         BitVec::of_nat(lhs.width, val)
     }

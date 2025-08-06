@@ -1,3 +1,5 @@
+use cedar_policy_core::validator::ValidationError;
+use miette::Diagnostic;
 /*
  * Copyright Cedar Contributors
  *
@@ -15,35 +17,39 @@
  */
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+use crate::{
+    result::CompileError,
+    solver::SolverError,
+    symcc::{ConcretizeError, DecodeError},
+};
+
+/// Top-level errors from the whole `cedar-policy-symcc` crate.
+#[derive(Debug, Diagnostic, Error)]
 pub enum Error {
-    /// Error from the `symcc` module (except its `solver` module)
+    /// Action not found in schema.
+    #[error("action not found in schema: {0}")]
+    ActionNotInSchema(String),
+    /// Errors during symbolic compilation.
     #[error(transparent)]
-    Symcc(crate::symcc::Error),
-    /// Error from the `solver` module
+    CompileError(#[from] CompileError),
+    /// Errors in the SMT encoder.
+    #[error("failed to encode SMT terms")]
+    EncodeError(#[source] anyhow::Error),
+    /// Solver-related errors.
     #[error(transparent)]
-    Solver(#[from] crate::symcc::solver::Error),
-    /// Solver returned `unknown`
-    #[error("Solver returned `unknown`")]
+    SolverError(#[from] SolverError),
+    /// Solver returned `unknown`.
+    #[error("solver returned `unknown`")]
     SolverUnknown,
-    /// Internal error
-    #[error("{message}")]
-    Internal { message: String },
+    /// Policy is not well-typed.
+    #[error("input policy (set) is not well typed")]
+    PolicyNotWellTyped { errs: Vec<ValidationError> },
+    /// Failed to decode the SMT model.
+    #[error("failed to decode model")]
+    DecodeModel(#[from] DecodeError),
+    /// Errors during concretization.
+    #[error("failed to recover a concrete counterexample: {0}")]
+    ConcretizeError(#[from] ConcretizeError),
 }
+
 pub type Result<T> = std::result::Result<T, Error>;
-
-impl From<crate::symcc::Error> for Error {
-    fn from(err: crate::symcc::Error) -> Self {
-        match err {
-            crate::symcc::Error::SolverUnknown => Self::SolverUnknown,
-            e => Self::Symcc(e),
-        }
-    }
-}
-
-impl From<crate::symcc::result::Error> for Error {
-    fn from(err: crate::symcc::result::Error) -> Self {
-        let err: crate::symcc::Error = err.into();
-        err.into()
-    }
-}

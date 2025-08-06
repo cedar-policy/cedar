@@ -22,15 +22,27 @@
 
 use std::sync::LazyLock;
 
+use miette::Diagnostic;
 use num_bigint::BigUint;
+use thiserror::Error;
 
 use crate::symcc::{
-    bitvec::BitVec,
-    result::Error,
+    bitvec::{BitVec, BitVecError},
     type_abbrevs::{nat, Fin, Nat, Width},
 };
 
-type Result<T> = std::result::Result<T, Error>;
+/// Errors in [`IPNet`] operations.
+#[derive(Clone, Diagnostic, Debug, PartialEq, Eq, Error)]
+pub enum IPError {
+    /// Errors in [`BitVec`] operations.
+    #[error("bit-vector error when manipulating ip addresses")]
+    BitVecError(#[from] BitVecError),
+    /// Expected octets when constructing IP addresses.
+    #[error("expected octets when constructing IP addresses")]
+    ExepectedOctet,
+}
+
+type Result<T> = std::result::Result<T, IPError>;
 
 // ----- IPNetPrefix, CIDR, and IPNet -----
 
@@ -55,9 +67,7 @@ impl IPv4Addr {
             let val = BitVec::concat(a0, &BitVec::concat(a1, &BitVec::concat(a2, a3)?)?)?;
             Ok(Self { val })
         } else {
-            Err(Error::Unreachable(
-                "Expected bitvectors of bit-width 8".into(),
-            ))
+            Err(IPError::ExepectedOctet)
         }
     }
 
@@ -119,9 +129,7 @@ impl IPv6Addr {
             )?;
             Ok(Self { val })
         } else {
-            Err(Error::Unreachable(
-                "Expected bitvectors of bit-width 8".into(),
-            ))
+            Err(IPError::ExepectedOctet)
         }
     }
 
