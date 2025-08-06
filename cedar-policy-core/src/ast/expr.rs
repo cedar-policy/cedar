@@ -280,7 +280,7 @@ impl<T> ExprKind<T> {
                 }
             },
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                // TODO(Pratap): support extension functions
+                // TODO: support extension functions
                 arbitrary()
             },
             ExprKind::GetAttr { expr, attr } => {

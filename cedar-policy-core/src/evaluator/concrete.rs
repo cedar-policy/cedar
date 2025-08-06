@@ -390,23 +390,12 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
-            // ExprKind::ExtensionFunctionApp { fn_name, args } => {
-            //     let args = args
-            //         .iter()
-            //         .map(|arg| self.interpret(arg, slots))
-            //         .collect::<Result<Vec<_>>>()?;
-            //     let efunc = self.extensions.func(fn_name)?;
-            //     // TODO need to change extension functions internally?
-            //     match efunc.call(&args)? {
-            //         PartialValue::Value(v) => Ok(v),
-            //         PartialValue::Residual(_) => Err(err::EvaluationError::non_value(expr.clone())),
-            //     }
-            // }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                // todo: handle ExtensionFunctionApp
-                assume(false);
-                unreached()
-            }
+                // extension functions are not modeled in spec yet, so this case produces an `arbitrary()` value in the VC;
+                // we therefore need to explicitly admit it
+                proof { admit(); }
+                self.interpret_extension_function_app(fn_name, args, expr, slots)
+            },
             ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
             ExprKind::HasAttr {
                 expr: expr_inner,
@@ -671,6 +660,21 @@ impl<'e> Evaluator<'e> {
             ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
                 source_loc: loc.cloned(),
             })),
+        }
+    }
+
+    // factored out from extension function case to facilitate axiomatization
+    // we need to pass in the `expr` explicitly since it goes into the error case
+    #[verifier::external_body]
+    fn interpret_extension_function_app(&self, fn_name: &Name, args: &Arc<Vec<Expr>>, expr: &Expr, slots: &SlotEnv) -> Result<Value> {
+        let args = args
+            .iter()
+            .map(|arg| self.interpret(arg, slots))
+            .collect::<Result<Vec<_>>>()?;
+        let efunc = self.extensions.func(fn_name)?;
+        match efunc.call(&args)? {
+            PartialValue::Value(v) => Ok(v),
+            PartialValue::Residual(_) => Err(err::EvaluationError::non_value(expr.clone())),
         }
     }
 
