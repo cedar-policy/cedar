@@ -23,9 +23,6 @@ pub use crate::symcc::{
 
 /// Top-level errors from the whole `cedar-policy-symcc` crate.
 #[derive(Debug, Diagnostic, Error)]
-#[diagnostic(
-    help("if you are not using *_unchecked functions, this is likely due to a bug in the symbolic compiler or cvc5")
-)]
 pub enum Error {
     /// Action not found in schema.
     #[error("action not found in schema: {0}")]
