@@ -32,7 +32,7 @@ use crate::symcc::{
 };
 
 /// Errors in [`IPNet`] operations.
-#[derive(Clone, Diagnostic, Debug, PartialEq, Eq, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum IPError {
     /// Errors in [`BitVec`] operations.
     #[error("bit-vector error when manipulating ip addresses")]

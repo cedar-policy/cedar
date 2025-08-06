@@ -33,7 +33,7 @@ pub mod factory;
 mod function;
 mod interpretation;
 pub mod op;
-pub mod result;
+mod result;
 mod smtlib_script;
 pub mod solver;
 mod tags;
@@ -52,21 +52,21 @@ use encoder::Encoder;
 use solver::{Decision, Solver};
 use verifier::Asserts;
 
-use crate::err::Error;
-use crate::result::CompileError;
+use crate::err::{Error, Result};
 
+pub use bitvec::BitVecError;
 pub use concretize::ConcretizeError;
 pub use concretize::Env;
 pub use decoder::DecodeError;
 pub use env::{Environment, SymEnv};
+pub use extension_types::ipaddr::IPError;
 pub use interpretation::Interpretation;
+pub use result::CompileError;
 pub use smtlib_script::SmtLibScript;
 pub use verifier::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
     verify_never_errors,
 };
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 /// Corresponds to the `SolverM` monad in Lean
 #[derive(Debug, Clone)]

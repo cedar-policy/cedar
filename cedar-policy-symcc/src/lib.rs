@@ -15,7 +15,6 @@
  */
 mod err;
 
-pub use err::{Error, Result};
 mod symcc;
 use solver::Solver;
 use symcc::SymCompiler;
@@ -31,7 +30,6 @@ pub use symcc::{
     ext::Ext,
     extension_types,
     op::{ExtOp, Op, Uuf},
-    result,
     term::Term,
     term::TermPrim,
     term::TermVar,
@@ -42,6 +40,9 @@ pub use symcc::{
 };
 
 use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
+
+/// Export various error types.
+pub use err::*;
 
 /// Cedar Symbolic Compiler paramatized by a solver `S`.
 #[derive(Clone, Debug)]

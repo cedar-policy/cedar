@@ -21,18 +21,19 @@ use cedar_policy::EntityTypeName;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::{extension_types::ipaddr::IPError, symcc::bitvec::BitVecError};
+use super::bitvec::BitVecError;
+use super::extension_types::ipaddr::IPError;
 
-/// Corresponds to the Lean version at `Cedar.SymCC.Result.Error`.
-/// These are various errors that can occur during compilation.
-#[derive(Clone, Diagnostic, Debug, PartialEq, Eq, Error)]
+/// Errors that can occur during symbolic compilation.
+/// Corresponds to `Cedar.SymCC.Result.Error` in the Lean version.
+#[derive(Debug, Diagnostic, Error)]
 pub enum CompileError {
     /// Failed to find an entity type.
     #[error("entity type {0} does not exist")]
     NoSuchEntityType(EntityTypeName),
     /// Failed to find an attribute.
-    #[error("attribute does not exist")]
-    NoSuchAttribute,
+    #[error("attribute {0} does not exist")]
+    NoSuchAttribute(String),
     /// Type error when constructing a [`Term`].
     #[error("term type error")]
     TypeError,

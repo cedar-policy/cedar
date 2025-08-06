@@ -47,13 +47,13 @@ pub enum Decision {
 /// Corresponds to various errors in the Lean version at `Cedar.SymCC.Solver`
 #[derive(Debug, Diagnostic, Error)]
 pub enum SolverError {
-    /// IO error
-    #[error("IO error during a solver operation: {0}")]
+    /// IO error.
+    #[error("IO error during a solver operation")]
     Io(#[from] std::io::Error),
-    /// Error from the solver
+    /// Error from the solver.
     #[error("solver error: {0}")]
     Solver(String),
-    /// Unrecognized solver output
+    /// Unrecognized solver output.
     #[error("unrecognized solver output: {0}")]
     UnrecognizedSolverOutput(String),
 }

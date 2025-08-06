@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::result::CompileError;
+use super::CompileError;
 
 use super::bitvec::BitVec;
 use super::entity_tag::EntityTag;

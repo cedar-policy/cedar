@@ -17,20 +17,22 @@ use miette::Diagnostic;
  */
 use thiserror::Error;
 
-use crate::{
-    result::CompileError,
+pub use crate::{
     solver::SolverError,
-    symcc::{ConcretizeError, DecodeError},
+    symcc::{BitVecError, CompileError, ConcretizeError, DecodeError, IPError},
 };
 
 /// Top-level errors from the whole `cedar-policy-symcc` crate.
 #[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    help("if you are not using *_unchecked functions, this is likely due to a bug in the symbolic compiler or cvc5")
+)]
 pub enum Error {
     /// Action not found in schema.
     #[error("action not found in schema: {0}")]
     ActionNotInSchema(String),
     /// Errors during symbolic compilation.
-    #[error(transparent)]
+    #[error("symbolic compilation failed")]
     CompileError(#[from] CompileError),
     /// Errors in the SMT encoder.
     #[error("failed to encode SMT terms")]
@@ -42,13 +44,13 @@ pub enum Error {
     #[error("solver returned `unknown`")]
     SolverUnknown,
     /// Policy is not well-typed.
-    #[error("input policy (set) is not well typed")]
+    #[error("input policy (set) is not well typed with respect to the schema {errs:?}")]
     PolicyNotWellTyped { errs: Vec<ValidationError> },
     /// Failed to decode the SMT model.
     #[error("failed to decode model")]
     DecodeModel(#[from] DecodeError),
     /// Errors during concretization.
-    #[error("failed to recover a concrete counterexample: {0}")]
+    #[error("failed to recover a concrete counterexample")]
     ConcretizeError(#[from] ConcretizeError),
 }
 

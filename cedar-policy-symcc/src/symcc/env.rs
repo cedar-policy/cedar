@@ -19,16 +19,16 @@
 //! A symbolic environment is _literal_ when it consists of literal terms and
 //! interpreted functions (UDFs).
 
-use crate::result::CompileError;
-use crate::symcc::function::{
+use super::function::{
     self,
     UnaryFunction::{self, Udf, Uuf},
 };
-use crate::symcc::op;
-use crate::symcc::tags::SymTags;
-use crate::symcc::term::{Term, TermPrim, TermVar};
-use crate::symcc::term_type::TermType;
-use crate::symcc::type_abbrevs::*;
+use super::op;
+use super::result::CompileError;
+use super::tags::SymTags;
+use super::term::{Term, TermPrim, TermVar};
+use super::term_type::TermType;
+use super::type_abbrevs::*;
 use cedar_policy_core::validator::ValidatorSchema;
 use cedar_policy_core::validator::{
     types::{Attributes, EntityRecordKind, OpenTag, Type},

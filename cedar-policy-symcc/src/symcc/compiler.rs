@@ -319,7 +319,7 @@ pub fn compile_get_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
         TermType::Record { rty } => match rty.get(a) {
             Some(ty) if ty.is_option_type() => Ok(record_get(attrs, a)),
             Some(_) => Ok(some_of(record_get(attrs, a))),
-            None => Err(CompileError::NoSuchAttribute),
+            None => Err(CompileError::NoSuchAttribute(a.to_string())),
         },
         _ => Err(CompileError::TypeError),
     }
@@ -772,10 +772,10 @@ mod decimal_tests {
     #[track_caller]
     fn test_valid(str: &str, rep: i64) {
         assert_eq!(
-            compile(&dec_lit(str), &sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
-                Ext::Decimal { d: Decimal(rep) }
-            ))))),
+            compile(&dec_lit(str), &sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Decimal {
+                d: Decimal(rep)
+            })))),
             "{str}"
         );
     }
@@ -783,9 +783,11 @@ mod decimal_tests {
     #[track_caller]
     fn test_invalid(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&decimal_schema(), &request_env()).expect("Malformed sym env.");
-        assert_eq!(
-            compile(&dec_lit(str), &sym_env),
-            Err(CompileError::TypeError),
+        assert!(
+            matches!(
+                compile(&dec_lit(str), &sym_env),
+                Err(CompileError::TypeError),
+            ),
             "{msg}"
         );
     }
@@ -796,8 +798,8 @@ mod decimal_tests {
 
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
         assert_eq!(
-            compile(&parse_expr(str), &sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res))))),
+            compile(&parse_expr(str), &sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res)))),
             "{str}"
         )
     }
@@ -823,9 +825,11 @@ mod decimal_tests {
         test_invalid("922337203685477.5808", "overflow");
         test_invalid("-922337203685477.5809", "overflow");
         let s = Expr::get_attr(Expr::var(Var::Context), "s".into());
-        assert_eq!(
-            compile(&dec_expr(s), &sym_env()),
-            Err(CompileError::TypeError),
+        assert!(
+            matches!(
+                compile(&dec_expr(s), &sym_env()),
+                Err(CompileError::TypeError),
+            ),
             "Error: applying decimal constructor to a non-literal"
         );
     }
@@ -945,12 +949,10 @@ mod datetime_tests {
     #[track_caller]
     fn test_valid_datetime_constructor(str: &str, rep: i64) {
         assert_eq!(
-            compile(&datetime_lit(str), &datetime_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
-                Ext::Datetime {
-                    dt: Datetime::from(rep)
-                }
-            ))))),
+            compile(&datetime_lit(str), &datetime_sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Datetime {
+                dt: Datetime::from(rep)
+            })))),
             "{str}"
         );
     }
@@ -958,9 +960,11 @@ mod datetime_tests {
     #[track_caller]
     fn test_invalid_datetime_constructor(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&datetime_schema(), &request_env()).expect("Malformed sym env.");
-        assert_eq!(
-            compile(&datetime_lit(str), &sym_env),
-            Err(CompileError::TypeError),
+        assert!(
+            matches!(
+                compile(&datetime_lit(str), &sym_env),
+                Err(CompileError::TypeError),
+            ),
             "{msg}"
         );
     }
@@ -968,12 +972,10 @@ mod datetime_tests {
     #[track_caller]
     fn test_valid_duration_constructor(str: &str, rep: i64) {
         assert_eq!(
-            compile(&duration_lit(str), &duration_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
-                Ext::Duration {
-                    d: Duration::from(rep)
-                }
-            ))))),
+            compile(&duration_lit(str), &duration_sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Duration {
+                d: Duration::from(rep)
+            })))),
             "{str}"
         );
     }
@@ -981,9 +983,11 @@ mod datetime_tests {
     #[track_caller]
     fn test_invalid_duration_constructor(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&duration_schema(), &request_env()).expect("Malformed sym env.");
-        assert_eq!(
-            compile(&duration_lit(str), &sym_env),
-            Err(CompileError::TypeError),
+        assert!(
+            matches!(
+                compile(&duration_lit(str), &sym_env),
+                Err(CompileError::TypeError),
+            ),
             "{msg}"
         );
     }
@@ -1150,12 +1154,10 @@ mod datetime_tests {
     // Test that the str compiles and simplifies to a Datetime literal matching rep
     fn test_valid_datetime_simpl_expr(str: &str, rep: i64) {
         assert_eq!(
-            compile(&parse_expr(str), &datetime_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
-                Ext::Datetime {
-                    dt: Datetime::from(rep)
-                }
-            ))))),
+            compile(&parse_expr(str), &datetime_sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Datetime {
+                dt: Datetime::from(rep)
+            })))),
             "{str}"
         )
     }
@@ -1163,20 +1165,18 @@ mod datetime_tests {
     // Test that the str compiles and simplifies to a Duration literal matching rep
     fn test_valid_duration_simpl_expr(str: &str, rep: i64) {
         assert_eq!(
-            compile(&parse_expr(str), &duration_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Ext(
-                Ext::Duration {
-                    d: Duration::from(rep)
-                }
-            ))))),
+            compile(&parse_expr(str), &duration_sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Duration {
+                d: Duration::from(rep)
+            })))),
             "{str}"
         )
     }
 
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
         assert_eq!(
-            compile(&parse_expr(str), &datetime_sym_env()),
-            Ok(Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res))))),
+            compile(&parse_expr(str), &datetime_sym_env()).unwrap(),
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res)))),
             "{str}"
         )
     }

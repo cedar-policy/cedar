@@ -50,7 +50,7 @@ use super::op::Uuf;
 use super::term::{Term, TermPrim, TermVar};
 use super::term_type::TermType;
 
-#[derive(Debug, Clone, Diagnostic, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum DecodeError {
     /// Unexpected end of input.
     #[error("Unexpected end of input")]

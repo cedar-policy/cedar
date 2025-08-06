@@ -15,7 +15,7 @@
  */
 use cedar_policy_core::validator::types::OpenTag;
 
-use crate::result::CompileError;
+use super::result::CompileError;
 
 use super::{entity_tag::EntityTag, type_abbrevs::*};
 use std::collections::BTreeMap;

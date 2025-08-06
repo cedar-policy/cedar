@@ -34,7 +34,7 @@ pub struct BitVec {
 pub static TWO: LazyLock<BigUint> = LazyLock::new(|| BigUint::from(2u128));
 
 /// Errors in [`BitVec`] operations.
-#[derive(Clone, Diagnostic, Debug, PartialEq, Eq, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum BitVecError {
     /// Extract out of bounds
     #[error("extract out of bounds")]
