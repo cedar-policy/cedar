@@ -362,13 +362,13 @@ impl EvaluationError {
 
     verus! {
 
-        /// Construct a [`UnlinkedSlot`] error
-        #[verifier::external_body]
-    å    pub(crate) fn unlinked_slot(slot: SlotId, source_loc: MaybeLoc) -> Self {
-            evaluation_errors::UnlinkedSlotError { slot, source_loc }.into()
-        }
+    /// Construct a [`UnlinkedSlot`] error
+    #[verifier::external_body]
+    pub(crate) fn unlinked_slot(slot: SlotId, source_loc: MaybeLoc) -> Self {
+        evaluation_errors::UnlinkedSlotError { slot, source_loc }.into()
+    }
 
-        } // verus!
+    } // verus!
 
     /// Construct a [`FailedExtensionFunctionApplication`] error
     pub(crate) fn failed_extension_function_application(
