@@ -17,9 +17,8 @@ use miette::Diagnostic;
  */
 use thiserror::Error;
 
-pub use crate::{
-    solver::SolverError,
-    symcc::{BitVecError, CompileError, ConcretizeError, DecodeError, IPError},
+pub use crate::symcc::{
+    BitVecError, CompileError, ConcretizeError, DecodeError, EncodeError, IPError, SolverError,
 };
 
 /// Top-level errors from the whole `cedar-policy-symcc` crate.
@@ -34,9 +33,9 @@ pub enum Error {
     /// Errors during symbolic compilation.
     #[error("symbolic compilation failed")]
     CompileError(#[from] CompileError),
-    /// Errors in the SMT encoder.
+    /// Errors from the SMT encoder.
     #[error("failed to encode SMT terms")]
-    EncodeError(#[source] anyhow::Error),
+    EncodeError(#[from] EncodeError),
     /// Solver-related errors.
     #[error(transparent)]
     SolverError(#[from] SolverError),

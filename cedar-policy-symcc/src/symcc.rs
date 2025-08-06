@@ -58,11 +58,13 @@ pub use bitvec::BitVecError;
 pub use concretize::ConcretizeError;
 pub use concretize::Env;
 pub use decoder::DecodeError;
+pub use encoder::EncodeError;
 pub use env::{Environment, SymEnv};
 pub use extension_types::ipaddr::IPError;
 pub use interpretation::Interpretation;
 pub use result::CompileError;
 pub use smtlib_script::SmtLibScript;
+pub use solver::SolverError;
 pub use verifier::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
     verify_never_errors,
@@ -119,12 +121,8 @@ impl<S: Solver> SymCompiler<S> {
                 .set_logic("ALL")
                 .await
                 .map_err(|err| Error::EncodeError(err.into()))?;
-            let mut encoder =
-                Encoder::new(symenv, self.solver.smtlib_input()).map_err(Error::EncodeError)?;
-            encoder
-                .encode(asserts.iter())
-                .await
-                .map_err(Error::EncodeError)?;
+            let mut encoder = Encoder::new(symenv, self.solver.smtlib_input())?;
+            encoder.encode(asserts.iter()).await?;
             match self.solver.check_sat().await? {
                 Decision::Unsat => Ok(true),
                 Decision::Sat => Ok(false),
