@@ -27,7 +27,9 @@ mod fmt;
 pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
-pub use loc::Loc;
+pub use loc::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
+#[macro_use]
+mod macros;
 /// Metadata wrapper for CST Nodes
 mod node;
 pub use node::Node;
@@ -52,6 +54,13 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
     cst.to_policyset()
 }
 
+/// Like [`parse_policyset`], but without retaining source information.
+#[cfg(feature = "raw-parsing")]
+pub fn parse_policyset_raw(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
+    let cst = text_to_cst::parse_policies_raw(text)?;
+    cst.to_policyset()
+}
+
 /// Like `parse_policyset()`, but also returns the (lossless) original text of
 /// each individual policy.
 /// INVARIANT: The `PolicyId` of every `Policy` and `Template` returned by the
@@ -59,7 +68,7 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
 /// appear as a key in the returned map.
 pub fn parse_policyset_and_also_return_policy_text(
     text: &str,
-) -> Result<(HashMap<ast::PolicyID, &str>, ast::PolicySet), err::ParseErrors> {
+) -> Result<(HashMap<ast::PolicyID, Option<&str>>, ast::PolicySet), err::ParseErrors> {
     let cst = text_to_cst::parse_policies(text)?;
     let pset = cst.to_policyset()?;
     // PANIC SAFETY Shouldn't be `none` since `parse_policies()` and `to_policyset()` didn't return `Err`
@@ -73,9 +82,15 @@ pub fn parse_policyset_and_also_return_policy_text(
     // `PolicyId` present as a key in this map.
     let texts = cst
         .with_generated_policyids()
-        .expect("shouldn't be None since parse_policies() and to_policyset() didn't return Err")
-        .map(|(id, policy)| (id, &text[policy.loc.start()..policy.loc.end()]))
-        .collect::<HashMap<ast::PolicyID, &str>>();
+        .expect("shouldn't be `None` since `parse_policies` and `to_policyset` didn't return `Err`")
+        .map(|(id, policy)| {
+            if let Some(loc) = &policy.loc {
+                (id, Some(&text[loc.start()..loc.end()]))
+            } else {
+                (id, None)
+            }
+        })
+        .collect::<HashMap<ast::PolicyID, Option<&str>>>();
     Ok((texts, pset))
 }
 
@@ -138,11 +153,19 @@ pub fn parse_template(
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     let template = cst.to_template(id)?;
-    if template.slots().count() == 0 {
-        Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc).into())
-    } else {
-        Ok(template)
-    }
+    validate_template_has_slots(template, cst)
+}
+
+/// Like [`parse_template`], but without retaining source information.
+#[cfg(feature = "raw-parsing")]
+pub fn parse_template_raw(
+    id: Option<ast::PolicyID>,
+    text: &str,
+) -> Result<ast::Template, err::ParseErrors> {
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
+    let cst = text_to_cst::parse_policy_raw(text)?;
+    let template = cst.to_template(id)?;
+    validate_template_has_slots(template, cst)
 }
 
 /// Main function for parsing a (static) policy.
@@ -155,6 +178,17 @@ pub fn parse_policy(
 ) -> Result<ast::StaticPolicy, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
+    cst.to_policy(id)
+}
+
+/// Like [`parse_policy`], but without retaining source information.
+#[cfg(feature = "raw-parsing")]
+pub fn parse_policy_raw(
+    id: Option<ast::PolicyID>,
+    text: &str,
+) -> Result<ast::StaticPolicy, err::ParseErrors> {
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
+    let cst = text_to_cst::parse_policy_raw(text)?;
     cst.to_policy(id)
 }
 
@@ -266,6 +300,23 @@ pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
 pub(crate) fn parse_anyid(id: &str) -> Result<ast::AnyId, err::ParseErrors> {
     let cst = text_to_cst::parse_ident(id)?;
     cst.to_any_ident()
+}
+
+/// Check that a template contains slots. Return the template if it does, or an
+/// error otherwise.
+fn validate_template_has_slots(
+    template: ast::Template,
+    cst: Node<Option<cst::Policy>>,
+) -> Result<ast::Template, err::ParseErrors> {
+    if template.slots().count() == 0 {
+        Err(err::ToASTError::new(
+            err::ToASTErrorKind::expected_template(),
+            cst.loc.into_maybe_loc(),
+        )
+        .into())
+    } else {
+        Ok(template)
+    }
 }
 
 /// Utilities used in tests in this file (and maybe other files in this crate)
@@ -712,17 +763,17 @@ mod tests {
         assert_eq!(texts.len(), 2);
         assert_eq!(
             texts.get(&PolicyID::from_string("policy0")),
-            Some(
-                &r#"permit(principal, action, resource)
+            Some(&Some(
+                r#"permit(principal, action, resource)
             when { principal == resource.owner };"#
-            )
+            ))
         );
         assert_eq!(
             texts.get(&PolicyID::from_string("policy1")),
-            Some(
-                &r#"forbid(principal, action == Action::"modify", resource) // a comment
+            Some(&Some(
+                r#"forbid(principal, action == Action::"modify", resource) // a comment
             when { resource . highSecurity };"#
-            )
+            ))
         );
     }
 
@@ -1139,20 +1190,20 @@ mod tests {
             "permit(principal,",
             "unexpected end of input",
             "",
-            "expected identifier",
+            "expected `)` or identifier",
         );
         assert_labeled_span(
             "permit(principal,action,",
             "unexpected end of input",
             "",
-            "expected identifier",
+            "expected `)` or identifier",
         );
         // Nothing will actually convert to an AST here.
         assert_labeled_span(
             "permit(principal,action,resource,",
             "unexpected end of input",
             "",
-            "expected identifier",
+            "expected `)` or identifier",
         );
         // We still list out `if` as an expected token because it doesn't get
         // parsed as an ident in this position.
@@ -1205,7 +1256,7 @@ mod tests {
         test_valid("aaa\u{1F408}bcd👍👍👍");
         // test string with invalid escapes
         let test_invalid = |s: &str, bad_escapes: Vec<&str>| {
-            let src: &str = &format!("\"{}\"", s);
+            let src: &str = &format!("\"{s}\"");
             assert_matches!(parse_literal(src), Err(LiteralParseError::Parse(e)) => {
                 expect_n_errors(src, &e, bad_escapes.len());
                 bad_escapes.iter().for_each(|esc|

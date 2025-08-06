@@ -24,15 +24,18 @@
 
 mod id;
 #[cfg(feature = "entity-manifest")]
-use cedar_policy_validator::entity_manifest;
+use cedar_policy_core::validator::entity_manifest;
 // TODO (#1157) implement wrappers for these structs before they become public
 #[cfg(feature = "entity-manifest")]
-pub use cedar_policy_validator::entity_manifest::{
+pub use cedar_policy_core::validator::entity_manifest::{
     AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
 };
-use cedar_policy_validator::json_schema;
-use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
+use cedar_policy_core::validator::json_schema;
+use cedar_policy_core::validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
+
+#[cfg(feature = "deprecated-schema-compat")]
+mod deprecated_schema_compat;
 
 mod err;
 pub use err::*;
@@ -41,7 +44,7 @@ pub use ast::Effect;
 pub use authorizer::Decision;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
-use cedar_policy_core::ast::{self, RestrictedExpr};
+use cedar_policy_core::ast::{self, RequestSchema, RestrictedExpr};
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
@@ -64,16 +67,16 @@ use std::sync::Arc;
 // PANIC SAFETY: `CARGO_PKG_VERSION` should return a valid SemVer version string
 #[allow(clippy::unwrap_used)]
 pub(crate) mod version {
-    use lazy_static::lazy_static;
     use semver::Version;
+    use std::sync::LazyLock;
 
-    lazy_static! {
-        // Cedar Rust SDK Semantic Versioning version
-        static ref SDK_VERSION: Version = env!("CARGO_PKG_VERSION").parse().unwrap();
-        // Cedar language version
-        // The patch version field may be unnecessary
-        static ref LANG_VERSION: Version = Version::new(4, 3, 0);
-    }
+    // Cedar Rust SDK Semantic Versioning version
+    static SDK_VERSION: LazyLock<Version> =
+        LazyLock::new(|| env!("CARGO_PKG_VERSION").parse().unwrap());
+    // Cedar language version
+    // The patch version field may be unnecessary
+    static LANG_VERSION: LazyLock<Version> = LazyLock::new(|| Version::new(4, 4, 0));
+
     /// Get the Cedar SDK Semantic Versioning version
     #[allow(clippy::module_name_repetitions)]
     pub fn get_sdk_version() -> Version {
@@ -95,6 +98,13 @@ pub struct Entity(pub(crate) ast::Entity);
 impl AsRef<ast::Entity> for Entity {
     fn as_ref(&self) -> &ast::Entity {
         &self.0
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::Entity> for Entity {
+    fn from(entity: ast::Entity) -> Self {
+        Self(entity)
     }
 }
 
@@ -178,6 +188,18 @@ impl Entity {
     /// ```
     pub fn with_uid(uid: EntityUid) -> Self {
         Self(ast::Entity::with_uid(uid.into()))
+    }
+
+    /// Test if two entities are structurally equal. That is, not only do they
+    /// have the same UID, but they also have the same attributes and ancestors.
+    ///
+    /// Note that ancestor equality is determined by examining the ancestors
+    /// entities provided when constructing these objects, without computing
+    /// their transitive closure. For accurate comparison, entities should be
+    /// constructed with the transitive closure precomputed or be drawn from an
+    /// [`Entities`] object which will perform this computation.
+    pub fn deep_eq(&self, other: &Self) -> bool {
+        self.0.deep_eq(&other.0)
     }
 
     /// Get the Uid of this entity
@@ -273,7 +295,7 @@ impl Entity {
         value: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -288,7 +310,7 @@ impl Entity {
         src: impl AsRef<str>,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -300,7 +322,7 @@ impl Entity {
     /// Parse an entity from a JSON reader
     /// If a schema is provided, it is handled identically to [`Entities::from_json_str`]
     pub fn from_json_file(f: impl Read, schema: Option<&Schema>) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -362,6 +384,13 @@ impl AsRef<cedar_policy_core::entities::Entities> for Entities {
     }
 }
 
+#[doc(hidden)]
+impl From<cedar_policy_core::entities::Entities> for Entities {
+    fn from(entities: cedar_policy_core::entities::Entities) -> Self {
+        Self(entities)
+    }
+}
+
 use entities_errors::EntitiesError;
 
 impl Entities {
@@ -397,6 +426,15 @@ impl Entities {
         self.0.iter().map(Entity::ref_cast)
     }
 
+    /// Test if two entity hierarchies are structurally equal. The hierarchies
+    /// must contain the same set of entity ids, and the entities with each id
+    /// must be structurally equal (decided by [`Entity::deep_eq`]). Ancestor
+    /// equality between entities is always decided by comparing the transitive
+    /// closure of ancestor and not direct parents.
+    pub fn deep_eq(&self, other: &Self) -> bool {
+        self.0.deep_eq(&other.0)
+    }
+
     /// Create an `Entities` object with the given entities.
     ///
     /// `schema` represents a source of `Action` entities, which will be added
@@ -422,7 +460,7 @@ impl Entities {
         cedar_policy_core::entities::Entities::from_entities(
             entities.into_iter().map(|e| e.0),
             schema
-                .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                .map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0))
                 .as_ref(),
             cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
@@ -455,7 +493,7 @@ impl Entities {
             self.0.add_entities(
                 entities.into_iter().map(|e| Arc::new(e.0)),
                 schema
-                    .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                    .map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0))
                     .as_ref(),
                 cedar_policy_core::entities::TCComputation::ComputeNow,
                 Extensions::all_available(),
@@ -502,7 +540,7 @@ impl Entities {
             self.0.upsert_entities(
                 entities.into_iter().map(|e| Arc::new(e.0)),
                 schema
-                    .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                    .map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0))
                     .as_ref(),
                 cedar_policy_core::entities::TCComputation::ComputeNow,
                 Extensions::all_available(),
@@ -535,7 +573,7 @@ impl Entities {
         json: &str,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -575,7 +613,7 @@ impl Entities {
         json: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -616,7 +654,7 @@ impl Entities {
         json: impl std::io::Read,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -682,7 +720,7 @@ impl Entities {
     /// # assert_eq!(ip, EvalResult::ExtensionValue("ip(\"10.0.1.101\")".to_string()));
     /// ```
     pub fn from_json_str(json: &str, schema: Option<&Schema>) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -740,7 +778,7 @@ impl Entities {
         json: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -776,7 +814,7 @@ impl Entities {
         json: impl std::io::Read,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -839,6 +877,26 @@ impl Entities {
         self.0.to_dot_str(&mut dot_str).unwrap();
         dot_str
     }
+}
+
+/// Validates scope variables against the provided schema
+///
+/// Returns Ok(()) if the context is valid according to the schema, or an error otherwise
+///
+/// This validation is already handled by `Request::new`, so there is no need to separately call
+/// if you are validating the whole request
+pub fn validate_scope_variables(
+    principal: &EntityUid,
+    action: &EntityUid,
+    resource: &EntityUid,
+    schema: &Schema,
+) -> std::result::Result<(), RequestValidationError> {
+    Ok(RequestSchema::validate_scope_variables(
+        &schema.0,
+        Some(&principal.0),
+        Some(&action.0),
+        Some(&resource.0),
+    )?)
 }
 
 /// Utilities for defining `IntoIterator` over `Entities`
@@ -1369,7 +1427,7 @@ pub enum ValidationMode {
 }
 
 #[doc(hidden)]
-impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
+impl From<ValidationMode> for cedar_policy_core::validator::ValidationMode {
     fn from(mode: ValidationMode) -> Self {
         match mode {
             ValidationMode::Strict => Self::Strict,
@@ -1384,11 +1442,11 @@ impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
 /// Validator object, which provides policy validation and typechecking.
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
-pub struct Validator(cedar_policy_validator::Validator);
+pub struct Validator(cedar_policy_core::validator::Validator);
 
 #[doc(hidden)] // because this converts to a private/internal type
-impl AsRef<cedar_policy_validator::Validator> for Validator {
-    fn as_ref(&self) -> &cedar_policy_validator::Validator {
+impl AsRef<cedar_policy_core::validator::Validator> for Validator {
+    fn as_ref(&self) -> &cedar_policy_core::validator::Validator {
         &self.0
     }
 }
@@ -1397,7 +1455,7 @@ impl Validator {
     /// Construct a new `Validator` to validate policies using the given
     /// `Schema`.
     pub fn new(schema: Schema) -> Self {
-        Self(cedar_policy_validator::Validator::new(schema.0))
+        Self(cedar_policy_core::validator::Validator::new(schema.0))
     }
 
     /// Get the `Schema` this `Validator` is using.
@@ -1440,29 +1498,49 @@ impl Validator {
 /// used to validate a policy.
 #[derive(Debug, Clone)]
 pub struct SchemaFragment {
-    value: cedar_policy_validator::ValidatorSchemaFragment<
-        cedar_policy_validator::ConditionalName,
-        cedar_policy_validator::ConditionalName,
+    value: cedar_policy_core::validator::ValidatorSchemaFragment<
+        cedar_policy_core::validator::ConditionalName,
+        cedar_policy_core::validator::ConditionalName,
     >,
-    lossless: cedar_policy_validator::json_schema::Fragment<cedar_policy_validator::RawName>,
+    lossless:
+        cedar_policy_core::validator::json_schema::Fragment<cedar_policy_core::validator::RawName>,
 }
 
 #[doc(hidden)] // because this converts to a private/internal type
 impl
     AsRef<
-        cedar_policy_validator::ValidatorSchemaFragment<
-            cedar_policy_validator::ConditionalName,
-            cedar_policy_validator::ConditionalName,
+        cedar_policy_core::validator::ValidatorSchemaFragment<
+            cedar_policy_core::validator::ConditionalName,
+            cedar_policy_core::validator::ConditionalName,
         >,
     > for SchemaFragment
 {
     fn as_ref(
         &self,
-    ) -> &cedar_policy_validator::ValidatorSchemaFragment<
-        cedar_policy_validator::ConditionalName,
-        cedar_policy_validator::ConditionalName,
+    ) -> &cedar_policy_core::validator::ValidatorSchemaFragment<
+        cedar_policy_core::validator::ConditionalName,
+        cedar_policy_core::validator::ConditionalName,
     > {
         &self.value
+    }
+}
+
+#[doc(hidden)] // because this converts from a private/internal type
+impl
+    TryFrom<
+        cedar_policy_core::validator::json_schema::Fragment<cedar_policy_core::validator::RawName>,
+    > for SchemaFragment
+{
+    type Error = SchemaError;
+    fn try_from(
+        json_frag: cedar_policy_core::validator::json_schema::Fragment<
+            cedar_policy_core::validator::RawName,
+        >,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            value: json_frag.clone().try_into()?,
+            lossless: json_frag,
+        })
     }
 }
 
@@ -1656,7 +1734,7 @@ impl SchemaFragment {
     /// Create a [`SchemaFragment`] from a string containing JSON in the
     /// JSON schema format.
     pub fn from_json_str(src: &str) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_str(src)?;
+        let lossless = cedar_policy_core::validator::json_schema::Fragment::from_json_str(src)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -1666,7 +1744,7 @@ impl SchemaFragment {
     /// Create a [`SchemaFragment`] from a JSON value (which should be an
     /// object of the shape required for the JSON schema format).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_value(json)?;
+        let lossless = cedar_policy_core::validator::json_schema::Fragment::from_json_value(json)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -1678,7 +1756,7 @@ impl SchemaFragment {
         r: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
         let (lossless, warnings) =
-            cedar_policy_validator::json_schema::Fragment::from_cedarschema_file(
+            cedar_policy_core::validator::json_schema::Fragment::from_cedarschema_file(
                 r,
                 Extensions::all_available(),
             )?;
@@ -1696,7 +1774,7 @@ impl SchemaFragment {
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
         let (lossless, warnings) =
-            cedar_policy_validator::json_schema::Fragment::from_cedarschema_str(
+            cedar_policy_core::validator::json_schema::Fragment::from_cedarschema_str(
                 src,
                 Extensions::all_available(),
             )?;
@@ -1712,7 +1790,7 @@ impl SchemaFragment {
     /// Create a [`SchemaFragment`] directly from a JSON file (which should
     /// contain an object of the shape required for the JSON schema format).
     pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_file(file)?;
+        let lossless = cedar_policy_core::validator::json_schema::Fragment::from_json_file(file)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -1745,7 +1823,7 @@ impl TryInto<Schema> for SchemaFragment {
     /// any undeclared entity types are referenced in the schema fragment.
     fn try_into(self) -> Result<Schema, Self::Error> {
         Ok(Schema(
-            cedar_policy_validator::ValidatorSchema::from_schema_fragments(
+            cedar_policy_core::validator::ValidatorSchema::from_schema_fragments(
                 [self.value],
                 Extensions::all_available(),
             )?,
@@ -1768,12 +1846,19 @@ impl FromStr for SchemaFragment {
 /// Object containing schema information used by the validator.
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
-pub struct Schema(pub(crate) cedar_policy_validator::ValidatorSchema);
+pub struct Schema(pub(crate) cedar_policy_core::validator::ValidatorSchema);
 
 #[doc(hidden)] // because this converts to a private/internal type
-impl AsRef<cedar_policy_validator::ValidatorSchema> for Schema {
-    fn as_ref(&self) -> &cedar_policy_validator::ValidatorSchema {
+impl AsRef<cedar_policy_core::validator::ValidatorSchema> for Schema {
+    fn as_ref(&self) -> &cedar_policy_core::validator::ValidatorSchema {
         &self.0
+    }
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_core::validator::ValidatorSchema> for Schema {
+    fn from(schema: cedar_policy_core::validator::ValidatorSchema) -> Self {
+        Self(schema)
     }
 }
 
@@ -1800,7 +1885,7 @@ impl Schema {
         fragments: impl IntoIterator<Item = SchemaFragment>,
     ) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_schema_fragments(
+            cedar_policy_core::validator::ValidatorSchema::from_schema_fragments(
                 fragments.into_iter().map(|f| f.value),
                 Extensions::all_available(),
             )?,
@@ -1811,7 +1896,7 @@ impl Schema {
     /// shape required for the JSON schema format).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_json_value(
+            cedar_policy_core::validator::ValidatorSchema::from_json_value(
                 json,
                 Extensions::all_available(),
             )?,
@@ -1822,7 +1907,7 @@ impl Schema {
     /// shape.
     pub fn from_json_str(json: &str) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_json_str(
+            cedar_policy_core::validator::ValidatorSchema::from_json_str(
                 json,
                 Extensions::all_available(),
             )?,
@@ -1833,7 +1918,7 @@ impl Schema {
     /// appropriate shape.
     pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_json_file(
+            cedar_policy_core::validator::ValidatorSchema::from_json_file(
                 file,
                 Extensions::all_available(),
             )?,
@@ -1844,10 +1929,11 @@ impl Schema {
     pub fn from_cedarschema_file(
         file: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning> + 'static), CedarSchemaError> {
-        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_cedarschema_file(
-            file,
-            Extensions::all_available(),
-        )?;
+        let (schema, warnings) =
+            cedar_policy_core::validator::ValidatorSchema::from_cedarschema_file(
+                file,
+                Extensions::all_available(),
+            )?;
         Ok((Self(schema), warnings))
     }
 
@@ -1855,10 +1941,11 @@ impl Schema {
     pub fn from_cedarschema_str(
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
-        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_cedarschema_str(
-            src,
-            Extensions::all_available(),
-        )?;
+        let (schema, warnings) =
+            cedar_policy_core::validator::ValidatorSchema::from_cedarschema_str(
+                src,
+                Extensions::all_available(),
+            )?;
         Ok((Self(schema), warnings))
     }
 
@@ -1955,7 +2042,7 @@ impl Schema {
     /// according to this schema.
     pub fn request_envs(&self) -> impl Iterator<Item = RequestEnv> + '_ {
         self.0
-            .unlinked_request_envs(cedar_policy_validator::ValidationMode::Strict)
+            .unlinked_request_envs(cedar_policy_core::validator::ValidationMode::Strict)
             .map(Into::into)
     }
 
@@ -2051,8 +2138,8 @@ impl ValidationResult {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::ValidationResult> for ValidationResult {
-    fn from(r: cedar_policy_validator::ValidationResult) -> Self {
+impl From<cedar_policy_core::validator::ValidationResult> for ValidationResult {
+    fn from(r: cedar_policy_core::validator::ValidationResult) -> Self {
         let (errors, warnings) = r.into_errors_and_warnings();
         Self {
             validation_errors: errors.map(ValidationError::from).collect(),
@@ -2149,7 +2236,7 @@ impl Diagnostic for ValidationResult {
 pub fn confusable_string_checker<'a>(
     templates: impl Iterator<Item = &'a Template> + 'a,
 ) -> impl Iterator<Item = ValidationWarning> + 'a {
-    cedar_policy_validator::confusable_string_checks(templates.map(|t| &t.ast))
+    cedar_policy_core::validator::confusable_string_checks(templates.map(|t| &t.ast))
         .map(std::convert::Into::into)
 }
 
@@ -2192,6 +2279,17 @@ impl std::fmt::Display for EntityNamespace {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+/// A struct representing a `PolicySet` as a series of strings for ser/de.
+/// A `PolicySet` that contains template-linked policies cannot be
+/// represented as this struct.
+pub(crate) struct StringifiedPolicySet {
+    /// The static policies in the set
+    pub policies: Vec<String>,
+    /// The policy templates in the set
+    pub policy_templates: Vec<String>,
+}
+
 /// Represents a set of `Policy`s
 #[derive(Debug, Clone, Default)]
 pub struct PolicySet {
@@ -2216,6 +2314,14 @@ impl Eq for PolicySet {}
 impl AsRef<ast::PolicySet> for PolicySet {
     fn as_ref(&self) -> &ast::PolicySet {
         &self.ast
+    }
+}
+
+#[doc(hidden)]
+impl TryFrom<ast::PolicySet> for PolicySet {
+    type Error = PolicySetError;
+    fn try_from(pset: ast::PolicySet) -> Result<Self, Self::Error> {
+        Self::from_ast(pset)
     }
 }
 
@@ -2340,7 +2446,12 @@ impl PolicySet {
         let templates = self
             .templates
             .into_iter()
-            .map(|(id, template)| template.lossless.est().map(|est| (id.into(), est)))
+            .map(|(id, template)| {
+                template
+                    .lossless
+                    .est(|| template.ast.clone().into())
+                    .map(|est| (id.into(), est))
+            })
             .collect::<Result<HashMap<_, _>, _>>()?;
         let est = est::PolicySet {
             templates,
@@ -2370,6 +2481,38 @@ impl PolicySet {
     /// rules.  Policy formatting can be done through the Cedar policy CLI or
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
+        match self.stringify() {
+            Some(StringifiedPolicySet {
+                policies,
+                policy_templates,
+            }) => {
+                let policies_as_vec = policies
+                    .into_iter()
+                    .chain(policy_templates)
+                    .collect::<Vec<_>>();
+                Some(policies_as_vec.join("\n\n"))
+            }
+            None => None,
+        }
+    }
+
+    /// Get the human-readable Cedar syntax representation of this policy set,
+    /// as a vec of strings. This function is useful to break up a large cedar
+    /// file containing many policies into individual policies.
+    ///
+    /// This will return `None` if there are any linked policies in the policy
+    /// set because they cannot be directly rendered in Cedar syntax. It also
+    /// cannot record policy ids because these cannot be specified in the Cedar
+    /// syntax. The policies may be reordered, so parsing the resulting string
+    /// with [`PolicySet::from_str`] is likely to yield different policy id
+    /// assignments. For these reasons you should prefer serializing as JSON (or protobuf) and
+    /// only using this function to obtain a compact cedar representation,
+    /// perhaps for storage purposes.
+    ///
+    /// This function does not format the policy according to any particular
+    /// rules.  Policy formatting can be done through the Cedar policy CLI or
+    /// the `cedar-policy-formatter` crate.
+    pub(crate) fn stringify(&self) -> Option<StringifiedPolicySet> {
         let policies = self
             .policies
             .values()
@@ -2379,13 +2522,17 @@ impl PolicySet {
             .sorted_by_key(|p| AsRef::<str>::as_ref(p.id()))
             .map(Policy::to_cedar)
             .collect::<Option<Vec<_>>>()?;
-        let templates = self
+        let policy_templates = self
             .templates
             .values()
             .sorted_by_key(|t| AsRef::<str>::as_ref(t.id()))
-            .map(Template::to_cedar);
+            .map(Template::to_cedar)
+            .collect_vec();
 
-        Some(policies.into_iter().chain(templates).join("\n\n"))
+        Some(StringifiedPolicySet {
+            policies,
+            policy_templates,
+        })
     }
 
     /// Create a fresh empty `PolicySet`
@@ -2742,12 +2889,65 @@ impl PolicySet {
             }
         }
     }
+
+    /// Attempt to parse a [`PolicySet`] from source, without retaining source information.
+    ///
+    /// Policy ids will default to "policy*" with numbers from 0.
+    /// If you load more policies, do not use the default id, or there will be conflicts.
+    ///
+    /// See [`Policy`] for more.
+    ///
+    /// Similar to [`PolicySet::from_str`], but does not retain the original source
+    /// code or its locations. This allows for faster parsing and reduced memory
+    /// usage, but limits the ability to provide detailed error messages.
+    ///
+    /// Only available with the "raw-parsing" feature.
+    #[cfg(feature = "raw-parsing")]
+    pub fn parse_raw(policies: &str) -> Option<Self> {
+        let pset = parser::parse_policyset_raw(policies).ok()?;
+        let policies = pset
+            .policies()
+            .map(|p| {
+                (
+                    PolicyId::new(p.id().clone()),
+                    Policy {
+                        lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+                        ast: p.clone(),
+                    },
+                )
+            })
+            .collect();
+        let templates = pset
+            .templates()
+            .map(|t| {
+                (
+                    PolicyId::new(t.id().clone()),
+                    Template {
+                        lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+                        ast: t.clone(),
+                    },
+                )
+            })
+            .collect();
+        Some(Self {
+            ast: pset,
+            policies,
+            templates,
+        })
+    }
 }
 
 impl std::fmt::Display for PolicySet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // prefer to display the lossless format
-        write!(f, "{}", self.policies().map(|p| &p.lossless).join("\n"))
+        let mut policies = self.policies().peekable();
+        while let Some(policy) = policies.next() {
+            policy.lossless.fmt(|| policy.ast.clone().into(), f)?;
+            if policies.peek().is_some() {
+                writeln!(f)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -2772,7 +2972,7 @@ fn is_static_or_link(
         }
         None => policy
             .lossless
-            .est()
+            .est(|| policy.ast.clone().into())
             .map(|est| Either::Left((id.into(), est))),
     }
 }
@@ -2798,12 +2998,15 @@ pub(crate) fn fold_partition<T, A, B, E>(
 }
 
 /// The "type" of a [`Request`], i.e., the [`EntityTypeName`]s of principal
-/// and resource, and the [`EntityUid`] of action
+/// and resource, the [`EntityUid`] of action, and [`Option<EntityTypeName>`]s
+/// of principal slot and resource slot
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RequestEnv {
     pub(crate) principal: EntityTypeName,
     pub(crate) action: EntityUid,
     pub(crate) resource: EntityTypeName,
+    pub(crate) principal_slot: Option<EntityTypeName>,
+    pub(crate) resource_slot: Option<EntityTypeName>,
 }
 
 impl RequestEnv {
@@ -2813,8 +3016,28 @@ impl RequestEnv {
             principal,
             action,
             resource,
+            principal_slot: None,
+            resource_slot: None,
         }
     }
+
+    /// Construct a [`RequestEnv`] that contains slots in the scope
+    pub fn new_request_env_with_slots(
+        principal: EntityTypeName,
+        action: EntityUid,
+        resource: EntityTypeName,
+        principal_slot: Option<EntityTypeName>,
+        resource_slot: Option<EntityTypeName>,
+    ) -> Self {
+        Self {
+            principal,
+            action,
+            resource,
+            principal_slot,
+            resource_slot,
+        }
+    }
+
     /// Get the principal type name
     pub fn principal(&self) -> &EntityTypeName {
         &self.principal
@@ -2829,25 +3052,39 @@ impl RequestEnv {
     pub fn resource(&self) -> &EntityTypeName {
         &self.resource
     }
+
+    /// Get the principal slot type name
+    pub fn principal_slot(&self) -> Option<&EntityTypeName> {
+        self.principal_slot.as_ref()
+    }
+
+    /// Get the resource slot type name
+    pub fn resource_slot(&self) -> Option<&EntityTypeName> {
+        self.resource_slot.as_ref()
+    }
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::types::RequestEnv<'_>> for RequestEnv {
-    fn from(renv: cedar_policy_validator::types::RequestEnv<'_>) -> Self {
+impl From<cedar_policy_core::validator::types::RequestEnv<'_>> for RequestEnv {
+    fn from(renv: cedar_policy_core::validator::types::RequestEnv<'_>) -> Self {
         match renv {
-            cedar_policy_validator::types::RequestEnv::DeclaredAction {
+            cedar_policy_core::validator::types::RequestEnv::DeclaredAction {
                 principal,
                 action,
                 resource,
+                principal_slot,
+                resource_slot,
                 ..
             } => Self {
                 principal: principal.clone().into(),
                 action: action.clone().into(),
                 resource: resource.clone().into(),
+                principal_slot: principal_slot.map(EntityTypeName::from),
+                resource_slot: resource_slot.map(EntityTypeName::from),
             },
             // PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
             #[allow(clippy::unreachable)]
-            cedar_policy_validator::types::RequestEnv::UndeclaredAction => {
+            cedar_policy_core::validator::types::RequestEnv::UndeclaredAction => {
                 unreachable!("used unsupported feature")
             }
         }
@@ -2859,7 +3096,10 @@ impl From<cedar_policy_validator::types::RequestEnv<'_>> for RequestEnv {
 /// This function is called by [`Template::get_valid_request_envs`] and
 /// [`Policy::get_valid_request_envs`]
 fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
-    let tc = Typechecker::new(&s.0, cedar_policy_validator::ValidationMode::default());
+    let tc = Typechecker::new(
+        &s.0,
+        cedar_policy_core::validator::ValidationMode::default(),
+    );
     tc.typecheck_by_request_env(ast)
         .into_iter()
         .filter_map(|(env, pc)| {
@@ -2912,6 +3152,13 @@ impl AsRef<ast::Template> for Template {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::Template> for Template {
+    fn from(template: ast::Template) -> Self {
+        Self::from_ast(template)
+    }
+}
+
 impl Template {
     /// Attempt to parse a [`Template`] from source.
     /// Returns an error if the input is a static policy (i.e., has no slots).
@@ -2922,7 +3169,27 @@ impl Template {
         let ast = parser::parse_template(id.map(Into::into), src.as_ref())?;
         Ok(Self {
             ast,
-            lossless: LosslessPolicy::policy_or_template_text(src.as_ref()),
+            lossless: LosslessPolicy::policy_or_template_text(Some(src.as_ref())),
+        })
+    }
+
+    /// Attempt to parse a [`Template`] from source, without retaining source information.
+    /// Returns `None` if the input is a static policy (i.e., has no slots).
+    /// If `id` is Some, then the resulting template will have that `id`.
+    /// If the `id` is None, the parser will use the default "policy0".
+    /// The behavior around None may change in the future.
+    ///
+    /// Similar to [`Template::parse`], but does not retain the original source
+    /// code or its locations. This allows for faster parsing and reduced memory
+    /// usage, but limits the ability to provide detailed error messages.
+    ///
+    /// Only available with the "raw-parsing" feature.
+    #[cfg(feature = "raw-parsing")]
+    pub fn parse_raw(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
+        let ast = parser::parse_template_raw(id.map(Into::into), src.as_ref())?;
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(Some(src.as_ref())),
         })
     }
 
@@ -3083,7 +3350,7 @@ impl Template {
 
     /// Get the JSON representation of this `Template`.
     pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
-        let est = self.lossless.est()?;
+        let est = self.lossless.est(|| self.ast.clone().into())?;
         serde_json::to_value(est).map_err(Into::into)
     }
 
@@ -3097,7 +3364,7 @@ impl Template {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> String {
         match &self.lossless {
-            LosslessPolicy::Est(_) => self.ast.to_string(),
+            LosslessPolicy::Empty | LosslessPolicy::Est(_) => self.ast.to_string(),
             LosslessPolicy::Text { text, .. } => text.clone(),
         }
     }
@@ -3114,7 +3381,7 @@ impl Template {
 impl std::fmt::Display for Template {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // prefer to display the lossless format
-        self.lossless.fmt(f)
+        self.lossless.fmt(|| self.ast.clone().into(), f)
     }
 }
 
@@ -3251,6 +3518,20 @@ impl Eq for Policy {}
 impl AsRef<ast::Policy> for Policy {
     fn as_ref(&self) -> &ast::Policy {
         &self.ast
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::Policy> for Policy {
+    fn from(policy: ast::Policy) -> Self {
+        Self::from_ast(policy)
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::StaticPolicy> for Policy {
+    fn from(policy: ast::StaticPolicy) -> Self {
+        ast::Policy::from(policy).into()
     }
 }
 
@@ -3427,7 +3708,7 @@ impl Policy {
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
         Ok(Self {
             ast,
-            lossless: LosslessPolicy::policy_or_template_text(policy_src.as_ref()),
+            lossless: LosslessPolicy::policy_or_template_text(Some(policy_src.as_ref())),
         })
     }
 
@@ -3538,7 +3819,7 @@ impl Policy {
         #[allow(clippy::expect_used)]
         let cloned_est = self
             .lossless
-            .est()
+            .est(|| self.ast.clone().into())
             .expect("Internal error, failed to construct est.");
 
         let mapping = mapping.into_iter().map(|(k, v)| (k.0, v.0)).collect();
@@ -3586,7 +3867,7 @@ impl Policy {
     /// assert_eq!(json, Policy::from_json(None, json.clone()).unwrap().to_json().unwrap());
     /// ```
     pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
-        let est = self.lossless.est()?;
+        let est = self.lossless.est(|| self.ast.clone().into())?;
         serde_json::to_value(est).map_err(Into::into)
     }
 
@@ -3606,7 +3887,7 @@ impl Policy {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
         match &self.lossless {
-            LosslessPolicy::Est(_) => Some(self.ast.to_string()),
+            LosslessPolicy::Empty | LosslessPolicy::Est(_) => Some(self.ast.to_string()),
             LosslessPolicy::Text { text, slots } => {
                 if slots.is_empty() {
                     Some(text.clone())
@@ -3615,6 +3896,30 @@ impl Policy {
                 }
             }
         }
+    }
+
+    /// Attempt to parse a [`Policy`] from source, without retaining source information.
+    /// If `id` is Some, the policy will be given that Policy Id.
+    /// If `id` is None, then "policy0" will be used.
+    /// The behavior around None may change in the future.
+    ///
+    /// This can fail if the policy fails to parse.
+    /// It can also fail if a template was passed in, as this function only accepts static
+    /// policies.
+    ///
+    /// Similar to [`Policy::parse`], but does not retain the original source
+    /// code or its locations. This allows for faster parsing and reduced memory
+    /// usage, but limits the ability to provide detailed error messages.
+    ///
+    /// Only available with the "raw-parsing" feature.
+    #[cfg(feature = "raw-parsing")]
+    pub fn parse_raw(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Option<Self> {
+        let inline_ast = parser::parse_policy_raw(id.map(Into::into), policy_src.as_ref()).ok()?;
+        let (_, ast) = ast::Template::link_static_policy(inline_ast);
+        Some(Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(Some(policy_src.as_ref())),
+        })
     }
 
     /// Get all the unknown entities from the policy
@@ -3641,7 +3946,7 @@ impl Policy {
         let text = ast.to_string(); // assume that pretty-printing is faster than `est::Policy::from(ast.clone())`; is that true?
         Self {
             ast,
-            lossless: LosslessPolicy::policy_or_template_text(text),
+            lossless: LosslessPolicy::policy_or_template_text(Some(text)),
         }
     }
 }
@@ -3649,7 +3954,7 @@ impl Policy {
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // prefer to display the lossless format
-        self.lossless.fmt(f)
+        self.lossless.fmt(|| self.ast.clone().into(), f)
     }
 }
 
@@ -3672,6 +3977,8 @@ impl FromStr for Policy {
 /// This structure can be used for static policies, linked policies, and templates.
 #[derive(Debug, Clone)]
 pub(crate) enum LosslessPolicy {
+    /// An empty representation
+    Empty,
     /// EST representation
     Est(est::Policy),
     /// Text representation
@@ -3687,16 +3994,21 @@ pub(crate) enum LosslessPolicy {
 
 impl LosslessPolicy {
     /// Create a new `LosslessPolicy` from the text of a policy or template.
-    fn policy_or_template_text(text: impl Into<String>) -> Self {
-        Self::Text {
+    fn policy_or_template_text(text: Option<impl Into<String>>) -> Self {
+        text.map_or(Self::Empty, |text| Self::Text {
             text: text.into(),
             slots: HashMap::new(),
-        }
+        })
     }
 
-    /// Get the EST representation of this static policy, linked policy, or template
-    fn est(&self) -> Result<est::Policy, PolicyToJsonError> {
+    /// Get the EST representation of this static policy, linked policy, or template.
+    fn est(
+        &self,
+        fallback_est: impl FnOnce() -> est::Policy,
+    ) -> Result<est::Policy, PolicyToJsonError> {
         match self {
+            // Fall back to the `policy` AST if the lossless representation is empty
+            Self::Empty => Ok(fallback_est()),
             Self::Est(est) => Ok(est.clone()),
             Self::Text { text, slots } => {
                 let est =
@@ -3716,6 +4028,7 @@ impl LosslessPolicy {
         vals: impl IntoIterator<Item = (ast::SlotId, &'a ast::EntityUID)>,
     ) -> Result<Self, est::LinkingError> {
         match self {
+            Self::Empty => Ok(Self::Empty),
             Self::Est(est) => {
                 let unwrapped_est_vals: HashMap<
                     ast::SlotId,
@@ -3733,11 +4046,17 @@ impl LosslessPolicy {
             }
         }
     }
-}
 
-impl std::fmt::Display for LosslessPolicy {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        fallback_est: impl FnOnce() -> est::Policy,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         match self {
+            Self::Empty => match self.est(fallback_est) {
+                Ok(est) => write!(f, "{est}"),
+                Err(e) => write!(f, "<invalid policy: {e}>"),
+            },
             Self::Est(est) => write!(f, "{est}"),
             Self::Text { text, slots } => {
                 if slots.is_empty() {
@@ -3748,7 +4067,7 @@ impl std::fmt::Display for LosslessPolicy {
                     // want to use the actual parser; right now we reuse
                     // another implementation by just converting to EST and
                     // printing that
-                    match self.est() {
+                    match self.est(fallback_est) {
                         Ok(est) => write!(f, "{est}"),
                         Err(e) => write!(f, "<invalid linked policy: {e}>"),
                     }
@@ -3767,6 +4086,13 @@ pub struct Expression(pub(crate) ast::Expr);
 impl AsRef<ast::Expr> for Expression {
     fn as_ref(&self) -> &ast::Expr {
         &self.0
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::Expr> for Expression {
+    fn from(expr: ast::Expr) -> Self {
+        Self(expr)
     }
 }
 
@@ -3823,6 +4149,28 @@ impl Expression {
             vec![src_expr],
         ))
     }
+
+    /// Create an expression representing a particular instant of time.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `datetime` constructor.
+    pub fn new_datetime(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::Expr::val(src.as_ref());
+        Self(ast::Expr::call_extension_fn(
+            datetime_extension_name(),
+            vec![src_expr],
+        ))
+    }
+
+    /// Create an expression representing a duration of time.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `datetime` constructor.
+    pub fn new_duration(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::Expr::val(src.as_ref());
+        Self(ast::Expr::call_extension_fn(
+            duration_extension_name(),
+            vec![src_expr],
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -3845,24 +4193,30 @@ impl FromStr for Expression {
     }
 }
 
+impl std::fmt::Display for Expression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
 /// "Restricted" expressions are used for attribute values and `context`.
 ///
 /// Restricted expressions can contain only the following:
 ///   - bool, int, and string literals
 ///   - literal `EntityUid`s such as `User::"alice"`
 ///   - extension function calls, where the arguments must be other things
-///       on this list
+///     on this list
 ///   - set and record literals, where the values must be other things on
-///       this list
+///     this list
 ///
 /// That means the following are not allowed in restricted expressions:
 ///   - `principal`, `action`, `resource`, `context`
 ///   - builtin operators and functions, including `.`, `in`, `has`, `like`,
-///       `.contains()`
+///     `.contains()`
 ///   - if-then-else expressions
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
-pub struct RestrictedExpression(ast::RestrictedExpr);
+pub struct RestrictedExpression(pub(crate) ast::RestrictedExpr);
 
 #[doc(hidden)] // because this converts to a private/internal type
 impl AsRef<ast::RestrictedExpr> for RestrictedExpression {
@@ -3930,6 +4284,28 @@ impl RestrictedExpression {
         ))
     }
 
+    /// Create an expression representing a particular instant of time.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `datetime` constructor.
+    pub fn new_datetime(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::RestrictedExpr::val(src.as_ref());
+        Self(ast::RestrictedExpr::call_extension_fn(
+            datetime_extension_name(),
+            [src_expr],
+        ))
+    }
+
+    /// Create an expression representing a duration of time.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `datetime` constructor.
+    pub fn new_duration(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::RestrictedExpr::val(src.as_ref());
+        Self(ast::RestrictedExpr::call_extension_fn(
+            duration_extension_name(),
+            [src_expr],
+        ))
+    }
+
     /// Create an unknown expression
     #[cfg(feature = "partial-eval")]
     pub fn new_unknown(name: impl AsRef<str>) -> Self {
@@ -3958,6 +4334,18 @@ fn ip_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
     ast::Name::unqualified_name("ip".parse().unwrap())
+}
+
+fn datetime_extension_name() -> ast::Name {
+    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
+    #[allow(clippy::unwrap_used)]
+    ast::Name::unqualified_name("datetime".parse().unwrap())
+}
+
+fn duration_extension_name() -> ast::Name {
+    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
+    #[allow(clippy::unwrap_used)]
+    ast::Name::unqualified_name("duration".parse().unwrap())
 }
 
 impl FromStr for RestrictedExpression {
@@ -4132,6 +4520,13 @@ pub struct Request(pub(crate) ast::Request);
 impl AsRef<ast::Request> for Request {
     fn as_ref(&self) -> &ast::Request {
         &self.0
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::Request> for Request {
+    fn from(req: ast::Request) -> Self {
+        Self(req)
     }
 }
 
@@ -4442,7 +4837,7 @@ impl Context {
         schema: &Schema,
         action: &EntityUid,
     ) -> Result<impl ContextSchema, ContextJsonError> {
-        cedar_policy_validator::context_schema_for_action(&schema.0, action.as_ref())
+        cedar_policy_core::validator::context_schema_for_action(&schema.0, action.as_ref())
             .ok_or_else(|| ContextJsonError::missing_action(action.clone()))
     }
 
@@ -4454,6 +4849,26 @@ impl Context {
         other_context: impl IntoIterator<Item = (String, RestrictedExpression)>,
     ) -> Result<Self, ContextCreationError> {
         Self::from_pairs(self.into_iter().chain(other_context))
+    }
+
+    /// Validates this context against the provided schema
+    ///
+    /// Returns Ok(()) if the context is valid according to the schema, or an error otherwise
+    ///
+    /// This validation is already handled by `Request::new`, so there is no need to separately call
+    /// if you are validating the whole request
+    pub fn validate(
+        &self,
+        schema: &crate::Schema,
+        action: &EntityUid,
+    ) -> std::result::Result<(), RequestValidationError> {
+        // Call the validate_context function from coreschema.rs
+        Ok(RequestSchema::validate_context(
+            &schema.0,
+            &self.0,
+            action.as_ref(),
+            Extensions::all_available(),
+        )?)
     }
 }
 
@@ -4613,6 +5028,35 @@ impl From<ast::Value> for EvalResult {
         }
     }
 }
+
+#[doc(hidden)]
+// PANIC SAFETY: see the panic safety comments below
+#[allow(clippy::fallible_impl_from)]
+impl From<EvalResult> for Expression {
+    fn from(res: EvalResult) -> Self {
+        match res {
+            EvalResult::Bool(b) => Self::new_bool(b),
+            EvalResult::Long(l) => Self::new_long(l),
+            EvalResult::String(s) => Self::new_string(s),
+            EvalResult::EntityUid(eid) => {
+                Self::from(ast::Expr::from(ast::Value::from(ast::EntityUID::from(eid))))
+            }
+            EvalResult::Set(set) => Self::new_set(set.iter().cloned().map(Self::from)),
+            EvalResult::Record(r) => {
+                // PANIC SAFETY: record originates from EvalResult so should not panic when reconstructing as an Expression
+                #[allow(clippy::unwrap_used)]
+                Self::new_record(r.iter().map(|(k, v)| (k.clone(), Self::from(v.clone())))).unwrap()
+            }
+            EvalResult::ExtensionValue(s) => {
+                // PANIC SAFETY: the string s is constructed using RestrictedExpr::to_string() so should not panic when being parsed back into a RestrictedExpr
+                #[allow(clippy::unwrap_used)]
+                let expr: ast::Expr = ast::RestrictedExpr::from_str(&s).unwrap().into();
+                Self::from(expr)
+            }
+        }
+    }
+}
+
 impl std::fmt::Display for EvalResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -4664,10 +5108,360 @@ pub fn eval_expression(
     ))
 }
 
+#[cfg(feature = "tpe")]
+pub use tpe::*;
+
+#[cfg(feature = "tpe")]
+mod tpe {
+    use cedar_policy_core::ast;
+    use cedar_policy_core::authorizer::Decision;
+    use cedar_policy_core::tpe;
+    use cedar_policy_core::{
+        entities::conformance::EntitySchemaConformanceChecker, extensions::Extensions,
+        validator::CoreSchema,
+    };
+    use itertools::Itertools;
+    use ref_cast::RefCast;
+
+    use crate::{
+        api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
+        PartialRequestCreationError, PermissionQueryError, Policy, PolicySet, Request,
+        RequestValidationError, RestrictedExpression, Schema, TPEReauthorizationError,
+    };
+
+    /// A partial [`EntityUid`]
+    /// That is, its [`EntityId`] could be unknown
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct PartialEntityUid(pub(crate) tpe::request::PartialEntityUID);
+
+    impl PartialEntityUid {
+        /// Construct a [`PartialEntityUid`]
+        pub fn new(ty: EntityTypeName, id: Option<EntityId>) -> Self {
+            Self(tpe::request::PartialEntityUID {
+                ty: ty.0,
+                eid: id.map(|id| <EntityId as AsRef<ast::Eid>>::as_ref(&id).clone()),
+            })
+        }
+    }
+
+    /// A partial [`Request`]
+    /// Its principal and resource could have unknown [`EntityId`]; its action
+    /// must be know; and its context could be unknown
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct PartialRequest(pub(crate) tpe::request::PartialRequest);
+
+    impl PartialRequest {
+        /// Construct a valid [`PartialRequest`] according to a [`Schema`]
+        pub fn new(
+            principal: PartialEntityUid,
+            action: EntityUid,
+            resource: PartialEntityUid,
+            context: Option<Context>,
+            schema: &Schema,
+        ) -> Result<Self, PartialRequestCreationError> {
+            let context = context
+                .map(|c| match c.0 {
+                    ast::Context::RestrictedResidual(_) => {
+                        Err(PartialRequestCreationError::ContextContainsUnknowns)
+                    }
+                    ast::Context::Value(m) => Ok(m),
+                })
+                .transpose()?;
+            tpe::request::PartialRequest::new(principal.0, action.0, resource.0, context, &schema.0)
+                .map(Self)
+                .map_err(|e| PartialRequestCreationError::Validation(e.into()))
+        }
+    }
+
+    /// Like [`PartialRequest`] but only `resource` can be unknown
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct ResourceQueryRequest(pub(crate) PartialRequest);
+
+    impl ResourceQueryRequest {
+        /// Construct a valid [`ResourceQueryRequest`] according to a [`Schema`]
+        pub fn new(
+            principal: EntityUid,
+            action: EntityUid,
+            resource: EntityTypeName,
+            context: Context,
+            schema: &Schema,
+        ) -> Result<Self, PartialRequestCreationError> {
+            PartialRequest::new(
+                PartialEntityUid(principal.0.into()),
+                action,
+                PartialEntityUid::new(resource, None),
+                Some(context),
+                schema,
+            )
+            .map(Self)
+        }
+
+        /// Convert [`ResourceQueryRequest`] to a [`Request`] by providing the resource [`EntityId`]
+        pub fn to_request(
+            &self,
+            resource_id: EntityId,
+            schema: Option<&Schema>,
+        ) -> Result<Request, RequestValidationError> {
+            // PANIC SAFETY: various fields are validated through the constructor
+            #[allow(clippy::unwrap_used)]
+            Request::new(
+                EntityUid(self.0 .0.get_principal().try_into().unwrap()),
+                EntityUid(self.0 .0.get_action()),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName(self.0 .0.get_resource_type()),
+                    resource_id,
+                ),
+                Context::from_pairs(
+                    self.0
+                         .0
+                        .get_context_attrs()
+                        .unwrap()
+                        .into_iter()
+                        .map(|(a, v)| (a.to_string(), RestrictedExpression(v.clone().into()))),
+                )
+                .unwrap(),
+                schema,
+            )
+        }
+    }
+
+    /// Like [`PartialRequest`] but only `principal` can be unknown
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct PrincipalQueryRequest(pub(crate) PartialRequest);
+
+    impl PrincipalQueryRequest {
+        /// Construct a valid [`PrincipalQueryRequest`] according to a [`Schema`]
+        pub fn new(
+            principal: EntityTypeName,
+            action: EntityUid,
+            resource: EntityUid,
+            context: Context,
+            schema: &Schema,
+        ) -> Result<Self, PartialRequestCreationError> {
+            PartialRequest::new(
+                PartialEntityUid::new(principal, None),
+                action,
+                PartialEntityUid(resource.0.into()),
+                Some(context),
+                schema,
+            )
+            .map(Self)
+        }
+
+        /// Convert [`PrincipalQueryRequest`] to a [`Request`] by providing the principal [`EntityId`]
+        pub fn to_request(
+            &self,
+            principal_id: EntityId,
+            schema: Option<&Schema>,
+        ) -> Result<Request, RequestValidationError> {
+            // PANIC SAFETY: various fields are validated through the constructor
+            #[allow(clippy::unwrap_used)]
+            Request::new(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName(self.0 .0.get_principal_type()),
+                    principal_id,
+                ),
+                EntityUid(self.0 .0.get_action()),
+                EntityUid(self.0 .0.get_resource().try_into().unwrap()),
+                Context::from_pairs(
+                    self.0
+                         .0
+                        .get_context_attrs()
+                        .unwrap()
+                        .into_iter()
+                        .map(|(a, v)| (a.to_string(), RestrictedExpression(v.clone().into()))),
+                )
+                .unwrap(),
+                schema,
+            )
+        }
+    }
+
+    /// Partial [`Entities`]
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct PartialEntities(pub(crate) tpe::entities::PartialEntities);
+
+    impl PartialEntities {
+        /// Construct [`PartialEntities`] from a JSON value
+        pub fn from_json_value(
+            value: serde_json::Value,
+            schema: &Schema,
+        ) -> Result<Self, tpe_err::EntitiesError> {
+            tpe::entities::PartialEntities::from_json_value(value, &schema.0).map(Self)
+        }
+    }
+
+    /// A partial [`Response`]
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct Response<'a>(pub(crate) tpe::response::Response<'a>);
+
+    impl Response<'_> {
+        /// Attempt to get the authorization decision
+        pub fn decision(&self) -> Option<Decision> {
+            self.0.decision()
+        }
+
+        /// Perform reauthorization
+        pub fn reauthorize(
+            &self,
+            request: &Request,
+            entities: &Entities,
+        ) -> Result<api::Response, TPEReauthorizationError> {
+            self.0
+                .reauthorize(&request.0, &entities.0)
+                .map(Into::into)
+                .map_err(Into::into)
+        }
+    }
+
+    impl PolicySet {
+        /// Perform type-aware partial evaluation on this [`PolicySet`]
+        /// If successful, the result is a [`PolicySet`] containing residual
+        /// policies ready for re-authorization
+        pub fn tpe<'a>(
+            &self,
+            request: &'a PartialRequest,
+            entities: &'a PartialEntities,
+            schema: &'a Schema,
+        ) -> Result<Response<'a>, tpe_err::TPEError> {
+            use cedar_policy_core::tpe::is_authorized;
+            let ps = &self.ast;
+            let res = is_authorized(ps, &request.0, &entities.0, &schema.0)?;
+            Ok(Response(res))
+        }
+
+        /// Perform a permission query on the resource
+        pub fn query_resource(
+            &self,
+            request: &ResourceQueryRequest,
+            entities: &Entities,
+            schema: &Schema,
+        ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
+            let partial_entities = PartialEntities(entities.clone().0.try_into()?);
+            let core_schema = CoreSchema::new(&schema.0);
+            let validator =
+                EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
+            // We need to type-check the entities
+            for entity in entities.0.iter() {
+                validator.validate_entity(entity)?;
+            }
+            let residuals = self.tpe(&request.0, &partial_entities, schema)?;
+            // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
+            #[allow(clippy::unwrap_used)]
+            let policies = &PolicySet::from_policies(
+                residuals
+                    .0
+                    .residual_policies()
+                    .into_iter()
+                    .map(Policy::from_ast),
+            )
+            .unwrap();
+            // PANIC SAFETY: request construction should succeed because each entity passes validation
+            #[allow(clippy::unwrap_used)]
+            match residuals.decision() {
+                Some(Decision::Allow) => Ok(entities
+                    .iter()
+                    .filter(|entity| {
+                        entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
+                    })
+                    .map(|entity| entity.uid())
+                    .collect_vec()
+                    .into_iter()),
+                Some(Decision::Deny) => Ok(vec![].into_iter()),
+                None => Ok(entities
+                    .iter()
+                    .filter(|entity| {
+                        entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
+                    })
+                    .filter(|entity| {
+                        let authorizer = Authorizer::new();
+                        authorizer
+                            .is_authorized(
+                                &request.to_request(entity.uid().id().clone(), None).unwrap(),
+                                policies,
+                                entities,
+                            )
+                            .decision
+                            == Decision::Allow
+                    })
+                    .map(|entity| entity.uid())
+                    .collect_vec()
+                    .into_iter()),
+            }
+        }
+
+        /// Perform a permission query on the principal
+        pub fn query_principal(
+            &self,
+            request: &PrincipalQueryRequest,
+            entities: &Entities,
+            schema: &Schema,
+        ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
+            let partial_entities = PartialEntities(entities.clone().0.try_into()?);
+            let core_schema = CoreSchema::new(&schema.0);
+            let validator =
+                EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
+            // We need to type-check the entities
+            for entity in entities.0.iter() {
+                validator.validate_entity(entity)?;
+            }
+            let residuals = self.tpe(&request.0, &partial_entities, schema)?;
+            // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
+            #[allow(clippy::unwrap_used)]
+            let policies = &PolicySet::from_policies(
+                residuals
+                    .0
+                    .residual_policies()
+                    .into_iter()
+                    .map(Policy::from_ast),
+            )
+            .unwrap();
+            // PANIC SAFETY: request construction should succeed because each entity passes validation
+            #[allow(clippy::unwrap_used)]
+            match residuals.decision() {
+                Some(Decision::Allow) => Ok(entities
+                    .iter()
+                    .filter(|entity| {
+                        entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
+                    })
+                    .map(|entity| entity.uid())
+                    .collect_vec()
+                    .into_iter()),
+                Some(Decision::Deny) => Ok(vec![].into_iter()),
+                None => Ok(entities
+                    .iter()
+                    .filter(|entity| {
+                        entity.0.uid().entity_type() == &request.0 .0.get_principal_type()
+                    })
+                    .filter(|entity| {
+                        let authorizer = Authorizer::new();
+                        authorizer
+                            .is_authorized(
+                                &request.to_request(entity.uid().id().clone(), None).unwrap(),
+                                policies,
+                                entities,
+                            )
+                            .decision
+                            == Decision::Allow
+                    })
+                    .map(|entity| entity.uid())
+                    .collect_vec()
+                    .into_iter()),
+            }
+        }
+    }
+}
+
 // These are the same tests in validator, just ensuring all the plumbing is done correctly
 #[cfg(test)]
 mod test_access {
-    use cedar_policy_core::ast;
+    use cedar_policy_core::{ast, parser::AsLocRef};
 
     use super::*;
 
@@ -4740,7 +5534,7 @@ action CreateList in Create appliesTo {
 
         let et = ast::EntityType::EntityType(ast::Name::from_normalized_str("User").unwrap());
         let et = schema.0.get_entity_type(&et).unwrap();
-        assert!(et.loc.as_ref().is_some());
+        assert!(et.loc.as_loc_ref().is_some());
     }
 
     #[cfg(feature = "extended-schema")]
@@ -4748,7 +5542,7 @@ action CreateList in Create appliesTo {
     fn common_types_extended() {
         use cool_asserts::assert_matches;
 
-        use cedar_policy_validator::{
+        use cedar_policy_core::validator::{
             types::{EntityRecordKind, Type},
             ValidatorCommonType,
         };
@@ -4785,7 +5579,7 @@ action CreateList in Create appliesTo {
         // Assert that attributes that are resolved from common types still get source locations
         let t = attrs.get_attr("tasks").unwrap();
         assert!(t.loc.is_some());
-        assert_matches!(&t.attr_type, cedar_policy_validator::types::Type::Set { ref element_type } => {
+        assert_matches!(&t.attr_type, cedar_policy_core::validator::types::Type::Set { ref element_type } => {
             let el = *element_type.clone().unwrap();
             assert_matches!(el, Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                 assert!(attrs.get_attr("name").unwrap().loc.is_some());
@@ -5232,6 +6026,59 @@ action CreateList in Create appliesTo {
             .unwrap();
         assert!(default_namespace.name_loc.is_some());
         assert!(default_namespace.def_loc.is_some());
+    }
+}
+
+#[cfg(test)]
+mod test_lossless_empty {
+    use super::{LosslessPolicy, Policy, PolicyId, Template};
+
+    #[test]
+    fn test_lossless_empty_policy() {
+        const STATIC_POLICY_TEXT: &str = "permit(principal,action,resource);";
+        let policy0 = Policy::parse(Some(PolicyId::new("policy0")), STATIC_POLICY_TEXT)
+            .expect("Failed to parse");
+        let lossy_policy0 = Policy {
+            ast: policy0.ast.clone(),
+            lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+        };
+        // The `to_cedar` representation becomes lossy since we didn't provide text
+        assert_eq!(
+            lossy_policy0.to_cedar(),
+            Some(String::from(
+                "permit(\n  principal,\n  action,\n  resource\n) when {\n  true\n};"
+            ))
+        );
+        // The EST representation is obtained from the AST
+        let lossy_policy0_est = lossy_policy0
+            .lossless
+            .est(|| policy0.ast.clone().into())
+            .unwrap();
+        assert_eq!(lossy_policy0_est, policy0.ast.into());
+    }
+
+    #[test]
+    fn test_lossless_empty_template() {
+        const TEMPLATE_TEXT: &str = "permit(principal == ?principal,action,resource);";
+        let template0 = Template::parse(Some(PolicyId::new("template0")), TEMPLATE_TEXT)
+            .expect("Failed to parse");
+        let lossy_template0 = Template {
+            ast: template0.ast.clone(),
+            lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+        };
+        // The `to_cedar` representation becomes lossy since we didn't provide text
+        assert_eq!(
+            lossy_template0.to_cedar(),
+            String::from(
+                "permit(\n  principal == ?principal,\n  action,\n  resource\n) when {\n  true\n};"
+            )
+        );
+        // The EST representation is obtained from the AST
+        let lossy_template0_est = lossy_template0
+            .lossless
+            .est(|| template0.ast.clone().into())
+            .unwrap();
+        assert_eq!(lossy_template0_est, template0.ast.into());
     }
 }
 

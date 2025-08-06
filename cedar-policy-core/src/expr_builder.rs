@@ -28,7 +28,7 @@ use crate::{
 };
 
 #[cfg(feature = "tolerant-ast")]
-use crate::parser::err::ParseErrors;
+use {crate::parser::err::ParseErrors, std::fmt::Debug};
 
 /// Defines a generic interface for building different expression data
 /// structures.
@@ -46,7 +46,7 @@ pub trait ExprBuilder: Clone {
     ///  By default we fail on errors and this should be a ParseErrors
     ///  But when we run with error parsing enabled, can be Infallible
     #[cfg(feature = "tolerant-ast")]
-    type ErrorType;
+    type ErrorType: Debug;
 
     /// Construct a new expression builder for an expression that will not carry any data.
     fn new() -> Self

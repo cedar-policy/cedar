@@ -19,7 +19,7 @@
 use crate::ast::*;
 use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
-use crate::parser::Loc;
+use crate::parser::{IntoMaybeLoc, Loc};
 #[cfg(feature = "partial-eval")]
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -94,7 +94,7 @@ fn unary_op_overflow_error(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> Evalua
     IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
         op,
         arg,
-        source_loc: loc.cloned(),
+        source_loc: loc.into_maybe_loc(),
     })
     .into()
 }
@@ -242,7 +242,7 @@ fn binary_op_overflow_error(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<
         op,
         arg1,
         arg2,
-        source_loc: loc.cloned(),
+        source_loc: loc.into_maybe_loc(),
     })
     .into()
 }
@@ -343,9 +343,9 @@ impl<'e> RestrictedEvaluator<'e> {
         // also, if there is an error, set its source location to the source
         // location of the input expression as well, unless it already had a
         // more specific location
-        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
+        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().into_maybe_loc()))
             .map_err(|err| match err.source_loc() {
-                None => err.with_maybe_source_loc(expr.source_loc().cloned()),
+                None => err.with_maybe_source_loc(expr.source_loc().into_maybe_loc()),
                 Some(_) => err,
             })
     }
@@ -370,7 +370,7 @@ impl<'e> RestrictedEvaluator<'e> {
                     .map(|item| self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(item))) // assuming the invariant holds for `e`, it will hold here
                     .collect::<Result<Vec<_>>>()?;
                 match split(vals) {
-                    Either::Left(values) => Ok(Value::set(values, expr.source_loc().cloned()).into()),
+                    Either::Left(values) => Ok(Value::set(values, expr.source_loc().into_maybe_loc()).into()),
                     Either::Right(residuals) => Ok(Expr::set(residuals).into()),
                 }
             }
@@ -382,7 +382,7 @@ impl<'e> RestrictedEvaluator<'e> {
                     .collect::<Result<Vec<_>>>()?;
                 let (names, attrs) : (Vec<_>, Vec<_>) = map.into_iter().unzip();
                 match split(attrs) {
-                    Either::Left(values) => Ok(Value::record(names.into_iter().zip(values), expr.source_loc().cloned()).into()),
+                    Either::Left(values) => Ok(Value::record(names.into_iter().zip(values), expr.source_loc().into_maybe_loc()).into()),
                     Either::Right(residuals) => {
                         // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
                         #[allow(clippy::expect_used)]
@@ -557,9 +557,9 @@ impl<'e> Evaluator<'e> {
         // also, if there is an error, set its source location to the source
         // location of the input expression as well, unless it already had a
         // more specific location
-        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
+        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().into_maybe_loc()))
             .map_err(|err| match err.source_loc() {
-                None => err.with_maybe_source_loc(expr.source_loc().cloned()),
+                None => err.with_maybe_source_loc(expr.source_loc().into_maybe_loc()),
                 Some(_) => err,
             })
     }
@@ -580,7 +580,7 @@ impl<'e> Evaluator<'e> {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Slot(id) => slots
                 .get(id)
-                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc.cloned()))
+                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc.into_maybe_loc()))
                 .map(|euid| PartialValue::from(euid.clone())),
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate(*v)),
@@ -744,7 +744,7 @@ impl<'e> Evaluator<'e> {
                                         // intentionally using the location of the euid (the LHS) and not the entire GetTag expression
                                         Err(EvaluationError::entity_does_not_exist(
                                             Arc::new(uid.clone()),
-                                            arg1.source_loc().cloned(),
+                                            arg1.source_loc().into_maybe_loc(),
                                         ))
                                     }
                                     Dereference::Residual(r) => Ok(PartialValue::Residual(
@@ -759,7 +759,7 @@ impl<'e> Evaluator<'e> {
                                                 entity.tag_keys(),
                                                 entity.get(tag).is_some(),
                                                 entity.tags_len(),
-                                                loc.cloned(), // intentionally using the location of the entire `GetTag` expression
+                                                loc.into_maybe_loc(), // intentionally using the location of the entire `GetTag` expression
                                             )
                                         })
                                         .cloned(),
@@ -860,7 +860,7 @@ impl<'e> Evaluator<'e> {
                     .map(|item| self.partial_interpret(item, slots))
                     .collect::<Result<Vec<_>>>()?;
                 match split(vals) {
-                    Either::Left(vals) => Ok(Value::set(vals, loc.cloned()).into()),
+                    Either::Left(vals) => Ok(Value::set(vals, loc.into_maybe_loc()).into()),
                     Either::Right(r) => Ok(Expr::set(r).into()),
                 }
             }
@@ -872,7 +872,7 @@ impl<'e> Evaluator<'e> {
                 let (names, evalled): (Vec<SmolStr>, Vec<PartialValue>) = map.into_iter().unzip();
                 match split(evalled) {
                     Either::Left(vals) => {
-                        Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
+                        Ok(Value::record(names.into_iter().zip(vals), loc.into_maybe_loc()).into())
                     }
                     Either::Right(rs) => {
                         // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
@@ -887,7 +887,7 @@ impl<'e> Evaluator<'e> {
             }
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
-                source_loc: loc.cloned(),
+                source_loc: loc.into_maybe_loc(),
             })),
         }
     }
@@ -1007,7 +1007,7 @@ impl<'e> Evaluator<'e> {
                                         attr.clone(),
                                         map.keys(),
                                         map.len(),
-                                        source_loc.cloned(),
+                                        source_loc.into_maybe_loc(),
                                     )
                                 })
                                 .and_then(|e| self.partial_interpret(e, slots))
@@ -1021,7 +1021,7 @@ impl<'e> Evaluator<'e> {
                                 attr.clone(),
                                 map.keys(),
                                 map.len(),
-                                source_loc.cloned(),
+                                source_loc.into_maybe_loc(),
                             ))
                         }
                     }
@@ -1040,7 +1040,7 @@ impl<'e> Evaluator<'e> {
                         attr.clone(),
                         record.keys(),
                         record.len(),
-                        source_loc.cloned(),
+                        source_loc.into_maybe_loc(),
                     )
                 })
                 .map(|v| PartialValue::Value(v.clone())),
@@ -1071,7 +1071,7 @@ impl<'e> Evaluator<'e> {
                             entity.keys(),
                             entity.get_tag(attr).is_some(),
                             entity.attrs_len(),
-                            source_loc.cloned(),
+                            source_loc.into_maybe_loc(),
                         )
                     })?,
             },
@@ -4953,7 +4953,7 @@ pub(crate) mod test {
         let raw_expr = "(true && 3)";
         let expr = parser::parse_expr(raw_expr).expect("parse fail");
         let t = evaluator.interpret_inline_policy(&expr);
-        println!("EXPR={:?}", t);
+        println!("EXPR={t:?}");
         assert_matches!(evaluator.interpret_inline_policy(&expr), Err(_));
 
         let raw_expr = "(3 && true)";

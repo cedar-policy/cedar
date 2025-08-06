@@ -5,6 +5,10 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+## 4.5.0
+
+## 4.4.1
+
 ## 4.4.0
 
 ### Added
@@ -42,6 +46,7 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
   file is formatted with `--check` will require a trailing newline. (resolving #1217)
 
 ### Added
+
 - Add a command `language-version` to print the Cedar language version (#1219)
 
 ## 4.0.0

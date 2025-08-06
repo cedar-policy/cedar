@@ -15,12 +15,16 @@
  */
 
 #[cfg(feature = "tolerant-ast")]
-use super::expr_allows_errors::AstExprErrorKind;
+use {
+    super::expr_allows_errors::AstExprErrorKind, crate::parser::err::ToASTError,
+    crate::parser::err::ToASTErrorKind,
+};
+
 use crate::{
     ast::*,
     expr_builder::{self, ExprBuilder as _},
     extensions::Extensions,
-    parser::{err::ParseErrors, Loc},
+    parser::{err::ParseErrors, AsLocRef, IntoMaybeLoc, Loc, MaybeLoc},
     spec::*,
     verus_utils::*,
 };
@@ -57,7 +61,7 @@ pub struct Expr<T = ()> {
     expr_kind: ExprKind<T>,
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
-    source_loc: Option<Loc>,
+    source_loc: MaybeLoc,
     data: T,
 }
 
@@ -389,7 +393,7 @@ impl From<PartialValue> for Expr {
 }
 
 impl<T> Expr<T> {
-    pub(crate) fn new(expr_kind: ExprKind<T>, source_loc: Option<Loc>, data: T) -> Self {
+    pub(crate) fn new(expr_kind: ExprKind<T>, source_loc: MaybeLoc, data: T) -> Self {
         Self {
             expr_kind,
             source_loc,
@@ -428,7 +432,7 @@ impl<T> Expr<T> {
 
     /// Consume the `Expr`, returning the `ExprKind`, `source_loc`, and stored
     /// data.
-    pub fn into_parts(self) -> (ExprKind<T>, Option<Loc>, T) {
+    pub fn into_parts(self) -> (ExprKind<T>, MaybeLoc, T) {
         (self.expr_kind, self.source_loc, self.data)
     }
 
@@ -436,11 +440,11 @@ impl<T> Expr<T> {
 
     /// Access the `Loc` stored on the `Expr`.
     pub fn source_loc(&self) -> Option<&Loc> {
-        self.source_loc.as_ref()
+        self.source_loc.as_loc_ref()
     }
 
     /// Return the `Expr`, but with the new `source_loc` (or `None`).
-    pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> (new_self: Self)
+    pub fn with_maybe_source_loc(self, source_loc: MaybeLoc) -> (new_self: Self)
         ensures self@ == new_self@
     {
         Self { source_loc, ..self }
@@ -492,7 +496,7 @@ impl<T> Expr<T> {
             .filter_map(|exp| match &exp.expr_kind {
                 ExprKind::Slot(slotid) => Some(Slot {
                     id: *slotid,
-                    loc: exp.source_loc().cloned(),
+                    loc: exp.source_loc().into_maybe_loc(),
                 }),
                 _ => None,
             })
@@ -597,6 +601,90 @@ impl<T> Expr<T> {
             ExprKind::Record(_) => Some(Type::Record),
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => None,
+        }
+    }
+
+    /// Converts an `Expr<V>` to `B::Expr` using the provided builder.
+    ///
+    /// Preserves source location information and recursively transforms each expression node.
+    /// Note: Data may be cloned if the source expression is retained elsewhere.
+    pub fn into_expr<B: expr_builder::ExprBuilder>(self) -> B::Expr
+    where
+        T: Clone,
+    {
+        let builder = B::new().with_maybe_source_loc(self.source_loc());
+        match self.into_expr_kind() {
+            ExprKind::Lit(lit) => builder.val(lit),
+            ExprKind::Var(var) => builder.var(var),
+            ExprKind::Slot(slot) => builder.slot(slot),
+            ExprKind::Unknown(u) => builder.unknown(u),
+            ExprKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => builder.ite(
+                Arc::unwrap_or_clone(test_expr).into_expr::<B>(),
+                Arc::unwrap_or_clone(then_expr).into_expr::<B>(),
+                Arc::unwrap_or_clone(else_expr).into_expr::<B>(),
+            ),
+            ExprKind::And { left, right } => builder.and(
+                Arc::unwrap_or_clone(left).into_expr::<B>(),
+                Arc::unwrap_or_clone(right).into_expr::<B>(),
+            ),
+            ExprKind::Or { left, right } => builder.or(
+                Arc::unwrap_or_clone(left).into_expr::<B>(),
+                Arc::unwrap_or_clone(right).into_expr::<B>(),
+            ),
+            ExprKind::UnaryApp { op, arg } => {
+                let arg = Arc::unwrap_or_clone(arg).into_expr::<B>();
+                builder.unary_app(op, arg)
+            }
+            ExprKind::BinaryApp { op, arg1, arg2 } => {
+                let arg1 = Arc::unwrap_or_clone(arg1).into_expr::<B>();
+                let arg2 = Arc::unwrap_or_clone(arg2).into_expr::<B>();
+                builder.binary_app(op, arg1, arg2)
+            }
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                let args = Arc::unwrap_or_clone(args)
+                    .into_iter()
+                    .map(|e| e.into_expr::<B>());
+                builder.call_extension_fn(fn_name, args)
+            }
+            ExprKind::GetAttr { expr, attr } => {
+                builder.get_attr(Arc::unwrap_or_clone(expr).into_expr::<B>(), attr)
+            }
+            ExprKind::HasAttr { expr, attr } => {
+                builder.has_attr(Arc::unwrap_or_clone(expr).into_expr::<B>(), attr)
+            }
+            ExprKind::Like { expr, pattern } => {
+                builder.like(Arc::unwrap_or_clone(expr).into_expr::<B>(), pattern)
+            }
+            ExprKind::Is { expr, entity_type } => {
+                builder.is_entity_type(Arc::unwrap_or_clone(expr).into_expr::<B>(), entity_type)
+            }
+            ExprKind::Set(set) => builder.set(
+                Arc::unwrap_or_clone(set)
+                    .into_iter()
+                    .map(|e| e.into_expr::<B>()),
+            ),
+            // PANIC SAFETY: `map` is a map, so it will not have duplicates keys, so the `record` constructor cannot error.
+            #[allow(clippy::unwrap_used)]
+            ExprKind::Record(map) => builder
+                .record(
+                    Arc::unwrap_or_clone(map)
+                        .into_iter()
+                        .map(|(k, v)| (k, v.into_expr::<B>())),
+                )
+                .unwrap(),
+            #[cfg(feature = "tolerant-ast")]
+            // PANIC SAFETY: error type is Infallible so can never happen
+            #[allow(clippy::unwrap_used)]
+            ExprKind::Error { .. } => builder
+                .error(ParseErrors::singleton(ToASTError::new(
+                    ToASTErrorKind::ASTErrorNode,
+                    Loc::new(0..1, "AST_ERROR_NODE".into()).into_maybe_loc(),
+                )))
+                .unwrap(),
         }
     }
 }
@@ -1067,7 +1155,7 @@ impl<T: Clone> std::fmt::Display for Expr<T> {
         // To avoid code duplication between pretty-printers for AST Expr and EST Expr,
         // we just convert to EST and use the EST pretty-printer.
         // Note that converting AST->EST is lossless and infallible.
-        write!(f, "{}", crate::est::Expr::from(self.clone()))
+        write!(f, "{}", &self.clone().into_expr::<crate::est::Builder>())
     }
 }
 
@@ -1075,7 +1163,7 @@ impl<T: Clone> BoundedDisplay for Expr<T> {
     fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
         // Like the `std::fmt::Display` impl, we convert to EST and use the EST
         // pretty-printer. Note that converting AST->EST is lossless and infallible.
-        BoundedDisplay::fmt(&crate::est::Expr::from(self.clone()), f, n)
+        BoundedDisplay::fmt(&self.clone().into_expr::<crate::est::Builder>(), f, n)
     }
 }
 
@@ -1134,7 +1222,11 @@ impl std::fmt::Display for Unknown {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Like the Display impl for Expr, we delegate to the EST pretty-printer,
         // to avoid code duplication
-        write!(f, "{}", crate::est::Expr::from(Expr::unknown(self.clone())))
+        write!(
+            f,
+            "{}",
+            Expr::unknown(self.clone()).into_expr::<crate::est::Builder>()
+        )
     }
 }
 
@@ -1142,7 +1234,7 @@ impl std::fmt::Display for Unknown {
 /// (possibly taking default value) and optionally a `source_loc`.
 #[derive(Clone, Debug)]
 pub struct ExprBuilder<T> {
-    source_loc: Option<Loc>,
+    source_loc: MaybeLoc,
     data: T,
 }
 
@@ -1155,7 +1247,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     type ErrorType = ParseErrors;
 
     fn loc(&self) -> Option<&Loc> {
-        self.source_loc.as_ref()
+        self.source_loc.as_loc_ref()
     }
 
     fn data(&self) -> &Self::Data {
@@ -1170,7 +1262,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     }
 
     fn with_maybe_source_loc(mut self, maybe_source_loc: Option<&Loc>) -> Self {
-        self.source_loc = maybe_source_loc.cloned();
+        self.source_loc = maybe_source_loc.into_maybe_loc();
         self
     }
 
@@ -1512,7 +1604,7 @@ impl<T: Clone + Default> ExprBuilder<T> {
     /// location as an existing expression. This is done when reconstructing the
     /// `Expr` with type information.
     pub fn with_same_source_loc<U>(self, expr: &Expr<U>) -> Self {
-        self.with_maybe_source_loc(expr.source_loc.as_ref())
+        self.with_maybe_source_loc(expr.source_loc.as_loc_ref())
     }
 }
 

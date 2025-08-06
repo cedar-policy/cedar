@@ -31,7 +31,7 @@ pub use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 extern crate tsify;
 
 /// Structure of the JSON output representing one `miette` error
-#[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize, Default)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +54,22 @@ pub struct DetailedError {
     /// Related errors
     #[serde(default)]
     pub related: Vec<DetailedError>,
+}
+
+impl FromStr for DetailedError {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self {
+            message: s.to_string(),
+            help: None,
+            code: None,
+            url: None,
+            severity: None,
+            source_locations: Vec::new(),
+            related: Vec::new(),
+        })
+    }
 }
 
 /// Exactly like `miette::Severity` but implements `Hash`
@@ -1208,5 +1224,11 @@ mod test {
                 .source("error parsing schema: unexpected token `permit`")
                 .build(),
         );
+    }
+
+    #[test]
+    fn test_detailed_err_from_str() {
+        let detailed_err = DetailedError::from_str("xxx");
+        assert_eq!(detailed_err.unwrap().message, "xxx");
     }
 }

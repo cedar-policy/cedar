@@ -170,6 +170,11 @@ impl UnreservedId {
         #[allow(clippy::unwrap_used)]
         Id("".into()).try_into().unwrap()
     }
+
+    /// Get the underlying string
+    pub fn into_smolstr(self) -> SmolStr {
+        self.0.into_smolstr()
+    }
 }
 
 struct IdVisitor;

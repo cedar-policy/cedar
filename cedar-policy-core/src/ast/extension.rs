@@ -327,15 +327,16 @@ impl ExtensionFunction {
         &self.arg_types
     }
 
-    /// Returns `true` if this function is considered a "constructor".
+    /// Returns `true` if this function is considered a single argument
+    /// constructor.
     ///
-    /// Currently, the only impact of this is that non-constructors are not
-    /// accessible in the JSON format (entities/json.rs).
-    pub fn is_constructor(&self) -> bool {
+    /// Only functions satisfying this predicate can have their names implicit
+    /// during schema-based entity parsing
+    pub fn is_single_arg_constructor(&self) -> bool {
         // return type is an extension type
         matches!(self.return_type(), Some(SchemaType::Extension { .. }))
-        // no argument is an extension type
-        && !self.arg_types().iter().any(|ty| matches!(ty, SchemaType::Extension { .. }))
+        // the only argument is a string
+        && matches!(self.arg_types(), [SchemaType::String])
     }
 
     /// Call the `ExtensionFunction` with the given args

@@ -24,9 +24,10 @@ use std::path::{Path, PathBuf};
 use cedar_policy::EvalResult;
 use cedar_policy::SlotId;
 use cedar_policy_cli::{
-    authorize, check_parse, evaluate, link, validate, Arguments, AuthorizeArgs, CedarExitCode,
-    CheckParseArgs, EvaluateArgs, LinkArgs, OptionalPoliciesArgs, OptionalSchemaArgs, PoliciesArgs,
-    PolicyFormat, RequestArgs, SchemaArgs, SchemaFormat, ValidateArgs,
+    authorize, check_parse, evaluate, link, run_tests, validate, Arguments, AuthorizeArgs,
+    CedarExitCode, CheckParseArgs, EvaluateArgs, LinkArgs, OptionalPoliciesArgs,
+    OptionalSchemaArgs, PoliciesArgs, PolicyFormat, RequestArgs, RunTestsArgs, SchemaArgs,
+    SchemaFormat, ValidateArgs,
 };
 
 use predicates::prelude::*;
@@ -52,7 +53,7 @@ fn run_check_parse_test(
         entities_file: entities_file.map(Into::into),
     };
     let output = check_parse(&cmd);
-    assert_eq!(output, expected_exit_code, "{:#?}", cmd);
+    assert_eq!(output, expected_exit_code, "{cmd:#?}");
 }
 
 #[track_caller]
@@ -108,7 +109,7 @@ fn run_authorize_test_with_linked_policies(
         timing: false,
     };
     let output = authorize(&cmd);
-    assert_eq!(exit_code, output, "{:#?}", cmd,);
+    assert_eq!(exit_code, output, "{cmd:#?}",);
 }
 
 #[track_caller]
@@ -169,7 +170,7 @@ fn run_authorize_test_context(
         timing: false,
     };
     let output = authorize(&cmd);
-    assert_eq!(exit_code, output, "{:#?}", cmd,);
+    assert_eq!(exit_code, output, "{cmd:#?}",);
 }
 
 #[track_caller]
@@ -202,7 +203,7 @@ fn run_authorize_test_json(
         timing: false,
     };
     let output = authorize(&cmd);
-    assert_eq!(exit_code, output, "{:#?}", cmd,);
+    assert_eq!(exit_code, output, "{cmd:#?}",);
 }
 
 #[test]
@@ -609,7 +610,7 @@ fn test_validate_samples(
         level: None,
     };
     let output = validate(&cmd);
-    assert_eq!(exit_code, output, "{:#?}", cmd);
+    assert_eq!(exit_code, output, "{cmd:#?}");
 
     // Run with Cedar schema
     let cmd = ValidateArgs {
@@ -627,7 +628,7 @@ fn test_validate_samples(
         level: None,
     };
     let output = validate(&cmd);
-    assert_eq!(exit_code, output, "{:#?}", cmd)
+    assert_eq!(exit_code, output, "{cmd:#?}")
 }
 
 #[rstest]
@@ -704,7 +705,7 @@ fn test_level_validate_samples(
         level: Some(level),
     };
     let output = validate(&cmd);
-    assert_eq!(exit_code, output, "{:#?}", cmd);
+    assert_eq!(exit_code, output, "{cmd:#?}");
 }
 
 #[rstest]
@@ -819,8 +820,8 @@ fn test_evaluate_samples(
         expression: expression.into(),
     };
     let output = evaluate(&cmd);
-    assert_eq!(exit_code, output.0, "{:#?}", cmd,);
-    assert_eq!(expected, output.1, "{:#?}", cmd,);
+    assert_eq!(exit_code, output.0, "{cmd:#?}",);
+    assert_eq!(expected, output.1, "{cmd:#?}",);
 }
 
 #[test]
@@ -1017,7 +1018,7 @@ fn test_format_write() {
     // See https://doc.rust-lang.org/cargo/reference/environment-variables.html for the
     // CARGO_TARGET_TMPDIR environment variable.
     let tmp_dir = env!("CARGO_TARGET_TMPDIR");
-    let unformatted_file = format!("{}/unformatted.cedar", tmp_dir);
+    let unformatted_file = format!("{tmp_dir}/unformatted.cedar");
     std::fs::copy(POLICY_SOURCE, &unformatted_file).unwrap();
     let original = std::fs::read_to_string(&unformatted_file).unwrap();
 
@@ -1304,4 +1305,118 @@ fn visualize_entities_parses_as_dot(
         .code(0);
     let visualized = std::str::from_utf8(&visualize.get_output().stdout).unwrap();
     graphviz_rust::parse(visualized).unwrap();
+}
+
+#[rstest]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-missing-reason.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-unexpected-error.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-named.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-fail.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-format-error.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-format-error2.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/no-such-file.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample2/policy.cedar",
+    "sample-data/tiny_sandboxes/sample2/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample2/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample3/policy.cedar",
+    "sample-data/tiny_sandboxes/sample3/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample3/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample4/policy.cedar",
+    "sample-data/tiny_sandboxes/sample4/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample4/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample6/policy.cedar",
+    "sample-data/tiny_sandboxes/sample6/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample6/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample7/policy.cedar",
+    "sample-data/tiny_sandboxes/sample7/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample7/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample9/policy.cedar",
+    "sample-data/tiny_sandboxes/sample9/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample9/tests-combined.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample10/policy.cedar",
+    "sample-data/tiny_sandboxes/sample10/schema.cedarschema",
+    "sample-data/tiny_sandboxes/sample10/tests-error.json",
+    CedarExitCode::Failure
+)]
+#[track_caller]
+fn test_run_tests_samples(
+    #[case] policies_file: impl Into<String>,
+    #[case] _schema_file: impl AsRef<Path>,
+    #[case] test_file: impl Into<String>,
+    #[case] exit_code: CedarExitCode,
+) {
+    let policies_file = policies_file.into();
+    let test_file = test_file.into();
+
+    // Run with JSON schema
+    let cmd = RunTestsArgs {
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        tests: test_file,
+    };
+    let output = run_tests(&cmd);
+    assert_eq!(exit_code, output, "{cmd:#?}")
 }

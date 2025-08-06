@@ -60,7 +60,7 @@ pub enum EntitySchemaConformanceError {
     /// Encountered an action which was not declared in the schema
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UndeclaredAction(UndeclaredAction),
+    UndeclaredAction(#[from] UndeclaredAction),
     /// Encountered an action whose definition doesn't precisely match the
     /// schema's declaration of that action
     #[error(transparent)]
@@ -102,12 +102,14 @@ impl EntitySchemaConformanceError {
 
     pub(crate) fn type_mismatch(
         uid: EntityUID,
-        attr: impl Into<SmolStr>,
+        attr_or_tag: impl Into<SmolStr>,
+        context: AttrOrTag,
         err: TypeMismatchError,
     ) -> Self {
         Self::TypeMismatch(TypeMismatch {
             uid,
-            attr: attr.into(),
+            attr_or_tag: attr_or_tag.into(),
+            context,
             err,
         })
     }
@@ -129,12 +131,14 @@ impl EntitySchemaConformanceError {
 
     pub(crate) fn extension_function_lookup(
         uid: EntityUID,
-        attr: impl Into<SmolStr>,
+        attr_or_tag: impl Into<SmolStr>,
+        context: AttrOrTag,
         err: ExtensionFunctionLookupError,
     ) -> Self {
         Self::ExtensionFunctionLookup(ExtensionFunctionLookup {
             uid,
-            attr: attr.into(),
+            attr_or_tag: attr_or_tag.into(),
+            context,
             err,
         })
     }
@@ -148,12 +152,14 @@ impl EntitySchemaConformanceError {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
-#[error("in attribute `{attr}` on `{uid}`, {err}")]
+#[error("in `{context}` `{attr_or_tag}` on `{uid}`, {err}")]
 pub struct ExtensionFunctionLookup {
     /// Entity where the error occurred
     uid: EntityUID,
     /// Name of the attribute where the error occurred
-    attr: SmolStr,
+    attr_or_tag: SmolStr,
+    /// If it shows up as an attribute or a tag value
+    context: AttrOrTag,
     /// Underlying error
     #[diagnostic(transparent)]
     err: ExtensionFunctionLookupError,
@@ -184,7 +190,7 @@ pub struct ActionDeclarationMismatch {
 #[error("found action entity `{uid}`, but it was not declared as an action in the schema")]
 pub struct UndeclaredAction {
     /// Action which was not declared in the schema
-    uid: EntityUID,
+    pub(crate) uid: EntityUID,
 }
 
 /// Found an ancestor of a type that's not allowed for that entity
@@ -241,6 +247,24 @@ pub struct MissingRequiredEntityAttr {
     attr: SmolStr,
 }
 
+/// If the context is an attribute or a tag
+#[derive(Debug, Clone, Copy)]
+pub enum AttrOrTag {
+    /// When it's an attribute
+    Attr,
+    /// When it's a tag
+    Tag,
+}
+
+impl std::fmt::Display for AttrOrTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AttrOrTag::Attr => write!(f, "attribute"),
+            AttrOrTag::Tag => write!(f, "tag"),
+        }
+    }
+}
+
 /// The given attribute on the given entity had a different type than the
 /// schema indicated
 //
@@ -248,10 +272,11 @@ pub struct MissingRequiredEntityAttr {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
-#[error("in attribute `{attr}` on `{uid}`, {err}")]
+#[error("in {context} `{attr_or_tag}` on `{uid}`, {err}")]
 pub struct TypeMismatch {
     uid: EntityUID,
-    attr: SmolStr,
+    attr_or_tag: SmolStr,
+    context: AttrOrTag,
     #[diagnostic(transparent)]
     err: TypeMismatchError,
 }

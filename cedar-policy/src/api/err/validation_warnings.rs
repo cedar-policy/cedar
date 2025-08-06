@@ -38,7 +38,7 @@ macro_rules! wrap_core_warning {
         #[error(transparent)]
         #[diagnostic(transparent)]
         #[doc=concat!("Structure containing details about a [`ValidationWarning::", stringify!($s), "`].")]
-        pub struct $s(cedar_policy_validator::validation_warnings::$s);
+        pub struct $s(cedar_policy_core::validator::validation_warnings::$s);
 
         impl $s {
             /// Access the [`PolicyId`] for the policy where this warning was found.
@@ -48,8 +48,8 @@ macro_rules! wrap_core_warning {
         }
 
         #[doc(hidden)]
-        impl From<cedar_policy_validator::validation_warnings::$s> for $s {
-            fn from(e: cedar_policy_validator::validation_warnings::$s) -> Self {
+        impl From<cedar_policy_core::validator::validation_warnings::$s> for $s {
+            fn from(e: cedar_policy_core::validator::validation_warnings::$s) -> Self {
                 Self(e)
             }
         }

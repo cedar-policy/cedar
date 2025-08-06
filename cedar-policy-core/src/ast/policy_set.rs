@@ -20,6 +20,7 @@ use super::{
 };
 use itertools::Itertools;
 use miette::Diagnostic;
+use smol_str::format_smolstr;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::{borrow::Borrow, sync::Arc};
 use thiserror::Error;
@@ -322,10 +323,11 @@ impl PolicySet {
         for (pid, ot) in other_contents {
             if let Some(tt) = this_contents.get(pid) {
                 if tt != ot {
-                    let mut new_pid = PolicyID::from_string(format!("policy{}", start_ind));
+                    let mut new_pid =
+                        PolicyID::from_smolstr(format_smolstr!("policy{}", start_ind));
                     *start_ind += 1;
                     while self.policy_id_is_bound(&new_pid) || other.policy_id_is_bound(&new_pid) {
-                        new_pid = PolicyID::from_string(format!("policy{}", start_ind));
+                        new_pid = PolicyID::from_smolstr(format_smolstr!("policy{}", start_ind));
                         *start_ind += 1;
                     }
                     renaming.insert(pid.clone(), new_pid);
@@ -863,10 +865,9 @@ mod test {
         // should not conflict because p1 == p3
         match pset1.merge_policyset(&pset2, false) {
             Ok(_) => (),
-            Err(PolicySetError::Occupied { id }) => panic!(
-                "There should not have been an error! Unexpected conflict for id {}",
-                id
-            ),
+            Err(PolicySetError::Occupied { id }) => {
+                panic!("There should not have been an error! Unexpected conflict for id {id}")
+            }
         }
     }
 
@@ -925,10 +926,9 @@ mod test {
                     assert_eq!(Policy::from(p4), new_p4.clone());
                 }
             }
-            Err(PolicySetError::Occupied { id }) => panic!(
-                "There should not have been an error! Unexpected conflict for id {}",
-                id
-            ),
+            Err(PolicySetError::Occupied { id }) => {
+                panic!("There should not have been an error! Unexpected conflict for id {id}")
+            }
         }
     }
 

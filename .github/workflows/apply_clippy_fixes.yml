@@ -1,0 +1,37 @@
+name: Apply clippy fixes
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Runs weekly Sunday midnight
+  workflow_dispatch:
+
+jobs:
+  clippy-fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # for creating branch and committing changes
+      pull-requests: write # for creating PR
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: rustup toolchain install
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Get Date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+          
+      - name: Run Clippy fixes
+        run: |
+          cargo clippy --fix --allow-dirty --allow-staged
+          cargo fmt
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          title: 'Apply clippy fixes'
+          branch: clippy-fixes-${{ steps.date.outputs.date }}
+          commit-message: 'Apply clippy fixes'
+          token: ${{ secrets.GITHUB_TOKEN }}

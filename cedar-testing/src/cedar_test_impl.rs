@@ -20,13 +20,10 @@
 //! testing (see <https://github.com/cedar-policy/cedar-spec>).
 
 pub use cedar_policy::ffi;
-use cedar_policy_core::ast::{self, Expr, PolicySet, Request, Value};
-use cedar_policy_core::authorizer::Authorizer;
-use cedar_policy_core::entities::{Entities, TCComputation};
-use cedar_policy_core::evaluator::Evaluator;
-use cedar_policy_core::extensions::Extensions;
-use cedar_policy_validator::{ValidationMode, Validator, ValidatorSchema};
-use core::panic;
+use cedar_policy::{
+    Authorizer, Entities, EvalResult, Expression, PolicySet, Request, RequestBuilder, Schema,
+    ValidationMode, Validator,
+};
 use miette::miette;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -104,11 +101,11 @@ pub mod partial {
         Unknown,
     }
 
-    impl Decision {
-        pub fn from_core(o: Option<cedar_policy_core::authorizer::Decision>) -> Self {
-            match o {
-                Some(cedar_policy_core::authorizer::Decision::Allow) => Self::Allow,
-                Some(cedar_policy_core::authorizer::Decision::Deny) => Self::Deny,
+    impl From<Option<cedar_policy::Decision>> for Decision {
+        fn from(opt: Option<cedar_policy::Decision>) -> Self {
+            match opt {
+                Some(cedar_policy::Decision::Allow) => Self::Allow,
+                Some(cedar_policy::Decision::Deny) => Self::Deny,
                 None => Self::Unknown,
             }
         }
@@ -119,27 +116,6 @@ impl TestValidationResult {
     /// Check if validation succeeded
     pub fn validation_passed(&self) -> bool {
         self.errors.is_empty()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ExprOrValue {
-    Expr(Expr),
-    Value(Expr),
-}
-
-impl ExprOrValue {
-    pub fn value(v: Value) -> Self {
-        Self::Value(v.into())
-    }
-}
-
-impl std::fmt::Display for ExprOrValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Expr(e) => write!(f, "Expr: `{e}`"),
-            Self::Value(v) => write!(f, "Value: `{v}`"),
-        }
     }
 }
 
@@ -161,15 +137,14 @@ pub trait CedarTestImplementation {
         &self,
         request: &Request,
         entities: &Entities,
-        expr: &Expr,
-        enable_extensions: bool,
-        expected: Option<Value>,
+        expr: &Expression,
+        expected: Option<EvalResult>,
     ) -> TestResult<bool>;
 
     /// Custom validator entry point.
     fn validate(
         &self,
-        schema: &ValidatorSchema,
+        schema: &Schema,
         policies: &PolicySet,
         mode: ValidationMode,
     ) -> TestResult<TestValidationResult>;
@@ -177,7 +152,7 @@ pub trait CedarTestImplementation {
     /// Custom validator entry point with level.
     fn validate_with_level(
         &self,
-        schema: &ValidatorSchema,
+        schema: &Schema,
         policies: &PolicySet,
         mode: ValidationMode,
         level: i32,
@@ -185,13 +160,13 @@ pub trait CedarTestImplementation {
 
     fn validate_request(
         &self,
-        schema: &ValidatorSchema,
+        schema: &Schema,
         request: &Request,
     ) -> TestResult<TestValidationResult>;
 
     fn validate_entities(
         &self,
-        schema: &ValidatorSchema,
+        schema: &Schema,
         entities: &Entities,
     ) -> TestResult<TestValidationResult>;
 
@@ -267,8 +242,7 @@ impl CedarTestImplementation for RustEngine {
     ) -> TestResult<TestResponse> {
         let authorizer = Authorizer::new();
         let (response, duration) =
-            time_function(|| authorizer.is_authorized(request.clone(), policies, entities));
-        let response = cedar_policy::Response::from(response);
+            time_function(|| authorizer.is_authorized(request, policies, entities));
         let response = ffi::Response::new(
             response.decision(),
             response.diagnostics().reason().cloned().collect(),
@@ -299,24 +273,17 @@ impl CedarTestImplementation for RustEngine {
         &self,
         request: &Request,
         entities: &Entities,
-        expr: &Expr,
-        enable_extensions: bool,
-        expected: Option<Value>,
+        expr: &Expression,
+        expected: Option<EvalResult>,
     ) -> TestResult<bool> {
-        let exts = if enable_extensions {
-            Extensions::all_available()
-        } else {
-            Extensions::none()
-        };
-        let evaluator = Evaluator::new(request.clone(), entities, exts);
-        let result = evaluator.interpret(expr, &HashMap::default());
+        let result = cedar_policy::eval_expression(request, entities, expr);
         let response = result.ok() == expected;
         TestResult::Success(response)
     }
 
     fn validate(
         &self,
-        schema: &ValidatorSchema,
+        schema: &Schema,
         policies: &PolicySet,
         mode: ValidationMode,
     ) -> TestResult<TestValidationResult> {
@@ -334,7 +301,7 @@ impl CedarTestImplementation for RustEngine {
 
     fn validate_with_level(
         &self,
-        schema: &ValidatorSchema,
+        schema: &Schema,
         policies: &PolicySet,
         mode: ValidationMode,
         level: i32,
@@ -354,19 +321,13 @@ impl CedarTestImplementation for RustEngine {
 
     fn validate_entities(
         &self,
-        schema: &ValidatorSchema,
+        schema: &Schema,
         entities: &Entities,
     ) -> TestResult<TestValidationResult> {
-        let (res, dur) = time_function(|| {
-            Entities::from_entities(
-                entities.iter().cloned(),
-                Some(&cedar_policy_validator::CoreSchema::new(schema)),
-                TCComputation::AssumeAlreadyComputed,
-                Extensions::all_available(),
-            )
-        });
+        let (res, dur) =
+            time_function(|| Entities::from_entities(entities.iter().cloned(), Some(schema)));
         let response = TestValidationResult {
-            errors: res.map(|e| vec![e.to_string()]).unwrap_or_default(),
+            errors: res.err().map(|e| vec![e.to_string()]).unwrap_or_default(),
             timing_info: HashMap::from([("validate_entities".into(), Micros(dur.as_micros()))]),
         };
         TestResult::Success(response)
@@ -374,18 +335,28 @@ impl CedarTestImplementation for RustEngine {
 
     fn validate_request(
         &self,
-        schema: &ValidatorSchema,
-        request: &ast::Request,
+        schema: &Schema,
+        request: &Request,
     ) -> TestResult<TestValidationResult> {
         let (res, dur) = time_function(|| {
-            ast::Request::new_with_unknowns(
-                request.principal().clone(),
-                request.action().clone(),
-                request.resource().clone(),
-                request.context().cloned(),
-                Some(schema),
-                Extensions::all_available(),
-            )
+            let req = RequestBuilder::default().schema(schema);
+            let req = match request.principal() {
+                Some(p) => req.principal(p.clone()),
+                None => req,
+            };
+            let req = match request.action() {
+                Some(a) => req.action(a.clone()),
+                None => req,
+            };
+            let req = match request.resource() {
+                Some(r) => req.resource(r.clone()),
+                None => req,
+            };
+            let req = match request.context() {
+                Some(c) => req.context(c.clone()),
+                None => req,
+            };
+            req.build()
         });
         let response = TestValidationResult {
             errors: res.map(|r| vec![r.to_string()]).unwrap_or_default(),

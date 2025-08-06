@@ -22,15 +22,13 @@ use crate::ast::Infallible;
 use crate::ast::{self, BoundedDisplay, EntityUID};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
-    CedarValueJson, FnAndArg,
+    CedarValueJson, FnAndArgs,
 };
 use crate::expr_builder::ExprBuilder;
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use crate::parser::cst_to_ast;
 use crate::parser::err::ParseErrors;
-#[cfg(feature = "tolerant-ast")]
-use crate::parser::err::{ToASTError, ToASTErrorKind};
 use crate::parser::Node;
 use crate::parser::{cst, Loc};
 use itertools::Itertools;
@@ -716,13 +714,13 @@ impl Expr {
         self,
         mapping: &BTreeMap<EntityUID, EntityUID>,
     ) -> Result<Self, JsonDeserializationError> {
-        match self.clone() {
+        match self {
             Expr::ExprNoExt(e) => match e {
                 ExprNoExt::Value(v) => Ok(Expr::ExprNoExt(ExprNoExt::Value(
                     v.sub_entity_literals(mapping)?,
                 ))),
-                ExprNoExt::Var(_) => Ok(self),
-                ExprNoExt::Slot(_) => Ok(self),
+                v @ ExprNoExt::Var(_) => Ok(Expr::ExprNoExt(v)),
+                s @ ExprNoExt::Slot(_) => Ok(Expr::ExprNoExt(s)),
                 ExprNoExt::Not { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Not {
                     arg: Arc::new(Arc::unwrap_or_clone(arg).sub_entity_literals(mapping)?),
                 })),
@@ -885,7 +883,7 @@ impl Expr {
     /// Attempt to convert this `est::Expr` into an `ast::Expr`
     ///
     /// `id`: the ID of the policy this `Expr` belongs to, used only for reporting errors
-    pub fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+    pub fn try_into_ast(self, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
         match self {
             Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => jsonvalue
                 .into_expr(|| JsonDeserializationErrorContext::Policy { id: id.clone() })
@@ -900,74 +898,74 @@ impl Expr {
                 Ok(ast::Expr::neg(Arc::unwrap_or_clone(arg).try_into_ast(id)?))
             }
             Expr::ExprNoExt(ExprNoExt::Eq { left, right }) => Ok(ast::Expr::is_eq(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::NotEq { left, right }) => Ok(ast::Expr::noteq(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::In { left, right }) => Ok(ast::Expr::is_in(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Less { left, right }) => Ok(ast::Expr::less(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::LessEq { left, right }) => Ok(ast::Expr::lesseq(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Greater { left, right }) => Ok(ast::Expr::greater(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GreaterEq { left, right }) => Ok(ast::Expr::greatereq(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::And { left, right }) => Ok(ast::Expr::and(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Or { left, right }) => Ok(ast::Expr::or(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Add { left, right }) => Ok(ast::Expr::add(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Sub { left, right }) => Ok(ast::Expr::sub(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => Ok(ast::Expr::mul(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Contains { left, right }) => Ok(ast::Expr::contains(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAll { left, right }) => Ok(ast::Expr::contains_all(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAny { left, right }) => Ok(ast::Expr::contains_any(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::IsEmpty { arg }) => Ok(ast::Expr::is_empty(
                 Arc::unwrap_or_clone(arg).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GetTag { left, right }) => Ok(ast::Expr::get_tag(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::HasTag { left, right }) => Ok(ast::Expr::has_tag(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => Ok(ast::Expr::get_attr(
@@ -989,7 +987,7 @@ impl Expr {
             }) => ast::EntityType::from_normalized_str(entity_type.as_str())
                 .map_err(FromJsonError::InvalidEntityType)
                 .and_then(|entity_type_name| {
-                    let left: ast::Expr = Arc::unwrap_or_clone(left).try_into_ast(id.clone())?;
+                    let left: ast::Expr = Arc::unwrap_or_clone(left).try_into_ast(id)?;
                     let is_expr = ast::Expr::is_entity_type(left.clone(), entity_type_name);
                     match in_expr {
                         // The AST doesn't have an `... is ... in ..` node, so
@@ -1006,14 +1004,14 @@ impl Expr {
                 then_expr,
                 else_expr,
             }) => Ok(ast::Expr::ite(
-                Arc::unwrap_or_clone(cond_expr).try_into_ast(id.clone())?,
-                Arc::unwrap_or_clone(then_expr).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(cond_expr).try_into_ast(id)?,
+                Arc::unwrap_or_clone(then_expr).try_into_ast(id)?,
                 Arc::unwrap_or_clone(else_expr).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Set(elements)) => Ok(ast::Expr::set(
                 elements
                     .into_iter()
-                    .map(|el| el.try_into_ast(id.clone()))
+                    .map(|el| el.try_into_ast(id))
                     .collect::<Result<Vec<_>, FromJsonError>>()?,
             )),
             Expr::ExprNoExt(ExprNoExt::Record(map)) => {
@@ -1021,7 +1019,7 @@ impl Expr {
                 #[allow(clippy::expect_used)]
                 Ok(ast::Expr::record(
                     map.into_iter()
-                        .map(|(k, v)| Ok((k, v.try_into_ast(id.clone())?)))
+                        .map(|(k, v)| Ok((k, v.try_into_ast(id)?)))
                         .collect::<Result<HashMap<SmolStr, _>, FromJsonError>>()?,
                 )
                 .expect("can't have duplicate keys here because the input was already a HashMap"))
@@ -1049,7 +1047,7 @@ impl Expr {
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
                             args.into_iter()
-                                .map(|arg| arg.try_into_ast(id.clone()))
+                                .map(|arg| arg.try_into_ast(id))
                                 .collect::<Result<_, _>>()?,
                         ))
                     }
@@ -1060,82 +1058,6 @@ impl Expr {
             }
             #[cfg(feature = "tolerant-ast")]
             Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ASTErrorNode),
-        }
-    }
-}
-
-// PANIC SAFETY: See comment on `unwrap`
-#[allow(clippy::fallible_impl_from)]
-impl<T: Clone> From<ast::Expr<T>> for Expr {
-    fn from(expr: ast::Expr<T>) -> Expr {
-        match expr.into_expr_kind() {
-            ast::ExprKind::Lit(lit) => lit.into(),
-            ast::ExprKind::Var(var) => var.into(),
-            ast::ExprKind::Slot(slot) => slot.into(),
-            // ast::ExprKind::Unknown(u) => Builder::new().unknown(u),
-            ast::ExprKind::If {
-                test_expr,
-                then_expr,
-                else_expr,
-            } => Builder::new().ite(
-                Arc::unwrap_or_clone(test_expr).into(),
-                Arc::unwrap_or_clone(then_expr).into(),
-                Arc::unwrap_or_clone(else_expr).into(),
-            ),
-            ast::ExprKind::And { left, right } => Builder::new().and(
-                Arc::unwrap_or_clone(left).into(),
-                Arc::unwrap_or_clone(right).into(),
-            ),
-            ast::ExprKind::Or { left, right } => Builder::new().or(
-                Arc::unwrap_or_clone(left).into(),
-                Arc::unwrap_or_clone(right).into(),
-            ),
-            ast::ExprKind::UnaryApp { op, arg } => {
-                let arg = Arc::unwrap_or_clone(arg).into();
-                Builder::new().unary_app(op, arg)
-            }
-            ast::ExprKind::BinaryApp { op, arg1, arg2 } => {
-                let arg1 = Arc::unwrap_or_clone(arg1).into();
-                let arg2 = Arc::unwrap_or_clone(arg2).into();
-                Builder::new().binary_app(op, arg1, arg2)
-            }
-            ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = Arc::unwrap_or_clone(args).into_iter().map(Into::into);
-                Builder::new().call_extension_fn(fn_name, args)
-            }
-            ast::ExprKind::GetAttr { expr, attr } => {
-                Builder::new().get_attr(Arc::unwrap_or_clone(expr).into(), attr)
-            }
-            ast::ExprKind::HasAttr { expr, attr } => {
-                Builder::new().has_attr(Arc::unwrap_or_clone(expr).into(), attr)
-            }
-            ast::ExprKind::Like { expr, pattern } => {
-                Builder::new().like(Arc::unwrap_or_clone(expr).into(), pattern)
-            }
-            ast::ExprKind::Is { expr, entity_type } => {
-                Builder::new().is_entity_type(Arc::unwrap_or_clone(expr).into(), entity_type)
-            }
-            ast::ExprKind::Set(set) => {
-                Builder::new().set(Arc::unwrap_or_clone(set).into_iter().map(Into::into))
-            }
-            // PANIC SAFETY: `map` is a map, so it will not have duplicates keys, so the `record` constructor cannot error.
-            #[allow(clippy::unwrap_used)]
-            ast::ExprKind::Record(map) => Builder::new()
-                .record(
-                    Arc::unwrap_or_clone(map)
-                        .into_iter()
-                        .map(|(k, v)| (k, v.into())),
-                )
-                .unwrap(),
-            #[cfg(feature = "tolerant-ast")]
-            // PANIC SAFETY: error type is Infallible so can never happen
-            #[allow(clippy::unwrap_used)]
-            ast::ExprKind::Error { .. } => Builder::new()
-                .error(ParseErrors::singleton(ToASTError::new(
-                    ToASTErrorKind::ASTErrorNode,
-                    Loc::new(0..1, "AST_ERROR_NODE".into()),
-                )))
-                .unwrap(),
         }
     }
 }
@@ -1198,16 +1120,16 @@ fn display_cedarvaluejson(
         CedarValueJson::EntityEscape { __entity } => {
             match ast::EntityUID::try_from(__entity.clone()) {
                 Ok(euid) => write!(f, "{euid}"),
-                Err(e) => write!(f, "(invalid entity uid: {})", e),
+                Err(e) => write!(f, "(invalid entity uid: {e})"),
             }
         }
         CedarValueJson::ExprEscape { __expr } => write!(f, "({__expr})"),
         CedarValueJson::ExtnEscape {
-            __extn: FnAndArg { ext_fn, arg },
+            __extn: FnAndArgs::Single { ext_fn, arg },
         } => {
             // search for the name and callstyle
             let style = Extensions::all_available().all_funcs().find_map(|f| {
-                if &f.name().to_string() == ext_fn {
+                if &f.name().to_smolstr() == ext_fn {
                     Some(f.style())
                 } else {
                     None
@@ -1222,6 +1144,55 @@ fn display_cedarvaluejson(
                 Some(ast::CallStyle::FunctionStyle) | None => {
                     write!(f, "{ext_fn}(")?;
                     display_cedarvaluejson(f, arg, n)?;
+                    write!(f, ")")?;
+                    Ok(())
+                }
+            }
+        }
+        CedarValueJson::ExtnEscape {
+            __extn: FnAndArgs::Multi { ext_fn, args },
+        } => {
+            // search for the name and callstyle
+            let style = Extensions::all_available().all_funcs().find_map(|f| {
+                if &f.name().to_smolstr() == ext_fn {
+                    Some(f.style())
+                } else {
+                    None
+                }
+            });
+            match style {
+                Some(ast::CallStyle::MethodStyle) => {
+                    // PANIC SAFETY: method-style calls must have more than one argument
+                    #[allow(clippy::indexing_slicing)]
+                    display_cedarvaluejson(f, &args[0], n)?;
+                    write!(f, ".{ext_fn}(")?;
+                    // PANIC SAFETY: method-style calls must have more than one argument
+                    #[allow(clippy::indexing_slicing)]
+                    match &args[1..] {
+                        [] => {}
+                        [args @ .., last] => {
+                            for arg in args {
+                                display_cedarvaluejson(f, arg, n)?;
+                                write!(f, ", ")?;
+                            }
+                            display_cedarvaluejson(f, last, n)?;
+                        }
+                    }
+                    write!(f, ")")?;
+                    Ok(())
+                }
+                Some(ast::CallStyle::FunctionStyle) | None => {
+                    write!(f, "{ext_fn}(")?;
+                    match &args[..] {
+                        [] => {}
+                        [args @ .., last] => {
+                            for arg in args {
+                                display_cedarvaluejson(f, arg, n)?;
+                                write!(f, ", ")?;
+                            }
+                            display_cedarvaluejson(f, last, n)?;
+                        }
+                    }
                     write!(f, ")")?;
                     Ok(())
                 }
@@ -1517,7 +1488,7 @@ impl BoundedDisplay for ExtFuncCall {
         };
         // search for the name and callstyle
         let style = Extensions::all_available().all_funcs().find_map(|ext_fn| {
-            if &ext_fn.name().to_string() == fn_name {
+            if &ext_fn.name().to_smolstr() == fn_name {
                 Some(ext_fn.style())
             } else {
                 None
@@ -1629,7 +1600,9 @@ mod test {
 
     #[test]
     fn display_and_bounded_display() {
-        let expr = Expr::from(parse_expr(r#"[100, [3, 4, 5], -20, "foo"]"#).unwrap());
+        let expr = parse_expr(r#"[100, [3, 4, 5], -20, "foo"]"#)
+            .unwrap()
+            .into_expr::<Builder>();
         assert_eq!(format!("{expr}"), r#"[100, [3, 4, 5], (-20), "foo"]"#);
         assert_eq!(
             BoundedToString::to_string(&expr, None),
@@ -1650,17 +1623,16 @@ mod test {
         assert_eq!(BoundedToString::to_string(&expr, Some(1)), r#"[100, ..]"#);
         assert_eq!(BoundedToString::to_string(&expr, Some(0)), r#"[..]"#);
 
-        let expr = Expr::from(
-            parse_expr(
-                r#"{
+        let expr = parse_expr(
+            r#"{
             a: 12,
             b: [3, 4, true],
             c: -20,
             "hello ∞ world": "∂µß≈¥"
         }"#,
-            )
-            .unwrap(),
-        );
+        )
+        .unwrap()
+        .into_expr::<Builder>();
         assert_eq!(
             format!("{expr}"),
             r#"{"a": 12, "b": [3, 4, true], "c": (-20), "hello ∞ world": "∂µß≈¥"}"#

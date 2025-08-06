@@ -29,7 +29,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::Loc;
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use crate::spec::*;
 #[allow(unused_imports)]
 use crate::verus_utils::*;
@@ -57,7 +57,7 @@ pub struct InternalName {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
-    pub(crate) loc: Option<Loc>,
+    pub(crate) loc: MaybeLoc,
 }
 
 impl View for InternalName {
@@ -95,7 +95,7 @@ impl TryFrom<InternalName> for Id {
 
 impl InternalName {
     /// A full constructor for [`InternalName`]
-    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>, loc: Option<Loc>) -> Self {
+    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>, loc: MaybeLoc) -> Self {
         Self {
             id: basename,
             path: Arc::new(path.into_iter().collect()),
@@ -104,7 +104,7 @@ impl InternalName {
     }
 
     /// Create an [`InternalName`] with no path (no namespaces).
-    pub fn unqualified_name(id: Id, loc: Option<Loc>) -> Self {
+    pub fn unqualified_name(id: Id, loc: MaybeLoc) -> Self {
         Self {
             id,
             path: Arc::new(vec![]),
@@ -130,11 +130,7 @@ impl InternalName {
 
     /// Given a type basename and a namespace (as an [`InternalName`] itself),
     /// return an [`InternalName`] representing the type's fully qualified name
-    pub fn type_in_namespace(
-        basename: Id,
-        namespace: InternalName,
-        loc: Option<Loc>,
-    ) -> InternalName {
+    pub fn type_in_namespace(basename: Id, namespace: InternalName, loc: MaybeLoc) -> InternalName {
         let mut path = Arc::unwrap_or_clone(namespace.path);
         path.push(namespace.id);
         InternalName::new(basename, path, loc)
@@ -142,7 +138,7 @@ impl InternalName {
 
     /// Get the source location
     pub fn loc(&self) -> Option<&Loc> {
-        self.loc.as_ref()
+        self.loc.as_loc_ref()
     }
 
     /// Get the basename of the [`InternalName`] (ie, with namespaces stripped).
@@ -225,7 +221,7 @@ impl InternalName {
 impl std::fmt::Display for InternalName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for elem in self.path.as_ref() {
-            write!(f, "{}::", elem)?;
+            write!(f, "{elem}::")?;
         }
         write!(f, "{}", self.id)?;
         Ok(())
@@ -447,7 +443,7 @@ pub struct Slot {
     /// Source location, if available
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
-    pub loc: Option<Loc>,
+    pub loc: MaybeLoc,
 }
 
 }
@@ -556,7 +552,7 @@ impl FromNormalizedStr for Name {
             Ok(Self(InternalName::new(
                 Id::new_unchecked(*last),
                 prefix.iter().map(|part| Id::new_unchecked(*part)),
-                Some(Loc::new(0..(s.len()), s.into())),
+                Loc::new(0..(s.len()), s.into()).into_maybe_loc(),
             )))
         } else {
             Err(Self::parse_err_from_str(s))
@@ -655,7 +651,7 @@ impl Name {
                         src: s.to_string(),
                         normalized_src,
                     },
-                    Loc::new(diff_byte, s.into()),
+                    Loc::new(diff_byte, s.into()).into_maybe_loc(),
                 )))
             }
         }
@@ -678,13 +674,10 @@ impl From<ReservedNameError> for ParseError {
     fn from(value: ReservedNameError) -> Self {
         ParseError::ToAST(ToASTError::new(
             value.clone().into(),
-            match &value.0.loc {
-                Some(loc) => loc.clone(),
-                None => {
-                    let name_str = value.0.to_string();
-                    Loc::new(0..(name_str.len()), name_str.into())
-                }
-            },
+            value.0.loc.clone().or_else(|| {
+                let name_str = value.0.to_string();
+                Box::new(Loc::new(0..(name_str.len()), name_str.into())).into_maybe_loc()
+            }),
         ))
     }
 }

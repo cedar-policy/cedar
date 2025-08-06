@@ -31,11 +31,11 @@ use crate::ast::EntityUID;
 use crate::ast::{self, Annotation};
 use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
 use crate::expr_builder::ExprBuilder;
-use crate::parser::cst;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
 #[cfg(feature = "tolerant-ast")]
 use crate::parser::Loc;
+use crate::parser::{cst, IntoMaybeLoc};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::{BTreeMap, HashMap};
@@ -172,7 +172,7 @@ impl TryFrom<cst::Policy> for Policy {
                 return Err(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::CSTErrorNode,
                     // Since we don't have a loc when doing this transformation, we create an arbitrary one
-                    Loc::new(0..1, "CSTErrorNode".into()),
+                    Loc::new(0..1, "CSTErrorNode".into()).into_maybe_loc(),
                 )));
             }
         };
@@ -181,7 +181,7 @@ impl TryFrom<cst::Policy> for Policy {
         let maybe_annotations = policy.get_ast_annotations(|v, l| {
             Some(Annotation {
                 val: v?,
-                loc: Some(l.clone()),
+                loc: l.into_maybe_loc(),
             })
         });
         let maybe_conditions = ParseErrors::transpose(policy.conds.into_iter().map(|node| {
@@ -283,7 +283,7 @@ impl Policy {
         let mut conditions_iter = self
             .conditions
             .into_iter()
-            .map(|cond| cond.try_into_ast(id.clone()));
+            .map(|cond| cond.try_into_ast(&id));
         let conditions = match conditions_iter.next() {
             None => ast::Expr::val(true),
             Some(first) => ast::ExprBuilder::with_data(())
@@ -325,7 +325,7 @@ impl Clause {
         }
     }
     /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
-    fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+    fn try_into_ast(self, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
         match self {
             Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id)?, true),
             Clause::Unless(expr) => {
@@ -379,7 +379,7 @@ impl From<ast::Template> for Policy {
 
 impl<T: Clone> From<ast::Expr<T>> for Clause {
     fn from(expr: ast::Expr<T>) -> Clause {
-        Clause::When(expr.into())
+        Clause::When(expr.into_expr::<Builder>())
     }
 }
 
@@ -3311,6 +3311,152 @@ mod test {
             }
         );
         let linked_json = serde_json::to_value(linked).unwrap();
+        assert_eq!(
+            linked_json,
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&linked_json).unwrap(),
+        );
+    }
+
+    #[test]
+    fn ast_to_est_with_linked_template_using_is_in_operator_1() {
+        let template = r#"
+            permit(
+                principal is XYZCorp::User in ?principal,
+                action == Action::"view",
+                resource in ?resource
+            ) when {
+                principal in resource.owners
+            };
+        "#;
+
+        let cst = parser::text_to_cst::parse_policy(template).unwrap();
+        let ast: ast::Template = cst
+            .to_policy_template(ast::PolicyID::from_string("test"))
+            .unwrap();
+
+        let policy = ast::Template::link(
+            std::sync::Arc::new(ast),
+            ast::PolicyID::from_string("test"),
+            HashMap::from_iter([
+                (
+                    ast::SlotId::principal(),
+                    r#"XYZCorp::User::"12UA45""#.parse().unwrap(),
+                ),
+                (ast::SlotId::resource(), r#"Folder::"abc""#.parse().unwrap()),
+            ]),
+        )
+        .unwrap();
+
+        let est: Policy = policy.into();
+
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "is",
+                        "entity_type": "XYZCorp::User",
+                        "in": { "entity": { "type": "XYZCorp::User", "id": "12UA45" } },
+                },
+                "action": {
+                    "op": "==",
+                    "entity": { "type": "Action", "id": "view" },
+                },
+                "resource": {
+                    "op": "in",
+                    "entity": { "type": "Folder", "id": "abc" },
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "in": {
+                                "left": {
+                                    "Var": "principal"
+                                },
+                                "right": {
+                                    ".": {
+                                        "left": {
+                                            "Var": "resource"
+                                        },
+                                        "attr": "owners"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
+            }
+        );
+        let linked_json = serde_json::to_value(est).unwrap();
+        assert_eq!(
+            linked_json,
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&linked_json).unwrap(),
+        );
+    }
+
+    #[test]
+    fn ast_to_est_with_linked_template_using_is_in_operator_2() {
+        let template = r#"
+            permit(
+                principal is User in ?principal,
+                action,
+                resource is Doc in ?resource
+            );
+        "#;
+
+        let cst = parser::text_to_cst::parse_policy(template).unwrap();
+        let ast: ast::Template = cst
+            .to_policy_template(ast::PolicyID::from_string("test"))
+            .unwrap();
+
+        let policy = ast::Template::link(
+            std::sync::Arc::new(ast),
+            ast::PolicyID::from_string("test"),
+            HashMap::from_iter([
+                (
+                    ast::SlotId::principal(),
+                    r#"User::"alice""#.parse().unwrap(),
+                ),
+                (ast::SlotId::resource(), r#"Doc::"abc""#.parse().unwrap()),
+            ]),
+        )
+        .unwrap();
+
+        let est: Policy = policy.into();
+
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "is",
+                    "entity_type": "User",
+                    "in": { "entity": { "type": "User", "id": "alice" } }
+                },
+                "action": {
+                    "op": "All"
+                },
+                "resource": {
+                    "op": "is",
+                    "entity_type": "Doc",
+                    "in": { "entity": { "type": "Doc", "id": "abc" } }
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "Value": true
+                        }
+                    }
+                ],
+            }
+        );
+        let linked_json = serde_json::to_value(est).unwrap();
         assert_eq!(
             linked_json,
             expected_json,

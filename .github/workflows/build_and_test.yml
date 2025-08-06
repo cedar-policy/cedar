@@ -29,6 +29,18 @@ jobs:
       RUSTFLAGS: '-D warnings -F unsafe-code'
 
     steps:
+      - name: Check initialize disk space
+        shell: bash
+        run: df -h
+      # Based on https://github.com/easimon/maximize-build-space
+      - name: Free disk space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+      - name: Check final disk space
+        shell: bash
+        run: df -h
       - name: Set environment variables for coverage collection
         if: ${{ inputs.collect_coverage }} && ${{ matrix.toolchain }} == 'stable'
         shell: bash
@@ -37,7 +49,7 @@ jobs:
           echo "LLVM_PROFILE_FILE=cedar_%m_%p.profraw" >> $GITHUB_ENV
 
       - uses: actions/checkout@v4
-      - run: sudo apt-get install protobuf-compiler
+      - run: sudo apt-get update && sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo install cargo-audit --locked
       - run: ./panic_safety.sh
@@ -70,7 +82,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get install protobuf-compiler
+      - run: sudo apt-get update && sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       # Clippy is configured by `.cargo/config.toml` to deny on lints like
       # `unwrap_used`. They aren't detected by `panic_safety.sh` which only
@@ -96,7 +108,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v1
+      - uses: EmbarkStudios/cargo-deny-action@v2
 
   # See https://doc.rust-lang.org/cargo/guide/continuous-integration.html#verifying-rust-version
   msrv:
@@ -104,7 +116,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: taiki-e/install-action@cargo-hack
-    - run: sudo apt-get install protobuf-compiler
+    - run: sudo apt-get update && sudo apt-get install protobuf-compiler
     - run: cargo hack check --rust-version --workspace --all-targets --ignore-private --all-features
 
   wasm-build:

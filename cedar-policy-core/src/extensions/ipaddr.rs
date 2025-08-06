@@ -22,6 +22,7 @@ use crate::ast::{
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
+use crate::parser::IntoMaybeLoc;
 use std::sync::Arc;
 
 // PANIC SAFETY All the names are valid names
@@ -176,7 +177,7 @@ impl std::str::FromStr for IPAddr {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Return Err if the input is too long
-        if s.bytes().len() > IP_STR_REP_MAX_LEN as usize {
+        if s.len() > IP_STR_REP_MAX_LEN as usize {
             return Err(format!(
                 "error parsing IP address from string `{s}`: string length is too large"
             ));
@@ -307,7 +308,7 @@ fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
 /// Cedar string
 fn ip_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
-    let arg_source_loc = arg.source_loc().cloned();
+    let arg_source_loc = arg.source_loc().into_maybe_loc();
     let ipaddr = RepresentableExtensionValue::new(
         Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
         names::IP_FROM_STR_NAME.clone(),
@@ -484,37 +485,37 @@ mod tests {
         assert!(ext
             .get_func(&Name::parse_unqualified_name("ip").expect("should be a valid identifier"))
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isInRange").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),);
+            .is_single_arg_constructor(),);
     }
 
     #[test]

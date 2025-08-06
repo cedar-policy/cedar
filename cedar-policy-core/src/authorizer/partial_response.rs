@@ -25,7 +25,7 @@ use super::{
     Annotations, AuthorizationError, Decision, Effect, EntityUIDEntry, Expr, Policy, Request,
     Response,
 };
-use crate::{ast::PolicyID, evaluator::EvaluationError};
+use crate::{ast::PolicyID, evaluator::EvaluationError, parser::IntoMaybeLoc};
 
 #[cfg(feature = "partial-eval")]
 use smol_str::SmolStr;
@@ -392,7 +392,7 @@ impl PartialResponse {
                         effect,
                         expr.clone(),
                         id.clone(),
-                        expr.source_loc().cloned(),
+                        expr.source_loc().into_maybe_loc(),
                         annotations.clone(),
                     )
                 }),
@@ -531,7 +531,7 @@ fn construct_policy((effect, id, expr, annotations): PolicyComponents<'_>) -> Po
         effect,
         expr.clone(),
         id.clone(),
-        expr.source_loc().cloned(),
+        expr.source_loc().into_maybe_loc(),
         (*annotations).clone(),
     )
 }

@@ -787,6 +787,49 @@ mod policy_set_tests {
         );
     }
 
+    #[test]
+    fn policyset_fmt_static() {
+        const STATIC_POLICY_TEXT: &str = "permit(principal,action,resource);";
+        let mut pset = PolicySet::new();
+        let policy0 = Policy::parse(Some(PolicyId::new("policy0")), STATIC_POLICY_TEXT)
+            .expect("Failed to parse");
+        let policy1 = Policy::parse(Some(PolicyId::new("policy1")), STATIC_POLICY_TEXT)
+            .expect("Failed to parse");
+        pset.add(policy0).unwrap();
+        pset.add(policy1).unwrap();
+        let policy_fmt = format!("{pset}");
+        let mut expected_fmt = String::from(STATIC_POLICY_TEXT);
+        expected_fmt.push('\n');
+        expected_fmt.push_str(STATIC_POLICY_TEXT);
+        assert_eq!(expected_fmt, policy_fmt);
+    }
+
+    #[test]
+    fn policyset_fmt_template() {
+        const TEMPLATE_TEXT: &str = "permit(principal == ?principal,action,resource);";
+        const LINKED_POLICY_TEXT: &str = "permit(principal == Test::\"test\", action, resource);";
+        let mut pset = PolicySet::new();
+        let template0 = Template::parse(Some(PolicyId::new("template0")), TEMPLATE_TEXT)
+            .expect("Failed to parse");
+        let template1 = Template::parse(Some(PolicyId::new("template1")), TEMPLATE_TEXT)
+            .expect("Failed to parse");
+        pset.add_template(template0).unwrap();
+        pset.add_template(template1).unwrap();
+        let env0: HashMap<SlotId, EntityUid> =
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("template0"), PolicyId::new("linked0"), env0)
+            .expect("Failed to link");
+        let env1: HashMap<SlotId, EntityUid> =
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("template1"), PolicyId::new("linked1"), env1)
+            .expect("Failed to link");
+        let policy_fmt = format!("{pset}");
+        let mut expected_fmt = String::from(LINKED_POLICY_TEXT);
+        expected_fmt.push('\n');
+        expected_fmt.push_str(LINKED_POLICY_TEXT);
+        assert_eq!(expected_fmt, policy_fmt);
+    }
+
     #[cfg(feature = "partial-eval")]
     #[test]
     fn unknown_entities() {
@@ -1403,6 +1446,7 @@ mod ancestors_tests {
 /// schema-based parsing.
 mod entity_validate_tests {
     use super::*;
+    use cedar_policy_core::entities::conformance::err::EntitySchemaConformanceError;
     use cool_asserts::assert_matches;
     use entities::err::EntitiesError;
     use serde_json::json;
@@ -1819,6 +1863,31 @@ mod entity_validate_tests {
         );
     }
 
+    #[test]
+    fn from_entities_action_with_unexpected_tags() {
+        let (schema, _) = Schema::from_cedarschema_str("action Act;").unwrap();
+        let entity = Entity::new_with_tags(
+            EntityUid::from_str(r#"Action::"Act""#).unwrap(),
+            [],
+            [],
+            [("foo".into(), RestrictedExpression::new_bool(false))],
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"definition of action `Action::"Act"` does not match its schema declaration"#)
+                        .help(r#"to use the schema's definition of `Action::"Act"`, simply omit it from the entities input data"#)
+                        .build()
+                );
+            }
+        );
+    }
+
     /// Record inside entity doesn't conform to schema
     #[test]
     #[cfg(feature = "partial-validate")]
@@ -2189,6 +2258,76 @@ action "g" appliesTo {
         "#;
         assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
     }
+
+    #[test]
+    fn from_entities_tags() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E tags String;
+            action a appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity = Entity::new_with_tags(
+            r#"E::"""#.parse().unwrap(),
+            std::iter::empty(),
+            std::iter::empty(),
+            std::iter::once((
+                String::new(),
+                RestrictedExpression::new_string(String::new()),
+            )),
+        )
+        .unwrap();
+        assert_matches!(Entities::from_entities([entity], Some(&schema)), Ok(_));
+        let entity = Entity::new_with_tags(
+            r#"E::"""#.parse().unwrap(),
+            std::iter::empty(),
+            std::iter::empty(),
+            std::iter::once((String::new(), RestrictedExpression::new_long(42))),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(EntitiesError::InvalidEntity(
+                EntitySchemaConformanceError::TypeMismatch(_)
+            ))
+        );
+
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E;
+            action a appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity = Entity::new_with_tags(
+            r#"E::"""#.parse().unwrap(),
+            std::iter::empty(),
+            std::iter::empty(),
+            std::iter::empty(),
+        )
+        .unwrap();
+        assert_matches!(Entities::from_entities([entity], Some(&schema)), Ok(_),);
+        let entity = Entity::new_with_tags(
+            r#"E::"""#.parse().unwrap(),
+            std::iter::empty(),
+            std::iter::empty(),
+            std::iter::once((String::new(), RestrictedExpression::new_long(42))),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(EntitiesError::InvalidEntity(
+                EntitySchemaConformanceError::UnexpectedEntityTag(_)
+            ))
+        );
+    }
 }
 
 /// The main unit tests for schema-based parsing live here, as they require both
@@ -2197,6 +2336,7 @@ action "g" appliesTo {
 /// (Core has similar tests, but using a stubbed implementation of Schema.)
 mod schema_based_parsing_tests {
     use super::*;
+    use cedar_policy_core::entities::json::err::JsonDeserializationError;
     use cedar_policy_core::extensions::Extensions;
     use entities::conformance::err::EntitySchemaConformanceError;
     use entities::err::EntitiesError;
@@ -2224,7 +2364,7 @@ mod schema_based_parsing_tests {
     #[test]
     fn additional_json_attributes() {
         let (schema, _) = Schema::from_cedarschema_str(
-            r#"
+            r"
         entity A {
           d? : decimal,
           e? : B,
@@ -2235,7 +2375,7 @@ mod schema_based_parsing_tests {
           principal: A,
           resource: A,
         };
-        "#,
+        ",
         )
         .unwrap();
 
@@ -2437,6 +2577,210 @@ mod schema_based_parsing_tests {
                 None
             ),
             Err(EntitiesError::Deserialization(_))
+        );
+    }
+
+    #[test]
+    fn multiple_extension_arguments() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r"
+        entity E {
+            d: datetime,
+        };
+        ",
+        )
+        .unwrap();
+        // recommended way
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "fn": "offset",
+                            "args": [
+                                {"fn": "datetime", "arg": "2025-07-14"},
+                                {"fn": "duration", "arg": "0h"}],
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Ok(e) => {
+                assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+            }
+        );
+
+        // too many argments
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "fn": "offset",
+                            "args": [
+                                {"fn": "datetime", "arg": "2025-07-14"},
+                                {"fn": "duration", "arg": "0h"},
+                                {"fn": "duration", "arg": "0h"}
+                            ],
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Err(EntitiesError::Deserialization(
+                JsonDeserializationError::IncorrectNumOfArguments(_)
+            ))
+        );
+
+        // too few argments
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "fn": "offset",
+                            "args": [
+                                {"fn": "datetime", "arg": "2025-07-14"},
+                            ],
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Err(EntitiesError::Deserialization(
+                JsonDeserializationError::IncorrectNumOfArguments(_)
+            ))
+        );
+
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "fn": "offset",
+                            "arg":
+                                {"fn": "datetime", "arg": "2025-07-14"},
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Err(EntitiesError::Deserialization(
+                JsonDeserializationError::IncorrectNumOfArguments(_)
+            ))
+        );
+
+        // easiest way
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "fn": "offset",
+                            "args": [
+                                "2025-07-14",
+                               "0h"],
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Ok(e) => {
+                assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+            }
+        );
+
+        // hardest way
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "__extn": {
+                                "fn": "offset",
+                                "args": [
+                                {"__extn": {"fn": "datetime", "arg":"2025-07-14"}},
+                               {"__extn": {"fn": "duration", "arg":"0h"}},],
+                            }
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Ok(e) => {
+                assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+            }
+        );
+
+        // in-betweens
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "__extn": {
+                                "fn": "offset",
+                                "args": [
+                                {"fn": "datetime", "arg":"2025-07-14"},
+                               "0h"],
+                            }
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Ok(e) => {
+                assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+            }
+        );
+
+        // Arbitrarily deep
+        assert_matches!(
+            Entity::from_json_value(
+                json!({
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "d": {
+                            "__extn": {
+                                "fn": "offset",
+                                "args": [
+                                    {"fn": "offset",
+                                    "args": [
+                                        "2025-07-14",
+                                        {"fn": "toTime", "arg": "2025-01-01"}]},
+                                    "0h"],
+                            }
+                        }
+                    },
+                    "parents": [],
+                }
+                ),
+                Some(&schema)
+            ),
+            Ok(e) => {
+                assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+            }
         );
     }
 
@@ -4056,7 +4400,7 @@ mod schema_based_parsing_tests {
         ));
 
         // Parsing will fail if we change the TC setting
-        let schema = cedar_policy_validator::CoreSchema::new(&schema.0);
+        let schema = cedar_policy_core::validator::CoreSchema::new(&schema.0);
         let parser_assume_computed = entities::EntityJsonParser::new(
             Some(&schema),
             Extensions::all_available(),
@@ -5333,8 +5677,12 @@ mod decimal_ip_constructors {
                 assert_eq!(fn_name, &("ip".parse().unwrap()));
                 assert_eq!(args.as_ref().len(), 1);
                 let arg = args.first().unwrap();
-                assert_matches!(arg.expr_kind(),
-                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "10.10.10.10");
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "10.10.10.10");
+                    },
+                );
             }
         );
     }
@@ -5347,8 +5695,12 @@ mod decimal_ip_constructors {
                 assert_eq!(fn_name, &("decimal".parse().unwrap()));
                 assert_eq!(args.as_ref().len(), 1);
                 let arg = args.first().unwrap();
-                assert_matches!(arg.expr_kind(),
-                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "1234.1234");
+                    },
+                );
             }
         );
     }
@@ -5361,8 +5713,12 @@ mod decimal_ip_constructors {
                 assert_eq!(fn_name, &("decimal".parse().unwrap()));
                 assert_eq!(args.as_ref().len(), 1);
                 let arg = args.first().unwrap();
-                assert_matches!(arg.expr_kind(),
-                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "1234.1234");
+                    },
+                );
             }
         );
     }
@@ -5370,8 +5726,12 @@ mod decimal_ip_constructors {
     #[test]
     fn valid_decimal() {
         let decimal = Expression::new_decimal("1234.1234");
-        assert_matches!(evaluate_empty(&decimal),
-         Ok(EvalResult::ExtensionValue(s)) => s == "1234.1234");
+        assert_matches!(
+            evaluate_empty(&decimal),
+            Ok(EvalResult::ExtensionValue(s)) => {
+                assert_eq!(s, r#"decimal("1234.1234")"#);
+            },
+        );
     }
 
     #[test]
@@ -5380,6 +5740,120 @@ mod decimal_ip_constructors {
         assert_matches!(evaluate_empty(&decimal),
             Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
                 assert_eq!(e.extension_name(), "decimal");
+            }
+        );
+    }
+
+    #[test]
+    fn expr_datetime_constructor() {
+        let datetime = Expression::new_datetime("2025-05-14T17:18:00.000Z");
+        assert_matches!(datetime.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("datetime".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "2025-05-14T17:18:00.000Z");
+                    },
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn rexpr_datetime_constructor() {
+        let datetime = RestrictedExpression::new_datetime("2025-05-14T17:18:00.000Z");
+        assert_matches!(datetime.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("datetime".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "2025-05-14T17:18:00.000Z");
+                    },
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn valid_datetime() {
+        let datetime = Expression::new_datetime("2025-05-14T17:18:00.000Z");
+        assert_matches!(
+            evaluate_empty(&datetime),
+            Ok(EvalResult::ExtensionValue(s)) => {
+                assert_eq!(s, r#"datetime("2025-05-14T17:18:00.000Z")"#);
+            },
+        );
+    }
+
+    #[test]
+    fn invalid_datetime() {
+        let datetime = Expression::new_datetime("1/1/70");
+        assert_matches!(evaluate_empty(&datetime),
+            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+                assert_eq!(e.extension_name(), "datetime");
+            }
+        );
+    }
+
+    #[test]
+    fn expr_duration_constructor() {
+        let duration = Expression::new_duration("1d");
+        assert_matches!(duration.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("duration".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "1d");
+                    },
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn rexpr_duration_constructor() {
+        let duration = RestrictedExpression::new_duration("2025-05-14T17:18:00.000Z");
+        assert_matches!(duration.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("duration".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "2025-05-14T17:18:00.000Z");
+                    },
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn valid_duration() {
+        let duration = Expression::new_duration("1d");
+        assert_matches!(
+            evaluate_empty(&duration),
+            Ok(EvalResult::ExtensionValue(s)) => {
+                assert_eq!(s, r#"duration("1d")"#);
+            },
+        );
+    }
+
+    #[test]
+    fn invalid_duration() {
+        let duration = Expression::new_duration("twenty-four hours");
+        assert_matches!(evaluate_empty(&duration),
+            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+                assert_eq!(e.extension_name(), "duration");
             }
         );
     }
@@ -5668,7 +6142,7 @@ mod policy_set_est_tests {
             .is_err()
         {
             panic!("Should have exactly one");
-        };
+        }
     }
 
     #[test]
@@ -7075,12 +7549,12 @@ mod version_tests {
 
     #[test]
     fn test_sdk_version() {
-        assert_eq!(get_sdk_version().to_string(), "4.4.0");
+        assert_eq!(get_sdk_version().to_string(), "4.5.1");
     }
 
     #[test]
     fn test_lang_version() {
-        assert_eq!(get_lang_version().to_string(), "4.3.0");
+        assert_eq!(get_lang_version().to_string(), "4.4.0");
     }
 }
 
@@ -7790,5 +8264,1005 @@ mod test_entities_api {
         entities = entities.upsert_entities(vec![e1_updated], None).unwrap();
         assert_eq!(entities.len(), 2);
         assert!(entities.is_ancestor_of(&e2_uid, &e1_uid));
+    }
+}
+
+#[cfg(feature = "raw-parsing")]
+mod raw_parsing {
+    use crate::{Policy, PolicyId, PolicySet, Template};
+
+    #[test]
+    fn policyset_raw_parsing() {
+        const PSET_TEXT: &str = r#"
+            forbid(principal,action,resource)
+            when{ context has suspicion };
+
+            permit(
+                principal == Account::"jane",
+                action,
+                resource == Album::"jane_vacation"
+            );
+        "#;
+        let pset = PolicySet::parse_raw(PSET_TEXT).unwrap();
+        assert_eq!(pset.num_of_policies(), 2);
+    }
+
+    #[test]
+    fn policy_raw_parsing() {
+        const STATIC_POLICY_TEXT: &str = "permit(principal,action,resource);";
+        Policy::parse_raw(Some(PolicyId::new("policy0")), STATIC_POLICY_TEXT)
+            .expect("Failed to parse");
+    }
+
+    #[test]
+    fn template_raw_parsing() {
+        const TEMPLATE_TEXT: &str = "permit(principal == ?principal,action,resource);";
+        Template::parse_raw(Some(PolicyId::new("template0")), TEMPLATE_TEXT)
+            .expect("Failed to parse");
+    }
+}
+
+#[cfg(feature = "tpe")]
+mod tpe_tests {
+    mod streaming_service {
+        use std::str::FromStr;
+
+        use cedar_policy_core::authorizer::Decision;
+        use cool_asserts::assert_matches;
+        use itertools::Itertools;
+
+        use crate::{
+            Context, Entities, EntityId, EntityUid, PartialEntities, PartialEntityUid,
+            PartialRequest, PolicySet, PrincipalQueryRequest, Request, ResourceQueryRequest,
+            RestrictedExpression, Schema,
+        };
+
+        #[track_caller]
+        fn schema() -> Schema {
+            Schema::from_cedarschema_str(
+                r#"
+            // Types
+type Subscription = {
+  tier: String
+};
+type Profile = {
+  isKid: Bool
+};
+
+// Entities
+entity FreeMember;
+entity Subscriber = {
+  subscription: Subscription,
+  profile: Profile
+};
+entity Movie = {
+  isFree: Bool,
+  needsRentOrBuy: Bool,
+  isOscarNominated: Bool
+};
+entity Show = {
+  isFree: Bool,
+  releaseDate: datetime,
+  isEarlyAccess: Bool
+};
+
+// Actions for content in general
+action watch
+  appliesTo {
+    principal: [FreeMember, Subscriber],
+    resource: [Movie, Show],
+    context: {
+      now: {
+        datetime: datetime,
+        localTimeOffset: duration
+      }
+    }
+  };
+
+// Actions for movies only
+action rent, buy
+  appliesTo {
+    principal: [FreeMember, Subscriber],
+    resource: Movie,
+    context: {
+      now: {
+        datetime: datetime
+      }
+    }
+  };
+            "#,
+            )
+            .unwrap()
+            .0
+        }
+
+        #[track_caller]
+        fn policy_set() -> PolicySet {
+            PolicySet::from_str(
+                r#"
+            // Subscriber Content Access (Shows)
+@id("subscriber-content-access/show")
+permit (
+  principal is Subscriber,
+  action == Action::"watch",
+  resource is Show
+)
+unless
+{ resource.isEarlyAccess && context.now.datetime < resource.releaseDate };
+
+// Subscriber Content Access (Movies)
+@id("subscriber-content-access/movie")
+permit (
+  principal is Subscriber,
+  action == Action::"watch",
+  resource is Movie
+)
+unless { resource.needsRentOrBuy };
+
+// Free Content Access
+@id("free-content-access")
+permit (
+  principal is FreeMember,
+  action == Action::"watch",
+  resource
+)
+when { resource.isFree };
+
+// Promo: Rent/Buy Oscar-Nominated Movies Until the Oscars
+@id("rent-buy-oscar-movie")
+permit (
+  principal is Subscriber,
+  action in [Action::"rent", Action::"buy"],
+  resource is Movie
+)
+when
+{
+  resource.isOscarNominated &&
+  context.now.datetime >= datetime("2025-02-02T19:00:00-0500") &&
+  context.now.datetime < datetime(
+      "2025-03-02T19:00:00-0500"
+    ) // Oscars Night
+};
+
+// Early Access (24h) to Shows for Premium Subscribers
+@id("early-access-show")
+permit (
+  principal is Subscriber,
+  action == Action::"watch",
+  resource is Show
+)
+when
+{
+  resource.isEarlyAccess &&
+  principal.subscription.tier == "premium" &&
+  context.now.datetime >= resource.releaseDate.offset(duration("-24h"))
+};
+
+// Forbid Bedtime Access to Kid Profile
+@id("forbid-bedtime-watch-kid-profile")
+forbid (
+  principal is Subscriber,
+  action == Action::"watch",
+  resource
+)
+when { principal.profile.isKid }
+unless
+{
+  // `toTime()` returns the duration modulo one day (i.e., it ignores the "date"
+  // component). Here, we use it to calculate the subscriber's local time and
+  // compare the result against durations that represent 6:00AM and 9:00PM.
+  duration("6h") <= context.now
+    .datetime
+    .offset
+    (
+      context.now.localTimeOffset
+    )
+    .toTime
+    (
+    ) &&
+  context.now.datetime.offset(context.now.localTimeOffset).toTime() <= duration(
+      "21h"
+    )
+};
+            "#,
+            )
+            .unwrap()
+        }
+
+        #[track_caller]
+        fn entities() -> Entities {
+            Entities::from_json_value(
+                serde_json::json!(
+                                [
+                    {
+                        "uid": {
+                            "type": "Subscriber",
+                            "id": "Alice"
+                        },
+                        "attrs": {
+                            "subscription" : {
+                                "tier": "standard"
+                            },
+                            "profile" : {
+                                "isKid": false
+                            }
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "FreeMember",
+                            "id": "Bob"
+                        },
+                        "attrs": {},
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Subscriber",
+                            "id": "Charlie"
+                        },
+                        "attrs": {
+                            "subscription" : {
+                                "tier": "premium"
+                            },
+                            "profile" : {
+                                "isKid": false
+                            }
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Subscriber",
+                            "id": "Dave"
+                        },
+                        "attrs": {
+                            "subscription" : {
+                                "tier": "standard"
+                            },
+                            "profile" : {
+                                "isKid": true
+                            }
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Movie",
+                            "id": "The Godparent"
+                        },
+                        "attrs": {
+                            "isFree" : true,
+                            "needsRentOrBuy" : false,
+                            "isOscarNominated": true
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Movie",
+                            "id": "The Gleaming"
+                        },
+                        "attrs": {
+                            "isFree" : false,
+                            "needsRentOrBuy" : false,
+                            "isOscarNominated": false
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Movie",
+                            "id": "Devilish"
+                        },
+                        "attrs": {
+                            "isFree" : false,
+                            "needsRentOrBuy" : true,
+                            "isOscarNominated": true
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Show",
+                            "id": "Buddies"
+                        },
+                        "attrs": {
+                            "isFree" : false,
+                            "releaseDate": "2024-10-10",
+                            "isEarlyAccess": false
+                        },
+                        "parents": []
+                    },
+                    {
+                        "uid": {
+                            "type": "Show",
+                            "id": "Breach"
+                        },
+                        "attrs": {
+                            "isFree" : false,
+                            "releaseDate": "2025-02-21",
+                            "isEarlyAccess": true
+                        },
+                        "parents": []
+                    }
+                ]
+                            ),
+                Some(&schema()),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn run_tpe() {
+            let schema = schema();
+            let request = PartialRequest::new(
+                PartialEntityUid::new(
+                    r#"Subscriber"#.parse().unwrap(),
+                    Some(EntityId::new("Alice")),
+                ),
+                r#"Action::"watch""#.parse().unwrap(),
+                PartialEntityUid::new(r#"Movie"#.parse().unwrap(), None),
+                Some(
+                    Context::from_pairs([(
+                        "now".into(),
+                        RestrictedExpression::new_record([
+                            (
+                                "datetime".into(),
+                                RestrictedExpression::from_str(r#"datetime("2025-07-22")"#)
+                                    .unwrap(),
+                            ),
+                            (
+                                "localTimeOffset".into(),
+                                RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                            ),
+                        ])
+                        .unwrap(),
+                    )])
+                    .unwrap(),
+                ),
+                &schema,
+            )
+            .unwrap();
+            let policies = policy_set();
+            let partial_entities: PartialEntities =
+                PartialEntities(entities().0.try_into().unwrap());
+
+            let response = policies
+                .tpe(&request, &partial_entities, &schema)
+                .expect("tpe should succeed");
+
+            assert_eq!(response.decision(), None);
+
+            let request = Request::new(
+                EntityUid::from_type_name_and_id(
+                    r#"Subscriber"#.parse().unwrap(),
+                    EntityId::new("Alice"),
+                ),
+                r#"Action::"watch""#.parse().unwrap(),
+                EntityUid::from_type_name_and_id(
+                    r#"Movie"#.parse().unwrap(),
+                    EntityId::new("The Godparent"),
+                ),
+                Context::from_pairs([(
+                    "now".into(),
+                    RestrictedExpression::new_record([
+                        (
+                            "datetime".into(),
+                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
+                        ),
+                        (
+                            "localTimeOffset".into(),
+                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                        ),
+                    ])
+                    .unwrap(),
+                )])
+                .unwrap(),
+                Some(&schema),
+            )
+            .unwrap();
+            assert_matches!(response.reauthorize(&request, &entities()), Ok(res) => {
+                assert_eq!(res.decision(), Decision::Allow);
+            });
+
+            let request = Request::new(
+                EntityUid::from_type_name_and_id(
+                    r#"Subscriber"#.parse().unwrap(),
+                    EntityId::new("Alice"),
+                ),
+                r#"Action::"watch""#.parse().unwrap(),
+                EntityUid::from_type_name_and_id(
+                    r#"Movie"#.parse().unwrap(),
+                    EntityId::new("Devilish"),
+                ),
+                Context::from_pairs([(
+                    "now".into(),
+                    RestrictedExpression::new_record([
+                        (
+                            "datetime".into(),
+                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
+                        ),
+                        (
+                            "localTimeOffset".into(),
+                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                        ),
+                    ])
+                    .unwrap(),
+                )])
+                .unwrap(),
+                Some(&schema),
+            )
+            .unwrap();
+            assert_matches!(response.reauthorize(&request, &entities()), Ok(res) => {
+                assert_eq!(res.decision(), Decision::Deny);
+            });
+        }
+
+        #[test]
+        fn run_pq() {
+            let schema = schema();
+            let request = PartialRequest::new(
+                PartialEntityUid::new(
+                    r#"Subscriber"#.parse().unwrap(),
+                    Some(EntityId::new("Alice")),
+                ),
+                r#"Action::"watch""#.parse().unwrap(),
+                PartialEntityUid::new(r#"Movie"#.parse().unwrap(), None),
+                Some(
+                    Context::from_pairs([(
+                        "now".into(),
+                        RestrictedExpression::new_record([
+                            (
+                                "datetime".into(),
+                                RestrictedExpression::from_str(r#"datetime("2025-07-22")"#)
+                                    .unwrap(),
+                            ),
+                            (
+                                "localTimeOffset".into(),
+                                RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                            ),
+                        ])
+                        .unwrap(),
+                    )])
+                    .unwrap(),
+                ),
+                &schema,
+            )
+            .unwrap();
+            let policies = policy_set();
+
+            // The two movies do not need rent or buy and hence satisfy the
+            // residual policy
+            assert_matches!(&policies.query_resource(&ResourceQueryRequest(request), &entities(), &schema).expect("resource query should succeed").collect_vec(), movies => {
+                assert_eq!(movies.len(), 2);
+                assert!(movies.contains(&r#"Movie::"The Godparent""#.parse().unwrap()));
+                assert!(movies.contains(&r#"Movie::"The Gleaming""#.parse().unwrap()));
+            });
+
+            let request = PartialRequest::new(
+                PartialEntityUid::new(r#"Subscriber"#.parse().unwrap(), None),
+                r#"Action::"watch""#.parse().unwrap(),
+                PartialEntityUid::new(
+                    r#"Movie"#.parse().unwrap(),
+                    Some(EntityId::new("The Godparent")),
+                ),
+                Some(
+                    Context::from_pairs([(
+                        "now".into(),
+                        RestrictedExpression::new_record([
+                            (
+                                "datetime".into(),
+                                RestrictedExpression::from_str(r#"datetime("2025-07-22")"#)
+                                    .unwrap(),
+                            ),
+                            (
+                                "localTimeOffset".into(),
+                                RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                            ),
+                        ])
+                        .unwrap(),
+                    )])
+                    .unwrap(),
+                ),
+                &schema,
+            )
+            .unwrap();
+            assert_matches!(&policies.query_principal(&PrincipalQueryRequest(request), &entities(), &schema).expect("resource query should succeed").collect_vec(), uids => {
+                assert_eq!(uids.len(), 2);
+                assert!(uids.contains(&r#"Subscriber::"Alice""#.parse().unwrap()));
+                assert!(uids.contains(&r#"Subscriber::"Charlie""#.parse().unwrap()));
+            });
+        }
+    }
+
+    mod github {
+        use std::str::FromStr;
+
+        use cool_asserts::assert_matches;
+        use itertools::Itertools;
+
+        use crate::{
+            Context, Entities, PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
+        };
+
+        #[track_caller]
+        fn schema() -> Schema {
+            Schema::from_str(
+                r#"
+            entity Team, UserGroup in [UserGroup];
+entity Issue  = {
+  "repo": Repository,
+  "reporter": User,
+};
+entity Org  = {
+  "members": UserGroup,
+  "owners": UserGroup,
+};
+entity Repository  = {
+  "admins": UserGroup,
+  "maintainers": UserGroup,
+  "readers": UserGroup,
+  "triagers": UserGroup,
+  "writers": UserGroup,
+};
+entity User in [UserGroup, Team];
+
+action push, pull, fork appliesTo {
+  principal: [User],
+  resource: [Repository]
+};
+action assign_issue, delete_issue, edit_issue appliesTo {
+  principal: [User],
+  resource: [Issue]
+};
+action add_reader, add_writer, add_maintainer, add_admin, add_triager appliesTo {
+  principal: [User],
+  resource: [Repository]
+};
+            "#,
+            )
+            .unwrap()
+        }
+
+        fn policy_set() -> PolicySet {
+            PolicySet::from_str(
+                r#"
+                //Actions for readers
+permit (
+  principal,
+  action == Action::"pull",
+  resource
+)
+when { principal in resource.readers };
+
+permit (
+  principal,
+  action == Action::"fork",
+  resource
+)
+when { principal in resource.readers };
+
+permit (
+  principal,
+  action == Action::"delete_issue",
+  resource
+)
+when { principal in resource.repo.readers && principal == resource.reporter };
+
+permit (
+  principal,
+  action == Action::"edit_issue",
+  resource
+)
+when { principal in resource.repo.readers && principal == resource.reporter };
+
+//Actions for triagers
+permit (
+  principal,
+  action == Action::"assign_issue",
+  resource
+)
+when { principal in resource.repo.triagers };
+
+//Actions for writers
+permit (
+  principal,
+  action == Action::"push",
+  resource
+)
+when { principal in resource.writers };
+
+permit (
+  principal,
+  action == Action::"edit_issue",
+  resource
+)
+when { principal in resource.repo.writers };
+
+//Actions for maintainers
+permit (
+  principal,
+  action == Action::"delete_issue",
+  resource
+)
+when { principal in resource.repo.maintainers };
+
+//Actions for admins
+permit (
+  principal,
+  action in
+    [Action::"add_reader",
+     Action::"add_triager",
+     Action::"add_writer",
+     Action::"add_maintainer",
+     Action::"add_admin"],
+  resource
+)
+when { principal in resource.admins };
+//We use the same permissions for org owners, and rely on placing them in the admins group for every repository in the org
+//The other option is to duplicate all policies for the org base permissions (with a separate heirarchy for each org)
+"#,
+            )
+            .unwrap()
+        }
+
+        #[track_caller]
+        fn entities() -> Entities {
+            Entities::from_json_value(serde_json::json!(
+
+                [
+    {
+      "uid": { "__entity": { "type": "User", "id": "alice"} },
+      "attrs": {},
+      "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} }, { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} } ]
+    },
+    {
+      "uid": { "__entity": { "type": "User", "id": "jane"} },
+      "attrs": {},
+      "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },  { "__entity": { "type": "Team", "id": "team_that_can_read_everything"} }]
+    },
+    {
+        "uid": { "__entity": { "type": "User", "id": "bob"} },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "Repository", "id": "common_knowledge"} },
+        "attrs": {
+            "readers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} },
+            "triagers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"} },
+            "writers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} },
+            "maintainers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },
+            "admins" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_admins"} }
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} },
+        "attrs": {
+        },
+        "parents": [  ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"} },
+        "attrs": {
+        },
+        "parents": [ { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} } ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_writers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_admins"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "Repository", "id": "secret"} },
+        "attrs": {
+            "readers" : { "__entity": { "type": "UserGroup", "id": "secret_readers"} },
+            "triagers" : { "__entity": { "type": "UserGroup", "id": "secret_triagers"} },
+            "writers" : { "__entity": { "type": "UserGroup", "id": "secret_writers"} },
+            "maintainers" : { "__entity": { "type": "UserGroup", "id": "secret_maintainers"} },
+            "admins" : { "__entity": { "type": "UserGroup", "id": "secret_admins"} }
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "secret_readers"} },
+        "attrs": {
+        },
+        "parents": [  ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "secret_triagers"} },
+        "attrs": {
+        },
+        "parents": [ { "__entity": { "type": "UserGroup", "id": "secret_readers"} } ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "secret_writers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_triagers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "secret_maintainers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_writers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "secret_admins"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_maintainers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "Repository", "id": "uncommon_knowledge"} },
+        "attrs": {
+            "readers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} },
+            "triagers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"} },
+            "writers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} },
+            "maintainers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"} },
+            "admins" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_admins"} }
+        },
+        "parents": []
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} },
+        "attrs": {
+        },
+        "parents": [  ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"} },
+        "attrs": {
+        },
+        "parents": [ { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} } ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_admins"} },
+        "attrs": {
+        },
+        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"}} ]
+    },
+    {
+        "uid": { "__entity": { "type": "Team", "id": "team_that_can_read_everything"} },
+        "attrs": {},
+        "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} }, { "__entity": { "type": "UserGroup", "id": "secret_readers"} }, { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} }]
+    },
+]
+            ), Some(&schema())).unwrap()
+        }
+
+        #[test]
+        fn query_resource() {
+            let schema = schema();
+            let request = ResourceQueryRequest::new(
+                r#"User::"jane""#.parse().unwrap(),
+                r#"Action::"push""#.parse().unwrap(),
+                r#"Repository"#.parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+            let policies = policy_set();
+            assert_matches!(&policies.query_resource(&request, &entities(), &schema).unwrap().collect_vec(), [uid] => {
+                assert_eq!(uid, &r#"Repository::"common_knowledge""#.parse().unwrap());
+            });
+        }
+
+        #[test]
+        fn query_principal() {
+            let schema = schema();
+            let request = PrincipalQueryRequest::new(
+                r#"User"#.parse().unwrap(),
+                r#"Action::"pull""#.parse().unwrap(),
+                r#"Repository::"secret""#.parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+            let policies = policy_set();
+            assert_matches!(&policies.query_principal(&request, &entities(), &schema).unwrap().collect_vec(), [uid] => {
+                assert_eq!(uid, &r#"User::"jane""#.parse().unwrap());
+            });
+        }
+    }
+}
+
+mod deep_eq {
+    use std::{
+        collections::{HashMap, HashSet},
+        str::FromStr,
+    };
+
+    use cedar_policy_core::{assert_deep_eq, assert_not_deep_eq};
+
+    use crate::{Entities, Entity, EntityUid, RestrictedExpression};
+
+    #[test]
+    fn deep_eq_same() {
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        assert_deep_eq!(entity, &entity);
+    }
+
+    #[test]
+    fn not_deep_eq_attrs() {
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        let other = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(true))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        assert_not_deep_eq!(entity, &other);
+    }
+
+    #[test]
+    fn not_deep_eq_tags() {
+        let entity = Entity::new_with_tags(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            [],
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+            [("foo".into(), RestrictedExpression::new_bool(false))],
+        )
+        .unwrap();
+        let other = Entity::new_with_tags(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            [],
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+            [("foo".into(), RestrictedExpression::new_bool(true))],
+        )
+        .unwrap();
+        assert_not_deep_eq!(entity, &other);
+    }
+
+    #[test]
+    fn not_deep_eq_ancestors() {
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        let other = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"x""#).unwrap()]),
+        )
+        .unwrap();
+        assert_not_deep_eq!(entity, &other);
+    }
+
+    #[test]
+    fn not_deep_eq_id() {
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"a""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        let other = Entity::new(
+            EntityUid::from_str(r#"E::"x""#).unwrap(),
+            HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+            HashSet::from([EntityUid::from_str(r#"E::"b""#).unwrap()]),
+        )
+        .unwrap();
+        assert_not_deep_eq!(entity, &other);
+    }
+
+    #[test]
+    fn deep_eq_same_hierachy() {
+        let es = Entities::from_entities(
+            [Entity::new_no_attrs(
+                EntityUid::from_strs("test", "A").clone(),
+                HashSet::new(),
+            )],
+            None,
+        )
+        .unwrap();
+        assert_deep_eq!(es, &es);
+    }
+
+    #[test]
+    fn not_deep_eq_hierarchy_different_attributes() {
+        let es = Entities::from_entities(
+            [Entity::new_no_attrs(
+                EntityUid::from_strs("test", "A").clone(),
+                HashSet::new(),
+            )],
+            None,
+        )
+        .unwrap();
+        let other = Entities::from_entities(
+            [Entity::new(
+                EntityUid::from_strs("test", "A").clone(),
+                HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
+                HashSet::new(),
+            )
+            .unwrap()],
+            None,
+        )
+        .unwrap();
+        assert_not_deep_eq!(es, &other);
+    }
+
+    #[test]
+    fn not_deep_eq_hierarchy_different_ids() {
+        let es = Entities::from_entities(
+            [Entity::new_no_attrs(
+                EntityUid::from_strs("test", "A").clone(),
+                HashSet::new(),
+            )],
+            None,
+        )
+        .unwrap();
+        let other = Entities::from_entities(
+            [Entity::new_no_attrs(
+                EntityUid::from_strs("test", "B").clone(),
+                HashSet::new(),
+            )],
+            None,
+        )
+        .unwrap();
+        assert_not_deep_eq!(es, &other);
+    }
+
+    #[test]
+    fn not_deep_eq_hierarchy_different_num_entities() {
+        let es = Entities::from_entities(
+            [
+                Entity::new_no_attrs(EntityUid::from_strs("test", "A").clone(), HashSet::new()),
+                Entity::new_no_attrs(EntityUid::from_strs("test", "B").clone(), HashSet::new()),
+            ],
+            None,
+        )
+        .unwrap();
+        let other = Entities::from_entities(
+            [Entity::new_no_attrs(
+                EntityUid::from_strs("test", "A").clone(),
+                HashSet::new(),
+            )],
+            None,
+        )
+        .unwrap();
+        assert_not_deep_eq!(es, &other);
+        assert_not_deep_eq!(other, &es);
     }
 }

@@ -23,7 +23,7 @@ use crate::ast::EntityUID;
 use crate::parser::{
     cst::{self, Literal},
     err::{self, ParseErrors, ToASTError, ToASTErrorKind},
-    Loc, Node,
+    AsLocRef, IntoMaybeLoc, Loc, Node,
 };
 
 /// Type level marker for parsing sets of entity uids or single uids
@@ -34,8 +34,8 @@ use crate::parser::{
 trait RefKind: Sized {
     fn err_str() -> &'static str;
     fn create_single_ref(e: EntityUID) -> Result<Self>;
-    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self>;
-    fn create_slot(loc: &Loc) -> Result<Self>;
+    fn create_multiple_refs(loc: Option<&Loc>) -> Result<fn(Vec<EntityUID>) -> Self>;
+    fn create_slot(loc: Option<&Loc>) -> Result<Self>;
     #[cfg(feature = "tolerant-ast")]
     fn error_node() -> Self;
 }
@@ -50,24 +50,24 @@ impl RefKind for SingleEntity {
         Ok(SingleEntity(e))
     }
 
-    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
+    fn create_multiple_refs(loc: Option<&Loc>) -> Result<fn(Vec<EntityUID>) -> Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_one_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Set,
             ),
-            loc.clone(),
+            loc.into_maybe_loc(),
         )
         .into())
     }
 
-    fn create_slot(loc: &Loc) -> Result<Self> {
+    fn create_slot(loc: Option<&Loc>) -> Result<Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_one_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Template,
             ),
-            loc.clone(),
+            loc.into_maybe_loc(),
         )
         .into())
     }
@@ -82,22 +82,22 @@ impl RefKind for EntityReference {
         "an entity uid or matching template slot"
     }
 
-    fn create_slot(loc: &Loc) -> Result<Self> {
-        Ok(EntityReference::Slot(Some(loc.clone())))
+    fn create_slot(loc: Option<&Loc>) -> Result<Self> {
+        Ok(EntityReference::Slot(loc.into_maybe_loc()))
     }
 
     fn create_single_ref(e: EntityUID) -> Result<Self> {
         Ok(EntityReference::euid(Arc::new(e)))
     }
 
-    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
+    fn create_multiple_refs(loc: Option<&Loc>) -> Result<fn(Vec<EntityUID>) -> Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_two_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Template,
                 err::parse_errors::Ref::Set,
             ),
-            loc.clone(),
+            loc.into_maybe_loc(),
         )
         .into())
     }
@@ -119,14 +119,14 @@ impl RefKind for OneOrMultipleRefs {
         "an entity uid or set of entity uids"
     }
 
-    fn create_slot(loc: &Loc) -> Result<Self> {
+    fn create_slot(loc: Option<&Loc>) -> Result<Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_two_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Set,
                 err::parse_errors::Ref::Template,
             ),
-            loc.clone(),
+            loc.into_maybe_loc(),
         )
         .into())
     }
@@ -135,7 +135,7 @@ impl RefKind for OneOrMultipleRefs {
         Ok(OneOrMultipleRefs::Single(e))
     }
 
-    fn create_multiple_refs(_loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
+    fn create_multiple_refs(_loc: Option<&Loc>) -> Result<fn(Vec<EntityUID>) -> Self> {
         fn create_multiple_refs(es: Vec<EntityUID>) -> OneOrMultipleRefs {
             OneOrMultipleRefs::Multiple(es)
         }
@@ -240,7 +240,7 @@ impl Node<Option<cst::Primary>> {
                 // it's the wrong slot. This avoids getting an error
                 // `found ?action instead of ?action` when `action` doesn't
                 // support slots.
-                let slot_ref = T::create_slot(&self.loc)?;
+                let slot_ref = T::create_slot(self.loc.as_loc_ref())?;
                 let slot = s.try_as_inner()?;
                 if slot.matches(var) {
                     Ok(slot_ref)
@@ -297,7 +297,7 @@ impl Node<Option<cst::Primary>> {
             cst::Primary::EList(lst) => {
                 // Calling `create_multiple_refs` first so that we error
                 // immediately if we see a set when we don't expect one.
-                let create_multiple_refs = T::create_multiple_refs(&self.loc)?;
+                let create_multiple_refs = T::create_multiple_refs(self.loc.as_loc_ref())?;
                 let v = match tolerant_setting {
                     TolerantAstSetting::NotTolerant => {
                         ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?
@@ -491,6 +491,7 @@ mod test {
     use crate::parser::cst::Name;
     use crate::parser::cst_to_ast::to_ref_or_refs::SingleEntity;
     use crate::parser::cst_to_ast::TolerantAstSetting;
+    use crate::parser::IntoMaybeLoc;
     use crate::parser::Loc;
     use crate::parser::Node;
 
@@ -540,7 +541,7 @@ mod test {
     fn test_primary_rinits_node() -> Node<Option<cst::Primary>> {
         Node {
             node: Some(cst::Primary::RInits(vec![])),
-            loc: Loc::new(0..1, "This is also a test".into()),
+            loc: Loc::new(0..1, "This is also a test".into()).into_maybe_loc(),
         }
     }
 
@@ -548,9 +549,9 @@ mod test {
         Node {
             node: Some(cst::Primary::Expr(Node {
                 node: Some(cst::Expr::ErrorExpr),
-                loc: Loc::new(0..1, "This is a test".into()),
+                loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
             })),
-            loc: Loc::new(0..1, "This is also a test".into()),
+            loc: Loc::new(0..1, "This is also a test".into()).into_maybe_loc(),
         }
     }
 
@@ -559,14 +560,14 @@ mod test {
             node: Some(cst::Primary::EList(vec![
                 Node {
                     node: Some(test_expr()),
-                    loc: Loc::new(0..1, "This is also a test".into()),
+                    loc: Loc::new(0..1, "This is also a test".into()).into_maybe_loc(),
                 },
                 Node {
                     node: Some(test_expr()),
-                    loc: Loc::new(0..1, "This is also a test".into()),
+                    loc: Loc::new(0..1, "This is also a test".into()).into_maybe_loc(),
                 },
             ])),
-            loc: Loc::new(0..1, "This is also a test".into()),
+            loc: Loc::new(0..1, "This is also a test".into()).into_maybe_loc(),
         }
     }
 
@@ -579,10 +580,10 @@ mod test {
                         item: test_primary_ref_node(),
                         access: vec![],
                     }),
-                    loc: Loc::new(0..1, "This is a test".into()),
+                    loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
                 },
             }),
-            loc: Loc::new(0..1, "This is a test".into()),
+            loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
         }
     }
 
@@ -592,7 +593,7 @@ mod test {
                 initial: test_unary_node(),
                 extended: vec![],
             }),
-            loc: Loc::new(0..1, "This is a test".into()),
+            loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
         }
     }
 
@@ -602,7 +603,7 @@ mod test {
                 initial: test_mult_node(),
                 extended: vec![],
             }),
-            loc: Loc::new(0..1, "This is a test".into()),
+            loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
         }
     }
 
@@ -612,7 +613,7 @@ mod test {
                 initial: test_add_node(),
                 extended: vec![],
             }),
-            loc: Loc::new(0..1, "This is a test".into()),
+            loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
         }
     }
 
@@ -625,10 +626,10 @@ mod test {
                         initial: test_relation_node(),
                         extended: vec![],
                     }),
-                    loc: Loc::new(0..1, "This is a test".into()),
+                    loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
                 },
             }),
-            loc: Loc::new(0..1, "This is a test".into()),
+            loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
         })
     }
 
@@ -642,9 +643,9 @@ mod test {
         Node {
             node: Some(cst::Primary::Expr(Node {
                 node: Some(test_expr()),
-                loc: Loc::new(0..1, "This is a test".into()),
+                loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
             })),
-            loc: Loc::new(0..1, "This is also a test".into()),
+            loc: Loc::new(0..1, "This is also a test".into()).into_maybe_loc(),
         }
     }
 
@@ -654,13 +655,13 @@ mod test {
                 node: Some(Name {
                     path: vec![],
                     name: Node {
-                        loc: Loc::new(0..1, "So much testing".into()),
+                        loc: Loc::new(0..1, "So much testing".into()).into_maybe_loc(),
                         node: Some(cst::Ident::Ident("test".into())),
                     },
                 }),
-                loc: Loc::new(0..1, "This is a test".into()),
+                loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
             })),
-            loc: Loc::new(0..1, "This is also a test".into()),
+            loc: Loc::new(0..1, "This is also a test".into()).into_maybe_loc(),
         }
     }
 
@@ -668,9 +669,9 @@ mod test {
         Node {
             node: Some(cst::Primary::Literal(Node {
                 node: Some(cst::Literal::True),
-                loc: Loc::new(0..1, "This is a test".into()),
+                loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
             })),
-            loc: Loc::new(0..1, "This is also a test".into()),
+            loc: Loc::new(0..1, "This is also a test".into()).into_maybe_loc(),
         }
     }
 
@@ -678,9 +679,9 @@ mod test {
         Node {
             node: Some(cst::Primary::Slot(Node {
                 node: Some(cst::Slot::Principal),
-                loc: Loc::new(0..1, "This is a test".into()),
+                loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
             })),
-            loc: Loc::new(0..1, "This is also a test".into()),
+            loc: Loc::new(0..1, "This is also a test".into()).into_maybe_loc(),
         }
     }
 
@@ -692,20 +693,20 @@ mod test {
                         node: Some(Name {
                             path: vec![],
                             name: Node {
-                                loc: Loc::new(0..1, "So much testing".into()),
+                                loc: Loc::new(0..1, "So much testing".into()).into_maybe_loc(),
                                 node: Some(cst::Ident::Ident("test".into())),
                             },
                         }),
-                        loc: Loc::new(0..1, "This is a test".into()),
+                        loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
                     },
                     eid: Node {
                         node: Some(cst::Str::String("test".into())),
-                        loc: Loc::new(0..1, "This is a test".into()),
+                        loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
                     },
                 }),
-                loc: Loc::new(0..1, "This is a test".into()),
+                loc: Loc::new(0..1, "This is a test".into()).into_maybe_loc(),
             })),
-            loc: Loc::new(0..1, "This is also a test".into()),
+            loc: Loc::new(0..1, "This is also a test".into()).into_maybe_loc(),
         }
     }
 }

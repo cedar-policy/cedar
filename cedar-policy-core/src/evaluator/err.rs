@@ -16,7 +16,7 @@
 
 use crate::ast::*;
 use crate::extensions::ExtensionFunctionLookupError;
-use crate::parser::Loc;
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use smol_str::SmolStr;
@@ -127,25 +127,25 @@ impl EvaluationError {
     #[verifier::external_body]
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
-            Self::EntityDoesNotExist(e) => e.source_loc.as_ref(),
-            Self::EntityAttrDoesNotExist(e) => e.source_loc.as_ref(),
-            Self::RecordAttrDoesNotExist(e) => e.source_loc.as_ref(),
+            Self::EntityDoesNotExist(e) => e.source_loc.as_loc_ref(),
+            Self::EntityAttrDoesNotExist(e) => e.source_loc.as_loc_ref(),
+            Self::RecordAttrDoesNotExist(e) => e.source_loc.as_loc_ref(),
             Self::FailedExtensionFunctionLookup(e) => e.source_loc(),
-            Self::TypeError(e) => e.source_loc.as_ref(),
-            Self::WrongNumArguments(e) => e.source_loc.as_ref(),
+            Self::TypeError(e) => e.source_loc.as_loc_ref(),
+            Self::WrongNumArguments(e) => e.source_loc.as_loc_ref(),
             Self::IntegerOverflow(e) => e.source_loc(),
-            Self::UnlinkedSlot(e) => e.source_loc.as_ref(),
-            Self::FailedExtensionFunctionExecution(e) => e.source_loc.as_ref(),
-            Self::NonValue(e) => e.source_loc.as_ref(),
-            Self::RecursionLimit(e) => e.source_loc.as_ref(),
+            Self::UnlinkedSlot(e) => e.source_loc.as_loc_ref(),
+            Self::FailedExtensionFunctionExecution(e) => e.source_loc.as_loc_ref(),
+            Self::NonValue(e) => e.source_loc.as_loc_ref(),
+            Self::RecursionLimit(e) => e.source_loc.as_loc_ref(),
             #[cfg(feature = "tolerant-ast")]
-            Self::ASTErrorExpr(e) => e.source_loc.as_ref(),
+            Self::ASTErrorExpr(e) => e.source_loc.as_loc_ref(),
         }
     }
 
     /// Return the `EvaluationError`, but with the new `source_loc` (or `None`).
     #[verifier::external_body]
-    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+    pub(crate) fn with_maybe_source_loc(self, source_loc: MaybeLoc) -> Self {
         match self {
             Self::EntityDoesNotExist(e) => {
                 Self::EntityDoesNotExist(evaluation_errors::EntityDoesNotExistError {
@@ -197,7 +197,7 @@ impl EvaluationError {
 
     /// Construct a [`EntityDoesNotExist`] error
     #[verifier::external_body]
-    pub(crate) fn entity_does_not_exist(uid: Arc<EntityUID>, source_loc: Option<Loc>) -> Self {
+    pub(crate) fn entity_does_not_exist(uid: Arc<EntityUID>, source_loc: MaybeLoc) -> Self {
         evaluation_errors::EntityDoesNotExistError { uid, source_loc }.into()
     }
 
@@ -212,7 +212,7 @@ impl EvaluationError {
         available_attrs: impl IntoIterator<Item = &'a SmolStr>,
         does_attr_exist_as_a_tag: bool,
         total_attrs: usize,
-        source_loc: Option<Loc>,
+        source_loc: MaybeLoc,
     ) -> Self {
         evaluation_errors::EntityAttrDoesNotExistError {
             entity,
@@ -240,7 +240,7 @@ impl EvaluationError {
         available_tags: impl IntoIterator<Item = &'a SmolStr>,
         does_tag_exist_as_an_attr: bool,
         total_tags: usize,
-        source_loc: Option<Loc>,
+        source_loc: MaybeLoc,
     ) -> Self {
         evaluation_errors::EntityAttrDoesNotExistError {
             entity,
@@ -265,7 +265,7 @@ impl EvaluationError {
         attr: SmolStr,
         available_attrs: impl IntoIterator<Item = &'a SmolStr>,
         total_attrs: usize,
-        source_loc: Option<Loc>,
+        source_loc: MaybeLoc,
     ) -> Self {
         evaluation_errors::RecordAttrDoesNotExistError {
             attr,
@@ -305,7 +305,7 @@ impl EvaluationError {
             expected,
             actual: actual.type_of(),
             advice: None,
-            source_loc: actual.source_loc().cloned(),
+            source_loc: actual.source_loc().into_maybe_loc(),
         }
         .into()
     }
@@ -329,7 +329,7 @@ impl EvaluationError {
             expected,
             actual: actual.type_of(),
             advice: Some(advice),
-            source_loc: actual.source_loc().cloned(),
+            source_loc: actual.source_loc().into_maybe_loc(),
         }
         .into()
     }
@@ -349,7 +349,7 @@ impl EvaluationError {
         function_name: Name,
         expected: usize,
         actual: usize,
-        source_loc: Option<Loc>,
+        source_loc: MaybeLoc,
     ) -> Self {
         evaluation_errors::WrongNumArgumentsError {
             function_name,
@@ -362,19 +362,19 @@ impl EvaluationError {
 
     verus! {
 
-    /// Construct a [`UnlinkedSlot`] error
-    #[verifier::external_body]
-    pub(crate) fn unlinked_slot(slot: SlotId, source_loc: Option<Loc>) -> Self {
-        evaluation_errors::UnlinkedSlotError { slot, source_loc }.into()
-    }
+        /// Construct a [`UnlinkedSlot`] error
+        #[verifier::external_body]
+    å    pub(crate) fn unlinked_slot(slot: SlotId, source_loc: MaybeLoc) -> Self {
+            evaluation_errors::UnlinkedSlotError { slot, source_loc }.into()
+        }
 
-    } // verus!
+        } // verus!
 
     /// Construct a [`FailedExtensionFunctionApplication`] error
     pub(crate) fn failed_extension_function_application(
         extension_name: Name,
         msg: String,
-        source_loc: Option<Loc>,
+        source_loc: MaybeLoc,
         advice: Option<String>,
     ) -> Self {
         evaluation_errors::ExtensionFunctionExecutionError {
@@ -391,14 +391,14 @@ impl EvaluationError {
     /// Construct a [`NonValue`] error
     #[verifier::external_body]
     pub(crate) fn non_value(expr: Expr) -> Self {
-        let source_loc = expr.source_loc().cloned();
+        let source_loc = expr.source_loc().into_maybe_loc();
         evaluation_errors::NonValueError { expr, source_loc }.into()
     }
 
     } // verus!
 
     /// Construct a [`RecursionLimit`] error
-    pub(crate) fn recursion_limit(source_loc: Option<Loc>) -> Self {
+    pub(crate) fn recursion_limit(source_loc: MaybeLoc) -> Self {
         evaluation_errors::RecursionLimitError { source_loc }.into()
     }
 }
@@ -406,7 +406,7 @@ impl EvaluationError {
 /// Error subtypes for [`EvaluationError`]
 pub mod evaluation_errors {
     use crate::ast::{BinaryOp, EntityUID, Expr, SlotId, Type, UnaryOp, Value};
-    use crate::parser::Loc;
+    use crate::parser::{AsLocRef, Loc, MaybeLoc};
     use itertools::Itertools;
     use miette::Diagnostic;
     use nonempty::NonEmpty;
@@ -433,7 +433,7 @@ pub mod evaluation_errors {
         /// Entity UID which didn't exist in the provided entities
         pub(crate) uid: Arc<EntityUID>,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }
@@ -442,7 +442,7 @@ pub mod evaluation_errors {
     //
     // #[source_code]
     // #[label]
-    // source_loc: Option<Loc>,
+    // source_loc: MaybeLoc,
     //
     // if [miette#377](https://github.com/zkat/miette/issues/377) gets fixed.
     // Or, we could have separate fields for source code and label instead of
@@ -478,7 +478,7 @@ pub mod evaluation_errors {
         /// Total number of attributes/tags on the entity, depending on `was_attr`
         pub(crate) total_attrs_or_tags: usize,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }
@@ -551,7 +551,7 @@ pub mod evaluation_errors {
         /// The total number of attrs this record has
         pub(crate) total_attrs: usize,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }
@@ -595,7 +595,7 @@ pub mod evaluation_errors {
         /// Optional advice for how to fix this error
         pub(crate) advice: Option<String>,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }
@@ -647,7 +647,7 @@ pub mod evaluation_errors {
         /// actual number of arguments
         pub(crate) actual: usize,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }
@@ -682,12 +682,12 @@ pub mod evaluation_errors {
     impl IntegerOverflowError {
         pub(crate) fn source_loc(&self) -> Option<&Loc> {
             match self {
-                Self::BinaryOp(e) => e.source_loc.as_ref(),
-                Self::UnaryOp(e) => e.source_loc.as_ref(),
+                Self::BinaryOp(e) => e.source_loc.as_loc_ref(),
+                Self::UnaryOp(e) => e.source_loc.as_loc_ref(),
             }
         }
 
-        pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+        pub(crate) fn with_maybe_source_loc(self, source_loc: MaybeLoc) -> Self {
             match self {
                 Self::BinaryOp(e) => Self::BinaryOp(BinaryOpOverflowError { source_loc, ..e }),
                 Self::UnaryOp(e) => Self::UnaryOp(UnaryOpOverflowError { source_loc, ..e }),
@@ -714,7 +714,7 @@ pub mod evaluation_errors {
         /// second argument to that operator
         pub(crate) arg2: Value,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }
@@ -740,7 +740,7 @@ pub mod evaluation_errors {
         /// argument to that operator
         pub(crate) arg: Value,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }
@@ -764,7 +764,7 @@ pub mod evaluation_errors {
         /// Slot which was not linked
         pub(crate) slot: SlotId,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }
@@ -792,7 +792,7 @@ pub mod evaluation_errors {
         /// Optional advice for how to fix this error
         pub(crate) advice: Option<String>,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }
@@ -829,7 +829,7 @@ pub mod evaluation_errors {
         /// Expression that contained unknown(s)
         pub(crate) expr: Expr,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }
@@ -852,7 +852,7 @@ pub mod evaluation_errors {
     #[error("the expression contains an error")]
     pub struct ASTErrorExprError {
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     #[cfg(feature = "tolerant-ast")]
@@ -877,7 +877,7 @@ pub mod evaluation_errors {
     #[verifier::external_derive]
     pub struct RecursionLimitError {
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }

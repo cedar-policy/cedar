@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-use std::str::FromStr;
+use std::{hint::black_box, str::FromStr};
 
 use cedar_policy::{Policy, PolicySet, Schema, Validator};
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 
 // PANIC SAFETY: benchmarking
 #[allow(clippy::unwrap_used)]

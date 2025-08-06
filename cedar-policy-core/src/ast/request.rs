@@ -19,10 +19,10 @@ use crate::entities::json::{
 };
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
-use crate::parser::Loc;
+use crate::parser::MaybeLoc;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use thiserror::Error;
@@ -100,7 +100,7 @@ pub enum EntityUIDEntry {
         /// The concrete `EntityUID`
         euid: Arc<EntityUID>,
         /// Source location associated with the `EntityUIDEntry`, if any
-        loc: Option<Loc>,
+        loc: MaybeLoc,
     },
     // /// An EntityUID left as unknown for partial evaluation
     // Unknown {
@@ -125,6 +125,19 @@ impl View for EntityUIDEntry {
 
 } // verus!
 
+impl From<EntityUID> for EntityUIDEntry {
+    fn from(euid: EntityUID) -> Self {
+        Self::Known {
+            euid: Arc::new(euid.clone()),
+            loc: match &euid {
+                EntityUID::EntityUID(euid) => euid.loc(),
+                #[cfg(feature = "tolerant-ast")]
+                EntityUID::Error => None,
+            },
+        }
+    }
+}
+
 impl EntityUIDEntry {
     /// Evaluate the entry to either:
     /// A value, if the entry is concrete
@@ -134,7 +147,7 @@ impl EntityUIDEntry {
             EntityUIDEntry::Known { euid, loc } => {
                 Value::new(Arc::unwrap_or_clone(Arc::clone(euid)), loc.clone()).into()
             } // EntityUIDEntry::Unknown { ty: None, loc } => {
-              //     Expr::unknown(Unknown::new_untyped(var.to_string()))
+              //     Expr::unknown(Unknown::new_untyped(var.to_smolstr()))
               //         .with_maybe_source_loc(loc.clone())
               //         .into()
               // }
@@ -142,7 +155,7 @@ impl EntityUIDEntry {
               //     ty: Some(known_type),
               //     loc,
               // } => Expr::unknown(Unknown::new_with_type(
-              //     var.to_string(),
+              //     var.to_smolstr(),
               //     super::Type::Entity {
               //         ty: known_type.clone(),
               //     },
@@ -168,7 +181,7 @@ impl EntityUIDEntry {
     }
 
     /// Create an entry with a concrete EntityUID and the given source location
-    pub fn known(euid: EntityUID, loc: Option<Loc>) -> Self {
+    pub fn known(euid: EntityUID, loc: MaybeLoc) -> Self {
         Self::Known {
             euid: Arc::new(euid),
             loc,
@@ -185,7 +198,7 @@ impl EntityUIDEntry {
     }
 
     /// Create an entry with an unknown EntityUID but known EntityType
-    pub fn unknown_with_type(ty: EntityType, loc: Option<Loc>) -> Self {
+    pub fn unknown_with_type(ty: EntityType, loc: MaybeLoc) -> Self {
         todo!("EntityUID::unknown_with_type is unimplemented")
         // Self::Unknown { ty: Some(ty), loc }
     }
@@ -213,9 +226,9 @@ impl Request {
     /// If `schema` is provided, this constructor validates that this `Request`
     /// complies with the given `schema`.
     pub fn new<S: RequestSchema>(
-        principal: (EntityUID, Option<Loc>),
-        action: (EntityUID, Option<Loc>),
-        resource: (EntityUID, Option<Loc>),
+        principal: (EntityUID, MaybeLoc),
+        action: (EntityUID, MaybeLoc),
+        resource: (EntityUID, MaybeLoc),
         context: Context,
         schema: Option<&S>,
         extensions: &Extensions<'_>,
@@ -316,7 +329,7 @@ impl std::fmt::Display for Request {
             // EntityUIDEntry::Unknown {
             //     ty: Some(known_type),
             //     ..
-            // } => format!("unknown of type {}", known_type),
+            // } => format!("unknown of type {known_type}"),
         };
         write!(
             f,
@@ -670,6 +683,22 @@ pub trait RequestSchema {
         request: &Request,
         extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error>;
+
+    /// Validate the given `context`, returning `Err` if it fails validation
+    fn validate_context<'a>(
+        &self,
+        context: &Context,
+        action: &EntityUID,
+        extensions: &Extensions<'a>,
+    ) -> std::result::Result<(), Self::Error>;
+
+    /// Validate the scope variables, returning `Err` if it fails validation
+    fn validate_scope_variables(
+        &self,
+        principal: Option<&EntityUID>,
+        action: Option<&EntityUID>,
+        resource: Option<&EntityUID>,
+    ) -> std::result::Result<(), Self::Error>;
 }
 
 /// A `RequestSchema` that does no validation and always reports a passing result
@@ -682,6 +711,24 @@ impl RequestSchema for RequestSchemaAllPass {
         _request: &Request,
         _extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn validate_context<'a>(
+        &self,
+        _context: &Context,
+        _action: &EntityUID,
+        _extensions: &Extensions<'a>,
+    ) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn validate_scope_variables(
+        &self,
+        _principal: Option<&EntityUID>,
+        _action: Option<&EntityUID>,
+        _resource: Option<&EntityUID>,
+    ) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
 }

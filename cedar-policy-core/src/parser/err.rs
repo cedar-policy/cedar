@@ -31,9 +31,9 @@ use thiserror::Error;
 
 use crate::ast::{self, ReservedNameError};
 use crate::parser::fmt::join_with_conjunction;
-use crate::parser::loc::Loc;
 use crate::parser::node::Node;
 use crate::parser::unescape::UnescapeError;
+use crate::parser::{AsLocRef, Loc, MaybeLoc};
 
 use super::cst;
 
@@ -76,13 +76,13 @@ pub enum LiteralParseError {
 #[error("{kind}")]
 pub struct ToASTError {
     kind: ToASTErrorKind,
-    loc: Loc,
+    loc: MaybeLoc,
 }
 
 // Construct `labels` and `source_code` based on the `loc` in this
 // struct; and everything else forwarded directly to `kind`.
 impl Diagnostic for ToASTError {
-    impl_diagnostic_from_source_loc_field!(loc);
+    impl_diagnostic_from_source_loc_opt_field!(loc);
 
     fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.kind.code()
@@ -107,7 +107,7 @@ impl Diagnostic for ToASTError {
 
 impl ToASTError {
     /// Construct a new `ToASTError`.
-    pub fn new(kind: ToASTErrorKind, loc: Loc) -> Self {
+    pub fn new(kind: ToASTErrorKind, loc: MaybeLoc) -> Self {
         Self { kind, loc }
     }
 
@@ -116,8 +116,8 @@ impl ToASTError {
         &self.kind
     }
 
-    pub(crate) fn source_loc(&self) -> &Loc {
-        &self.loc
+    pub(crate) fn source_loc(&self) -> Option<&Loc> {
+        self.loc.as_loc_ref()
     }
 }
 
@@ -220,7 +220,7 @@ pub enum ToASTErrorKind {
     #[diagnostic(transparent)]
     InvalidActionType(#[from] parse_errors::InvalidActionType),
     /// Returned when a condition clause is empty
-    #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{}` ", ident), None => "".to_string() })]
+    #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{ident}` "), None => "".to_string() })]
     EmptyClause(Option<cst::Ident>),
     /// Returned when membership chains do not resolve to an expression,
     /// violating an internal invariant
@@ -618,18 +618,20 @@ pub struct ToCSTError {
 
 impl ToCSTError {
     /// Extract a primary source span locating the error.
-    pub fn primary_source_span(&self) -> SourceSpan {
+    pub fn primary_source_span(&self) -> Option<SourceSpan> {
         match &self.err {
-            OwnedRawParseError::InvalidToken { location } => SourceSpan::from(*location),
-            OwnedRawParseError::UnrecognizedEof { location, .. } => SourceSpan::from(*location),
+            OwnedRawParseError::InvalidToken { location } => Some(SourceSpan::from(*location)),
+            OwnedRawParseError::UnrecognizedEof { location, .. } => {
+                Some(SourceSpan::from(*location))
+            }
             OwnedRawParseError::UnrecognizedToken {
                 token: (token_start, _, token_end),
                 ..
-            } => SourceSpan::from(*token_start..*token_end),
+            } => Some(SourceSpan::from(*token_start..*token_end)),
             OwnedRawParseError::ExtraToken {
                 token: (token_start, _, token_end),
-            } => SourceSpan::from(*token_start..*token_end),
-            OwnedRawParseError::User { error } => error.loc.span,
+            } => Some(SourceSpan::from(*token_start..*token_end)),
+            OwnedRawParseError::User { error } => error.loc.clone().map(|loc| loc.span),
         }
     }
 
@@ -669,19 +671,17 @@ impl Diagnostic for ToCSTError {
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        let primary_source_span = self.primary_source_span();
+        let span = self.primary_source_span()?;
         let labeled_span = match &self.err {
-            OwnedRawParseError::InvalidToken { .. } => LabeledSpan::underline(primary_source_span),
-            OwnedRawParseError::UnrecognizedEof { expected, .. } => LabeledSpan::new_with_span(
-                expected_to_string(expected, &POLICY_TOKEN_CONFIG),
-                primary_source_span,
-            ),
-            OwnedRawParseError::UnrecognizedToken { expected, .. } => LabeledSpan::new_with_span(
-                expected_to_string(expected, &POLICY_TOKEN_CONFIG),
-                primary_source_span,
-            ),
-            OwnedRawParseError::ExtraToken { .. } => LabeledSpan::underline(primary_source_span),
-            OwnedRawParseError::User { .. } => LabeledSpan::underline(primary_source_span),
+            OwnedRawParseError::InvalidToken { .. } => LabeledSpan::underline(span),
+            OwnedRawParseError::UnrecognizedEof { expected, .. } => {
+                LabeledSpan::new_with_span(expected_to_string(expected, &POLICY_TOKEN_CONFIG), span)
+            }
+            OwnedRawParseError::UnrecognizedToken { expected, .. } => {
+                LabeledSpan::new_with_span(expected_to_string(expected, &POLICY_TOKEN_CONFIG), span)
+            }
+            OwnedRawParseError::ExtraToken { .. } => LabeledSpan::underline(span),
+            OwnedRawParseError::User { .. } => LabeledSpan::underline(span),
         };
         Some(Box::new(iter::once(labeled_span)))
     }
@@ -804,7 +804,7 @@ pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> 
         "or",
         expected,
         |f, token| match config.friendly_token_names.get(token) {
-            Some(friendly_token_name) => write!(f, "{}", friendly_token_name),
+            Some(friendly_token_name) => write!(f, "{friendly_token_name}"),
             None => write!(f, "{}", token.replace('"', "`")),
         },
     )
@@ -857,15 +857,26 @@ impl ParseErrors {
     pub(crate) fn transpose<T>(
         i: impl IntoIterator<Item = Result<T, ParseErrors>>,
     ) -> Result<Vec<T>, Self> {
-        let mut errs = vec![];
-        let oks: Vec<_> = i
-            .into_iter()
-            .filter_map(|r| r.map_err(|e| errs.push(e)).ok())
-            .collect();
-        if let Some(combined_errs) = Self::flatten(errs) {
-            Err(combined_errs)
-        } else {
+        let iter = i.into_iter();
+        let (lower, upper) = iter.size_hint();
+        let capacity = upper.unwrap_or(lower);
+
+        let mut oks = Vec::with_capacity(capacity);
+        let mut errs = Vec::new();
+
+        for r in iter {
+            match r {
+                Ok(v) => oks.push(v),
+                Err(e) => errs.push(e),
+            }
+        }
+
+        if errs.is_empty() {
             Ok(oks)
+        } else {
+            // PANIC SAFETY: `errs` is not empty so `flatten` will return `Some(..)`
+            #[allow(clippy::unwrap_used)]
+            Err(Self::flatten(errs).unwrap())
         }
     }
 }

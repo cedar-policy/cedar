@@ -31,12 +31,14 @@ use json::err::JsonSerializationError;
 
 pub use json::{
     AllEntitiesNoAttrsSchema, AttributeType, CedarValueJson, ContextJsonParser, ContextSchema,
-    EntityJson, EntityJsonParser, EntityTypeDescription, EntityUidJson, FnAndArg, NoEntitiesSchema,
-    NoStaticContext, Schema, SchemaType, TypeAndId,
+    EntityJson, EntityJsonParser, EntityTypeDescription, EntityUidJson, FnAndArgs,
+    NoEntitiesSchema, NoStaticContext, Schema, SchemaType, TypeAndId,
 };
 
 use conformance::EntitySchemaConformanceChecker;
 use err::*;
+#[cfg(feature = "partial-eval")]
+use smol_str::ToSmolStr;
 
 use crate::spec::spec_ast;
 use vstd::prelude::*;
@@ -119,7 +121,7 @@ impl Entities {
                 Mode::Concrete => Dereference::NoSuchEntity,
                 #[cfg(feature = "partial-eval")]
                 Mode::Partial => Dereference::Residual(Expr::unknown(Unknown::new_with_type(
-                    format!("{uid}"),
+                    uid.to_smolstr(),
                     Type::Entity {
                         ty: uid.entity_type().clone(),
                     },
@@ -133,6 +135,24 @@ impl Entities {
     /// Iterate over the `Entity`s in the `Entities`
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
         self.entities.values().map(|e| e.as_ref())
+    }
+
+    /// Test if two entity hierarchies are structurally equal. The hierarchies
+    /// must contain the same set of entity ids, and the entities with each id
+    /// must be structurally equal (decided by [`Entity::deep_eq`]). Ancestor
+    /// equality between entities is always decided by comparing the transitive
+    /// closure of ancestor and not direct parents.
+    pub fn deep_eq(&self, other: &Self) -> bool {
+        if self.mode != other.mode || self.entities.len() != other.entities.len() {
+            return false;
+        }
+
+        self.entities.iter().all(|(id, entity)| {
+            other
+                .entities
+                .get(id)
+                .map_or(false, |other_entity| entity.deep_eq(other_entity))
+        })
     }
 
     /// Adds the [`crate::ast::Entity`]s in the iterator to this [`Entities`].
@@ -528,7 +548,7 @@ where
     pub fn unwrap(self) -> &'a T {
         match self {
             Self::Data(e) => e,
-            e => panic!("unwrap() called on {:?}", e),
+            e => panic!("unwrap() called on {e:?}"),
         }
     }
 
@@ -547,7 +567,7 @@ where
     pub fn expect(self, msg: &str) -> &'a T {
         match self {
             Self::Data(e) => e,
-            e => panic!("expect() called on {:?}, msg: {msg}", e),
+            e => panic!("expect() called on {e:?}, msg: {msg}"),
         }
     }
 }
@@ -591,7 +611,9 @@ pub enum TCComputation {
 #[allow(clippy::cognitive_complexity)]
 mod json_parsing_tests {
     use super::*;
-    use crate::{extensions::Extensions, test_utils::*, transitive_closure::TcError};
+    use crate::{
+        assert_deep_eq, extensions::Extensions, test_utils::*, transitive_closure::TcError,
+    };
     use cool_asserts::assert_matches;
     use std::collections::HashSet;
 
@@ -1041,6 +1063,34 @@ mod json_parsing_tests {
         // Check that an error occurs indicating that an inconsistent duplicate was found
         let expected = r#"Test::"jeff""#.parse().unwrap();
         assert_matches!(err, EntitiesError::Duplicate(d) => assert_eq!(d.euid(), &expected));
+    }
+
+    #[test]
+    fn add_inconsistent_duplicate_tags() {
+        let parser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+
+        let initial = parser.single_from_json_value(serde_json::json!({"uid":{ "type" : "Test", "id" : "jeff" }, "attrs": {}, "tags" : {"t": 1}, "parents" : []})).unwrap();
+        let initial_entities = Entities::from_entities(
+            [initial],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            &Extensions::all_available(),
+        )
+        .unwrap();
+
+        let dup = parser.single_from_json_value(serde_json::json!({"uid":{ "type" : "Test", "id" : "jeff" }, "attrs": {}, "tags" : {}, "parents" : []})).unwrap();
+        let err = initial_entities
+            .add_entities(
+                [Arc::new(dup)],
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .err()
+            .unwrap();
+
+        assert_matches!(err, EntitiesError::Duplicate(d) => assert_eq!(d.euid(), &r#"Test::"jeff""#.parse().unwrap()));
     }
 
     #[test]
@@ -1920,7 +1970,7 @@ mod json_parsing_tests {
     #[test]
     fn json_roundtripping() {
         let empty_entities = Entities::new();
-        assert_eq!(
+        assert_deep_eq!(
             empty_entities,
             roundtrip(&empty_entities).expect("should roundtrip without errors")
         );
@@ -1932,7 +1982,7 @@ mod json_parsing_tests {
             Extensions::none(),
         )
         .expect("Failed to construct entities");
-        assert_eq!(
+        assert_deep_eq!(
             entities,
             roundtrip(&entities).expect("should roundtrip without errors")
         );
@@ -2007,7 +2057,7 @@ mod json_parsing_tests {
             Extensions::all_available(),
         )
         .expect("Failed to construct entities");
-        assert_eq!(
+        assert_deep_eq!(
             entities,
             roundtrip(&entities).expect("should roundtrip without errors")
         );
@@ -2132,6 +2182,72 @@ mod json_parsing_tests {
             );
         });
     }
+
+    #[test]
+    fn multi_arg_ext_func_calls() {
+        let eparser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+
+        let json = serde_json::json!(
+            {
+                "uid": { "type": "User", "id": "alice "},
+                    "attrs": {
+                        "time": { "__extn": { "fn": "offset", "args": [{ "__extn": { "fn": "datetime", "arg": "1970-01-01" }}, { "__extn": { "fn": "duration", "arg": "1h" } }]}}
+                    },
+                    "parents": []
+            }
+        );
+
+        assert_matches!(eparser.single_from_json_value(json), Ok(entity) => {
+            assert_matches!(entity.get("time"), Some(PartialValue::Value(Value { value: ValueKind::ExtensionValue(v), .. })) => {
+                assert_eq!(v.func, "offset".parse().unwrap());
+                assert_eq!(v.args[0].to_string(), r#"datetime("1970-01-01")"#);
+                assert_eq!(v.args[1].to_string(), r#"duration("3600000ms")"#);
+            });
+        });
+
+        // It appears that additional attributes are simply ignored
+        // PR #1697 doesn't alter this behavior
+        let json = serde_json::json!(
+            {
+                "uid": { "type": "User", "id": "alice "},
+                    "attrs": {
+                        "time": { "__extn": { "fn": "offset", "args": [{ "__extn": { "fn": "datetime", "arg": "1970-01-01" }}, { "__extn": { "fn": "duration", "arg": "1h" } }], "aaargs": 42}}
+                    },
+                    "parents": []
+            }
+        );
+
+        assert_matches!(eparser.single_from_json_value(json), Ok(entity) => {
+            assert_matches!(entity.get("time"), Some(PartialValue::Value(Value { value: ValueKind::ExtensionValue(v), .. })) => {
+                assert_eq!(v.func, "offset".parse().unwrap());
+                assert_eq!(v.args[0].to_string(), r#"datetime("1970-01-01")"#);
+                assert_eq!(v.args[1].to_string(), r#"duration("3600000ms")"#);
+            });
+        });
+    }
+
+    #[test]
+    fn serialize_unknown_no_error() {
+        let test = serde_json::json!([{
+            "uid" : { "type" : "A", "id" : "b" },
+            "attrs": {
+                "age":  {
+                    "__extn": {
+                        "fn": "unknown",
+                        "arg": "890.9"
+                    }
+                }
+            },
+            "parents": []
+        }]);
+        let eparser: EntityJsonParser<'_, '_, NoEntitiesSchema> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        let x = eparser.from_json_value(test);
+        let y = x.unwrap().to_json_value();
+        // Should not error on reserialization
+        y.unwrap();
+    }
 }
 
 // PANIC SAFETY: Unit Test Code
@@ -2164,7 +2280,7 @@ mod entities_tests {
     #[test]
     fn test_len() {
         let (e0, e1, e2, e3) = test_entities();
-        let v = vec![e0.clone(), e1.clone(), e2.clone(), e3.clone()];
+        let v = vec![e0, e1, e2, e3];
         let es = Entities::from_entities(
             v,
             None::<&NoEntitiesSchema>,
@@ -2331,10 +2447,10 @@ mod entities_tests {
         let fid = EntityUID::with_eid("F");
         let mut f = Entity::with_uid(fid.clone());
         f.add_parent(aid.clone());
-        f.add_parent(did.clone());
+        f.add_parent(did);
         f.add_parent(eid.clone());
-        d.add_parent(aid.clone());
-        d.add_parent(bid.clone());
+        d.add_parent(aid);
+        d.add_parent(bid);
         d.add_parent(cid.clone());
         e.add_parent(cid.clone());
 
@@ -2362,7 +2478,7 @@ mod entities_tests {
             updates,
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .expect("Failed to remove entities");
         // Post-Update Hierarchy
@@ -2542,6 +2658,9 @@ mod schema_based_parsing_tests {
                     .collect(),
                     open_attrs: false,
                 }),
+                "start_date" => Some(SchemaType::Extension {
+                    name: Name::parse_unqualified_name("datetime").expect("valid"),
+                }),
                 _ => None,
             }
         }
@@ -2565,7 +2684,7 @@ mod schema_based_parsing_tests {
                     "work_ip",
                     "trust_score",
                 ]
-                .map(SmolStr::new)
+                .map(SmolStr::new_static)
                 .into_iter(),
             )
         }
@@ -2604,7 +2723,11 @@ mod schema_based_parsing_tests {
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
+                        "tricky": { "type": "Employee", "id": "34FB87" },
+                        "start_date": { "fn": "offset", "args": [
+                            {"fn": "datetime", "arg": "1970-01-01"},
+                            {"fn": "duration", "arg": "1h"}
+                        ]}
                     },
                     "parents": [],
                     "tags": {
@@ -3759,7 +3882,7 @@ mod schema_based_parsing_tests {
             fn required_attrs(&self) -> Box<dyn Iterator<Item = SmolStr>> {
                 Box::new(
                     ["isFullTime", "department", "manager"]
-                        .map(SmolStr::new)
+                        .map(SmolStr::new_static)
                         .into_iter(),
                 )
             }

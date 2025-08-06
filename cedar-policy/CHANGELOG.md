@@ -10,19 +10,80 @@ The "Cedar Language Version" refers to the language version as documented in the
 
 Starting with version 3.2.4, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Changes marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
 
-## [Unreleased]
-Cedar Language Version: TBD
+## Unreleased
+
+### Added
+
+- Added `deep_eq` to the `Entity` and `Entities` structs to allow comparing these objects for structural equality. (#1723)
+- Added the `raw-parsing` feature flag which provides alternative parsing APIs (`parse_raw`) for
+  `PolicySet`, `Policy`, and `Template`. These APIs don't retain source code information, trading detailed error
+  reporting for reduced memory usage and faster parsing. The feature is only intended for use with raw parsing
+  APIs, as regular parsing performance is degraded when the `raw-parsing` feature is enabled.
+- Implemented type-aware partial evaluation [RFC 95](https://github.com/cedar-policy/rfcs/pull/95), under the
+  experimental flag `tpe`. (#1575)
+
+### Changed
+
+- Bumped MSRV to 1.85 (#1683)
+
+## [4.5.1] - Coming soon
+
+Cedar Language Version: 4.4
+
+### Added
+
+- Added the ability to serialize Unknown values to JSON. Matching the format that is currently
+  allowed for deserializing Unknown Values. (#1748)
+
+### Changed
+
+- Allow multiple argument extension function calls in entity JSON format. (#1697)
+
+### Fixed
+
+- Fixed multiple functions on `Entities` to correctly consider entity tags when determining whether two entities are identical.
+  These functions will now only consider two entities identical if they have the same identifiers, attributes, ancestors, and tags.
+  Attempting to create an `Entities` object where a duplicated entity identifier maps to two entities with different tags will now
+  result in an error. Attempting to validate an action entity with any tags will always result in an error. This change
+  specifically impacts `from_entities`, `add_entities`, `add_entities_from_json_file`, `add_entities_from_json_value`,
+  and `add_entities_from_json_str`. (#1725)
+- Fixed bug with template linked policies where previously, slots appearing within the `is in` operator were not
+  correctly filled. This fix may cause some templates that would previously validate (in error) to no longer validate. (#1728)
+
+## [4.5.0] - 2025-06-30
+Cedar Language Version: 4.4
 
 ### Added
 
 - Added `Entities::upsert_entities()` to add or update `Entity`s in an `Entities` struct (resolving #1479)
+- Added schema parsing functions to improve compatibility with JSON schema originally writing for versions 2.5.0
+  and earlier. These functions will ignore unrecognized keys in some positions where they are currently an error,
+  matching the behavior of earlier versions.  This is intended help some users migrate to the current 4.0 schema
+  format. The new functions are deprecated and placed behind the `deprecated-schema-compat` feature. (#1600)
+- `Expression::new_duration`, `Expression::new_datetime`, `RestrictedExpression::new_duration`,
+   and `RestrictedExpression::new_datetime` (#1614)
+- Added a function to be able to split a policy set parsed from a single string into its component static
+  policies and templates. The relevant function is `policy_set_text_to_parts` in the `ffi` module (#1629).
+- Implemented [RFC 71 (trailing commas)](https://github.com/cedar-policy/rfcs/blob/main/text/0071-trailing-commas.md)
+  for Cedar policy files. (#1606)
 
 ### Changed
 
+- Allow entity attributes and tags to contain Action-typed entities, and pass
+  policy/entity/request validation (#1652)
 - Changed experimental `entity-manifest` function `compute_entity_manifest` to
   accept an `&Validator` instead of `&Schema`. Callers can construct a `Validator`
   from a schema with `Validator::new` afterwhich a reference to the original
   schema can be retrieved using `Validator::schema`. (#1584)
+- Bumped MSRV to 1.82 (#1611)
+
+## [4.4.1] - 2025-05-22
+
+Cedar Language Version: 4.3
+
+### Fixed
+
+- Apply entity conformance checking to tags (#1604)
 
 ## [4.4.0] - 2025-04-23
 
@@ -877,7 +938,9 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.4.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.5.0...main
+[4.5.0]: https://github.com/cedar-policy/cedar/compare/v4.4.1...v4.5.0
+[4.4.1]: https://github.com/cedar-policy/cedar/compare/v4.4.0...v4.4.1
 [4.4.0]: https://github.com/cedar-policy/cedar/compare/v4.3.3...v4.4.0
 [4.3.3]: https://github.com/cedar-policy/cedar/compare/v4.3.2...v4.3.3
 [4.3.2]: https://github.com/cedar-policy/cedar/compare/v4.3.1...v4.3.2

@@ -30,14 +30,13 @@ use std::collections::HashMap;
 
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
-use crate::parser::Loc;
+use crate::extensions::extension_initialization_errors::MultipleConstructorsSameSignatureError;
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use miette::Diagnostic;
 use thiserror::Error;
 
 use self::extension_function_lookup_errors::FuncDoesNotExistError;
-use self::extension_initialization_errors::{
-    FuncMultiplyDefinedError, MultipleConstructorsSameSignatureError,
-};
+use self::extension_initialization_errors::FuncMultiplyDefinedError;
 
 use vstd::prelude::*;
 
@@ -131,7 +130,7 @@ impl<'a> Extensions<'a> {
             extensions
                 .iter()
                 .flat_map(|e| e.funcs())
-                .filter(|f| f.is_constructor() && f.arg_types().len() == 1)
+                .filter(|f| f.is_single_arg_constructor())
                 .filter_map(|f| f.return_type().map(|return_type| (return_type, f))),
         )
         .map_err(|return_type| MultipleConstructorsSameSignatureError {
@@ -168,7 +167,7 @@ impl<'a> Extensions<'a> {
         self.functions.get(name).copied().ok_or_else(|| {
             FuncDoesNotExistError {
                 name: name.clone(),
-                source_loc: name.loc().cloned(),
+                source_loc: name.loc().into_maybe_loc(),
             }
             .into()
         })
@@ -181,10 +180,8 @@ impl<'a> Extensions<'a> {
         self.extensions.iter().flat_map(|ext| ext.funcs())
     }
 
-    /// Lookup a single-argument constructor by its return type and argument type.
-    ///
-    /// `None` means no constructor has that signature.
-    pub(crate) fn lookup_single_arg_constructor(
+    /// Lookup a single-argument constructor by its return type
+    pub(crate) fn lookup_single_arg_constructor<'b>(
         &self,
         return_type: &SchemaType,
     ) -> Option<&ExtensionFunction> {
@@ -256,11 +253,11 @@ pub enum ExtensionFunctionLookupError {
 impl ExtensionFunctionLookupError {
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
-            Self::FuncDoesNotExist(e) => e.source_loc.as_ref(),
+            Self::FuncDoesNotExist(e) => e.source_loc.as_loc_ref(),
         }
     }
 
-    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+    pub(crate) fn with_maybe_source_loc(self, source_loc: MaybeLoc) -> Self {
         match self {
             Self::FuncDoesNotExist(e) => {
                 Self::FuncDoesNotExist(extension_function_lookup_errors::FuncDoesNotExistError {
@@ -275,7 +272,7 @@ impl ExtensionFunctionLookupError {
 /// Error subtypes for [`ExtensionFunctionLookupError`]
 pub mod extension_function_lookup_errors {
     use crate::ast::Name;
-    use crate::parser::Loc;
+    use crate::parser::MaybeLoc;
     use miette::Diagnostic;
     use thiserror::Error;
     use vstd::prelude::*;
@@ -295,7 +292,7 @@ pub mod extension_function_lookup_errors {
         /// Name of the function that doesn't exist
         pub(crate) name: Name,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     }
