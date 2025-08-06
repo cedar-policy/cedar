@@ -31,6 +31,7 @@
 //! proofs about it on the Lean side.
 
 use super::smtlib_script::SmtLibScript;
+use miette::Diagnostic;
 use std::{future::Future, path::Path, process::Stdio};
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
@@ -43,19 +44,20 @@ pub enum Decision {
     Unknown,
 }
 
-#[derive(Debug, Error)]
-pub enum Error {
-    /// IO error
-    #[error("IO error during a solver operation: {0}")]
+/// Corresponds to various errors in the Lean version at `Cedar.SymCC.Solver`
+#[derive(Debug, Diagnostic, Error)]
+pub enum SolverError {
+    /// IO error.
+    #[error("IO error during a solver operation")]
     Io(#[from] std::io::Error),
-    /// Error from the solver
-    #[error("Solver error: '{0}'")]
+    /// Error from the solver.
+    #[error("solver error: {0}")]
     Solver(String),
-    /// Unrecognized solver output
-    #[error("Unrecognized solver output: '{0}'")]
+    /// Unrecognized solver output.
+    #[error("unrecognized solver output: {0}")]
     UnrecognizedSolverOutput(String),
 }
-pub type Result<T> = std::result::Result<T, Error>;
+type Result<T> = std::result::Result<T, SolverError>;
 
 /// Trait for things which are capable of solving SMTLib queries
 ///
@@ -108,7 +110,7 @@ impl LocalSolver {
         let (stdin, stdout, stderr) = match (child.stdin, child.stdout, child.stderr) {
             (Some(stdin), Some(stdout), Some(stderr)) => (stdin, stdout, stderr),
             _ => {
-                return Err(Error::Solver(
+                return Err(SolverError::Solver(
                     "Failed to fetch IO pipes for solver process".into(),
                 ))
             }
@@ -146,8 +148,8 @@ impl Solver for LocalSolver {
                 .strip_prefix("(error \"")
                 .and_then(|s| s.strip_suffix("\")\n"))
             {
-                Some(e) => Err(Error::Solver(e.to_string())),
-                _ => Err(Error::UnrecognizedSolverOutput(output)),
+                Some(e) => Err(SolverError::Solver(e.to_string())),
+                _ => Err(SolverError::UnrecognizedSolverOutput(output)),
             },
         }
     }
@@ -179,8 +181,8 @@ impl Solver for LocalSolver {
                 .strip_prefix("(error \"")
                 .and_then(|s| s.strip_suffix("\")\n"))
             {
-                Some(e) => Err(Error::Solver(e.to_string())),
-                _ => Err(Error::UnrecognizedSolverOutput(output)),
+                Some(e) => Err(SolverError::Solver(e.to_string())),
+                _ => Err(SolverError::UnrecognizedSolverOutput(output)),
             },
         }
     }

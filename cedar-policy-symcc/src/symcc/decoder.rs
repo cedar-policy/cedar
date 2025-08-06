@@ -19,22 +19,23 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::Display;
-use std::io;
 use std::sync::Arc;
 
 use cedar_policy::{EntityId, EntityUid};
 use itertools::Itertools;
+use miette::Diagnostic;
 use num_bigint::BigUint;
 
 use thiserror::Error;
 
+use crate::symcc::bitvec::BitVecError;
 use crate::symcc::encoder::SMT_LIB_MAX_CODE_POINT;
 use crate::symcc::env::SymEntityData;
 use crate::symcc::extension_types::ipaddr::{
     CIDRv4, CIDRv6, IPv4Addr, IPv4Prefix, IPv6Addr, IPv6Prefix,
 };
 use crate::symcc::type_abbrevs::{ExtType, Width};
-use crate::{symcc, SymEnv};
+use crate::SymEnv;
 
 use super::bitvec::BitVec;
 use super::encoder::Encoder;
@@ -49,71 +50,68 @@ use super::op::Uuf;
 use super::term::{Term, TermPrim, TermVar};
 use super::term_type::TermType;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum DecodeError {
-    /// IO error
-    #[error("IO error during decoding: {0}")]
-    Io(#[from] io::Error),
-
+    /// Unexpected end of input.
     #[error("Unexpected end of input")]
     UnexpectedEnd,
-
+    /// UTF-8 decoding error.
     #[error("Invalid UTF-8 sequence: {0}")]
-    UTF8Error(#[from] std::string::FromUtf8Error),
-
+    Utf8Error(#[from] std::string::FromUtf8Error),
+    /// Failed to parse an SMT string.
     #[error("Failed to parse string: {0:?}")]
     StringParseError(Vec<u8>),
-
+    /// Failed to parse an SMT numeral.
     #[error("Invalid numeric token: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
-
-    #[error("Right parenthesis without left parenthesis")]
-    RightParenWithoutLeftParen,
-
+    /// Unclosed S-expression.
+    #[error("Unclosed S-expression")]
+    UnclosedSExpr,
+    /// Trailing unparsed tokens.
     #[error("Trailing tokens")]
     TrailingTokens,
-
+    /// Integer overflow.
     #[error("Integer overflow")]
     IntegerOverflow,
-
-    #[error("Model of unexpected form returned by the solver")]
+    /// Model of an unexpected form returned by the solver.
+    #[error("Model of an unexpected form returned by the solver")]
     UnexpectedModel,
-
-    #[error("Unknown type: {0}")]
+    /// Unknown SMT type.
+    #[error("Unknown SMT type: {0}")]
     UnknownType(SExpr),
-
-    #[error("Unknown literal: {0}")]
+    /// Unknown SMT literal.
+    #[error("Unknown SMT literal: {0}")]
     UnknownLiteral(SExpr),
-
+    /// Unmatched types.
     #[error("Unmatched type: expected {0:?}, found {1:?}")]
     UnmatchedType(TermType, TermType),
-
+    /// Unmatched field type.
     #[error("Unmatched field type: expected {0:?}, found {1:?}")]
     UnmatchedFieldType(TermType, TermType),
-
+    /// Invalid set type.
     #[error("Invalid set type: {0}")]
     InvalidSetType(SExpr),
-
+    /// Invalid option type.
     #[error("Invalid option type: {0}")]
     InvalidOptionType(SExpr),
-
+    /// `set.union` applied to non-literals.
     #[error("set.union applied to non-literals {0:?} and {1:?}")]
     SetUnionNonLiterals(Term, Term),
-
+    /// Unmatched record type fields.
     #[error("Unmatched record type fields")]
     UnmatchedRecordType,
-
+    /// Unknown variable.
     #[error("Unknown variable: {0}")]
     UnknownVariable(String),
-
+    /// Unknown unary function.
     #[error("Unknown unary function: {0}")]
     UnknownUUF(String),
-
-    #[error("Unexpected unary function form: {0}")]
+    /// Unexpected form of unary function model.
+    #[error("Unexpected form of unary function model: {0}")]
     UnexpectedUnaryFunctionForm(SExpr),
-
-    #[error("Unexpected symcc result error: {0}.")]
-    UnexpectedSymccResult(#[from] symcc::result::Error),
+    /// Bit-vector error.
+    #[error("Bit-vector error")]
+    BitVecError(#[from] BitVecError),
 }
 
 /// Types of tokens
@@ -408,10 +406,10 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                                 let width = Width::try_from(width)
                                     .map_err(|_| DecodeError::IntegerOverflow)?;
 
-                                tokens.push(Token::Atom(SExpr::BitVec(
-                                    BitVec::of_int(width, num.into())
-                                        .map_err(DecodeError::UnexpectedSymccResult)?,
-                                )));
+                                tokens.push(Token::Atom(SExpr::BitVec(BitVec::of_int(
+                                    width,
+                                    num.into(),
+                                )?)));
                             }
 
                             // TODO: support #x...
@@ -514,7 +512,7 @@ pub fn parse_sexpr(src: &[u8]) -> Result<SExpr, DecodeError> {
             Token::LeftParen => stack.push_back(Vec::new()),
             Token::RightParen => {
                 let Some(exprs) = stack.pop_back() else {
-                    return Err(DecodeError::RightParenWithoutLeftParen);
+                    return Err(DecodeError::UnclosedSExpr);
                 };
 
                 if let Some(last) = stack.back_mut() {

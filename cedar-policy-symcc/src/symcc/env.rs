@@ -19,18 +19,16 @@
 //! A symbolic environment is _literal_ when it consists of literal terms and
 //! interpreted functions (UDFs).
 
-use crate::symcc::op;
-use crate::symcc::tags::SymTags;
-use crate::symcc::term::{Term, TermPrim, TermVar};
-use crate::symcc::term_type::TermType;
-use crate::symcc::type_abbrevs::*;
-use crate::symcc::{
-    function::{
-        self,
-        UnaryFunction::{self, Udf, Uuf},
-    },
-    result,
+use super::function::{
+    self,
+    UnaryFunction::{self, Udf, Uuf},
 };
+use super::op;
+use super::result::CompileError;
+use super::tags::SymTags;
+use super::term::{Term, TermPrim, TermVar};
+use super::term_type::TermType;
+use super::type_abbrevs::*;
 use cedar_policy_core::validator::ValidatorSchema;
 use cedar_policy_core::validator::{
     types::{Attributes, EntityRecordKind, OpenTag, Type},
@@ -178,7 +176,7 @@ impl SymEntityData {
         ety: &EntityType,
         validator_ety: &ValidatorEntityType,
         schema: &ValidatorSchema,
-    ) -> Result<Self, result::Error> {
+    ) -> Result<Self, CompileError> {
         match EntitySchemaEntry::of_schema(ety, validator_ety, schema) {
             // Corresponds to `SymEntityData.ofStandardEntityType` in Lean
             EntitySchemaEntry::Standard(sch) => {
@@ -194,7 +192,7 @@ impl SymEntityData {
                         out: TermType::set_of(entity(anc_ty.clone())), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
                     })
                 };
-                let sym_tags = |tag_ty: Type| -> Result<SymTags, result::Error> {
+                let sym_tags = |tag_ty: Type| -> Result<SymTags, CompileError> {
                     Ok(SymTags {
                         keys: Uuf(op::Uuf {
                             id: format!("tagKeys[{ety}]"),
@@ -334,7 +332,7 @@ impl SymEntities {
     ///
     /// This function assumes that no entity types have tags, and that action types
     /// have no attributes.
-    pub fn of_schema(schema: &ValidatorSchema) -> Result<Self, result::Error> {
+    pub fn of_schema(schema: &ValidatorSchema) -> Result<Self, CompileError> {
         let e_data = schema.entity_types().map(|vdtr_ety| {
             let ety = core_entity_type_into_entity_type(vdtr_ety.name());
             match SymEntityData::of_entity_type(ety, vdtr_ety, schema) {
@@ -368,7 +366,7 @@ impl SymEntities {
 
 impl SymRequest {
     /// Creates a symbolic request for the given request type.
-    fn of_request_type(req_ty: &RequestType<'_>) -> Result<Self, result::Error> {
+    fn of_request_type(req_ty: &RequestType<'_>) -> Result<Self, CompileError> {
         Ok(Self {
             principal: Term::Var(TermVar {
                 id: "principal".to_string(),
@@ -394,7 +392,7 @@ impl SymRequest {
 impl SymEnv {
     /// Returns a symbolic environment that conforms to the given
     /// type Environment.
-    pub fn of_env(ty_env: &Environment<'_>) -> Result<Self, result::Error> {
+    pub fn of_env(ty_env: &Environment<'_>) -> Result<Self, CompileError> {
         Ok(SymEnv {
             request: SymRequest::of_request_type(&ty_env.req_ty)?,
             entities: SymEntities::of_schema(ty_env.schema)?,
@@ -510,15 +508,13 @@ impl ActionSchemaEntries {
     }
 }
 
-fn context_attributes(action: &ValidatorActionId) -> Result<&Attributes, result::Error> {
+fn context_attributes(action: &ValidatorActionId) -> Result<&Attributes, CompileError> {
     match action.context_type() {
         Type::EntityOrRecord(EntityRecordKind::Record {
             attrs,
             open_attributes: OpenTag::ClosedAttributes,
         }) => Ok(attrs),
-        _ => Err(result::Error::Unreachable(
-            "Context type should be a closed record".into(),
-        )),
+        _ => Err(CompileError::NonRecordContext),
     }
 }
 
