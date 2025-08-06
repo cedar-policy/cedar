@@ -696,6 +696,8 @@ impl<'e> Evaluator<'e> {
         broadcast use FiniteSet::group_finiteset_properties;
         let ghost entity1_view = match entity1 { Some(e) => Some(e@), None => None };
 
+        let ghost arg2_value = arg2.value;
+
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
         let rhs = match arg2.value {
@@ -786,7 +788,7 @@ impl<'e> Evaluator<'e> {
                 let i = choose |i: int| 0 <= i < rhs@.len() && rhs@[i] == euid;
                 assert(rhs@.map_values(|euid: EntityUID| euid@)[i] == euid@);
             };
-            match arg2.value {
+            match arg2_value {
                 ValueKind::Lit(Literal::EntityUID(uid)) => {
                     assert(rhs@ == seq![*uid]);
                     assert(rhs@.contains(*uid));

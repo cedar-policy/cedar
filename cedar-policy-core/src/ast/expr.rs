@@ -196,8 +196,14 @@ pub enum ExprKind<T = ()> {
 // we have to just implement BTreeMapView manually for each monomorphized BTreeMap we want
 impl<T> BTreeMapView for BTreeMap<SmolStr, Expr<T>> {
     type V = Map<Seq<char>, Expr<T>>;
-    uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
+    uninterp spec fn view(&self) -> Self::V;
 }
+
+impl<T> BTreeMapView for Arc<BTreeMap<SmolStr, Expr<T>>> {
+    type V = Map<Seq<char>, Expr<T>>;
+    uninterp spec fn view(&self) -> Self::V;
+}
+
 
 pub broadcast proof fn arc_smolstr_expr_map_view_finite<T>(v: &Arc<BTreeMap<SmolStr, Expr<T>>>)
     ensures #[trigger] v.view().dom().finite()
