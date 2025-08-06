@@ -18,9 +18,13 @@
 
 mod utils;
 
-use cedar_policy::{PolicySet, Validator};
+use std::{collections::HashMap, io::{Cursor, Read}, str::FromStr};
+
+use cedar_policy::{PolicySet, Schema, ValidationMode, Validator};
 use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
 use rstest::rstest;
+use tar::Archive;
+use flate2::read::GzDecoder;
 
 use crate::utils::{
     assert_always_allows_ok, assert_always_denies_ok, assert_disjoint_ok, assert_equivalent,
@@ -92,5 +96,115 @@ async fn test_cedar_examples(#[case] policy_set_src: &str, #[case] schema_src: &
                 assert_disjoint_ok(&mut compiler, &pset1, &pset2, env).await;
             }
         }
+    }
+}
+
+struct CorpusTest {
+    name: String,
+    schema_src: String,
+    pset_src: String,
+}
+
+/// Load randomly generated corpus tests from cedar-integration-tests
+/// https://github.com/cedar-policy/cedar-integration-tests/blob/858d8bdc9ad4abd41020544f798a327bcf741b7e/corpus-tests.tar.gz
+fn load_corpus_tests() -> Vec<CorpusTest> {
+    // TODO: if this gets too large, maybe load it dynamically
+    const CORPUS_TESTS_ARCHIVE: &[u8] = include_bytes!("data/corpus-tests.tar.gz");
+
+    // Remove tests with the following keywords
+    const FILTER_KEYWORDS: &[&str] = &[
+        // // Special characters
+        // // TODO: fix cvc5 parsing issue with these characters
+        // "\\u{",
+        // "\\0",
+        // "\\t",
+        // "\\n",
+        // "\\\"",
+        // // Unsupported extensions
+        // "::datetime",
+        // "::duration",
+    ];
+
+    // Final validated list of tests
+    let mut tests = Vec::new();
+
+    // Decompress in memory
+    let cursor = Cursor::new(CORPUS_TESTS_ARCHIVE);
+    let decompressed = GzDecoder::new(cursor);
+    let mut archive = Archive::new(decompressed);
+
+    // Maps corpus test hash to contents
+    let mut schema_sources = HashMap::new();
+    let mut pset_sources = HashMap::new();
+
+    // Find all .cedar and .cedarschema files in the archive
+    for entry in archive.entries().unwrap() {
+        let mut file = entry.unwrap();
+        let path = file.path().unwrap();
+
+        // Skip directories
+        if path.is_dir() {
+            continue;
+        }
+
+        if path.extension().and_then(|s| s.to_str()) == Some("cedar") {
+            let name = path.file_stem().unwrap().to_str().unwrap().to_string();
+            let mut src = String::new();
+            file.read_to_string(&mut src).unwrap();
+            pset_sources.insert(name, src);
+        } else if path.extension().and_then(|s| s.to_str()) == Some("cedarschema") {
+            let name = path.file_stem().unwrap().to_str().unwrap().to_string();
+            let mut src = String::new();
+            file.read_to_string(&mut src).unwrap();
+            schema_sources.insert(name, src);
+        }
+    }
+
+    'outer: for (name, schema_src) in schema_sources {
+        let Some(pset_src) = pset_sources.get(&name) else {
+            // Skip if no corresponding policy set
+            continue;
+        };
+
+        // Skip if found a filter keyword
+        for keyword in FILTER_KEYWORDS {
+            if schema_src.contains(keyword) || pset_src.contains(keyword) {
+                continue 'outer;
+            }
+        }
+
+        // Parse and validate the schema and policy set
+        // ignore ones that fail to parse/validate
+        let Ok(schema) = Schema::from_cedarschema_str(&schema_src) else {
+            continue;
+        };
+        let schema = schema.0;
+        let validator = Validator::new(schema.clone());
+        let Ok(pset) = PolicySet::from_str(&pset_src) else {
+            continue;
+        };
+
+        let res = validator.validate(&pset, ValidationMode::Strict);
+        if !res.validation_passed() {
+            continue;
+        }
+
+        tests.push(CorpusTest {
+            name,
+            schema_src,
+            pset_src: pset_src.clone(),
+        });
+    }
+
+    tests
+}
+
+#[tokio::test]
+async fn test_corpus_tests() {
+    let tests = load_corpus_tests();
+
+    for test in tests {
+        eprintln!("Running corpus test: {}", test.name);
+        test_cedar_examples(&test.pset_src, &test.schema_src).await;
     }
 }
