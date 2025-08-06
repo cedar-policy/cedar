@@ -385,7 +385,7 @@ pub fn compile_set(ts: Vec<Term>) -> Result<Term> {
     if ts.is_empty() {
         Err(CompileError::UnsupportedFeature(
             "empty set literals are not supported".to_string(),
-        )) // Reject empty set literals
+        ))
     } else {
         // PANIC SAFETY
         #[allow(
