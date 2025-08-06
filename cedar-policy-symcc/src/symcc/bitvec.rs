@@ -45,8 +45,8 @@ pub enum BitVecError {
     /// Mismatched bit-vector widths in various operations
     #[error("mismatched bit-vector widths in {0}")]
     MismatchedWidths(String),
-    /// Shifting value would not fit in the bit-width
-    #[error("shifted value would not fit in the bit-width")]
+    /// Shift amount too large to fit in u32
+    #[error("shift amount too large to fit in u32")]
     ShiftAmountTooLarge,
 }
 
