@@ -377,9 +377,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                     .with_same_source_loc(e)
                     .var(Var::Context),
             ),
-            ExprKind::Unknown(u) => {
-                TypecheckAnswer::fail(ExprBuilder::with_data(None).unknown(u.clone()))
-            }
+            // ExprKind::Unknown(u) => {
+            //     TypecheckAnswer::fail(ExprBuilder::with_data(None).unknown(u.clone()))
+            // }
             // Template Slots, always has to be an entity.
             ExprKind::Slot(slotid) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(if slotid.is_principal() {

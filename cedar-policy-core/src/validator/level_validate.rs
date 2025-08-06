@@ -250,7 +250,8 @@ impl LevelChecker<'_> {
         env: &RequestEnv<'_>,
     ) {
         match e.expr_kind() {
-            ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) | ExprKind::Unknown(_) => (),
+            // ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) | ExprKind::Unknown(_) => (),
+            ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) => (),
             ExprKind::If {
                 test_expr,
                 then_expr,

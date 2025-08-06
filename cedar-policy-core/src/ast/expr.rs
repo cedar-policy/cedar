@@ -617,7 +617,7 @@ impl<T> Expr<T> {
             ExprKind::Lit(lit) => builder.val(lit),
             ExprKind::Var(var) => builder.var(var),
             ExprKind::Slot(slot) => builder.slot(slot),
-            ExprKind::Unknown(u) => builder.unknown(u),
+            // ExprKind::Unknown(u) => builder.unknown(u),
             ExprKind::If {
                 test_expr,
                 then_expr,

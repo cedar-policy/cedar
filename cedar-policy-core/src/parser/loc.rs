@@ -100,6 +100,8 @@ impl From<&Loc> for miette::SourceSpan {
     }
 }
 
+verus! {
+
 /// Trait to define conversions to `Option<&Loc>`
 pub trait AsLocRef {
     /// Automatic conversion to `Option<&Loc>`
@@ -115,6 +117,7 @@ impl AsLocRef for Option<Loc> {
 
 impl AsLocRef for Option<Box<Loc>> {
     #[inline]
+    #[verifier::external_body]
     fn as_loc_ref(&self) -> Option<&Loc> {
         self.as_deref()
     }
@@ -182,6 +185,8 @@ impl IntoMaybeLoc for Option<Box<Loc>> {
         }
     }
 }
+
+} // verus!
 
 impl miette::SourceCode for Loc {
     fn read_span<'a>(
