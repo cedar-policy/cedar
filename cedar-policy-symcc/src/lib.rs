@@ -15,7 +15,6 @@
  */
 mod err;
 
-pub use err::{Error, Result};
 mod symcc;
 use solver::Solver;
 use symcc::SymCompiler;
@@ -31,7 +30,6 @@ pub use symcc::{
     ext::Ext,
     extension_types,
     op::{ExtOp, Op, Uuf},
-    result,
     term::Term,
     term::TermPrim,
     term::TermVar,
@@ -43,6 +41,9 @@ pub use symcc::{
 
 use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
 
+/// Export various error types.
+pub use err::*;
+
 /// Cedar Symbolic Compiler paramatized by a solver `S`.
 #[derive(Clone, Debug)]
 pub struct CedarSymCompiler<S: Solver> {
@@ -53,12 +54,9 @@ pub struct CedarSymCompiler<S: Solver> {
 impl SymEnv {
     /// Construct a new `SymEnv` from the given `schema` and `req_env`
     pub fn new(schema: &Schema, req_env: &RequestEnv) -> Result<Self> {
-        let env = Environment::from_request_env(req_env, schema.as_ref()).ok_or_else(|| {
-            Error::Symcc(symcc::Error::ActionNotInSchema {
-                action: req_env.action().to_string(),
-            })
-        })?;
-        Self::of_env(&env).map_err(|e| Error::Symcc(symcc::Error::SymCC(e)))
+        let env = Environment::from_request_env(req_env, schema.as_ref())
+            .ok_or_else(|| Error::ActionNotInSchema(req_env.action().to_string()))?;
+        Ok(Self::of_env(&env)?)
     }
 }
 use std::fmt;
@@ -82,9 +80,7 @@ impl WellTypedPolicy {
         env: &RequestEnv,
         schema: &Schema,
     ) -> Result<WellTypedPolicy> {
-        well_typed_policy(policy.as_ref(), env, schema)
-            .map(|p| WellTypedPolicy { policy: p })
-            .map_err(Error::Symcc)
+        well_typed_policy(policy.as_ref(), env, schema).map(|p| WellTypedPolicy { policy: p })
     }
 
     /// Convers a [`Policy`] to a [`WellTypedPolicy`] unchecked.
@@ -124,9 +120,7 @@ impl WellTypedPolicies {
         env: &RequestEnv,
         schema: &Schema,
     ) -> Result<WellTypedPolicies> {
-        well_typed_policies(ps.as_ref(), env, schema)
-            .map(|ps| WellTypedPolicies { policies: ps })
-            .map_err(Error::Symcc)
+        well_typed_policies(ps.as_ref(), env, schema).map(|ps| WellTypedPolicies { policies: ps })
     }
 
     /// Converts a [`PolicySet`] to a [`WellTypedPolicies`] unchecked.
@@ -173,10 +167,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         policy: &WellTypedPolicy,
         symenv: &SymEnv,
     ) -> Result<bool> {
-        Ok(self
-            .symcc
-            .check_never_errors(&policy.policy, symenv)
-            .await?)
+        self.symcc.check_never_errors(&policy.policy, symenv).await
     }
 
     /// Similar to [`Self::check_never_errors`], but returns a counterexample
@@ -186,10 +177,9 @@ impl<S: Solver> CedarSymCompiler<S> {
         policy: &WellTypedPolicy,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        Ok(self
-            .symcc
+        self.symcc
             .check_never_errors_with_counterexample(&policy.policy, symenv)
-            .await?)
+            .await
     }
 
     /// Returns true iff the authorization decision of `pset1` implies that of
@@ -205,10 +195,9 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset2: &WellTypedPolicies,
         symenv: &SymEnv,
     ) -> Result<bool> {
-        Ok(self
-            .symcc
+        self.symcc
             .check_implies(&pset1.policies, &pset2.policies, symenv)
-            .await?)
+            .await
     }
 
     /// Similar to [`Self::check_implies`], but returns a counterexample
@@ -219,10 +208,9 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset2: &WellTypedPolicies,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        Ok(self
-            .symcc
+        self.symcc
             .check_implies_with_counterexample(&pset1.policies, &pset2.policies, symenv)
-            .await?)
+            .await
     }
 
     /// Returns true iff `pset` allows all well-formed inputs in the `symenv`.
@@ -234,10 +222,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset: &WellTypedPolicies,
         symenv: &SymEnv,
     ) -> Result<bool> {
-        Ok(self
-            .symcc
-            .check_always_allows(&pset.policies, symenv)
-            .await?)
+        self.symcc.check_always_allows(&pset.policies, symenv).await
     }
 
     /// Similar to [`Self::check_always_allows`], but returns a counterexample
@@ -247,10 +232,9 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset: &WellTypedPolicies,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        Ok(self
-            .symcc
+        self.symcc
             .check_always_allows_with_counterexample(&pset.policies, symenv)
-            .await?)
+            .await
     }
 
     /// Returns true iff `pset` denies all well-formed inputs in the `symenv`.
@@ -262,10 +246,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset: &WellTypedPolicies,
         symenv: &SymEnv,
     ) -> Result<bool> {
-        Ok(self
-            .symcc
-            .check_always_denies(&pset.policies, symenv)
-            .await?)
+        self.symcc.check_always_denies(&pset.policies, symenv).await
     }
 
     /// Similar to [`Self::check_always_denies`], but returns a counterexample
@@ -275,10 +256,9 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset: &WellTypedPolicies,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        Ok(self
-            .symcc
+        self.symcc
             .check_always_denies_with_counterexample(&pset.policies, symenv)
-            .await?)
+            .await
     }
 
     /// Returns true iff `pset1` and `pset2` produce the same authorization
@@ -292,10 +272,9 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset2: &WellTypedPolicies,
         symenv: &SymEnv,
     ) -> Result<bool> {
-        Ok(self
-            .symcc
+        self.symcc
             .check_equivalent(&pset1.policies, &pset2.policies, symenv)
-            .await?)
+            .await
     }
 
     /// Similar to [`Self::check_equivalent`], but returns a counterexample
@@ -306,10 +285,9 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset2: &WellTypedPolicies,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        Ok(self
-            .symcc
+        self.symcc
             .check_equivalent_with_counterexample(&pset1.policies, &pset2.policies, symenv)
-            .await?)
+            .await
     }
 
     /// Returns true iff there is no well-formed input in the `symenv` that is
@@ -325,10 +303,9 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset2: &WellTypedPolicies,
         symenv: &SymEnv,
     ) -> Result<bool> {
-        Ok(self
-            .symcc
+        self.symcc
             .check_disjoint(&pset1.policies, &pset2.policies, symenv)
-            .await?)
+            .await
     }
 
     /// Similar to [`Self::check_disjoint`], but returns a counterexample
@@ -339,10 +316,9 @@ impl<S: Solver> CedarSymCompiler<S> {
         pset2: &WellTypedPolicies,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        Ok(self
-            .symcc
+        self.symcc
             .check_disjoint_with_counterexample(&pset1.policies, &pset2.policies, symenv)
-            .await?)
+            .await
     }
 }
 
@@ -403,10 +379,9 @@ impl<S: Solver> CedarSymCompiler<S> {
     ///
     /// NOTE: This is an experimental feature that may break or change in the future.
     pub async fn check_unsat(&mut self, asserts: &WellFormedAsserts<'_>) -> Result<bool> {
-        Ok(self
-            .symcc
+        self.symcc
             .check_unsat(|_| Ok(asserts.asserts().clone()), asserts.symenv())
-            .await?)
+            .await
     }
 
     /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
@@ -414,14 +389,13 @@ impl<S: Solver> CedarSymCompiler<S> {
     ///
     /// NOTE: This is an experimental feature that may break or change in the future.
     pub async fn check_sat(&mut self, asserts: &WellFormedAsserts<'_>) -> Result<Option<Env>> {
-        Ok(self
-            .symcc
+        self.symcc
             .check_sat(
                 |_| Ok(asserts.asserts().clone()),
                 asserts.symenv(),
                 asserts.footprint.iter(),
             )
-            .await?)
+            .await
     }
 }
 

@@ -15,7 +15,7 @@
  */
 use cedar_policy_core::validator::types::OpenTag;
 
-use crate::symcc::result;
+use super::result::CompileError;
 
 use super::{entity_tag::EntityTag, type_abbrevs::*};
 use std::collections::BTreeMap;
@@ -74,7 +74,7 @@ impl TermType {
 
     // This doesn't match the Lean because `cedar_policy_core::validator::types::Type` doesn't
     // TODO: test this
-    pub fn of_type(ty: cedar_policy_core::validator::types::Type) -> Result<Self, result::Error> {
+    pub fn of_type(ty: cedar_policy_core::validator::types::Type) -> Result<Self, CompileError> {
         use cedar_policy::EntityTypeName;
         use cedar_policy_core::validator::types::Type;
         use std::str::FromStr;
@@ -99,7 +99,9 @@ impl TermType {
                 "duration" => Ok(TermType::Ext {
                     xty: ExtType::Duration,
                 }),
-                _ => Err(result::Error::UnsupportedError),
+                name => Err(CompileError::UnsupportedFeature(format!(
+                    "unsupported extension {name}"
+                ))),
             },
             Type::EntityOrRecord(entity_record_kind) => {
                 match entity_record_kind {
@@ -131,21 +133,22 @@ impl TermType {
                             })
                         } else {
                             // Attributes should be closed
-                            Err(result::Error::UnsupportedError)
+                            Err(CompileError::UnsupportedFeature(
+                                "unsupported open attributes".into(),
+                            ))
                         }
                     }
-                    cedar_policy_core::validator::types::EntityRecordKind::AnyEntity => {
-                        Err(result::Error::Unreachable(
-                            "AnyEntity is not possible with Strict validation".into(),
-                        ))
-                    }
+                    cedar_policy_core::validator::types::EntityRecordKind::AnyEntity => Err(
+                        CompileError::UnsupportedFeature("AnyEntity is not supported".into()),
+                    ),
                     cedar_policy_core::validator::types::EntityRecordKind::Entity(entity_lub) => {
                         match entity_lub.get_single_entity() {
                             Some(name) => Ok(TermType::Entity {
                                 ety: core_entity_type_into_entity_type(name).clone(),
                             }),
-                            // EntityLUB has multiple elements
-                            None => Err(result::Error::UnsupportedError),
+                            None => Err(CompileError::UnsupportedFeature(
+                                "EntityLUB has multiple elements".into(),
+                            )),
                         }
                     }
                     cedar_policy_core::validator::types::EntityRecordKind::ActionEntity {
@@ -167,15 +170,19 @@ impl TermType {
                 Some(element_type) => Ok(TermType::Set {
                     ty: Arc::new(Self::of_type(*element_type)?),
                 }),
-                // Empty set. Unable to deduce type
-                None => Err(result::Error::UnsupportedError),
+                None => Err(CompileError::UnsupportedFeature(
+                    "empty set type is unsupported".into(),
+                )),
             },
-            // Analysis cannot handle Never,
-            Type::Never => Err(result::Error::UnsupportedError),
-            // Analysis cannot handle True,
-            Type::True => Err(result::Error::UnsupportedError),
-            // Analysis cannot handle False,
-            Type::False => Err(result::Error::UnsupportedError),
+            Type::Never => Err(CompileError::UnsupportedFeature(
+                "never type is not supported".into(),
+            )),
+            Type::True => Err(CompileError::UnsupportedFeature(
+                "singleton Bool type is not supported".into(),
+            )),
+            Type::False => Err(CompileError::UnsupportedFeature(
+                "singleton Bool type is not supported".into(),
+            )),
         }
     }
 }
