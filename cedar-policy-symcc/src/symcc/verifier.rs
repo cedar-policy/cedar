@@ -21,19 +21,19 @@
 
 use std::sync::Arc;
 
-use crate::symcc::authorizer::is_authorized;
-use crate::symcc::compiler::compile;
-use crate::symcc::enforcer::enforce;
-use crate::symcc::env::SymEnv;
-use crate::symcc::factory::{and, eq, implies, is_some, not};
-use crate::symcc::result;
-use crate::symcc::term::Term;
+use super::authorizer::is_authorized;
+use super::compiler::compile;
+use super::enforcer::enforce;
+use super::env::SymEnv;
+use super::factory::{and, eq, implies, is_some, not};
+use super::result::CompileError;
+use super::term::Term;
 
 use cedar_policy::Effect;
 use cedar_policy_core::ast::{Expr, Policy, PolicyID, PolicySet, Value};
 
 pub type Asserts = Arc<Vec<Term>>;
-type Result<T> = std::result::Result<T, result::Error>;
+type Result<T> = std::result::Result<T, CompileError>;
 
 /// Returns asserts that are unsatisfiable iff the evaluation of `policy`, represented as
 /// a Term of type .option .bool, satisfies `phi` on all inputs drawn from `env`.  See also

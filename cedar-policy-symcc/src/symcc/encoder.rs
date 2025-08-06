@@ -57,11 +57,12 @@
 //!  of every s-expression in the encoding consists of atomic subterms (identifiers
 //!  or literals).
 
-use anyhow::anyhow;
 use async_recursion::async_recursion;
 use itertools::Itertools;
+use miette::Diagnostic;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
+use thiserror::Error;
 
 use cedar_policy_core::ast::PatternElem;
 
@@ -78,6 +79,40 @@ use super::{
 };
 
 use crate::symcc::extension_types::ipaddr::{V4_WIDTH, V6_WIDTH};
+use crate::BitVecError;
+
+#[derive(Debug, Diagnostic, Error)]
+pub enum EncodeError {
+    /// IO error.
+    #[error("IO error during SMT encoding")]
+    Io(#[from] std::io::Error),
+    /// Missing member in enum entity.
+    #[error("missing member {0} in enum entity")]
+    EnumMissingMember(EntityUID),
+    /// Record missing attribute.
+    #[error("record missing attribute {0}")]
+    RecordMissingAttr(Attr),
+    /// Expecting a record type.
+    #[error("expecting a record type, got {0:?}")]
+    ExpectRecord(TermType),
+    /// Missing type encoding.
+    #[error("missing type encoding for {0:?}")]
+    MissingTypeEncoding(TermType),
+    /// Malformed record get.
+    #[error("malformed record get")]
+    MalformedRecordGet,
+    /// Unable to encode string.
+    #[error("unable to encode string \"{0}\" in SMT as it exceeds the max supported code point")]
+    EncodeStringFailed(String),
+    /// Unable to encode pattern.
+    #[error("unable to encode pattern {0:?} in SMT as it exceeds the max supported code point")]
+    EncodePatternFailed(OrdPattern),
+    /// Bit-vector error.
+    #[error("bit-vector error")]
+    BitVecError(#[from] BitVecError),
+}
+
+type Result<T> = std::result::Result<T, EncodeError>;
 
 #[derive(Debug)]
 pub struct Encoder<'a, S> {
@@ -119,7 +154,7 @@ fn record_attr_id(r: &str, n: usize) -> String {
 
 impl<'a, S> Encoder<'a, S> {
     /// Corresponds to `EncoderState.init` in Lean
-    pub fn new(env: &'a SymEnv, script: S) -> Result<Self, anyhow::Error> {
+    pub fn new(env: &'a SymEnv, script: S) -> Result<Self> {
         Ok(Encoder {
             terms: BTreeMap::new(),
             types: BTreeMap::new(),
@@ -140,12 +175,12 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         &mut self,
         id: &'i str,
         mks: impl IntoIterator<Item = String>,
-    ) -> Result<&'i str, anyhow::Error> {
+    ) -> Result<&'i str> {
         self.script.declare_datatype(id, vec![], mks).await?;
         Ok(id)
     }
 
-    pub async fn declare_entity_type(&mut self, ety: &EntityType) -> Result<String, anyhow::Error> {
+    pub async fn declare_entity_type(&mut self, ety: &EntityType) -> Result<String> {
         let ety_id = entity_type_id(self.types.len());
         match self.enums.get(ety) {
             Some(members) => {
@@ -168,7 +203,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         }
     }
 
-    pub async fn declare_ext_type(&mut self, ext_ty: &ExtType) -> Result<&str, anyhow::Error> {
+    pub async fn declare_ext_type(&mut self, ext_ty: &ExtType) -> Result<&str> {
         match ext_ty {
             ExtType::Decimal => {
                 self.declare_type(
@@ -207,7 +242,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     pub async fn declare_record_type<'r>(
         &mut self,
         rty: impl IntoIterator<Item = &'r (Attr, String)> + Clone,
-    ) -> Result<String, anyhow::Error> {
+    ) -> Result<String> {
         let rty_id = record_type_id(self.types.len());
         let mut attrs = rty
             .clone()
@@ -226,7 +261,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     }
 
     #[async_recursion]
-    pub async fn encode_type(&mut self, ty: &TermType) -> Result<String, anyhow::Error> {
+    pub async fn encode_type(&mut self, ty: &TermType) -> Result<String> {
         match self.types.get(ty) {
             Some(enc) => Ok(enc.clone()),
             None => {
@@ -254,22 +289,14 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         }
     }
 
-    pub async fn declare_var(
-        &mut self,
-        v: &TermVar,
-        ty_enc: &str,
-    ) -> Result<String, anyhow::Error> {
+    pub async fn declare_var(&mut self, v: &TermVar, ty_enc: &str) -> Result<String> {
         let id = term_id(self.terms.len());
         self.script.comment(&format!("{:?}", v.id)).await?;
         self.script.declare_const(&id, ty_enc).await?;
         Ok(id)
     }
 
-    pub async fn define_term(
-        &mut self,
-        ty_enc: &str,
-        t_enc: &str,
-    ) -> Result<String, anyhow::Error> {
+    pub async fn define_term(&mut self, ty_enc: &str, t_enc: &str) -> Result<String> {
         let id = term_id(self.terms.len());
         self.script.define_fun(&id, [], ty_enc, t_enc).await?;
         Ok(id)
@@ -279,7 +306,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         &mut self,
         ty_enc: &str,
         t_encs: impl IntoIterator<Item = &'s str>,
-    ) -> Result<String, anyhow::Error> {
+    ) -> Result<String> {
         let members = t_encs
             .into_iter()
             .fold(format!("(as set.empty {ty_enc})"), |acc, t| {
@@ -292,7 +319,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         &mut self,
         ty_enc: &str,
         t_encs: impl IntoIterator<Item = &'s str>,
-    ) -> Result<String, anyhow::Error> {
+    ) -> Result<String> {
         self.define_term(
             ty_enc,
             &format!("({ty_enc} {})", t_encs.into_iter().join(" ")),
@@ -300,7 +327,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         .await
     }
 
-    pub async fn encode_uuf(&mut self, uuf: &Uuf) -> Result<String, anyhow::Error> {
+    pub async fn encode_uuf(&mut self, uuf: &Uuf) -> Result<String> {
         match self.uufs.get(uuf) {
             Some(enc) => Ok(enc.clone()),
             None => {
@@ -317,16 +344,15 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         }
     }
 
-    pub async fn define_entity(
-        &mut self,
-        ty_enc: &str,
-        entity: &EntityUID,
-    ) -> Result<String, anyhow::Error> {
+    pub async fn define_entity(&mut self, ty_enc: &str, entity: &EntityUID) -> Result<String> {
         match self.enums.get(entity.type_name()) {
             Some(members) => {
-                let entity_ind = match members.iter().position(|s| s ==  <EntityID as AsRef<str>>::as_ref(entity.id())) {
+                let entity_ind = match members
+                    .iter()
+                    .position(|s| s == <EntityID as AsRef<str>>::as_ref(entity.id()))
+                {
                     Some(ind) => ind,
-                    None => return Err(anyhow!("members should contain entity.id()! Entity: {entity:?} \n Members: {members:?}"))
+                    None => return Err(EncodeError::EnumMissingMember(entity.clone())),
                 };
                 Ok(enum_id(ty_enc, entity_ind))
             }
@@ -335,8 +361,9 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     ty_enc,
                     &format!(
                         "({ty_enc} \"{}\")",
-                        encode_string(<EntityID as AsRef<str>>::as_ref(entity.id()))
-                            .ok_or_else(|| anyhow!("unable to encode entity id in SMT as it exceeds the max supported code point: {:?}", entity.id()))?
+                        encode_string(<EntityID as AsRef<str>>::as_ref(entity.id())).ok_or_else(
+                            || EncodeError::EncodeStringFailed(format!("{:?}", entity.id()))
+                        )?
                     ),
                 )
                 .await
@@ -344,15 +371,15 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         }
     }
 
-    fn index_of_attr(a: &Attr, t_ty: &TermType) -> Result<usize, anyhow::Error> {
+    fn index_of_attr(a: &Attr, t_ty: &TermType) -> Result<usize> {
         // Getting the index of a key in `BTreeMap` should be ok
         // (it wouldn't be for `HashMap`)
         match t_ty {
             TermType::Record { rty } => match rty.keys().position(|k| k == a) {
                 Some(ind) => Ok(ind),
-                None => Err(anyhow!("Could not find {a:?} in {rty:?}")),
+                None => Err(EncodeError::RecordMissingAttr(a.clone())),
             },
-            _ => Err(anyhow!("Bad term: (record.get {a} {t_ty:?})")),
+            _ => Err(EncodeError::ExpectRecord(t_ty.clone())),
         }
     }
 
@@ -362,10 +389,10 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         a: &Attr,
         t_enc: &str,
         ty: &TermType,
-    ) -> Result<String, anyhow::Error> {
+    ) -> Result<String> {
         let r_id = match self.types.get(ty) {
             Some(t) => t,
-            None => return Err(anyhow!("Could not find {ty:?} in {:?}", self.types)),
+            None => return Err(EncodeError::MissingTypeEncoding(ty.clone())),
         };
         let a_id = Self::index_of_attr(a, ty)?;
         self.define_term(ty_enc, &format!("({} {t_enc})", record_attr_id(r_id, a_id)))
@@ -378,21 +405,23 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         op: &Op,
         t_encs: impl IntoIterator<Item = String>,
         ts: impl IntoIterator<Item = &'b Term>,
-    ) -> Result<String, anyhow::Error> {
+    ) -> Result<String> {
         let args = t_encs.into_iter().join(" ");
-        let t = match ts.into_iter().next() {
-            Some(t) => t.type_of(),
-            None => return Err(anyhow!("cannot get type of non-existant type")),
-        };
         match op {
-            Op::RecordGet(a) => self.define_record_get(ty_enc, a, &args, &t).await,
+            Op::RecordGet(a) => {
+                let ty = match ts.into_iter().next() {
+                    Some(t) => t.type_of(),
+                    None => return Err(EncodeError::MalformedRecordGet),
+                };
+                self.define_record_get(ty_enc, a, &args, &ty).await
+            }
             Op::StringLike(p) => {
                 self.define_term(
                     ty_enc,
                     &format!(
                         "(str.in_re {args} {})",
                         encode_pattern(p)
-                            .ok_or_else(|| anyhow!("unable to encode pattern {:?} in SMT", p))?
+                            .ok_or_else(|| EncodeError::EncodePatternFailed(p.clone()))?
                     ),
                 )
                 .await
@@ -410,7 +439,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     }
 
     #[async_recursion]
-    pub async fn encode_term(&mut self, t: &Term) -> Result<String, anyhow::Error> {
+    pub async fn encode_term(&mut self, t: &Term) -> Result<String> {
         if let Some(enc) = self.terms.get(t) {
             return Ok(enc.clone());
         }
@@ -426,8 +455,10 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     }
                 }
                 TermPrim::Bitvec(bv) => encode_bitvec(bv),
-                TermPrim::String(s) => format!("\"{}\"", encode_string(s)
-                    .ok_or_else(|| anyhow!("unable to encode string in SMT as it exceeds the max supported code point: {:?}", s))?),
+                TermPrim::String(s) => format!(
+                    "\"{}\"",
+                    encode_string(s).ok_or_else(|| EncodeError::EncodeStringFailed(s.clone()))?
+                ),
                 TermPrim::Entity(e) => self.define_entity(&ty_enc, e).await?,
                 TermPrim::Ext(x) => self.define_term(&ty_enc, &encode_ext(x)).await?,
             },
@@ -515,10 +546,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     /// construct an `Encoder` (`EncoderState` in Lean), and then does the encoding.
     /// Here in Rust, we have this as a method on `Encoder`, so the caller first
     /// constructs an `Encoder` themselves with the `SymEnv`, then calls this.
-    pub async fn encode(
-        &mut self,
-        ts: impl IntoIterator<Item = &Term>,
-    ) -> Result<(), anyhow::Error> {
+    pub async fn encode(&mut self, ts: impl IntoIterator<Item = &Term>) -> Result<()> {
         self.script
             .declare_datatype(
                 "Option",
