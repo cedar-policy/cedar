@@ -1,5 +1,3 @@
-use cedar_policy_core::validator::ValidationError;
-use miette::Diagnostic;
 /*
  * Copyright Cedar Contributors
  *
@@ -15,6 +13,11 @@ use miette::Diagnostic;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+//! All error types in SymCC.
+
+use cedar_policy_core::validator::ValidationError;
+use miette::Diagnostic;
 use thiserror::Error;
 
 pub use crate::symcc::{

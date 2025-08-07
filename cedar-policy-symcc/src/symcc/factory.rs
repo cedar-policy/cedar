@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! Utility functions to construct [`Term`]s.
+
 use super::CompileError;
 
 use super::bitvec::BitVec;

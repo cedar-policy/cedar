@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+//! Implementation of [`BitVec`].
+
 use std::sync::LazyLock;
 
 use crate::symcc::type_abbrevs::{Int, Nat, Width};
@@ -36,16 +39,16 @@ pub static TWO: LazyLock<BigUint> = LazyLock::new(|| BigUint::from(2u128));
 /// Errors in [`BitVec`] operations.
 #[derive(Debug, Diagnostic, Error)]
 pub enum BitVecError {
-    /// Extract out of bounds
+    /// Extract out of bounds.
     #[error("extract out of bounds")]
     ExtractOutOfBounds,
-    /// Attempting to create a bit-vector with zero width
+    /// Attempting to create a bit-vector with zero width.
     #[error("cannot create a bit-vector with zero width")]
     ZeroWidthBitVec,
-    /// Mismatched bit-vector widths in various operations
+    /// Mismatched bit-vector widths in various operations.
     #[error("mismatched bit-vector widths in {0}")]
     MismatchedWidths(String),
-    /// Shift amount too large to fit in u32
+    /// Shift amount too large to fit in u32.
     #[error("shift amount too large to fit in u32")]
     ShiftAmountTooLarge,
 }
