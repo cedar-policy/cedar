@@ -13,12 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-mod err;
 
+mod err;
 mod symcc;
+
+use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
+use std::fmt;
+
 use solver::Solver;
 use symcc::SymCompiler;
-pub use symcc::{solver, Env, Environment, Interpretation, SmtLibScript, SymEnv};
 use symcc::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
     verify_never_errors, well_typed_policies, well_typed_policy,
@@ -38,13 +41,16 @@ pub use symcc::{
     type_abbrevs::{ExtType, OrdPattern},
     verifier::Asserts,
 };
-
-use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
+/// Public exports.
+pub use symcc::{solver, Env, Environment, Interpretation, SmtLibScript, SymEnv};
 
 /// Export various error types.
 pub use err::*;
 
-/// Cedar Symbolic Compiler paramatized by a solver `S`.
+/// Cedar symbolic compiler, which takes your policies and schemas
+/// and converts them to SMT queries to perform various verification
+/// tasks such as checking if a policy set always allows/denies,
+/// if two policy sets are equivalent, etc.
 #[derive(Clone, Debug)]
 pub struct CedarSymCompiler<S: Solver> {
     /// SymCompiler
@@ -52,28 +58,28 @@ pub struct CedarSymCompiler<S: Solver> {
 }
 
 impl SymEnv {
-    /// Construct a new `SymEnv` from the given `schema` and `req_env`
+    /// Constructs a new [`SymEnv`] from the given [`Schema`] and [`RequestEnv`].
     pub fn new(schema: &Schema, req_env: &RequestEnv) -> Result<Self> {
         let env = Environment::from_request_env(req_env, schema.as_ref())
             .ok_or_else(|| Error::ActionNotInSchema(req_env.action().to_string()))?;
         Ok(Self::of_env(&env)?)
     }
 }
-use std::fmt;
 
+/// Validated and well-typed policy.
 #[derive(Debug)]
 pub struct WellTypedPolicy {
     policy: cedar_policy_core::ast::Policy,
 }
 
 impl WellTypedPolicy {
-    /// Returns a reference to the underlying policy
+    /// Returns a reference to the underlying policy.
     pub fn policy(&self) -> &cedar_policy_core::ast::Policy {
         &self.policy
     }
 
     /// Creates a well-typed policy with respect to the given request environment and schema.
-    /// This ensures that the policy satisfies the `WellTyped` constraints required by the
+    /// This ensures that the policy satisfies the well-typedness constraints required by the
     /// symbolic compiler, by applying Cedar's typechecker transformations.
     pub fn from_policy(
         policy: &Policy,
@@ -83,9 +89,8 @@ impl WellTypedPolicy {
         well_typed_policy(policy.as_ref(), env, schema).map(|p| WellTypedPolicy { policy: p })
     }
 
-    /// Convers a [`Policy`] to a [`WellTypedPolicy`] unchecked.
-    /// Note that SymCC may fail on the policy produced by this function
-    /// even if it is validated.
+    /// Converts a [`Policy`] to a [`WellTypedPolicy`] without type checking.
+    /// Note that SymCC may fail on the policy produced by this function.
     pub fn from_policy_unchecked(policy: &Policy) -> Self {
         WellTypedPolicy {
             policy: policy.as_ref().clone(),
@@ -99,8 +104,8 @@ impl fmt::Display for WellTypedPolicy {
     }
 }
 
-/// The type of well-typed policies which ensures that the Cedar Symbolic Compiler is
-/// not applied to any ill-formed policies. I.e., on only the output of successful validation
+/// Validated and well-typed policy set.
+/// Similar to [`WellTypedPolicy`] but for policy sets.
 #[derive(Debug)]
 pub struct WellTypedPolicies {
     policies: cedar_policy_core::ast::PolicySet,
@@ -123,9 +128,8 @@ impl WellTypedPolicies {
         well_typed_policies(ps.as_ref(), env, schema).map(|ps| WellTypedPolicies { policies: ps })
     }
 
-    /// Converts a [`PolicySet`] to a [`WellTypedPolicies`] unchecked.
-    /// Note that SymCC may fail on the policy set produced by this function
-    /// even if it is validated.
+    /// Converts a [`PolicySet`] to a [`WellTypedPolicies`] without type checking.
+    /// Note that SymCC may fail on the policy set produced by this function.
     pub fn from_policies_unchecked(ps: &PolicySet) -> Self {
         WellTypedPolicies {
             policies: ps.as_ref().clone(),
@@ -140,28 +144,25 @@ impl fmt::Display for WellTypedPolicies {
 }
 
 impl<S: Solver> CedarSymCompiler<S> {
-    /// Construct a new `CedarSymCompiler` with the given `solver`
+    /// Constructs a new [`CedarSymCompiler`] with the given [`Solver`] instance.
     pub fn new(solver: S) -> Result<Self> {
         Ok(Self {
             symcc: SymCompiler::new(solver),
         })
     }
 
-    /// Returns a reference to the `Solver` instance used to construct this `CedarSymCompiler`
+    /// Returns a reference to the [`Solver`] instance used to construct this [`CedarSymCompiler`]
     pub fn solver(&self) -> &S {
         self.symcc.solver()
     }
 
-    /// Returns a mutable reference to the `Solver` instance used to construct this `CedarSymCompiler`
+    /// Returns a mutable reference to the [`Solver`] instance used to construct this [`CedarSymCompiler`]
     pub fn solver_mut(&mut self) -> &mut S {
         self.symcc.solver_mut()
     }
 
-    /// Returns true iff `policy` does not error on any well-formed input in the
-    /// `symenv`.
-    ///
-    /// Like `SymCompiler::check_never_errors()`, but takes `cedar-policy`
-    /// types instead of internal types.
+    /// Returns true iff [`WellTypedPolicy`] does not error on any well-formed
+    /// input in the given symbolic environment.
     pub async fn check_never_errors(
         &mut self,
         policy: &WellTypedPolicy,
@@ -171,7 +172,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     }
 
     /// Similar to [`Self::check_never_errors`], but returns a counterexample
-    /// where the policy does error.
+    /// if the policy could error on well-formed input.
     pub async fn check_never_errors_with_counterexample(
         &mut self,
         policy: &WellTypedPolicy,
@@ -186,9 +187,6 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// `pset2` for every well-formed input in the `symenv`. That is, every
     /// input allowed by `pset1` is allowed by `pset2`; `pset2` is either more
     /// permissive than, or equivalent to, `pset1`.
-    ///
-    /// Like `SymCompiler::check_implies()`, but takes `cedar-policy` types
-    /// instead of internal types.
     pub async fn check_implies(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -201,7 +199,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     }
 
     /// Similar to [`Self::check_implies`], but returns a counterexample
-    /// that is allowed by `pset1` but not by `pset2`.
+    /// that is allowed by `pset1` but not by `pset2` if it exists.
     pub async fn check_implies_with_counterexample(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -214,9 +212,6 @@ impl<S: Solver> CedarSymCompiler<S> {
     }
 
     /// Returns true iff `pset` allows all well-formed inputs in the `symenv`.
-    ///
-    /// Like `SymCompiler::check_always_allows()`, but takes `cedar-policy`
-    /// types instead of internal types.
     pub async fn check_always_allows(
         &mut self,
         pset: &WellTypedPolicies,
@@ -226,7 +221,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     }
 
     /// Similar to [`Self::check_always_allows`], but returns a counterexample
-    /// that is denied by `pset`.
+    /// that is denied by `pset` if it exists.
     pub async fn check_always_allows_with_counterexample(
         &mut self,
         pset: &WellTypedPolicies,
@@ -238,9 +233,6 @@ impl<S: Solver> CedarSymCompiler<S> {
     }
 
     /// Returns true iff `pset` denies all well-formed inputs in the `symenv`.
-    ///
-    /// Like `SymCompiler::check_always_denies()`, but takes `cedar-policy`
-    /// types instead of internal types.
     pub async fn check_always_denies(
         &mut self,
         pset: &WellTypedPolicies,
@@ -250,7 +242,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     }
 
     /// Similar to [`Self::check_always_denies`], but returns a counterexample
-    /// that is allowed by `pset`.
+    /// that is allowed by `pset` if it exists.
     pub async fn check_always_denies_with_counterexample(
         &mut self,
         pset: &WellTypedPolicies,
@@ -263,9 +255,6 @@ impl<S: Solver> CedarSymCompiler<S> {
 
     /// Returns true iff `pset1` and `pset2` produce the same authorization
     /// decision on all well-formed inputs in the `symenv`.
-    ///
-    /// Like `SymCompiler::check_equivalent()`, but takes `cedar-policy` types
-    /// instead of internal types.
     pub async fn check_equivalent(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -294,9 +283,6 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// allowed by both `pset1` and `pset2`. If this returns `false`, then there
     /// is at least one well-formed input that is allowed by both `pset1` and
     /// `pset2`.
-    ///
-    /// Like `SymCompiler::check_disjoint()`, but takes `cedar-policy` types
-    /// instead of internal types.
     pub async fn check_disjoint(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -371,8 +357,6 @@ impl<'a> WellFormedAsserts<'a> {
     }
 }
 
-/// Experimental features for directly compiling verification tasks to assertions,
-/// and checking (un)satisfiability of assertions.
 impl<S: Solver> CedarSymCompiler<S> {
     /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
     /// Returns `true` iff the asserts are unsatisfiable.
@@ -399,8 +383,9 @@ impl<S: Solver> CedarSymCompiler<S> {
     }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_never_errors`] to the unsatisfiability
-/// of the returned [`WellFormedAsserts`]  without actually calling an SMT solver.
+/// Compiles the verification task of [`CedarSymCompiler::check_never_errors`] to
+/// the unsatisfiability of the returned [`WellFormedAsserts`]  without actually
+/// calling an SMT solver.
 ///
 /// For any `compiler: CedarSymCompiler` and `symenv: &SymvEnv`, the result of
 /// ```no_compile
@@ -427,8 +412,8 @@ pub fn compile_never_errors<'a>(
 }
 
 /// Similar to [`compile_never_errors`], but compiles the verification task of
-/// [`CedarSymCompiler::check_implies`] to the unsatisfiability of the returned [`WellFormedAsserts`]
-/// without actually calling an SMT solver.
+/// [`CedarSymCompiler::check_implies`] to the unsatisfiability of the returned
+/// [`WellFormedAsserts`] without actually calling an SMT solver.
 ///
 /// NOTE: This is an experimental feature that may break or change in the future.
 pub fn compile_implies<'a>(
@@ -447,8 +432,8 @@ pub fn compile_implies<'a>(
 }
 
 /// Similar to [`compile_never_errors`], but compiles the verification task of
-/// [`CedarSymCompiler::check_always_allows`] to the unsatisfiability of the returned [`WellFormedAsserts`]
-/// without actually calling an SMT solver.
+/// [`CedarSymCompiler::check_always_allows`] to the unsatisfiability of the returned
+/// [`WellFormedAsserts`] without actually calling an SMT solver.
 ///
 /// NOTE: This is an experimental feature that may break or change in the future.
 pub fn compile_always_allows<'a>(
@@ -463,8 +448,8 @@ pub fn compile_always_allows<'a>(
 }
 
 /// Similar to [`compile_never_errors`], but compiles the verification task of
-/// [`CedarSymCompiler::check_always_denies`] to the unsatisfiability of the returned [`WellFormedAsserts`]
-/// without actually calling an SMT solver.
+/// [`CedarSymCompiler::check_always_denies`] to the unsatisfiability of the returned
+/// [`WellFormedAsserts`] without actually calling an SMT solver.
 ///
 /// NOTE: This is an experimental feature that may break or change in the future.
 pub fn compile_always_denies<'a>(
@@ -479,8 +464,8 @@ pub fn compile_always_denies<'a>(
 }
 
 /// Similar to [`compile_never_errors`], but compiles the verification task of
-/// [`CedarSymCompiler::check_equivalent`] to the unsatisfiability of the returned [`WellFormedAsserts`]
-/// without actually calling an SMT solver.
+/// [`CedarSymCompiler::check_equivalent`] to the unsatisfiability of the returned
+/// [`WellFormedAsserts`] without actually calling an SMT solver.
 ///
 /// NOTE: This is an experimental feature that may break or change in the future.
 pub fn compile_equivalent<'a>(
@@ -499,8 +484,8 @@ pub fn compile_equivalent<'a>(
 }
 
 /// Similar to [`compile_never_errors`], but compiles the verification task of
-/// [`CedarSymCompiler::check_disjoint`] to the unsatisfiability of the returned [`WellFormedAsserts`]
-/// without actually calling an SMT solver.
+/// [`CedarSymCompiler::check_disjoint`] to the unsatisfiability of the returned
+/// [`WellFormedAsserts`] without actually calling an SMT solver.
 ///
 /// NOTE: This is an experimental feature that may break or change in the future.
 pub fn compile_disjoint<'a>(
