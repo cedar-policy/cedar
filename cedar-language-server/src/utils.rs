@@ -63,16 +63,17 @@ fn to_lsp_severity(severity: miette::Severity) -> lsp_types::DiagnosticSeverity 
 /// (a source range with a message). Errors wanting to provide more information
 /// can use this function while building a richer diagnostic with something like
 /// `to_lsp_diagnostic(error, src).map(|d| Diagnostic { data: my_data, ..d })`
-#[allow(clippy::unwrap_used, reason = "LSP code is experimental")]
 pub(crate) fn to_lsp_diagnostics<'a>(
     diagnostic: &'a dyn miette::Diagnostic,
     src: &'a str,
 ) -> Vec<lsp_types::Diagnostic> {
     let mut message = diagnostic.to_string();
     if let Some(source) = diagnostic.source() {
+        #[allow(clippy::unwrap_used, reason="writing string cannot fail")]
         write!(&mut message, ". {source}").unwrap();
     }
     if let Some(help) = diagnostic.help() {
+        #[allow(clippy::unwrap_used, reason="writing string cannot fail")]
         write!(&mut message, ". {help}").unwrap();
     }
 
