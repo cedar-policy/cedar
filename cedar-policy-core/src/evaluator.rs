@@ -1272,7 +1272,6 @@ impl Value {
 
     /// Convert the `Value` to an Entity, or throw a type error if it's not a
     /// Entity.
-    #[verifier::external_body]
     pub(crate) fn get_as_entity(&self) -> (res: Result<&EntityUID>)
         ensures
             (self@ is Prim && self@->p is EntityUID) ==> (res matches Ok(uid) && uid@ == self@->p->uid),
@@ -1280,11 +1279,17 @@ impl Value {
     {
         match &self.value {
             ValueKind::Lit(Literal::EntityUID(uid)) => Ok(uid.as_ref()),
-            _ => Err(EvaluationError::type_error_single(
-                Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
-                self,
-            )),
+            _ => Err(self.get_as_entity_mk_type_error()),
         }
+    }
+
+    // Verus can't handle the `lazy_static` `names::ANY_ENTITY_TYPE`, so have to axiomatize
+    #[verifier::external_body]
+    fn get_as_entity_mk_type_error(&self) -> EvaluationError {
+        EvaluationError::type_error_single(
+            Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
+            self,
+        )
     }
 
     }
