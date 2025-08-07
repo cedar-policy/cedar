@@ -28,6 +28,7 @@ use cedar_policy_core::ast::{
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
 use cedar_policy_core::extensions::{datetime, decimal, ipaddr, Extensions};
+use miette::Diagnostic;
 use num_bigint::{BigInt, TryFromBigIntError};
 use ref_cast::RefCast;
 use smol_str::SmolStr;
@@ -36,48 +37,42 @@ use thiserror::Error;
 use crate::symcc::enforcer::footprint;
 use crate::symcc::ext::Ext;
 use crate::symcc::factory;
-use crate::symcc::type_abbrevs::ExtType;
 
 use super::env::{SymEntities, SymEntityData, SymRequest};
 use super::function::{Udf, UnaryFunction};
 use super::term::{Term, TermPrim};
 use super::SymEnv;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
 pub enum ConcretizeError {
+    /// Expecting a literal entity.
     #[error("Not a literal entity: {0:?}")]
     NotLiteralEntity(Term),
-
+    /// Expecting a literal string.
     #[error("Not a literal string: {0:?}")]
     NotLiteralString(Term),
-
-    #[error("Request validation error: {0}")]
-    RequestValidationError(#[from] cedar_policy::RequestValidationError),
-
-    #[error("Overflow when converting bitvec to i64: {0}")]
-    Overflow(#[from] std::num::TryFromIntError),
-
+    /// Cannot convert a term to a value.
     #[error("Unable to convert {0:?} to a value")]
     UnableToConvertToValue(Term),
-
+    /// Cannot convert a term to a context.
     #[error("Unable to convert {0:?} to a context")]
     UnableToConvertToContext(Term),
-
-    #[error("Unable to construct a valid entity: {0}")]
+    /// Unable to construct entity.
+    #[error("Unable to construct a valid entity")]
     UnableToConstructEntity(#[from] EntityAttrEvaluationError),
-
+    /// Entity type not found.
     #[error("Entity type not found: {0}")]
     EntityTypeNotFound(EntityTypeName),
-
-    #[error("Unable to construct entities: {0}")]
+    /// Unable to falidate request.
+    #[error("Request validation error")]
+    RequestValidationError(#[from] cedar_policy::RequestValidationError),
+    /// Errors when constructing entity.
+    #[error("Unable to construct entities")]
     EntitiesError(#[from] cedar_policy::entities_errors::EntitiesError),
-
-    #[error("Unable to convert BitVec to integer: {0}")]
+    /// Fail to convert from big integer.
+    #[error("Unable to convert BitVec to integer")]
     TryFromBigIntError(#[from] TryFromBigIntError<BigInt>),
-
-    #[error("Concretization function not yet implemented for extension: {0:?}")]
-    ExtensionNotImplemented(ExtType),
-
+    /// Fail to call extension functions.
     #[error("Failed to construct extension value")]
     ExtensionError,
 }
