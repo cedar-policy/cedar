@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! Implementations of various extension values.
+
 pub mod datetime;
 pub mod decimal;
 pub mod ipaddr;

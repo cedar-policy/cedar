@@ -67,7 +67,7 @@ use thiserror::Error;
 use cedar_policy_core::ast::PatternElem;
 
 use super::{
-    bitvec::BitVec,
+    bitvec::{BitVec, BitVecError},
     env::SymEnv,
     ext::Ext,
     extension_types::ipaddr::{CIDRv4, CIDRv6, IPNet, IPv4Prefix, IPv6Prefix},
@@ -78,9 +78,10 @@ use super::{
     type_abbrevs::*,
 };
 
-use crate::symcc::extension_types::ipaddr::{V4_WIDTH, V6_WIDTH};
-use crate::BitVecError;
+use super::extension_types::ipaddr::{V4_WIDTH, V6_WIDTH};
 
+/// Errors during encoding, i.e., converting [`Term`]
+/// to SMT-LIB 2 format.
 #[derive(Debug, Diagnostic, Error)]
 pub enum EncodeError {
     /// IO error.
