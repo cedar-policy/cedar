@@ -70,8 +70,9 @@ pub use verifier::{
     verify_never_errors,
 };
 
-/// Corresponds to the `SolverM` monad in Lean
-#[derive(Debug, Clone)]
+/// Internal symbolic compiler.
+/// Corresponds to the `SolverM` monad in Lean.
+#[derive(Clone, Debug)]
 pub struct SymCompiler<S> {
     solver: S,
 }
