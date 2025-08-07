@@ -414,23 +414,31 @@ fn well_typed_policy_inner(
 
     use cedar_policy_core::validator::typecheck::PolicyCheck::*;
     match policy_check {
-        Success(expr) => Ok(Policy::from_when_clause(
-            policy.effect(),
-            expr.into_expr::<ExprBuilder<()>>(),
-            policy.id().clone(),
-            policy.loc().cloned(),
-        )),
+        Success(expr) => {
+            let loc = policy.loc().cloned();
+            #[cfg(feature="raw-parsing")]
+            let loc = loc.map(Box::new);
+            Ok(Policy::from_when_clause(
+                policy.effect(),
+                expr.into_expr::<ExprBuilder<()>>(),
+                policy.id().clone(),
+                loc,
+            ))
+        }
         Irrelevant(errs, expr) =>
         // A policy could be irrelevant just for this environment, so unless there were errors we don't want to fail.
         // Note that if the policy was irrelevant for all environments schema validation would have caught this
         // before SymCC. The Lean implementation needs to be updated to match this behavior.
         {
             if errs.is_empty() {
+                let loc = policy.loc().cloned();
+                #[cfg(feature="raw-parsing")]
+                let loc = loc.map(Box::new);
                 Ok(Policy::from_when_clause(
                     policy.effect(),
                     expr.into_expr::<ExprBuilder<()>>(),
                     policy.id().clone(),
-                    policy.loc().cloned(),
+                    loc,
                 ))
             } else {
                 Err(Error::PolicyNotWellTyped { errs })

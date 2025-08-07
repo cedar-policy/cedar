@@ -97,6 +97,10 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
         ExprKind::Unknown(_) => {
             unimplemented!("analyzing partial expressions is not currently supported")
         }
+        #[cfg(feature="tolerant-ast")]
+        ExprKind::Error { .. } => {
+            unimplemented!("analyzing error expressions is not currently supported")
+        }
         ExprKind::If {
             test_expr,
             then_expr,
