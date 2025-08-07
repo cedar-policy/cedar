@@ -1695,20 +1695,6 @@ where
         .map_err(|e| serde::de::Error::custom(format!("failed to parse entities: {e}")))
 }
 
-#[derive(Error, Diagnostic, Debug)]
-enum TestCaseError {
-    #[error("error when parsing JSON")]
-    JsonParseError(#[from] serde_json::Error),
-    #[error("error when parsing entity UID")]
-    EntityUidParseError(#[from] ParseErrors),
-    #[error("error when parsing context JSON")]
-    ContextJsonError(#[from] ContextJsonError),
-    #[error("error when validating request against schema")]
-    RequestValidationError(#[from] RequestValidationError),
-    #[error("error when parsing entities")]
-    EntitiesError(#[from] EntitiesError),
-}
-
 /// Load partially parsed tests from a JSON file
 /// (as JSON values first without parsing to TestCase)
 fn load_partial_tests(tests_filename: impl AsRef<Path>) -> Result<Vec<serde_json::Value>> {
