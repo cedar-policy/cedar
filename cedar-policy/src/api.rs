@@ -2783,9 +2783,17 @@ impl PolicySet {
         new_id: PolicyId,
         vals: HashMap<SlotId, EntityUid>,
     ) -> Result<(), PolicySetError> {
-        let unwrapped_vals: HashMap<ast::SlotId, ast::EntityUID> = vals
+        // We convert this into RestrictedExpr to work with our internal APIs
+        // This change was made to standardize the handling of
+        // generalized slots which can have values aside from EntityUid's
+        let unwrapped_vals: HashMap<ast::SlotId, ast::RestrictedExpr> = vals
             .into_iter()
-            .map(|(key, value)| (key.into(), value.into()))
+            .map(|(key, value)| {
+                (
+                    key.into(),
+                    RestrictedExpr::val(ast::Literal::from(ast::EntityUID::from(value))),
+                )
+            })
             .collect();
 
         // Try to get the template with the id we're linking from.  We do this
@@ -2809,7 +2817,6 @@ impl PolicySet {
             template_id.into(),
             new_id.clone().into(),
             unwrapped_vals.clone(),
-            HashMap::new(),
             None,
         )?;
 
@@ -2943,7 +2950,16 @@ fn is_static_or_link(
                 .ast
                 .env()
                 .iter()
-                .map(|(id, euid)| (id.clone(), euid.clone()))
+                .filter_map(|(id, restricted_expr)| {
+                    if id.is_principal() || id.is_resource() {
+                        // PANIC SAFETY: This `unwrap` here is safe because `?principal` and
+                        // `?resource` slots can only contain EntityUID's
+                        #[allow(clippy::unwrap_used)]
+                        Some((id.clone(), restricted_expr.as_euid().unwrap().clone()))
+                    } else {
+                        None
+                    }
+                })
                 .collect();
             Ok(Either::Right(TemplateLink {
                 new_id: id.into(),
@@ -3492,6 +3508,7 @@ impl Policy {
 
     /// Get the values this `Template` is linked to, expressed as a map from `SlotId` to `EntityUid`.
     /// If this is a static policy, this will return `None`.
+    /// This will only return the values linked with `?principal` and `?resource` slots
     pub fn template_links(&self) -> Option<HashMap<SlotId, EntityUid>> {
         if self.is_static() {
             None
@@ -3500,7 +3517,19 @@ impl Policy {
                 .ast
                 .env()
                 .iter()
-                .map(|(key, value)| ((key.clone()).into(), value.clone().into()))
+                .filter_map(|(key, value)| {
+                    if key.is_principal() || key.is_resource() {
+                        Some((
+                            (key.clone()).into(),
+                            // PANIC SAFETY: This `unwrap` here is safe because `?principal` and
+                            // `?resource` slots can only contain EntityUID's
+                            #[allow(clippy::unwrap_used)]
+                            value.as_euid().unwrap().clone().into(),
+                        ))
+                    } else {
+                        None
+                    }
+                })
                 .collect();
             Some(wrapped_vals)
         }
@@ -3634,7 +3663,7 @@ impl Policy {
             // PANIC SAFETY: This `unwrap` here is safe due the invariant (values total map) on policies.
             #[allow(clippy::unwrap_used)]
             ast::EntityReference::Slot(_) => {
-                EntityUid::ref_cast(self.ast.env().get(&slot).unwrap())
+                EntityUid::ref_cast(self.ast.env().get(&slot).unwrap().as_euid().unwrap())
             }
         }
     }
@@ -3932,7 +3961,7 @@ pub(crate) enum LosslessPolicy {
         /// For linked policies, map of slot to UID. Only linked policies have
         /// this; static policies and (unlinked) templates have an empty map
         /// here
-        slots: HashMap<ast::SlotId, ast::EntityUID>,
+        slots: HashMap<ast::SlotId, ast::RestrictedExpr>,
     },
 }
 
@@ -3960,7 +3989,20 @@ impl LosslessPolicy {
                 if slots.is_empty() {
                     Ok(est)
                 } else {
-                    let unwrapped_vals = slots.iter().map(|(k, v)| (k.clone(), v.into())).collect();
+                    let unwrapped_vals = slots
+                        .iter()
+                        .filter_map(|(k, v)| {
+                            if k.is_principal() || k.is_resource() {
+                                // PANIC SAFETY: This `unwrap` here is safe because `?principal` and
+                                // `?resource` slots can only contain EntityUID's
+                                #[allow(clippy::unwrap_used)]
+                                Some((k.clone(), v.as_euid().unwrap().clone().into()))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
                     Ok(est.link(&unwrapped_vals)?)
                 }
             }
@@ -3969,15 +4011,25 @@ impl LosslessPolicy {
 
     fn link<'a>(
         self,
-        vals: impl IntoIterator<Item = (ast::SlotId, &'a ast::EntityUID)>,
+        vals: impl IntoIterator<Item = (ast::SlotId, &'a ast::RestrictedExpr)>,
     ) -> Result<Self, est::LinkingError> {
         match self {
             Self::Empty => Ok(Self::Empty),
             Self::Est(est) => {
-                let unwrapped_est_vals: HashMap<
-                    ast::SlotId,
-                    cedar_policy_core::entities::EntityUidJson,
-                > = vals.into_iter().map(|(k, v)| (k, v.into())).collect();
+                let unwrapped_est_vals = vals
+                    .into_iter()
+                    .filter_map(|(k, v)| {
+                        if k.is_principal() || k.is_resource() {
+                            // PANIC SAFETY: This `unwrap` here is safe because `?principal` and
+                            // `?resource` slots can only contain EntityUID's
+                            #[allow(clippy::unwrap_used)]
+                            Some((k, v.as_euid().unwrap().clone().into()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
                 Ok(Self::Est(est.link(&unwrapped_est_vals)?))
             }
             Self::Text { text, slots } => {

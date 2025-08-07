@@ -16,7 +16,7 @@
 
 use super::Policy;
 use super::PolicySetFromJsonError;
-use crate::ast::{self, EntityUID, PolicyID, SlotId};
+use crate::ast::{self, EntityUID, PolicyID, RestrictedExpr, SlotId};
 use crate::entities::json::err::JsonDeserializationErrorContext;
 use crate::entities::json::EntityUidJson;
 use crate::parser::cst::Policies;
@@ -127,7 +127,12 @@ impl TryFrom<PolicySet> for ast::PolicySet {
             values,
         } in value.template_links
         {
-            ast_pset.link(template_id, new_id, values, HashMap::new(), None)?; // Chore: We will include this when we include the EST functionality
+            let values = values
+                .into_iter()
+                .map(|(slot, euid)| (slot, RestrictedExpr::val(euid)))
+                .collect();
+            
+            ast_pset.link(template_id, new_id, values, None)?; // Chore: We will include this when we include the EST functionality
         }
 
         Ok(ast_pset)

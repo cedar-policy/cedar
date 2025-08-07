@@ -451,12 +451,12 @@ impl<'e> Evaluator<'e> {
         let loc = expr.source_loc(); // the `loc` describing the location of the entire expression
         match expr.expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
-            ExprKind::Slot(id) => slots
-                .get(id)
-                .ok_or_else(|| {
+            ExprKind::Slot(id) => {
+                let restricted_expr = slots.get(id).ok_or_else(|| {
                     err::EvaluationError::unlinked_slot(id.clone(), loc.into_maybe_loc())
-                })
-                .map(|euid| PartialValue::from(euid.clone())),
+                })?;
+                self.partial_interpret(restricted_expr, slots)
+            }
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate(*v)),
                 Var::Action => Ok(self.action.evaluate(*v)),
@@ -4881,7 +4881,10 @@ pub(crate) mod test {
         });
 
         let mut slots = HashMap::new();
-        slots.insert(SlotId::principal(), EntityUID::with_eid("eid"));
+        slots.insert(
+            SlotId::principal(),
+            RestrictedExpr::val(EntityUID::with_eid("eid")),
+        );
         let r = evaluator.partial_interpret(&e, &slots);
         assert_matches!(r, Ok(e) => {
             assert_eq!(
@@ -4904,13 +4907,14 @@ pub(crate) mod test {
         pset.add_template(t)
             .expect("Template already present in PolicySet");
         let mut values = HashMap::new();
-        values.insert(SlotId::principal(), EntityUID::with_eid("p"));
-        let generalized_env = HashMap::new();
+        values.insert(
+            SlotId::principal(),
+            RestrictedExpr::val(EntityUID::with_eid("p")),
+        );
         pset.link(
             PolicyID::from_string("template"),
             PolicyID::from_string("instance"),
             values,
-            generalized_env,
             None,
         )
         .expect("Linking failed!");

@@ -15,8 +15,7 @@
  */
 
 use super::{
-    EntityUID, LinkingError, LiteralPolicy, Policy, PolicyID, ReificationError, SlotId,
-    StaticPolicy, Template,
+    LinkingError, LiteralPolicy, Policy, PolicyID, ReificationError, SlotId, StaticPolicy, Template,
 };
 use crate::ast::RestrictedExpr;
 use crate::validator::ValidatorSchema;
@@ -500,16 +499,16 @@ impl PolicySet {
     /// set. Returns a references to the new template linked policy if
     /// successful.
     ///
-    /// Errors for three reasons
-    ///   1) The the passed SlotEnv or GeneralizedSlotEnv either does not match the slots in the templates
+    /// Errors for four reasons
+    ///   1) The the passed SlotEnv either does not match the slots in the templates
     ///   2) The passed link Id conflicts with an Id already in the set
-    ///   3) SlotEnv and GeneralizedSlotEnv do not conform to their type annotations
+    ///   3) SlotEnv do not conform to their type annotations
+    ///   4) `?principal` and `?resource` slots are not entity types
     pub fn link(
         &mut self,
         template_id: PolicyID,
         new_id: PolicyID,
-        values: HashMap<SlotId, EntityUID>,
-        generalized_values: HashMap<SlotId, RestrictedExpr>,
+        values: HashMap<SlotId, RestrictedExpr>,
         schema: Option<&ValidatorSchema>,
     ) -> Result<&Policy, LinkingError> {
         let t =
@@ -517,7 +516,7 @@ impl PolicySet {
                 .ok_or_else(|| LinkingError::NoSuchTemplate {
                     id: template_id.clone(),
                 })?;
-        let r = Template::link(t, new_id.clone(), values, generalized_values, schema)?;
+        let r = Template::link(t, new_id.clone(), values, schema)?;
 
         // Both maps must not contain the `new_id`
         match (
@@ -645,8 +644,8 @@ mod test {
     use super::*;
     use crate::{
         ast::{
-            annotation::Annotations, ActionConstraint, Effect, Expr, GeneralizedSlotsDeclaration,
-            PrincipalConstraint, ResourceConstraint,
+            annotation::Annotations, ActionConstraint, Effect, EntityUID, Expr,
+            GeneralizedSlotsDeclaration, PrincipalConstraint, ResourceConstraint,
         },
         parser,
     };
@@ -669,17 +668,15 @@ mod test {
         .expect("Failed to parse");
         pset.add_template(template).expect("Add failed");
 
-        let env: HashMap<SlotId, EntityUID> = HashMap::from([(
+        let env: HashMap<SlotId, RestrictedExpr> = HashMap::from([(
             SlotId::principal(),
-            r#"Test::"test""#.parse().expect("Failed to parse"),
+            RestrictedExpr::val(r#"Test::"test""#.parse::<EntityUID>().expect("Failed to parse")),
         )]);
 
-        let generalized_env = HashMap::new();
         let r = pset.link(
             PolicyID::from_string("t"),
             PolicyID::from_string("id"),
             env,
-            generalized_env,
             None,
         );
 
@@ -713,17 +710,15 @@ mod test {
             )
             .expect("Failed to parse"),
         );
-        let env1: HashMap<SlotId, EntityUID> = HashMap::from([(
+        let env1: HashMap<SlotId, RestrictedExpr> = HashMap::from([(
             SlotId::principal(),
-            r#"Test::"test1""#.parse().expect("Failed to parse"),
+            RestrictedExpr::val(r#"Test::"test1""#.parse::<EntityUID>().expect("Failed to parse")),
         )]);
 
-        let generalized_env = HashMap::new();
         let p1 = Template::link(
             Arc::clone(&template),
             PolicyID::from_string("link"),
             env1,
-            generalized_env,
             None,
         )
         .expect("Failed to link");
@@ -735,17 +730,15 @@ mod test {
             "Adding link should implicitly add the template"
         );
 
-        let env2: HashMap<SlotId, EntityUID> = HashMap::from([(
+        let env2: HashMap<SlotId, RestrictedExpr> = HashMap::from([(
             SlotId::principal(),
-            r#"Test::"test2""#.parse().expect("Failed to parse"),
+            RestrictedExpr::val(r#"Test::"test2""#.parse::<EntityUID>().expect("Failed to parse")),
         )]);
 
-        let generalized_env = HashMap::new();
         let p2 = Template::link(
             Arc::clone(&template),
             PolicyID::from_string("link"),
             env2.clone(),
-            generalized_env,
             None,
         )
         .expect("Failed to link");
@@ -754,12 +747,10 @@ mod test {
             Err(PolicySetError::Occupied { id }) => assert_eq!(id, PolicyID::from_string("link")),
         }
 
-        let generalized_env = HashMap::new();
         let p3 = Template::link(
             Arc::clone(&template),
             PolicyID::from_string("link2"),
             env2,
-            generalized_env,
             None,
         )
         .expect("Failed to link");
@@ -774,17 +765,15 @@ mod test {
             )
             .expect("Failed to parse"),
         );
-        let env3: HashMap<SlotId, EntityUID> = HashMap::from([(
+        let env3: HashMap<SlotId, RestrictedExpr> = HashMap::from([(
             SlotId::resource(),
-            r#"Test::"test3""#.parse().expect("Failed to parse"),
+            RestrictedExpr::val(r#"Test::"test3""#.parse::<EntityUID>().expect("Failed to parse")),
         )]);
 
-        let generalized_env = HashMap::new();
         let p4 = Template::link(
             Arc::clone(&template2),
             PolicyID::from_string("unique3"),
             env3,
-            generalized_env,
             None,
         )
         .expect("Failed to link");
@@ -937,8 +926,10 @@ mod test {
         set.link(
             PolicyID::from_string("template"),
             PolicyID::from_string("id"),
-            HashMap::from([(SlotId::principal(), EntityUID::with_eid("eid"))]),
-            HashMap::new(),
+            HashMap::from([(
+                SlotId::principal(),
+                RestrictedExpr::val(EntityUID::with_eid("eid")),
+            )]),
             None,
         )
         .expect("Linking failed!");
@@ -964,13 +955,7 @@ mod test {
 
         let mut s = PolicySet::new();
         let e = s
-            .link(
-                tid.clone(),
-                lid.clone(),
-                HashMap::new(),
-                HashMap::new(),
-                None,
-            )
+            .link(tid.clone(), lid.clone(), HashMap::new(), None)
             .expect_err("Should fail");
 
         match e {
@@ -979,7 +964,7 @@ mod test {
         };
 
         s.add_template(t).unwrap();
-        s.link(tid, lid, HashMap::new(), HashMap::new(), None)
+        s.link(tid, lid, HashMap::new(), None)
             .expect("Should succeed");
     }
 
@@ -1003,11 +988,16 @@ mod test {
         s.add_template(t).unwrap();
 
         let mut vals = HashMap::new();
-        vals.insert(SlotId::principal(), EntityUID::with_eid("p"));
-        vals.insert(SlotId::resource(), EntityUID::with_eid("a"));
+        vals.insert(
+            SlotId::principal(),
+            RestrictedExpr::val(EntityUID::with_eid("p")),
+        );
+        vals.insert(
+            SlotId::resource(),
+            RestrictedExpr::val(EntityUID::with_eid("a")),
+        );
 
-        let generalized_env = HashMap::new();
-        s.link(tid.clone(), lid.clone(), vals, generalized_env, None)
+        s.link(tid.clone(), lid.clone(), vals, None)
             .expect("Should link");
 
         let v: Vec<_> = s.policies().collect();
@@ -1071,23 +1061,16 @@ mod test {
 
         let mut v = HashMap::new();
         let entity = EntityUID::with_eid("eid");
-        v.insert(SlotId::principal(), entity.clone());
+        v.insert(SlotId::principal(), RestrictedExpr::val(entity.clone()));
 
-        let generalized_env = HashMap::new();
-        s.link(
-            template_id.clone(),
-            link_id.clone(),
-            v,
-            generalized_env,
-            None,
-        )
-        .expect("Linking failed!");
+        s.link(template_id.clone(), link_id.clone(), v, None)
+            .expect("Linking failed!");
 
         let link = s.get(&link_id).expect("Link should exist");
         assert_eq!(&link_id, link.id());
         assert_eq!(&template_id, link.template().id());
         assert_eq!(
-            &entity,
+            &RestrictedExpr::val(entity),
             link.env()
                 .get(&SlotId::principal())
                 .expect("Mapping was incorrect")
@@ -1167,8 +1150,10 @@ mod test {
         let r = pset.link(
             tid2.clone(),
             id3.clone(),
-            HashMap::from([(SlotId::principal(), EntityUID::with_eid("example"))]),
-            HashMap::new(),
+            HashMap::from([(
+                SlotId::principal(),
+                RestrictedExpr::val(EntityUID::with_eid("example")),
+            )]),
             None,
         );
         r.expect("Linking failed");

@@ -50,7 +50,7 @@ use thiserror::Error;
 ///
 /// These restrictions represent the expressions that are allowed to appear as
 /// attribute values in `Slice` and `Context`.
-#[derive(Hash, Debug, Clone, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RestrictedExpr(Expr);
 
 impl RestrictedExpr {
