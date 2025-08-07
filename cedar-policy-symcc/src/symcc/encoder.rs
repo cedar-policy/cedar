@@ -81,6 +81,8 @@ use super::{
 use crate::symcc::extension_types::ipaddr::{V4_WIDTH, V6_WIDTH};
 use crate::BitVecError;
 
+/// Errors during encoding, i.e., converting [`Term`]
+/// to SMT-LIB 2 format.
 #[derive(Debug, Diagnostic, Error)]
 pub enum EncodeError {
     /// IO error.

@@ -44,6 +44,7 @@ pub enum Decision {
     Unknown,
 }
 
+/// Errors when interacting with a [`Solver`] instance.
 /// Corresponds to various errors in the Lean version at `Cedar.SymCC.Solver`
 #[derive(Debug, Diagnostic, Error)]
 pub enum SolverError {

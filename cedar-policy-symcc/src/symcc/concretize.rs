@@ -43,6 +43,9 @@ use super::function::{Udf, UnaryFunction};
 use super::term::{Term, TermPrim};
 use super::SymEnv;
 
+/// Errors that happen during concretization, i.e., the process
+/// of converting literal [`Term`]s back to representatinos in
+/// [`cedar_policy`]/[`cedar_policy_core`].
 #[derive(Debug, Diagnostic, Error)]
 pub enum ConcretizeError {
     /// Expecting a literal entity.
