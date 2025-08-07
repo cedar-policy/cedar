@@ -14,63 +14,7 @@
  * limitations under the License.
  */
 
-//! **Symbolic Cedar Compiler (SymCC)**
-//!
-//! With this library, you can
-//! - Compile [Cedar](https://www.cedarpolicy.com/) policies to logical constraints in [SMT-LIB](https://smt-lib.org/).
-//! - Formally verify a number of useful properties about your Cedar policies (e.g., policy never errors,
-//!   policy set always allows/denies, policy set subsumption/equivalence), with concrete counterexamples.
-//!
-//! Our symbolic compiler and verifiers themselves have been [formally modeled and verified in Lean](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-lean#verified-properties)
-//! to guarantee trustworthy verification results.
-//!
-//! ## Example
-//!
-//! To get started, first download or compile [cvc5-1.2.1](https://github.com/cvc5/cvc5/releases/tag/cvc5-1.2.1).
-//! The following example assumes that the environment variable `CVC5=<path to cvc5 1.2.1 executable>` has been set.
-//!
-//! To verify that a policy set does not always allow:
-//! ```
-//! use tokio;
-//! use std::str::FromStr;
-//! use cedar_policy::{Schema, PolicySet, Authorizer, Decision};
-//! use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler, SymEnv, WellTypedPolicies};
-//!
-//! #[tokio::main]
-//! async fn main() {
-//!     let schema = Schema::from_cedarschema_str(r#"
-//!         entity User;
-//!         entity Document { owner: User };
-//!         action view appliesTo {
-//!             principal: [User],
-//!             resource: [Document]
-//!         };
-//!     "#).unwrap().0;
-//!     let policy_set = PolicySet::from_str(r#"
-//!         permit(principal, action == Action::"view", resource)
-//!         when { resource.owner == principal };
-//!     "#).unwrap();
-//!     let cvc5 = LocalSolver::cvc5().unwrap();
-//!     let mut compiler = CedarSymCompiler::new(cvc5).unwrap();
-//!
-//!     // Iterate through all request environments
-//!     for req_env in schema.request_envs() {
-//!         let sym_env = SymEnv::new(&schema, &req_env).unwrap();
-//!         let typed_policies = WellTypedPolicies::from_policies(&policy_set, &req_env, &schema).unwrap();
-//!
-//!         // Verify that `policy_set` does not always allow any request
-//!         let always_denies = compiler.check_always_allows(&typed_policies, &sym_env).await.unwrap();
-//!         assert!(!always_denies);
-//!
-//!         // Similar to above, but returns a counterexample (synthesized request and entity store)
-//!         let cex = compiler.check_always_allows_with_counterexample(&typed_policies, &sym_env).await.unwrap().unwrap();
-//!         let resp = Authorizer::new().is_authorized(&cex.request, &policy_set, &cex.entities);
-//!         assert!(resp.decision() == Decision::Deny);
-//!     }
-//! }
-//! ```
-//!
-//! To learn more about what you can do with SymCC, see the documentation of [`CedarSymCompiler`].
+#![doc = include_str!("../README.md")]
 
 pub mod err;
 mod symcc;
