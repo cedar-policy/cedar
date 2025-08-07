@@ -596,6 +596,7 @@ pub(super) fn encode_string(s: &str) -> Option<String> {
             if c as u32 > SMT_LIB_MAX_CODE_POINT {
                 return None; // Invalid code point for SMT-LIB
             }
+            #[allow(clippy::unwrap_used, reason="writing string cannot fail")]
             write!(out, "\\u{{{:x}}}", c as u32).unwrap();
         }
     }
