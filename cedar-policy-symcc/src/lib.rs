@@ -27,25 +27,18 @@ use symcc::{
     verify_never_errors, well_typed_policies, well_typed_policy,
 };
 
-pub use symcc::factory as term;
-pub use symcc::{
-    bitvec::BitVec,
-    ext::Ext,
-    extension_types,
-    op::{ExtOp, Op, Uuf},
-    term::Term,
-    term::TermPrim,
-    term::TermVar,
-    term_type::TermType,
-    type_abbrevs::*,
-    type_abbrevs::{ExtType, OrdPattern},
-    verifier::Asserts,
-};
-/// Public exports.
-pub use symcc::{solver, Env, Environment, Interpretation, SmtLibScript, SymEnv};
-
-/// Export various error types.
 pub use err::*;
+pub use symcc::bitvec::BitVec;
+pub use symcc::ext::Ext;
+pub use symcc::extension_types;
+pub use symcc::factory as term;
+pub use symcc::op::{ExtOp, Op, Uuf};
+pub use symcc::solver;
+pub use symcc::term::{Term, TermPrim, TermVar};
+pub use symcc::term_type::TermType;
+pub use symcc::type_abbrevs::*;
+pub use symcc::verifier::Asserts;
+pub use symcc::{Env, Environment, Interpretation, SmtLibScript, SymEnv};
 
 /// Cedar symbolic compiler, which takes your policies and schemas
 /// and converts them to SMT queries to perform various verification
