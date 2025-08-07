@@ -891,7 +891,7 @@ impl std::fmt::Display for Policy {
                 f,
                 "Template Instance of {}, slots: [{}]",
                 self.template().id(),
-                display_slot_env(self.env())
+                display_slot_env(self.env(), self.generalized_env())
             )
         }
     }
@@ -1073,9 +1073,14 @@ impl LiteralPolicy {
     }
 }
 
-fn display_slot_env(env: &SlotEnv) -> String {
+fn display_slot_env(env: &SlotEnv, generalized_env: &GeneralizedSlotEnv) -> String {
     env.iter()
         .map(|(slot, value)| format!("{slot} -> {value}"))
+        .chain(
+            generalized_env
+                .iter()
+                .map(|(slot, value)| format!("{slot} -> {value}")),
+        )
         .join(",")
 }
 
@@ -1088,7 +1093,7 @@ impl std::fmt::Display for LiteralPolicy {
                 f,
                 "Template linked policy of {}, slots: [{}]",
                 self.template_id(),
-                display_slot_env(&self.values),
+                display_slot_env(&self.values, &self.generalized_values),
             )
         }
     }
