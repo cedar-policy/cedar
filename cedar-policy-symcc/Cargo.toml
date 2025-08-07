@@ -12,8 +12,8 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy = { path = "../cedar-policy", version = "4.5.1", features = ["protobufs"] }
-cedar-policy-core = { path = "../cedar-policy-core", version = "4.5.1" }
+cedar-policy = { path = "../cedar-policy", version = "*", features = ["protobufs"] }
+cedar-policy-core = { path = "../cedar-policy-core", version = "*" }
 anyhow = "1.0"
 async-recursion = "1.1"
 itertools = "0.14"
