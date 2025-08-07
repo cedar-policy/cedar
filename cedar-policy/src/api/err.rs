@@ -1328,9 +1328,6 @@ pub enum PartialRequestCreationError {
 /// Errors that can be encountered when re-evaluating a partial response
 #[derive(Debug, Error)]
 pub enum TPEReauthorizationError {
-    /// An evaluation error was encountered
-    #[error(transparent)]
-    Evaluation(#[from] EvaluationError),
     /// `Request` cannot be validated
     #[error(transparent)]
     RequestValidation(#[from] RequestValidationError),
@@ -1343,4 +1340,33 @@ pub enum TPEReauthorizationError {
     /// Inconsistent requests
     #[error(transparent)]
     InconsistentRequests(#[from] tpe_err::RequestConsistencyError),
+}
+
+#[cfg(feature = "tpe")]
+impl From<tpe_err::ReauthorizationError> for TPEReauthorizationError {
+    fn from(value: tpe_err::ReauthorizationError) -> Self {
+        match value {
+            tpe_err::ReauthorizationError::EntitiesConsistentcy(e) => Self::InconsistentEntities(e),
+            tpe_err::ReauthorizationError::EntityValidation(e) => Self::EntityValidation(e),
+            tpe_err::ReauthorizationError::RequestConsistentcy(e) => Self::InconsistentRequests(e),
+            tpe_err::ReauthorizationError::RequestValidation(e) => {
+                Self::RequestValidation(e.into())
+            }
+        }
+    }
+}
+
+#[cfg(feature = "tpe")]
+/// Errors that can be encountered when performing a permission query
+#[derive(Debug, Error)]
+pub enum PermissionQueryError {
+    /// When entities contain unknowns
+    #[error(transparent)]
+    EntitiesContainUnknown(#[from] PartialValueToValueError),
+    /// When TPE fails
+    #[error(transparent)]
+    TPE(#[from] tpe_err::TPEError),
+    /// When concrete entities fail validation
+    #[error(transparent)]
+    EntityValidation(#[from] EntitySchemaConformanceError),
 }
