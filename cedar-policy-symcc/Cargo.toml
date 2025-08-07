@@ -33,5 +33,9 @@ miette = { version = "7.5.0", features = ["fancy"] }
 tokio = { version = "1.0", features = ["full"] } # for `tokio::test` unit tests
 rstest = "0.26.1"
 
+[features]
+tolerant-ast = ["cedar-policy/tolerant-ast", "cedar-policy-core/tolerant-ast"]
+raw-parsing = ["cedar-policy/raw-parsing", "cedar-policy-core/raw-parsing"]
+
 [lints]
 workspace = true
