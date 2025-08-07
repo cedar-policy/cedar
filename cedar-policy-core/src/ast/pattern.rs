@@ -354,6 +354,7 @@ impl Pattern {
         proof {
             if j != pattern_len && contains_star {
                 // some proof is required here
+                admit();
             }
         }
 

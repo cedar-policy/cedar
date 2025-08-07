@@ -168,4 +168,240 @@ verus! {
 //     lemma_wildcard_match_idx_rev_idx_equiv_aux(text, pattern, text.len() as int, pattern.len() as int);
 // }
 
+proof fn lemma_wildcard_match_pattern_append_star(text: Seq<char>, pattern: Pattern)
+    requires wildcard_match_alt(text, pattern)
+    ensures wildcard_match_alt(text, pattern.push(PatElem::Star))
+    decreases text.len(), pattern.len()
+{
+    reveal_with_fuel(wildcard_match_alt, 2);
+    if pattern.len() == 0 && text.len() == 0 {
+    } else if pattern.len() == 0 {
+    } else {
+        assert(pattern.push(PatElem::Star).skip(1) =~= pattern.skip(1).push(PatElem::Star));
+        if text.len() == 0 {
+            lemma_wildcard_match_pattern_append_star(text, pattern.skip(1));
+        } else if wildcard(pattern[0]) {
+            if wildcard_match_alt(text, pattern.skip(1)) {
+                lemma_wildcard_match_pattern_append_star(text, pattern.skip(1));
+            } else {
+                lemma_wildcard_match_pattern_append_star(text.skip(1), pattern);
+            }
+        } else {
+            lemma_wildcard_match_pattern_append_star(text.skip(1), pattern.skip(1));
+        }
+    }
+}
+
+proof fn lemma_wildcard_match_pattern_append_star_char(text: Seq<char>, pattern: Pattern, text_c: char, pattern_c: PatElem)
+    requires
+        wildcard_match_alt(text, pattern),
+        wildcard(pattern_c),
+    ensures wildcard_match_alt(text.push(text_c), pattern.push(pattern_c))
+    decreases text.len(), pattern.len()
+{
+    reveal_with_fuel(wildcard_match_alt, 2);
+    if pattern.len() == 0 && text.len() == 0 {
+        assert(text.push(text_c) =~= seq![text_c]);
+        assert(pattern.push(pattern_c) =~= seq![pattern_c]);
+        assert(text.push(text_c).skip(1).len() == 0);
+        assert(wildcard_match_alt(text.push(text_c).skip(1), pattern.push(pattern_c)));
+    } else if pattern.len() == 0 {
+    } else {
+        assert(pattern.push(pattern_c).skip(1) =~= pattern.skip(1).push(pattern_c));
+        if text.len() == 0 {
+            lemma_wildcard_match_pattern_append_star_char(text, pattern.skip(1), text_c, pattern_c);
+        } else {
+            assert(text.push(text_c).skip(1) =~= text.skip(1).push(text_c));
+            if wildcard(pattern[0]) {
+                if wildcard_match_alt(text, pattern.skip(1)) {
+                    lemma_wildcard_match_pattern_append_star_char(text, pattern.skip(1), text_c, pattern_c);
+                } else {
+                    lemma_wildcard_match_pattern_append_star_char(text.skip(1), pattern, text_c, pattern_c);
+                }
+            } else {
+                lemma_wildcard_match_pattern_append_star_char(text.skip(1), pattern.skip(1), text_c, pattern_c);
+            }
+        }
+    }
+}
+
+
+proof fn lemma_wildcard_match_pattern_append_matching_chars(text: Seq<char>, pattern: Pattern, text_c: char, pattern_c: PatElem)
+    requires
+        wildcard_match_alt(text, pattern),
+        char_match(text_c, pattern_c)
+    ensures wildcard_match_alt(text.push(text_c), pattern.push(pattern_c))
+    decreases text.len(), pattern.len()
+{
+    reveal_with_fuel(wildcard_match_alt, 2);
+    if pattern.len() == 0 && text.len() == 0 {
+    } else if pattern.len() == 0 {
+    } else {
+        assert(pattern.push(pattern_c).skip(1) =~= pattern.skip(1).push(pattern_c));
+        if text.len() == 0 {
+            lemma_wildcard_match_pattern_append_matching_chars(text, pattern.skip(1), text_c, pattern_c);
+        } else {
+            assert(text.push(text_c).skip(1) =~= text.skip(1).push(text_c));
+            if wildcard(pattern[0]) {
+                if wildcard_match_alt(text, pattern.skip(1)) {
+                    lemma_wildcard_match_pattern_append_matching_chars(text, pattern.skip(1), text_c, pattern_c);
+                } else {
+                    lemma_wildcard_match_pattern_append_matching_chars(text.skip(1), pattern, text_c, pattern_c);
+                }
+            } else {
+                lemma_wildcard_match_pattern_append_matching_chars(text.skip(1), pattern.skip(1), text_c, pattern_c);
+            }
+        }
+    }
+}
+
+proof fn lemma_wildcard_match_pattern_append_last_wildcard(text: Seq<char>, pattern: Pattern, text_c: char)
+    requires
+        pattern.len() > 0,
+        wildcard(pattern.last()),
+        wildcard_match_alt(text, pattern),
+    ensures wildcard_match_alt(text.push(text_c), pattern)
+    decreases text.len(), pattern.len()
+{
+    reveal_with_fuel(wildcard_match_alt, 2);
+    if pattern.len() == 0 && text.len() == 0 {
+    } else if pattern.len() == 0 {
+    } else {
+        if text.len() == 0 {
+            if pattern.skip(1).len() > 0 {
+                lemma_wildcard_match_pattern_append_last_wildcard(text, pattern.skip(1), text_c);
+            } else {
+                assert(pattern =~= seq![PatElem::Star]);
+                assert(text.push(text_c).skip(1) =~= Seq::empty());
+                assert(wildcard_match_alt(text.push(text_c).skip(1), pattern));
+            }
+        } else {
+            assert(text.push(text_c).skip(1) =~= text.skip(1).push(text_c));
+            if wildcard(pattern[0]) {
+                if wildcard_match_alt(text, pattern.skip(1)) {
+                    lemma_wildcard_match_pattern_append_last_wildcard(text, pattern.skip(1), text_c);
+                } else {
+                    lemma_wildcard_match_pattern_append_last_wildcard(text.skip(1), pattern, text_c);
+                }
+            } else {
+                lemma_wildcard_match_pattern_append_last_wildcard(text.skip(1), pattern.skip(1), text_c);
+            }
+        }
+    }
+}
+
+proof fn lemma_empty_pattern_only_matches_empty_text(text: Seq<char>, pattern: Pattern)
+    requires
+        pattern.len() == 0,
+        wildcard_match_alt(text, pattern),
+    ensures text.len() == 0
+{}
+
+proof fn lemma_merge_adjacent_stars_aux(text: Seq<char>, pattern: Pattern)
+    requires
+        pattern.len() >= 2,
+        wildcard_match_alt(text, pattern),
+        wildcard(pattern[0]),
+        wildcard(pattern[1]),
+    ensures
+        wildcard_match_alt(text, pattern.skip(1))
+    decreases text.len()
+{
+    reveal_with_fuel(wildcard_match_alt, 2);
+    if text.len() == 0 {
+    } else {
+        if !wildcard_match_alt(text, pattern.skip(1)) {
+            lemma_merge_adjacent_stars_aux(text.skip(1), pattern);
+        }
+    }
+}
+
+// proof fn lemma_merge_adjacent_stars(text: Seq<char>, pattern: Pattern, j: int)
+//     requires
+//         pattern.len() >= j + 2,
+//         wildcard_match_alt(text, pattern),
+//         wildcard(pattern[j]),
+//         wildcard(pattern[j+1]),
+//     ensures
+//         wildcard_match_alt(text, pattern.take(j + 1) + pattern.skip(j + 2))
+// {
+//     admit()
+// }
+
+
+// proof fn lemma_merge_adjacent_stars_join(text1: Seq<char>, pattern1: Pattern, text2: Seq<char>, pattern2: Pattern)
+//     requires
+//         pattern1.len() > 0, pattern2.len() > 0,
+//         wildcard(pattern1.last()),
+//         wildcard(pattern2[0]),
+//         wildcard_match_alt(text1, pattern1),
+//         wildcard_match_alt(text2, pattern2),
+//     ensures
+//         wildcard_match_alt(text1 + text2, pattern1 + pattern2.skip(1))
+// {
+//     assert(pattern1 + pattern2 =~= pattern1.drop_last() + seq![pattern1.last()] + seq![pattern2[0]] + pattern2.skip(1));
+//     let j = pattern1.len() - 1;
+//     assert(pattern1.last() == pattern1[j]);
+//     assert((pattern1 + pattern2).take(j + 1) =~= pattern1);
+//     assert((pattern1 + pattern2).skip(j + 2) =~= pattern2.skip(1));
+//     lemma_merge_adjacent_stars(text1 + text2, pattern1 + pattern2, j);
+// }
+
+
+
+
+pub proof fn lemma_wildcard_match_skip_take(text: Seq<char>, pattern: Pattern, i: int, j: int)
+    requires
+        0 <= i <= text.len(),
+        0 <= j <= pattern.len(),
+        wildcard_match_alt(text.take(i), pattern.take(j)),
+        wildcard_match_alt(text.skip(i), pattern.skip(j)),
+    ensures
+        wildcard_match_alt(text, pattern)
+    decreases text.len() - i, pattern.len() - j
+{
+    reveal_with_fuel(wildcard_match_alt, 2);
+    if j == pattern.len() && i == text.len() {
+        assert(text.take(i) =~= text);
+        assert(pattern.take(j) =~= pattern);
+    } else if j == pattern.len() {
+        assert(pattern.take(j) =~= pattern);
+        assert(false);
+    } else {
+        assert(pattern[j] == pattern.skip(j)[0]);
+        assert(pattern.skip(j+1) =~= pattern.skip(j).skip(1));
+        assert(pattern.take(j+1) =~= pattern.take(j).push(pattern[j]));
+        if i == text.len() {
+            assert(text.take(i) =~= text);
+            assert(wildcard(pattern[j]));
+            lemma_wildcard_match_pattern_append_star(text.take(i), pattern.take(j));
+            lemma_wildcard_match_skip_take(text, pattern, i, j+1);
+        } else {
+            assert(text[i] == text.skip(i)[0]);
+            assert(text.skip(i+1) =~= text.skip(i).skip(1));
+            assert(text.take(i+1) =~= text.take(i).push(text[i]));
+            if wildcard(pattern[j]) {
+                if wildcard_match_alt(text.skip(i), pattern.skip(j+1)) {
+                    lemma_wildcard_match_pattern_append_star(text.take(i), pattern.take(j));
+                    lemma_wildcard_match_skip_take(text, pattern, i, j+1);
+                } else {
+                    assert(wildcard_match_alt(text.skip(i+1), pattern.skip(j)));
+                    lemma_wildcard_match_pattern_append_star_char(text.take(i), pattern.take(j), text[i], pattern[j]);
+                    assert(wildcard_match_alt(text.take(i+1), pattern.take(j+1)));
+
+                    // This, plus something like lemma_merge_adjacent_stars above, would be sufficient
+                    // but we can't prove termination on this call
+                    // lemma_wildcard_match_skip_take(text, pattern.take(j+1) + pattern.skip(j), i+1, j+1);
+
+                    admit(); // need star-condensing lemma
+                }
+            } else {
+                assert(char_match(text[i], pattern[j]));
+                lemma_wildcard_match_pattern_append_matching_chars(text.take(i), pattern.take(j), text[i], pattern[j]);
+                lemma_wildcard_match_skip_take(text, pattern, i+1, j+1);
+            }
+        }
+    }
+}
+
 }
