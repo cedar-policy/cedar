@@ -19,9 +19,8 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
-use cedar_policy::entities_errors::EntitiesError;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
-use miette::{miette, Diagnostic, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
+use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeSet;
@@ -35,7 +34,6 @@ use std::{
     str::FromStr,
     time::Instant,
 };
-use thiserror::Error;
 
 use cedar_policy::*;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
