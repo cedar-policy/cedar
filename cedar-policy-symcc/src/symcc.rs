@@ -416,7 +416,7 @@ fn well_typed_policy_inner(
     match policy_check {
         Success(expr) => {
             let loc = policy.loc().cloned();
-            #[cfg(feature="raw-parsing")]
+            #[cfg(feature = "raw-parsing")]
             let loc = loc.map(Box::new);
             Ok(Policy::from_when_clause(
                 policy.effect(),
@@ -432,7 +432,7 @@ fn well_typed_policy_inner(
         {
             if errs.is_empty() {
                 let loc = policy.loc().cloned();
-                #[cfg(feature="raw-parsing")]
+                #[cfg(feature = "raw-parsing")]
                 let loc = loc.map(Box::new);
                 Ok(Policy::from_when_clause(
                     policy.effect(),

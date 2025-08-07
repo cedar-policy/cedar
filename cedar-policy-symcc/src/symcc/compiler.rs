@@ -624,7 +624,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
         ExprKind::Unknown(_) => Err(CompileError::UnsupportedFeature(
             "partial evaluation is not supported".to_string(),
         )),
-        #[cfg(feature="tolerant-ast")]
+        #[cfg(feature = "tolerant-ast")]
         ExprKind::Error { .. } => Err(CompileError::UnsupportedFeature(
             "error evaluation is not supported".to_string(),
         )),
