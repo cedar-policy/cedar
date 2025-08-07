@@ -842,14 +842,14 @@ mod preserves_source_locations {
         assert_matches!(ns
             .entity_types
             .get(&"C".parse().unwrap())
-            .expect("couldn't find entity C"), EntityType { kind: EntityTypeKind::Standard(entityC), ..} => {
-        assert_matches!(entityC.member_of_types.first().unwrap().loc(), Some(loc) => {
+            .expect("couldn't find entity C"), EntityType { kind: EntityTypeKind::Standard(entity_c), ..} => {
+        assert_matches!(entity_c.member_of_types.first().unwrap().loc(), Some(loc) => {
             assert_matches!(loc.snippet(), Some("A"));
         });
-        assert_matches!(entityC.shape.0.loc(), Some(loc) => {
+        assert_matches!(entity_c.shape.0.loc(), Some(loc) => {
             assert_matches!(loc.snippet(), Some("{\n                bool: Bool,\n                s: S,\n                a: Set<A>,\n                b: { inner: B },\n            }"));
         });
-        assert_matches!(&entityC.shape.0, json_schema::Type::Type { ty: json_schema::TypeVariant::Record(rty), .. } => {
+        assert_matches!(&entity_c.shape.0, json_schema::Type::Type { ty: json_schema::TypeVariant::Record(rty), .. } => {
             let b = rty.attributes.get("bool").expect("couldn't find attribute `bool` on entity C");
             assert_matches!(b.ty.loc(), Some(loc) => {
                 assert_matches!(loc.snippet(), Some("Bool"));
