@@ -20,7 +20,7 @@
 mod authorizer;
 pub mod bitvec;
 mod compiler;
-mod concretize;
+mod concretizer;
 mod decoder;
 mod encoder;
 mod enforcer;
@@ -55,8 +55,8 @@ use verifier::Asserts;
 use crate::err::{Error, Result};
 
 pub use bitvec::BitVecError;
-pub use concretize::ConcretizeError;
-pub use concretize::Env;
+pub use concretizer::ConcretizeError;
+pub use concretizer::Env;
 pub use decoder::DecodeError;
 pub use encoder::EncodeError;
 pub use env::{Environment, SymEnv};
