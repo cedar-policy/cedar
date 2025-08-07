@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+//! Various type abbreviations used throughout SymCC.
+
 use num_bigint::{BigInt, BigUint};
 use ref_cast::RefCast;
 use smol_str::SmolStr;

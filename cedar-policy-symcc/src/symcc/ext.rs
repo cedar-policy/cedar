@@ -13,7 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-//! This module defines Cedar extension values.
+
+//! Extension values in SymCC.
 
 use super::extension_types::datetime::{Datetime, Duration};
 use super::extension_types::decimal::Decimal;

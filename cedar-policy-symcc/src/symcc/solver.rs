@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-//! This module defines a simple interface to an SMT solver.
+//! A simple interface to an SMT solver.
+//!
 //! Callers communicate with the solver by issuing commands with s-expressions
 //! encoded as strings. The interface is based on
 //! [lean-smt](https://github.com/ufmg-smite/lean-smt/).
@@ -44,6 +45,7 @@ pub enum Decision {
     Unknown,
 }
 
+/// Errors when interacting with a [`Solver`] instance.
 /// Corresponds to various errors in the Lean version at `Cedar.SymCC.Solver`
 #[derive(Debug, Diagnostic, Error)]
 pub enum SolverError {

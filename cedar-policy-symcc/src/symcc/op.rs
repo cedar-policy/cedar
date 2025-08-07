@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//! Various [`super::term::Term`] operations allowed in [`super::term::Term::App`].
+
 use std::sync::Arc;
 
 use super::term_type::TermType;

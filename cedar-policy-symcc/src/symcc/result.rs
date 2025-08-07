@@ -34,7 +34,7 @@ pub enum CompileError {
     /// Failed to find an attribute.
     #[error("attribute {0} does not exist")]
     NoSuchAttribute(String),
-    /// Type error when constructing a [`Term`].
+    /// Type error when constructing a [`super::term::Term`].
     #[error("term type error")]
     TypeError,
     /// Unsupported features.
