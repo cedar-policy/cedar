@@ -19,9 +19,8 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
-use cedar_policy::entities_errors::EntitiesError;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
-use miette::{miette, Diagnostic, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
+use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeSet;
@@ -35,7 +34,6 @@ use std::{
     str::FromStr,
     time::Instant,
 };
-use thiserror::Error;
 
 use cedar_policy::*;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
@@ -1693,20 +1691,6 @@ where
     let value = serde_json::Value::deserialize(data)?;
     Entities::from_json_value(value, None)
         .map_err(|e| serde::de::Error::custom(format!("failed to parse entities: {e}")))
-}
-
-#[derive(Error, Diagnostic, Debug)]
-enum TestCaseError {
-    #[error("error when parsing JSON")]
-    JsonParseError(#[from] serde_json::Error),
-    #[error("error when parsing entity UID")]
-    EntityUidParseError(#[from] ParseErrors),
-    #[error("error when parsing context JSON")]
-    ContextJsonError(#[from] ContextJsonError),
-    #[error("error when validating request against schema")]
-    RequestValidationError(#[from] RequestValidationError),
-    #[error("error when parsing entities")]
-    EntitiesError(#[from] EntitiesError),
 }
 
 /// Load partially parsed tests from a JSON file

@@ -69,9 +69,11 @@ pub(crate) fn to_lsp_diagnostics<'a>(
 ) -> Vec<lsp_types::Diagnostic> {
     let mut message = diagnostic.to_string();
     if let Some(source) = diagnostic.source() {
+        #[allow(clippy::unwrap_used, reason = "writing string cannot fail")]
         write!(&mut message, ". {source}").unwrap();
     }
     if let Some(help) = diagnostic.help() {
+        #[allow(clippy::unwrap_used, reason = "writing string cannot fail")]
         write!(&mut message, ". {help}").unwrap();
     }
 
