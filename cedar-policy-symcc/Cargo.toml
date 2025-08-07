@@ -12,8 +12,8 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy = { version = "4.5.0", features = ["protobufs"] }
-cedar-policy-core = "4.5.0"
+cedar-policy = { path = "../cedar-policy", version = "4.5.1", features = ["protobufs"] }
+cedar-policy-core = { path = "../cedar-policy-core", version = "4.5.1" }
 anyhow = "1.0"
 async-recursion = "1.1"
 itertools = "0.14"
@@ -41,7 +41,3 @@ integration-testing = ["tolerant-ast", "extended-schema"]
 
 [lints]
 workspace = true
-
-[patch.crates-io]
-cedar-policy = { path = "../cedar/cedar-policy" }
-cedar-policy-core = { path = "../cedar/cedar-policy-core" }
