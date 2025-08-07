@@ -1194,16 +1194,16 @@ impl TemplateBody {
     pub fn condition(&self) -> Expr {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { .. }) => Expr::and(
+                self.principal_constraint_expr(),
                 Expr::and(
+                    self.action_constraint_expr(),
                     Expr::and(
-                        self.principal_constraint_expr(),
-                        self.action_constraint_expr(),
+                        self.resource_constraint_expr(),
+                        self.non_scope_constraints().clone(),
                     )
                     .with_maybe_source_loc(self.loc().into_maybe_loc()),
-                    self.resource_constraint_expr(),
                 )
                 .with_maybe_source_loc(self.loc().into_maybe_loc()),
-                self.non_scope_constraints().clone(),
             )
             .with_maybe_source_loc(self.loc().into_maybe_loc()),
             #[cfg(feature = "tolerant-ast")]
@@ -2388,6 +2388,18 @@ mod test {
                 .build()
             );
             assert_eq!(e.len(), 2);
+        });
+    }
+
+    #[test]
+    fn policy_to_expr() {
+        let policy_str = r#"permit(principal is A, action, resource is B)
+            when { 1 == 2 }
+            unless { 2 == 1}
+            when { 3 == 4}
+            unless { 4 == 3};"#;
+        assert_matches!(parse_policy(Some(PolicyID::from_string("id")), policy_str), Ok(p) => {
+            assert_eq!(ToString::to_string(&p.condition()), "(principal is A) && (true && ((resource is B) && ((1 == 2) && ((!(2 == 1)) && ((3 == 4) && (!(4 == 3)))))))");
         });
     }
 
