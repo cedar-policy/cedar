@@ -31,7 +31,7 @@ miette = "7.6.0"
 [dev-dependencies]
 miette = { version = "7.5.0", features = ["fancy"] }
 tokio = { version = "1.0", features = ["full"] } # for `tokio::test` unit tests
-rstest = "0.25.0"
+rstest = "0.26.1"
 
 [lints]
 workspace = true
