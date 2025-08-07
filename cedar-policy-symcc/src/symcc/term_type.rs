@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+//! Definitions of term types.
+
 use cedar_policy_core::validator::types::OpenTag;
 
 use super::result::CompileError;

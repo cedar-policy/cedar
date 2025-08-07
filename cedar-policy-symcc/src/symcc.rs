@@ -72,7 +72,7 @@ pub use verifier::{
 
 /// Internal symbolic compiler.
 /// Corresponds to the `SolverM` monad in Lean.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct SymCompiler<S> {
     solver: S,
 }

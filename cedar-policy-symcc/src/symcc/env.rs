@@ -158,6 +158,7 @@ impl SymEntities {
     }
 }
 
+/// Symbolic representation of a request environment.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct SymEnv {
     pub request: SymRequest,

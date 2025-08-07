@@ -14,41 +14,90 @@
  * limitations under the License.
  */
 
-mod err;
+//! **Symbolic Cedar Compiler (SymCC)**
+//!
+//! With this library, you can
+//! - Compile [Cedar](https://www.cedarpolicy.com/) policies to logical constraints in [SMT-LIB](https://smt-lib.org/).
+//! - Formally verify a number of useful properties about your Cedar policies (e.g., policy never errors,
+//!   policy set always allows/denies, policy set subsumption/equivalence), with concrete counterexamples.
+//!
+//! Our symbolic compiler and verifiers themselves have been [formally modeled and verified in Lean](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-lean#verified-properties)
+//! to guarantee trustworthy verification results.
+//!
+//! ## Example
+//!
+//! To get started, first download or compile [cvc5-1.2.1](https://github.com/cvc5/cvc5/releases/tag/cvc5-1.2.1).
+//! The following example assumes that the environment variable `CVC5=<path to cvc5 1.2.1 executable>` has been set.
+//!
+//! To verify that a policy set does not always allow:
+//! ```
+//! use tokio;
+//! use std::str::FromStr;
+//! use cedar_policy::{Schema, PolicySet, Authorizer, Decision};
+//! use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler, SymEnv, WellTypedPolicies};
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let schema = Schema::from_cedarschema_str(r#"
+//!         entity User;
+//!         entity Document { owner: User };
+//!         action view appliesTo {
+//!             principal: [User],
+//!             resource: [Document]
+//!         };
+//!     "#).unwrap().0;
+//!     let policy_set = PolicySet::from_str(r#"
+//!         permit(principal, action == Action::"view", resource)
+//!         when { resource.owner == principal };
+//!     "#).unwrap();
+//!     let cvc5 = LocalSolver::cvc5().unwrap();
+//!     let mut compiler = CedarSymCompiler::new(cvc5).unwrap();
+//!
+//!     // Iterate through all request environments
+//!     for req_env in schema.request_envs() {
+//!         let sym_env = SymEnv::new(&schema, &req_env).unwrap();
+//!         let typed_policies = WellTypedPolicies::from_policies(&policy_set, &req_env, &schema).unwrap();
+//!
+//!         // Verify that `policy_set` does not always allow any request
+//!         let always_denies = compiler.check_always_allows(&typed_policies, &sym_env).await.unwrap();
+//!         assert!(!always_denies);
+//!
+//!         // Similar to above, but returns a counterexample (synthesized request and entity store)
+//!         let cex = compiler.check_always_allows_with_counterexample(&typed_policies, &sym_env).await.unwrap().unwrap();
+//!         let resp = Authorizer::new().is_authorized(&cex.request, &policy_set, &cex.entities);
+//!         assert!(resp.decision() == Decision::Deny);
+//!     }
+//! }
+//! ```
+//!
+//! To learn more about what you can do with SymCC, see the documentation of [`CedarSymCompiler`].
+
+pub mod err;
 mod symcc;
 
 use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
 use std::fmt;
 
+use err::{Error, Result};
 use solver::Solver;
+use symcc::Environment;
 use symcc::SymCompiler;
 use symcc::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
     verify_never_errors, well_typed_policies, well_typed_policy,
 };
 
-pub use err::*;
-pub use symcc::bitvec::BitVec;
-pub use symcc::ext::Ext;
+pub use symcc::bitvec;
+pub use symcc::ext;
 pub use symcc::extension_types;
-pub use symcc::factory as term;
-pub use symcc::op::{ExtOp, Op, Uuf};
+pub use symcc::factory as term_factory;
+pub use symcc::op;
 pub use symcc::solver;
-pub use symcc::term::{Term, TermPrim, TermVar};
-pub use symcc::term_type::TermType;
-pub use symcc::type_abbrevs::*;
+pub use symcc::term;
+pub use symcc::term_type;
+pub use symcc::type_abbrevs;
 pub use symcc::verifier::Asserts;
-pub use symcc::{Env, Environment, Interpretation, SmtLibScript, SymEnv};
-
-/// Cedar symbolic compiler, which takes your policies and schemas
-/// and converts them to SMT queries to perform various verification
-/// tasks such as checking if a policy set always allows/denies,
-/// if two policy sets are equivalent, etc.
-#[derive(Clone, Debug)]
-pub struct CedarSymCompiler<S: Solver> {
-    /// SymCompiler
-    symcc: SymCompiler<S>,
-}
+pub use symcc::{Env, SmtLibScript, SymEnv};
 
 impl SymEnv {
     /// Constructs a new [`SymEnv`] from the given [`Schema`] and [`RequestEnv`].
@@ -60,7 +109,7 @@ impl SymEnv {
 }
 
 /// Validated and well-typed policy.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WellTypedPolicy {
     policy: cedar_policy_core::ast::Policy,
 }
@@ -99,7 +148,7 @@ impl fmt::Display for WellTypedPolicy {
 
 /// Validated and well-typed policy set.
 /// Similar to [`WellTypedPolicy`] but for policy sets.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WellTypedPolicies {
     policies: cedar_policy_core::ast::PolicySet,
 }
@@ -136,6 +185,16 @@ impl fmt::Display for WellTypedPolicies {
     }
 }
 
+/// Cedar symbolic compiler, which takes your policies and schemas
+/// and converts them to SMT queries to perform various verification
+/// tasks such as checking if a policy set always allows/denies,
+/// if two policy sets are equivalent, etc.
+#[derive(Clone, Debug)]
+pub struct CedarSymCompiler<S: Solver> {
+    /// SymCompiler
+    symcc: SymCompiler<S>,
+}
+
 impl<S: Solver> CedarSymCompiler<S> {
     /// Constructs a new [`CedarSymCompiler`] with the given [`Solver`] instance.
     pub fn new(solver: S) -> Result<Self> {
@@ -152,6 +211,30 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Returns a mutable reference to the [`Solver`] instance used to construct this [`CedarSymCompiler`]
     pub fn solver_mut(&mut self) -> &mut S {
         self.symcc.solver_mut()
+    }
+
+    /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
+    /// Returns `true` iff the asserts are unsatisfiable.
+    ///
+    /// NOTE: This is an experimental feature that may break or change in the future.
+    pub async fn check_unsat(&mut self, asserts: &WellFormedAsserts<'_>) -> Result<bool> {
+        self.symcc
+            .check_unsat(|_| Ok(asserts.asserts().clone()), asserts.symenv())
+            .await
+    }
+
+    /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
+    /// Returns some counterexample to the given symbolic assertions iff they are satisfiable.
+    ///
+    /// NOTE: This is an experimental feature that may break or change in the future.
+    pub async fn check_sat(&mut self, asserts: &WellFormedAsserts<'_>) -> Result<Option<Env>> {
+        self.symcc
+            .check_sat(
+                |_| Ok(asserts.asserts().clone()),
+                asserts.symenv(),
+                asserts.footprint.iter(),
+            )
+            .await
     }
 
     /// Returns true iff [`WellTypedPolicy`] does not error on any well-formed
@@ -302,7 +385,7 @@ impl<S: Solver> CedarSymCompiler<S> {
 }
 
 /// Well-formed assertions generated by the symbolic compiler.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct WellFormedAsserts<'a> {
     symenv: &'a SymEnv,
     asserts: Asserts,
@@ -330,7 +413,7 @@ impl<'a> WellFormedAsserts<'a> {
     /// The inputs should satisfy the following conditions for the query to be sound:
     /// - `asserts` should be well-formed with respect to the `symenv`, in the
     ///   sense of the definition in the Lean model:
-    ///   https://github.com/cedar-policy/cedar-spec/blob/7650a698e2a796b8c5b4118ac93d9e2874bc0807/cedar-lean/Cedar/Thm/SymCC/Data/Basic.lean#L463
+    ///   <https://github.com/cedar-policy/cedar-spec/blob/7650a698e2a796b8c5b4118ac93d9e2874bc0807/cedar-lean/Cedar/Thm/SymCC/Data/Basic.lean#L463>
     ///   For example, if the variable `principal` is used in `asserts`,
     ///   it should have the same type as `symenv.request.principal`.
     /// - `policies` should include all policies ever compiled in the `asserts`,
@@ -350,35 +433,8 @@ impl<'a> WellFormedAsserts<'a> {
     }
 }
 
-impl<S: Solver> CedarSymCompiler<S> {
-    /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
-    /// Returns `true` iff the asserts are unsatisfiable.
-    ///
-    /// NOTE: This is an experimental feature that may break or change in the future.
-    pub async fn check_unsat(&mut self, asserts: &WellFormedAsserts<'_>) -> Result<bool> {
-        self.symcc
-            .check_unsat(|_| Ok(asserts.asserts().clone()), asserts.symenv())
-            .await
-    }
-
-    /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
-    /// Returns some counterexample to the given symbolic assertions iff they are satisfiable.
-    ///
-    /// NOTE: This is an experimental feature that may break or change in the future.
-    pub async fn check_sat(&mut self, asserts: &WellFormedAsserts<'_>) -> Result<Option<Env>> {
-        self.symcc
-            .check_sat(
-                |_| Ok(asserts.asserts().clone()),
-                asserts.symenv(),
-                asserts.footprint.iter(),
-            )
-            .await
-    }
-}
-
 /// Compiles the verification task of [`CedarSymCompiler::check_never_errors`] to
-/// the unsatisfiability of the returned [`WellFormedAsserts`]  without actually
-/// calling an SMT solver.
+/// the unsatisfiability of the returned [`WellFormedAsserts`] without calling the solver.
 ///
 /// For any `compiler: CedarSymCompiler` and `symenv: &SymvEnv`, the result of
 /// ```no_compile
@@ -404,9 +460,10 @@ pub fn compile_never_errors<'a>(
     ))
 }
 
-/// Similar to [`compile_never_errors`], but compiles the verification task of
-/// [`CedarSymCompiler::check_implies`] to the unsatisfiability of the returned
-/// [`WellFormedAsserts`] without actually calling an SMT solver.
+/// Compiles the verification task of [`CedarSymCompiler::check_implies`] to the unsatisfiability
+/// of the returned [`WellFormedAsserts`] without calling the solver.
+///
+/// Similar to [`compile_never_errors`].
 ///
 /// NOTE: This is an experimental feature that may break or change in the future.
 pub fn compile_implies<'a>(
@@ -424,9 +481,10 @@ pub fn compile_implies<'a>(
     ))
 }
 
-/// Similar to [`compile_never_errors`], but compiles the verification task of
-/// [`CedarSymCompiler::check_always_allows`] to the unsatisfiability of the returned
-/// [`WellFormedAsserts`] without actually calling an SMT solver.
+/// Compiles the verification task of [`CedarSymCompiler::check_always_allows`] to the unsatisfiability
+/// of the returned [`WellFormedAsserts`] without calling the solver.
+///
+/// Similar to [`compile_never_errors`].
 ///
 /// NOTE: This is an experimental feature that may break or change in the future.
 pub fn compile_always_allows<'a>(
@@ -440,9 +498,10 @@ pub fn compile_always_allows<'a>(
     ))
 }
 
-/// Similar to [`compile_never_errors`], but compiles the verification task of
-/// [`CedarSymCompiler::check_always_denies`] to the unsatisfiability of the returned
-/// [`WellFormedAsserts`] without actually calling an SMT solver.
+/// Compiles the verification task of [`CedarSymCompiler::check_always_denies`] to the unsatisfiability
+/// of the returned [`WellFormedAsserts`] without calling the solver.
+///
+/// Similar to [`compile_never_errors`].
 ///
 /// NOTE: This is an experimental feature that may break or change in the future.
 pub fn compile_always_denies<'a>(
@@ -456,9 +515,10 @@ pub fn compile_always_denies<'a>(
     ))
 }
 
-/// Similar to [`compile_never_errors`], but compiles the verification task of
-/// [`CedarSymCompiler::check_equivalent`] to the unsatisfiability of the returned
-/// [`WellFormedAsserts`] without actually calling an SMT solver.
+/// Compiles the verification task of [`CedarSymCompiler::check_equivalent`] to the unsatisfiability
+/// of the returned [`WellFormedAsserts`] without calling the solver.
+///
+/// Similar to [`compile_never_errors`].
 ///
 /// NOTE: This is an experimental feature that may break or change in the future.
 pub fn compile_equivalent<'a>(
@@ -476,9 +536,10 @@ pub fn compile_equivalent<'a>(
     ))
 }
 
-/// Similar to [`compile_never_errors`], but compiles the verification task of
-/// [`CedarSymCompiler::check_disjoint`] to the unsatisfiability of the returned
-/// [`WellFormedAsserts`] without actually calling an SMT solver.
+/// Compiles the verification task of [`CedarSymCompiler::check_disjoint`] to the unsatisfiability
+/// of the returned [`WellFormedAsserts`] without calling the solver.
+///
+/// Similar to [`compile_never_errors`].
 ///
 /// NOTE: This is an experimental feature that may break or change in the future.
 pub fn compile_disjoint<'a>(

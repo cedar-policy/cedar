@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+//! Implementation of [`BitVec`].
+
 use std::sync::LazyLock;
 
 use crate::symcc::type_abbrevs::{Int, Nat, Width};
