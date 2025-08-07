@@ -1098,6 +1098,7 @@ impl ValidatorSchema {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
+#[allow(dead_code, reason="Not actually dead, but linter mistakenly things this code is dead")]
 pub(crate) struct NamespaceDefinitionWithActionAttributes<N>(
     pub(crate) json_schema::NamespaceDefinition<N>,
 );
