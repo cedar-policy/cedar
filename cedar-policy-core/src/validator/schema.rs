@@ -1100,7 +1100,7 @@ impl ValidatorSchema {
 #[serde(transparent)]
 #[allow(
     dead_code,
-    reason = "Not actually dead, but linter mistakenly things this code is dead"
+    reason = "Not actually dead, but linter mistakenly thinks this code is dead"
 )]
 pub(crate) struct NamespaceDefinitionWithActionAttributes<N>(
     pub(crate) json_schema::NamespaceDefinition<N>,
