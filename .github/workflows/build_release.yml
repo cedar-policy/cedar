@@ -6,6 +6,43 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
+  create_related_repo_tags:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create tag in cedar-spec
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: 'cedar-spec',
+              ref: `refs/tags/${tag}`,
+              sha: (await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: 'cedar-spec',
+                branch: 'main'
+              })).data.commit.sha
+            });
+
+      - name: Create tag in cedar-integration-tests
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: 'cedar-integration-tests',
+              ref: `refs/tags/${tag}`,
+              sha: (await github.rest.repos.getBranch({
+                owner: context.repo.owner,
+                repo: 'cedar-integration-tests',
+                branch: 'main'
+              })).data.commit.sha
+            });
+
   build_release_binaries:
     strategy:
       matrix:
