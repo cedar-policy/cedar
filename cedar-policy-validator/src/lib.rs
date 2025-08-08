@@ -16,6 +16,10 @@
 
 //! Validator for Cedar policies
 #![forbid(unsafe_code)]
+#![allow(
+    text_direction_codepoint_in_literal,
+    reason = "Must specify at crate level to allow for tests with direction codepoints"
+)]
 
 use std::collections::HashSet;
 
