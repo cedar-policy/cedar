@@ -36,6 +36,8 @@ rstest = "0.25.0"
 [features]
 tolerant-ast = ["cedar-policy/tolerant-ast", "cedar-policy-core/tolerant-ast"]
 raw-parsing = ["cedar-policy/raw-parsing", "cedar-policy-core/raw-parsing"]
+extended-schema = ["cedar-policy/extended-schema", "cedar-policy-core/extended-schema"]
+integration-testing = ["tolerant-ast", "extended-schema"]
 
 [lints]
 workspace = true
