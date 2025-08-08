@@ -345,15 +345,15 @@ impl Template {
         )
         .into_validator_generalized_slots_declaration(schema)?;
 
-        for (slot, restricted_expr) in values {
-            // If `?principal` or `?resource` do not have type annotations
-            // we skip checking them
-            if (slot.is_principal() || slot.is_resource())
-                && (validator_generalized_slots_declaration.get(slot).is_none())
-            {
-                continue;
-            }
+        let values_restricted_expr: HashMap<SlotId, RestrictedExpr> = values
+            .iter()
+            .map(|(slot, entity_uid)| (slot.clone(), RestrictedExpr::val(entity_uid.clone())))
+            .collect();
 
+        for (slot, restricted_expr) in generalized_values
+            .iter()
+            .chain(values_restricted_expr.iter())
+        {
             let validator_type = validator_generalized_slots_declaration.get(slot).ok_or(
                 LinkingError::ArityError {
                     unbound_values: vec![slot.clone()],
