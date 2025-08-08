@@ -296,6 +296,10 @@ impl Template {
     /// Ensure that every slot in the template is bound by values,
     /// and that no extra values are bound in values
     /// This upholds invariant (values total map)
+    ///
+    /// All callers of this function
+    /// must enforce INVARIANT that `?principal` and `?resource` slots
+    /// are in values and generalized slots are in generalized_values
     pub fn check_binding(
         template: &Template,
         values: &HashMap<SlotId, EntityUID>,
@@ -340,43 +344,11 @@ impl Template {
             })
             .collect::<Vec<_>>();
 
-        let invalid_keys_in_values = values
-            .iter()
-            .filter_map(|(slot, _)| {
-                if *slot != (SlotId::principal()) && *slot != (SlotId::resource()) {
-                    Some(slot)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let invalid_keys_in_generalized_values = generalized_values
-            .iter()
-            .filter_map(|(slot, _)| {
-                if *slot == (SlotId::principal()) || *slot == (SlotId::resource()) {
-                    Some(slot)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
         if unbound_values_and_generalized_values.is_empty()
             && extra_values.is_empty()
             && extra_generalized_values.is_empty()
-            && invalid_keys_in_values.is_empty()
-            && invalid_keys_in_generalized_values.is_empty()
         {
             Ok(())
-        } else if !(invalid_keys_in_values.is_empty()) {
-            Err(LinkingError::from_invalid_env(
-                invalid_keys_in_values.into_iter().cloned(),
-            ))
-        } else if !(invalid_keys_in_generalized_values.is_empty()) {
-            Err(LinkingError::from_invalid_generalized_env(
-                invalid_keys_in_generalized_values.into_iter().cloned(),
-            ))
         } else {
             Err(LinkingError::from_unbound_and_extras(
                 unbound_values_and_generalized_values
@@ -390,7 +362,7 @@ impl Template {
         }
     }
 
-    /// Validates that the values provided for the generalized slots are of the types annotated
+    /// Validates that the values provided for the generalized slots are of the types declared
     pub fn link_time_type_checking_with_schema(
         template: &Template,
         schema: &ValidatorSchema,
@@ -409,7 +381,7 @@ impl Template {
             .map(|(slot, entity_uid)| (slot.clone(), RestrictedExpr::val(entity_uid.clone())))
             .collect();
 
-        // we treat values differently because the type declarations of principal & resource slots are optional
+        // we treat values differently because `?principal` and `?resource` type annotations are optional
         for (slot, restricted_expr) in values_restricted_expr {
             let maybe_validator_type = validator_generalized_slots_declaration.get(&slot);
             if let Some(validator_type) = maybe_validator_type {
@@ -546,20 +518,6 @@ pub enum LinkingError {
         id: PolicyID,
     },
 
-    /// Invalid slots in env (Generalized slots)
-    #[error(fmt = describe_invalid_slot_in_env_error)]
-    InvalidSlotIdInEnv {
-        /// invalid slots
-        invalid: Vec<SlotId>,
-    },
-
-    /// Invalid slots in generalized_env (Principal and Resource slots)
-    #[error(fmt = describe_invalid_slot_in_generalized_env_error)]
-    InvalidSlotIdInGeneralizedEnv {
-        /// invalid slots
-        invalid: Vec<SlotId>,
-    },
-
     /// Value provided for slot in scope is not an EntityUID
     #[error("value provided `{value}` for `{slot}` is not an EntityUID")]
     ValueProvidedForSlotInScopeNotEntityUID {
@@ -569,8 +527,8 @@ pub enum LinkingError {
         value: RestrictedExpr,
     },
 
-    /// Value provided for a slot is not of the type annotated
-    #[error("value provided `{value}` for `{slot}` is not of type annotated `{ty}`")]
+    /// Value provided for a slot is not of the type declared
+    #[error("value provided `{value}` for `{slot}` is not of declared type `{ty}`")]
     ValueProvidedForSlotIsNotOfTypeSpecified {
         /// Slot
         slot: SlotId,
@@ -583,7 +541,7 @@ pub enum LinkingError {
     /// Types provided are not found in the Schema
     #[error(transparent)]
     #[diagnostic(transparent)]
-    AnnotatedTypeNotFoundInSchema(#[from] SchemaError),
+    DeclaredTypeNotFoundInSchema(#[from] SchemaError),
 }
 
 impl LinkingError {
@@ -594,18 +552,6 @@ impl LinkingError {
         Self::ArityError {
             unbound_values: unbound.collect(),
             extra_values: extra.collect(),
-        }
-    }
-
-    fn from_invalid_env(invalid: impl Iterator<Item = SlotId>) -> Self {
-        Self::InvalidSlotIdInEnv {
-            invalid: invalid.collect(),
-        }
-    }
-
-    fn from_invalid_generalized_env(invalid: impl Iterator<Item = SlotId>) -> Self {
-        Self::InvalidSlotIdInGeneralizedEnv {
-            invalid: invalid.collect(),
         }
     }
 }
@@ -623,28 +569,6 @@ fn describe_arity_error(
         (0, _extra) => write!(fmt, "the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
         (_unbound, _extra) => write!(fmt, "the following slots were not provided as arguments: {}. The following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(",")),
     }
-}
-
-fn describe_invalid_slot_in_env_error(
-    invalid: &[SlotId],
-    fmt: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-    write!(
-        fmt,
-        "The following slots should not be in the values hashmap: {}",
-        invalid.iter().join(",")
-    )
-}
-
-fn describe_invalid_slot_in_generalized_env_error(
-    invalid: &[SlotId],
-    fmt: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-    write!(
-        fmt,
-        "The following slots should not be in the generalized_values hashmap: {}",
-        invalid.iter().join(",")
-    )
 }
 
 /// A Policy that contains:
