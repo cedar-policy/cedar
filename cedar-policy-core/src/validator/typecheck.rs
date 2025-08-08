@@ -1818,6 +1818,7 @@ impl<'a> SingleEnvTypechecker<'a> {
     }
 
     /// Checks if `lhs_ety` may be a descendant of `rhs_ety` in the action hierarchy.
+    /// We assume that `lhs_ety` is an action entity type, but `rhs_ety` can be any entity type.
     /// Lean counterpart: <https://github.com/cedar-policy/cedar-spec/blob/7e231a68b0e0eb1b8ce1362e81de4568671a668a/cedar-lean/Cedar/Validation/Types.lean#L202>
     fn check_action_in_entity_type(&self, lhs_ety: &EntityType, rhs_ety: &EntityType) -> bool {
         lhs_ety == rhs_ety
