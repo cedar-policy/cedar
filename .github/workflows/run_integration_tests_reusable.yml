@@ -47,6 +47,7 @@ jobs:
         run: tar xzf corpus-tests.tar.gz
       - name: Prepare Rust build
         run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: sudo apt-get update && sudo apt-get install protobuf-compiler
       - name: Run handwritten integration tests
         working-directory: ./cedar
         run: cargo test --verbose --features "integration-testing"
