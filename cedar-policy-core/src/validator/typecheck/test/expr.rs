@@ -828,6 +828,30 @@ fn action_in_non_action_typechecks_false() {
 }
 
 #[test]
+fn action_literal_in_action_typechecks_true() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        entity a;
+        action "action" appliesTo {
+            principal: a,
+            resource: a,
+        };
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+    assert_typechecks(
+        schema,
+        &Expr::is_in(
+            Expr::val(
+                EntityUID::with_eid_and_type("Action", "action")
+                    .expect("Expected EntityUID parse."),
+            ),
+            Expr::var(Var::Action),
+        ),
+        &Type::True,
+    );
+}
+
+#[test]
 fn in_typecheck_fails() {
     let src = "0 in true";
     let errors =
