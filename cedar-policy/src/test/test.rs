@@ -6548,7 +6548,7 @@ mod policy_set_est_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error serializing/deserializing policy set to/from JSON")
-                .source(r#"while parsing a template link, expected a literal entity reference, but got `{"type":"User"}` at line 61 column 21"#)
+                .source(r#"while parsing a template link, expected a literal entity reference, but got `{"type":"User"}` at line 62 column 17"#)
                 .build(),
         );
     }
