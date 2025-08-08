@@ -2842,20 +2842,33 @@ impl PolicySet {
         &mut self,
         template_id: PolicyId,
         new_id: PolicyId,
-        vals: HashMap<SlotId, EntityUid>,
         generalized_vals: HashMap<SlotId, RestrictedExpression>,
         schema: Option<Schema>,
     ) -> Result<(), PolicySetError> {
-        let unwrapped_vals: HashMap<ast::SlotId, ast::EntityUID> = vals
-            .into_iter()
-            .map(|(key, value)| (key.into(), value.into()))
-            .collect();
+        let (unwrapped_vals, unwrapped_generalized_vals): (
+            HashMap<ast::SlotId, ast::RestrictedExpr>,
+            HashMap<ast::SlotId, ast::RestrictedExpr>,
+        ) = generalized_vals.into_iter().partition_map(|(key, value)| {
+            let key: ast::SlotId = key.into();
+            if key.is_principal() || key.is_resource() {
+                Either::Left((key.into(), value.as_ref().clone()))
+            } else {
+                Either::Right((key.into(), value.as_ref().clone()))
+            }
+        });
 
-        let unwrapped_generalized_vals: HashMap<ast::SlotId, ast::RestrictedExpr> =
-            generalized_vals
-                .into_iter()
-                .map(|(key, value)| (key.into(), value.as_ref().clone()))
-                .collect();
+        // Convert unwrapped_vals into a form that is usable by our internal API's
+        // ensure that `?principal` and `?resource` have slots that are of entity type
+        let unwrapped_vals = unwrapped_vals
+            .into_iter()
+            .map(|(slot, restricted_expr)| match restricted_expr.as_euid() {
+                Some(euid) => Ok((slot, euid.clone())),
+                None => Err(ast::LinkingError::ValueProvidedForSlotInScopeNotEntityUID {
+                    slot,
+                    value: restricted_expr,
+                })?,
+            })
+            .collect::<Result<HashMap<ast::SlotId, ast::EntityUID>, PolicySetError>>()?;
 
         // Try to get the template with the id we're linking from.  We do this
         // _before_ calling `self.ast.link` because `link` mutates the policy

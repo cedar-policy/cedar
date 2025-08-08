@@ -486,7 +486,7 @@ impl std::fmt::Display for Policy {
                 "template({}) => ",
                 self.generalized_slots_declaration
                     .iter()
-                    .map(|(k, v)| format!("{}: {}", k, v))
+                    .map(|(k, v)| format!("{k}: {v}"))
                     .collect::<Vec<String>>()
                     .join(", ")
             )?;
