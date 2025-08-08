@@ -341,30 +341,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cedar-policy"
-version = "4.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3a73fdc6a5127276075a8c559a0dee47d2b66aa823daef349a36e5a03e95624"
-dependencies = [
- "cedar-policy-core 4.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "cedar-policy-formatter 4.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "itertools 0.14.0",
- "lalrpop-util",
- "lazy_static",
- "miette",
- "nonempty 0.10.0",
- "prost 0.13.5",
- "prost-build 0.13.5",
- "ref-cast",
- "semver",
- "serde",
- "serde_json",
- "serde_with",
- "smol_str",
- "thiserror 2.0.12",
-]
-
-[[package]]
 name = "cedar-policy-cli"
 version = "4.5.1"
 dependencies = [
