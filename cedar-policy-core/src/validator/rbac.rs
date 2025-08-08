@@ -137,29 +137,22 @@ impl Validator {
             .map(ToString::to_string)
             .collect::<Vec<_>>();
 
-        // Check all slots that have entity types and make sure that
-        // they are valid entity types with respect to the schema
-        slots
-            .values()
-            .filter_map(move |restricted_expr| match restricted_expr.as_euid() {
-                Some(euid) => {
-                    let entity_type = euid.entity_type();
-                    if !self.schema.is_known_entity_type(entity_type) {
-                        let actual_entity_type = entity_type.to_string();
-                        let suggested_entity_type =
-                            fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
-                        Some(ValidationError::unrecognized_entity_type(
-                            None,
-                            policy_id.clone(),
-                            actual_entity_type,
-                            suggested_entity_type,
-                        ))
-                    } else {
-                        None
-                    }
-                }
-                None => None,
-            })
+        slots.values().filter_map(move |euid| {
+            let entity_type = euid.entity_type();
+            if !self.schema.is_known_entity_type(entity_type) {
+                let actual_entity_type = entity_type.to_string();
+                let suggested_entity_type =
+                    fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
+                Some(ValidationError::unrecognized_entity_type(
+                    None,
+                    policy_id.clone(),
+                    actual_entity_type,
+                    suggested_entity_type,
+                ))
+            } else {
+                None
+            }
+        })
     }
 
     fn check_if_in_fixes_principal(
@@ -440,10 +433,7 @@ mod test {
     use std::collections::{HashMap, HashSet};
 
     use crate::{
-        ast::{
-            Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint, ResourceConstraint,
-            RestrictedExpr,
-        },
+        ast::{Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint, ResourceConstraint},
         est::Annotations,
         parser::{parse_policy, parse_policy_or_template},
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
@@ -723,10 +713,7 @@ mod test {
         let undefined_euid: EntityUID = "Undefined::\"foo\""
             .parse()
             .expect("Expected entity UID to parse.");
-        let env = HashMap::from([(
-            ast::SlotId::principal(),
-            RestrictedExpr::val(undefined_euid),
-        )]);
+        let env = HashMap::from([(ast::SlotId::principal(), undefined_euid)]);
 
         let validator = Validator::new(schema);
         let notes: Vec<ValidationError> = validator

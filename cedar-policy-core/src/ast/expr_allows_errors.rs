@@ -14,7 +14,7 @@ use std::{
 };
 use thiserror::Error;
 
-#[derive(Error, Debug, Serialize, Deserialize, Hash, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Error, Debug, Serialize, Deserialize, Hash, Clone, PartialEq, Eq)]
 pub enum AstExprErrorKind {
     #[error("Invalid expression node: {0}")]
     InvalidExpr(String),

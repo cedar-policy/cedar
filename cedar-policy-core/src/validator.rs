@@ -249,7 +249,7 @@ mod test {
 
     use super::*;
     use crate::{
-        ast::{self, PolicyID, RestrictedExpr},
+        ast::{self, PolicyID},
         est::Annotations,
         parser::{self, IntoMaybeLoc, Loc},
     };
@@ -419,17 +419,19 @@ mod test {
         let mut values = HashMap::new();
         values.insert(
             ast::SlotId::resource(),
-            RestrictedExpr::val(ast::EntityUID::from_components(
+            ast::EntityUID::from_components(
                 "some_namespace::Photo".parse().unwrap(),
                 ast::Eid::new("foo"),
                 None,
-            )),
+            ),
         );
 
+        let generalized_env = HashMap::new();
         set.link(
             ast::PolicyID::from_string("template"),
             ast::PolicyID::from_string("link1"),
             values,
+            generalized_env,
             None,
         )
         .expect("Linking failed!");
@@ -440,17 +442,19 @@ mod test {
         let mut values = HashMap::new();
         values.insert(
             ast::SlotId::resource(),
-            RestrictedExpr::val(ast::EntityUID::from_components(
+            ast::EntityUID::from_components(
                 "some_namespace::Undefined".parse().unwrap(),
                 ast::Eid::new("foo"),
                 None,
-            )),
+            ),
         );
 
+        let generalized_env = HashMap::new();
         set.link(
             ast::PolicyID::from_string("template"),
             ast::PolicyID::from_string("link2"),
             values,
+            generalized_env,
             None,
         )
         .expect("Linking failed!");
@@ -476,17 +480,19 @@ mod test {
         let mut values = HashMap::new();
         values.insert(
             ast::SlotId::resource(),
-            RestrictedExpr::val(ast::EntityUID::from_components(
+            ast::EntityUID::from_components(
                 "some_namespace::User".parse().unwrap(),
                 ast::Eid::new("foo"),
                 None,
-            )),
+            ),
         );
 
+        let generalized_env = HashMap::new();
         set.link(
             ast::PolicyID::from_string("template"),
             ast::PolicyID::from_string("link3"),
             values,
+            generalized_env,
             None,
         )
         .expect("Linking failed!");

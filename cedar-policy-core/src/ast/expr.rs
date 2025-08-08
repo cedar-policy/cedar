@@ -48,7 +48,7 @@ extern crate tsify;
 /// where the expression was written in policy source code, and some generic
 /// data which is stored on each node of the AST.
 /// Cloning is O(1).
-#[derive(Educe, Debug, Clone, PartialOrd, Ord)]
+#[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash)]
 pub struct Expr<T = ()> {
     expr_kind: ExprKind<T>,
@@ -60,7 +60,7 @@ pub struct Expr<T = ()> {
 
 /// The possible expression variants. This enum should be matched on by code
 /// recursively traversing the AST.
-#[derive(Hash, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind<T = ()> {
     /// Literal value
     Lit(Literal),
@@ -915,7 +915,7 @@ pub enum SubstitutionError {
 }
 
 /// Representation of a partial-evaluation Unknown at the AST level
-#[derive(Hash, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct Unknown {
     /// The name of the unknown
     pub name: SmolStr,
@@ -1617,7 +1617,7 @@ impl<T> Expr<T> {
 }
 
 /// AST variables
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

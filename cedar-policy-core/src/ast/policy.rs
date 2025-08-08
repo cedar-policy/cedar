@@ -298,16 +298,19 @@ impl Template {
     /// This upholds invariant (values total map)
     pub fn check_binding(
         template: &Template,
-        values: &HashMap<SlotId, RestrictedExpr>,
+        values: &HashMap<SlotId, EntityUID>,
+        generalized_values: &HashMap<SlotId, RestrictedExpr>,
     ) -> Result<(), LinkingError> {
         // Verify all slots bound
-        let unbound = template
+        let unbound_values_and_generalized_values = template
             .slots
             .iter()
-            .filter(|slot| !values.contains_key(&slot.id))
+            .filter(|slot| {
+                !values.contains_key(&slot.id) && !generalized_values.contains_key(&slot.id)
+            })
             .collect::<Vec<_>>();
 
-        let extra = values
+        let extra_values = values
             .iter()
             .filter_map(|(slot, _)| {
                 if !template
@@ -322,12 +325,67 @@ impl Template {
             })
             .collect::<Vec<_>>();
 
-        if unbound.is_empty() && extra.is_empty() {
+        let extra_generalized_values = generalized_values
+            .iter()
+            .filter_map(|(slot, _)| {
+                if !template
+                    .slots
+                    .iter()
+                    .any(|template_slot| template_slot.id == *slot)
+                {
+                    Some(slot)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let invalid_keys_in_values = values
+            .iter()
+            .filter_map(|(slot, _)| {
+                if *slot != (SlotId::principal()) && *slot != (SlotId::resource()) {
+                    Some(slot)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let invalid_keys_in_generalized_values = generalized_values
+            .iter()
+            .filter_map(|(slot, _)| {
+                if *slot == (SlotId::principal()) || *slot == (SlotId::resource()) {
+                    Some(slot)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if unbound_values_and_generalized_values.is_empty()
+            && extra_values.is_empty()
+            && extra_generalized_values.is_empty()
+            && invalid_keys_in_values.is_empty()
+            && invalid_keys_in_generalized_values.is_empty()
+        {
             Ok(())
+        } else if !(invalid_keys_in_values.is_empty()) {
+            Err(LinkingError::from_invalid_env(
+                invalid_keys_in_values.into_iter().cloned(),
+            ))
+        } else if !(invalid_keys_in_generalized_values.is_empty()) {
+            Err(LinkingError::from_invalid_generalized_env(
+                invalid_keys_in_generalized_values.into_iter().cloned(),
+            ))
         } else {
             Err(LinkingError::from_unbound_and_extras(
-                unbound.into_iter().map(|slot| slot.id.clone()),
-                extra.into_iter().cloned(),
+                unbound_values_and_generalized_values
+                    .into_iter()
+                    .map(|slot| slot.id.clone()),
+                extra_values
+                    .into_iter()
+                    .cloned()
+                    .chain(extra_generalized_values.into_iter().cloned()),
             ))
         }
     }
@@ -336,7 +394,8 @@ impl Template {
     pub fn link_time_type_checking_with_schema(
         template: &Template,
         schema: &ValidatorSchema,
-        values: &HashMap<SlotId, RestrictedExpr>,
+        values: &HashMap<SlotId, EntityUID>,
+        generalized_values: &HashMap<SlotId, RestrictedExpr>,
     ) -> Result<(), LinkingError> {
         let validator_generalized_slots_declaration = GeneralizedSlotsDeclaration::from_iter(
             template
@@ -345,15 +404,37 @@ impl Template {
         )
         .into_validator_generalized_slots_declaration(schema)?;
 
-        for (slot, restricted_expr) in values {
-            // If `?principal` or `?resource` do not have type annotations
-            // we skip checking them
-            if (slot.is_principal() || slot.is_resource())
-                && (validator_generalized_slots_declaration.get(slot).is_none())
-            {
-                continue;
-            }
+        let values_restricted_expr: HashMap<SlotId, RestrictedExpr> = values
+            .iter()
+            .map(|(slot, entity_uid)| (slot.clone(), RestrictedExpr::val(entity_uid.clone())))
+            .collect();
 
+        // we treat values differently because their type annotations are optional
+        for (slot, restricted_expr) in values_restricted_expr {
+            let maybe_validator_type = validator_generalized_slots_declaration.get(&slot);
+            if let Some(validator_type) = maybe_validator_type {
+                let borrowed_restricted_expr = restricted_expr.as_borrowed();
+                #[allow(clippy::expect_used)]
+                let schema_ty = &SchemaType::try_from(validator_type.clone()).expect(
+                    "This should never happen as expected_ty is a statically annotated type",
+                );
+                let extensions = Extensions::all_available();
+                typecheck_restricted_expr_against_schematype(
+                    borrowed_restricted_expr,
+                    schema_ty,
+                    extensions,
+                )
+                .map_err(|_| {
+                    LinkingError::ValueProvidedForSlotIsNotOfTypeSpecified {
+                        slot: slot.clone(),
+                        value: restricted_expr.clone(),
+                        ty: validator_type.clone(),
+                    }
+                })?
+            }
+        }
+
+        for (slot, restricted_expr) in generalized_values {
             let validator_type = validator_generalized_slots_declaration.get(slot).ok_or(
                 LinkingError::ArityError {
                     unbound_values: vec![slot.clone()],
@@ -361,9 +442,9 @@ impl Template {
                 },
             )?;
             let borrowed_restricted_expr = restricted_expr.as_borrowed();
-            // PANIC SAFETY: This should always succeed because validator_type is a statically annotated
-            #[allow(clippy::unwrap_used)]
-            let schema_ty = &SchemaType::try_from(validator_type.clone()).unwrap();
+            #[allow(clippy::expect_used)]
+            let schema_ty = &SchemaType::try_from(validator_type.clone())
+                .expect("This should never happen as expected_ty is a statically annotated type");
             let extensions = Extensions::all_available();
             typecheck_restricted_expr_against_schematype(
                 borrowed_restricted_expr,
@@ -379,43 +460,31 @@ impl Template {
         Ok(())
     }
 
-    /// Since `?principal` and `?resource` slots can be binded
-    /// with RestrictedExpr's we must check that the values
-    /// they are binded with are Entity Types
-    pub fn check_principal_and_resource_slots_are_entity_types(
-        values: &HashMap<SlotId, RestrictedExpr>,
-    ) -> Result<(), LinkingError> {
-        for (slot, restricted_expr) in values {
-            if (slot.is_principal() || slot.is_resource()) && restricted_expr.as_euid().is_none() {
-                Err(LinkingError::ValueProvidedForSlotInScopeNotEntityUID {
-                    slot: slot.clone(),
-                    value: restricted_expr.clone(),
-                })?
-            }
-        }
-        Ok(())
-    }
-
     /// Attempt to create a template-linked policy from this template.
     /// This will fail if values for all open slots are not given.
     /// `new_instance_id` is the `PolicyId` for the created template-linked policy.
     pub fn link(
         template: Arc<Template>,
         new_id: PolicyID,
-        values: HashMap<SlotId, RestrictedExpr>,
+        values: HashMap<SlotId, EntityUID>,
+        generalized_values: HashMap<SlotId, RestrictedExpr>,
         schema: Option<&ValidatorSchema>,
     ) -> Result<Policy, LinkingError> {
         // INVARIANT (policy total map) Relies on check_binding to uphold the invariant
-        Template::check_binding(&template, &values)
-            .and_then(|_| Template::check_principal_and_resource_slots_are_entity_types(&values))
+        Template::check_binding(&template, &values, &generalized_values)
             .and_then(|_| {
                 if let Some(schema) = schema {
-                    Template::link_time_type_checking_with_schema(&template, schema, &values)
+                    Template::link_time_type_checking_with_schema(
+                        &template,
+                        schema,
+                        &values,
+                        &generalized_values,
+                    )
                 } else {
                     Ok(())
                 }
             })
-            .map(|_| Policy::new(template, Some(new_id), values))
+            .map(|_| Policy::new(template, Some(new_id), values, generalized_values))
     }
 
     /// Take a static policy and create a template and a template-linked policy for it.
@@ -430,7 +499,7 @@ impl Template {
             slots: vec![],
         });
         t.check_invariant();
-        let p = Policy::new(Arc::clone(&t), None, HashMap::new());
+        let p = Policy::new(Arc::clone(&t), None, HashMap::new(), HashMap::new());
         (t, p)
     }
 }
@@ -477,6 +546,20 @@ pub enum LinkingError {
         id: PolicyID,
     },
 
+    /// Invalid slots in env (Generalized slots)
+    #[error(fmt = describe_invalid_slot_in_env_error)]
+    InvalidSlotIdInEnv {
+        /// invalid slots
+        invalid: Vec<SlotId>,
+    },
+
+    /// Invalid slots in generalized_env (Principal and Resource slots)
+    #[error(fmt = describe_invalid_slot_in_generalized_env_error)]
+    InvalidSlotIdInGeneralizedEnv {
+        /// invalid slots
+        invalid: Vec<SlotId>,
+    },
+
     /// Value provided for slot in scope is not an EntityUID
     #[error("value provided `{value}` for `{slot}` is not an EntityUID")]
     ValueProvidedForSlotInScopeNotEntityUID {
@@ -513,6 +596,18 @@ impl LinkingError {
             extra_values: extra.collect(),
         }
     }
+
+    fn from_invalid_env(invalid: impl Iterator<Item = SlotId>) -> Self {
+        Self::InvalidSlotIdInEnv {
+            invalid: invalid.collect(),
+        }
+    }
+
+    fn from_invalid_generalized_env(invalid: impl Iterator<Item = SlotId>) -> Self {
+        Self::InvalidSlotIdInGeneralizedEnv {
+            invalid: invalid.collect(),
+        }
+    }
 }
 
 fn describe_arity_error(
@@ -528,6 +623,28 @@ fn describe_arity_error(
         (0, _extra) => write!(fmt, "the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
         (_unbound, _extra) => write!(fmt, "the following slots were not provided as arguments: {}. The following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(",")),
     }
+}
+
+fn describe_invalid_slot_in_env_error(
+    invalid: &[SlotId],
+    fmt: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    write!(
+        fmt,
+        "The following slots should not be in the values hashmap: {}",
+        invalid.iter().join(",")
+    )
+}
+
+fn describe_invalid_slot_in_generalized_env_error(
+    invalid: &[SlotId],
+    fmt: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    write!(
+        fmt,
+        "The following slots should not be in the generalized_values hashmap: {}",
+        invalid.iter().join(",")
+    )
 }
 
 /// A Policy that contains:
@@ -551,24 +668,36 @@ pub struct Policy {
     /// values the slots are bound to.
     /// The constructor `new` is only visible in this module,
     /// so it is the responsibility of callers to maintain
-    values: HashMap<SlotId, RestrictedExpr>,
+    values: HashMap<SlotId, EntityUID>,
+    /// All of the generalized slots in `template` MUST
+    /// be bound by `generalized values`.
+    /// The SlotId for generalized_values should be disjoint from
+    /// values as well
+    generalized_values: HashMap<SlotId, RestrictedExpr>,
 }
 
 impl Policy {
     /// Link a policy to its template
     /// INVARIANT (values total map):
     /// `values` must bind every open slot in `template`
-    fn new(template: Arc<Template>, link_id: Option<PolicyID>, values: SlotEnv) -> Self {
+    fn new(
+        template: Arc<Template>,
+        link_id: Option<PolicyID>,
+        values: SlotEnv,
+        generalized_values: GeneralizedSlotEnv,
+    ) -> Self {
         #[cfg(debug_assertions)]
         {
             // PANIC SAFETY: asserts (value total map invariant) which is justified at call sites
             #[allow(clippy::expect_used)]
-            Template::check_binding(&template, &values).expect("(values total map) does not hold!");
+            Template::check_binding(&template, &values, &generalized_values)
+                .expect("(values total map) does not hold!");
         }
         Self {
             template,
             link: link_id,
             values,
+            generalized_values,
         }
     }
 
@@ -602,7 +731,7 @@ impl Policy {
             ResourceConstraint::any(),
             when,
         );
-        Self::new(Arc::new(t), None, SlotEnv::new())
+        Self::new(Arc::new(t), None, SlotEnv::new(), GeneralizedSlotEnv::new())
     }
 
     /// Get pointer to the template for this policy
@@ -651,14 +780,7 @@ impl Policy {
         let constraint = self.template.principal_constraint().clone();
         match self.values.get(&SlotId::principal()) {
             None => constraint,
-            Some(principal) => {
-                // PANIC SAFETY: This `unwrap` here is safe because the
-                // only slot that can appear in PrincipalConstraint is `?principal`
-                // and the value of `?principal` can only be of EntityUID type
-                #[allow(clippy::unwrap_used)]
-                let euid = principal.as_euid().unwrap();
-                constraint.with_filled_slot(Arc::new(euid.clone()))
-            }
+            Some(principal) => constraint.with_filled_slot(Arc::new(principal.clone())),
         }
     }
 
@@ -676,14 +798,7 @@ impl Policy {
         let constraint = self.template.resource_constraint().clone();
         match self.values.get(&SlotId::resource()) {
             None => constraint,
-            Some(resource) => {
-                // PANIC SAFETY: This `unwrap` here is safe because the
-                // only slot that can appear in PrincipalConstraint is `?resource`
-                // and the value of `?resource` can only be of EntityUID type
-                #[allow(clippy::unwrap_used)]
-                let euid = resource.as_euid().unwrap();
-                constraint.with_filled_slot(Arc::new(euid.clone()))
-            }
+            Some(resource) => constraint.with_filled_slot(Arc::new(resource.clone())),
         }
     }
 
@@ -702,10 +817,16 @@ impl Policy {
         self.template.condition()
     }
 
-    /// Get the mapping from SlotIds to RestrictedExprs for this policy. (This will
+    /// Get the mapping from SlotIds to EntityUIDs for this policy. (This will
     /// be empty for inline policies.)
     pub fn env(&self) -> &SlotEnv {
         &self.values
+    }
+
+    /// Get the mapping from generalized SlotIds to RestrictedExprs for this policy. (This will
+    /// be empty for inline policies.)
+    pub fn generalized_env(&self) -> &GeneralizedSlotEnv {
+        &self.generalized_values
     }
 
     /// Get the ID of this policy.
@@ -720,11 +841,13 @@ impl Policy {
                 template: Arc::new(self.template.new_id(id)),
                 link: None,
                 values: self.values.clone(),
+                generalized_values: self.generalized_values.clone(),
             },
             Some(_) => Policy {
                 template: self.template.clone(),
                 link: Some(id),
                 values: self.values.clone(),
+                generalized_values: self.generalized_values.clone(),
             },
         }
     }
@@ -774,8 +897,11 @@ impl std::fmt::Display for Policy {
     }
 }
 
+/// Map from Slot Ids to Entity UIDs which fill the slots
+pub type SlotEnv = HashMap<SlotId, EntityUID>;
+
 /// Map from Slot Ids to RestrictedExpr which fill the generalized slots
-pub type SlotEnv = HashMap<SlotId, RestrictedExpr>;
+pub type GeneralizedSlotEnv = HashMap<SlotId, RestrictedExpr>;
 
 /// Represents either a static policy or a template linked policy.
 ///
@@ -793,6 +919,8 @@ pub struct LiteralPolicy {
     link_id: Option<PolicyID>,
     /// Values of the slots
     values: SlotEnv,
+    /// Generalized values of the slots
+    generalized_values: GeneralizedSlotEnv,
 }
 
 impl LiteralPolicy {
@@ -804,6 +932,7 @@ impl LiteralPolicy {
             template_id,
             link_id: None,
             values: SlotEnv::new(),
+            generalized_values: GeneralizedSlotEnv::new(),
         }
     }
 
@@ -814,12 +943,24 @@ impl LiteralPolicy {
         template_id: PolicyID,
         link_id: PolicyID,
         values: SlotEnv,
+        generalized_values: GeneralizedSlotEnv,
     ) -> Self {
         Self {
             template_id,
             link_id: Some(link_id),
             values,
+            generalized_values,
         }
+    }
+
+    /// Get the `EntityUID` associated with the given `SlotId`, if it exists
+    pub fn value(&self, slot: &SlotId) -> Option<&EntityUID> {
+        self.values.get(slot)
+    }
+
+    /// Returns the hashmap of generalized values
+    pub fn generalized_values(&self) -> GeneralizedSlotEnv {
+        self.generalized_values.clone()
     }
 }
 
@@ -856,14 +997,12 @@ mod hashing_tests {
 
     fn build_template_linked_policy() -> LiteralPolicy {
         let mut map = HashMap::new();
-        map.insert(
-            SlotId::principal(),
-            RestrictedExpr::val(EntityUID::with_eid("eid")),
-        );
+        map.insert(SlotId::principal(), EntityUID::with_eid("eid"));
         LiteralPolicy {
             template_id: PolicyID::from_string("template"),
             link_id: Some(PolicyID::from_string("id")),
             values: map,
+            generalized_values: HashMap::new(),
         }
     }
 
@@ -901,8 +1040,19 @@ impl LiteralPolicy {
             .get(&self.template_id)
             .ok_or_else(|| ReificationError::NoSuchTemplate(self.template_id().clone()))?;
         // INVARIANT (values total map)
-        Template::check_binding(template, &self.values).map_err(ReificationError::Linking)?;
-        Ok(Policy::new(template.clone(), self.link_id, self.values))
+        Template::check_binding(template, &self.values, &self.generalized_values)
+            .map_err(ReificationError::Linking)?;
+        Ok(Policy::new(
+            template.clone(),
+            self.link_id,
+            self.values,
+            self.generalized_values,
+        ))
+    }
+
+    /// Lookup the euid bound by a SlotId
+    pub fn get(&self, id: &SlotId) -> Option<&EntityUID> {
+        self.values.get(id)
     }
 
     /// Get the [`PolicyID`] of this static or template-linked policy.
@@ -950,6 +1100,7 @@ impl From<Policy> for LiteralPolicy {
             template_id: p.template.id().clone(),
             link_id: p.link,
             values: p.values,
+            generalized_values: p.generalized_values,
         }
     }
 }
@@ -2265,15 +2416,11 @@ mod test {
             let t = Arc::new(template);
             let env = t
                 .principal_resource_slots()
-                .map(|slot| {
-                    (
-                        slot.id.clone(),
-                        RestrictedExpr::val(EntityUID::with_eid("eid")),
-                    )
-                })
+                .map(|slot| (slot.id.clone(), EntityUID::with_eid("eid")))
                 .collect();
-            let _ =
-                Template::link(t, PolicyID::from_string("id"), env, None).expect("Linking failed");
+            let generalized_env = HashMap::new();
+            let _ = Template::link(t, PolicyID::from_string("id"), env, generalized_env, None)
+                .expect("Linking failed");
         }
     }
 
@@ -2351,11 +2498,9 @@ mod test {
             Expr::val(true),
         ));
         let mut m = HashMap::new();
-        m.insert(
-            SlotId::resource(),
-            RestrictedExpr::val(EntityUID::with_eid("eid")),
-        );
-        assert_matches!(Template::link(t, iid, m, None), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+        let generalized_env = HashMap::new();
+        m.insert(SlotId::resource(), EntityUID::with_eid("eid"));
+        assert_matches!(Template::link(t, iid, m, generalized_env, None), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
             assert_eq!(unbound_values, vec![SlotId::principal()]);
             assert_eq!(extra_values, vec![SlotId::resource()]);
         });
@@ -2376,16 +2521,15 @@ mod test {
             ResourceConstraint::is_in_slot(),
             Expr::val(true),
         ));
-        assert_matches!(Template::link(t.clone(), iid.clone(), HashMap::new(), None), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+        let generalized_env = HashMap::new();
+        assert_matches!(Template::link(t.clone(), iid.clone(), HashMap::new(), generalized_env, None), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
             assert_eq!(unbound_values, vec![SlotId::resource(), SlotId::principal()]);
             assert_eq!(extra_values, vec![]);
         });
         let mut m = HashMap::new();
-        m.insert(
-            SlotId::principal(),
-            RestrictedExpr::val(EntityUID::with_eid("eid")),
-        );
-        assert_matches!(Template::link(t, iid, m, None), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+        m.insert(SlotId::principal(), EntityUID::with_eid("eid"));
+        let generalized_env = HashMap::new();
+        assert_matches!(Template::link(t, iid, m, generalized_env, None), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
             assert_eq!(unbound_values, vec![SlotId::resource()]);
             assert_eq!(extra_values, vec![]);
         });
@@ -2408,24 +2552,20 @@ mod test {
         ));
 
         let mut m = HashMap::new();
-        m.insert(
-            SlotId::principal(),
-            RestrictedExpr::val(EntityUID::with_eid("theprincipal")),
-        );
-        m.insert(
-            SlotId::resource(),
-            RestrictedExpr::val(EntityUID::with_eid("theresource")),
-        );
+        m.insert(SlotId::principal(), EntityUID::with_eid("theprincipal"));
+        m.insert(SlotId::resource(), EntityUID::with_eid("theresource"));
 
-        let r = Template::link(t, iid.clone(), m, None).expect("Should Succeed");
+        let generalized_env = HashMap::new();
+
+        let r = Template::link(t, iid.clone(), m, generalized_env, None).expect("Should Succeed");
         assert_eq!(r.id(), &iid);
         assert_eq!(
             r.env().get(&SlotId::principal()),
-            Some(&RestrictedExpr::val(EntityUID::with_eid("theprincipal")))
+            Some(&EntityUID::with_eid("theprincipal"))
         );
         assert_eq!(
             r.env().get(&SlotId::resource()),
-            Some(&RestrictedExpr::val(EntityUID::with_eid("theresource")))
+            Some(&EntityUID::with_eid("theresource"))
         );
     }
 
