@@ -296,6 +296,10 @@ impl Template {
     /// Ensure that every slot in the template is bound by values,
     /// and that no extra values are bound in values
     /// This upholds invariant (values total map)
+    ///
+    /// All callers of this function
+    /// must enforce INVARIANT that `?principal` and `?resource` slots
+    /// are in values and generalized slots are in generalized_values
     pub fn check_binding(
         template: &Template,
         values: &HashMap<SlotId, EntityUID>,
@@ -340,43 +344,11 @@ impl Template {
             })
             .collect::<Vec<_>>();
 
-        let invalid_keys_in_values = values
-            .iter()
-            .filter_map(|(slot, _)| {
-                if *slot != (SlotId::principal()) && *slot != (SlotId::resource()) {
-                    Some(slot)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let invalid_keys_in_generalized_values = generalized_values
-            .iter()
-            .filter_map(|(slot, _)| {
-                if *slot == (SlotId::principal()) || *slot == (SlotId::resource()) {
-                    Some(slot)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
         if unbound_values_and_generalized_values.is_empty()
             && extra_values.is_empty()
             && extra_generalized_values.is_empty()
-            && invalid_keys_in_values.is_empty()
-            && invalid_keys_in_generalized_values.is_empty()
         {
             Ok(())
-        } else if !(invalid_keys_in_values.is_empty()) {
-            Err(LinkingError::from_invalid_env(
-                invalid_keys_in_values.into_iter().cloned(),
-            ))
-        } else if !(invalid_keys_in_generalized_values.is_empty()) {
-            Err(LinkingError::from_invalid_generalized_env(
-                invalid_keys_in_generalized_values.into_iter().cloned(),
-            ))
         } else {
             Err(LinkingError::from_unbound_and_extras(
                 unbound_values_and_generalized_values
@@ -546,20 +518,6 @@ pub enum LinkingError {
         id: PolicyID,
     },
 
-    /// Invalid slots in env (Generalized slots)
-    #[error(fmt = describe_invalid_slot_in_env_error)]
-    InvalidSlotIdInEnv {
-        /// invalid slots
-        invalid: Vec<SlotId>,
-    },
-
-    /// Invalid slots in generalized_env (Principal and Resource slots)
-    #[error(fmt = describe_invalid_slot_in_generalized_env_error)]
-    InvalidSlotIdInGeneralizedEnv {
-        /// invalid slots
-        invalid: Vec<SlotId>,
-    },
-
     /// Value provided for slot in scope is not an EntityUID
     #[error("value provided `{value}` for `{slot}` is not an EntityUID")]
     ValueProvidedForSlotInScopeNotEntityUID {
@@ -596,18 +554,6 @@ impl LinkingError {
             extra_values: extra.collect(),
         }
     }
-
-    fn from_invalid_env(invalid: impl Iterator<Item = SlotId>) -> Self {
-        Self::InvalidSlotIdInEnv {
-            invalid: invalid.collect(),
-        }
-    }
-
-    fn from_invalid_generalized_env(invalid: impl Iterator<Item = SlotId>) -> Self {
-        Self::InvalidSlotIdInGeneralizedEnv {
-            invalid: invalid.collect(),
-        }
-    }
 }
 
 fn describe_arity_error(
@@ -623,28 +569,6 @@ fn describe_arity_error(
         (0, _extra) => write!(fmt, "the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
         (_unbound, _extra) => write!(fmt, "the following slots were not provided as arguments: {}. The following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(",")),
     }
-}
-
-fn describe_invalid_slot_in_env_error(
-    invalid: &[SlotId],
-    fmt: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-    write!(
-        fmt,
-        "The following slots should not be in the values hashmap: {}",
-        invalid.iter().join(",")
-    )
-}
-
-fn describe_invalid_slot_in_generalized_env_error(
-    invalid: &[SlotId],
-    fmt: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-    write!(
-        fmt,
-        "The following slots should not be in the generalized_values hashmap: {}",
-        invalid.iter().join(",")
-    )
 }
 
 /// A Policy that contains:
@@ -891,7 +815,7 @@ impl std::fmt::Display for Policy {
                 f,
                 "Template Instance of {}, slots: [{}]",
                 self.template().id(),
-                display_slot_env(self.env())
+                display_slot_env(self.env(), self.generalized_env())
             )
         }
     }
@@ -1073,9 +997,14 @@ impl LiteralPolicy {
     }
 }
 
-fn display_slot_env(env: &SlotEnv) -> String {
+fn display_slot_env(env: &SlotEnv, generalized_env: &GeneralizedSlotEnv) -> String {
     env.iter()
         .map(|(slot, value)| format!("{slot} -> {value}"))
+        .chain(
+            generalized_env
+                .iter()
+                .map(|(slot, value)| format!("{slot} -> {value}")),
+        )
         .join(",")
 }
 
@@ -1088,7 +1017,7 @@ impl std::fmt::Display for LiteralPolicy {
                 f,
                 "Template linked policy of {}, slots: [{}]",
                 self.template_id(),
-                display_slot_env(&self.values),
+                display_slot_env(&self.values, &self.generalized_values),
             )
         }
     }

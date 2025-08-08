@@ -18,8 +18,9 @@
 
 use crate::{
     ast::{
-        self, ActionConstraint, Eid, EntityReference, EntityUID, Policy, PolicyID,
-        PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
+        self, ActionConstraint, Eid, EntityReference, EntityUID, GeneralizedSlotEnv, Policy,
+        PolicyID, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv,
+        Template,
     },
     entities::conformance::is_valid_enumerated_entity,
     fuzzy_match::fuzzy_search,
@@ -128,6 +129,7 @@ impl Validator {
         &'a self,
         policy_id: &'a PolicyID,
         slots: &'a SlotEnv,
+        generalized_slots: &'a GeneralizedSlotEnv,
     ) -> impl Iterator<Item = ValidationError> + 'a {
         // All valid entity types in the schema. These will be used to generate
         // suggestion when an entity type is not found.
@@ -137,7 +139,13 @@ impl Validator {
             .map(ToString::to_string)
             .collect::<Vec<_>>();
 
-        slots.values().filter_map(move |euid| {
+        let entities = slots.values().chain(
+            generalized_slots
+                .iter()
+                .filter_map(|(_, restricted_expr)| restricted_expr.as_euid()),
+        );
+
+        entities.filter_map(move |euid| {
             let entity_type = euid.entity_type();
             if !self.schema.is_known_entity_type(entity_type) {
                 let actual_entity_type = entity_type.to_string();
@@ -717,7 +725,7 @@ mod test {
 
         let validator = Validator::new(schema);
         let notes: Vec<ValidationError> = validator
-            .validate_entity_types_in_slots(&PolicyID::from_string("0"), &env)
+            .validate_entity_types_in_slots(&PolicyID::from_string("0"), &env, &HashMap::new())
             .collect();
 
         assert_eq!(1, notes.len());
