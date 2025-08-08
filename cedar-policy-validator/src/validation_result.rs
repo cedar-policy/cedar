@@ -49,12 +49,12 @@ impl<'a> ValidationResult<'a> {
     }
 
     /// Get an iterator over the errors found by the validator.
-    pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError> {
+    pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError<'_>> {
         self.validation_errors.iter()
     }
 
     /// Get an iterator over the warnings found by the validator.
-    pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning> {
+    pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning<'_>> {
         self.validation_warnings.iter()
     }
 
@@ -106,7 +106,7 @@ impl<'a> ValidationError<'a> {
     }
 
     /// Extract the location where the validator found the issue.
-    pub fn location(&self) -> &SourceLocation {
+    pub fn location(&self) -> &SourceLocation<'_> {
         &self.location
     }
 }

@@ -710,6 +710,7 @@ impl ValidatorSchema {
 /// groups.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(transparent)]
+#[allow(dead_code)]
 pub(crate) struct NamespaceDefinitionWithActionAttributes(pub(crate) NamespaceDefinition);
 
 impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes {
