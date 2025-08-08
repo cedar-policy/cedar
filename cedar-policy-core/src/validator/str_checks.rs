@@ -298,7 +298,6 @@ mod test {
     }
 
     #[test]
-    #[allow(text_direction_codepoint_in_literal)]
     fn trojan_source() {
         let src = r#"
         permit(principal, action, resource) when {

@@ -29,7 +29,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
-/// Takes a PolicySet represented as string and return the policies
+/// Takes a `PolicySet` represented as string and return the policies
 /// and templates split into vecs and sorted by id.
 #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "policySetTextToParts"))]
 pub fn policy_set_text_to_parts(policyset_str: &str) -> PolicySetTextToPartsAnswer {
