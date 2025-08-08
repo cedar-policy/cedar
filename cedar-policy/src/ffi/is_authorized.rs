@@ -747,7 +747,7 @@ impl From<Links> for Vec<Link> {
 struct RecvdSlice {
     policies: PolicySet,
     /// JSON object containing the entities data, in "natural JSON" form -- same
-    /// format as expected by EntityJsonParser
+    /// format as expected by `EntityJsonParser`
     #[cfg_attr(feature = "wasm", tsify(type = "Array<EntityJson>"))]
     entities: JsonValueWithNoDuplicateKeys,
 
