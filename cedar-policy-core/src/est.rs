@@ -29,7 +29,7 @@ pub use annotation::*;
 
 use crate::ast::EntityUID;
 use crate::ast::{self, Annotation};
-use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
+use crate::entities::json::{err::JsonDeserializationError, CedarValueJson};
 use crate::expr_builder::ExprBuilder;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
@@ -91,12 +91,32 @@ impl Policy {
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings -- and in particular if
     /// `self` is an inline policy (in which case it is returned unchanged).
-    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
+    pub fn link(self, vals: &HashMap<ast::SlotId, CedarValueJson>) -> Result<Self, LinkingError> {
+        let scope_vals = vals
+            .iter()
+            .filter_map(|(slot, cedar_value_json)| {
+                if slot.is_principal() || slot.is_resource() {
+                    // PANIC SAFETY: User's never directly link with the
+                    // EST version from the publicly exposed API's this is all
+                    // done internally. If a user can construct a policy that means
+                    // that `?principal` and `?resource` are entity types so this
+                    // conversion and unwrap is safe.
+                    #[allow(clippy::unwrap_used)]
+                    Some((
+                        slot.clone(),
+                        cedar_value_json.clone().into_entity_json_value().unwrap(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         Ok(Policy {
             effect: self.effect,
-            principal: self.principal.link(vals)?,
-            action: self.action.link(vals)?,
-            resource: self.resource.link(vals)?,
+            principal: self.principal.link(&scope_vals)?,
+            action: self.action.link(&scope_vals)?,
+            resource: self.resource.link(&scope_vals)?,
             conditions: self
                 .conditions
                 .into_iter()
@@ -138,7 +158,7 @@ impl Clause {
     /// Fill in any slots in the clause using the values in `vals`. Throws an
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings.
-    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
+    pub fn link(self, vals: &HashMap<ast::SlotId, CedarValueJson>) -> Result<Self, LinkingError> {
         match self {
             Clause::When(e) => Ok(Clause::When(e.link(vals)?)),
             Clause::Unless(e) => Ok(Clause::Unless(e.link(vals)?)),
@@ -3286,7 +3306,7 @@ mod test {
             .clone()
             .link(&HashMap::from_iter([(
                 ast::SlotId::principal(),
-                EntityUidJson::new("XYZCorp::User", "12UA45"),
+                CedarValueJson::uid(&r#"XYZCorp::User::"12UA45""#.parse().unwrap()),
             )]))
             .expect_err("didn't fill all the slots");
         expect_err(
@@ -3301,9 +3321,12 @@ mod test {
             .link(&HashMap::from_iter([
                 (
                     ast::SlotId::principal(),
-                    EntityUidJson::new("XYZCorp::User", "12UA45"),
+                    CedarValueJson::uid(&r#"XYZCorp::User::"12UA45""#.parse().unwrap()),
                 ),
-                (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
+                (
+                    ast::SlotId::resource(),
+                    CedarValueJson::uid(&r#"Folder::"abc""#.parse().unwrap()),
+                ),
             ]))
             .expect("did fill all the slots");
         let expected_json = json!(
@@ -3374,9 +3397,12 @@ mod test {
             .link(&HashMap::from_iter([
                 (
                     ast::SlotId::principal(),
-                    EntityUidJson::new("XYZCorp::User", "12UA45"),
+                    CedarValueJson::uid(&r#"XYZCorp::User::"12UA45""#.parse().unwrap()),
                 ),
-                (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
+                (
+                    ast::SlotId::resource(),
+                    CedarValueJson::uid(&r#"Folder::"abc""#.parse().unwrap()),
+                ),
             ]))
             .expect("did fill all the slots");
 
@@ -4425,9 +4451,11 @@ mod test {
                     );
                 }
             );
+            let euid: EntityUID = r#"User::"alice""#.parse().unwrap();
+            println!("{:#?}", euid);
             let err = est.clone().link(&HashMap::from_iter([(
                 ast::SlotId::principal(),
-                EntityUidJson::new("User", "alice"),
+                CedarValueJson::uid(&r#"User::"alice""#.parse().unwrap()),
             )]));
             assert_matches!(
                 err,
@@ -4444,9 +4472,12 @@ mod test {
                 .link(&HashMap::from_iter([
                     (
                         ast::SlotId::principal(),
-                        EntityUidJson::new("User", "alice"),
+                        CedarValueJson::uid(&r#"User::"alice""#.parse().unwrap()),
                     ),
-                    (ast::SlotId::resource(), EntityUidJson::new("Folder", "abc")),
+                    (
+                        ast::SlotId::resource(),
+                        CedarValueJson::uid(&r#"Folder::"abc""#.parse().unwrap()),
+                    ),
                 ]))
                 .expect("did fill all the slots");
             let expected_json = json!(
