@@ -374,7 +374,7 @@ impl<'a> Typechecker<'a> {
     pub fn multi_typecheck_by_request_env(
         &self,
         policy_templates: &[&Template],
-    ) -> Vec<(RequestEnv, Vec<PolicyCheck>)> {
+    ) -> Vec<(RequestEnv<'_>, Vec<PolicyCheck>)> {
         let mut env_checks = Vec::new();
         for request in self.unlinked_request_envs() {
             let mut policy_checks = Vec::new();
@@ -406,7 +406,7 @@ impl<'a> Typechecker<'a> {
         env_checks
     }
 
-    fn unlinked_request_envs(&self) -> impl Iterator<Item = RequestEnv> + '_ {
+    fn unlinked_request_envs(&self) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
         // Gather all of the actions declared in the schema.
         let all_actions = self
             .schema
