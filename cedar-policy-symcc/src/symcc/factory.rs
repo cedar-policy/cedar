@@ -390,12 +390,7 @@ pub fn bvnego(t: Term) -> Term {
     }
 }
 
-pub fn bvso<E: std::fmt::Debug + Into<CompileError>>(
-    op: Op,
-    f: &BVOp<E>,
-    t1: Term,
-    t2: Term,
-) -> Term {
+pub fn bvso(op: Op, f: &dyn Fn(&Int, &Int) -> Int, t1: Term, t2: Term) -> Term {
     match (t1, t2) {
         (Term::Prim(TermPrim::Bitvec(bv1)), Term::Prim(TermPrim::Bitvec(bv2))) => {
             assert!(bv1.width() == bv2.width());
@@ -403,7 +398,7 @@ pub fn bvso<E: std::fmt::Debug + Into<CompileError>>(
                 clippy::unwrap_used,
                 reason = "Assert above guarantees same bit-vector width."
             )]
-            BitVec::overflows(bv1.width(), &f(&bv1, &bv2).unwrap().to_int())
+            BitVec::overflows(bv1.width(), &f(&bv1.to_int(), &bv2.to_int()))
                 .unwrap()
                 .into()
         }
@@ -416,15 +411,15 @@ pub fn bvso<E: std::fmt::Debug + Into<CompileError>>(
 }
 
 pub fn bvsaddo(t1: Term, t2: Term) -> Term {
-    bvso(Op::Bvsaddo, &BitVec::add, t1, t2)
+    bvso(Op::Bvsaddo, &|a, b| a + b, t1, t2)
 }
 
 pub fn bvssubo(t1: Term, t2: Term) -> Term {
-    bvso(Op::Bvssubo, &BitVec::sub, t1, t2)
+    bvso(Op::Bvssubo, &|a, b| a - b, t1, t2)
 }
 
 pub fn bvsmulo(t1: Term, t2: Term) -> Term {
-    bvso(Op::Bvsmulo, &BitVec::mul, t1, t2)
+    bvso(Op::Bvsmulo, &|a, b| a * b, t1, t2)
 }
 
 /// Note that Lean's Std.BitVec defines zero_extend differently from SMTLib,
