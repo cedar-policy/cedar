@@ -23,7 +23,6 @@
 )]
 
 mod id;
-use cedar_policy_core::entities::json::err::JsonSerializationError;
 #[cfg(feature = "entity-manifest")]
 use cedar_policy_core::validator::entity_manifest;
 // TODO (#1157) implement wrappers for these structs before they become public
@@ -47,7 +46,7 @@ pub use authorizer::Decision;
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
 use cedar_policy_core::ast::{self, RequestSchema, RestrictedExpr};
 use cedar_policy_core::authorizer;
-use cedar_policy_core::entities::{CedarValueJson, ContextSchema, Dereference};
+use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
 use cedar_policy_core::evaluator::Evaluator;
 #[cfg(feature = "partial-eval")]
@@ -2947,10 +2946,25 @@ fn is_static_or_link(
 ) -> Result<Either<(ast::PolicyID, est::Policy), TemplateLink>, PolicyToJsonError> {
     match policy.template_id() {
         Some(template_id) => {
+            let values = policy
+                .ast
+                .env()
+                .iter()
+                .filter_map(|(id, restricted_expr)| {
+                    if id.is_principal() || id.is_resource() {
+                        // PANIC SAFETY: This `unwrap` here is safe because `?principal` and
+                        // `?resource` slots can only contain EntityUID's
+                        #[allow(clippy::unwrap_used)]
+                        Some((id.clone(), restricted_expr.as_euid().unwrap().clone()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
             Ok(Either::Right(TemplateLink {
                 new_id: id.into(),
                 template_id: template_id.clone().into(),
-                values: policy.ast.env().clone(),
+                values,
             }))
         }
         None => policy
@@ -3977,11 +3991,17 @@ impl LosslessPolicy {
                 } else {
                     let unwrapped_vals = slots
                         .iter()
-                        .map(|(k, v)| Ok((k.clone(), CedarValueJson::from_expr(v.as_borrowed())?)))
-                        .collect::<std::result::Result<
-                            HashMap<ast::SlotId, CedarValueJson>,
-                            JsonSerializationError,
-                        >>()?;
+                        .filter_map(|(k, v)| {
+                            if k.is_principal() || k.is_resource() {
+                                // PANIC SAFETY: This `unwrap` here is safe because `?principal` and
+                                // `?resource` slots can only contain EntityUID's
+                                #[allow(clippy::unwrap_used)]
+                                Some((k.clone(), v.as_euid().unwrap().clone().into()))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
 
                     Ok(est.link(&unwrapped_vals)?)
                 }
@@ -3998,11 +4018,17 @@ impl LosslessPolicy {
             Self::Est(est) => {
                 let unwrapped_est_vals = vals
                     .into_iter()
-                    .map(|(k, v)| Ok((k, CedarValueJson::from_expr(v.as_borrowed())?)))
-                    .collect::<std::result::Result<
-                        HashMap<ast::SlotId, CedarValueJson>,
-                        JsonSerializationError,
-                    >>()?;
+                    .filter_map(|(k, v)| {
+                        if k.is_principal() || k.is_resource() {
+                            // PANIC SAFETY: This `unwrap` here is safe because `?principal` and
+                            // `?resource` slots can only contain EntityUID's
+                            #[allow(clippy::unwrap_used)]
+                            Some((k, v.as_euid().unwrap().clone().into()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
 
                 Ok(Self::Est(est.link(&unwrapped_est_vals)?))
             }
