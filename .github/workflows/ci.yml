@@ -41,6 +41,6 @@ jobs:
       - run: >-
           sed -i -E 's/^(crate_type = \["rlib", "cdylib"\]|crate_type = \["rlib"\])$/crate_type = ["lib"]/' {head,base}/cedar-policy/Cargo.toml
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo install cargo-semver-checks
+      - run: cargo install cargo-semver-checks --locked
       - run: cargo semver-checks check-release --package cedar-policy --baseline-root ../base
         working-directory: head
