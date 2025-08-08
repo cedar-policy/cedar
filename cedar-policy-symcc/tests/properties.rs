@@ -208,6 +208,12 @@ check_prop!(prop_datetime_offset_commute,
 check_prop!(prop_long_add_error,
     exists_error |a : Long, b : Long| $a + $b);
 
+check_prop!(prop_long_add_error_const,
+    exists_error | | 9223372036854775807 + 1);
+
+check_prop!(prop_long_sub_error_const,
+    exists_error | | -2 - 9223372036854775807);
+
 check_prop!(prop_long_add_commute,
     forall_or_error |a : Long, b : Long| $a + $b == $b + $a);
 
@@ -216,6 +222,9 @@ check_prop!(prop_long_add_assoc,
 
 check_prop!(prop_long_mul_error,
     exists_error |a : Long, b : Long| $a * $b);
+
+check_prop!(prop_long_mul_error_const,
+    exists_error | | 9223372036854775807 * 2);
 
 check_prop!(prop_long_mul_commute,
     forall_or_error |a : Long, b : Long| $a * $b == $b * $a);
@@ -339,6 +348,9 @@ check_prop!(prop_to_days_upper,
 
 check_prop!(prop_to_days_lower,
     forall |a : duration| $a.toDays() >= -106751991167);
+
+check_prop!(prop_offset_overflow,
+    exists_error | | datetime("9281-10-19").offset(duration("9223372036854775807ms")));
 
 check_prop!(prop_str_empty_pattern,
     forall |a : String, b : String| !($a like "" && $b like "") || $a == $b);
