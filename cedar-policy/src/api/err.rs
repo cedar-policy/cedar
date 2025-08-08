@@ -922,10 +922,6 @@ pub enum PolicyToJsonError {
     /// Error in the JSON serialization
     #[error(transparent)]
     JsonSerialization(#[from] policy_to_json_errors::PolicyJsonSerializationError),
-    /// Error when serializing linked template
-    /// values into `CedarValueJson`
-    #[error(transparent)]
-    LinkJsonSerialization(#[from] cedar_policy_core::entities::json::err::JsonSerializationError),
 }
 
 #[doc(hidden)]

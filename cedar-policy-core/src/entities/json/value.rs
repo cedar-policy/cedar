@@ -376,14 +376,6 @@ impl CedarValueJson {
         }
     }
 
-    /// Convert the `CedarValueJson` into an `EntityUidJson`
-    pub fn into_entity_json_value(self) -> Option<EntityUidJson> {
-        match self {
-            Self::EntityEscape { __entity } => Some(EntityUidJson::ImplicitEntityEscape(__entity)),
-            _ => None,
-        }
-    }
-
     /// Convert this `CedarValueJson` into a Cedar "restricted expression"
     pub fn into_expr(
         self,
@@ -968,21 +960,6 @@ impl<'de, C: DeserializationContext> DeserializeAs<'de, EntityUID> for EntityUid
         let s = EntityUidJson::<C>::deserialize(deserializer)?;
         let euid = s.into_euid(context).map_err(Error::custom)?;
         Ok(euid)
-    }
-}
-
-impl EntityUidJson {
-    /// Converts an `EntityUidJson` into a `CedarValueJson` if possible
-    pub fn convert_into_cedar_value_json(self) -> Option<CedarValueJson> {
-        match self {
-            EntityUidJson::ExplicitEntityEscape { __entity } => {
-                Some(CedarValueJson::EntityEscape { __entity })
-            }
-            EntityUidJson::ImplicitEntityEscape(ty_and_id) => Some(CedarValueJson::EntityEscape {
-                __entity: ty_and_id,
-            }),
-            _ => None,
-        }
     }
 }
 

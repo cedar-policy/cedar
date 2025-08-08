@@ -16,15 +16,13 @@
 
 use super::Policy;
 use super::PolicySetFromJsonError;
-use crate::ast::{self, PolicyID, RestrictedExpr, SlotId};
+use crate::ast::{self, EntityUID, PolicyID, RestrictedExpr, SlotId};
 use crate::entities::json::err::JsonDeserializationErrorContext;
 use crate::entities::json::EntityUidJson;
-use crate::entities::{CedarValueJson, TypeAndId};
 use crate::parser::cst::Policies;
 use crate::parser::err::ParseErrors;
 use crate::parser::Node;
-use serde::ser::SerializeMap;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::HashMap;
 
@@ -58,19 +56,10 @@ impl PolicySet {
             .filter_map(|link| {
                 if &link.new_id == id {
                     self.get_template(&link.template_id).and_then(|template| {
-                        let unwrapped_est_vals: HashMap<SlotId, CedarValueJson> = link
+                        let unwrapped_est_vals: HashMap<SlotId, EntityUidJson> = link
                             .values
                             .iter()
-                            .map(|(k, v)| {
-                                // PANIC SAFETY: When we deserialization we go from
-                                // CedarValueJson -> RestrictedExpr, therefore the conversion
-                                // back is safe.
-                                #[allow(clippy::unwrap_used)]
-                                (
-                                    k.clone(),
-                                    CedarValueJson::from_expr(v.as_borrowed()).unwrap(),
-                                )
-                            })
+                            .map(|(k, v)| (k.clone(), v.into()))
                             .collect();
                         template.link(&unwrapped_est_vals).ok()
                     })
@@ -102,65 +91,9 @@ pub struct TemplateLink {
     pub template_id: PolicyID,
     /// Id of the generated policy
     pub new_id: PolicyID,
-    /// Mapping between slots and restricted exprs
-    #[serde(deserialize_with = "deserialize_template_link_values")]
-    #[serde(serialize_with = "serialize_template_link_values")]
-    pub values: HashMap<SlotId, RestrictedExpr>,
-}
-
-fn serialize_template_link_values<S>(
-    value: &HashMap<SlotId, RestrictedExpr>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let mut map = serializer.serialize_map(Some(value.len()))?;
-    for (k, v) in value {
-        if k.is_principal() || k.is_resource() {
-            // PANIC SAFETY: Since value is an internal data structure it
-            // must satisfy the internal invariant that all values binded to `?principal`
-            // and `?resource` slots are of entity type
-            #[allow(clippy::unwrap_used)]
-            let euid_json: EntityUidJson<TemplateLinkContext> =
-                EntityUidJson::ImplicitEntityEscape(TypeAndId::from(v.as_euid().unwrap()));
-            map.serialize_entry(&k, &euid_json)?;
-        } else {
-            let cedar_value_json =
-                CedarValueJson::from_expr(v.as_borrowed()).map_err(serde::ser::Error::custom)?;
-            map.serialize_entry(&k, &cedar_value_json)?;
-        }
-    }
-    map.end()
-}
-
-/// Helper function to deserialize a `Request` from JSON (without schema)
-fn deserialize_template_link_values<'de, D>(
-    deserializer: D,
-) -> Result<HashMap<SlotId, RestrictedExpr>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let raw: HashMap<SlotId, serde_json::Value> =
-        serde_with::rust::maps_duplicate_key_is_error::deserialize(deserializer)?;
-
-    raw.into_iter()
-        .map(|(k, v)| {
-            if k.is_principal() || k.is_resource() {
-                let v: EntityUidJson =
-                    serde_json::from_value(v).map_err(serde::de::Error::custom)?;
-                let context = || JsonDeserializationErrorContext::TemplateLink;
-                let euid = v.into_euid(context).map_err(serde::de::Error::custom)?;
-                Ok((k, RestrictedExpr::val(euid)))
-            } else {
-                let v: CedarValueJson =
-                    serde_json::from_value(v).map_err(serde::de::Error::custom)?;
-                let context = || JsonDeserializationErrorContext::TemplateLink;
-                let restricted_expr = v.into_expr(context).map_err(serde::de::Error::custom)?;
-                Ok((k, restricted_expr))
-            }
-        })
-        .collect::<std::result::Result<HashMap<SlotId, RestrictedExpr>, D::Error>>()
+    /// Mapping between slots and entity uids
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,EntityUidJson<TemplateLinkContext>>")]
+    pub values: HashMap<SlotId, EntityUID>,
 }
 
 /// Statically set the deserialization error context to be deserialization of a template link
@@ -194,6 +127,11 @@ impl TryFrom<PolicySet> for ast::PolicySet {
             values,
         } in value.template_links
         {
+            let values = values
+                .into_iter()
+                .map(|(slot, euid)| (slot, RestrictedExpr::val(euid)))
+                .collect();
+            
             ast_pset.link(template_id, new_id, values, None)?; // Chore: We will include this when we include the EST functionality
         }
 

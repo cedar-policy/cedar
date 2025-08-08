@@ -22,7 +22,7 @@ use crate::ast::Infallible;
 use crate::ast::{self, BoundedDisplay, EntityUID};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
-    CedarValueJson, FnAndArgs,
+    CedarValueJson, EntityUidJson, FnAndArgs,
 };
 use crate::est::LinkingError;
 use crate::expr_builder::ExprBuilder;
@@ -880,14 +880,19 @@ impl Expr {
     }
 
     /// Instantiate all the slots in an expression with their values
-    pub fn link(self, vals: &HashMap<ast::SlotId, CedarValueJson>) -> Result<Self, LinkingError> {
+    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         match self {
             Expr::ExprNoExt(e) => match e {
                 v @ ExprNoExt::Value(_) => Ok(Expr::ExprNoExt(v)),
                 v @ ExprNoExt::Var(_) => Ok(Expr::ExprNoExt(v)),
                 ExprNoExt::Slot(slot) => match vals.get(&slot) {
-                    Some(literal) => {
-                        Ok(Expr::ExprNoExt(ExprNoExt::Value(literal.clone())))
+                    Some(e) => {
+                        let literal = CedarValueJson::from_lit(
+                            e.clone()
+                                .into_euid(|| JsonDeserializationErrorContext::Unknown)?
+                                .into(),
+                        );
+                        Ok(Expr::ExprNoExt(ExprNoExt::Value(literal)))
                     }
                     None => Err(LinkingError::MissedSlot { slot }),
                 },
