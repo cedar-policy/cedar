@@ -1201,6 +1201,7 @@ fn action_in_precision() {
         r#"
             entity E1 {
                 action: N1::Action,
+                action2: N2::Action,
                 actions: Set<N1::Action>,
                 es: Set<E1>,
             };
@@ -1214,6 +1215,12 @@ fn action_in_precision() {
             };
             namespace N1 {
                 action "C" in [Action::"A", Action::"B"] appliesTo {
+                    principal: [E1],
+                    resource: [E1],
+                };
+            }
+            namespace N2 {
+                action "D" appliesTo {
                     principal: [E1],
                     resource: [E1],
                 };
@@ -1258,6 +1265,46 @@ fn action_in_precision() {
             None,
             r#"permit(principal, action == Action::"A", resource) when {
                 action in principal.actions && principal.no_such_attr
+            };"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"A", resource) when {
+                principal.action in principal.action2 && principal.no_such_attr
+            };"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"A", resource) when {
+                principal.action2 in principal.actions && principal.no_such_attr
+            };"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"A", resource) when {
+                principal.action2 in action && principal.no_such_attr
+            };"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"A", resource) when {
+                principal.action2 in [action] && principal.no_such_attr
             };"#,
         )
         .unwrap(),
