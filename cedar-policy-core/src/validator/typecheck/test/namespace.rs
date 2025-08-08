@@ -1194,3 +1194,134 @@ fn actions_in_attributes() {
         schema,
     );
 }
+
+#[test]
+fn action_in_precision() {
+    let (schema, _) = json_schema::Fragment::from_cedarschema_str(
+        r#"
+            entity E1 {
+                action: N1::Action,
+                actions: Set<N1::Action>,
+                es: Set<E1>,
+            };
+            action "A" appliesTo {
+                principal: [E1],
+                resource: [E1],
+            };
+            action "B" appliesTo {
+                principal: [E1],
+                resource: [E1],
+            };
+            namespace N1 {
+                action "C" in [Action::"A", Action::"B"] appliesTo {
+                    principal: [E1],
+                    resource: [E1],
+                };
+            }
+        "#,
+        Extensions::all_available(),
+    )
+    .unwrap();
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"A", resource) when {
+                action in principal && principal.no_such_attr
+            };"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"A", resource) when {
+                action in principal.es && principal.no_such_attr
+            };"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"A", resource) when {
+                action in principal.action && principal.no_such_attr
+            };"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"A", resource) when {
+                action in principal.actions && principal.no_such_attr
+            };"#,
+        )
+        .unwrap(),
+    );
+}
+
+#[test]
+fn action_in_soundness() {
+    let (schema, _) = json_schema::Fragment::from_cedarschema_str(
+        r#"
+            entity E1 {
+                action: Action,
+                action2: N1::Action,
+                actions: Set<N1::Action>,
+            };
+            action "A" in [N1::Action::"C"] appliesTo {
+                principal: [E1],
+                resource: [E1],
+            };
+            action "B" appliesTo {
+                principal: [E1],
+                resource: [E1]
+            };
+            namespace N1 {
+                action "C" appliesTo {
+                    principal: [E1],
+                    resource: [E1],
+                };
+            }
+        "#,
+        Extensions::all_available(),
+    )
+    .unwrap();
+    assert_policy_typecheck_fails(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"B", resource) when {
+                action in principal.action && principal.no_such_attr
+            };"#,
+        )
+        .unwrap(),
+    );
+    // May want to remove these two cases if the precision gets better
+    // (since we know statically that Action::"B" does not have any
+    // ancestors in N1::Action).
+    assert_policy_typecheck_fails(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"B", resource) when {
+                action in principal.action2 && principal.no_such_attr
+            };"#,
+        )
+        .unwrap(),
+    );
+    assert_policy_typecheck_fails(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"permit(principal, action == Action::"B", resource) when {
+                action in principal.actions && principal.no_such_attr
+            };"#,
+        )
+        .unwrap(),
+    );
+}

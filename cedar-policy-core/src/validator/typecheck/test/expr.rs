@@ -805,6 +805,29 @@ fn in_set_typechecks_strict() {
 }
 
 #[test]
+fn action_in_non_action_typechecks_false() {
+    let schema: json_schema::NamespaceDefinition<RawName> = serde_json::from_value(json!(
+    {
+        "entityTypes": {},
+        "actions": {
+            "view": { },
+            "modify": { }
+        }
+    }))
+    .expect("Expected that schema would parse");
+    assert_typechecks(
+        schema,
+        &Expr::is_in(
+            Expr::val(
+                EntityUID::with_eid_and_type("Action", "view").expect("Expected EntityUID parse."),
+            ),
+            Expr::var(Var::Principal),
+        ),
+        &Type::False,
+    );
+}
+
+#[test]
 fn in_typecheck_fails() {
     let src = "0 in true";
     let errors =

@@ -1817,6 +1817,18 @@ impl<'a> SingleEnvTypechecker<'a> {
         }
     }
 
+    /// Checks if `lhs_ety` may be a descendant of `rhs_ety` in the action hierarchy.
+    /// Lean counterpart: https://github.com/cedar-policy/cedar-spec/blob/7e231a68b0e0eb1b8ce1362e81de4568671a668a/cedar-lean/Cedar/Validation/Types.lean#L202
+    fn check_action_descendant(&self, lhs_ety: &EntityType, rhs_ety: &EntityType) -> bool {
+        lhs_ety == rhs_ety
+            || self.schema.action_ids().any(|action| {
+                action.name().entity_type() == rhs_ety
+                    && action
+                        .descendants()
+                        .any(|desc| desc.entity_type() == lhs_ety)
+            })
+    }
+
     /// Handles typechecking of `in` expressions. This is complicated because it
     /// requires searching the schema to determine if an `in` expression
     /// consisting of variables and literals can ever be true. When we find that
@@ -1929,17 +1941,86 @@ impl<'a> SingleEnvTypechecker<'a> {
                             rhs_expr,
                         ),
 
-                    // If none of the cases apply, then all we know is that `in` has
-                    // type boolean. Importantly for partial schema
-                    // validation, this case captures an `in` between entity
-                    // literals where the LHS is not an action defined in
-                    // the schema and does not have an entity type defined
-                    // in the schema.
-                    _ => TypecheckAnswer::success(
-                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                            .with_same_source_loc(in_expr)
-                            .is_in(lhs_expr, rhs_expr),
-                    ),
+                    _ => match (lhs_expr.data(), rhs_expr.data()) {
+                        // If both sides have action entity types, we conservatively
+                        // check if any of the actions of type `rhs_ety` have descendant
+                        // action entities with type `lhs_ety`. If there is none, we
+                        // can soundly type it as false.
+                        (
+                            Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
+                                name: lhs_ety,
+                                ..
+                            })),
+                            Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
+                                name: rhs_ety,
+                                ..
+                            })),
+                        ) if !self.check_action_descendant(lhs_ety, rhs_ety) => {
+                            TypecheckAnswer::success(
+                                ExprBuilder::with_data(Some(Type::False))
+                                    .with_same_source_loc(in_expr)
+                                    .is_in(lhs_expr, rhs_expr),
+                            )
+                        }
+
+                        // Similar to the case above, but checks the case when the RHS
+                        // could be a collection of entity types.
+                        (
+                            Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
+                                name: lhs_ety,
+                                ..
+                            })),
+                            Some(Type::EntityOrRecord(EntityRecordKind::Entity(rhs_etys))),
+                        ) if rhs_etys
+                            .iter()
+                            .all(|rhs_ety| !self.check_action_descendant(lhs_ety, rhs_ety)) =>
+                        {
+                            TypecheckAnswer::success(
+                                ExprBuilder::with_data(Some(Type::False))
+                                    .with_same_source_loc(in_expr)
+                                    .is_in(lhs_expr, rhs_expr),
+                            )
+                        }
+
+                        // Similar to the cases above, but for when the RHS is a set
+                        (
+                            Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
+                                name: lhs_ety,
+                                ..
+                            })),
+                            Some(Type::Set {
+                                element_type: Some(rhs_elem_ty),
+                            }),
+                        ) if match rhs_elem_ty.as_ref() {
+                            Type::EntityOrRecord(EntityRecordKind::ActionEntity {
+                                name: rhs_ety,
+                                ..
+                            }) => !self.check_action_descendant(lhs_ety, rhs_ety),
+                            Type::EntityOrRecord(EntityRecordKind::Entity(rhs_etys)) => rhs_etys
+                                .iter()
+                                .all(|rhs_ety| !self.check_action_descendant(lhs_ety, rhs_ety)),
+                            _ => false,
+                        } =>
+                        {
+                            TypecheckAnswer::success(
+                                ExprBuilder::with_data(Some(Type::False))
+                                    .with_same_source_loc(in_expr)
+                                    .is_in(lhs_expr, rhs_expr),
+                            )
+                        }
+
+                        // If none of the cases apply, then all we know is that `in` has
+                        // type boolean. Importantly for partial schema
+                        // validation, this case captures an `in` between entity
+                        // literals where the LHS is not an action defined in
+                        // the schema and does not have an entity type defined
+                        // in the schema.
+                        _ => TypecheckAnswer::success(
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_loc(in_expr)
+                                .is_in(lhs_expr, rhs_expr),
+                        ),
+                    },
                 }
                 .then_typecheck(|type_of_in, _| TypecheckAnswer::success(type_of_in))
             })
