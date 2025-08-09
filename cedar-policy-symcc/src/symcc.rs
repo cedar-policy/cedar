@@ -418,7 +418,9 @@ fn well_typed_policy_inner(
             policy.effect(),
             expr.into_expr::<ExprBuilder<()>>(),
             policy.id().clone(),
-            policy.loc().cloned(),
+            // The additional `into()` is to avoid build failure with or without the
+            // `raw-parsing` feature in `cedar-policy-core` (which changes the type of `MaybeLoc`).
+            policy.loc().cloned().map(|l| l.into()),
         )),
         Irrelevant(errs, expr) =>
         // A policy could be irrelevant just for this environment, so unless there were errors we don't want to fail.
@@ -430,7 +432,7 @@ fn well_typed_policy_inner(
                     policy.effect(),
                     expr.into_expr::<ExprBuilder<()>>(),
                     policy.id().clone(),
-                    policy.loc().cloned(),
+                    policy.loc().cloned().map(|l| l.into()),
                 ))
             } else {
                 Err(Error::PolicyNotWellTyped { errs })
