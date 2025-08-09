@@ -55,6 +55,24 @@ jobs:
       - run: ./panic_safety.sh
       - run: cargo doc --all-features --no-deps
 
+      # Required to run cedar-symcc tests
+      - name: Install cvc5
+        shell: bash
+        run: |
+              ARCH=$(uname -m)
+              if [ "$ARCH" = "x86_64" ]; then
+                ARCH_NAME="x86_64"
+              elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+                ARCH_NAME="arm64"
+              else
+                echo "Unsupported architecture: $ARCH"
+                exit 1
+              fi
+              wget https://github.com/cvc5/cvc5/releases/download/cvc5-1.2.1/cvc5-Linux-${ARCH_NAME}-static.zip
+              unzip cvc5-Linux-${ARCH_NAME}-static.zip
+              chmod +x cvc5-Linux-${ARCH_NAME}-static/bin/cvc5
+              echo "CVC5=$GITHUB_WORKSPACE/cvc5-Linux-${ARCH_NAME}-static/bin/cvc5" >> $GITHUB_ENV
+
       # All targets are run with the same `RUSTFLAGS
       - run: cargo build --verbose
       - run: cargo test --verbose

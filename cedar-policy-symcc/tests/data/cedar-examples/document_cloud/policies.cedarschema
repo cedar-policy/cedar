@@ -1,0 +1,60 @@
+entity DocumentShare, Drive;
+entity Document  = {
+  "isPrivate": Bool,
+  "manageACL": DocumentShare,
+  "modifyACL": DocumentShare,
+  "owner": User,
+  "publicAccess": String,
+  "viewACL": DocumentShare,
+};
+entity Group in [DocumentShare] = {
+  "owner": User,
+};
+entity Public in [DocumentShare];
+entity User in [Group] = {
+  "blocked": Set<User>,
+  "personalGroup": Group,
+};
+
+action DeleteGroup, ModifyGroup appliesTo {
+  principal: [User],
+  resource: [Group],
+  context: {
+    "is_authenticated": Bool,
+  }
+};
+action CreateGroup appliesTo {
+  principal: [User],
+  resource: [Drive],
+  context: {
+    "is_authenticated": Bool,
+  }
+};
+action ViewDocument appliesTo {
+  principal: [User, Public],
+  resource: [Document],
+  context: {
+    "is_authenticated": Bool,
+  }
+};
+action AddToShareACL, DeleteDocument, EditIsPrivate, EditPublicAccess appliesTo {
+  principal: [User],
+  resource: [Document],
+  context: {
+    "is_authenticated": Bool,
+  }
+};
+action ModifyDocument appliesTo {
+  principal: [User],
+  resource: [Document],
+  context: {
+    "is_authenticated": Bool,
+  }
+};
+action CreateDocument appliesTo {
+  principal: [User],
+  resource: [Drive],
+  context: {
+    "is_authenticated": Bool,
+  }
+};
