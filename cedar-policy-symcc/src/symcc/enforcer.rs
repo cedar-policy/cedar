@@ -93,14 +93,6 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
     #[allow(clippy::unimplemented, reason = "Should fail at an earlier stage")]
     match x.expr_kind() {
         ExprKind::Lit(_) | ExprKind::Var(_) => of_entity(x),
-        ExprKind::Slot(_) => unimplemented!("analyzing templates is not currently supported"),
-        ExprKind::Unknown(_) => {
-            unimplemented!("analyzing partial expressions is not currently supported")
-        }
-        #[cfg(feature = "tolerant-ast")]
-        ExprKind::Error { .. } => {
-            unimplemented!("analyzing error expressions is not currently supported")
-        }
         ExprKind::If {
             test_expr,
             then_expr,
@@ -140,6 +132,12 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
             Box::new(exprs.iter().flat_map(|x| footprint(x, env)))
         }
         ExprKind::Record(axs) => Box::new(axs.iter().flat_map(|(_, x)| footprint(x, env))),
+        ExprKind::Slot(_) => unimplemented!("analyzing templates is not currently supported"),
+        ExprKind::Unknown(_) => {
+            unimplemented!("analyzing partial expressions is not currently supported")
+        }
+        #[allow(unreachable_patterns)]
+        _ => unimplemented!("analyzing `{}` is not currently supported", x),
     }
 }
 
