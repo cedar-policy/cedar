@@ -6,7 +6,7 @@ rust-version.workspace = true
 version = "0.1.0"
 license.workspace = true
 categories.workspace = true
-description = "Cedar Symbolic Compiler: translates queries about Cedar Policies to SMT"
+description = "Symbolic Cedar Compiler (SymCC): translates queries about Cedar policies to SMT"
 keywords.workspace = true
 homepage.workspace = true
 repository.workspace = true
@@ -14,11 +14,8 @@ repository.workspace = true
 [dependencies]
 cedar-policy = { path = "../cedar-policy", version = "*" }
 cedar-policy-core = { path = "../cedar-policy-core", version = "*" }
-anyhow = "1.0"
 async-recursion = "1.1"
 itertools = "0.14"
-log = "0.4"
-rand = "0.8.5"
 ref-cast = "1.0"
 smol_str = { version = "0.3", features = ["serde"] }
 thiserror = "2.0"
@@ -29,7 +26,7 @@ chrono = "0.4.41"
 miette = "7.6.0"
 
 [dev-dependencies]
-miette = { version = "7.5.0", features = ["fancy"] }
+miette = { version = "7.6.0", features = ["fancy"] }
 tokio = { version = "1.0", features = ["full"] } # for `tokio::test` unit tests
 rstest = "0.26.1"
 
