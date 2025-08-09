@@ -90,5 +90,5 @@ CVC5=<absolute path to cvc5 1.2.1 executable> cargo test -p cedar-policy-symcc
 Structure of this crate:
 - `symcc` is the core library. It maps directly to the [Lean model](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-lean/Cedar/SymCC).
 - `lib.rs` is the frontend for `symcc`, and does not directly correspond to the Lean,
-   but it provides an interface in terms of `cedar-policy` types rather than
+  but it provides an interface in terms of `cedar-policy` types rather than
   `cedar-policy-core` and `cedar-policy-validator` types.

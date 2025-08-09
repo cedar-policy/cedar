@@ -12,7 +12,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy = { path = "../cedar-policy", version = "*", features = ["protobufs"] }
+cedar-policy = { path = "../cedar-policy", version = "*" }
 cedar-policy-core = { path = "../cedar-policy-core", version = "*" }
 anyhow = "1.0"
 async-recursion = "1.1"
@@ -32,12 +32,6 @@ miette = "7.6.0"
 miette = { version = "7.5.0", features = ["fancy"] }
 tokio = { version = "1.0", features = ["full"] } # for `tokio::test` unit tests
 rstest = "0.26.1"
-
-[features]
-tolerant-ast = ["cedar-policy/tolerant-ast", "cedar-policy-core/tolerant-ast"]
-raw-parsing = ["cedar-policy/raw-parsing", "cedar-policy-core/raw-parsing"]
-extended-schema = ["cedar-policy/extended-schema", "cedar-policy-core/extended-schema"]
-integration-testing = ["tolerant-ast", "extended-schema"]
 
 [lints]
 workspace = true

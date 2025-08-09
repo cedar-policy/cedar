@@ -618,16 +618,6 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
     match x.expr_kind() {
         ExprKind::Lit(l) => compile_prim(l, &env.entities),
         ExprKind::Var(v) => compile_var(*v, &env.request),
-        ExprKind::Slot(_) => Err(CompileError::UnsupportedFeature(
-            "templates/slots are not supported".to_string(),
-        )),
-        ExprKind::Unknown(_) => Err(CompileError::UnsupportedFeature(
-            "partial evaluation is not supported".to_string(),
-        )),
-        #[cfg(feature = "tolerant-ast")]
-        ExprKind::Error { .. } => Err(CompileError::UnsupportedFeature(
-            "error evaluation is not supported".to_string(),
-        )),
         ExprKind::If {
             test_expr: x1,
             then_expr: x2,
@@ -708,6 +698,17 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
                 .collect::<Result<Vec<_>>>()?;
             compile_call(fn_name, ts)
         }
+        ExprKind::Slot(_) => Err(CompileError::UnsupportedFeature(
+            "templates/slots are not supported".to_string(),
+        )),
+        ExprKind::Unknown(_) => Err(CompileError::UnsupportedFeature(
+            "partial evaluation is not supported".to_string(),
+        )),
+        #[allow(unreachable_patterns)]
+        _ => Err(CompileError::UnsupportedFeature(format!(
+            "symbolic compilation of `{}` is not supported",
+            x
+        ))),
     }
 }
 
