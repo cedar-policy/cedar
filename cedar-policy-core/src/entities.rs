@@ -126,7 +126,7 @@ impl Entities {
             other
                 .entities
                 .get(id)
-                .map_or(false, |other_entity| entity.deep_eq(other_entity))
+                .is_some_and(|other_entity| entity.deep_eq(other_entity))
         })
     }
 
