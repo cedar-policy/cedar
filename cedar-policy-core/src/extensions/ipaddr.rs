@@ -113,8 +113,13 @@ impl IPAddr {
         self.addr.is_multicast() && self.prefix >= if self.is_ipv4() { 4 } else { 8 }
     }
 
+    // Return true if this `IpAddr` is contained in any of the other given addresses
+    fn is_in_range(&self, others: &Vec<&Self>) -> bool {
+        others.iter().any(|other| self.is_in_single_range(other))
+    }
+
     /// Return true if this is contained in the given `IPAddr`
-    fn is_in_range(&self, other: &Self) -> bool {
+    fn is_in_single_range(&self, other: &Self) -> bool {
         match (&self.addr, &other.addr) {
             (std::net::IpAddr::V4(self_v4), std::net::IpAddr::V4(other_v4)) => {
                 let netmask = |prefix: u8| {
@@ -382,10 +387,13 @@ fn is_multicast(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
 /// Cedar function which tests whether the first `ipaddr` Cedar type is
 /// in the IP range represented by the second `ipaddr` Cedar type, returning
 /// a Cedar bool
-fn is_in_range(child: &Value, parent: &Value) -> evaluator::Result<ExtensionOutputValue> {
+fn is_in_range(child: &Value, parents: &[Value]) -> evaluator::Result<ExtensionOutputValue> {
     let child_ip = as_ipaddr(child)?;
-    let parent_ip = as_ipaddr(parent)?;
-    Ok(child_ip.is_in_range(parent_ip).into())
+    let parent_ips = parents
+        .iter()
+        .map(|parent| as_ipaddr(parent))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(child_ip.is_in_range(&parent_ips).into())
 }
 
 /// Construct the extension
@@ -431,7 +439,7 @@ pub fn extension() -> Extension {
                 SchemaType::Bool,
                 ipaddr_type.clone(),
             ),
-            ExtensionFunction::binary(
+            ExtensionFunction::variadic(
                 names::IS_IN_RANGE.clone(),
                 CallStyle::MethodStyle,
                 Box::new(is_in_range),
@@ -465,6 +473,22 @@ mod tests {
             assert_eq!(
                 extension_name,
                 Name::parse_unqualified_name("ipaddr")
+                    .expect("should be a valid identifier")
+            );
+        });
+    }
+
+    /// This helper function asserts that a `Result` is actually an
+    /// `Err::ExtensionErr` with our extension name
+    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+    fn assert_ipaddr_wrong_num_args_err<T: std::fmt::Debug>(
+        res: evaluator::Result<T>,
+        expected_name: &str,
+    ) {
+        assert_matches!(res, Err(EvaluationError::WrongNumArguments(evaluation_errors::WrongNumArgumentsError { function_name, .. })) => {
+            assert_eq!(
+                function_name,
+                Name::parse_unqualified_name(expected_name)
                     .expect("should be a valid identifier")
             );
         });
@@ -985,6 +1009,157 @@ mod tests {
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
                 vec![ip("192.168.0.1"), ip("1:2:3:4::/48")]
+            )),
+            Ok(Value::from(false))
+        );
+        // test for variadic isInRange extension function
+        // Multiple ranges - first address matches one of them
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![
+                    ip("192.168.1.100"),
+                    ip("10.0.0.0/8"),
+                    ip("192.168.0.0/16"),
+                    ip("172.16.0.0/12")
+                ]
+            )),
+            Ok(Value::from(true))
+        );
+
+        // Multiple ranges - first address doesn't match any
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![
+                    ip("8.8.8.8"),
+                    ip("192.168.0.0/16"),
+                    ip("10.0.0.0/8"),
+                    ip("172.16.0.0/12")
+                ]
+            )),
+            Ok(Value::from(false))
+        );
+
+        // IPv6 multiple ranges - matches last one
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![
+                    ip("2001:db8::1"),
+                    ip("fe80::/10"),
+                    ip("::1/128"),
+                    ip("2001:db8::/32")
+                ]
+            )),
+            Ok(Value::from(true))
+        );
+
+        // Mixed IPv4/IPv6 ranges - IPv4 address, only IPv4 ranges should match
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![
+                    ip("192.168.1.1"),
+                    ip("2001:db8::/32"),
+                    ip("192.168.0.0/16"),
+                    ip("fe80::/10")
+                ]
+            )),
+            Ok(Value::from(true))
+        );
+
+        // Edge case: IPv4 loopback in multiple ranges
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![
+                    ip("127.0.0.1"),
+                    ip("192.168.0.0/16"),
+                    ip("127.0.0.0/8"),
+                    ip("10.0.0.0/8")
+                ]
+            )),
+            Ok(Value::from(true))
+        );
+
+        // Edge case: IPv6 loopback
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![
+                    ip("::1"),
+                    ip("fe80::/10"),
+                    ip("::1/128"),
+                    ip("2001:db8::/32")
+                ]
+            )),
+            Ok(Value::from(true))
+        );
+
+        // Boundary test: IPv4 at network boundary
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("192.168.0.0"), ip("10.0.0.0/8"), ip("192.168.0.0/24")]
+            )),
+            Ok(Value::from(true))
+        );
+
+        // Boundary test: IPv4 at broadcast boundary
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("192.168.0.255"), ip("192.168.0.0/24"), ip("10.0.0.0/8")]
+            )),
+            Ok(Value::from(true))
+        );
+
+        // No short-circuiting semantics: this will error even if the first address is within the range of the second.
+        assert_ipaddr_err(eval.interpret_inline_policy(&Expr::call_extension_fn(
+            Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+            vec![
+                ip("192.168.0.255"),
+                ip("192.168.0.0/24"),
+                ip("not ipaddr"),
+                ip("::ffff:192.168.0.0/112"),
+                ip("2001:db8::/32"),
+            ],
+        )));
+
+        // Requires at least one argument.
+        assert_ipaddr_wrong_num_args_err(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![],
+            )),
+            "isInRange",
+        );
+
+        // Single address ranges (implicit /32 and /128)
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![
+                    ip("10.0.0.1"),
+                    ip("192.168.1.1"),
+                    ip("10.0.0.1"),
+                    ip("172.16.1.1")
+                ]
+            )),
+            Ok(Value::from(true))
+        );
+
+        // No match in multiple ranges
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![
+                    ip("203.0.113.1"),
+                    ip("192.168.0.0/16"),
+                    ip("10.0.0.0/8"),
+                    ip("172.16.0.0/12")
+                ]
             )),
             Ok(Value::from(false))
         );

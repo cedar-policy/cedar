@@ -81,6 +81,8 @@ pub struct ExtensionFunctionType {
     return_type: Type,
     /// Custom argument validation (optional)
     check_arguments: Option<ArgumentCheckFn>,
+    /// Whether it is a variadic function or not. A variadic function can take 0 or more arguments of the last argument type.
+    is_variadic: bool,
 }
 
 impl ExtensionFunctionType {
@@ -90,12 +92,14 @@ impl ExtensionFunctionType {
         argument_types: Vec<Type>,
         return_type: Type,
         check_arguments: Option<ArgumentCheckFn>,
+        is_variadic: bool,
     ) -> Self {
         Self {
             name,
             argument_types,
             return_type,
             check_arguments,
+            is_variadic,
         }
     }
 
@@ -126,6 +130,10 @@ impl ExtensionFunctionType {
     /// function defined.
     pub fn has_argument_check(&self) -> bool {
         self.check_arguments.is_some()
+    }
+
+    pub fn is_variadic(&self) -> bool {
+        self.is_variadic
     }
 }
 

@@ -955,6 +955,11 @@ mod levels_validation_tests {
             1,
         );
         assert_requires_level(
+            r#"permit(principal, action, resource) when { ip("192.168.0.0").isInRange(ip("192.168.0.2/12"), principal.ip) };"#,
+            [r#"principal.ip"#],
+            1,
+        );
+        assert_requires_level(
             r#"permit(principal, action, resource) when { principal.other like "*"};"#,
             ["principal.other"],
             1,

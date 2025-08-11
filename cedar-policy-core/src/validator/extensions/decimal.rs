@@ -95,6 +95,7 @@ pub fn extension_schema() -> ExtensionSchema {
             get_argument_types(f.name(), &decimal_ty),
             return_type,
             get_argument_check(f.name()),
+            false,
         )
     });
     ExtensionSchema::new(decimal_ext.name().clone(), fun_tys, std::iter::empty())
