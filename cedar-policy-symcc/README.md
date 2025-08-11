@@ -69,7 +69,8 @@ async fn main() {
         let always_denies = compiler.check_always_allows(&typed_policies, &sym_env).await.unwrap();
         assert!(!always_denies);
 
-        // Similar to above, but returns a counterexample (synthesized request and entity store)
+        // Similar to above, but returns a counterexample (synthesized request
+        // and entity store) that is denied by the policy set.
         let cex = compiler.check_always_allows_with_counterexample(&typed_policies, &sym_env).await.unwrap().unwrap();
         let resp = Authorizer::new().is_authorized(&cex.request, &policy_set, &cex.entities);
         assert!(resp.decision() == Decision::Deny);
