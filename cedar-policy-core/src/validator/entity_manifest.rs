@@ -21,7 +21,8 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 use crate::ast::{
-    BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
+    BinaryOp, EntityUID, Expr, ExprKind, GeneralizedSlotsDeclaration, Literal, PolicySet,
+    RequestType, UnaryOp, Var,
 };
 use crate::entities::err::EntitiesError;
 use miette::Diagnostic;
@@ -459,8 +460,17 @@ pub fn compute_entity_manifest(
     let typechecker = Typechecker::new(validator.schema(), ValidationMode::Strict);
     // now, for each policy we add the data it requires to the manifest
     for policy in policies.policies() {
+        #[allow(clippy::expect_used)]
+        let validator_generalized_slots_declaration = GeneralizedSlotsDeclaration::from_iter(
+            policy
+                .generalized_slots_declaration()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        )
+        .into_validator_generalized_slots_declaration(&validator.schema)
+        .expect("validate_policy has already done the check");
         // typecheck the policy and get all the request environments
-        let request_envs = typechecker.typecheck_by_request_env(policy.template());
+        let request_envs = typechecker
+            .typecheck_by_request_env(policy.template(), &validator_generalized_slots_declaration);
         for (request_env, policy_check) in request_envs {
             let new_primary_slice = match policy_check {
                 PolicyCheck::Success(typechecked_expr) => {

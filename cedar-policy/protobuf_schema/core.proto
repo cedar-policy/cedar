@@ -17,6 +17,23 @@
 syntax = "proto3";
 package cedar_policy_core;
 
+message TemplateType {
+    oneof data {
+        Name other = 1; 
+        TemplateType set_elem = 2;
+        Record record = 3;
+    }
+
+    message Record {
+        map<string, AttributeTemplateType> attrs = 1;
+    }
+}
+
+message AttributeTemplateType {
+    TemplateType attr_type = 1;
+    bool is_required = 2;
+}
+
 message Request {
     EntityUid principal = 1;
     EntityUid action = 2;
@@ -67,6 +84,8 @@ message Policy {
     // Value of the `?resource` slot.
     // Omitted/ignored for templates without the `?resource` slot.
     EntityUid resource_euid = 5;
+    // Values for generalized slots 
+    map<string, Expr> generalized_values = 6;
 }
 
 enum Effect {
@@ -82,6 +101,7 @@ message TemplateBody {
     ActionConstraint action_constraint = 6;
     PrincipalOrResourceConstraint resource_constraint = 7;
     Expr non_scope_constraints = 8;
+    map<string, TemplateType> generalized_slots_declaration = 9;
 }
 
 // an EntityReference may either be an EntityUid or a Slot.
@@ -129,9 +149,16 @@ message PrincipalOrResourceConstraint {
     }
 }
 
-enum SlotId {
-    Principal = 0;
-    Resource = 1;
+message SlotId {
+    oneof data {
+        Any principal = 1;
+        Any resource = 2;
+        string GeneralizedSlot = 3;
+    }
+
+    enum Any {
+        unit = 0;
+    }
 }
 
 message ActionConstraint {

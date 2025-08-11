@@ -17,7 +17,7 @@
 #![allow(clippy::use_self)]
 
 use super::models;
-use cedar_policy_core::validator::types;
+use cedar_policy_core::validator::{types, ValidatorType};
 use cedar_policy_core::{ast, parser::IntoMaybeLoc};
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
@@ -28,6 +28,13 @@ impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
         Self {
             entity_decls: v.entity_types().map(models::EntityDecl::from).collect(),
             action_decls: v.action_ids().map(models::ActionDecl::from).collect(),
+            common_decls: v
+                .common_types()
+                .map(|(k, v)| models::CommonDecl {
+                    name: Some(models::Name::from(k)),
+                    validator_type: Some(models::Type::from(&v.ty)),
+                })
+                .collect(),
         }
     }
 }
@@ -43,6 +50,19 @@ impl From<&models::Schema> for cedar_policy_core::validator::ValidatorSchema {
             v.action_decls
                 .iter()
                 .map(cedar_policy_core::validator::ValidatorActionId::from),
+            v.common_decls.iter().map(|common_decl| {
+                (
+                    ast::InternalName::from(
+                        common_decl.name.as_ref().expect("name field should exist"),
+                    ),
+                    ValidatorType::new(types::Type::from(
+                        common_decl
+                            .validator_type
+                            .as_ref()
+                            .expect("type field should exist"),
+                    )),
+                )
+            }),
         )
     }
 }

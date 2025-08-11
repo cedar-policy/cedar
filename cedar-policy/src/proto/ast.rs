@@ -18,10 +18,16 @@
 
 use super::models;
 use cedar_policy_core::{
-    ast, evaluator::RestrictedEvaluator, extensions::Extensions, FromNormalizedStr,
+    ast, evaluator::RestrictedEvaluator, extensions::Extensions, validator, FromNormalizedStr,
 };
 use smol_str::ToSmolStr;
 use std::{collections::HashSet, sync::Arc};
+
+impl From<&models::Name> for validator::RawName {
+    fn from(v: &models::Name) -> Self {
+        validator::RawName::from_name(ast::InternalName::from(v))
+    }
+}
 
 // PANIC SAFETY: experimental feature
 #[allow(clippy::fallible_impl_from)]
@@ -51,6 +57,12 @@ impl From<&models::Name> for ast::Name {
 impl From<&models::Name> for ast::EntityType {
     fn from(v: &models::Name) -> Self {
         ast::EntityType::from(ast::Name::from(v))
+    }
+}
+
+impl From<&validator::RawName> for models::Name {
+    fn from(v: &validator::RawName) -> Self {
+        Self::from(&(v.clone().qualify_with(None)))
     }
 }
 
@@ -501,27 +513,38 @@ impl From<&ast::Literal> for models::expr::Literal {
     }
 }
 
+// PANIC SAFETY: experimental feature
+#[allow(clippy::fallible_impl_from)]
 impl From<&models::SlotId> for ast::SlotId {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used, clippy::unwrap_used)]
     fn from(v: &models::SlotId) -> Self {
-        match v {
-            models::SlotId::Principal => ast::SlotId::principal(),
-            models::SlotId::Resource => ast::SlotId::resource(),
+        match v.data.as_ref().expect("data field should exist") {
+            models::slot_id::Data::Principal(_) => ast::SlotId::principal(),
+            models::slot_id::Data::Resource(_) => ast::SlotId::resource(),
+            models::slot_id::Data::GeneralizedSlot(s) => s.parse().unwrap(),
         }
     }
 }
 
-// PANIC SAFETY: experimental feature
-#[allow(clippy::fallible_impl_from)]
 impl From<&ast::SlotId> for models::SlotId {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::panic)]
     fn from(v: &ast::SlotId) -> Self {
         if v.is_principal() {
-            models::SlotId::Principal
+            Self {
+                data: Some(models::slot_id::Data::Principal(
+                    models::slot_id::Any::Unit.into(),
+                )),
+            }
         } else if v.is_resource() {
-            models::SlotId::Resource
+            Self {
+                data: Some(models::slot_id::Data::Resource(
+                    models::slot_id::Any::Unit.into(),
+                )),
+            }
         } else {
-            panic!("Slot other than principal or resource")
+            Self {
+                data: Some(models::slot_id::Data::GeneralizedSlot(v.to_string())),
+            }
         }
     }
 }

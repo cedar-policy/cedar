@@ -5532,29 +5532,42 @@ action CreateList in Create appliesTo {
         };
 
         let schema = schema();
-        assert_eq!(schema.0.common_types().collect::<HashSet<_>>().len(), 3);
+        assert_eq!(
+            schema
+                .0
+                .common_types_extended()
+                .collect::<HashSet<_>>()
+                .len(),
+            3
+        );
         let task_type = ValidatorCommonType {
             name: "Task".into(),
             name_loc: None,
             type_loc: None,
         };
-        assert!(schema.0.common_types().contains(&task_type));
+        assert!(schema.0.common_types_extended().contains(&task_type));
 
         let tasks_type = ValidatorCommonType {
             name: "Tasks".into(),
             name_loc: None,
             type_loc: None,
         };
-        assert!(schema.0.common_types().contains(&tasks_type));
-        assert!(schema.0.common_types().all(|ct| ct.name_loc.is_some()));
-        assert!(schema.0.common_types().all(|ct| ct.type_loc.is_some()));
+        assert!(schema.0.common_types_extended().contains(&tasks_type));
+        assert!(schema
+            .0
+            .common_types_extended()
+            .all(|ct| ct.name_loc.is_some()));
+        assert!(schema
+            .0
+            .common_types_extended()
+            .all(|ct| ct.type_loc.is_some()));
 
         let tasks_type = ValidatorCommonType {
             name: "T".into(),
             name_loc: None,
             type_loc: None,
         };
-        assert!(schema.0.common_types().contains(&tasks_type));
+        assert!(schema.0.common_types_extended().contains(&tasks_type));
 
         let et = ast::EntityType::EntityType(ast::Name::from_normalized_str("List").unwrap());
         let et = schema.0.get_entity_type(&et).unwrap();

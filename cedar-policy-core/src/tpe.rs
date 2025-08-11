@@ -24,11 +24,11 @@ pub mod residual;
 
 use std::collections::HashMap;
 
-use crate::ast::PolicyID;
+use crate::ast::{GeneralizedSlotsDeclaration, PolicyID};
 use crate::tpe::err::{NonstaticPolicyError, TPEError};
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
-    ValidatorSchema,
+    ValidationError, ValidatorSchema,
 };
 use crate::{ast::PolicySet, extensions::Extensions};
 
@@ -54,7 +54,22 @@ pub fn tpe_policies(
             return Err(NonstaticPolicyError.into());
         }
         let t = p.template();
-        match tc.typecheck_by_single_request_env(t, &env) {
+        let validator_generalized_slots_declaration = GeneralizedSlotsDeclaration::from_iter(
+            t.generalized_slots_declaration()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        )
+        .into_validator_generalized_slots_declaration(schema)
+        .map_err(|_| {
+            TPEError::Validation(vec![
+                ValidationError::incompatible_schema_with_slot_type_declarations(
+                    None,
+                    t.id().clone(),
+                ),
+            ])
+        })?;
+
+        match tc.typecheck_by_single_request_env(t, &env, &validator_generalized_slots_declaration)
+        {
             PolicyCheck::Success(expr) => {
                 exprs.insert(p.id(), expr);
             }
