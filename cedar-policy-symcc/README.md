@@ -4,10 +4,10 @@ With this library, you can
 - Compile [Cedar](https://www.cedarpolicy.com/) policies to logical constraints in [SMT-LIB](https://smt-lib.org/).
 - Formally verify a number of useful properties about your Cedar policies with concrete counterexamples.
 
-Our symbolic compiler and verifiers themselves have been [formally modeled and verified in Lean](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-lean#verified-properties)
+Our symbolic compiler and verifiers have been [formally modeled and verified in Lean](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-lean#verified-properties)
 to guarantee trustworthy verification results.
 
-Currently SymCC supports formally verifying the following properties:
+SymCC currently supports formally verifying the following properties:
 - Policy never errors (`CedarSymCompiler::check_never_errors`).
 - Policy set always allows (`CedarSymCompiler::check_always_allows`).
 - Policy set always denies (`CedarSymCompiler::check_always_denies`).
@@ -28,7 +28,7 @@ CVC5=<path to cvc5 1.2.1 executable>
 
 ## Example
 
-To verify that a policy set does not always allow:
+To verify that a policy set does not always allow every well-formed request:
 ```rust
 use tokio;
 use std::str::FromStr;
@@ -69,8 +69,8 @@ async fn main() {
         let always_denies = compiler.check_always_allows(&typed_policies, &sym_env).await.unwrap();
         assert!(!always_denies);
 
-        // Similar to above, but returns a counterexample (synthesized request
-        // and entity store) that is denied by the policy set.
+        // Similar to above, but returns a counterexample (a synthesized request
+        // and entity store) which is denied by the policy set.
         let cex = compiler.check_always_allows_with_counterexample(&typed_policies, &sym_env).await.unwrap().unwrap();
         let resp = Authorizer::new().is_authorized(&cex.request, &policy_set, &cex.entities);
         assert!(resp.decision() == Decision::Deny);
@@ -82,7 +82,7 @@ To learn more about what you can do with SymCC, see the documentation of `CedarS
 
 ## Development
 
-To build and test this crate, run from the root of the repository:
+To build and test this crate, run the following commands from the root of the repository:
 ```sh
 cargo build -p cedar-policy-symcc
 CVC5=<absolute path to cvc5 1.2.1 executable> cargo test -p cedar-policy-symcc
