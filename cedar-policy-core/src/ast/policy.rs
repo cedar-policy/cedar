@@ -586,24 +586,29 @@ pub struct Policy {
     ///
     /// None in the case that this is an instance of a Static Policy
     link: Option<PolicyID>,
-    // INVARIANT (values total map)
-    // All of the slots in `template` MUST be bound by `values`
+    // INVARIANT (the union of `values` and `generalized_values` must be a total map)
+    // All of the slots in `template` MUST be bound by the 
+    // union of `values` and `generalized_values`
     //
-    /// values the slots are bound to.
     /// The constructor `new` is only visible in this module,
     /// so it is the responsibility of callers to maintain
+    /// 
+    /// Values should only contain bindings for `?principal`
+    /// and `?resource`.
     values: HashMap<SlotId, EntityUID>,
     /// All of the generalized slots in `template` MUST
     /// be bound by `generalized values`.
-    /// The SlotId for generalized_values should be disjoint from
-    /// values as well
+    /// In other words, all SlotId's other 
+    /// than `?principal` and `?resource` need to be binded
+    /// in generalized_values. 
+    /// For more context, view https://github.com/cedar-policy/cedar/pull/1732. 
     generalized_values: HashMap<SlotId, RestrictedExpr>,
 }
 
 impl Policy {
     /// Link a policy to its template
-    /// INVARIANT (values total map):
-    /// `values` must bind every open slot in `template`
+    /// INVARIANT (the union of `values` and `generalized_values` must be a total map):
+    /// the union of `values` and `generalized_values` must bind every open slot in `template`
     fn new(
         template: Arc<Template>,
         link_id: Option<PolicyID>,
@@ -842,8 +847,15 @@ pub struct LiteralPolicy {
     /// as the `template_id`
     link_id: Option<PolicyID>,
     /// Values of the slots
+    /// Should only contain bindings for `?resource`
+    /// and `?principal`
     values: SlotEnv,
     /// Generalized values of the slots
+    /// All of the generalized slots in `template` MUST
+    /// be bound by `generalized values`.
+    /// In other words, all SlotId's other 
+    /// than `?principal` and `?resource` need to be binded
+    /// in generalized_values. 
     generalized_values: GeneralizedSlotEnv,
 }
 

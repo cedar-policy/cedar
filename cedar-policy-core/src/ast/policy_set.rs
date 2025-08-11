@@ -508,8 +508,8 @@ impl PolicySet {
         &mut self,
         template_id: PolicyID,
         new_id: PolicyID,
-        values: HashMap<SlotId, EntityUID>,
-        generalized_values: HashMap<SlotId, RestrictedExpr>,
+        values: HashMap<SlotId, EntityUID>, // If `?principal` or `?resource` are slots of template_id then the values that bind to it must be placed in values
+        generalized_values: HashMap<SlotId, RestrictedExpr>, // The values for all slots other that `?principal` and `?resource` belong in generalized_values
         schema: Option<&ValidatorSchema>,
     ) -> Result<&Policy, LinkingError> {
         let t =
