@@ -15,8 +15,8 @@ Currently SymCC supports formally verifying the following properties:
 - Policy set equivalence (`CedarSymCompiler::check_equivalent`).
 - Policy set disjointness (`CedarSymCompiler::check_disjoint`).
 
-For each of them, we also have the `CedarSymCompiler::check_*_with_counterexample` counterparts which
-produces a counterexample (a synthesized request and entity store) of the property if it's not true.
+For each of them, we also have the `CedarSymCompiler::check_*_with_counterexample` counterparts that
+produce a counterexample (a synthesized request and entity store) if the property is not true.
 
 ## Setup
 
