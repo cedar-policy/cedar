@@ -24,7 +24,7 @@ mod typecheck_answer;
 use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
-use std::{borrow::Cow, collections::HashSet, iter::zip};
+use std::{borrow::Cow, collections::HashSet};
 
 use crate::validator::{
     extension_schema::ExtensionFunctionType,
@@ -2603,7 +2603,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                 } else {
                     let typechecked_args = args.iter().enumerate().map(|(index, arg)| {
                         // PANIC SAFETY: only variadic functions can have more arguments than argument types, and by construction
-                        // variadic functions have at least 2 argument types. See [`crate::crate::ast::ExtensionFunction::variadic`]
+                        // PANIC SAFETY: variadic functions have at least 2 argument types. See [`crate::crate::ast::ExtensionFunction::variadic`]
                         #[allow(clippy::unwrap_used)]
                         let ty: &Type = match arg_tys.get(index) {
                             Some(ty) => ty,
