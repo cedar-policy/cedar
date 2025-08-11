@@ -80,7 +80,7 @@ async fn main() {
 
 To learn more about what you can do with SymCC, see the documentation of `CedarSymCompiler`.
 
-## Developement
+## Development
 
 To build and test this crate, run from the root of the repository:
 ```sh
