@@ -1,0 +1,34 @@
+[package]
+name = "cedar-policy-symcc"
+edition.workspace = true
+rust-version.workspace = true
+
+version = "0.1.0"
+license.workspace = true
+categories.workspace = true
+description = "Symbolic Cedar Compiler (SymCC): translates queries about Cedar policies to SMT"
+keywords.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+cedar-policy = { path = "../cedar-policy", version = "*" }
+cedar-policy-core = { path = "../cedar-policy-core", version = "*" }
+async-recursion = "1.1"
+itertools = "0.14"
+ref-cast = "1.0"
+smol_str = { version = "0.3", features = ["serde"] }
+thiserror = "2.0"
+tokio = { version = "1.0", features = ["io-util", "process"] }
+num-bigint = "0.4"
+num-traits = "0.2"
+chrono = "0.4.41"
+miette = "7.6.0"
+
+[dev-dependencies]
+miette = { version = "7.6.0", features = ["fancy"] }
+tokio = { version = "1.0", features = ["full"] } # for `tokio::test` unit tests
+rstest = "0.26.1"
+
+[lints]
+workspace = true
