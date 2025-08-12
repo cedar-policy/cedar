@@ -88,6 +88,8 @@ impl From<BTreeMap<SlotId, JSONSchemaType<RawName>>> for GeneralizedSlotsDeclara
 }
 
 /// Struct storing the pairs of SlotId's and their corresponding validator types
+/// This struct is used when typechecking. JSONSchemaType's can't be used
+/// by the typechecker and need to be translated to a validator type by using a schema.
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Debug, Hash)]
 pub struct ValidatorGeneralizedSlotsDeclaration(BTreeMap<SlotId, ValidatorType>);
 
