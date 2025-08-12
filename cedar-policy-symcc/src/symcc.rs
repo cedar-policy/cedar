@@ -409,6 +409,28 @@ fn well_typed_policy_inner(
     schema: &Schema,
 ) -> Result<Policy> {
     let validator_schema = schema.as_ref();
+    // We need to perform these three checks like what the validator does here: https://github.com/cedar-policy/cedar/blob/82784864c01b5096cb73885dd2df5643074355ed/cedar-policy-core/src/validator.rs#L178-L185
+    // We don't need `validate_template_action_application` because existence of `env` already serves as evidence
+    let errs: Vec<_> = cedar_policy_core::validator::Validator::validate_entity_types(
+        schema.as_ref(),
+        policy.template(),
+    )
+    .chain(
+        cedar_policy_core::validator::Validator::validate_enum_entity(
+            schema.as_ref(),
+            policy.template(),
+        ),
+    )
+    .chain(
+        cedar_policy_core::validator::Validator::validate_action_ids(
+            schema.as_ref(),
+            policy.template(),
+        ),
+    )
+    .collect();
+    if !errs.is_empty() {
+        return Err(Error::PolicyNotWellTyped { errs });
+    }
     let type_checker = Typechecker::new(validator_schema, ValidationMode::Strict);
     let policy_check = type_checker.typecheck_by_single_request_env(policy.template(), env);
 
