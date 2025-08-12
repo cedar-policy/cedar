@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 /*
  * Copyright Cedar Contributors
  *
@@ -15,6 +17,7 @@
  */
 use cedar_policy::{Policy, Schema, Validator};
 use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler, SymEnv, WellTypedPolicy};
+use cool_asserts::assert_matches;
 use utils::Environments;
 mod utils;
 
@@ -212,4 +215,91 @@ async fn tests_for_well_typed() {
     let envs = Environments::new(validator.schema(), "P", "Action::\"view\"", "R");
     test_succeeds_on_well_typed(&policy_a, &envs, &mut compiler, false).await;
     test_succeeds_on_well_typed(&policy_b, &envs, &mut compiler, true).await;
+}
+
+#[test]
+fn undeclared_entity_type() {
+    let schema = Schema::from_str(
+        r#"
+        entity a;
+        action action appliesTo {
+            principal: a,
+            resource: a,
+        };
+    "#,
+    )
+    .unwrap();
+    let policy = Policy::from_str(
+        r#"
+    forbid( principal,
+    action in [Action::"action"],
+    resource
+    ) when {
+      ((true && (("" like "") || (M::"" has ""))) && false) && false
+    };
+    "#,
+    )
+    .unwrap();
+    let env = schema.request_envs().next().unwrap().clone();
+    assert_matches!(WellTypedPolicy::from_policy(&policy, &env, &schema), Err(cedar_policy_symcc::err::Error::PolicyNotWellTyped { errs }) => {
+        assert_matches!(&errs, [cedar_policy_core::validator::ValidationError::UnrecognizedEntityType(_)]);
+    });
+}
+
+#[test]
+fn undeclared_action_id() {
+    let schema = Schema::from_str(
+        r#"
+        entity a;
+        action action appliesTo {
+            principal: a,
+            resource: a,
+        };
+    "#,
+    )
+    .unwrap();
+    let policy = Policy::from_str(
+        r#"
+    forbid( principal,
+    action in [Action::"action"],
+    resource
+    ) when {
+      ((true && (("" like "") || (Action::"a" has ""))) && false) && false
+    };
+    "#,
+    )
+    .unwrap();
+    let env = schema.request_envs().next().unwrap().clone();
+    assert_matches!(WellTypedPolicy::from_policy(&policy, &env, &schema), Err(cedar_policy_symcc::err::Error::PolicyNotWellTyped { errs }) => {
+        assert_matches!(&errs, [cedar_policy_core::validator::ValidationError::UnrecognizedActionId(_)]);
+    });
+}
+
+#[test]
+fn invalid_enum_entity() {
+    let schema = Schema::from_str(
+        r#"
+        entity a enum ["foo"];
+        action action appliesTo {
+            principal: a,
+            resource: a,
+        };
+    "#,
+    )
+    .unwrap();
+    let policy = Policy::from_str(
+        r#"
+    forbid( principal,
+    action in [Action::"action"],
+    resource
+    ) when {
+      ((true && (("" like "") || (a::"a" has ""))) && false) && false
+    };
+    "#,
+    )
+    .unwrap();
+    let env = schema.request_envs().next().unwrap().clone();
+    assert_matches!(WellTypedPolicy::from_policy(&policy, &env, &schema), Err(cedar_policy_symcc::err::Error::PolicyNotWellTyped { errs }) => {
+        assert_matches!(&errs, [cedar_policy_core::validator::ValidationError::InvalidEnumEntity(_)]);
+    });
 }
