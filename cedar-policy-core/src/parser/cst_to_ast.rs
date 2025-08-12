@@ -1425,7 +1425,7 @@ impl Node<Option<cst::And>> {
             first.into_expr::<Build>().map(|first| ExprOrSpecial::Expr {
                 expr: Build::new()
                     .with_maybe_source_loc(self.loc.as_loc_ref())
-                    .and_nary(first, rest),
+                    .and_naryl(first, rest),
                 loc: self.loc.clone(),
             })
         }
@@ -2354,14 +2354,16 @@ fn construct_template_policy(
             non_scope_constraint,
         )
     };
-    let mut conds_iter = conds.into_iter();
-    if let Some(first_expr) = conds_iter.next() {
-        // a left fold of conditions
-        // e.g., [c1, c2, c3,] --> ((c1 && c2) && c3)
+
+    // a right fold of conditions
+    // e.g., [c1, c2, c3,] --> c1 && (c2 && c3)
+    let mut conds_rev_iter = conds.into_iter().rev();
+    if let Some(last_expr) = conds_rev_iter.next() {
+        let builder = ast::ExprBuilder::new().with_maybe_source_loc(loc);
         construct_template(
-            ast::ExprBuilder::new()
-                .with_maybe_source_loc(loc)
-                .and_nary(first_expr, conds_iter),
+            conds_rev_iter
+                .into_iter()
+                .fold(last_expr, |acc, prev| builder.clone().and(prev, acc)),
         )
     } else {
         // use `true` to mark the absence of non-scope constraints
