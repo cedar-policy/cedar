@@ -1425,7 +1425,7 @@ impl Node<Option<cst::And>> {
             first.into_expr::<Build>().map(|first| ExprOrSpecial::Expr {
                 expr: Build::new()
                     .with_maybe_source_loc(self.loc.as_loc_ref())
-                    .and_nary(first, rest),
+                    .and_naryl(first, rest),
                 loc: self.loc.clone(),
             })
         }

@@ -287,7 +287,7 @@ impl Policy {
         let conditions = match conditions_iter.next() {
             None => ast::Expr::val(true),
             Some(first) => ast::ExprBuilder::with_data(())
-                .and_nary(first?, conditions_iter.collect::<Result<Vec<_>, _>>()?),
+                .and_naryl(first?, conditions_iter.collect::<Result<Vec<_>, _>>()?),
         };
         Ok(ast::Template::new(
             id,

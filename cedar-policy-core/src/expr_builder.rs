@@ -262,14 +262,19 @@ pub trait ExprBuilder: Clone {
         self.clone().not(self.less(e1, e2))
     }
 
-    /// Create an `and` expression that may have more than two subexpressions (A && B && C)
+    /// Create an `and` expression that may have more than two subexpressions (A && B && C) and associate them from left to right
+    /// .e.g, [A, B, C] to (A && B) && C
     /// or may have only one subexpression, in which case no `&&` is performed at all.
     /// Arguments must evaluate to Bool type.
     ///
     /// This may create multiple AST `&&` nodes. If it does, all the nodes will have the same
     /// source location and the same `T` data (taken from this builder) unless overridden, e.g.,
     /// with another call to `with_source_loc()`.
-    fn and_nary(self, first: Self::Expr, others: impl IntoIterator<Item = Self::Expr>) -> Self::Expr
+    fn and_naryl(
+        self,
+        first: Self::Expr,
+        others: impl IntoIterator<Item = Self::Expr>,
+    ) -> Self::Expr
     where
         Self: Sized,
     {
