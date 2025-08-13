@@ -21,6 +21,7 @@
 pub(crate) mod test;
 
 mod typecheck_answer;
+use itertools::EitherOrBoth::{Both, Left, Right};
 use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
@@ -2601,16 +2602,27 @@ impl<'a> SingleEnvTypechecker<'a> {
                         None => TypecheckAnswer::RecursionLimit,
                     }
                 } else {
-                    let typechecked_args = args.iter().enumerate().map(|(index, arg)| {
-                        // PANIC SAFETY: only variadic functions can have more arguments than argument types, and by construction
-                        // PANIC SAFETY: variadic functions have at least 2 argument types. See [`crate::crate::ast::ExtensionFunction::variadic`]
-                        #[allow(clippy::unwrap_used)]
-                        let ty: &Type = match arg_tys.get(index) {
-                            Some(ty) => ty,
-                            None => arg_tys.last().unwrap(),
-                        };
-                        self.expect_type(prior_capability, arg, ty.clone(), type_errors, |_| None)
-                    });
+                    let typechecked_args = args
+                        .as_ref()
+                        .iter()
+                        .zip_longest(arg_tys)
+                        .map(|item| match item {
+                            Both(arg, ty) => (arg, ty),
+                            // PANIC SAFETY: only variadic functions can have more arguments than argument types, and by construction
+                            // PANIC SAFETY: variadic functions have at least 2 argument types. See [`crate::crate::ast::ExtensionFunction::variadic`]
+                            #[allow(clippy::unwrap_used)]
+                            Left(arg) => (arg, arg_tys.last().unwrap()),
+                            // PANIC SAFETY
+                            #[allow(clippy::unreachable)]
+                            Right(ty) => {
+                                unreachable!("Previous checks ensure args.len() >= arg_tys.len()")
+                            }
+                        })
+                        .map(|(arg, ty)| {
+                            self.expect_type(prior_capability, arg, ty.clone(), type_errors, |_| {
+                                None
+                            })
+                        });
                     TypecheckAnswer::sequence_all_then_typecheck(
                         typechecked_args,
                         |arg_exprs_capabilities| {

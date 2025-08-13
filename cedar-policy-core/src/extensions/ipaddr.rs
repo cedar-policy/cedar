@@ -113,13 +113,8 @@ impl IPAddr {
         self.addr.is_multicast() && self.prefix >= if self.is_ipv4() { 4 } else { 8 }
     }
 
-    // Return true if this `IpAddr` is contained in any of the other given addresses
-    fn is_in_range(&self, others: &Vec<&Self>) -> bool {
-        others.iter().any(|other| self.is_in_single_range(other))
-    }
-
     /// Return true if this is contained in the given `IPAddr`
-    fn is_in_single_range(&self, other: &Self) -> bool {
+    fn is_in_range(&self, other: &Self) -> bool {
         match (&self.addr, &other.addr) {
             (std::net::IpAddr::V4(self_v4), std::net::IpAddr::V4(other_v4)) => {
                 let netmask = |prefix: u8| {
@@ -385,15 +380,17 @@ fn is_multicast(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
 }
 
 /// Cedar function which tests whether the first `ipaddr` Cedar type is
-/// in the IP range represented by the second `ipaddr` Cedar type, returning
+/// in the IP range represented by any of the following `ipaddr` Cedar types, returning
 /// a Cedar bool
 fn is_in_range(child: &Value, parents: &[Value]) -> evaluator::Result<ExtensionOutputValue> {
     let child_ip = as_ipaddr(child)?;
     let parent_ips = parents
         .iter()
         .map(|parent| as_ipaddr(parent))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(child_ip.is_in_range(&parent_ips).into())
+        .try_fold(false, |acc, item| {
+            item.map(|parent| acc || child_ip.is_in_range(parent))
+        })?;
+    Ok(parent_ips.into())
 }
 
 /// Construct the extension
