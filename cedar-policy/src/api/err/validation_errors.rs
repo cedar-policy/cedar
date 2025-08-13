@@ -56,7 +56,7 @@ macro_rules! wrap_core_error {
     };
 }
 
-wrap_core_error!(IncompatibleSchemaWithSlotTypeDeclaration);
+wrap_core_error!(IncompatibleSchemaWithSlotsTypeDeclaration);
 wrap_core_error!(UnrecognizedEntityType);
 wrap_core_error!(UnrecognizedActionId);
 wrap_core_error!(InvalidActionApplication);

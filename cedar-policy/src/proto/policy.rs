@@ -263,8 +263,8 @@ impl From<&models::TemplateBody> for ast::TemplateBody {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used, clippy::unwrap_used)]
     fn from(v: &models::TemplateBody) -> Self {
-        let generalized_slots_declaration: ast::GeneralizedSlotsDeclaration = v
-            .generalized_slots_declaration
+        let slots_type_declaration: ast::SlotsTypeDeclaration = v
+            .slots_type_declaration
             .iter()
             .map(|(key, value)| {
                 (
@@ -289,7 +289,7 @@ impl From<&models::TemplateBody> for ast::TemplateBody {
                     )
                 })
                 .collect(),
-            generalized_slots_declaration,
+            slots_type_declaration,
             ast::Effect::from(&models::Effect::try_from(v.effect).expect("decode should succeed")),
             ast::PrincipalConstraint::from(
                 v.principal_constraint
@@ -322,8 +322,8 @@ impl From<&ast::TemplateBody> for models::TemplateBody {
             .map(|(key, value)| (key.as_ref().into(), value.as_ref().into()))
             .collect();
 
-        let generalized_slots_declaration: HashMap<String, models::TemplateType> = v
-            .generalized_slots_declaration()
+        let slots_type_declaration: HashMap<String, models::TemplateType> = v
+            .slots_type_declaration()
             .map(|(k, v)| (k.to_string(), models::TemplateType::from(v)))
             .collect();
 
@@ -339,7 +339,7 @@ impl From<&ast::TemplateBody> for models::TemplateBody {
                 v.resource_constraint(),
             )),
             non_scope_constraints: Some(models::Expr::from(v.non_scope_constraints())),
-            generalized_slots_declaration,
+            slots_type_declaration,
         }
     }
 }
@@ -804,7 +804,7 @@ mod test {
                     annotation2,
                 ),
             ]),
-            ast::GeneralizedSlotsDeclaration::default(),
+            ast::SlotsTypeDeclaration::default(),
             ast::Effect::Permit,
             pc.clone(),
             ac1.clone(),
@@ -834,7 +834,7 @@ mod test {
             ast::PolicyID::from_string("\0\n \' \"+-$^!"),
             None,
             ast::Annotations::from_iter([]),
-            ast::GeneralizedSlotsDeclaration::default(),
+            ast::SlotsTypeDeclaration::default(),
             ast::Effect::Permit,
             pc,
             ac1,
@@ -873,7 +873,7 @@ mod test {
                     loc: None,
                 },
             )]),
-            ast::GeneralizedSlotsDeclaration::default(),
+            ast::SlotsTypeDeclaration::default(),
             ast::Effect::Permit,
             ast::PrincipalConstraint::is_eq_slot(),
             ast::ActionConstraint::Eq(
@@ -946,7 +946,7 @@ mod test {
                     loc: None,
                 },
             )]),
-            ast::GeneralizedSlotsDeclaration::default(),
+            ast::SlotsTypeDeclaration::default(),
             ast::Effect::Permit,
             ast::PrincipalConstraint::is_eq_slot(),
             ast::ActionConstraint::Eq(
@@ -1108,7 +1108,7 @@ mod test {
                         loc: None,
                     },
                 )]),
-                ast::GeneralizedSlotsDeclaration::from_iter([
+                ast::SlotsTypeDeclaration::from_iter([
                     (slot0.clone(), bool_ty),
                     (slot1.clone(), set_ty),
                     (ast::SlotId::principal(), entity_ty),

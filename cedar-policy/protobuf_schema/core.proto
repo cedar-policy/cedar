@@ -101,7 +101,7 @@ message TemplateBody {
     ActionConstraint action_constraint = 6;
     PrincipalOrResourceConstraint resource_constraint = 7;
     Expr non_scope_constraints = 8;
-    map<string, TemplateType> generalized_slots_declaration = 9;
+    map<string, TemplateType> slots_type_declaration = 9;
 }
 
 // an EntityReference may either be an EntityUid or a Slot.

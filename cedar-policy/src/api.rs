@@ -3138,16 +3138,15 @@ fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item
         &s.0,
         cedar_policy_core::validator::ValidationMode::default(),
     );
-    let maybe_validator_generalized_slots_declaration =
-        ast::GeneralizedSlotsDeclaration::from_iter(
-            ast.generalized_slots_declaration()
-                .map(|(k, v)| (k.clone(), v.clone())),
-        )
-        .into_validator_generalized_slots_declaration(&s.0);
+    let maybe_validator_slots_type_declaration = ast::SlotsTypeDeclaration::from_iter(
+        ast.slots_type_declaration()
+            .map(|(k, v)| (k.clone(), v.clone())),
+    )
+    .into_validator_slots_type_declaration(&s.0);
 
-    match maybe_validator_generalized_slots_declaration {
-        Ok(validator_generalized_slots_declaration) => tc
-            .typecheck_by_request_env(ast, &validator_generalized_slots_declaration)
+    match maybe_validator_slots_type_declaration {
+        Ok(validator_slots_type_declaration) => tc
+            .typecheck_by_request_env(ast, &validator_slots_type_declaration)
             .into_iter()
             .filter_map(|(env, pc)| {
                 if matches!(pc, PolicyCheck::Success(_)) {

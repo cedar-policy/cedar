@@ -40,9 +40,9 @@ use crate::validator::{
 
 use crate::{
     ast::{
-        BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, GeneralizedSlotsDeclaration,
-        Literal, Name, PolicyID, PrincipalOrResourceConstraint, SlotId, Template, UnaryOp,
-        ValidatorGeneralizedSlotsDeclaration, Var,
+        BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
+        PrincipalOrResourceConstraint, SlotId, SlotsTypeDeclaration, Template, UnaryOp,
+        ValidatorSlotsTypeDeclaration, Var,
     },
     expr_builder::ExprBuilder as _,
 };
@@ -100,19 +100,19 @@ impl<'a> Typechecker<'a> {
         type_errors: &mut HashSet<ValidationError>,
         warnings: &mut HashSet<ValidationWarning>,
     ) -> bool {
-        let maybe_validator_generalized_slots_declaration = GeneralizedSlotsDeclaration::from_iter(
-            t.generalized_slots_declaration()
+        let maybe_validator_slots_type_declaration = SlotsTypeDeclaration::from_iter(
+            t.slots_type_declaration()
                 .map(|(k, v)| (k.clone(), v.clone())),
         )
-        .into_validator_generalized_slots_declaration(self.schema)
+        .into_validator_slots_type_declaration(self.schema)
         .map_err(|_| {
-            ValidationError::incompatible_schema_with_slot_type_declarations(None, t.id().clone())
+            ValidationError::incompatible_schema_with_slots_type_declaration(None, t.id().clone())
         });
 
-        match maybe_validator_generalized_slots_declaration {
-            Ok(validator_generalized_slots_declaration) => {
+        match maybe_validator_slots_type_declaration {
+            Ok(validator_slots_type_declaration) => {
                 let typecheck_answers =
-                    self.typecheck_by_request_env(t, &validator_generalized_slots_declaration);
+                    self.typecheck_by_request_env(t, &validator_slots_type_declaration);
 
                 // consolidate the results from each query environment
                 let (all_false, all_succ) = typecheck_answers.into_iter().fold(
@@ -160,19 +160,19 @@ impl<'a> Typechecker<'a> {
     pub fn typecheck_by_request_env<'b>(
         &'b self,
         t: &'b Template,
-        validator_generalized_slots_declaration: &ValidatorGeneralizedSlotsDeclaration,
+        validator_slots_type_declaration: &ValidatorSlotsTypeDeclaration,
     ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
         self.apply_typecheck_fn_by_request_env(
             t,
-            |request_env, policy_id, expr, validator_generalized_slots_declaration| {
+            |request_env, policy_id, expr, validator_slots_type_declaration| {
                 self.single_env_typechecking(
                     request_env,
                     policy_id,
                     expr,
-                    validator_generalized_slots_declaration,
+                    validator_slots_type_declaration,
                 )
             },
-            validator_generalized_slots_declaration,
+            validator_slots_type_declaration,
         )
     }
 
@@ -181,7 +181,7 @@ impl<'a> Typechecker<'a> {
         request_env: &RequestEnv<'_>,
         policy_id: &PolicyID,
         expr: &Expr,
-        validator_generalized_slots_declaration: &ValidatorGeneralizedSlotsDeclaration,
+        validator_slots_type_declaration: &ValidatorSlotsTypeDeclaration,
     ) -> PolicyCheck {
         let mut type_errors = Vec::new();
         let single_env_typechecker = SingleEnvTypechecker {
@@ -190,7 +190,7 @@ impl<'a> Typechecker<'a> {
             mode: self.mode,
             policy_id,
             request_env,
-            validator_generalized_slots_declaration,
+            validator_slots_type_declaration,
         };
         let empty_prior_capability = CapabilitySet::new();
         let ans = single_env_typechecker.expect_type(
@@ -218,13 +218,13 @@ impl<'a> Typechecker<'a> {
         &'b self,
         t: &'b Template,
         request_env: &RequestEnv<'b>,
-        validator_generalized_slots_declaration: &ValidatorGeneralizedSlotsDeclaration,
+        validator_slots_type_declaration: &ValidatorSlotsTypeDeclaration,
     ) -> PolicyCheck {
         self.single_env_typechecking(
             request_env,
             t.id(),
             &t.condition(),
-            validator_generalized_slots_declaration,
+            validator_slots_type_declaration,
         )
     }
 
@@ -236,10 +236,10 @@ impl<'a> Typechecker<'a> {
         &'b self,
         t: &'b Template,
         typecheck_fn: F,
-        validator_generalized_slots_declaration: &ValidatorGeneralizedSlotsDeclaration,
+        validator_slots_type_declaration: &ValidatorSlotsTypeDeclaration,
     ) -> Vec<(RequestEnv<'b>, C)>
     where
-        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr, &ValidatorGeneralizedSlotsDeclaration) -> C,
+        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr, &ValidatorSlotsTypeDeclaration) -> C,
     {
         // compute `.condition()` just once, and cache it here
         let cond = t.condition();
@@ -250,12 +250,8 @@ impl<'a> Typechecker<'a> {
             .iter()
             .flat_map(|unlinked_e| {
                 self.link_request_env(unlinked_e, t).map(|linked_e| {
-                    let check = typecheck_fn(
-                        &linked_e,
-                        t.id(),
-                        &cond,
-                        validator_generalized_slots_declaration,
-                    );
+                    let check =
+                        typecheck_fn(&linked_e, t.id(), &cond, validator_slots_type_declaration);
                     (linked_e, check)
                 })
             })
@@ -362,7 +358,7 @@ struct SingleEnvTypechecker<'a> {
     policy_id: &'a PolicyID,
     /// The single env which we're performing typechecking for
     request_env: &'a RequestEnv<'a>,
-    validator_generalized_slots_declaration: &'a ValidatorGeneralizedSlotsDeclaration,
+    validator_slots_type_declaration: &'a ValidatorSlotsTypeDeclaration,
 }
 
 impl<'a> SingleEnvTypechecker<'a> {
@@ -427,9 +423,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             // Template Slots, always has to be an entity.
             ExprKind::Slot(slotid) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(
-                    if let Some(validator_ty) =
-                        self.validator_generalized_slots_declaration.get(slotid)
-                    {
+                    if let Some(validator_ty) = self.validator_slots_type_declaration.get(slotid) {
                         validator_ty.clone()
                     } else if slotid.is_principal() {
                         self.request_env

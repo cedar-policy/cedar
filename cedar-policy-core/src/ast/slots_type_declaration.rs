@@ -26,10 +26,10 @@ use serde::{Deserialize, Serialize};
 
 /// Struct storing the pairs of SlotId's and their corresponding type
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Serialize, Deserialize)]
-pub struct GeneralizedSlotsDeclaration(BTreeMap<SlotId, JSONSchemaType<RawName>>);
+pub struct SlotsTypeDeclaration(BTreeMap<SlotId, JSONSchemaType<RawName>>);
 
-impl GeneralizedSlotsDeclaration {
-    /// Create a new empty `GeneralizedSlotsDeclaration` (with no slots)
+impl SlotsTypeDeclaration {
+    /// Create a new empty `SlotsTypeDeclaration` (with no slots)
     pub fn new() -> Self {
         Self(BTreeMap::new())
     }
@@ -49,13 +49,13 @@ impl GeneralizedSlotsDeclaration {
         self.0.is_empty()
     }
 
-    /// Converts the types of generalized_slots_declaration to
+    /// Converts the types of slots_type_declaration to
     /// use validator types so that they can be used by the typechecker
-    pub fn into_validator_generalized_slots_declaration(
+    pub fn into_validator_slots_type_declaration(
         self,
         schema: &ValidatorSchema,
-    ) -> Result<ValidatorGeneralizedSlotsDeclaration, SchemaError> {
-        let validator_generalized_slots_declaration: Result<BTreeMap<_, _>, SchemaError> = self
+    ) -> Result<ValidatorSlotsTypeDeclaration, SchemaError> {
+        let validator_slots_type_declaration: Result<BTreeMap<_, _>, SchemaError> = self
             .0
             .into_iter()
             .map(|(k, ty)| -> Result<_, SchemaError> {
@@ -65,23 +65,23 @@ impl GeneralizedSlotsDeclaration {
                 ))
             })
             .collect();
-        Ok(validator_generalized_slots_declaration?.into())
+        Ok(validator_slots_type_declaration?.into())
     }
 }
 
-impl Default for GeneralizedSlotsDeclaration {
+impl Default for SlotsTypeDeclaration {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl FromIterator<(SlotId, JSONSchemaType<RawName>)> for GeneralizedSlotsDeclaration {
+impl FromIterator<(SlotId, JSONSchemaType<RawName>)> for SlotsTypeDeclaration {
     fn from_iter<T: IntoIterator<Item = (SlotId, JSONSchemaType<RawName>)>>(iter: T) -> Self {
         Self(BTreeMap::from_iter(iter))
     }
 }
 
-impl From<BTreeMap<SlotId, JSONSchemaType<RawName>>> for GeneralizedSlotsDeclaration {
+impl From<BTreeMap<SlotId, JSONSchemaType<RawName>>> for SlotsTypeDeclaration {
     fn from(value: BTreeMap<SlotId, JSONSchemaType<RawName>>) -> Self {
         Self(value)
     }
@@ -91,28 +91,28 @@ impl From<BTreeMap<SlotId, JSONSchemaType<RawName>>> for GeneralizedSlotsDeclara
 /// This struct is used when typechecking. JSONSchemaType's can't be used
 /// by the typechecker and need to be translated to a validator type by using a schema.
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Debug, Hash)]
-pub struct ValidatorGeneralizedSlotsDeclaration(BTreeMap<SlotId, ValidatorType>);
+pub struct ValidatorSlotsTypeDeclaration(BTreeMap<SlotId, ValidatorType>);
 
-impl FromIterator<(SlotId, ValidatorType)> for ValidatorGeneralizedSlotsDeclaration {
+impl FromIterator<(SlotId, ValidatorType)> for ValidatorSlotsTypeDeclaration {
     fn from_iter<T: IntoIterator<Item = (SlotId, ValidatorType)>>(iter: T) -> Self {
         Self(BTreeMap::from_iter(iter))
     }
 }
 
-impl From<BTreeMap<SlotId, ValidatorType>> for ValidatorGeneralizedSlotsDeclaration {
+impl From<BTreeMap<SlotId, ValidatorType>> for ValidatorSlotsTypeDeclaration {
     fn from(value: BTreeMap<SlotId, ValidatorType>) -> Self {
         Self(value)
     }
 }
 
-impl Default for ValidatorGeneralizedSlotsDeclaration {
+impl Default for ValidatorSlotsTypeDeclaration {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ValidatorGeneralizedSlotsDeclaration {
-    /// Create a new empty `ValidatorGeneralizedSlotsDeclaration` (with no slots)
+impl ValidatorSlotsTypeDeclaration {
+    /// Create a new empty `ValidatorSlotsTypeDeclaration` (with no slots)
     pub fn new() -> Self {
         Self(BTreeMap::new())
     }

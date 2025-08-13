@@ -22,7 +22,7 @@ use itertools::Itertools;
 use std::{collections::HashSet, hash::Hash, sync::Arc};
 
 use crate::ast::{
-    Context, EntityUID, Expr, PolicyID, Request, Template, ValidatorGeneralizedSlotsDeclaration,
+    Context, EntityUID, Expr, PolicyID, Request, Template, ValidatorSlotsTypeDeclaration,
     ACTION_ENTITY_TYPE,
 };
 use crate::entities::{err::EntitiesError, Entities, EntityJsonParser, TCComputation};
@@ -119,8 +119,7 @@ impl Typechecker<'_> {
             mode: self.mode,
             policy_id,
             request_env: &request_env,
-            validator_generalized_slots_declaration: &ValidatorGeneralizedSlotsDeclaration::default(
-            ),
+            validator_slots_type_declaration: &ValidatorSlotsTypeDeclaration::default(),
         };
         let mut type_errors = Vec::new();
         let ans = typechecker.typecheck(&CapabilitySet::new(), e, &mut type_errors);

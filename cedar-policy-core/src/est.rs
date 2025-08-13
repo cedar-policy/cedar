@@ -28,7 +28,7 @@ mod annotation;
 pub use annotation::*;
 
 use crate::ast::EntityUID;
-use crate::ast::{self, Annotation, GeneralizedSlotsDeclaration};
+use crate::ast::{self, Annotation, SlotsTypeDeclaration};
 use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
 use crate::entities::CedarValueJson;
 use crate::expr_builder::ExprBuilder;
@@ -72,8 +72,8 @@ pub struct Policy {
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     annotations: Annotations,
     #[serde(default)]
-    #[serde(skip_serializing_if = "GeneralizedSlotsDeclaration::is_empty")]
-    generalized_slots_declaration: GeneralizedSlotsDeclaration,
+    #[serde(skip_serializing_if = "SlotsTypeDeclaration::is_empty")]
+    slots_type_declaration: SlotsTypeDeclaration,
 }
 
 /// Serde JSON structure for a `when` or `unless` clause in the EST format
@@ -112,7 +112,7 @@ impl Policy {
                 .collect::<Result<Vec<_>, _>>()?,
             annotations: self.annotations,
             // After linking we should not know that this policy was template linked
-            generalized_slots_declaration: GeneralizedSlotsDeclaration::default(),
+            slots_type_declaration: SlotsTypeDeclaration::default(),
         })
     }
 
@@ -132,7 +132,7 @@ impl Policy {
                 .map(|clause| clause.sub_entity_literals(mapping))
                 .collect::<Result<Vec<_>, _>>()?,
             annotations: self.annotations,
-            generalized_slots_declaration: self.generalized_slots_declaration,
+            slots_type_declaration: self.slots_type_declaration,
         })
     }
 
@@ -220,8 +220,8 @@ impl TryFrom<cst::Policy> for Policy {
             .flat_map(|e| e.slots().collect::<Vec<ast::Slot>>())
             .collect();
 
-        // get generalized_slots_declaration
-        let maybe_generalized_slots_declaration = policy.get_generalized_slots_declaration(
+        // get slots_type_declaration
+        let maybe_slots_type_declaration = policy.get_slots_type_declaration(
             contains_slot_in_principal,
             contains_slot_in_resource,
             cond_slots,
@@ -238,13 +238,13 @@ impl TryFrom<cst::Policy> for Policy {
         let (
             effect,
             annotations,
-            generalized_slots_declaration,
+            slots_type_declaration,
             (principal, action, resource),
             conditions,
         ) = flatten_tuple_5(
             maybe_effect,
             maybe_annotations,
-            maybe_generalized_slots_declaration,
+            maybe_slots_type_declaration,
             maybe_scope,
             maybe_conditions,
         )?;
@@ -255,7 +255,7 @@ impl TryFrom<cst::Policy> for Policy {
             resource: resource.into(),
             conditions,
             annotations: Annotations(annotations),
-            generalized_slots_declaration,
+            slots_type_declaration,
         })
     }
 }
@@ -356,7 +356,7 @@ impl Policy {
                     )
                 })
                 .collect(),
-            self.generalized_slots_declaration,
+            self.slots_type_declaration,
             self.effect,
             self.principal.try_into()?,
             self.action.try_into()?,
@@ -432,8 +432,8 @@ impl From<ast::Policy> for Policy {
                     .map(|(k, v)| (k.clone(), Some(v.clone())))
                     .collect(),
             ),
-            generalized_slots_declaration: ast
-                .generalized_slots_declaration()
+            slots_type_declaration: ast
+                .slots_type_declaration()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
         }
@@ -457,8 +457,8 @@ impl From<ast::Template> for Policy {
                     .map(|(k, v)| (k.clone(), Some(v.clone())))
                     .collect(),
             ),
-            generalized_slots_declaration: ast
-                .generalized_slots_declaration()
+            slots_type_declaration: ast
+                .slots_type_declaration()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
         }
@@ -480,11 +480,11 @@ impl std::fmt::Display for Policy {
             }
             writeln!(f)?;
         }
-        if self.generalized_slots_declaration.iter().count() > 0 {
+        if self.slots_type_declaration.iter().count() > 0 {
             write!(
                 f,
                 "template({}) => ",
-                self.generalized_slots_declaration
+                self.slots_type_declaration
                     .iter()
                     .map(|(k, v)| format!("{k}: {v}"))
                     .collect::<Vec<String>>()
@@ -3511,7 +3511,7 @@ mod test {
     }
 
     #[test]
-    fn roundtrip_generalized_slots_declarations() {
+    fn roundtrip_slots_type_declaration() {
         let policy = r#"
         template(?age: Long, ?test: Long) => 
         permit(principal, 
@@ -3549,7 +3549,7 @@ mod test {
                         }
                     }
                 }],
-                "generalized_slots_declaration": {
+                "slots_type_declaration": {
                     "?age": {
                         "type": "EntityOrCommon",
                         "name": "Long"

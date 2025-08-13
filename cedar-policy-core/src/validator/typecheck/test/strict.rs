@@ -22,7 +22,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::{
-    ast::{EntityUID, Expr, PolicyID, ValidatorGeneralizedSlotsDeclaration},
+    ast::{EntityUID, Expr, PolicyID, ValidatorSlotsTypeDeclaration},
     extensions::Extensions,
     parser::{parse_policy_or_template, IntoMaybeLoc, Loc},
 };
@@ -55,7 +55,7 @@ fn assert_typechecks_strict(
         mode: ValidationMode::Strict,
         policy_id: &expr_id_placeholder(),
         request_env,
-        validator_generalized_slots_declaration: &ValidatorGeneralizedSlotsDeclaration::default(),
+        validator_slots_type_declaration: &ValidatorSlotsTypeDeclaration::default(),
     };
     let mut errs = Vec::new();
     let answer =
@@ -84,7 +84,7 @@ fn assert_strict_type_error(
         mode: ValidationMode::Strict,
         policy_id: &expr_id_placeholder(),
         request_env,
-        validator_generalized_slots_declaration: &ValidatorGeneralizedSlotsDeclaration::default(),
+        validator_slots_type_declaration: &ValidatorSlotsTypeDeclaration::default(),
     };
     let mut errs = Vec::new();
     let answer =
@@ -178,8 +178,7 @@ fn strict_typecheck_catches_regular_type_error() {
             mode: ValidationMode::Strict,
             policy_id: &expr_id_placeholder(),
             request_env: &q,
-            validator_generalized_slots_declaration: &ValidatorGeneralizedSlotsDeclaration::default(
-            ),
+            validator_slots_type_declaration: &ValidatorSlotsTypeDeclaration::default(),
         };
         let mut errs = Vec::new();
         typechecker.expect_type(

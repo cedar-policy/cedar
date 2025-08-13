@@ -24,11 +24,11 @@ use crate::validator::{
 };
 use annotation::{Annotation, Annotations};
 use educe::Educe;
-use generalized_slots_declaration::GeneralizedSlotsDeclaration;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
+use slots_type_declaration::SlotsTypeDeclaration;
 use smol_str::SmolStr;
 use std::{
     collections::{HashMap, HashSet},
@@ -60,8 +60,8 @@ cfg_tolerant_ast! {
     static DEFAULT_ANNOTATIONS: std::sync::LazyLock<Arc<Annotations>> =
         std::sync::LazyLock::new(|| Arc::new(Annotations::default()));
 
-    static DEFAULT_GENERALIZED_SLOTS_DECLARATION: std::sync::LazyLock<Arc<GeneralizedSlotsDeclaration>> =
-        std::sync::LazyLock::new(|| Arc::new(GeneralizedSlotsDeclaration::default()));
+    static DEFAULT_SLOTS_TYPE_DECLARATION: std::sync::LazyLock<Arc<SlotsTypeDeclaration>> =
+        std::sync::LazyLock::new(|| Arc::new(SlotsTypeDeclaration::default()));
 
     static DEFAULT_PRINCIPAL_CONSTRAINT: std::sync::LazyLock<PrincipalConstraint> =
         std::sync::LazyLock::new(PrincipalConstraint::any);
@@ -130,7 +130,7 @@ impl Template {
         id: PolicyID,
         loc: MaybeLoc,
         annotations: Annotations,
-        generalized_slots_declaration: GeneralizedSlotsDeclaration,
+        slots_type_declaration: SlotsTypeDeclaration,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
@@ -141,7 +141,7 @@ impl Template {
             id,
             loc,
             annotations,
-            generalized_slots_declaration,
+            slots_type_declaration,
             effect,
             principal_constraint,
             action_constraint,
@@ -166,7 +166,7 @@ impl Template {
         id: PolicyID,
         loc: MaybeLoc,
         annotations: Arc<Annotations>,
-        generalized_slots_declaration: Arc<GeneralizedSlotsDeclaration>,
+        slots_type_declaration: Arc<SlotsTypeDeclaration>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
@@ -177,7 +177,7 @@ impl Template {
             id,
             loc,
             annotations,
-            generalized_slots_declaration,
+            slots_type_declaration,
             effect,
             principal_constraint,
             action_constraint,
@@ -252,16 +252,16 @@ impl Template {
         self.body.annotations_arc()
     }
 
-    /// Get all generalized_slots_declaration data.
-    pub fn generalized_slots_declaration(
+    /// Get all slots_type_declaration data.
+    pub fn slots_type_declaration(
         &self,
     ) -> impl Iterator<Item = (&SlotId, &JSONSchemaType<RawName>)> {
-        self.body.generalized_slots_declaration()
+        self.body.slots_type_declaration()
     }
 
-    /// Get [`Arc`] owning the generalized_slots_declaration data.
-    pub fn generalized_slots_declaration_arc(&self) -> &Arc<GeneralizedSlotsDeclaration> {
-        self.body.generalized_slots_declaration_arc()
+    /// Get [`Arc`] owning the slots_type_declaration data.
+    pub fn slots_type_declaration_arc(&self) -> &Arc<SlotsTypeDeclaration> {
+        self.body.slots_type_declaration_arc()
     }
 
     /// Get the condition expression of this template.
@@ -369,12 +369,12 @@ impl Template {
         values: &HashMap<SlotId, EntityUID>,
         generalized_values: &HashMap<SlotId, RestrictedExpr>,
     ) -> Result<(), LinkingError> {
-        let validator_generalized_slots_declaration = GeneralizedSlotsDeclaration::from_iter(
+        let validator_slots_type_declaration = SlotsTypeDeclaration::from_iter(
             template
-                .generalized_slots_declaration()
+                .slots_type_declaration()
                 .map(|(k, v)| (k.clone(), v.clone())),
         )
-        .into_validator_generalized_slots_declaration(schema)?;
+        .into_validator_slots_type_declaration(schema)?;
 
         let values_restricted_expr: HashMap<SlotId, RestrictedExpr> = values
             .iter()
@@ -383,7 +383,7 @@ impl Template {
 
         // we treat values differently because `?principal` and `?resource` type annotations are optional
         for (slot, restricted_expr) in values_restricted_expr {
-            let maybe_validator_type = validator_generalized_slots_declaration.get(&slot);
+            let maybe_validator_type = validator_slots_type_declaration.get(&slot);
             if let Some(validator_type) = maybe_validator_type {
                 let borrowed_restricted_expr = restricted_expr.as_borrowed();
                 #[allow(clippy::expect_used)]
@@ -407,12 +407,13 @@ impl Template {
         }
 
         for (slot, restricted_expr) in generalized_values {
-            let validator_type = validator_generalized_slots_declaration.get(slot).ok_or(
-                LinkingError::ArityError {
-                    unbound_values: vec![slot.clone()],
-                    extra_values: vec![],
-                },
-            )?;
+            let validator_type =
+                validator_slots_type_declaration
+                    .get(slot)
+                    .ok_or(LinkingError::ArityError {
+                        unbound_values: vec![slot.clone()],
+                        extra_values: vec![],
+                    })?;
             let borrowed_restricted_expr = restricted_expr.as_borrowed();
             #[allow(clippy::expect_used)]
             let schema_ty = &SchemaType::try_from(validator_type.clone())
@@ -648,7 +649,7 @@ impl Policy {
             id,
             loc,
             annotations,
-            Arc::new(GeneralizedSlotsDeclaration::default()),
+            Arc::new(SlotsTypeDeclaration::default()),
             effect,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -688,11 +689,11 @@ impl Policy {
         self.template.annotations_arc()
     }
 
-    /// Get all generalized_slots_declaration data.
-    pub fn generalized_slots_declaration(
+    /// Get all slots_type_declaration data.
+    pub fn slots_type_declaration(
         &self,
     ) -> impl Iterator<Item = (&SlotId, &JSONSchemaType<RawName>)> {
-        self.template.generalized_slots_declaration()
+        self.template.slots_type_declaration()
     }
 
     /// Get the principal constraint for this policy.
@@ -1130,7 +1131,7 @@ impl StaticPolicy {
         id: PolicyID,
         loc: MaybeLoc,
         annotations: Annotations,
-        generalized_slots_declaration: GeneralizedSlotsDeclaration,
+        slots_type_declaration: SlotsTypeDeclaration,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
@@ -1141,7 +1142,7 @@ impl StaticPolicy {
             id,
             loc,
             annotations,
-            generalized_slots_declaration,
+            slots_type_declaration,
             effect,
             principal_constraint,
             action_constraint,
@@ -1199,8 +1200,8 @@ pub struct TemplateBodyImpl {
     /// Note that the keys are `AnyId`, so Cedar reserved words like `if` and `has`
     /// are explicitly allowed as annotations.
     annotations: Arc<Annotations>,
-    /// Stores the type and position information for generalized slots
-    generalized_slots_declaration: Arc<GeneralizedSlotsDeclaration>,
+    /// Stores the type information for slots
+    slots_type_declaration: Arc<SlotsTypeDeclaration>,
     /// `Effect` of this policy
     effect: Effect,
     /// Scope constraint for principal. This will be a boolean-valued expression:
@@ -1311,29 +1312,29 @@ impl TemplateBody {
         }
     }
 
-    /// Get shared ref to generalized_slots_declaration
-    pub fn generalized_slots_declaration_arc(&self) -> &Arc<GeneralizedSlotsDeclaration> {
+    /// Get shared ref to slots_type_declaration
+    pub fn slots_type_declaration_arc(&self) -> &Arc<SlotsTypeDeclaration> {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl {
-                generalized_slots_declaration,
+                slots_type_declaration,
                 ..
-            }) => generalized_slots_declaration,
+            }) => slots_type_declaration,
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_, _) => &DEFAULT_GENERALIZED_SLOTS_DECLARATION,
+            TemplateBody::TemplateBodyError(_, _) => &DEFAULT_SLOTS_TYPE_DECLARATION,
         }
     }
 
-    /// Get all generalized_slots_declaration data.
-    pub fn generalized_slots_declaration(
+    /// Get all slots_type_declaration data.
+    pub fn slots_type_declaration(
         &self,
     ) -> impl Iterator<Item = (&SlotId, &JSONSchemaType<RawName>)> {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl {
-                generalized_slots_declaration,
+                slots_type_declaration,
                 ..
-            }) => generalized_slots_declaration.iter(),
+            }) => slots_type_declaration.iter(),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_, _) => DEFAULT_GENERALIZED_SLOTS_DECLARATION.iter(),
+            TemplateBody::TemplateBodyError(_, _) => DEFAULT_SLOTS_TYPE_DECLARATION.iter(),
         }
     }
 
@@ -1473,7 +1474,7 @@ impl TemplateBody {
         id: PolicyID,
         loc: MaybeLoc,
         annotations: Arc<Annotations>,
-        generalized_slots_declaration: Arc<GeneralizedSlotsDeclaration>,
+        slots_type_declaration: Arc<SlotsTypeDeclaration>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
@@ -1484,7 +1485,7 @@ impl TemplateBody {
             id,
             loc,
             annotations,
-            generalized_slots_declaration,
+            slots_type_declaration,
             effect,
             principal_constraint,
             action_constraint,
@@ -1499,7 +1500,7 @@ impl TemplateBody {
         id: PolicyID,
         loc: MaybeLoc,
         annotations: Annotations,
-        generalized_slots_declaration: GeneralizedSlotsDeclaration,
+        slots_type_declaration: SlotsTypeDeclaration,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
@@ -1510,7 +1511,7 @@ impl TemplateBody {
             id,
             loc,
             annotations: Arc::new(annotations),
-            generalized_slots_declaration: Arc::new(generalized_slots_declaration),
+            slots_type_declaration: Arc::new(slots_type_declaration),
             effect,
             principal_constraint,
             action_constraint,
@@ -2313,7 +2314,7 @@ pub(crate) mod test_generators {
                         permit.clone(),
                         None,
                         Annotations::new(),
-                        GeneralizedSlotsDeclaration::new(),
+                        SlotsTypeDeclaration::new(),
                         Effect::Permit,
                         principal.clone(),
                         action.clone(),
@@ -2324,7 +2325,7 @@ pub(crate) mod test_generators {
                         forbid.clone(),
                         None,
                         Annotations::new(),
-                        GeneralizedSlotsDeclaration::new(),
+                        SlotsTypeDeclaration::new(),
                         Effect::Forbid,
                         principal.clone(),
                         action.clone(),
@@ -2386,7 +2387,7 @@ mod test {
                 id,
                 None,
                 Annotations::new(),
-                GeneralizedSlotsDeclaration::new(),
+                SlotsTypeDeclaration::new(),
                 effect,
                 p,
                 a,
@@ -2415,7 +2416,7 @@ mod test {
                     id,
                     None,
                     anno,
-                    GeneralizedSlotsDeclaration::new(),
+                    SlotsTypeDeclaration::new(),
                     e,
                     p,
                     a,
@@ -2439,7 +2440,7 @@ mod test {
             tid,
             None,
             Annotations::new(),
-            GeneralizedSlotsDeclaration::new(),
+            SlotsTypeDeclaration::new(),
             Effect::Forbid,
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::Any,
@@ -2463,7 +2464,7 @@ mod test {
             tid,
             None,
             Annotations::new(),
-            GeneralizedSlotsDeclaration::new(),
+            SlotsTypeDeclaration::new(),
             Effect::Forbid,
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::Any,
@@ -2492,7 +2493,7 @@ mod test {
             tid,
             None,
             Annotations::new(),
-            GeneralizedSlotsDeclaration::new(),
+            SlotsTypeDeclaration::new(),
             Effect::Permit,
             PrincipalConstraint::is_in_slot(),
             ActionConstraint::any(),

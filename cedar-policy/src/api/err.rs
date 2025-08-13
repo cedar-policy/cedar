@@ -368,11 +368,11 @@ pub mod validation_errors;
 #[derive(Debug, Clone, Error, Diagnostic)]
 #[non_exhaustive]
 pub enum ValidationError {
-    /// The Schema is incompatible with the slot type declarations.
+    /// The Schema is incompatible with the slots type declaration.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    IncompatibleSchemaWithSlotTypeDeclaration(
-        #[from] validation_errors::IncompatibleSchemaWithSlotTypeDeclaration,
+    IncompatibleSchemaWithSlotsTypeDeclaration(
+        #[from] validation_errors::IncompatibleSchemaWithSlotsTypeDeclaration,
     ),
     /// A policy contains an entity type that is not declared in the schema.
     #[error(transparent)]
@@ -460,7 +460,7 @@ impl ValidationError {
     /// Extract the policy id of the policy where the validator found the issue.
     pub fn policy_id(&self) -> &crate::PolicyId {
         match self {
-            Self::IncompatibleSchemaWithSlotTypeDeclaration(e) => e.policy_id(),
+            Self::IncompatibleSchemaWithSlotsTypeDeclaration(e) => e.policy_id(),
             Self::UnrecognizedEntityType(e) => e.policy_id(),
             Self::UnrecognizedActionId(e) => e.policy_id(),
             Self::InvalidActionApplication(e) => e.policy_id(),
@@ -487,8 +487,8 @@ impl ValidationError {
 impl From<cedar_policy_core::validator::ValidationError> for ValidationError {
     fn from(error: cedar_policy_core::validator::ValidationError) -> Self {
         match error {
-            cedar_policy_core::validator::ValidationError::IncompatibleSchemaWithSlotTypeDeclaration(e) => {
-                Self::IncompatibleSchemaWithSlotTypeDeclaration(e.into())
+            cedar_policy_core::validator::ValidationError::IncompatibleSchemaWithSlotsTypeDeclaration(e) => {
+                Self::IncompatibleSchemaWithSlotsTypeDeclaration(e.into())
             }
             cedar_policy_core::validator::ValidationError::UnrecognizedEntityType(e) => {
                 Self::UnrecognizedEntityType(e.into())
