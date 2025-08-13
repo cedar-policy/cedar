@@ -8,11 +8,20 @@ on:
 jobs:
   create_related_repo_tags:
     runs-on: ubuntu-latest
+    if: ${{ vars.APP_ID && secrets.APP_PRIVATE_KEY }}
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: cedar-spec,cedar-integration-tests
+
       - name: Create tag in cedar-spec
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const tag = context.ref.replace('refs/tags/', '');
             await github.rest.git.createRef({
@@ -29,7 +38,7 @@ jobs:
       - name: Create tag in cedar-integration-tests
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const tag = context.ref.replace('refs/tags/', '');
             await github.rest.git.createRef({
