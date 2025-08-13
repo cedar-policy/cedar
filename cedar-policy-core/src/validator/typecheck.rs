@@ -2614,7 +2614,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             Left(arg) => (arg, arg_tys.last().unwrap()),
                             // PANIC SAFETY
                             #[allow(clippy::unreachable)]
-                            Right(ty) => {
+                            Right(_ty) => {
                                 unreachable!("Previous checks ensure args.len() >= arg_tys.len()")
                             }
                         })
