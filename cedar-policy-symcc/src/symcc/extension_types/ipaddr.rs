@@ -340,9 +340,10 @@ pub static LOOP_BACK_CIDR_V6: LazyLock<IPNet> = LazyLock::new(|| {
     })
 });
 
-static MULTICAST_ADDRESS_V4: LazyLock<IPv4Addr> = LazyLock::new(|| IPv4Addr::mk_u8(224, 0, 0, 0));
+static MULTICAST_ADDRESS_V4: LazyLock<IPv4Addr> =
+    LazyLock::new(|| IPv4Addr::mk_u8(0b11100000, 0, 0, 0));
 static MULTICAST_ADDRESS_V6: LazyLock<IPv6Addr> =
-    LazyLock::new(|| IPv6Addr::mk_u16(65280, 0, 0, 0, 0, 0, 0, 0));
+    LazyLock::new(|| IPv6Addr::mk_u16(0xff00, 0, 0, 0, 0, 0, 0, 0));
 pub static MULTICAST_CIDR_V4: LazyLock<IPNet> = LazyLock::new(|| {
     IPNet::V4(CIDRv4 {
         addr: (*MULTICAST_ADDRESS_V4).clone(),
@@ -352,7 +353,7 @@ pub static MULTICAST_CIDR_V4: LazyLock<IPNet> = LazyLock::new(|| {
 pub static MULTICAST_CIDR_V6: LazyLock<IPNet> = LazyLock::new(|| {
     IPNet::V6(CIDRv6 {
         addr: (*MULTICAST_ADDRESS_V6).clone(),
-        prefix: IPv6Prefix::of_nat(nat(4)),
+        prefix: IPv6Prefix::of_nat(nat(8)),
     })
 });
 
@@ -784,5 +785,13 @@ mod tests {
             parse_unwrap("ffff::/4").to_string(),
             "ffff:0000:0000:0000:0000:0000:0000:0000/4"
         );
+    }
+
+    #[test]
+    fn multicast() {
+        assert!(parse_unwrap("ff02::1").is_multicast());
+        assert!(!parse_unwrap("ffff:bb00::2:2a:6065/5").is_multicast());
+        assert!(parse_unwrap("224.0.0.0").is_multicast());
+        assert!(!parse_unwrap("240.0.0.0/16").is_multicast());
     }
 }
