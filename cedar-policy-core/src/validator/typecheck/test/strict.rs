@@ -656,9 +656,19 @@ fn test_extension() {
             Type::extension("ipaddr".parse().unwrap()),
         );
         assert_types_must_match(
-            s,
+            s.clone(),
             &q,
             &Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
+            r#"1 == false"#,
+            Type::primitive_boolean(),
+            [Type::primitive_long(), Type::singleton_boolean(false)],
+            LubHelp::None,
+            LubContext::Equality,
+        );
+        assert_types_must_match(
+            s,
+            &q,
+            &Expr::from_str(r#"ip("192.168.1.0/8").isInRange(ip("127.0.0.3"), if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
             r#"1 == false"#,
             Type::primitive_boolean(),
             [Type::primitive_long(), Type::singleton_boolean(false)],

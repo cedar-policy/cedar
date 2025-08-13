@@ -111,6 +111,7 @@ pub fn extension_schema() -> ExtensionSchema {
             get_argument_types(f.name(), &datetime_ty, &duration_ty),
             return_type,
             get_argument_check(f.name()),
+            false,
         )
     });
     ExtensionSchema::new(
