@@ -666,7 +666,7 @@ fn test_extension() {
             LubContext::Equality,
         );
         assert_types_must_match(
-            s,
+            s.clone(),
             &q,
             &Expr::from_str(r#"ip("192.168.1.0/8").isInRange(ip("127.0.0.3"), if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
             r#"1 == false"#,
@@ -674,6 +674,19 @@ fn test_extension() {
             [Type::primitive_long(), Type::singleton_boolean(false)],
             LubHelp::None,
             LubContext::Equality,
+        );
+        let src = r#"ip("192.168.1.0/8").isInRange()"#;
+        assert_strict_type_error(
+            s,
+            &q,
+            &Expr::from_str(src).unwrap(),
+            Type::primitive_boolean(),
+            ValidationError::wrong_number_args(
+                Loc::new(0..31, Arc::from(src)).into_maybe_loc(),
+                expr_id_placeholder(),
+                2,
+                1,
+            ),
         );
     })
 }
