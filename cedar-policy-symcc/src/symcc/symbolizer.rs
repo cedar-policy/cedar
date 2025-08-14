@@ -20,16 +20,20 @@
 
 use std::sync::Arc;
 
-use cedar_policy_core::ast::{Literal, RepresentableExtensionValue, Value, ValueKind};
+use cedar_policy::Request;
+use cedar_policy_core::ast::{
+    Context, Literal, RepresentableExtensionValue, RestrictedExpr, Value, ValueKind,
+};
 use cedar_policy_core::validator::types::{EntityRecordKind, OpenTag, Type};
 use miette::Diagnostic;
 use thiserror::Error;
 
-use super::factory;
+use super::env::SymRequest;
 use super::term::Term;
 use super::term_type::TermType;
 use super::type_abbrevs::EntityUID;
 use super::CompileError;
+use super::{factory, Environment};
 
 /// Errors that happen when converting concrete
 /// values to symbolic terms
@@ -41,10 +45,13 @@ pub enum SymbolizeError {
     CompileError(#[from] CompileError),
     #[error("unsupported extension value: {0:?}")]
     UnsupportedExtension(Arc<RepresentableExtensionValue>),
+    #[error("partial request not supported")]
+    PartialRequest,
 }
 
 impl Term {
-    /// Corresponds to `Prim.symbolize`
+    /// Converts a concrete [`Literal`] to a symbolic [`Term`].
+    /// Corresponds to `Prim.symbolize` in Lean.
     pub fn from_literal(l: &Literal) -> Self {
         match l {
             Literal::Bool(b) => (*b).into(),
@@ -54,6 +61,9 @@ impl Term {
         }
     }
 
+    /// Converts a concrete [`Value`] to a symbolic [`Term`].
+    /// The type of the value must be specified, in order to
+    /// correctly encode records.
     /// Corresponds to `Value.symbolize?` in Lean.
     pub fn from_value(v: &Value, ty: &Type) -> Result<Self, SymbolizeError> {
         match (v.value_kind(), ty) {
@@ -114,6 +124,46 @@ impl Term {
             }
             _ => Err(SymbolizeError::UnableToSymbolizeValue(v.clone())),
         }
+    }
+}
+
+impl SymRequest {
+    /// Converts a concrete [`Request`] to [`SymRequest`].
+    /// Corresponds to `Request.symbolize?` in Lean.
+    pub fn from_request(env: &Environment<'_>, req: &Request) -> Result<Self, SymbolizeError> {
+        let context = match req
+            .context()
+            .ok_or(SymbolizeError::PartialRequest)?
+            .as_ref()
+        {
+            Context::Value(attrs) => Value::record_arc(attrs.clone(), None),
+            _ => return Err(SymbolizeError::PartialRequest),
+        };
+
+        Ok(SymRequest {
+            principal: Term::from_literal(
+                &req.principal()
+                    .ok_or(SymbolizeError::PartialRequest)?
+                    .as_ref()
+                    .clone()
+                    .into(),
+            ),
+            action: Term::from_literal(
+                &req.action()
+                    .ok_or(SymbolizeError::PartialRequest)?
+                    .as_ref()
+                    .clone()
+                    .into(),
+            ),
+            resource: Term::from_literal(
+                &req.resource()
+                    .ok_or(SymbolizeError::PartialRequest)?
+                    .as_ref()
+                    .clone()
+                    .into(),
+            ),
+            context: Term::from_value(&context, &env.context_type())?,
+        })
     }
 }
 

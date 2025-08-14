@@ -554,6 +554,11 @@ impl<'a> Environment<'a> {
             },
         })
     }
+
+    /// Returns the type of the context.
+    pub fn context_type(&self) -> Type {
+        Type::record_with_attributes(self.req_ty.context.clone(), OpenTag::ClosedAttributes)
+    }
 }
 
 pub fn to_validator_request_env<'a>(
