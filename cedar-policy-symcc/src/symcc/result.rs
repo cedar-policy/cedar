@@ -49,4 +49,10 @@ pub enum CompileError {
     /// Context type is not a record.
     #[error("context type is not a record")]
     NonRecordContext,
+    /// Principal slot type was not provided.
+    #[error("principal slot type was not provided")]
+    PrincipalSlotTypeNotProvided,
+    /// Resource slot type was not provided.
+    #[error("resource slot type was not provided")]
+    ResourceSlotTypeNotProvided,
 }

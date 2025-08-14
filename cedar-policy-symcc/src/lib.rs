@@ -19,7 +19,7 @@
 pub mod err;
 mod symcc;
 
-use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
+use cedar_policy::{Policy, PolicySet, RequestEnv, Schema, Template};
 use std::fmt;
 
 use err::{Error, Result};
@@ -28,7 +28,7 @@ use symcc::Environment;
 use symcc::SymCompiler;
 use symcc::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
-    verify_never_errors, well_typed_policies, well_typed_policy,
+    verify_never_errors, well_typed_policies, well_typed_policy, well_typed_template,
 };
 
 pub use symcc::bitvec;
@@ -126,6 +126,45 @@ impl WellTypedPolicies {
 impl fmt::Display for WellTypedPolicies {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.policies)
+    }
+}
+
+#[derive(Debug)]
+pub struct WellTypedTemplate {
+    template: cedar_policy_core::ast::Template,
+}
+
+impl WellTypedTemplate {
+    /// Returns a reference to the underlying template
+    pub fn template(&self) -> &cedar_policy_core::ast::Template {
+        &self.template
+    }
+
+    /// Creates a well-typed template with respect to the given request environment and schema.
+    /// This ensures that the template satisfies the `WellTyped` constraints required by the
+    /// symbolic compiler, by applying Cedar's typechecker transformations.
+    pub fn from_template(
+        template: &Template,
+        env: &RequestEnv,
+        schema: &Schema,
+    ) -> Result<WellTypedTemplate> {
+        well_typed_template(template.as_ref(), env, schema)
+            .map(|t| WellTypedTemplate { template: t })
+    }
+
+    /// Converts a [`Template`] to a [`WellTypedTemplate`] unchecked.
+    /// Note that SymCC may fail on the template produced by this function
+    /// even if it is validated.
+    pub fn from_template_unchecked(template: &Template) -> Self {
+        WellTypedTemplate {
+            template: template.as_ref().clone(),
+        }
+    }
+}
+
+impl fmt::Display for WellTypedTemplate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.template)
     }
 }
 

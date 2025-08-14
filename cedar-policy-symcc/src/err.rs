@@ -51,6 +51,9 @@ pub enum Error {
     /// Errors during concretization.
     #[error("failed to recover a concrete counterexample")]
     ConcretizeError(#[from] ConcretizeError),
+    /// Template is not well-typed.
+    #[error("input template is not well typed with respect to the schema {errs:?}")]
+    TemplateNotWellTyped { errs: Vec<ValidationError> },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

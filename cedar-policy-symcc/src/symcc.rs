@@ -46,7 +46,10 @@ use cedar_policy::Schema;
 use decoder::{parse_sexpr, IdMaps};
 use env::to_validator_request_env;
 
-use cedar_policy_core::ast::{Expr, ExprBuilder, Policy, PolicySet};
+use cedar_policy_core::ast::{
+    ActionConstraint, Annotations, Expr, ExprBuilder, Policy, PolicySet, PrincipalConstraint,
+    ResourceConstraint, Template,
+};
 use cedar_policy_core::validator::{typecheck::Typechecker, types::RequestEnv, ValidationMode};
 use encoder::Encoder;
 use solver::{Decision, Solver};
@@ -465,5 +468,60 @@ pub fn well_typed_policies(
             Ok(res)
         }
         Err(err) => Err(err),
+    }
+}
+
+pub fn well_typed_template(
+    template: &Template,
+    env: &cedar_policy::RequestEnv,
+    schema: &Schema,
+) -> Result<Template> {
+    let env = to_validator_request_env(env, schema.as_ref())
+        .ok_or_else(|| Error::ActionNotInSchema(env.action().to_string()))?;
+    well_typed_template_inner(template, &env, schema)
+}
+
+fn well_typed_template_inner(
+    template: &Template,
+    env: &RequestEnv<'_>,
+    schema: &Schema,
+) -> Result<Template> {
+    let validator_schema = schema.as_ref();
+    let type_checker = Typechecker::new(validator_schema, ValidationMode::Strict);
+    let policy_check = type_checker.typecheck_by_single_request_env(template, env);
+    match policy_check {
+        cedar_policy_core::validator::typecheck::PolicyCheck::Success(expr) => Ok(Template::new(
+            template.id().clone(),
+            template.loc().cloned(),
+            Annotations::default(),
+            template.effect(),
+            PrincipalConstraint::any(),
+            ActionConstraint::any(),
+            ResourceConstraint::any(),
+            expr.into_expr::<ExprBuilder<()>>(),
+        )),
+        cedar_policy_core::validator::typecheck::PolicyCheck::Irrelevant(errs, expr) =>
+        // A template could be irrelevant just for this environment, so unless there were errors we don't want to fail.
+        // Note that if the template was irrelevant for all environments schema validation would have caught this
+        // before SymCC. 
+        {
+            if errs.is_empty() {
+                Ok(Template::new(
+                    template.id().clone(),
+                    template.loc().cloned(),
+                    Annotations::default(),
+                    template.effect(),
+                    PrincipalConstraint::any(),
+                    ActionConstraint::any(),
+                    ResourceConstraint::any(),
+                    expr.into_expr::<ExprBuilder<()>>(),
+                ))
+            } else {
+                Err(Error::TemplateNotWellTyped { errs })
+            }
+        }
+        cedar_policy_core::validator::typecheck::PolicyCheck::Fail(errs) => {
+            Err(Error::TemplateNotWellTyped { errs })
+        }
     }
 }
