@@ -28,7 +28,9 @@ use cedar_policy::{
 };
 use cedar_policy_core::{ast::RequestSchema, extensions::Extensions};
 use cedar_policy_symcc::{
-    solver::Solver, CedarSymCompiler, Env, SymEnv, WellTypedPolicies, WellTypedPolicy,
+    compile_always_allows, compile_always_denies, compile_disjoint, compile_equivalent,
+    compile_implies, compile_never_errors, solver::Solver, CedarSymCompiler, Env, SymEnv,
+    WellTypedPolicies, WellTypedPolicy,
 };
 
 #[track_caller]
@@ -150,6 +152,11 @@ pub async fn assert_never_errors_ok<S: Solver>(
             resp.diagnostics().errors().next().is_some(),
             "check_never_errors_with_counterexample returned an invalid counterexample"
         );
+        // Re-perform the check with a symbolized concrete `Env`
+        let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        let asserts = compile_never_errors(&typed_policy, &literal_symenv).unwrap();
+        // All asserts should be simplified to literal true's
+        assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     }
 
     res
@@ -189,6 +196,11 @@ pub async fn assert_always_allows_ok<S: Solver>(
             resp.decision() == Decision::Deny,
             "check_always_allows_with_counterexample returned an invalid counterexample"
         );
+        // Re-perform the check with a symbolized concrete `Env`
+        let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        let asserts = compile_always_allows(&typed_pset, &literal_symenv).unwrap();
+        // All asserts should be simplified to literal true's
+        assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     }
 
     res
@@ -239,6 +251,11 @@ pub async fn assert_always_denies_ok<S: Solver>(
             resp.decision() == Decision::Allow,
             "check_always_denies_with_counterexample returned an invalid counterexample"
         );
+        // Re-perform the check with a symbolized concrete `Env`
+        let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        let asserts = compile_always_denies(&typed_pset, &literal_symenv).unwrap();
+        // All asserts should be simplified to literal true's
+        assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     }
 
     res
@@ -292,6 +309,11 @@ pub async fn assert_equivalent_ok<S: Solver>(
             resp1.decision() != resp2.decision(),
             "check_equivalent_with_counterexample returned an invalid counterexample"
         );
+        // Re-perform the check with a symbolized concrete `Env`
+        let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        let asserts = compile_equivalent(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        // All asserts should be simplified to literal true's
+        assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     }
 
     res
@@ -347,6 +369,11 @@ pub async fn assert_implies_ok<S: Solver>(
             resp1.decision() == Decision::Allow && resp2.decision() == Decision::Deny,
             "check_implies_with_counterexample returned an invalid counterexample"
         );
+        // Re-perform the check with a symbolized concrete `Env`
+        let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        let asserts = compile_implies(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        // All asserts should be simplified to literal true's
+        assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     }
 
     res
@@ -402,6 +429,11 @@ pub async fn assert_disjoint_ok<S: Solver>(
             resp1.decision() == Decision::Allow && resp2.decision() == Decision::Allow,
             "check_disjoint_with_counterexample returned an invalid counterexample"
         );
+        // Re-perform the check with a symbolized concrete `Env`
+        let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        let asserts = compile_disjoint(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        // All asserts should be simplified to literal true's
+        assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     }
 
     res

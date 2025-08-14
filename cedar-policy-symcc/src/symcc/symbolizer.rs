@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use cedar_policy::entities_errors::EntitiesError;
-use cedar_policy::{Entities, Request};
+use cedar_policy::{Entities, Request, RequestEnv, Schema};
 use cedar_policy_core::ast::{
     Context, Literal, PartialValue, RepresentableExtensionValue, RestrictedExpr, Value, ValueKind,
 };
@@ -61,6 +61,8 @@ pub enum SymbolizeError {
     EntitiesError(#[from] EntitiesError),
     #[error("partial value not supported")]
     PartialValue,
+    #[error("ill-formed type environment")]
+    IllFormedTypeEnv,
 }
 
 impl Term {
@@ -72,6 +74,68 @@ impl Term {
             Literal::Long(i) => (*i).into(),
             Literal::String(s) => s.clone().into(),
             Literal::EntityUID(euid) => EntityUID::from(euid.as_ref().clone()).into(),
+        }
+    }
+
+    /// Helper function for [`Term::from_value`].
+    fn from_ext_value(rexp: &RestrictedExpr) -> Option<Self> {
+        let (name, args) = rexp.as_extn_fn_call()?;
+        let args = args.collect::<Vec<_>>();
+
+        // Recover the string representation of supported extension values
+        // and then convert them to corresponding `Term`s.
+        match (name.as_ref().to_string().as_str(), args.as_slice()) {
+            ("decimal", &[arg]) => Some(
+                Ext::Decimal {
+                    d: decimal::parse(arg.as_string()?.as_str())?,
+                }
+                .into(),
+            ),
+            ("duration", &[arg]) => Some(
+                Ext::Duration {
+                    d: datetime::Duration::parse(arg.as_string()?.as_str())?,
+                }
+                .into(),
+            ),
+            ("datetime", &[arg]) => Some(
+                Ext::Datetime {
+                    dt: datetime::Datetime::parse(arg.as_string()?.as_str())?,
+                }
+                .into(),
+            ),
+            // Datetime is sometimes represented as `datetime(<epoch>).offset(<...>)`
+            ("offset", &[arg1, arg2]) => {
+                let (arg1_name, arg1_args) = arg1.as_extn_fn_call()?;
+                let (arg2_name, arg2_args) = arg2.as_extn_fn_call()?;
+                let arg1_args = arg1_args.collect::<Vec<_>>();
+                let arg2_args = arg2_args.collect::<Vec<_>>();
+                if arg1_name.as_ref().to_string() != "datetime"
+                    || arg1_args.len() != 1
+                    || arg2_name.as_ref().to_string() != "duration"
+                    || arg2_args.len() != 1
+                {
+                    return None;
+                }
+
+                #[allow(
+                    clippy::indexing_slicing,
+                    reason = "arg1_args.len() == 1 thus indexing by 0 should not panic"
+                )]
+                let dt = datetime::Datetime::parse(arg1_args[0].as_string()?.as_str())?;
+                #[allow(
+                    clippy::indexing_slicing,
+                    reason = "arg2_args.len() == 1 thus indexing by 0 should not panic"
+                )]
+                let d = datetime::Duration::parse(arg2_args[0].as_string()?.as_str())?;
+                Some(Ext::Datetime { dt: dt.offset(&d)? }.into())
+            }
+            ("ip", &[arg]) => Some(
+                Ext::Ipaddr {
+                    ip: ipaddr::parse(arg.as_string()?.as_str())?,
+                }
+                .into(),
+            ),
+            _ => None,
         }
     }
 
@@ -135,54 +199,7 @@ impl Term {
             // extension values than Rust SymCC `Term`.
             (ValueKind::ExtensionValue(ext), _) => {
                 let rexp: RestrictedExpr = ext.as_ref().clone().into();
-                let err = Err(SymbolizeError::UnsupportedExtension(ext.clone()));
-                let Some((name, args)) = rexp.as_extn_fn_call() else {
-                    return err;
-                };
-                let args = args.collect::<Vec<_>>();
-
-                // Recover the string representation of supported extension values
-                // and then convert them to corresponding `Term`s.
-                match (name.as_ref().to_string().as_str(), args.as_slice()) {
-                    ("decimal", &[arg]) => {
-                        let Some(s) = arg.as_string() else {
-                            return err;
-                        };
-                        let Some(d) = decimal::parse(s.as_str()) else {
-                            return err;
-                        };
-                        Ok(Ext::Decimal { d }.into())
-                    }
-                    ("duration", &[arg]) => {
-                        let Some(s) = arg.as_string() else {
-                            return err;
-                        };
-                        let Some(d) = datetime::Duration::parse(s.as_str()) else {
-                            return err;
-                        };
-                        Ok(Ext::Duration { d }.into())
-                    }
-                    // TODO: Handle the `datetime(<epoch>).offset(<...>)` representation
-                    ("datetime", &[arg]) => {
-                        let Some(s) = arg.as_string() else {
-                            return err;
-                        };
-                        let Some(dt) = datetime::Datetime::parse(s.as_str()) else {
-                            return err;
-                        };
-                        Ok(Ext::Datetime { dt }.into())
-                    }
-                    ("ip", &[arg]) => {
-                        let Some(s) = arg.as_string() else {
-                            return err;
-                        };
-                        let Some(ip) = ipaddr::parse(s.as_str()) else {
-                            return err;
-                        };
-                        Ok(Ext::Ipaddr { ip }.into())
-                    }
-                    _ => err,
-                }
+                Self::from_ext_value(&rexp).ok_or(SymbolizeError::UnsupportedExtension(ext.clone()))
             }
             _ => Err(SymbolizeError::UnableToSymbolizeValue(v.clone())),
         }
@@ -195,7 +212,7 @@ impl SymRequest {
     /// Corresponds to `Request.symbolize?` in Lean, although
     /// directly returning a `SymRequest` instead of a variable
     /// interpretation.
-    pub fn from_request(env: &Environment<'_>, req: &Request) -> Result<Self, SymbolizeError> {
+    fn from_request(env: &Environment<'_>, req: &Request) -> Result<Self, SymbolizeError> {
         let context = match req
             .context()
             .ok_or(SymbolizeError::PartialRequest)?
@@ -380,7 +397,7 @@ impl SymEntityData {
     /// - `Entities.symbolizeAttrs?`
     /// - `Entities.symbolizeAncs?`
     /// - `Entities.symbolizeTags?`
-    pub fn from_entities(
+    fn from_entities(
         sym_env: &SymEnv,
         ety: &EntityType,
         entry: &EntitySchemaEntry,
@@ -434,10 +451,7 @@ impl SymEntities {
     ///
     /// Corresponds to `Entities.symbolize?` in Lean, but directly
     /// returning a `SymEntities` instead of an [`UUF`] interpretation.
-    pub fn from_entities(
-        env: &Environment<'_>,
-        entities: &Entities,
-    ) -> Result<Self, SymbolizeError> {
+    fn from_entities(env: &Environment<'_>, entities: &Entities) -> Result<Self, SymbolizeError> {
         let schema = env.schema();
 
         // Create a symbolic environment so that we can compute the default literals.
@@ -479,12 +493,15 @@ impl SymEnv {
     /// Corresponds to `Env.symbolize?` in Lean, but directly
     /// returning a [`SymEnv`] instead of an [`super::Interpretation`].
     pub fn from_concrete_env(
-        type_env: &Environment<'_>,
+        req_env: &RequestEnv,
+        schema: &Schema,
         env: &Env,
     ) -> Result<Self, SymbolizeError> {
+        let type_env = Environment::from_request_env(req_env, schema.as_ref())
+            .ok_or(SymbolizeError::IllFormedTypeEnv)?;
         Ok(SymEnv {
-            request: SymRequest::from_request(type_env, &env.request)?,
-            entities: SymEntities::from_entities(type_env, &env.entities)?,
+            request: SymRequest::from_request(&type_env, &env.request)?,
+            entities: SymEntities::from_entities(&type_env, &env.entities)?,
         })
     }
 }
