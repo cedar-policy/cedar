@@ -184,7 +184,7 @@ impl SymEntityData {
                 let attrs_uuf = Uuf(op::Uuf {
                     id: format!("attrs[{ety}]"),
                     arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
-                    out: TermType::of_type(record(sch.attrs))?,
+                    out: TermType::of_type(&record(sch.attrs))?,
                 });
                 let ancs_uuf = |anc_ty: &EntityType| {
                     Uuf(op::Uuf {
@@ -203,7 +203,7 @@ impl SymEntityData {
                         vals: Uuf(op::Uuf {
                             id: format!("tagVals[{ety}]"),
                             arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
-                            out: TermType::of_type(tag_ty)?,
+                            out: TermType::of_type(&tag_ty)?,
                         }),
                     })
                 };
@@ -384,7 +384,7 @@ impl SymRequest {
             }),
             context: Term::Var(TermVar {
                 id: "context".to_string(),
-                ty: TermType::of_type(record(req_ty.context.clone()))?,
+                ty: TermType::of_type(&record(req_ty.context.clone()))?,
             }),
         })
     }
