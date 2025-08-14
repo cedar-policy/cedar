@@ -24,6 +24,9 @@ jobs:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const tag = context.ref.replace('refs/tags/', '');
+            const version = tag.replace('v', '');
+            const [major, minor] = version.split('.');
+            const releaseBranch = `release/${major}.${minor}.x`;
             await github.rest.git.createRef({
               owner: context.repo.owner,
               repo: 'cedar-spec',
@@ -31,7 +34,7 @@ jobs:
               sha: (await github.rest.repos.getBranch({
                 owner: context.repo.owner,
                 repo: 'cedar-spec',
-                branch: 'main'
+                branch: releaseBranch
               })).data.commit.sha
             });
 
@@ -41,6 +44,9 @@ jobs:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const tag = context.ref.replace('refs/tags/', '');
+            const version = tag.replace('v', '');
+            const [major, minor] = version.split('.');
+            const releaseBranch = `release/${major}.${minor}.x`;
             await github.rest.git.createRef({
               owner: context.repo.owner,
               repo: 'cedar-integration-tests',
@@ -48,7 +54,7 @@ jobs:
               sha: (await github.rest.repos.getBranch({
                 owner: context.repo.owner,
                 repo: 'cedar-integration-tests',
-                branch: 'main'
+                branch: releaseBranch
               })).data.commit.sha
             });
 
