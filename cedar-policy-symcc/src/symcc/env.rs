@@ -271,7 +271,7 @@ impl SymEntityData {
                         .filter_map(|anc| term_of_type(anc_ty.clone(), anc.clone()))
                         .collect(),
                 ),
-                elts_ty: TermType::set_of(entity(anc_ty.clone())),
+                elts_ty: entity(anc_ty.clone()),
             }
         };
         let ancs_udf = |anc_ty: &EntityType| -> UnaryFunction {
@@ -289,7 +289,7 @@ impl SymEntityData {
                     .collect(),
                 default: Term::Set {
                     elts: Arc::new(BTreeSet::new()),
-                    elts_ty: TermType::set_of(entity(anc_ty.clone())),
+                    elts_ty: entity(anc_ty.clone()),
                 },
             })
         };
