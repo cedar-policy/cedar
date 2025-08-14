@@ -29,8 +29,8 @@ use cedar_policy::{
 use cedar_policy_core::{ast::RequestSchema, extensions::Extensions};
 use cedar_policy_symcc::{
     compile_always_allows, compile_always_denies, compile_disjoint, compile_equivalent,
-    compile_implies, compile_never_errors, solver::Solver, CedarSymCompiler, Env, SymEnv,
-    WellTypedPolicies, WellTypedPolicy,
+    compile_implies, compile_never_errors, solver::Solver, CedarSymCompiler, Env, Interpretation,
+    SymEnv, WellTypedPolicies, WellTypedPolicy,
 };
 
 #[track_caller]
@@ -157,6 +157,14 @@ pub async fn assert_never_errors_ok<S: Solver>(
         let asserts = compile_never_errors(&typed_policy, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
+    } else {
+        // Test that the default interpretation does satisfy the property
+        let interp = Interpretation::default(&envs.symenv);
+        let literal_symenv = envs.symenv.interpret(&interp);
+        let asserts = compile_never_errors(&typed_policy, &literal_symenv).unwrap();
+        // There should be some literal false in the assertions
+        assert!(asserts.asserts().iter().all(|t| t.is_literal()));
+        assert!(asserts.asserts().iter().any(|t| t == &false.into()));
     }
 
     res
@@ -201,6 +209,14 @@ pub async fn assert_always_allows_ok<S: Solver>(
         let asserts = compile_always_allows(&typed_pset, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
+    } else {
+        // Test that the default interpretation does satisfy the property
+        let interp = Interpretation::default(&envs.symenv);
+        let literal_symenv = envs.symenv.interpret(&interp);
+        let asserts = compile_always_allows(&typed_pset, &literal_symenv).unwrap();
+        // There should be some literal false in the assertions
+        assert!(asserts.asserts().iter().all(|t| t.is_literal()));
+        assert!(asserts.asserts().iter().any(|t| t == &false.into()));
     }
 
     res
@@ -256,6 +272,14 @@ pub async fn assert_always_denies_ok<S: Solver>(
         let asserts = compile_always_denies(&typed_pset, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
+    } else {
+        // Test that the default interpretation does satisfy the property
+        let interp = Interpretation::default(&envs.symenv);
+        let literal_symenv = envs.symenv.interpret(&interp);
+        let asserts = compile_always_denies(&typed_pset, &literal_symenv).unwrap();
+        // There should be some literal false in the assertions
+        assert!(asserts.asserts().iter().all(|t| t.is_literal()));
+        assert!(asserts.asserts().iter().any(|t| t == &false.into()));
     }
 
     res
@@ -314,6 +338,14 @@ pub async fn assert_equivalent_ok<S: Solver>(
         let asserts = compile_equivalent(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
+    } else {
+        // Test that the default interpretation does satisfy the property
+        let interp = Interpretation::default(&envs.symenv);
+        let literal_symenv = envs.symenv.interpret(&interp);
+        let asserts = compile_equivalent(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        // There should be some literal false in the assertions
+        assert!(asserts.asserts().iter().all(|t| t.is_literal()));
+        assert!(asserts.asserts().iter().any(|t| t == &false.into()));
     }
 
     res
@@ -374,6 +406,14 @@ pub async fn assert_implies_ok<S: Solver>(
         let asserts = compile_implies(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
+    } else {
+        // Test that the default interpretation does satisfy the property
+        let interp = Interpretation::default(&envs.symenv);
+        let literal_symenv = envs.symenv.interpret(&interp);
+        let asserts = compile_implies(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        // There should be some literal false in the assertions
+        assert!(asserts.asserts().iter().all(|t| t.is_literal()));
+        assert!(asserts.asserts().iter().any(|t| t == &false.into()));
     }
 
     res
@@ -434,6 +474,14 @@ pub async fn assert_disjoint_ok<S: Solver>(
         let asserts = compile_disjoint(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
+    } else {
+        // Test that the default interpretation does satisfy the property
+        let interp = Interpretation::default(&envs.symenv);
+        let literal_symenv = envs.symenv.interpret(&interp);
+        let asserts = compile_disjoint(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        // There should be some literal false in the assertions
+        assert!(asserts.asserts().iter().all(|t| t.is_literal()));
+        assert!(asserts.asserts().iter().any(|t| t == &false.into()));
     }
 
     res
