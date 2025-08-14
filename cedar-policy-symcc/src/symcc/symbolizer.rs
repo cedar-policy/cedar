@@ -18,7 +18,9 @@
 //! concrete Cedar values, requests, and entities to
 //! (literal) symbolic terms or environments.
 
-use cedar_policy_core::ast::{Literal, Value, ValueKind};
+use std::sync::Arc;
+
+use cedar_policy_core::ast::{Literal, RepresentableExtensionValue, Value, ValueKind};
 use cedar_policy_core::validator::types::{EntityRecordKind, OpenTag, Type};
 use miette::Diagnostic;
 use thiserror::Error;
@@ -37,6 +39,8 @@ pub enum SymbolizeError {
     UnableToSymbolizeValue(Value),
     #[error("compile error")]
     CompileError(#[from] CompileError),
+    #[error("unsupported extension value: {0:?}")]
+    UnsupportedExtension(Arc<RepresentableExtensionValue>),
 }
 
 impl Term {
@@ -101,8 +105,81 @@ impl Term {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(factory::record_of(attrs))
             }
-            (ValueKind::ExtensionValue(_), _) => todo!("symbolizing extension values"),
+            // TODO: Support extension values.
+            // This branch would be more complicated than the Lean version,
+            // since `Value` in Rust Cedar uses a different representation for
+            // extension values than Rust SymCC `Term`.
+            (ValueKind::ExtensionValue(ext), _) => {
+                Err(SymbolizeError::UnsupportedExtension(ext.clone()))
+            }
             _ => Err(SymbolizeError::UnableToSymbolizeValue(v.clone())),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+
+    use cedar_policy_core::ast::{EntityType, EntityUIDEntry, Expr, Request, SlotEnv};
+    use cedar_policy_core::entities::Entities;
+    use cedar_policy_core::evaluator::Evaluator;
+    use cedar_policy_core::extensions::Extensions;
+    use cedar_policy_core::validator::ValidatorSchema;
+
+    use super::*;
+
+    fn parse_value(s: &str) -> Value {
+        let expr = Expr::from_str(s).unwrap();
+        let dummy_request = Request::new_with_unknowns::<ValidatorSchema>(
+            EntityUIDEntry::unknown(),
+            EntityUIDEntry::unknown(),
+            EntityUIDEntry::unknown(),
+            None,
+            None,
+            Extensions::all_available(),
+        )
+        .unwrap();
+        let entities = Entities::new();
+        let eval = Evaluator::new(dummy_request, &entities, Extensions::all_available());
+        eval.interpret(&expr, &SlotEnv::new()).unwrap()
+    }
+
+    fn parse_type(s: &str) -> Type {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            &format!("entity A; entity _ {{ x: {s} }};"),
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+        let ety = schema
+            .get_entity_type(&EntityType::from_str("_").unwrap())
+            .unwrap();
+        ety.attr("x").unwrap().attr_type.clone()
+    }
+
+    fn assert_from_value_roundtrip_eq(v: &str, ty: &str) {
+        let v = parse_value(v);
+        let ty = parse_type(ty);
+        assert_eq!(
+            Value::try_from(&Term::from_value(&v, &ty).unwrap()).unwrap(),
+            v
+        );
+    }
+
+    /// Symbolizer should be a right-inverse of the concretizer.
+    #[test]
+    fn test_from_value_roundtrip() {
+        assert_from_value_roundtrip_eq("1", "Long");
+        assert_from_value_roundtrip_eq("true", "Bool");
+        assert_from_value_roundtrip_eq("false", "Bool");
+        assert_from_value_roundtrip_eq("\"hello\"", "String");
+        assert_from_value_roundtrip_eq("{ a: 10 }", "{ a: Long }");
+        assert_from_value_roundtrip_eq("{ a: 10 }", "{ a?: Long }");
+        assert_from_value_roundtrip_eq("{ a: 10, b: \"hello\" }", "{ a?: Long, b: String }");
+        assert_from_value_roundtrip_eq("{ a: 10, b: \"hello\" }", "{ b?: String, a?: Long }");
+        assert_from_value_roundtrip_eq("[ \"a\", \"b\", \"a\" ]", "Set<String>");
+        assert_from_value_roundtrip_eq("[ true, false, true, false, false ]", "Set<Bool>");
+        assert_from_value_roundtrip_eq("[ A::\"alice\", A::\"bob\" ]", "Set<A>");
     }
 }
