@@ -243,7 +243,7 @@ impl SymEntityData {
         }
     }
 
-    fn of_action_type<'a>(
+    pub fn of_action_type<'a>(
         act_ty: &EntityType,
         act_tys: impl IntoIterator<Item = &'a EntityType>,
         schema: &ValidatorSchema,
@@ -428,19 +428,21 @@ fn record(attrs: Attributes) -> Type {
 }
 
 // From `Validation/Types.lean`
-struct StandardEntitySchemaEntry {
-    ancestors: BTreeSet<EntityType>,
-    attrs: Attributes,
-    tags: Option<Type>,
+#[derive(Debug)]
+pub struct StandardEntitySchemaEntry {
+    pub ancestors: BTreeSet<EntityType>,
+    pub attrs: Attributes,
+    pub tags: Option<Type>,
 }
 
-enum EntitySchemaEntry {
+#[derive(Debug)]
+pub enum EntitySchemaEntry {
     Standard(StandardEntitySchemaEntry),
     Enum(BTreeSet<SmolStr>),
 }
 
 impl EntitySchemaEntry {
-    fn of_schema(
+    pub fn of_schema(
         ety: &EntityType,
         validator_ety: &ValidatorEntityType,
         schema: &ValidatorSchema,
@@ -553,6 +555,10 @@ impl<'a> Environment<'a> {
                 context: context_attributes(schema.get_action_id(renv.action().as_ref())?).ok()?,
             },
         })
+    }
+
+    pub fn schema(&self) -> &'a ValidatorSchema {
+        self.schema
     }
 
     /// Returns the type of the context.

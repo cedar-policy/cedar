@@ -18,22 +18,29 @@
 //! concrete Cedar values, requests, and entities to
 //! (literal) symbolic terms or environments.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use cedar_policy::Request;
+use cedar_policy::entities_errors::EntitiesError;
+use cedar_policy::{Entities, Request};
 use cedar_policy_core::ast::{
-    Context, Literal, RepresentableExtensionValue, RestrictedExpr, Value, ValueKind,
+    Context, Literal, PartialValue, RepresentableExtensionValue, StaticallyTyped, Value, ValueKind,
 };
 use cedar_policy_core::validator::types::{EntityRecordKind, OpenTag, Type};
 use miette::Diagnostic;
 use thiserror::Error;
 
-use super::env::SymRequest;
+use crate::symcc::env::{EntitySchemaEntry, SymEntityData};
+use crate::symcc::function::{self, Udf, UnaryFunction};
+use crate::type_abbrevs::core_entity_type_into_entity_type;
+
+use super::env::{StandardEntitySchemaEntry, SymEntities, SymRequest};
+use super::tags::SymTags;
 use super::term::Term;
 use super::term_type::TermType;
-use super::type_abbrevs::EntityUID;
-use super::CompileError;
-use super::{factory, Environment};
+use super::type_abbrevs::{core_uid_into_uid, EntityType, EntityUID};
+use super::{factory, Env, Environment};
+use super::{CompileError, SymEnv};
 
 /// Errors that happen when converting concrete
 /// values to symbolic terms
@@ -47,6 +54,10 @@ pub enum SymbolizeError {
     UnsupportedExtension(Arc<RepresentableExtensionValue>),
     #[error("partial request not supported")]
     PartialRequest,
+    #[error("entities error")]
+    EntitiesError(#[from] EntitiesError),
+    #[error("partial value not supported")]
+    PartialValue,
 }
 
 impl Term {
@@ -129,7 +140,10 @@ impl Term {
 
 impl SymRequest {
     /// Converts a concrete [`Request`] to [`SymRequest`].
-    /// Corresponds to `Request.symbolize?` in Lean.
+    ///
+    /// Corresponds to `Request.symbolize?` in Lean, although
+    /// directly returning a `SymRequest` instead of a variable
+    /// interpretation.
     pub fn from_request(env: &Environment<'_>, req: &Request) -> Result<Self, SymbolizeError> {
         let context = match req
             .context()
@@ -163,6 +177,263 @@ impl SymRequest {
                     .into(),
             ),
             context: Term::from_value(&context, &env.context_type())?,
+        })
+    }
+}
+
+impl SymEntityData {
+    /// Implements `Entities.symbolizeAttrs?` in Lean
+    fn symbolize_attrs(
+        sym_env: &SymEnv,
+        ety: &EntityType,
+        sch: &StandardEntitySchemaEntry,
+        entities: &Entities,
+    ) -> Result<UnaryFunction, SymbolizeError> {
+        let attr_udf_out_ty = Type::EntityOrRecord(EntityRecordKind::Record {
+            attrs: sch.attrs.clone(),
+            open_attributes: OpenTag::ClosedAttributes,
+        });
+        let attrs_udf_out = TermType::of_type(&attr_udf_out_ty)?;
+        let attrs_udf_default = attrs_udf_out.default_literal(sym_env);
+
+        let mut attrs_udf_table = BTreeMap::new();
+        for ent in entities.iter() {
+            if ent.uid().type_name() == ety {
+                // Check if there's any partial attributes
+                let attrs = ent
+                    .as_ref()
+                    .attrs()
+                    .map(|(attr, attr_val)| match attr_val {
+                        PartialValue::Value(v) => Ok((attr.clone(), v.clone())),
+                        PartialValue::Residual(..) => Err(SymbolizeError::PartialValue),
+                    })
+                    .collect::<Result<BTreeMap<_, _>, _>>()?;
+                attrs_udf_table.insert(
+                    ent.uid().clone().into(),
+                    Term::from_value(&Value::record_arc(Arc::new(attrs), None), &attr_udf_out_ty)?,
+                );
+            }
+        }
+
+        Ok(UnaryFunction::Udf(function::Udf {
+            arg: TermType::Entity { ety: ety.clone() },
+            out: attrs_udf_out,
+            table: attrs_udf_table,
+            default: attrs_udf_default,
+        }))
+    }
+
+    /// Implements `Entities.symbolizeAncs?` in Lean
+    fn symbolize_ancs(
+        sym_env: &SymEnv,
+        ety: &EntityType,
+        anc_ty: &EntityType,
+        entities: &Entities,
+    ) -> Result<UnaryFunction, SymbolizeError> {
+        let anc_term_ty = TermType::Entity {
+            ety: anc_ty.clone(),
+        };
+        let mut ancs_udf_table = BTreeMap::new();
+
+        for ent in entities.iter() {
+            if ent.uid().type_name() == ety {
+                let anc_terms = ent.as_ref().ancestors().filter_map(|anc| {
+                    if anc.entity_type() == anc_ty.as_ref() {
+                        Some(core_uid_into_uid(anc).clone().into())
+                    } else {
+                        None
+                    }
+                });
+
+                ancs_udf_table.insert(
+                    ent.uid().clone().into(),
+                    factory::set_of(anc_terms, anc_term_ty.clone()),
+                );
+            }
+        }
+
+        let ancs_udf_out = TermType::set_of(anc_term_ty);
+        let ancs_udf_default = ancs_udf_out.default_literal(sym_env);
+
+        Ok(UnaryFunction::Udf(function::Udf {
+            arg: TermType::Entity { ety: ety.clone() },
+            out: ancs_udf_out,
+            table: ancs_udf_table,
+            default: ancs_udf_default,
+        }))
+    }
+
+    /// Implements `Entities.symbolizeTags?` in Lean
+    fn symbolize_tags(
+        sym_env: &SymEnv,
+        ety: &EntityType,
+        tag_ty: &Type,
+        entities: &Entities,
+    ) -> Result<SymTags, SymbolizeError> {
+        let keys_udf_out = TermType::set_of(TermType::String);
+        let vals_udf_out = TermType::of_type(tag_ty)?;
+
+        let keys_udf_default = keys_udf_out.default_literal(sym_env);
+        let vals_udf_default = vals_udf_out.default_literal(sym_env);
+
+        let mut keys_udf_table = BTreeMap::new();
+        let mut vals_udf_table = BTreeMap::new();
+
+        // `Entities.symbolizeTags?.keysUDF`
+        for ent in entities.iter() {
+            if ent.uid().type_name() == ety {
+                keys_udf_table.insert(
+                    ent.uid().clone().into(),
+                    factory::set_of(
+                        ent.as_ref().tag_keys().map(|s| s.clone().into()),
+                        TermType::String,
+                    ),
+                );
+            }
+        }
+
+        // `Entities.symbolizeTags?.valsUDF`
+        for ent in entities.iter() {
+            if ent.uid().type_name() == ety {
+                for (key, val) in ent.as_ref().tags() {
+                    let PartialValue::Value(val) = val else {
+                        return Err(SymbolizeError::PartialValue);
+                    };
+                    vals_udf_table.insert(
+                        factory::tag_of(ent.uid().clone().into(), key.clone().into()),
+                        Term::from_value(val, tag_ty)?,
+                    );
+                }
+            }
+        }
+
+        Ok(SymTags {
+            keys: UnaryFunction::Udf(function::Udf {
+                arg: TermType::Entity { ety: ety.clone() }, // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
+                out: TermType::set_of(TermType::String),
+                table: keys_udf_table,
+                default: keys_udf_default,
+            }),
+            vals: UnaryFunction::Udf(function::Udf {
+                arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
+                out: TermType::of_type(&tag_ty)?,
+                table: vals_udf_table,
+                default: vals_udf_default,
+            }),
+        })
+    }
+
+    /// Encodes a literal [`SymEntityData`] from the given entities.
+    ///
+    /// Corresponds to these Lean functions:
+    /// - `Entities.symbolizeAttrs?`
+    /// - `Entities.symbolizeAncs?`
+    /// - `Entities.symbolizeTags?`
+    pub fn from_entities(
+        sym_env: &SymEnv,
+        ety: &EntityType,
+        entry: &EntitySchemaEntry,
+        entities: &Entities,
+    ) -> Result<Self, SymbolizeError> {
+        match entry {
+            EntitySchemaEntry::Standard(sch) => Ok(SymEntityData {
+                attrs: Self::symbolize_attrs(sym_env, ety, sch, entities)?,
+                ancestors: sch
+                    .ancestors
+                    .iter()
+                    .map(|anc_ty| {
+                        Ok::<_, SymbolizeError>((
+                            anc_ty.clone(),
+                            Self::symbolize_ancs(sym_env, ety, anc_ty, entities)?,
+                        ))
+                    })
+                    .collect::<Result<_, _>>()?,
+                members: None,
+                tags: if let Some(tag_ty) = &sch.tags {
+                    Some(Self::symbolize_tags(sym_env, ety, tag_ty, entities)?)
+                } else {
+                    None
+                },
+            }),
+
+            EntitySchemaEntry::Enum(eids) => {
+                // Same as `SymEntityData::of_entity_type` since it does not
+                // contain `UUF`s or variables.
+                let attrs_udf = UnaryFunction::Udf(function::Udf {
+                    arg: TermType::Entity { ety: ety.clone() },
+                    out: TermType::Record {
+                        rty: Arc::new(BTreeMap::new()),
+                    },
+                    table: BTreeMap::new(),
+                    default: Term::Record(Arc::new(BTreeMap::new())),
+                });
+                Ok(SymEntityData {
+                    attrs: attrs_udf,
+                    ancestors: BTreeMap::new(),
+                    members: Some(eids.iter().map(|s| s.to_string()).collect()),
+                    tags: None,
+                })
+            }
+        }
+    }
+}
+
+impl SymEntities {
+    /// Converts a concrete [`Entities`] to [`SymEntities`].
+    ///
+    /// Corresponds to `Entities.symbolize?` in Lean, but directly
+    /// returning a `SymEntities` instead of an [`UUF`] interpretation.
+    pub fn from_entities(
+        env: &Environment<'_>,
+        entities: &Entities,
+    ) -> Result<Self, SymbolizeError> {
+        let schema = env.schema();
+
+        // Create a symbolic environment so that we can compute the default literals.
+        let sym_env = SymEnv::of_env(env)?;
+
+        let entities = schema.entity_types().map(|ent| {
+            let ety = core_entity_type_into_entity_type(ent.name());
+            let entry = EntitySchemaEntry::of_schema(ety, ent, schema);
+            SymEntityData::from_entities(&sym_env, ety, &entry, entities)
+                .map(|sym_edata| (ety.clone(), sym_edata))
+        });
+
+        // Action entities are compiled the same way as `SymEntities::of_schema`,
+        // since they do not contain `UUF`s or variables.
+        let acts = schema.action_entities()?;
+        let act_tys = acts
+            .iter()
+            .map(|act| core_entity_type_into_entity_type(act.uid().entity_type()))
+            .collect::<BTreeSet<_>>();
+        let actions = act_tys.iter().map(|&act_ty| {
+            Ok((
+                act_ty.clone(),
+                SymEntityData::of_action_type(act_ty, act_tys.clone(), schema),
+            ))
+        });
+
+        Ok(SymEntities(
+            entities
+                .into_iter()
+                .chain(actions)
+                .collect::<Result<_, _>>()?,
+        ))
+    }
+}
+
+impl SymEnv {
+    /// Converts a concrete [`Env`] to [`SymEnv`].
+    ///
+    /// Corresponds to `Env.symbolize?` in Lean, but directly
+    /// returning a [`SymEnv`] instead of an [`super::Interpretation`].
+    pub fn from_concrete_env(
+        type_env: &Environment<'_>,
+        env: &Env,
+    ) -> Result<Self, SymbolizeError> {
+        Ok(SymEnv {
+            request: SymRequest::from_request(type_env, &env.request)?,
+            entities: SymEntities::from_entities(type_env, &env.entities)?,
         })
     }
 }
