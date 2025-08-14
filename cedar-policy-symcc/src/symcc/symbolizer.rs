@@ -24,17 +24,20 @@ use std::sync::Arc;
 use cedar_policy::entities_errors::EntitiesError;
 use cedar_policy::{Entities, Request};
 use cedar_policy_core::ast::{
-    Context, Literal, PartialValue, RepresentableExtensionValue, StaticallyTyped, Value, ValueKind,
+    Context, Literal, PartialValue, RepresentableExtensionValue, RestrictedExpr, Value, ValueKind,
 };
 use cedar_policy_core::validator::types::{EntityRecordKind, OpenTag, Type};
 use miette::Diagnostic;
 use thiserror::Error;
 
+use crate::extension_types::decimal;
 use crate::symcc::env::{EntitySchemaEntry, SymEntityData};
-use crate::symcc::function::{self, Udf, UnaryFunction};
+use crate::symcc::function::{self, UnaryFunction};
 use crate::type_abbrevs::core_entity_type_into_entity_type;
 
 use super::env::{StandardEntitySchemaEntry, SymEntities, SymRequest};
+use super::ext::Ext;
+use super::extension_types::{datetime, ipaddr};
 use super::tags::SymTags;
 use super::term::Term;
 use super::term_type::TermType;
@@ -131,7 +134,55 @@ impl Term {
             // since `Value` in Rust Cedar uses a different representation for
             // extension values than Rust SymCC `Term`.
             (ValueKind::ExtensionValue(ext), _) => {
-                Err(SymbolizeError::UnsupportedExtension(ext.clone()))
+                let rexp: RestrictedExpr = ext.as_ref().clone().into();
+                let err = Err(SymbolizeError::UnsupportedExtension(ext.clone()));
+                let Some((name, args)) = rexp.as_extn_fn_call() else {
+                    return err;
+                };
+                let args = args.collect::<Vec<_>>();
+
+                // Recover the string representation of supported extension values
+                // and then convert them to corresponding `Term`s.
+                match (name.as_ref().to_string().as_str(), args.as_slice()) {
+                    ("decimal", &[arg]) => {
+                        let Some(s) = arg.as_string() else {
+                            return err;
+                        };
+                        let Some(d) = decimal::parse(s.as_str()) else {
+                            return err;
+                        };
+                        Ok(Ext::Decimal { d }.into())
+                    }
+                    ("duration", &[arg]) => {
+                        let Some(s) = arg.as_string() else {
+                            return err;
+                        };
+                        let Some(d) = datetime::Duration::parse(s.as_str()) else {
+                            return err;
+                        };
+                        Ok(Ext::Duration { d }.into())
+                    }
+                    // TODO: Handle the `datetime(<epoch>).offset(<...>)` representation
+                    ("datetime", &[arg]) => {
+                        let Some(s) = arg.as_string() else {
+                            return err;
+                        };
+                        let Some(dt) = datetime::Datetime::parse(s.as_str()) else {
+                            return err;
+                        };
+                        Ok(Ext::Datetime { dt }.into())
+                    }
+                    ("ip", &[arg]) => {
+                        let Some(s) = arg.as_string() else {
+                            return err;
+                        };
+                        let Some(ip) = ipaddr::parse(s.as_str()) else {
+                            return err;
+                        };
+                        Ok(Ext::Ipaddr { ip }.into())
+                    }
+                    _ => err,
+                }
             }
             _ => Err(SymbolizeError::UnableToSymbolizeValue(v.clone())),
         }
@@ -325,7 +376,7 @@ impl SymEntityData {
 
     /// Encodes a literal [`SymEntityData`] from the given entities.
     ///
-    /// Corresponds to these Lean functions:
+    /// Corresponds to a combination of these Lean functions:
     /// - `Entities.symbolizeAttrs?`
     /// - `Entities.symbolizeAncs?`
     /// - `Entities.symbolizeTags?`
@@ -502,5 +553,10 @@ mod test {
         assert_from_value_roundtrip_eq("[ \"a\", \"b\", \"a\" ]", "Set<String>");
         assert_from_value_roundtrip_eq("[ true, false, true, false, false ]", "Set<Bool>");
         assert_from_value_roundtrip_eq("[ A::\"alice\", A::\"bob\" ]", "Set<A>");
+        assert_from_value_roundtrip_eq("decimal(\"123.32\")", "decimal");
+        assert_from_value_roundtrip_eq("duration(\"1212312324ms\")", "duration");
+        assert_from_value_roundtrip_eq("datetime(\"2025-08-14\")", "datetime");
+        assert_from_value_roundtrip_eq("ip(\"192.6.6.6/12\")", "ipaddr");
+        assert_from_value_roundtrip_eq("ip(\"::1/12\")", "ipaddr");
     }
 }
