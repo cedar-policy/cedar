@@ -27,7 +27,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 - Bumped MSRV to 1.85 (#1683)
 
-## [4.5.1] - Coming soon
+## [4.5.1] - 2025-08-14
 
 Cedar Language Version: 4.4
 
