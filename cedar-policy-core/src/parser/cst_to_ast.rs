@@ -53,7 +53,7 @@ use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 /// Defines the function `cst::Expr::to_ref_or_refs` and other similar functions
 /// for converting CST expressions into one or multiple entity UIDS. Used to
@@ -77,9 +77,9 @@ struct ExtStyles<'a> {
 }
 
 // Store extension function call styles
-lazy_static::lazy_static! {
-    static ref EXTENSION_STYLES: ExtStyles<'static> = load_styles();
-}
+
+static EXTENSION_STYLES: LazyLock<ExtStyles<'static>> = LazyLock::new(|| load_styles());
+
 fn load_styles() -> ExtStyles<'static> {
     let mut functions = HashSet::new();
     let mut methods = HashSet::new();

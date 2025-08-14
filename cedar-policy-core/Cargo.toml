@@ -17,7 +17,6 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 serde_with = { version = "3.13", features = ["json"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 lalrpop-util = { version = "0.22.2", features = ["lexer"] }
-lazy_static = "1.4"
 either = "1.15"
 itertools = "0.14"
 ref-cast = "1.0"

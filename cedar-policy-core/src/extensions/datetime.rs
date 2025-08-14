@@ -18,10 +18,6 @@
 use std::{fmt::Display, sync::Arc};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
-use constants::{
-    DATETIME_CONSTRUCTOR_NAME, DATE_PATTERN, DURATION_CONSTRUCTOR_NAME, DURATION_PATTERN,
-    DURATION_SINCE_NAME, HMS_PATTERN, MS_AND_OFFSET_PATTERN, OFFSET_METHOD_NAME, TO_DATE_NAME,
-};
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -42,33 +38,55 @@ const DATETIME_EXTENSION_NAME: &str = "datetime";
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod constants {
     use regex::Regex;
+    use std::sync::LazyLock;
 
     use crate::{ast::Name, extensions::datetime::DATETIME_EXTENSION_NAME};
 
-    lazy_static::lazy_static! {
-        pub static ref DATETIME_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name(DATETIME_EXTENSION_NAME).expect("should be a valid identifier");
-        pub static ref DURATION_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name("duration").expect("should be a valid identifier");
-        pub static ref OFFSET_METHOD_NAME : Name = Name::parse_unqualified_name("offset").expect("should be a valid identifier");
-        pub static ref DURATION_SINCE_NAME : Name = Name::parse_unqualified_name("durationSince").expect("should be a valid identifier");
-        pub static ref TO_DATE_NAME : Name = Name::parse_unqualified_name("toDate").expect("should be a valid identifier");
-        pub static ref TO_TIME_NAME : Name = Name::parse_unqualified_name("toTime").expect("should be a valid identifier");
-        pub static ref TO_MILLISECONDS_NAME : Name = Name::parse_unqualified_name("toMilliseconds").expect("should be a valid identifier");
-        pub static ref TO_SECONDS_NAME : Name = Name::parse_unqualified_name("toSeconds").expect("should be a valid identifier");
-        pub static ref TO_MINUTES_NAME : Name = Name::parse_unqualified_name("toMinutes").expect("should be a valid identifier");
-        pub static ref TO_HOURS_NAME : Name = Name::parse_unqualified_name("toHours").expect("should be a valid identifier");
-        pub static ref TO_DAYS_NAME : Name = Name::parse_unqualified_name("toDays").expect("should be a valid identifier");
-    }
+    pub static DATETIME_CONSTRUCTOR_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(DATETIME_EXTENSION_NAME).expect("should be a valid identifier")
+    });
+    pub static DURATION_CONSTRUCTOR_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("duration").expect("should be a valid identifier")
+    });
+    pub static OFFSET_METHOD_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("offset").expect("should be a valid identifier")
+    });
+    pub static DURATION_SINCE_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("durationSince").expect("should be a valid identifier")
+    });
+    pub static TO_DATE_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("toDate").expect("should be a valid identifier")
+    });
+    pub static TO_TIME_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("toTime").expect("should be a valid identifier")
+    });
+    pub static TO_MILLISECONDS_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("toMilliseconds").expect("should be a valid identifier")
+    });
+    pub static TO_SECONDS_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("toSeconds").expect("should be a valid identifier")
+    });
+    pub static TO_MINUTES_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("toMinutes").expect("should be a valid identifier")
+    });
+    pub static TO_HOURS_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("toHours").expect("should be a valid identifier")
+    });
+    pub static TO_DAYS_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("toDays").expect("should be a valid identifier")
+    });
 
     // Global regex, initialized at first use
     // PANIC SAFETY: These are valid `Regex`
-    lazy_static::lazy_static! {
-        pub static ref DURATION_PATTERN: Regex =
-        Regex::new(r"^-?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?$").unwrap();
-        pub static ref DATE_PATTERN: Regex = Regex::new(r"^([0-9]{4})-([0-9]{2})-([0-9]{2})").unwrap();
-        pub static ref HMS_PATTERN: Regex = Regex::new(r"^T([0-9]{2}):([0-9]{2}):([0-9]{2})").unwrap();
-        pub static ref MS_AND_OFFSET_PATTERN: Regex =
-        Regex::new(r"^(\.([0-9]{3}))?(Z|((\+|-)([0-9]{2})([0-9]{2})))$").unwrap();
-    }
+    pub static DURATION_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^-?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?$").unwrap()
+    });
+    pub static DATE_PATTERN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^([0-9]{4})-([0-9]{2})-([0-9]{2})").unwrap());
+    pub static HMS_PATTERN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^T([0-9]{2}):([0-9]{2}):([0-9]{2})").unwrap());
+    pub static MS_AND_OFFSET_PATTERN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(\.([0-9]{3}))?(Z|((\+|-)([0-9]{2})([0-9]{2})))$").unwrap());
 }
 
 // The `datetime` type, represented internally as an `i64`.
@@ -117,11 +135,11 @@ where
 /// Cedar function that constructs a `datetime` Cedar type from a
 /// Cedar string
 fn datetime_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
-    construct_from_str(arg, DATETIME_CONSTRUCTOR_NAME.clone(), |s| {
+    construct_from_str(arg, constants::DATETIME_CONSTRUCTOR_NAME.clone(), |s| {
         parse_datetime(s).map(DateTime::from).map_err(|err| {
             extension_err(
                 err.to_string(),
-                &DATETIME_CONSTRUCTOR_NAME,
+                &constants::DATETIME_CONSTRUCTOR_NAME,
                 err.help().map(|v| v.to_string()),
             )
         })
@@ -163,12 +181,12 @@ where
 
 /// Check that `v` is a datetime type and, if it is, return the wrapped value
 fn as_datetime(v: &Value) -> Result<DateTime, evaluator::EvaluationError> {
-    as_ext(v, &DATETIME_CONSTRUCTOR_NAME).copied()
+    as_ext(v, &constants::DATETIME_CONSTRUCTOR_NAME).copied()
 }
 
 /// Check that `v` is a duration type and, if it is, return the wrapped value
 fn as_duration(v: &Value) -> Result<Duration, evaluator::EvaluationError> {
-    as_ext(v, &DURATION_CONSTRUCTOR_NAME).copied()
+    as_ext(v, &constants::DURATION_CONSTRUCTOR_NAME).copied()
 }
 
 fn offset(datetime: &Value, duration: &Value) -> evaluator::Result<ExtensionOutputValue> {
@@ -181,7 +199,7 @@ fn offset(datetime: &Value, duration: &Value) -> evaluator::Result<ExtensionOutp
                 RestrictedExpr::from(datetime),
                 duration
             ),
-            &OFFSET_METHOD_NAME,
+            &constants::OFFSET_METHOD_NAME,
             None,
         )
     })?;
@@ -202,7 +220,7 @@ fn duration_since(lhs: &Value, rhs: &Value) -> evaluator::Result<ExtensionOutput
                 RestrictedExpr::from(lhs),
                 RestrictedExpr::from(rhs)
             ),
-            &DURATION_SINCE_NAME,
+            &constants::DURATION_SINCE_NAME,
             None,
         )
     })?;
@@ -221,7 +239,7 @@ fn to_date(value: &Value) -> evaluator::Result<ExtensionOutputValue> {
                 "overflows when computing the date of {}",
                 RestrictedExpr::from(d),
             ),
-            &TO_DATE_NAME,
+            &constants::TO_DATE_NAME,
             None,
         )
     })?;
@@ -244,7 +262,7 @@ fn to_time(value: &Value) -> evaluator::Result<ExtensionOutputValue> {
 
 impl ExtensionValue for DateTime {
     fn typename(&self) -> crate::ast::Name {
-        DATETIME_CONSTRUCTOR_NAME.to_owned()
+        constants::DATETIME_CONSTRUCTOR_NAME.to_owned()
     }
     fn supports_operator_overloading(&self) -> bool {
         true
@@ -299,10 +317,10 @@ impl DateTime {
 
     fn as_ext_func_call(self) -> (Name, Vec<RestrictedExpr>) {
         (
-            OFFSET_METHOD_NAME.clone(),
+            constants::OFFSET_METHOD_NAME.clone(),
             vec![
                 RestrictedExpr::call_extension_fn(
-                    DATETIME_CONSTRUCTOR_NAME.clone(),
+                    constants::DATETIME_CONSTRUCTOR_NAME.clone(),
                     vec![Value::from(DateTime::UNIX_EPOCH_STR).into()],
                 ),
                 Duration { ms: self.epoch }.into(),
@@ -354,7 +372,7 @@ impl Display for Duration {
 
 impl ExtensionValue for Duration {
     fn typename(&self) -> crate::ast::Name {
-        DURATION_CONSTRUCTOR_NAME.to_owned()
+        constants::DURATION_CONSTRUCTOR_NAME.to_owned()
     }
     fn supports_operator_overloading(&self) -> bool {
         true
@@ -382,11 +400,11 @@ impl From<Duration> for RepresentableExtensionValue {
 /// Cedar function that constructs a `duration` Cedar type from a
 /// Cedar string
 fn duration_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
-    construct_from_str(arg, DURATION_CONSTRUCTOR_NAME.clone(), |s| {
+    construct_from_str(arg, constants::DURATION_CONSTRUCTOR_NAME.clone(), |s| {
         parse_duration(s).map_err(|err| {
             extension_err(
                 err.to_string(),
-                &DURATION_CONSTRUCTOR_NAME,
+                &constants::DURATION_CONSTRUCTOR_NAME,
                 err.help().map(|v| v.to_string()),
             )
         })
@@ -416,7 +434,7 @@ impl Duration {
 
     fn as_ext_func_call(self) -> (Name, Vec<RestrictedExpr>) {
         (
-            DURATION_CONSTRUCTOR_NAME.clone(),
+            constants::DURATION_CONSTRUCTOR_NAME.clone(),
             vec![Value::from(self.to_string()).into()],
         )
     }
@@ -444,7 +462,7 @@ fn parse_duration(s: &str) -> Result<Duration, DurationParseError> {
     if s.is_empty() || s == "-" {
         return Err(DurationParseError::InvalidPattern);
     }
-    let captures = DURATION_PATTERN
+    let captures = constants::DURATION_PATTERN
         .captures(s)
         .ok_or(DurationParseError::InvalidPattern)?;
     let get_number = |idx| {
@@ -541,7 +559,7 @@ impl Ord for UTCOffset {
 
 fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     // Get date first
-    let (date_str, [year, month, day]) = DATE_PATTERN
+    let (date_str, [year, month, day]) = constants::DATE_PATTERN
         .captures(s)
         .ok_or(DateTimeParseError::InvalidDatePattern)?
         .extract();
@@ -573,7 +591,7 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     // Get hour, minute, and second
     let s = &s[date_str.len()..];
 
-    let (hms_str, [h, m, sec]) = HMS_PATTERN
+    let (hms_str, [h, m, sec]) = constants::HMS_PATTERN
         .captures(s)
         .ok_or(DateTimeParseError::InvalidHMSPattern)?
         .extract();
@@ -584,7 +602,7 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
 
     // Get millisecond and offset
     let s = &s[hms_str.len()..];
-    let captures = MS_AND_OFFSET_PATTERN
+    let captures = constants::MS_AND_OFFSET_PATTERN
         .captures(s)
         .ok_or(DateTimeParseError::InvalidMSOffsetPattern)?;
     let ms: u32 = if captures.get(1).is_some() {
@@ -626,10 +644,10 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
 /// Construct the extension
 pub fn extension() -> Extension {
     let datetime_type = SchemaType::Extension {
-        name: DATETIME_CONSTRUCTOR_NAME.to_owned(),
+        name: constants::DATETIME_CONSTRUCTOR_NAME.to_owned(),
     };
     let duration_type = SchemaType::Extension {
-        name: DURATION_CONSTRUCTOR_NAME.to_owned(),
+        name: constants::DURATION_CONSTRUCTOR_NAME.to_owned(),
     };
     Extension::new(
         constants::DATETIME_CONSTRUCTOR_NAME.clone(),
@@ -713,8 +731,8 @@ pub fn extension() -> Extension {
             ),
         ],
         [
-            DATETIME_CONSTRUCTOR_NAME.clone(),
-            DURATION_CONSTRUCTOR_NAME.clone(),
+            constants::DATETIME_CONSTRUCTOR_NAME.clone(),
+            constants::DURATION_CONSTRUCTOR_NAME.clone(),
         ],
     )
 }

@@ -24,10 +24,11 @@ use std::fmt::{self, Display};
 #[allow(clippy::unwrap_used)]
 pub(crate) mod regex_constants {
     use regex::Regex;
-    lazy_static::lazy_static! {
-        pub static ref COMMENT : Regex = Regex::new(r"//[^\n\r]*").unwrap();
-        pub static ref STRING : Regex = Regex::new(r#""(\\.|[^"\\])*""#).unwrap();
-    }
+    use std::sync::LazyLock;
+
+    pub static COMMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"//[^\n\r]*").unwrap());
+    pub static STRING: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#""(\\.|[^"\\])*""#).unwrap());
 }
 
 pub fn get_comment(text: &str) -> impl Iterator<Item = &str> + std::fmt::Debug {

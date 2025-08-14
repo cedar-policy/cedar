@@ -44,9 +44,11 @@ type UnknownsMapper<'e> = Box<dyn Fn(&str) -> Option<Value> + 'e>;
 #[allow(clippy::expect_used)]
 mod names {
     use super::Name;
-    lazy_static::lazy_static! {
-        pub static ref ANY_ENTITY_TYPE : Name = Name::parse_unqualified_name("any_entity_type").expect("valid identifier");
-    }
+    use std::sync::LazyLock;
+
+    pub static ANY_ENTITY_TYPE: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("any_entity_type").expect("valid identifier")
+    });
 }
 
 /// Apply a `UnaryOp` to `arg` of type `Value`
