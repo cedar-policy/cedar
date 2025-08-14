@@ -42,7 +42,7 @@ pub mod term_type;
 pub mod type_abbrevs;
 pub mod verifier;
 
-use cedar_policy::Schema;
+use cedar_policy::{Request, Schema};
 use decoder::{parse_sexpr, IdMaps};
 use env::to_validator_request_env;
 
@@ -50,6 +50,7 @@ use cedar_policy_core::ast::{
     ActionConstraint, Annotations, Expr, ExprBuilder, Policy, PolicySet, PrincipalConstraint,
     ResourceConstraint, Template,
 };
+use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::validator::{typecheck::Typechecker, types::RequestEnv, ValidationMode};
 use encoder::Encoder;
 use solver::{Decision, Solver};
@@ -378,6 +379,7 @@ impl<S: Solver> SymCompiler<S> {
         )
         .await
     }
+
 }
 
 /// The Cedar symbolic compiler assumes that it receives well-typed policies.  This
@@ -488,8 +490,8 @@ fn well_typed_template_inner(
 ) -> Result<Template> {
     let validator_schema = schema.as_ref();
     let type_checker = Typechecker::new(validator_schema, ValidationMode::Strict);
-    let policy_check = type_checker.typecheck_by_single_request_env(template, env);
-    match policy_check {
+    let template_check = type_checker.typecheck_by_single_request_env(template, env);
+    match template_check {
         cedar_policy_core::validator::typecheck::PolicyCheck::Success(expr) => Ok(Template::new(
             template.id().clone(),
             template.loc().cloned(),
@@ -503,7 +505,7 @@ fn well_typed_template_inner(
         cedar_policy_core::validator::typecheck::PolicyCheck::Irrelevant(errs, expr) =>
         // A template could be irrelevant just for this environment, so unless there were errors we don't want to fail.
         // Note that if the template was irrelevant for all environments schema validation would have caught this
-        // before SymCC. 
+        // before SymCC.
         {
             if errs.is_empty() {
                 Ok(Template::new(
@@ -524,4 +526,24 @@ fn well_typed_template_inner(
             Err(Error::TemplateNotWellTyped { errs })
         }
     }
+}
+
+pub fn well_typed_request(
+    request: &cedar_policy_core::ast::Request,
+    schema: &Schema,
+) -> Result<cedar_policy_core::ast::Request> {
+    let validator_schema = schema.as_ref();
+    let principal = request.principal().clone();
+    let action = request.action().clone();
+    let resource = request.action().clone();
+    let context = request.context();
+    cedar_policy_core::ast::Request::new_with_unknowns(
+        principal,
+        action,
+        resource,
+        context.cloned(),
+        Some(validator_schema),
+        Extensions::all_available(),
+    )
+    .map_err(|e| Error::RequestNotWellTyped(e))
 }

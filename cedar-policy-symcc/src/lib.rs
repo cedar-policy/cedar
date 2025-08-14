@@ -19,7 +19,7 @@
 pub mod err;
 mod symcc;
 
-use cedar_policy::{Policy, PolicySet, RequestEnv, Schema, Template};
+use cedar_policy::{Policy, PolicySet, Request, RequestEnv, Schema, Template};
 use std::fmt;
 
 use err::{Error, Result};
@@ -28,7 +28,7 @@ use symcc::Environment;
 use symcc::SymCompiler;
 use symcc::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
-    verify_never_errors, well_typed_policies, well_typed_policy, well_typed_template,
+    verify_never_errors, well_typed_policies, well_typed_policy, well_typed_template, well_typed_request
 };
 
 pub use symcc::bitvec;
@@ -153,8 +153,7 @@ impl WellTypedTemplate {
     }
 
     /// Converts a [`Template`] to a [`WellTypedTemplate`] unchecked.
-    /// Note that SymCC may fail on the template produced by this function
-    /// even if it is validated.
+    /// Note that SymCC may fail on the template produced by this function.
     pub fn from_template_unchecked(template: &Template) -> Self {
         WellTypedTemplate {
             template: template.as_ref().clone(),
@@ -165,6 +164,33 @@ impl WellTypedTemplate {
 impl fmt::Display for WellTypedTemplate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.template)
+    }
+}
+
+#[derive(Debug)]
+pub struct WellTypedRequest {
+    request: cedar_policy_core::ast::Request,
+}
+
+impl WellTypedRequest {
+    /// Returns a reference to the underlying request
+    pub fn request(&self) -> &cedar_policy_core::ast::Request {
+        &self.request
+    }
+
+    /// Creates a well-typed request with respect to the given schema.
+    /// This ensures that the request satisfies the `WellTyped` constraints required by the
+    /// symbolic compiler, by applying Cedar's typechecker transformations.
+    pub fn from_request(request: &Request, schema: &Schema) -> Result<WellTypedRequest> {
+        well_typed_request(request.as_ref(), schema).map(|r| WellTypedRequest { request: r })
+    }
+
+    /// Converts a [`Request`] to a [`WellTypedRequest`] unchecked.
+    /// Note that SymCC may fail on the request produced by this function.
+    pub fn from_request_unchecked(request: &Request) -> Self {
+        WellTypedRequest {
+            request: request.as_ref().clone(),
+        }
     }
 }
 

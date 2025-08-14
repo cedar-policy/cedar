@@ -55,4 +55,7 @@ pub enum CompileError {
     /// Resource slot type was not provided.
     #[error("resource slot type was not provided")]
     ResourceSlotTypeNotProvided,
+    /// Invalid request
+    #[error("invalid request")]
+    InvalidRequest,
 }

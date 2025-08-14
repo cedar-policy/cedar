@@ -21,7 +21,7 @@
 
 use std::sync::Arc;
 
-use super::authorizer::is_authorized;
+use super::authorizer::{is_authorized, is_authorized_template};
 use super::compiler::compile;
 use super::enforcer::enforce;
 use super::env::SymEnv;
@@ -29,7 +29,7 @@ use super::factory::{and, eq, implies, is_some, not};
 use super::result::CompileError;
 use super::term::Term;
 
-use cedar_policy::Effect;
+use cedar_policy::{Effect};
 use cedar_policy_core::ast::{Expr, Policy, PolicyID, PolicySet, Value};
 
 pub type Asserts = Arc<Vec<Term>>;
