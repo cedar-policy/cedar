@@ -243,7 +243,7 @@ impl SymEntityData {
         }
     }
 
-    pub fn of_action_type<'a>(
+    pub(super) fn of_action_type<'a>(
         act_ty: &EntityType,
         act_tys: impl IntoIterator<Item = &'a EntityType>,
         schema: &ValidatorSchema,
@@ -333,7 +333,7 @@ impl SymEntities {
     ///
     /// This function assumes that no entity types have tags, and that action types
     /// have no attributes.
-    pub fn of_schema(schema: &ValidatorSchema) -> Result<Self, CompileError> {
+    fn of_schema(schema: &ValidatorSchema) -> Result<Self, CompileError> {
         let e_data = schema.entity_types().map(|vdtr_ety| {
             let ety = core_entity_type_into_entity_type(vdtr_ety.name());
             match SymEntityData::of_entity_type(ety, vdtr_ety, schema) {
@@ -428,15 +428,13 @@ fn record(attrs: Attributes) -> Type {
 }
 
 // From `Validation/Types.lean`
-#[derive(Debug)]
-pub struct StandardEntitySchemaEntry {
-    pub ancestors: BTreeSet<EntityType>,
-    pub attrs: Attributes,
-    pub tags: Option<Type>,
+pub(super) struct StandardEntitySchemaEntry {
+    pub(super) ancestors: BTreeSet<EntityType>,
+    pub(super) attrs: Attributes,
+    pub(super) tags: Option<Type>,
 }
 
-#[derive(Debug)]
-pub enum EntitySchemaEntry {
+pub(super) enum EntitySchemaEntry {
     Standard(StandardEntitySchemaEntry),
     Enum(BTreeSet<SmolStr>),
 }
