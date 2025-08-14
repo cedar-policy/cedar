@@ -16,7 +16,7 @@
 
 //! Definitions of term types.
 
-use cedar_policy_core::validator::types::OpenTag;
+use cedar_policy_core::validator::types::{OpenTag, Type};
 
 use super::result::CompileError;
 
@@ -77,9 +77,8 @@ impl TermType {
 
     // This doesn't match the Lean because `cedar_policy_core::validator::types::Type` doesn't
     // TODO: test this
-    pub fn of_type(ty: cedar_policy_core::validator::types::Type) -> Result<Self, CompileError> {
+    pub fn of_type(ty: &Type) -> Result<Self, CompileError> {
         use cedar_policy::EntityTypeName;
-        use cedar_policy_core::validator::types::Type;
         use std::str::FromStr;
         match ty {
             Type::Primitive { primitive_type } => match primitive_type {
@@ -112,15 +111,15 @@ impl TermType {
                         attrs,
                         open_attributes,
                     } => {
-                        if open_attributes == OpenTag::ClosedAttributes {
+                        if *open_attributes == OpenTag::ClosedAttributes {
                             Ok(TermType::Record {
                                 rty: Arc::new(
                                     attrs
-                                        .into_iter()
+                                        .iter()
                                         .map(|(k, v)| {
-                                            match Self::of_type(v.attr_type) {
+                                            match Self::of_type(&v.attr_type) {
                                                 Ok(vt) => Ok((
-                                                    k,
+                                                    k.clone(),
                                                     //Inlining ofRecordType and ofQualifiedType here
                                                     if v.is_required {
                                                         vt
@@ -171,7 +170,7 @@ impl TermType {
             }
             Type::Set { element_type } => match element_type {
                 Some(element_type) => Ok(TermType::Set {
-                    ty: Arc::new(Self::of_type(*element_type)?),
+                    ty: Arc::new(Self::of_type(element_type)?),
                 }),
                 None => Err(CompileError::UnsupportedFeature(
                     "empty set type is unsupported".into(),

@@ -36,6 +36,7 @@ pub mod op;
 mod result;
 mod smtlib_script;
 pub mod solver;
+mod symbolizer;
 mod tags;
 pub mod term;
 pub mod term_type;
