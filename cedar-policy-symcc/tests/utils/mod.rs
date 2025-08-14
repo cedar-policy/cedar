@@ -154,6 +154,7 @@ pub async fn assert_never_errors_ok<S: Solver>(
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        assert!(literal_symenv.is_literal());
         let asserts = compile_never_errors(&typed_policy, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
@@ -161,6 +162,7 @@ pub async fn assert_never_errors_ok<S: Solver>(
         // Test that the default interpretation does satisfy the property
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
+        assert!(literal_symenv.is_literal());
         let asserts = compile_never_errors(&typed_policy, &literal_symenv).unwrap();
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
@@ -206,6 +208,7 @@ pub async fn assert_always_allows_ok<S: Solver>(
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        assert!(literal_symenv.is_literal());
         let asserts = compile_always_allows(&typed_pset, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
@@ -213,6 +216,7 @@ pub async fn assert_always_allows_ok<S: Solver>(
         // Test that the default interpretation does satisfy the property
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
+        assert!(literal_symenv.is_literal());
         let asserts = compile_always_allows(&typed_pset, &literal_symenv).unwrap();
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
@@ -269,6 +273,7 @@ pub async fn assert_always_denies_ok<S: Solver>(
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        assert!(literal_symenv.is_literal());
         let asserts = compile_always_denies(&typed_pset, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
@@ -276,6 +281,7 @@ pub async fn assert_always_denies_ok<S: Solver>(
         // Test that the default interpretation does satisfy the property
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
+        assert!(literal_symenv.is_literal());
         let asserts = compile_always_denies(&typed_pset, &literal_symenv).unwrap();
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
@@ -335,6 +341,7 @@ pub async fn assert_equivalent_ok<S: Solver>(
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        assert!(literal_symenv.is_literal());
         let asserts = compile_equivalent(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
@@ -342,6 +349,7 @@ pub async fn assert_equivalent_ok<S: Solver>(
         // Test that the default interpretation does satisfy the property
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
+        assert!(literal_symenv.is_literal());
         let asserts = compile_equivalent(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
@@ -403,6 +411,7 @@ pub async fn assert_implies_ok<S: Solver>(
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        assert!(literal_symenv.is_literal());
         let asserts = compile_implies(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
@@ -410,6 +419,7 @@ pub async fn assert_implies_ok<S: Solver>(
         // Test that the default interpretation does satisfy the property
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
+        assert!(literal_symenv.is_literal());
         let asserts = compile_implies(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
@@ -471,6 +481,7 @@ pub async fn assert_disjoint_ok<S: Solver>(
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        assert!(literal_symenv.is_literal());
         let asserts = compile_disjoint(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
@@ -478,6 +489,7 @@ pub async fn assert_disjoint_ok<S: Solver>(
         // Test that the default interpretation does satisfy the property
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
+        assert!(literal_symenv.is_literal());
         let asserts = compile_disjoint(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
