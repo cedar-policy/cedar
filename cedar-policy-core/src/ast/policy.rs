@@ -391,14 +391,12 @@ impl Template {
         // Loop through all slots that have a type declaration and check that
         // the values provided are of that type
         for (slot, validator_type) in validator_slots_type_declaration.0 {
+            // PANIC SAFETY
+            // all slot values should binded
             let restricted_expr = if slot.is_principal() || slot.is_resource() {
-                // PANIC SAFETY
-                // all slot values should binded
                 #[allow(clippy::unwrap_used)]
                 RestrictedExpr::val(values.get(&slot).unwrap().clone())
             } else {
-                // PANIC SAFETY
-                // all slot values should binded
                 #[allow(clippy::unwrap_used)]
                 generalized_values.get(&slot).unwrap().clone()
             };
