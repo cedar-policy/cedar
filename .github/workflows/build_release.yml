@@ -25,7 +25,7 @@ jobs:
           script: |
             const tag = context.ref.replace('refs/tags/', '');
             const version = tag.replace('v', '');
-            const [major, minor] = version.split('.');
+            const [major, minor, _] = version.split('.');
             const releaseBranch = `release/${major}.${minor}.x`;
             await github.rest.git.createRef({
               owner: context.repo.owner,
@@ -45,7 +45,7 @@ jobs:
           script: |
             const tag = context.ref.replace('refs/tags/', '');
             const version = tag.replace('v', '');
-            const [major, minor] = version.split('.');
+            const [major, minor, _] = version.split('.');
             const releaseBranch = `release/${major}.${minor}.x`;
             await github.rest.git.createRef({
               owner: context.repo.owner,
