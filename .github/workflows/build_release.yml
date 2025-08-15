@@ -38,47 +38,6 @@ jobs:
               })).data.commit.sha
             });
 
-      - name: Create release branch in cedar-integration-tests
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ steps.app-token.outputs.token }}
-          script: |
-            const tag = context.ref.replace('refs/tags/', '');
-            const version = tag.replace('v', '');
-            const [major, minor, patch] = version.split('.');
-            const releaseBranch = `release/${major}.${minor}.x`;
-
-            // Only create branch for patch releases
-            if (patch === '0') {
-              // Check if branch already exists
-              try {
-                await github.rest.repos.getBranch({
-                  owner: context.repo.owner,
-                  repo: 'cedar-integration-tests',
-                  branch: releaseBranch
-                });
-                console.log(`Branch ${releaseBranch} already exists`);
-              } catch (error) {
-                // Create the branch if it doesn't exist
-                if (error.status === 404) {
-                  const mainBranch = await github.rest.repos.getBranch({
-                    owner: context.repo.owner,
-                    repo: 'cedar-integration-tests',
-                    branch: 'main'
-                  });
-                  await github.rest.git.createRef({
-                    owner: context.repo.owner,
-                    repo: 'cedar-integration-tests',
-                    ref: `refs/heads/${releaseBranch}`,
-                    sha: mainBranch.data.commit.sha
-                  });
-                  console.log(`Created branch ${releaseBranch}`);
-                } else {
-                  throw error;
-                }
-              }
-            }
-
       - name: Create tag in cedar-integration-tests
         uses: actions/github-script@v7
         with:
