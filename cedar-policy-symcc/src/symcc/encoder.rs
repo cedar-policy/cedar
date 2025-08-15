@@ -267,13 +267,21 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             Some(enc) => Ok(enc.clone()),
             None => {
                 let enc = match ty {
-                    TermType::Bool => "Bool".to_string(),
-                    TermType::String => "String".to_string(),
-                    TermType::Bitvec { n } => format!("(_ BitVec {n})"),
-                    TermType::Option { ref ty } => {
-                        format!("(Option {})", self.encode_type(ty).await?)
+                    TermType::Bool => {
+                        return Ok("Bool".to_string());
                     }
-                    TermType::Set { ty } => format!("(Set {})", self.encode_type(ty).await?),
+                    TermType::String => {
+                        return Ok("String".to_string());
+                    }
+                    TermType::Bitvec { n } => {
+                        return Ok(format!("(_ BitVec {n})"));
+                    }
+                    TermType::Option { ref ty } => {
+                        return Ok(format!("(Option {})", self.encode_type(ty).await?));
+                    }
+                    TermType::Set { ty } => {
+                        return Ok(format!("(Set {})", self.encode_type(ty).await?));
+                    }
                     TermType::Entity { ety } => self.declare_entity_type(ety).await?,
                     TermType::Ext { xty } => self.declare_ext_type(xty).await?.into(),
                     TermType::Record { rty } => {
@@ -449,17 +457,24 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             Term::Var(v) => self.declare_var(v, &ty_enc).await?,
             Term::Prim(p) => match p {
                 TermPrim::Bool(b) => {
-                    if *b {
-                        "true".to_string()
-                    } else {
-                        "false".to_string()
-                    }
+                    return Ok({
+                        if *b {
+                            "true".to_string()
+                        } else {
+                            "false".to_string()
+                        }
+                    });
                 }
-                TermPrim::Bitvec(bv) => encode_bitvec(bv),
-                TermPrim::String(s) => format!(
-                    "\"{}\"",
-                    encode_string(s).ok_or_else(|| EncodeError::EncodeStringFailed(s.clone()))?
-                ),
+                TermPrim::Bitvec(bv) => {
+                    return Ok(encode_bitvec(bv));
+                }
+                TermPrim::String(s) => {
+                    return Ok(format!(
+                        "\"{}\"",
+                        encode_string(s)
+                            .ok_or_else(|| EncodeError::EncodeStringFailed(s.clone()))?
+                    ));
+                }
                 TermPrim::Entity(e) => self.define_entity(&ty_enc, e).await?,
                 TermPrim::Ext(x) => self.define_term(&ty_enc, &encode_ext(x)).await?,
             },
@@ -555,8 +570,12 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 ["(none)".to_string(), "(some (val X))".to_string()],
             )
             .await?;
+        let mut ids: Vec<_> = Vec::new();
         for t in ts {
             let id = self.encode_term(t).await?;
+            ids.push(id);
+        }
+        for id in ids {
             self.script.assert(&id).await?;
         }
         Ok(())
