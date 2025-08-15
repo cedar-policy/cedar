@@ -370,18 +370,23 @@ impl Template {
     }
 
     /// Validates that the values provided for the generalized slots are of the types declared
-    pub fn link_time_type_checking_with_schema(
+    pub fn link_time_type_checking(
         template: &Template,
-        schema: &ValidatorSchema,
+        schema: Option<&ValidatorSchema>,
         values: &HashMap<SlotId, EntityUID>,
         generalized_values: &HashMap<SlotId, RestrictedExpr>,
     ) -> Result<(), LinkingError> {
-        let validator_slots_type_declaration = SlotsTypeDeclaration::from_iter(
+        let slots_type_declaration = SlotsTypeDeclaration::from_iter(
             template
                 .slots_type_declaration()
                 .map(|(k, v)| (k.clone(), v.clone())),
-        )
-        .into_validator_slots_type_declaration(schema)?;
+        );
+        let validator_slots_type_declaration = match schema {
+            Some(schema) => slots_type_declaration.into_validator_slots_type_declaration(schema)?,
+            None => {
+                slots_type_declaration.into_validator_slots_type_declaration_without_schema()?
+            }
+        };
 
         // Loop through all slots that have a type declaration and check that
         // the values provided are of that type
@@ -430,16 +435,7 @@ impl Template {
         // INVARIANT (policy total map) Relies on check_binding to uphold the invariant
         Template::check_binding(&template, &values, &generalized_values)
             .and_then(|_| {
-                if let Some(schema) = schema {
-                    Template::link_time_type_checking_with_schema(
-                        &template,
-                        schema,
-                        &values,
-                        &generalized_values,
-                    )
-                } else {
-                    Ok(())
-                }
+                Template::link_time_type_checking(&template, schema, &values, &generalized_values)
             })
             .map(|_| Policy::new(template, Some(new_id), values, generalized_values))
     }

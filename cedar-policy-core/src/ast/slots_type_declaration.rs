@@ -67,6 +67,28 @@ impl SlotsTypeDeclaration {
             .collect();
         Ok(validator_slots_type_declaration?.into())
     }
+
+    /// Converts the types of slots_type_declaration to
+    /// a validator type so we can perform link time type checking
+    /// for users who do not use a schema.
+    pub fn into_validator_slots_type_declaration_without_schema(
+        self,
+    ) -> Result<ValidatorSlotsTypeDeclaration, SchemaError> {
+        let validator_slots_type_declaration: Result<BTreeMap<_, _>, SchemaError> = self
+            .0
+            .into_iter()
+            .map(|(k, ty)| -> Result<_, SchemaError> {
+                Ok((
+                    k,
+                    ValidatorSchema::json_schema_type_to_validator_type_without_schema(
+                        ty,
+                        Extensions::all_available(),
+                    )?,
+                ))
+            })
+            .collect();
+        Ok(validator_slots_type_declaration?.into())
+    }
 }
 
 impl Default for SlotsTypeDeclaration {

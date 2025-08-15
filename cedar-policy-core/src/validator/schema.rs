@@ -580,6 +580,78 @@ impl ValidatorSchema {
             .map(|t| t.ty)
     }
 
+    /// Construct a [`Type`] from [`json_schema::Type<RawName>`]
+    /// without a schema. Defaults to interpreting primitive types
+    /// as an entity type, unless prefixed by __cedar.
+    pub fn json_schema_type_to_validator_type_without_schema(
+        ty: json_schema::Type<RawName>,
+        extensions: &Extensions<'_>,
+    ) -> Result<Type> {
+        let mut fragments = std::iter::once(cedar_fragment(extensions)).collect::<Vec<_>>();
+
+        let mut all_defs = AllDefs::new(|| fragments.iter());
+
+        for name in ty.common_type_references() {
+            {
+                all_defs.mark_as_defined_as_entity_type(name.clone().qualify_with(None))
+            }
+        }
+
+        for tyname in primitive_types::<Name>()
+            .map(|(id, _)| Name::unqualified_name(id))
+            .chain(extensions.ext_types().cloned())
+        {
+            if !all_defs.is_defined_as_entity(tyname.as_ref())
+                && !all_defs.is_defined_as_common(tyname.as_ref())
+            {
+                assert!(
+                    tyname.is_unqualified(),
+                    "expected all primitive and extension type names to be unqualified"
+                );
+                fragments.push(single_alias_in_empty_namespace(
+                    tyname.basename().clone(),
+                    tyname.as_ref().qualify_with(Some(&InternalName::__cedar())),
+                    None, // there is no source loc associated with the builtin definitions of primitive and extension types
+                ));
+                all_defs.mark_as_defined_as_common_type(tyname.into());
+            }
+        }
+
+        let fragments: Vec<_> = fragments
+            .into_iter()
+            .map(|frag| frag.fully_qualify_type_references(&all_defs))
+            .partition_nonempty()?;
+
+        let mut common_types: HashMap<InternalName, json_schema::Type<InternalName>> =
+            HashMap::new();
+
+        for ns_def in fragments.into_iter().flat_map(|f| f.0.into_iter()) {
+            for (name, ty) in ns_def.common_types.defs {
+                match common_types.entry(name) {
+                    Entry::Vacant(v) => v.insert(ty),
+                    Entry::Occupied(o) => {
+                        return Err(DuplicateCommonTypeError {
+                            ty: o.key().clone(),
+                        }
+                        .into());
+                    }
+                };
+            }
+        }
+
+        let resolver = CommonTypeResolver::new(&common_types);
+        let common_types: HashMap<&InternalName, ValidatorType> = resolver.resolve(extensions)?;
+
+        let conditional_ty = ty.conditionally_qualify_type_references(None);
+
+        let internal_ty = conditional_ty.fully_qualify_type_references(&all_defs)?;
+        let unresolved = try_jsonschema_type_into_validator_type(internal_ty, extensions, None)?;
+
+        unresolved
+            .resolve_common_type_refs(&common_types)
+            .map(|t| t.ty)
+    }
+
     /// Construct a [`ValidatorSchema`] from some number of [`ValidatorSchemaFragment`]s.
     pub fn from_schema_fragments(
         fragments: impl IntoIterator<Item = ValidatorSchemaFragment<ConditionalName, ConditionalName>>,
