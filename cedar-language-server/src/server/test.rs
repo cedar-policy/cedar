@@ -17,6 +17,7 @@
 #![cfg(test)]
 use crate::server::Backend;
 use crate::server::Client;
+use crate::utils::tests::remove_all_caret_markers;
 use crate::utils::tests::remove_caret_marker;
 use crate::utils::tests::slice_range;
 use cool_asserts::assert_matches;
@@ -655,6 +656,270 @@ async fn execute_command_associate_schema_with_entities() {
 }
 
 #[tokio::test]
+async fn associated_schema_change_sends_linked_diagnostics() {
+    let backend = Backend::new(MockClient::new());
+
+    let entities_json = r#"[
+        {
+            "uid": { "type": "E", "id": "alice" },
+            "attrs": {
+                "foo": "not_a_number"
+            },
+            "parents": []
+        }
+    ]"#;
+    let entities_uri = open_test_document(
+        &backend,
+        "file:///test/entities.cedarentities.json",
+        "cedarentities.json",
+        entities_json,
+    )
+    .await;
+
+    let policy_src = r#"permit(principal, action, resource) when { principal.foo == "thing" };"#;
+    let policy_uri =
+        open_test_document(&backend, "file:///test/policy.cedar", "cedar", policy_src).await;
+
+    let (schema_src, carets) = remove_all_caret_markers(
+        "entity E {foo: |caret|String|caret|}; action A appliesTo {principal: E, resource: E};",
+    );
+    let schema_uri = open_test_document(
+        &backend,
+        "file:///test/schema.cedarschema",
+        "cedarschema",
+        &schema_src,
+    )
+    .await;
+
+    associate_schema(&backend, &entities_uri, &schema_uri).await;
+    associate_schema(&backend, &policy_uri, &schema_uri).await;
+
+    // No diagnostics yet
+    assert_eq!(get_diagnostics(&backend, &entities_uri), Vec::new());
+    assert_eq!(get_diagnostics(&backend, &policy_uri), Vec::new());
+
+    let change_params = DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier {
+            uri: schema_uri.clone(),
+            version: 2,
+        },
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: Some(Range {
+                start: carets[0],
+                end: carets[1],
+            }),
+            range_length: None,
+            text: "Long".to_string(),
+        }],
+    };
+    backend.did_change(change_params).await;
+
+    let entity_diagnostic = &get_diagnostics(&backend, &entities_uri)[0];
+    assert_eq!(
+        entity_diagnostic.message,
+        r#"entity does not conform to the schema. in attribute `foo` on `E::"alice"`, type mismatch: value was expected to have type long, but it actually has type string: `"not_a_number"`"#
+    );
+
+    let policy_diagnostic = &get_diagnostics(&backend, &policy_uri)[0];
+    assert_eq!(
+        policy_diagnostic.message,
+        r#"the types Long and String are not compatible. for policy `policy0`, both operands to a `==` expression must have compatible types. Types must be exactly equal to be compatible"#
+    );
+}
+
+#[tokio::test]
+async fn rename_linked_schema_send_diagnostics() {
+    let backend = Backend::new(MockClient::new());
+
+    let schema_src =
+        "entity User { age: Long }; action Action appliesTo {principal: User, resource: User};";
+    let old_schema_uri = open_test_document(
+        &backend,
+        "file:///test/old_schema.cedarschema",
+        "cedarschema",
+        schema_src,
+    )
+    .await;
+
+    let policy_src = "permit(principal, action, resource) when { principal.age > 18 };";
+    let policy_uri =
+        open_test_document(&backend, "file:///test/policy.cedar", "cedar", policy_src).await;
+
+    let entities_json = r#"[
+        {
+            "uid": { "type": "User", "id": "alice" },
+            "attrs": {
+                "age": 21
+            },
+            "parents": []
+        }
+    ]"#;
+    let entities_uri = open_test_document(
+        &backend,
+        "file:///test/entities.cedarentities.json",
+        "cedarentities.json",
+        entities_json,
+    )
+    .await;
+
+    associate_schema(&backend, &policy_uri, &old_schema_uri).await;
+    associate_schema(&backend, &entities_uri, &old_schema_uri).await;
+
+    assert_eq!(get_diagnostics(&backend, &policy_uri), Vec::new());
+    assert_eq!(get_diagnostics(&backend, &entities_uri), Vec::new());
+
+    let new_schema_uri: Uri = "file:///test/new_schema.cedarschema".parse().unwrap();
+    let rename_params = RenameFilesParams {
+        files: vec![FileRename {
+            old_uri: old_schema_uri.to_string(),
+            new_uri: new_schema_uri.to_string(),
+        }],
+    };
+    backend.will_rename_files(rename_params).await.unwrap();
+
+    let policy_change_params = DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier {
+            uri: policy_uri.clone(),
+            version: 2,
+        },
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "permit(principal, action, resource) when { principal.agee > 18 };".to_string(),
+        }],
+    };
+    backend.did_change(policy_change_params).await;
+
+    let entities_change_params = DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier {
+            uri: entities_uri.clone(),
+            version: 2,
+        },
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: r#"[
+                {
+                    "uid": { "type": "User", "id": "alice" },
+                    "attrs": {
+                        "age": "twenty_one"
+                    },
+                    "parents": []
+                }
+            ]"#
+            .to_string(),
+        }],
+    };
+    backend.did_change(entities_change_params).await;
+
+    let policy_diagnostic = &get_diagnostics(&backend, &policy_uri)[0];
+    assert_eq!(
+        policy_diagnostic.message,
+        "for policy `policy0`, attribute `agee` on entity type `User` not found. did you mean `age`?"
+    );
+
+    let entities_diagnostic = &get_diagnostics(&backend, &entities_uri)[0];
+    assert_eq!(
+        entities_diagnostic.message,
+        r#"entity does not conform to the schema. in attribute `age` on `User::"alice"`, type mismatch: value was expected to have type long, but it actually has type string: `"twenty_one"`"#
+    );
+}
+
+#[tokio::test]
+async fn remove_schema_assoc_no_diagnostics() {
+    let backend = Backend::new(MockClient::new());
+
+    let schema_src =
+        "entity User { age: Long }; action Action appliesTo {principal: User, resource: User};";
+    let old_schema_uri = open_test_document(
+        &backend,
+        "file:///test/old_schema.cedarschema",
+        "cedarschema",
+        schema_src,
+    )
+    .await;
+
+    let policy_src = "permit(principal, action, resource) when { principal.age > 18 };";
+    let policy_uri =
+        open_test_document(&backend, "file:///test/policy.cedar", "cedar", policy_src).await;
+
+    associate_schema(&backend, &policy_uri, &old_schema_uri).await;
+
+    assert_eq!(get_diagnostics(&backend, &policy_uri), Vec::new());
+
+    let command_params = ExecuteCommandParams {
+        command: "cedar.removeSchemaAssociation".to_string(),
+        arguments: vec![serde_json::Value::String(policy_uri.to_string())],
+        work_done_progress_params: WorkDoneProgressParams::default(),
+    };
+
+    let _ = backend.execute_command(command_params).await.unwrap();
+
+    // introducing an error, but there's no longer a schema to detect it
+    let policy_change_params = DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier {
+            uri: policy_uri.clone(),
+            version: 2,
+        },
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "permit(principal, action, resource) when { principal.agee > 18 };".to_string(),
+        }],
+    };
+    backend.did_change(policy_change_params).await;
+
+    assert_eq!(get_diagnostics(&backend, &policy_uri), Vec::new());
+}
+
+#[tokio::test]
+async fn delete_schema_no_diagnostics() {
+    let backend = Backend::new(MockClient::new());
+
+    let schema_src =
+        "entity User { age: Long }; action Action appliesTo {principal: User, resource: User};";
+    let old_schema_uri = open_test_document(
+        &backend,
+        "file:///test/old_schema.cedarschema",
+        "cedarschema",
+        schema_src,
+    )
+    .await;
+
+    let policy_src = "permit(principal, action, resource) when { principal.age > 18 };";
+    let policy_uri =
+        open_test_document(&backend, "file:///test/policy.cedar", "cedar", policy_src).await;
+
+    associate_schema(&backend, &policy_uri, &old_schema_uri).await;
+
+    assert_eq!(get_diagnostics(&backend, &policy_uri), Vec::new());
+
+    let delete_params = DeleteFilesParams {
+        files: vec![FileDelete {
+            uri: old_schema_uri.to_string(),
+        }],
+    };
+    backend.will_delete_files(delete_params).await.unwrap();
+    assert!(!backend.documents.contains_key(&old_schema_uri));
+
+    // introducing an error, but there's no longer a schema to detect it
+    let policy_change_params = DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier {
+            uri: policy_uri.clone(),
+            version: 2,
+        },
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "permit(principal, action, resource) when { principal.agee > 18 };".to_string(),
+        }],
+    };
+    backend.did_change(policy_change_params).await;
+
+    assert_eq!(get_diagnostics(&backend, &policy_uri), Vec::new());
+}
+
+#[tokio::test]
 async fn execute_command_export_policy() {
     let backend = Backend::new(MockClient::new());
 
@@ -785,6 +1050,26 @@ async fn schema_to_cedar() {
         "namespace ns {\n  entity E;\n}\n",
         transformed["text"].as_str().unwrap()
     );
+}
+
+#[tokio::test]
+async fn transform_schema_on_policy_error() {
+    let backend = Backend::new(MockClient::new());
+
+    let policy_src = "permit(principal, action, resource) when { principal.age > 18 };";
+    let policy_uri =
+        open_test_document(&backend, "file:///test/policy.cedar", "cedar", policy_src).await;
+
+    let command_params = ExecuteCommandParams {
+        command: "cedar.transformSchema".to_string(),
+        arguments: vec![serde_json::json!({
+            "schema_uri": policy_uri.to_string()
+        })],
+        work_done_progress_params: WorkDoneProgressParams::default(),
+    };
+
+    let transformed = backend.execute_command(command_params).await;
+    assert_eq!(Ok(None), transformed);
 }
 
 #[tokio::test]
