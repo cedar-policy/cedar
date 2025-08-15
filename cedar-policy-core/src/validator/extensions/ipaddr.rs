@@ -89,11 +89,13 @@ pub fn extension_schema() -> ExtensionSchema {
             .return_type()
             .map(|ty| return_type.is_consistent_with(ty))
             .unwrap_or_else(|| return_type == Type::Never));
+
         ExtensionFunctionType::new(
             f.name().clone(),
             get_argument_types(f.name(), &ipaddr_ty),
             return_type,
             get_argument_check(f.name()),
+            f.is_variadic(),
         )
     });
     ExtensionSchema::new(ipaddr_ext.name().clone(), fun_tys, std::iter::empty())

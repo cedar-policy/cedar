@@ -21,12 +21,13 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
   APIs, as regular parsing performance is degraded when the `raw-parsing` feature is enabled.
 - Implemented type-aware partial evaluation [RFC 95](https://github.com/cedar-policy/rfcs/pull/95), under the
   experimental flag `tpe`. (#1575)
+- Implemented variadic `ipaddr.isInRange` that returns true if the child `ipaddr` is in range for any of the arguments [RFC 99](github.com/cedar-policy/rfcs/pull/99)
 
 ### Changed
 
 - Bumped MSRV to 1.85 (#1683)
 
-## [4.5.1] - Coming soon
+## [4.5.1] - 2025-08-14
 
 Cedar Language Version: 4.4
 

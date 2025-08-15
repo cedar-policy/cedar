@@ -41,6 +41,7 @@ pub use symcc::term;
 pub use symcc::term_type;
 pub use symcc::type_abbrevs;
 pub use symcc::verifier::Asserts;
+pub use symcc::Interpretation;
 pub use symcc::{Env, SmtLibScript, SymEnv};
 
 impl SymEnv {

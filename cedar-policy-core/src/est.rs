@@ -280,14 +280,20 @@ impl Policy {
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
         let id = id.unwrap_or_else(|| ast::PolicyID::from_string("JSON policy"));
-        let mut conditions_iter = self
+        // a right fold of conditions
+        // e.g., [c1, c2, c3,] --> c1 && (c2 && c3)
+        let mut conds_rev_iter = self
             .conditions
             .into_iter()
-            .map(|cond| cond.try_into_ast(&id));
-        let conditions = match conditions_iter.next() {
-            None => ast::Expr::val(true),
-            Some(first) => ast::ExprBuilder::with_data(())
-                .and_nary(first?, conditions_iter.collect::<Result<Vec<_>, _>>()?),
+            .map(|cond| cond.try_into_ast(&id))
+            .rev()
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter();
+        let conditions = if let Some(last_expr) = conds_rev_iter.next() {
+            let builder = ast::ExprBuilder::with_data(());
+            conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc))
+        } else {
+            ast::Expr::val(true)
         };
         Ok(ast::Template::new(
             id,
@@ -3166,16 +3172,16 @@ mod test {
                         "body": {
                             "&&": {
                                 "left": {
+                                    ".": {
+                                        "left": {
+                                            "Var": "context"
+                                        },
+                                        "attr": "foo"
+                                    }
+                                },
+                                "right": {
                                     "&&": {
                                         "left": {
-                                            ".": {
-                                                "left": {
-                                                    "Var": "context"
-                                                },
-                                                "attr": "foo"
-                                            }
-                                        },
-                                        "right": {
                                             "!": {
                                                 "arg": {
                                                     ".": {
@@ -3186,15 +3192,15 @@ mod test {
                                                     }
                                                 }
                                             }
-                                        }
-                                    }
-                                },
-                                "right": {
-                                    ".": {
-                                        "left": {
-                                            "Var": "principal"
                                         },
-                                        "attr": "eggs"
+                                        "right": {
+                                            ".": {
+                                                "left": {
+                                                    "Var": "principal"
+                                                },
+                                                "attr": "eggs"
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -4834,6 +4840,62 @@ mod test {
             .unwrap();
         let est: Policy = cst.try_into().unwrap();
         assert!(!est.is_template(), "Static policy marked as template");
+    }
+
+    #[test]
+    fn conditions_right_associative() {
+        let json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "==": {
+                                "left": { "Value": 1 },
+                                "right": { "Value": 2 },
+                            }
+                        }
+                    },
+                    {
+                        "kind": "when",
+                        "body": {
+                            "==": {
+                                "left": { "Value": 3 },
+                                "right": { "Value": 4 },
+                            }
+                        }
+                    },
+                    {
+                        "kind": "when",
+                        "body": {
+                            "==": {
+                                "left": { "Value": 5 },
+                                "right": { "Value": 6 },
+                            }
+                        }
+                    }
+                ],
+            }
+        );
+        let est: Policy =
+            serde_json::from_value(json).expect("Expected valid JSON to parse to EST");
+        let ast = est
+            .try_into_ast_policy_or_template(Some(ast::PolicyID::from_string("id")))
+            .expect("Expected EST -> AST conversion to succeed");
+        assert_eq!(
+            ToString::to_string(&ast.non_scope_constraints()),
+            "(1 == 2) && ((3 == 4) && (5 == 6))"
+        );
     }
 }
 

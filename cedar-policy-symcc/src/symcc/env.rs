@@ -190,7 +190,7 @@ impl SymEntityData {
                 let attrs_uuf = Uuf(op::Uuf {
                     id: format!("attrs[{ety}]"),
                     arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
-                    out: TermType::of_type(record(sch.attrs))?,
+                    out: TermType::of_type(&record(sch.attrs))?,
                 });
                 let ancs_uuf = |anc_ty: &EntityType| {
                     Uuf(op::Uuf {
@@ -209,7 +209,7 @@ impl SymEntityData {
                         vals: Uuf(op::Uuf {
                             id: format!("tagVals[{ety}]"),
                             arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
-                            out: TermType::of_type(tag_ty)?,
+                            out: TermType::of_type(&tag_ty)?,
                         }),
                     })
                 };
@@ -249,7 +249,7 @@ impl SymEntityData {
         }
     }
 
-    fn of_action_type<'a>(
+    pub(super) fn of_action_type<'a>(
         act_ty: &EntityType,
         act_tys: impl IntoIterator<Item = &'a EntityType>,
         schema: &ValidatorSchema,
@@ -277,7 +277,7 @@ impl SymEntityData {
                         .filter_map(|anc| term_of_type(anc_ty.clone(), anc.clone()))
                         .collect(),
                 ),
-                elts_ty: TermType::set_of(entity(anc_ty.clone())),
+                elts_ty: entity(anc_ty.clone()),
             }
         };
         let ancs_udf = |anc_ty: &EntityType| -> UnaryFunction {
@@ -295,7 +295,7 @@ impl SymEntityData {
                     .collect(),
                 default: Term::Set {
                     elts: Arc::new(BTreeSet::new()),
-                    elts_ty: TermType::set_of(entity(anc_ty.clone())),
+                    elts_ty: entity(anc_ty.clone()),
                 },
             })
         };
@@ -339,7 +339,7 @@ impl SymEntities {
     ///
     /// This function assumes that no entity types have tags, and that action types
     /// have no attributes.
-    pub fn of_schema(schema: &ValidatorSchema) -> Result<Self, CompileError> {
+    fn of_schema(schema: &ValidatorSchema) -> Result<Self, CompileError> {
         let e_data = schema.entity_types().map(|vdtr_ety| {
             let ety = core_entity_type_into_entity_type(vdtr_ety.name());
             match SymEntityData::of_entity_type(ety, vdtr_ety, schema) {
@@ -390,7 +390,7 @@ impl SymRequest {
             }),
             context: Term::Var(TermVar {
                 id: "context".to_string(),
-                ty: TermType::of_type(record(req_ty.context.clone()))?,
+                ty: TermType::of_type(&record(req_ty.context.clone()))?,
             }),
             principal_slot: req_ty.principal_slot.map(|ety| {
                 Term::Var(TermVar {
@@ -446,19 +446,19 @@ fn record(attrs: Attributes) -> Type {
 }
 
 // From `Validation/Types.lean`
-struct StandardEntitySchemaEntry {
-    ancestors: BTreeSet<EntityType>,
-    attrs: Attributes,
-    tags: Option<Type>,
+pub(super) struct StandardEntitySchemaEntry {
+    pub(super) ancestors: BTreeSet<EntityType>,
+    pub(super) attrs: Attributes,
+    pub(super) tags: Option<Type>,
 }
 
-enum EntitySchemaEntry {
+pub(super) enum EntitySchemaEntry {
     Standard(StandardEntitySchemaEntry),
     Enum(BTreeSet<SmolStr>),
 }
 
 impl EntitySchemaEntry {
-    fn of_schema(
+    pub fn of_schema(
         ety: &EntityType,
         validator_ety: &ValidatorEntityType,
         schema: &ValidatorSchema,
@@ -575,6 +575,15 @@ impl<'a> Environment<'a> {
                 resource_slot: renv.resource_slot(),
             },
         })
+    }
+
+    pub fn schema(&self) -> &'a ValidatorSchema {
+        self.schema
+    }
+
+    /// Returns the type of the context.
+    pub fn context_type(&self) -> Type {
+        Type::record_with_attributes(self.req_ty.context.clone(), OpenTag::ClosedAttributes)
     }
 }
 

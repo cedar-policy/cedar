@@ -21,10 +21,11 @@
 pub(crate) mod test;
 
 mod typecheck_answer;
+use itertools::EitherOrBoth::{Both, Left, Right};
 use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
-use std::{borrow::Cow, collections::HashSet, iter::zip};
+use std::{borrow::Cow, collections::HashSet};
 
 use crate::validator::{
     extension_schema::ExtensionFunctionType,
@@ -2547,7 +2548,20 @@ impl<'a> SingleEnvTypechecker<'a> {
                 // since we mutate several times, I think readability is better if we keep a consistent pattern, rather than using Clippy's suggestion for the first block
                 #[allow(clippy::useless_let_if_seq)]
                 let mut failed = false;
-                if args.len() != arg_tys.len() {
+
+                // variadic functions can take one or more arguments of the last argument type
+                if efunc.is_variadic() && args.len() < arg_tys.len() {
+                    type_errors.push(ValidationError::wrong_number_args(
+                        ext_expr.source_loc().into_maybe_loc(),
+                        self.policy_id.clone(),
+                        arg_tys.len(),
+                        args.len(),
+                    ));
+                    failed = true;
+                }
+
+                // non-variadic functions must take the exact number of argument as the number of argument types
+                if !efunc.is_variadic() && args.len() != arg_tys.len() {
                     type_errors.push(ValidationError::wrong_number_args(
                         ext_expr.source_loc().into_maybe_loc(),
                         self.policy_id.clone(),
@@ -2588,9 +2602,27 @@ impl<'a> SingleEnvTypechecker<'a> {
                         None => TypecheckAnswer::RecursionLimit,
                     }
                 } else {
-                    let typechecked_args = zip(args.as_ref(), arg_tys).map(|(arg, ty)| {
-                        self.expect_type(prior_capability, arg, ty.clone(), type_errors, |_| None)
-                    });
+                    let typechecked_args = args
+                        .as_ref()
+                        .iter()
+                        .zip_longest(arg_tys)
+                        .map(|item| match item {
+                            Both(arg, ty) => (arg, ty),
+                            // PANIC SAFETY: only variadic functions can have more arguments than argument types, and by construction
+                            // PANIC SAFETY: variadic functions have at least 2 argument types. See [`crate::crate::ast::ExtensionFunction::variadic`]
+                            #[allow(clippy::unwrap_used)]
+                            Left(arg) => (arg, arg_tys.last().unwrap()),
+                            // PANIC SAFETY
+                            #[allow(clippy::unreachable)]
+                            Right(_ty) => {
+                                unreachable!("Previous checks ensure args.len() >= arg_tys.len()")
+                            }
+                        })
+                        .map(|(arg, ty)| {
+                            self.expect_type(prior_capability, arg, ty.clone(), type_errors, |_| {
+                                None
+                            })
+                        });
                     TypecheckAnswer::sequence_all_then_typecheck(
                         typechecked_args,
                         |arg_exprs_capabilities| {

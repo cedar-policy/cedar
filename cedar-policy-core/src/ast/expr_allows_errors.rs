@@ -411,7 +411,11 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         self.clone().not(self.less(e1, e2))
     }
 
-    fn and_nary(self, first: Self::Expr, others: impl IntoIterator<Item = Self::Expr>) -> Self::Expr
+    fn and_naryl(
+        self,
+        first: Self::Expr,
+        others: impl IntoIterator<Item = Self::Expr>,
+    ) -> Self::Expr
     where
         Self: Sized,
     {
