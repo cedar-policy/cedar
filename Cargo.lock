@@ -321,6 +321,7 @@ dependencies = [
  "globset",
  "itertools 0.14.0",
  "miette",
+ "nonempty",
  "oorandom",
  "proptest",
  "prost",

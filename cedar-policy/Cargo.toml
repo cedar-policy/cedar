@@ -29,6 +29,7 @@ prost = { version = "0.14", optional = true }
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
 semver = "1.0.26"
+nonempty = "0.12"
 
 [build-dependencies]
 prost-build = { version = "0.14", optional = true }
