@@ -320,11 +320,6 @@ dependencies = [
  "dhat",
  "globset",
  "itertools 0.14.0",
-<<<<<<< HEAD
- "lalrpop-util",
-=======
- "lazy_static",
->>>>>>> 3c9722e0 (Remove unused dependencies in `cedar-policy` crate)
  "miette",
  "oorandom",
  "proptest",
