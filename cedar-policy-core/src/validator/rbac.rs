@@ -20,7 +20,7 @@ use crate::{
     ast::{
         self, ActionConstraint, Eid, EntityReference, EntityUID, GeneralizedSlotEnv, Policy,
         PolicyID, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv,
-        Template,
+        SlotId, Template,
     },
     entities::conformance::is_valid_enumerated_entity,
     fuzzy_match::fuzzy_search,
@@ -96,6 +96,26 @@ impl Validator {
             } else {
                 None
             }
+        })
+    }
+
+    pub(crate) fn validate_generalized_slots_has_type_binding<'a>(
+        &'a self,
+        template: &'a Template,
+    ) -> impl Iterator<Item = ValidationError> + 'a {
+        let slot_type_declaration: HashSet<SlotId> = template
+            .slots_type_declaration()
+            .map(|(slot, _)| slot.clone())
+            .collect();
+        let slots_without_types = template
+            .generalized_slots()
+            .filter(move |slot| !(slot_type_declaration.contains(&slot.id)));
+        slots_without_types.map(|slot| {
+            ValidationError::generalized_slot_in_condition_clause_not_in_slots_type_declaration(
+                slot.loc.clone(),
+                template.id().clone(),
+                slot.id.clone(),
+            )
         })
     }
 

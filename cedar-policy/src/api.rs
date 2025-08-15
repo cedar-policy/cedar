@@ -2837,6 +2837,7 @@ impl PolicySet {
         Ok(())
     }
 
+    #[cfg(feature = "generalized-templates")]
     /// Link function for generalized templates
     pub fn generalized_link(
         &mut self,

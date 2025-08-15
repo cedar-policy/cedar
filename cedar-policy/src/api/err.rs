@@ -454,6 +454,13 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidEnumEntity(#[from] validation_errors::InvalidEnumEntity),
+    /// Generalized slot found in the clause of the template
+    /// however there was no corresponding type declaration
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    GeneralizedSlotInConditionClauseNotInSlotsTypeDeclaration(
+        #[from] validation_errors::GeneralizedSlotInConditionClauseNotInSlotsTypeDeclaration,
+    ),
 }
 
 impl ValidationError {
@@ -479,6 +486,7 @@ impl ValidationError {
             Self::InternalInvariantViolation(e) => e.policy_id(),
             Self::EntityDerefLevelViolation(e) => e.policy_id(),
             Self::InvalidEnumEntity(e) => e.policy_id(),
+            Self::GeneralizedSlotInConditionClauseNotInSlotsTypeDeclaration(e) => e.policy_id(),
         }
     }
 }
@@ -540,6 +548,9 @@ impl From<cedar_policy_core::validator::ValidationError> for ValidationError {
             }
             cedar_policy_core::validator::ValidationError::EntityDerefLevelViolation(e) => {
                 Self::EntityDerefLevelViolation(e.into())
+            }
+            cedar_policy_core::validator::ValidationError::GeneralizedSlotInConditionClauseNotInSlotsTypeDeclaration(e) => {
+                Self::GeneralizedSlotInConditionClauseNotInSlotsTypeDeclaration(e.into())
             }
         }
     }

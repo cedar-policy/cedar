@@ -182,7 +182,8 @@ impl Validator {
                     // schema if it only failed when there is a known action
                     // applied to known principal/resource entity types that are
                     // not in its `appliesTo`.
-                    .chain(self.validate_template_action_application(p)),
+                    .chain(self.validate_template_action_application(p))
+                    .chain(self.validate_generalized_slots_has_type_binding(p)),
             )
         }
         .into_iter()
@@ -777,6 +778,75 @@ mod enumerated_entity_types {
                     expr
                 },
             )]
+        );
+    }
+}
+
+#[cfg(test)]
+mod generalized_templates {
+    use crate::{
+        ast::{PolicyID, SlotId},
+        extensions::Extensions,
+        parser::parse_policy_or_template,
+    };
+    use itertools::Itertools;
+
+    use crate::validator::{
+        typecheck::test::test_utils::get_loc, ValidationError, Validator, ValidatorSchema,
+    };
+
+    #[track_caller]
+    fn schema() -> ValidatorSchema {
+        ValidatorSchema::from_json_value(
+            serde_json::json!(
+                {
+                    "":  {  "entityTypes": {
+                             "Foo": {
+                                "enum": [ "foo" ],
+                            },
+                            "Bar": {
+                                "memberOfTypes": ["Foo"],
+                            }
+                        },
+                        "actions": {
+                            "a": {
+                                "appliesTo": {
+                                    "principalTypes": ["Foo"],
+                                    "resourceTypes": ["Bar"],
+                                }
+                            }
+                        }
+                }
+            }
+            ),
+            Extensions::none(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn generalized_slot_in_condition_clause_but_not_in_type_declaration() {
+        let schema = schema();
+        let src = r#"permit(principal, action == Action::"a", resource) when { ?r == ?b };"#;
+        let template = parse_policy_or_template(None, src).unwrap();
+        let validator = Validator::new(schema);
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_eq!(
+            errors.collect_vec(),
+            [
+                ValidationError::generalized_slot_in_condition_clause_not_in_slots_type_declaration(
+                    get_loc(src, r#"?b"#),
+                    PolicyID::from_string("policy0"),
+                    SlotId::generalized_slot("b".parse().unwrap())
+                ),
+                ValidationError::generalized_slot_in_condition_clause_not_in_slots_type_declaration(
+                    get_loc(src, r#"?r"#),
+                    PolicyID::from_string("policy0"),
+                    SlotId::generalized_slot("r".parse().unwrap())
+                )
+            ]
         );
     }
 }

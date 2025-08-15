@@ -24,7 +24,7 @@ use validation_errors::UnrecognizedActionIdHelp;
 
 use std::collections::BTreeSet;
 
-use crate::ast::{EntityType, Expr, PolicyID};
+use crate::ast::{EntityType, Expr, PolicyID, SlotId};
 use crate::parser::MaybeLoc;
 
 use crate::validator::types::{EntityLUB, Type};
@@ -177,6 +177,13 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     EntityDerefLevelViolation(#[from] validation_errors::EntityDerefLevelViolation),
+    /// Generalized slot found in the clause of the template
+    /// however there was no corresponding type declaration
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    GeneralizedSlotInConditionClauseNotInSlotsTypeDeclaration(
+        #[from] validation_errors::GeneralizedSlotInConditionClauseNotInSlotsTypeDeclaration,
+    ),
 }
 
 impl ValidationError {
@@ -190,6 +197,20 @@ impl ValidationError {
         }
         .into()
     }
+
+    pub(crate) fn generalized_slot_in_condition_clause_not_in_slots_type_declaration(
+        source_loc: MaybeLoc,
+        policy_id: PolicyID,
+        slot: SlotId,
+    ) -> Self {
+        validation_errors::GeneralizedSlotInConditionClauseNotInSlotsTypeDeclaration {
+            source_loc,
+            policy_id,
+            slot,
+        }
+        .into()
+    }
+
     pub(crate) fn unrecognized_entity_type(
         source_loc: MaybeLoc,
         policy_id: PolicyID,

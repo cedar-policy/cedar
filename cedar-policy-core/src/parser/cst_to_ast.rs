@@ -848,23 +848,6 @@ impl cst::PolicyImpl {
             }
         }
 
-        // This ensures that you have a type declaration for every slot that you define.
-        // However for user's of Cedar that don't use a Schema this check will have to be
-        // disabled.
-        for slot in slots_in_cond {
-            if slot.id.is_generalized_slot() && !(slots_type_declaration.contains_key(&slot.id)) {
-                all_errs.push(
-                    ToASTError::new(
-                        ToASTErrorKind::slots_in_condition_clause_not_in_slots_type_declaration(
-                            slot.clone(),
-                        ),
-                        slot.loc,
-                    )
-                    .into(),
-                )
-            }
-        }
-
         match ParseErrors::flatten(all_errs) {
             Some(errs) => Err(errs),
             None => Ok(slots_type_declaration.into()),
@@ -3936,13 +3919,6 @@ mod tests {
         assert_parse_template_fails(txt);
 
         let txt = r#"
-        permit(principal, action, resource) when {
-            ?invalid == 5
-        };
-        "#;
-        assert_parse_template_fails(txt);
-
-        let txt = r#"
         template(?age: Long, ?age: Long) =>
         permit(principal, action, resource) when {
             ?invalid == 5
@@ -4049,24 +4025,6 @@ mod tests {
         let txt = r#"
         template(?temp: Long, ?rand: String) => 
         permit(principal, action, resource); 
-        "#;
-        assert_parse_template_fails(txt);
-    }
-
-    #[test]
-    fn generalized_slot_in_cond_not_in_scope_no_type() {
-        let txt = r#"
-        permit(principal, action, resource) unless {
-            ?cond 
-        }; 
-        "#;
-        assert_parse_template_fails(txt);
-
-        let txt = r#"
-        template(?value: Long) => 
-        permit(principal, action, resource) when {
-            ?value == 8 && ?cond
-        }; 
         "#;
         assert_parse_template_fails(txt);
     }
@@ -5172,15 +5130,6 @@ mod tests {
                 r#"permit(principal, action, resource in ?baz);"#,
                 ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
             ),
-            (
-                r#"permit(principal, action, resource) when { principal == ?foo};"#,
-                ExpectedErrorMessageBuilder::error(
-                    "found template slot ?foo in the condition clause but it does not have a type declaration",
-                ).help(
-                    "generalized slots that appear in the condition clause require a type declaration",
-                ).exactly_one_underline("?foo").build(),
-            ),
-
             (
                 r#"permit(principal, action == ?action, resource);"#,
                 ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?action").build(),
@@ -6569,15 +6518,6 @@ mod tests {
                 r#"permit(principal, action, resource in ?baz);"#,
                 ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
             ),
-            (
-                r#"permit(principal, action, resource) when { principal == ?foo};"#,
-                ExpectedErrorMessageBuilder::error(
-                    "found template slot ?foo in the condition clause but it does not have a type declaration",
-                ).help(
-                    "generalized slots that appear in the condition clause require a type declaration",
-                ).exactly_one_underline("?foo").build(),
-            ),
-
             (
                 r#"permit(principal, action == ?action, resource);"#,
                 ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?action").build(),

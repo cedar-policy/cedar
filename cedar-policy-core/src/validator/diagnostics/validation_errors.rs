@@ -28,7 +28,7 @@ use crate::parser::MaybeLoc;
 
 use std::collections::BTreeSet;
 
-use crate::ast::{Eid, EntityType, EntityUID, Expr, ExprKind, PolicyID, Var};
+use crate::ast::{Eid, EntityType, EntityUID, Expr, ExprKind, PolicyID, SlotId, Var};
 use crate::parser::join_with_conjunction;
 
 use crate::validator::level_validate::EntityDerefLevel;
@@ -705,6 +705,32 @@ impl Diagnostic for InvalidEnumEntity {
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         self.err.help()
+    }
+}
+
+/// Returned when there is a generalized slot in the condition clause
+/// but it does not have a type declaration associated with it
+#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
+#[error(
+    "found generalized slot {} in the condition clause but it does not have a type declaration",
+    slot
+)]
+pub struct GeneralizedSlotInConditionClauseNotInSlotsTypeDeclaration {
+    /// Source location
+    pub source_loc: MaybeLoc,
+    /// Policy ID where the error occured
+    pub policy_id: PolicyID,
+    /// Slot that does not have a type declaration
+    pub slot: SlotId,
+}
+
+impl Diagnostic for GeneralizedSlotInConditionClauseNotInSlotsTypeDeclaration {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "generalized slot that appear in the condition clause require a type declaration",
+        ))
     }
 }
 

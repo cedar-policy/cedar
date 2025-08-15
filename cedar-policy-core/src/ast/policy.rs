@@ -285,6 +285,13 @@ impl Template {
             .filter(|slot| slot.id.is_principal() || slot.id.is_resource())
     }
 
+    /// List of generalized slots in this template
+    pub fn generalized_slots(&self) -> impl Iterator<Item = &Slot> {
+        self.slots
+            .iter()
+            .filter(|slot| slot.id.is_generalized_slot())
+    }
+
     /// Check if this template is a static policy
     ///
     /// Static policies can be linked without any slots,
@@ -1648,12 +1655,12 @@ impl PrincipalConstraint {
 
     /// Return if the principal constraint has a slot
     pub fn has_slot(&self) -> bool {
-        match self.constraint {
+        matches!(
+            self.constraint,
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_))
-            | PrincipalOrResourceConstraint::In(EntityReference::Slot(_))
-            | PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_)) => true,
-            _ => false,
-        }
+                | PrincipalOrResourceConstraint::In(EntityReference::Slot(_))
+                | PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_))
+        )
     }
 
     /// If the principal constraint has a slot, return it
@@ -1778,12 +1785,12 @@ impl ResourceConstraint {
 
     /// Return if the resource constraint has a slot
     pub fn has_slot(&self) -> bool {
-        match self.constraint {
+        matches!(
+            self.constraint,
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_))
-            | PrincipalOrResourceConstraint::In(EntityReference::Slot(_))
-            | PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_)) => true,
-            _ => false,
-        }
+                | PrincipalOrResourceConstraint::In(EntityReference::Slot(_))
+                | PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_))
+        )
     }
 
     /// If the resource constraint has a slot, return it

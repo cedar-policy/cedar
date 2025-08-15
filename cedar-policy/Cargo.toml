@@ -65,6 +65,7 @@ extended-schema = ["cedar-policy-core/extended-schema"]
 # release.
 deprecated-schema-compat = []
 tpe = ["cedar-policy-core/tpe"]
+generalized-templates = ["cedar-policy-core/generalized-templates"]
 
 # Feature for raw parsing
 raw-parsing = ["cedar-policy-core/raw-parsing"]

@@ -898,34 +898,6 @@ mod tests {
         });
 
         let src = r#"
-            permit(principal, action, resource) when {
-                resource == ?blah
-            };
-            "#;
-        let error = ExpectedErrorMessageBuilder::error("found template slot ?blah in the condition clause but it does not have a type declaration")
-            .help("generalized slots that appear in the condition clause require a type declaration")
-            .exactly_one_underline("?blah")
-            .build();
-        assert_matches!(parse_policy(None, src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
-        });
-        assert_matches!(parse_policy_or_template(None, src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
-        });
-        assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
-        });
-        assert_matches!(parse_policy_or_template_to_est_and_ast(None, src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
-        });
-        assert_matches!(parse_policyset(src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
-        });
-        assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
-        });
-
-        let src = r#"
             permit(principal, action, resource) unless {
                 resource == ?resource
             };
@@ -1003,34 +975,6 @@ mod tests {
         });
         assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
             expect_exactly_one_error(src, &e, &slot_in_unless_clause);
-        });
-
-        let src = r#"
-            permit(principal, action, resource) unless {
-                resource == ?blah
-            };
-            "#;
-        let error = ExpectedErrorMessageBuilder::error("found template slot ?blah in the condition clause but it does not have a type declaration")
-            .help("generalized slots that appear in the condition clause require a type declaration")
-            .exactly_one_underline("?blah")
-            .build();
-        assert_matches!(parse_policy(None, src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
-        });
-        assert_matches!(parse_policy_or_template(None, src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
-        });
-        assert_matches!(parse_policy_to_est_and_ast(None, src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
-        });
-        assert_matches!(parse_policy_or_template_to_est_and_ast(None, src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
-        });
-        assert_matches!(parse_policyset(src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
-        });
-        assert_matches!(parse_policyset_to_ests_and_pset(src), Err(e) => {
-            expect_exactly_one_error(src, &e, &error);
         });
 
         let src = r#"

@@ -62,6 +62,7 @@ wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 experimental = ["tpe", "tolerant-ast", "extended-schema", "entity-manifest", "partial-validate", "partial-eval"]
 extended-schema = []
 tpe = []
+generalized-templates = []
 
 # Feature for raw parsing
 raw-parsing = []
