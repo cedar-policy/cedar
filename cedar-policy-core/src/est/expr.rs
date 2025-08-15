@@ -19,7 +19,7 @@ use super::FromJsonError;
 use crate::ast::expr_allows_errors::AstExprErrorKind;
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::Infallible;
-use crate::ast::{self, BoundedDisplay, EntityUID};
+use crate::ast::{self, BoundedDisplay, EntityUID, Name};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
     CedarValueJson, FnAndArgs,
@@ -31,6 +31,7 @@ use crate::parser::cst_to_ast;
 use crate::parser::err::ParseErrors;
 use crate::parser::Node;
 use crate::parser::{cst, Loc};
+use crate::FromNormalizedStr;
 use itertools::Itertools;
 use serde::{de::Visitor, Deserialize, Serialize};
 use serde_with::serde_as;
@@ -1034,22 +1035,23 @@ impl Expr {
                             .into_iter()
                             .next()
                             .expect("already checked that len was 1");
-                        let fn_name: ast::Name = fn_name.parse().map_err(|errs| {
+                        let fn_name = Name::from_normalized_str(&fn_name).map_err(|errs| {
                             JsonDeserializationError::parse_escape(
                                 EscapeKind::Extension,
                                 fn_name,
                                 errs,
                             )
                         })?;
-                        if !cst_to_ast::is_known_extension_func_name(&fn_name) {
-                            return Err(FromJsonError::UnknownExtensionFunction(fn_name));
+                        if cst_to_ast::is_known_extension_func_name(&fn_name) {
+                            Ok(ast::Expr::call_extension_fn(
+                                fn_name,
+                                args.into_iter()
+                                    .map(|arg| arg.try_into_ast(id))
+                                    .collect::<Result<_, _>>()?,
+                            ))
+                        } else {
+                            Err(FromJsonError::UnknownExtensionFunction(fn_name))
                         }
-                        Ok(ast::Expr::call_extension_fn(
-                            fn_name,
-                            args.into_iter()
-                                .map(|arg| arg.try_into_ast(id))
-                                .collect::<Result<_, _>>()?,
-                        ))
                     }
                     _ => Err(FromJsonError::MultipleOperators {
                         ops: call.into_keys().collect(),
