@@ -570,8 +570,12 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 ["(none)".to_string(), "(some (val X))".to_string()],
             )
             .await?;
+        let mut ids: Vec<_> = Vec::new();
         for t in ts {
             let id = self.encode_term(t).await?;
+            ids.push(id);
+        }
+        for id in ids {
             self.script.assert(&id).await?;
         }
         Ok(())
