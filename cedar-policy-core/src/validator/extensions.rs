@@ -17,6 +17,7 @@
 //! This module contains type information for all of the standard Cedar extensions.
 
 use std::collections::{BTreeSet, HashMap};
+use std::sync::LazyLock;
 
 use crate::{
     ast::{Name, RestrictedExpr, Value},
@@ -42,20 +43,22 @@ pub mod datetime;
 
 pub mod partial_evaluation;
 
-lazy_static::lazy_static! {
-    static ref ALL_AVAILABLE_EXTENSION_SCHEMA_OBJECTS : Vec<ExtensionSchema> = vec![
-        #[cfg(feature = "ipaddr")]
-        ipaddr::extension_schema(),
-        #[cfg(feature = "decimal")]
-        decimal::extension_schema(),
-        #[cfg(feature = "datetime")]
-        datetime::extension_schema(),
-        #[cfg(feature = "partial-eval")]
-        partial_evaluation::extension_schema(),
-    ];
+static ALL_AVAILABLE_EXTENSION_SCHEMA_OBJECTS: LazyLock<Vec<ExtensionSchema>> =
+    LazyLock::new(|| {
+        vec![
+            #[cfg(feature = "ipaddr")]
+            ipaddr::extension_schema(),
+            #[cfg(feature = "decimal")]
+            decimal::extension_schema(),
+            #[cfg(feature = "datetime")]
+            datetime::extension_schema(),
+            #[cfg(feature = "partial-eval")]
+            partial_evaluation::extension_schema(),
+        ]
+    });
 
-    static ref ALL_AVAILABLE_EXTENSION_SCHEMAS : ExtensionSchemas<'static> = ExtensionSchemas::build_all_available();
-}
+static ALL_AVAILABLE_EXTENSION_SCHEMAS: LazyLock<ExtensionSchemas<'static>> =
+    LazyLock::new(|| ExtensionSchemas::build_all_available());
 
 /// Aggregate structure containing information such as function signatures for multiple [`ExtensionSchema`].
 /// Ensures that no function name is defined mode than once.

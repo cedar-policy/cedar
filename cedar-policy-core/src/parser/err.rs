@@ -19,11 +19,10 @@ use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use either::Either;
 use lalrpop_util as lalr;
-use lazy_static::lazy_static;
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
@@ -726,54 +725,52 @@ pub struct ExpectedTokenConfig {
     pub first_set_sentinel: &'static str,
 }
 
-lazy_static! {
-    static ref POLICY_TOKEN_CONFIG: ExpectedTokenConfig = ExpectedTokenConfig {
-        friendly_token_names: HashMap::from([
-            ("TRUE", "`true`"),
-            ("FALSE", "`false`"),
-            ("IF", "`if`"),
-            ("PERMIT", "`permit`"),
-            ("FORBID", "`forbid`"),
-            ("WHEN", "`when`"),
-            ("UNLESS", "`unless`"),
-            ("IN", "`in`"),
-            ("HAS", "`has`"),
-            ("LIKE", "`like`"),
-            ("IS", "`is`"),
-            ("THEN", "`then`"),
-            ("ELSE", "`else`"),
-            ("PRINCIPAL", "`principal`"),
-            ("ACTION", "`action`"),
-            ("RESOURCE", "`resource`"),
-            ("CONTEXT", "`context`"),
-            ("PRINCIPAL_SLOT", "`?principal`"),
-            ("RESOURCE_SLOT", "`?resource`"),
-            ("IDENTIFIER", "identifier"),
-            ("NUMBER", "number"),
-            ("STRINGLIT", "string literal"),
-        ]),
-        impossible_tokens: HashSet::from(["\"=\"", "\"%\"", "\"/\"", "OTHER_SLOT"]),
-        special_identifier_tokens: HashSet::from([
-            "PERMIT",
-            "FORBID",
-            "WHEN",
-            "UNLESS",
-            "IN",
-            "HAS",
-            "LIKE",
-            "IS",
-            "THEN",
-            "ELSE",
-            "PRINCIPAL",
-            "ACTION",
-            "RESOURCE",
-            "CONTEXT",
-        ]),
-        identifier_sentinel: "IDENTIFIER",
-        first_set_identifier_tokens: HashSet::from(["TRUE", "FALSE", "IF"]),
-        first_set_sentinel: "\"!\"",
-    };
-}
+static POLICY_TOKEN_CONFIG: LazyLock<ExpectedTokenConfig> = LazyLock::new(|| ExpectedTokenConfig {
+    friendly_token_names: HashMap::from([
+        ("TRUE", "`true`"),
+        ("FALSE", "`false`"),
+        ("IF", "`if`"),
+        ("PERMIT", "`permit`"),
+        ("FORBID", "`forbid`"),
+        ("WHEN", "`when`"),
+        ("UNLESS", "`unless`"),
+        ("IN", "`in`"),
+        ("HAS", "`has`"),
+        ("LIKE", "`like`"),
+        ("IS", "`is`"),
+        ("THEN", "`then`"),
+        ("ELSE", "`else`"),
+        ("PRINCIPAL", "`principal`"),
+        ("ACTION", "`action`"),
+        ("RESOURCE", "`resource`"),
+        ("CONTEXT", "`context`"),
+        ("PRINCIPAL_SLOT", "`?principal`"),
+        ("RESOURCE_SLOT", "`?resource`"),
+        ("IDENTIFIER", "identifier"),
+        ("NUMBER", "number"),
+        ("STRINGLIT", "string literal"),
+    ]),
+    impossible_tokens: HashSet::from(["\"=\"", "\"%\"", "\"/\"", "OTHER_SLOT"]),
+    special_identifier_tokens: HashSet::from([
+        "PERMIT",
+        "FORBID",
+        "WHEN",
+        "UNLESS",
+        "IN",
+        "HAS",
+        "LIKE",
+        "IS",
+        "THEN",
+        "ELSE",
+        "PRINCIPAL",
+        "ACTION",
+        "RESOURCE",
+        "CONTEXT",
+    ]),
+    identifier_sentinel: "IDENTIFIER",
+    first_set_identifier_tokens: HashSet::from(["TRUE", "FALSE", "IF"]),
+    first_set_sentinel: "\"!\"",
+});
 
 /// Format lalrpop expected error messages
 pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> Option<String> {

@@ -16,7 +16,7 @@
 
 //! Parser for schemas in the Cedar syntax
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use lalrpop_util::lalrpop_mod;
 use miette::Diagnostic;
@@ -82,10 +82,8 @@ fn parse_collect_errors<'a, P, T>(
 }
 
 // Thread-safe "global" parsers, initialized at first use
-lazy_static::lazy_static! {
-    static ref SCHEMA_PARSER: grammar::SchemaParser = grammar::SchemaParser::new();
-    static ref TYPE_PARSER: grammar::TypeParser = grammar::TypeParser::new();
-}
+static SCHEMA_PARSER: LazyLock<grammar::SchemaParser> =
+    LazyLock::new(|| grammar::SchemaParser::new());
 
 /// Parse errors for parsing a schema in the Cedar syntax
 //

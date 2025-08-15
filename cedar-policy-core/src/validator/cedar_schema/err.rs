@@ -18,7 +18,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
     iter::{Chain, Once},
-    sync::Arc,
+    sync::{Arc, LazyLock},
     vec,
 };
 
@@ -32,7 +32,7 @@ use crate::{
     },
 };
 use lalrpop_util as lalr;
-use lazy_static::lazy_static;
+
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
@@ -73,46 +73,44 @@ pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken
 
 type OwnedRawParseError = lalr::ParseError<RawLocation, String, UserError>;
 
-lazy_static! {
-    static ref SCHEMA_TOKEN_CONFIG: ExpectedTokenConfig = ExpectedTokenConfig {
-        friendly_token_names: HashMap::from([
-            ("IN", "`in`"),
-            ("PRINCIPAL", "`principal`"),
-            ("ACTION", "`action`"),
-            ("RESOURCE", "`resource`"),
-            ("CONTEXT", "`context`"),
-            ("STRINGLIT", "string literal"),
-            ("ENTITY", "`entity`"),
-            ("NAMESPACE", "`namespace`"),
-            ("TYPE", "`type`"),
-            ("SET", "`Set`"),
-            ("IDENTIFIER", "identifier"),
-            ("TAGS", "`tags`"),
-            ("ENUM", "`enum`"),
-        ]),
-        impossible_tokens: HashSet::new(),
-        special_identifier_tokens: HashSet::from([
-            "NAMESPACE",
-            "ENTITY",
-            "IN",
-            "TYPE",
-            "APPLIESTO",
-            "PRINCIPAL",
-            "ACTION",
-            "RESOURCE",
-            "CONTEXT",
-            "ATTRIBUTES",
-            "TAGS",
-            "LONG",
-            "STRING",
-            "BOOL",
-            "ENUM",
-        ]),
-        identifier_sentinel: "IDENTIFIER",
-        first_set_identifier_tokens: HashSet::from(["SET"]),
-        first_set_sentinel: "\"{\"",
-    };
-}
+static SCHEMA_TOKEN_CONFIG: LazyLock<ExpectedTokenConfig> = LazyLock::new(|| ExpectedTokenConfig {
+    friendly_token_names: HashMap::from([
+        ("IN", "`in`"),
+        ("PRINCIPAL", "`principal`"),
+        ("ACTION", "`action`"),
+        ("RESOURCE", "`resource`"),
+        ("CONTEXT", "`context`"),
+        ("STRINGLIT", "string literal"),
+        ("ENTITY", "`entity`"),
+        ("NAMESPACE", "`namespace`"),
+        ("TYPE", "`type`"),
+        ("SET", "`Set`"),
+        ("IDENTIFIER", "identifier"),
+        ("TAGS", "`tags`"),
+        ("ENUM", "`enum`"),
+    ]),
+    impossible_tokens: HashSet::new(),
+    special_identifier_tokens: HashSet::from([
+        "NAMESPACE",
+        "ENTITY",
+        "IN",
+        "TYPE",
+        "APPLIESTO",
+        "PRINCIPAL",
+        "ACTION",
+        "RESOURCE",
+        "CONTEXT",
+        "ATTRIBUTES",
+        "TAGS",
+        "LONG",
+        "STRING",
+        "BOOL",
+        "ENUM",
+    ]),
+    identifier_sentinel: "IDENTIFIER",
+    first_set_identifier_tokens: HashSet::from(["SET"]),
+    first_set_sentinel: "\"{\"",
+});
 
 /// For errors during parsing
 #[derive(Clone, Debug, PartialEq, Eq)]

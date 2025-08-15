@@ -29,15 +29,28 @@ use std::sync::Arc;
 #[allow(clippy::expect_used)]
 mod names {
     use crate::ast::Name;
-    lazy_static::lazy_static! {
-        pub static ref EXTENSION_NAME : Name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
-        pub static ref IP_FROM_STR_NAME : Name = Name::parse_unqualified_name("ip").expect("should be a valid identifier");
-        pub static ref IS_IPV4 : Name = Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier");
-        pub static ref IS_IPV6 : Name = Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier");
-        pub static ref IS_LOOPBACK : Name = Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier");
-        pub static ref IS_MULTICAST : Name = Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier");
-        pub static ref IS_IN_RANGE : Name = Name::parse_unqualified_name("isInRange").expect("should be a valid identifier");
-    }
+    use std::sync::LazyLock;
+
+    pub static EXTENSION_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier")
+    });
+    pub static IP_FROM_STR_NAME: LazyLock<Name> =
+        LazyLock::new(|| Name::parse_unqualified_name("ip").expect("should be a valid identifier"));
+    pub static IS_IPV4: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier")
+    });
+    pub static IS_IPV6: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier")
+    });
+    pub static IS_LOOPBACK: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier")
+    });
+    pub static IS_MULTICAST: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier")
+    });
+    pub static IS_IN_RANGE: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("isInRange").expect("should be a valid identifier")
+    });
 }
 
 /// Help message to display when a String was provided where an IP value was expected.
