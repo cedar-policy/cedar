@@ -8276,3 +8276,78 @@ mod raw_parsing {
             .expect("Failed to parse");
     }
 }
+
+#[cfg(feature = "generalized-templates")]
+mod generalized_template {
+    use crate::{PolicyId, PolicySet, RestrictedExpression, SlotId, Template};
+    use std::collections::HashMap;
+
+    #[test]
+    fn generalized_link_without_schema() {
+        let mut pset = PolicySet::new();
+        let template: Template =
+            r"template(?is_true: __cedar::Bool) => permit(principal,action,resource) when { ?is_true };"
+                .parse()
+                .unwrap();
+        pset.add_template(template.new_id(PolicyId::new("template")))
+            .unwrap();
+
+        let result = pset.generalized_link(
+            PolicyId::new("template"),
+            PolicyId::new("Link1"),
+            HashMap::from_iter([(
+                SlotId::generalized_slot("is_true").unwrap(),
+                RestrictedExpression::new_bool(true),
+            )]),
+            None,
+        );
+
+        assert!(result.is_ok());
+
+        let mut pset = PolicySet::new();
+        let template: Template =
+            r"template(?is_true: __cedar::Bool) => permit(principal,action,resource) when { ?is_true && ?random };"
+                .parse()
+                .unwrap();
+        pset.add_template(template.new_id(PolicyId::new("template")))
+            .unwrap();
+
+        let result = pset.generalized_link(
+            PolicyId::new("template"),
+            PolicyId::new("Link1"),
+            HashMap::from_iter([
+                (
+                    SlotId::generalized_slot("is_true").unwrap(),
+                    RestrictedExpression::new_bool(true),
+                ),
+                (
+                    SlotId::generalized_slot("random").unwrap(),
+                    RestrictedExpression::new_bool(false),
+                ),
+            ]),
+            None,
+        );
+
+        assert!(result.is_ok());
+
+        let mut pset = PolicySet::new();
+        let template: Template =
+            r"template(?entity: Test) => permit(principal,action,resource) when { ?entity };"
+                .parse()
+                .unwrap();
+        pset.add_template(template.new_id(PolicyId::new("template")))
+            .unwrap();
+
+        let result = pset.generalized_link(
+            PolicyId::new("template"),
+            PolicyId::new("Link1"),
+            HashMap::from_iter([(
+                SlotId::generalized_slot("entity").unwrap(),
+                RestrictedExpression::new_entity_uid(r#"Test::"A""#.parse().unwrap()),
+            )]),
+            None,
+        );
+
+        assert!(result.is_ok());
+    }
+}
