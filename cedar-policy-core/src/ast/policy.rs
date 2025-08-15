@@ -383,44 +383,20 @@ impl Template {
         )
         .into_validator_slots_type_declaration(schema)?;
 
-        let values_restricted_expr: HashMap<SlotId, RestrictedExpr> = values
-            .iter()
-            .map(|(slot, entity_uid)| (slot.clone(), RestrictedExpr::val(entity_uid.clone())))
-            .collect();
-
-        // we treat values differently because `?principal` and `?resource` type annotations are optional
-        for (slot, restricted_expr) in values_restricted_expr {
-            let maybe_validator_type = validator_slots_type_declaration.get(&slot);
-            if let Some(validator_type) = maybe_validator_type {
-                let borrowed_restricted_expr = restricted_expr.as_borrowed();
-                #[allow(clippy::expect_used)]
-                let schema_ty = &SchemaType::try_from(validator_type.clone()).expect(
-                    "This should never happen as expected_ty is a statically annotated type",
-                );
-                let extensions = Extensions::all_available();
-                typecheck_restricted_expr_against_schematype(
-                    borrowed_restricted_expr,
-                    schema_ty,
-                    extensions,
-                )
-                .map_err(|_| {
-                    LinkingError::ValueProvidedForSlotIsNotOfTypeSpecified {
-                        slot: slot.clone(),
-                        value: restricted_expr.clone(),
-                        ty: validator_type.clone(),
-                    }
-                })?
-            }
-        }
-
-        for (slot, restricted_expr) in generalized_values {
-            let validator_type =
-                validator_slots_type_declaration
-                    .get(slot)
-                    .ok_or(LinkingError::ArityError {
-                        unbound_values: vec![slot.clone()],
-                        extra_values: vec![],
-                    })?;
+        // Loop through all slots that have a type declaration and check that
+        // the values provided are of that type
+        for (slot, validator_type) in validator_slots_type_declaration.0 {
+            let restricted_expr = if slot.is_principal() || slot.is_resource() {
+                // PANIC SAFETY
+                // all slot values should binded
+                #[allow(clippy::unwrap_used)]
+                RestrictedExpr::val(values.get(&slot).unwrap().clone())
+            } else {
+                // PANIC SAFETY
+                // all slot values should binded
+                #[allow(clippy::unwrap_used)]
+                generalized_values.get(&slot).unwrap().clone()
+            };
             let borrowed_restricted_expr = restricted_expr.as_borrowed();
             #[allow(clippy::expect_used)]
             let schema_ty = &SchemaType::try_from(validator_type.clone())
@@ -437,6 +413,7 @@ impl Template {
                 ty: validator_type.clone(),
             })?
         }
+
         Ok(())
     }
 

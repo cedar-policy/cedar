@@ -91,7 +91,7 @@ impl From<BTreeMap<SlotId, JSONSchemaType<RawName>>> for SlotsTypeDeclaration {
 /// This struct is used when typechecking. JSONSchemaType's can't be used
 /// by the typechecker and need to be translated to a validator type by using a schema.
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Debug, Hash)]
-pub struct ValidatorSlotsTypeDeclaration(BTreeMap<SlotId, ValidatorType>);
+pub struct ValidatorSlotsTypeDeclaration(pub BTreeMap<SlotId, ValidatorType>);
 
 impl FromIterator<(SlotId, ValidatorType)> for ValidatorSlotsTypeDeclaration {
     fn from_iter<T: IntoIterator<Item = (SlotId, ValidatorType)>>(iter: T) -> Self {
