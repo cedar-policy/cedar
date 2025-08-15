@@ -22,6 +22,7 @@ thiserror = "2.0"
 smol_str = { version = "0.3", features = ["serde"] }
 dhat = { version = "0.3.2", optional = true }
 serde_with = "3.13.0"
+nonempty = { version = "0.12", optional = true }
 prost = { version = "0.14", optional = true }
 
 # wasm dependencies
@@ -29,7 +30,6 @@ prost = { version = "0.14", optional = true }
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
 semver = "1.0.26"
-nonempty = "0.12"
 
 [build-dependencies]
 prost-build = { version = "0.14", optional = true }
@@ -54,7 +54,7 @@ entity-manifest = ["cedar-policy-core/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-core/partial-validate"]
-protobufs = ["dep:prost", "dep:prost-build"]
+protobufs = ["dep:nonempty", "dep:prost", "dep:prost-build"]
 wasm = ["tsify", "wasm-bindgen"]
 tolerant-ast = ["cedar-policy-core/tolerant-ast", "cedar-policy-formatter/tolerant-ast"]
 extended-schema = ["cedar-policy-core/extended-schema"]
