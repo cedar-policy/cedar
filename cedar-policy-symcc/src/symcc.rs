@@ -380,7 +380,6 @@ impl<S: Solver> SymCompiler<S> {
         )
         .await
     }
-
 }
 
 /// The Cedar symbolic compiler assumes that it receives well-typed policies.  This

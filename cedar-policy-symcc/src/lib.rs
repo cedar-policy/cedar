@@ -28,7 +28,8 @@ use symcc::Environment;
 use symcc::SymCompiler;
 use symcc::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
-    verify_never_errors, well_typed_policies, well_typed_policy, well_typed_template, well_typed_request
+    verify_never_errors, well_typed_policies, well_typed_policy, well_typed_request,
+    well_typed_template,
 };
 
 pub use symcc::bitvec;
