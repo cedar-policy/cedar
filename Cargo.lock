@@ -320,9 +320,12 @@ dependencies = [
  "dhat",
  "globset",
  "itertools 0.14.0",
+<<<<<<< HEAD
  "lalrpop-util",
+=======
+ "lazy_static",
+>>>>>>> 3c9722e0 (Remove unused dependencies in `cedar-policy` crate)
  "miette",
- "nonempty",
  "oorandom",
  "proptest",
  "prost",
@@ -330,7 +333,6 @@ dependencies = [
  "ref-cast",
  "semver",
  "serde",
- "serde-wasm-bindgen",
  "serde_json",
  "serde_with",
  "smol_str",
