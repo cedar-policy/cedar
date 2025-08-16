@@ -412,6 +412,7 @@ dependencies = [
  "cedar-policy",
  "cedar-policy-core",
  "chrono",
+ "cool_asserts",
  "itertools 0.14.0",
  "miette",
  "num-bigint",
