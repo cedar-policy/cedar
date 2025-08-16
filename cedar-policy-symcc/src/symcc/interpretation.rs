@@ -319,6 +319,14 @@ impl SymRequest {
             action: self.action.interpret(interp),
             resource: self.resource.interpret(interp),
             context: self.context.interpret(interp),
+            principal_slot: self
+                .principal_slot
+                .as_ref()
+                .map(|term| term.interpret(interp)),
+            resource_slot: self
+                .resource_slot
+                .as_ref()
+                .map(|term| term.interpret(interp)),
         }
     }
 }

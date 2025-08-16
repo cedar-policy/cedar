@@ -21,7 +21,7 @@
 
 use std::sync::Arc;
 
-use super::authorizer::is_authorized;
+use super::authorizer::{is_authorized, is_authorized_template};
 use super::compiler::compile;
 use super::enforcer::enforce;
 use super::env::SymEnv;

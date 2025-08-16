@@ -48,6 +48,8 @@ pub struct SymRequest {
     pub action: Term,
     pub resource: Term,
     pub context: Term,
+    pub principal_slot: Option<Term>,
+    pub resource_slot: Option<Term>,
 }
 
 impl SymRequest {
@@ -67,6 +69,8 @@ impl SymRequest {
                 ty: TermType::Bool,
             }),
             context: Term::Record(Arc::new(BTreeMap::new())),
+            principal_slot: None,
+            resource_slot: None,
         }
     }
 
@@ -75,6 +79,8 @@ impl SymRequest {
             && self.action.is_literal()
             && self.resource.is_literal()
             && self.context.is_literal()
+            && self.principal_slot.as_ref().is_some_and(|t| t.is_literal())
+            && self.resource_slot.as_ref().is_some_and(|t| t.is_literal())
     }
 }
 
@@ -386,6 +392,18 @@ impl SymRequest {
                 id: "context".to_string(),
                 ty: TermType::of_type(&record(req_ty.context.clone()))?,
             }),
+            principal_slot: req_ty.principal_slot.map(|ety| {
+                Term::Var(TermVar {
+                    id: "?principal".to_string(),
+                    ty: TermType::Entity { ety: ety.clone() },
+                })
+            }),
+            resource_slot: req_ty.resource_slot.map(|ety| {
+                Term::Var(TermVar {
+                    id: "?resource".to_string(),
+                    ty: TermType::Entity { ety: ety.clone() },
+                })
+            }),
         })
     }
 }
@@ -526,6 +544,8 @@ struct RequestType<'a> {
     action: &'a EntityUID,
     resource: &'a EntityType,
     context: &'a Attributes,
+    principal_slot: Option<&'a EntityType>,
+    resource_slot: Option<&'a EntityType>,
 }
 
 // From `Validation/Types.lean`
@@ -551,6 +571,8 @@ impl<'a> Environment<'a> {
                 action: renv.action(),
                 resource: renv.resource(),
                 context: context_attributes(schema.get_action_id(renv.action().as_ref())?).ok()?,
+                principal_slot: renv.principal_slot(),
+                resource_slot: renv.resource_slot(),
             },
         })
     }
@@ -572,6 +594,10 @@ pub fn to_validator_request_env<'a>(
     let principal = env.principal().as_ref();
     let resource = env.resource().as_ref();
     let action = env.action().as_ref();
+    let principal_slot: Option<cedar_policy_core::ast::EntityType> =
+        env.principal_slot().as_ref().map(|e| e.as_ref().clone());
+    let resource_slot: Option<cedar_policy_core::ast::EntityType> =
+        env.resource_slot().as_ref().map(|e| e.as_ref().clone());
     let context_type = schema.context_type(action);
     context_type.map(
         |context| cedar_policy_core::validator::types::RequestEnv::DeclaredAction {
@@ -579,8 +605,8 @@ pub fn to_validator_request_env<'a>(
             action,
             resource,
             context,
-            principal_slot: None,
-            resource_slot: None,
+            principal_slot,
+            resource_slot,
         },
     )
 }

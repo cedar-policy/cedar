@@ -26,8 +26,8 @@
 
 use std::sync::Arc;
 
-use cedar_policy_core::ast::Var;
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp};
+use cedar_policy_core::ast::{SlotId, Var};
 
 use super::bitvec::BitVec;
 use super::env::{SymEntities, SymEnv, SymRequest};
@@ -58,6 +58,36 @@ fn compile_prim(p: &Prim, es: &SymEntities) -> Result<Term> {
                 Err(CompileError::TypeError)
             }
         }
+    }
+}
+
+fn compile_slot(slot: &SlotId, req: &SymRequest) -> Result<Term> {
+    if slot.is_principal() {
+        match &req.principal_slot {
+            Some(term) => {
+                if term.type_of().is_entity_type() {
+                    Ok(some_of(term.clone()))
+                } else {
+                    Err(CompileError::TypeError)
+                }
+            }
+            None => Err(CompileError::PrincipalSlotTypeNotProvided),
+        }
+    } else if slot.is_resource() {
+        match &req.resource_slot {
+            Some(term) => {
+                if term.type_of().is_entity_type() {
+                    Ok(some_of(term.clone()))
+                } else {
+                    Err(CompileError::TypeError)
+                }
+            }
+            None => Err(CompileError::ResourceSlotTypeNotProvided),
+        }
+    } else {
+        Err(CompileError::UnsupportedFeature(
+            "generalized slots are not supported".to_string(),
+        ))
     }
 }
 
@@ -618,6 +648,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
     match x.expr_kind() {
         ExprKind::Lit(l) => compile_prim(l, &env.entities),
         ExprKind::Var(v) => compile_var(*v, &env.request),
+        ExprKind::Slot(s) => compile_slot(s, &env.request),
         ExprKind::If {
             test_expr: x1,
             then_expr: x2,
@@ -698,9 +729,6 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
                 .collect::<Result<Vec<_>>>()?;
             compile_call(fn_name, ts)
         }
-        ExprKind::Slot(_) => Err(CompileError::UnsupportedFeature(
-            "templates/slots are not supported".to_string(),
-        )),
         ExprKind::Unknown(_) => Err(CompileError::UnsupportedFeature(
             "partial evaluation is not supported".to_string(),
         )),
