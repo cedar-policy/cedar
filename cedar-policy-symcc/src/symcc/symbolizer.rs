@@ -384,7 +384,7 @@ impl SymEntityData {
             }),
             vals: UnaryFunction::Udf(function::Udf {
                 arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
-                out: TermType::of_type(&tag_ty)?,
+                out: TermType::of_type(tag_ty)?,
                 table: vals_udf_table,
                 default: vals_udf_default,
             }),

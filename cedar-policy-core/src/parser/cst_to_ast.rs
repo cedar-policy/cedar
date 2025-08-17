@@ -78,7 +78,7 @@ struct ExtStyles<'a> {
 
 // Store extension function call styles
 
-static EXTENSION_STYLES: LazyLock<ExtStyles<'static>> = LazyLock::new(|| load_styles());
+static EXTENSION_STYLES: LazyLock<ExtStyles<'static>> = LazyLock::new(load_styles);
 
 fn load_styles() -> ExtStyles<'static> {
     let mut functions = HashSet::new();
@@ -2361,9 +2361,7 @@ fn construct_template_policy(
     if let Some(last_expr) = conds_rev_iter.next() {
         let builder = ast::ExprBuilder::new().with_maybe_source_loc(loc);
         construct_template(
-            conds_rev_iter
-                .into_iter()
-                .fold(last_expr, |acc, prev| builder.clone().and(prev, acc)),
+            conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc)),
         )
     } else {
         // use `true` to mark the absence of non-scope constraints

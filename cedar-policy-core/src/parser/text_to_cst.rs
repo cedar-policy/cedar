@@ -114,15 +114,14 @@ fn parse_collect_errors_tolerant<'a, P, T>(
 // Thread-safe "global" parsers, initialized at first use
 
 static POLICIES_PARSER: LazyLock<grammar::PoliciesParser> =
-    LazyLock::new(|| grammar::PoliciesParser::new());
-static POLICY_PARSER: LazyLock<grammar::PolicyParser> =
-    LazyLock::new(|| grammar::PolicyParser::new());
-static EXPR_PARSER: LazyLock<grammar::ExprParser> = LazyLock::new(|| grammar::ExprParser::new());
-static REF_PARSER: LazyLock<grammar::RefParser> = LazyLock::new(|| grammar::RefParser::new());
+    LazyLock::new(grammar::PoliciesParser::new);
+static POLICY_PARSER: LazyLock<grammar::PolicyParser> = LazyLock::new(grammar::PolicyParser::new);
+static EXPR_PARSER: LazyLock<grammar::ExprParser> = LazyLock::new(grammar::ExprParser::new);
+static REF_PARSER: LazyLock<grammar::RefParser> = LazyLock::new(grammar::RefParser::new);
 static PRIMARY_PARSER: LazyLock<grammar::PrimaryParser> =
-    LazyLock::new(|| grammar::PrimaryParser::new());
-static NAME_PARSER: LazyLock<grammar::NameParser> = LazyLock::new(|| grammar::NameParser::new());
-static IDENT_PARSER: LazyLock<grammar::IdentParser> = LazyLock::new(|| grammar::IdentParser::new());
+    LazyLock::new(grammar::PrimaryParser::new);
+static NAME_PARSER: LazyLock<grammar::NameParser> = LazyLock::new(grammar::NameParser::new);
+static IDENT_PARSER: LazyLock<grammar::IdentParser> = LazyLock::new(grammar::IdentParser::new);
 
 /// Create CST for multiple policies from text
 pub fn parse_policies(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
