@@ -175,9 +175,9 @@ impl Validator {
             None
         } else {
             Some(
-                self.validate_entity_types(p)
-                    .chain(self.validate_enum_entity(p))
-                    .chain(self.validate_action_ids(p))
+                Validator::validate_entity_types(&self.schema, p)
+                    .chain(Validator::validate_enum_entity(&self.schema, p))
+                    .chain(Validator::validate_action_ids(&self.schema, p))
                     // We could usefully update this pass to apply to partial
                     // schema if it only failed when there is a known action
                     // applied to known principal/resource entity types that are

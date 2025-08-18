@@ -39,8 +39,8 @@ use super::{schema::*, Validator};
 impl Validator {
     /// Validate if a [`Template`] contains entities of enumerated entity types
     /// but with invalid UIDs
-    pub(crate) fn validate_enum_entity<'a>(
-        &'a self,
+    pub fn validate_enum_entity<'a>(
+        schema: &'a ValidatorSchema,
         template: &'a Template,
     ) -> impl Iterator<Item = ValidationError> + 'a {
         policy_entity_uids(template)
@@ -49,7 +49,7 @@ impl Validator {
                 if let Some(ValidatorEntityType {
                     kind: ValidatorEntityTypeKind::Enum(choices),
                     ..
-                }) = self.schema.get_entity_type(e.entity_type())
+                }) = schema.get_entity_type(e.entity_type())
                 {
                     match is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), e) {
                         Ok(_) => {}
@@ -67,20 +67,19 @@ impl Validator {
     }
     /// Generate `UnrecognizedEntityType` error for every entity type in the
     /// expression that could not also be found in the schema.
-    pub(crate) fn validate_entity_types<'a>(
-        &'a self,
+    pub fn validate_entity_types<'a>(
+        schema: &'a ValidatorSchema,
         template: &'a Template,
     ) -> impl Iterator<Item = ValidationError> + 'a {
         // All valid entity types in the schema. These will be used to generate
         // suggestion when an entity type is not found.
-        let known_entity_types = self
-            .schema
+        let known_entity_types = schema
             .entity_type_names()
             .map(ToString::to_string)
             .collect::<Vec<_>>();
 
         policy_entity_type_names(template).filter_map(move |name| {
-            let is_known_entity_type = self.schema.is_known_entity_type(name);
+            let is_known_entity_type = schema.is_known_entity_type(name);
 
             if !name.is_action() && !is_known_entity_type {
                 let actual_entity_type = name.to_string();
@@ -101,20 +100,20 @@ impl Validator {
     /// Generate `UnrecognizedActionId` error for every entity id with an action
     /// entity type where the id could not be found in the actions list from the
     /// schema.
-    pub(crate) fn validate_action_ids<'a>(
-        &'a self,
+    pub fn validate_action_ids<'a>(
+        schema: &'a ValidatorSchema,
         template: &'a Template,
     ) -> impl Iterator<Item = ValidationError> + 'a {
         // Valid action id names that will be used to generate suggestions if an
         // action id is not found
         policy_entity_uids(template).filter_map(move |euid| {
             let entity_type = euid.entity_type();
-            if entity_type.is_action() && !self.schema.is_known_action_id(euid) {
+            if entity_type.is_action() && !schema.is_known_action_id(euid) {
                 Some(ValidationError::unrecognized_action_id(
                     euid.loc().into_maybe_loc(),
                     template.id().clone(),
                     euid.to_string(),
-                    unrecognized_action_id_help(euid, &self.schema),
+                    unrecognized_action_id_help(euid, schema),
                 ))
             } else {
                 None
@@ -451,7 +450,8 @@ mod test {
         let src = r#"permit(principal, action, resource == foo_type::"foo_name");"#;
         let policy = parse_policy_or_template(None, src).unwrap();
         let validate = Validator::new(ValidatorSchema::empty());
-        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationError> =
+            Validator::validate_entity_types(validate.schema(), &policy).collect();
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
@@ -544,7 +544,9 @@ mod test {
 
         let validate = Validator::new(singleton_schema);
         assert!(
-            validate.validate_entity_types(&policy).next().is_none(),
+            Validator::validate_entity_types(validate.schema(), &policy)
+                .next()
+                .is_none(),
             "Did not expect any validation errors."
         );
     }
@@ -568,7 +570,8 @@ mod test {
         let src = r#"permit(principal, action, resource == bar_type::"bar_name");"#;
         let policy = parse_policy_or_template(None, src).unwrap();
         let validate = Validator::new(singleton_schema);
-        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationError> =
+            Validator::validate_entity_types(validate.schema(), &policy).collect();
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
@@ -587,7 +590,8 @@ mod test {
         let src = r#"permit(principal, action == Action::"foo_name", resource);"#;
         let policy = parse_policy_or_template(None, src).unwrap();
         let validate = Validator::new(ValidatorSchema::empty());
-        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        let notes: Vec<ValidationError> =
+            Validator::validate_action_ids(validate.schema(), &policy).collect();
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
@@ -634,7 +638,9 @@ mod test {
 
         let validate = Validator::new(singleton_schema);
         assert!(
-            validate.validate_action_ids(&policy).next().is_none(),
+            Validator::validate_action_ids(validate.schema(), &policy)
+                .next()
+                .is_none(),
             "Did not expect any validation errors."
         );
     }
@@ -759,7 +765,8 @@ mod test {
         let src = r#"permit(principal, action == Action::"bar_name", resource);"#;
         let policy = parse_policy_or_template(None, src).unwrap();
         let validate = Validator::new(singleton_schema);
-        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        let notes: Vec<ValidationError> =
+            Validator::validate_action_ids(validate.schema(), &policy).collect();
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
@@ -795,7 +802,8 @@ mod test {
         let src = r#"permit(principal, action == Action::"view", resource);"#;
         let policy = parse_policy_or_template(None, src).unwrap();
         let validate = Validator::new(singleton_schema);
-        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        let notes: Vec<ValidationError> =
+            Validator::validate_action_ids(validate.schema(), &policy).collect();
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
@@ -828,7 +836,8 @@ mod test {
         let src = r#"permit(principal, action == Action::"view", resource);"#;
         let policy = parse_policy_or_template(None, src).unwrap();
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        let notes: Vec<ValidationError> =
+            Validator::validate_action_ids(validate.schema(), &policy).collect();
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
@@ -870,7 +879,8 @@ mod test {
         );
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        let notes: Vec<ValidationError> =
+            Validator::validate_action_ids(validate.schema(), &policy).collect();
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
     }
 
@@ -891,7 +901,8 @@ mod test {
         let src = r#"permit(principal, action == Bogus::Action::"foo_name", resource);"#;
         let policy = parse_policy_or_template(None, src).unwrap();
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        let notes: Vec<ValidationError> =
+            Validator::validate_action_ids(validate.schema(), &policy).collect();
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
@@ -935,7 +946,8 @@ mod test {
         );
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationError> =
+            Validator::validate_entity_types(validate.schema(), &policy).collect();
 
         assert_eq!(notes, vec![], "Did not expect any invalid action.");
     }
@@ -957,7 +969,8 @@ mod test {
         let src = r#"permit(principal == Bogus::Foo::"bar", action, resource);"#;
         let policy = parse_policy_or_template(None, src).unwrap();
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationError> = validate.validate_entity_types(&policy).collect();
+        let notes: Vec<ValidationError> =
+            Validator::validate_entity_types(validate.schema(), &policy).collect();
         expect_err(
             src,
             &Report::new(notes.first().unwrap().clone()),
