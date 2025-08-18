@@ -157,12 +157,12 @@ impl<S: Solver> SymCompiler<S> {
                 .map_err(|err| Error::EncodeError(err.into()))?;
             self.solver
                 .smtlib_input()
-                .set_logic("ALL")
+                .set_option("produce-models", "true")
                 .await
                 .map_err(|err| Error::EncodeError(err.into()))?;
             self.solver
                 .smtlib_input()
-                .set_option("produce-models", "true")
+                .set_logic("ALL")
                 .await
                 .map_err(|err| Error::EncodeError(err.into()))?;
             let mut encoder =
