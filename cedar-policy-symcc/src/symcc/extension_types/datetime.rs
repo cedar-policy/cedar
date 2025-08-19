@@ -32,6 +32,7 @@
 /// One of the readable formats listed above must be used instead.
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 
+/// Internal representation of Cedar `datetime` values.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Datetime {
     val: i64,
@@ -41,18 +42,22 @@ const MILLISECONDS_PER_SECOND: i64 = 1000;
 const MILLISECONDS_PER_DAY: i64 = 86400000;
 
 impl Datetime {
+    /// Computes a [`Datetime`] offset by the given [`Duration`].
+    /// Returns [`None`] if the operation would overflow.
     pub fn offset(&self, duration: &Duration) -> Option<Datetime> {
         Some(Self {
             val: self.val.checked_add(duration.val)?,
         })
     }
 
+    /// Computes the duration between two [`Datetime`]'s.
     pub fn duration_since(&self, other: &Self) -> Option<Duration> {
         Some(Duration {
             val: self.val.checked_sub(other.val)?,
         })
     }
 
+    /// Extracts the date portion of a [`Datetime`] as a new [`Datetime`]. 
     pub fn to_date(&self) -> Option<Datetime> {
         if self.val >= 0 {
             Some(Self {
@@ -67,6 +72,7 @@ impl Datetime {
         }
     }
 
+    /// Extracts the time portion of a [`Datetime`] as a new [`Datetime`].
     pub fn to_time(&self) -> Option<Datetime> {
         if self.val >= 0 {
             Some(Self {
@@ -84,12 +90,12 @@ impl Datetime {
         }
     }
 
-    // Returns true iff s is a datetime str in one of our accepted formats and contains a leap second
+    /// Returns true iff s is a datetime str in one of our accepted formats and contains a leap second
     fn date_contains_leap_seconds(s: &str) -> bool {
         s.len() >= 20 && s.get(17..19) == Some("60")
     }
 
-    // Returns true iff s contains the expected delimiters within one of our accepted datetime str formats
+    /// Returns true iff s contains the expected delimiters within one of our accepted datetime str formats
     fn check_component_len(s: &str) -> bool {
         let check_date_component = |s: &str| -> bool {
             match s.split('-').collect::<Vec<_>>().as_slice() {
@@ -130,6 +136,7 @@ impl Datetime {
                 .is_some_and(|mins_offset| mins_offset < 60)
     }
 
+    /// Parses a [`Datetime`] from a string.
     pub fn parse(s: &str) -> Option<Self> {
         // Validate datetime str
         if Self::date_contains_leap_seconds(s)
@@ -242,22 +249,27 @@ pub struct Duration {
 }
 
 impl Duration {
+    /// Converts [`Duration`] to milliseconds.
     pub fn to_milliseconds(&self) -> i64 {
         self.val
     }
 
+    /// Converts [`Duration`] to seconds.
     pub fn to_seconds(&self) -> i64 {
         self.val / MILLISECONDS_PER_SECOND
     }
 
+    /// Converts [`Duration`] to minutes.
     pub fn to_minutes(&self) -> i64 {
         self.to_seconds() / 60
     }
 
+    /// Converts [`Duration`] to hours.
     pub fn to_hours(&self) -> i64 {
         self.to_minutes() / 60
     }
 
+    /// Converts [`Duration`] to days.
     pub fn to_days(&self) -> i64 {
         self.to_hours() / 24
     }
@@ -299,6 +311,7 @@ impl Duration {
         }
     }
 
+    /// Parses a [`Duration`] from a string.
     pub fn parse(s: &str) -> Option<Duration> {
         let (is_neg, s) = match s.strip_prefix('-') {
             Some(s) => (true, s),

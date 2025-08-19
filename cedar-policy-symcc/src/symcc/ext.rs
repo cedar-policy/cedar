@@ -87,7 +87,7 @@ impl Ext {
         reason = "Pass by value expected by consumer"
     )]
     pub fn parse_ip(str: String) -> Option<Ext> {
-        super::extension_types::ipaddr::parse(&str).map(|ip| Ext::Ipaddr { ip })
+        super::extension_types::ipaddr::IPNet::parse(&str).map(|ip| Ext::Ipaddr { ip })
     }
 }
 

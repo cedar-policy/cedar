@@ -28,11 +28,14 @@ static DECIMAL_DIGITS: u32 = 4;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 
-// In Lean `Decimal` is just a type-def for `Int64`
+/// Internal representation of Cedar `decimal` values.
+///
+/// In Lean `Decimal` is just a type-def for `Int64`.
 pub struct Decimal(pub i64);
 
 // ----- Definitions -----
 
+/// Parses a [`Decimal`] from a string.
 pub fn parse(s: &str) -> Option<Decimal> {
     match s.split(".").collect::<Vec<&str>>() {
         // PANIC SAFETY
