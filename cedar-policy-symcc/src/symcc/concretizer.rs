@@ -23,11 +23,10 @@ use std::sync::Arc;
 
 use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request};
 use cedar_policy_core::ast::{
-    Context, Entity, EntityAttrEvaluationError, Expr, Extension, Literal, Name, PartialValue, Set,
-    Value, ValueKind,
+    Context, Entity, EntityAttrEvaluationError, Expr, Literal, Set, Value, ValueKind,
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
-use cedar_policy_core::extensions::{datetime, decimal, ipaddr, Extensions};
+use cedar_policy_core::extensions::Extensions;
 use miette::Diagnostic;
 use num_bigint::{BigInt, TryFromBigIntError};
 use ref_cast::RefCast;
@@ -35,10 +34,10 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::symcc::enforcer::footprint;
-use crate::symcc::ext::Ext;
 use crate::symcc::factory;
 
 use super::env::{SymEntities, SymEntityData, SymRequest};
+use super::ext::ExtConvertError;
 use super::function::{Udf, UnaryFunction};
 use super::term::{Term, TermPrim};
 use super::SymEnv;
@@ -75,9 +74,9 @@ pub enum ConcretizeError {
     /// Fail to convert from big integer.
     #[error("Unable to convert BitVec to integer")]
     TryFromBigIntError(#[from] TryFromBigIntError<BigInt>),
-    /// Fail to call extension functions.
-    #[error("Failed to construct extension value")]
-    ExtensionError,
+    /// Errors in extension conversion.
+    #[error("unsupported extension value")]
+    ExtConvertError(#[from] ExtConvertError),
 }
 
 /// A concrete environment recovered from a [`SymEnv`].
@@ -147,24 +146,6 @@ impl TryFrom<&Term> for BTreeSet<String> {
     }
 }
 
-/// A utility function to call an extension function
-fn call_extension_func(
-    ext: &Extension,
-    name: &str,
-    args: &[Value],
-) -> Result<Value, ConcretizeError> {
-    let name = Name::parse_unqualified_name(name).or(Err(ConcretizeError::ExtensionError))?;
-    match ext
-        .get_func(&name)
-        .ok_or(ConcretizeError::ExtensionError)?
-        .call(args)
-        .or(Err(ConcretizeError::ExtensionError))?
-    {
-        PartialValue::Value(v) => Ok(v),
-        _ => Err(ConcretizeError::ExtensionError),
-    }
-}
-
 impl TryFrom<&Term> for Value {
     type Error = ConcretizeError;
 
@@ -188,40 +169,7 @@ impl TryFrom<&Term> for Value {
                 None,
             )),
 
-            Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => {
-                call_extension_func(&decimal::extension(), "decimal", &[format!("{}", d).into()])
-            }
-
-            Term::Prim(TermPrim::Ext(Ext::Datetime { dt })) => {
-                // First construct `datetime("1970-01-01")`
-                let epoch = call_extension_func(
-                    &datetime::extension(),
-                    "datetime",
-                    &["1970-01-01".into()],
-                )?;
-                // Then construct the actual datetime as an offset duration
-                let offset: i64 = dt.into();
-                let offset = call_extension_func(
-                    &datetime::extension(),
-                    "duration",
-                    &[format!("{}ms", offset).into()],
-                )?;
-                // Finally call the offset function to construct the right datetime value
-                call_extension_func(&datetime::extension(), "offset", &[epoch, offset])
-            }
-
-            Term::Prim(TermPrim::Ext(Ext::Duration { d })) => {
-                let offset: i64 = d.into();
-                call_extension_func(
-                    &datetime::extension(),
-                    "duration",
-                    &[format!("{}ms", offset).into()],
-                )
-            }
-
-            Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip })) => {
-                call_extension_func(&ipaddr::extension(), "ip", &[format!("{}", ip).into()])
-            }
+            Term::Prim(TermPrim::Ext(ext)) => Ok(Self::try_from(ext)?),
 
             Term::Set { elts, .. } => Ok(Value::new(
                 ValueKind::Set(Set::new(

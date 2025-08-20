@@ -21,23 +21,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use crate::symcc::env::{EntitySchemaEntry, SymEntityData};
+use crate::symcc::function::{self, UnaryFunction};
+use crate::type_abbrevs::core_entity_type_into_entity_type;
 use cedar_policy::entities_errors::EntitiesError;
 use cedar_policy::{Entities, Request, RequestEnv, Schema};
-use cedar_policy_core::ast::{
-    Context, Literal, PartialValue, RepresentableExtensionValue, RestrictedExpr, Value, ValueKind,
-};
+use cedar_policy_core::ast::{Context, Literal, PartialValue, Value, ValueKind};
 use cedar_policy_core::validator::types::{EntityRecordKind, OpenTag, Type};
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::extension_types::decimal;
-use crate::symcc::env::{EntitySchemaEntry, SymEntityData};
-use crate::symcc::function::{self, UnaryFunction};
-use crate::type_abbrevs::core_entity_type_into_entity_type;
-
 use super::env::{StandardEntitySchemaEntry, SymEntities, SymRequest};
-use super::ext::Ext;
-use super::extension_types::{datetime, ipaddr};
+use super::ext::{Ext, ExtConvertError};
 use super::tags::SymTags;
 use super::term::Term;
 use super::term_type::TermType;
@@ -45,16 +40,15 @@ use super::type_abbrevs::{core_uid_into_uid, EntityType, EntityUID};
 use super::{factory, Env, Environment};
 use super::{CompileError, SymEnv};
 
-/// Errors that happen when converting concrete
-/// values to symbolic terms
+/// Errors when converting concrete values to symbolic terms.
 #[derive(Debug, Diagnostic, Error)]
 pub enum SymbolizeError {
     #[error("unable to symbolize value {0}")]
     UnableToSymbolizeValue(Value),
     #[error("compile error")]
     CompileError(#[from] CompileError),
-    #[error("unsupported extension value: {0:?}")]
-    UnsupportedExtension(Arc<RepresentableExtensionValue>),
+    #[error("unsupported extension value")]
+    ExtConvertError(#[from] ExtConvertError),
     #[error("partial request not supported")]
     PartialRequest,
     #[error("entities error")]
@@ -74,68 +68,6 @@ impl Term {
             Literal::Long(i) => (*i).into(),
             Literal::String(s) => s.clone().into(),
             Literal::EntityUID(euid) => EntityUID::from(euid.as_ref().clone()).into(),
-        }
-    }
-
-    /// Helper function for [`Term::from_value`].
-    fn from_ext_value(rexp: &RestrictedExpr) -> Option<Self> {
-        let (name, args) = rexp.as_extn_fn_call()?;
-        let args = args.collect::<Vec<_>>();
-
-        // Recover the string representation of supported extension values
-        // and then convert them to corresponding `Term`s.
-        match (name.as_ref().to_string().as_str(), args.as_slice()) {
-            ("decimal", &[arg]) => Some(
-                Ext::Decimal {
-                    d: decimal::parse(arg.as_string()?.as_str())?,
-                }
-                .into(),
-            ),
-            ("duration", &[arg]) => Some(
-                Ext::Duration {
-                    d: datetime::Duration::parse(arg.as_string()?.as_str())?,
-                }
-                .into(),
-            ),
-            ("datetime", &[arg]) => Some(
-                Ext::Datetime {
-                    dt: datetime::Datetime::parse(arg.as_string()?.as_str())?,
-                }
-                .into(),
-            ),
-            // Datetime is sometimes represented as `datetime(<epoch>).offset(<...>)`
-            ("offset", &[arg1, arg2]) => {
-                let (arg1_name, arg1_args) = arg1.as_extn_fn_call()?;
-                let (arg2_name, arg2_args) = arg2.as_extn_fn_call()?;
-                let arg1_args = arg1_args.collect::<Vec<_>>();
-                let arg2_args = arg2_args.collect::<Vec<_>>();
-                if arg1_name.as_ref().to_string() != "datetime"
-                    || arg1_args.len() != 1
-                    || arg2_name.as_ref().to_string() != "duration"
-                    || arg2_args.len() != 1
-                {
-                    return None;
-                }
-
-                #[allow(
-                    clippy::indexing_slicing,
-                    reason = "arg1_args.len() == 1 thus indexing by 0 should not panic"
-                )]
-                let dt = datetime::Datetime::parse(arg1_args[0].as_string()?.as_str())?;
-                #[allow(
-                    clippy::indexing_slicing,
-                    reason = "arg2_args.len() == 1 thus indexing by 0 should not panic"
-                )]
-                let d = datetime::Duration::parse(arg2_args[0].as_string()?.as_str())?;
-                Some(Ext::Datetime { dt: dt.offset(&d)? }.into())
-            }
-            ("ip", &[arg]) => Some(
-                Ext::Ipaddr {
-                    ip: ipaddr::parse(arg.as_string()?.as_str())?,
-                }
-                .into(),
-            ),
-            _ => None,
         }
     }
 
@@ -193,14 +125,7 @@ impl Term {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(factory::record_of(attrs))
             }
-            // TODO: Support extension values.
-            // This branch would be more complicated than the Lean version,
-            // since `Value` in Rust Cedar uses a different representation for
-            // extension values than Rust SymCC `Term`.
-            (ValueKind::ExtensionValue(ext), _) => {
-                let rexp: RestrictedExpr = ext.as_ref().clone().into();
-                Self::from_ext_value(&rexp).ok_or(SymbolizeError::UnsupportedExtension(ext.clone()))
-            }
+            (ValueKind::ExtensionValue(_), _) => Ok(Ext::try_from(v)?.into()),
             _ => Err(SymbolizeError::UnableToSymbolizeValue(v.clone())),
         }
     }
