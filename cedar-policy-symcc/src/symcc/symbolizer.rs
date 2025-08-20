@@ -40,7 +40,7 @@ use super::type_abbrevs::{core_uid_into_uid, EntityType, EntityUID};
 use super::{factory, Env, Environment};
 use super::{CompileError, SymEnv};
 
-/// Errors that happen when converting concrete values to symbolic terms.
+/// Errors when converting concrete values to symbolic terms.
 #[derive(Debug, Diagnostic, Error)]
 pub enum SymbolizeError {
     #[error("unable to symbolize value {0}")]
