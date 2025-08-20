@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#![allow(missing_docs)]
+
 //! Utility functions to construct [`Term`]s.
 
 use super::CompileError;

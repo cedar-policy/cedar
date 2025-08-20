@@ -21,16 +21,20 @@ use std::sync::Arc;
 use super::term_type::TermType;
 use super::type_abbrevs::*;
 
-/// Uninterpreted unary function
+/// Uninterpreted unary function.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct Uuf {
+    /// A unique identifier of the unary function.
     pub id: String,
+    /// Argument type.
     pub arg: TermType,
+    /// Output type.
     pub out: TermType,
 }
 
-/// Extension ADT operators
+/// Extension ADT operators.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[allow(missing_docs)]
 pub enum ExtOp {
     DecimalVal,
     IpaddrIsV4,
@@ -45,6 +49,7 @@ pub enum ExtOp {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[allow(missing_docs)]
 pub enum Op {
     //   ---------- SMTLib core theory of equality with uninterpreted functions (`UF`) ----------
     Not,
@@ -58,24 +63,29 @@ pub enum Op {
     Bvadd,
     Bvsub,
     Bvmul,
-    Bvsdiv, // signed bit-vector division
-    Bvudiv, // unsigned bit-vector division
-    Bvsrem, // signed remainder (remainder of division rounded towards zero) (copies sign from dividend)
-    Bvsmod, // signed modulus (remainder of division rounded towards negative infinity) (copies sign from divisor)
-    Bvumod, // unsigned modulus
+    /// Signed bit-vector division.
+    Bvsdiv,
+    /// Unsigned bit-vector division.
+    Bvudiv,
+    /// Signed remainder (remainder of division rounded towards zero) (copies sign from dividend).
+    Bvsrem,
+    /// Signed modulus (remainder of division rounded towards negative infinity) (copies sign from divisor).
+    Bvsmod,
+    /// unsigned modulus.
+    Bvumod,
     Bvshl,
     Bvlshr,
     Bvslt,
     Bvsle,
     Bvult,
     Bvule,
-    /// bit-vector negation overflow predicate
+    /// Bit-vector negation overflow predicate.
     Bvnego,
-    /// bit-vector signed addition overflow predicate
+    /// Bit-vector signed addition overflow predicate.
     Bvsaddo,
-    /// bit-vector signed subtraction overflow predicate
+    /// Bit-vector signed subtraction overflow predicate.
     Bvssubo,
-    /// bit-vector signed multiplication overflow predicate
+    /// Bit-vector signed multiplication overflow predicate.
     Bvsmulo,
     ZeroExtend(Width),
     //   ---------- CVC theory of finite sets (`FS`) ----------
@@ -91,6 +101,9 @@ pub enum Op {
 }
 
 impl ExtOp {
+    /// Returns the name of an extension operator.
+    /// 
+    /// Corresponds to `ExtOp.mkName` in the Lean model.
     pub fn mk_name(&self) -> &'static str {
         match self {
             ExtOp::DecimalVal => "decimal.val",
@@ -106,6 +119,8 @@ impl ExtOp {
         }
     }
 
+    /// Returns the output type of an extension operator when applied
+    /// to terms of the given types.
     #[allow(clippy::needless_pass_by_value)]
     pub fn type_of(self, l: Vec<TermType>) -> Option<TermType> {
         match self {
@@ -176,6 +191,8 @@ impl ExtOp {
 }
 
 impl Op {
+    /// Returns the output type of an operator when applied
+    /// to terms of the given types.
     #[allow(clippy::cognitive_complexity)]
     pub fn type_of(self, l: Vec<TermType>) -> Option<TermType> {
         use TermType::{Bitvec, Bool};
@@ -328,6 +345,9 @@ impl Op {
         }
     }
 
+    /// Returns the name of the operator.
+    /// 
+    /// Corresponds to `Op.mkName` in the Lean model.
     pub fn mk_name(&self) -> &'static str {
         match self {
             Op::Not => "not",

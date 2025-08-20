@@ -160,12 +160,14 @@ impl SymEntities {
 
 /// Symbolic representation of a request environment.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[allow(missing_docs)]
 pub struct SymEnv {
     pub request: SymRequest,
     pub entities: SymEntities,
 }
 
 impl SymEnv {
+    /// Checks if the symbolic environment only contains literal terms.
     pub fn is_literal(&self) -> bool {
         self.request.is_literal() && self.entities.is_literal()
     }

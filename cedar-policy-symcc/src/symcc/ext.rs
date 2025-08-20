@@ -26,7 +26,9 @@ use super::extension_types::decimal::Decimal;
 
 type IPAddr = super::extension_types::ipaddr::IPNet;
 
+/// Internal representation of extension values.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[allow(missing_docs)]
 pub enum Ext {
     Decimal { d: Decimal },
     Ipaddr { ip: IPAddr },
@@ -58,6 +60,7 @@ pub enum ExtConvertError {
 }
 
 impl Ext {
+    /// Parses a `decimal` extension value from a string.
     #[allow(
         clippy::needless_pass_by_value,
         reason = "Pass by value expected by consumer"
@@ -66,6 +69,7 @@ impl Ext {
         super::extension_types::decimal::parse(&str).map(|d| Ext::Decimal { d })
     }
 
+    /// Parses a `datetime` extension value from a string.
     #[allow(
         clippy::needless_pass_by_value,
         reason = "Pass by value expected by consumer"
@@ -74,6 +78,7 @@ impl Ext {
         super::extension_types::datetime::Datetime::parse(&str).map(|dt| Ext::Datetime { dt })
     }
 
+    /// Parses a `duration` extension value from a string.
     #[allow(
         clippy::needless_pass_by_value,
         reason = "Pass by value expected by consumer"
@@ -82,6 +87,7 @@ impl Ext {
         super::extension_types::datetime::Duration::parse(&str).map(|d| Ext::Duration { d })
     }
 
+    /// Parses an `ipaddr` extension value from a string.
     #[allow(
         clippy::needless_pass_by_value,
         reason = "Pass by value expected by consumer"
