@@ -39,13 +39,18 @@ use std::{
     sync::Arc,
 };
 
+/// A typed variable.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct TermVar {
+    /// A unique identifier of the variable.
     pub id: String,
+    /// Type of the variable.
     pub ty: TermType,
 }
 
+/// Primitive terms.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[allow(missing_docs)]
 pub enum TermPrim {
     Bool(bool),
     Bitvec(BitVec),
@@ -54,7 +59,9 @@ pub enum TermPrim {
     Ext(Ext),
 }
 
+/// Intermediate representation of [`Term`]s.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[allow(missing_docs)]
 pub enum Term {
     Prim(TermPrim),
     Var(TermVar),
@@ -133,6 +140,7 @@ impl From<TermVar> for Term {
 }
 
 impl TermPrim {
+    /// Returns the type of the primitive term.
     pub fn type_of(&self) -> TermType {
         match self {
             TermPrim::Bool(_) => TermType::Bool,
@@ -158,6 +166,7 @@ impl TermPrim {
 }
 
 impl Term {
+    /// Computes the type of a term.
     pub fn type_of(&self) -> TermType {
         match self {
             Term::Prim(l) => l.type_of(),
@@ -179,6 +188,7 @@ impl Term {
         }
     }
 
+    /// Checks if the term is a literal, i.e., contains no variables or applications.
     pub fn is_literal(&self) -> bool {
         match self {
             Term::Prim(_) => true,

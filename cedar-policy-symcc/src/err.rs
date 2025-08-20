@@ -44,7 +44,10 @@ pub enum Error {
     SolverUnknown,
     /// Policy is not well-typed.
     #[error("input policy (set) is not well typed with respect to the schema {errs:?}")]
-    PolicyNotWellTyped { errs: Vec<ValidationError> },
+    PolicyNotWellTyped {
+        /// [`ValidationError`]s from the type checker.
+        errs: Vec<ValidationError>,
+    },
     /// Failed to decode the SMT model.
     #[error("failed to decode model")]
     DecodeModel(#[from] DecodeError),
@@ -53,4 +56,5 @@ pub enum Error {
     ConcretizeError(#[from] ConcretizeError),
 }
 
+/// A result type potentially returning [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;

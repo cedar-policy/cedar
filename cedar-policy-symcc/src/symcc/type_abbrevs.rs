@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#![allow(missing_docs)]
+
 //! Various type abbreviations used throughout SymCC.
 
 use num_bigint::{BigInt, BigUint};
@@ -30,6 +32,7 @@ pub type Nat = BigUint;
 pub type Int = BigInt;
 pub type Prim = cedar_policy_core::ast::Literal;
 pub type Width = u32;
+
 /// Convert `ast::EntityType` into `EntityType` in O(1)
 pub fn core_entity_type_into_entity_type(
     entity_type: &cedar_policy_core::ast::EntityType,
@@ -42,7 +45,9 @@ pub fn core_uid_into_uid(uid: &cedar_policy_core::ast::EntityUID) -> &EntityUID 
     EntityUID::ref_cast(uid)
 }
 
+/// Types of extensions.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[allow(missing_docs)]
 pub enum ExtType {
     IpAddr,
     Decimal,
@@ -50,6 +55,7 @@ pub enum ExtType {
     Duration,
 }
 
+/// Converts [`u32`] to [`Nat`].
 pub fn nat(v: u32) -> Nat {
     BigUint::from(v)
 }
@@ -62,6 +68,7 @@ pub struct Fin {
 }
 
 impl Fin {
+    /// Tries to construct a [`Fin`] with the given bound.
     pub fn try_new(upper_bound: Nat, v: Nat) -> Option<Self> {
         if v < upper_bound {
             Some(Self { upper_bound, v })
@@ -70,11 +77,13 @@ impl Fin {
         }
     }
 
+    /// Converts to [`Nat`].
     pub fn to_nat(&self) -> Nat {
         self.v.clone()
     }
 }
 
+/// A wrapper for Cedar [`cedar_policy_core::ast::Pattern`]s.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct OrdPattern(cedar_policy_core::ast::Pattern);
 

@@ -102,7 +102,7 @@ pub enum Op {
 
 impl ExtOp {
     /// Returns the name of an extension operator.
-    /// 
+    ///
     /// Corresponds to `ExtOp.mkName` in the Lean model.
     pub fn mk_name(&self) -> &'static str {
         match self {
@@ -346,7 +346,7 @@ impl Op {
     }
 
     /// Returns the name of the operator.
-    /// 
+    ///
     /// Corresponds to `Op.mkName` in the Lean model.
     pub fn mk_name(&self) -> &'static str {
         match self {

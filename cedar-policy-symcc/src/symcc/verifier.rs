@@ -32,7 +32,9 @@ use super::term::Term;
 use cedar_policy::Effect;
 use cedar_policy_core::ast::{Expr, Policy, PolicyID, PolicySet, Value};
 
+/// Type of assertions (i.e., a list of [`Term`]s).
 pub type Asserts = Arc<Vec<Term>>;
+
 type Result<T> = std::result::Result<T, CompileError>;
 
 /// Returns asserts that are unsatisfiable iff the evaluation of `policy`, represented as

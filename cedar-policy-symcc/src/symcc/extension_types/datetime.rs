@@ -57,7 +57,7 @@ impl Datetime {
         })
     }
 
-    /// Extracts the date portion of a [`Datetime`] as a new [`Datetime`]. 
+    /// Extracts the date portion of a [`Datetime`] as a new [`Datetime`].
     pub fn to_date(&self) -> Option<Datetime> {
         if self.val >= 0 {
             Some(Self {
