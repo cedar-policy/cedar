@@ -71,7 +71,7 @@ pub enum Op {
     Bvsrem,
     /// Signed modulus (remainder of division rounded towards negative infinity) (copies sign from divisor).
     Bvsmod,
-    /// unsigned modulus.
+    /// Unsigned modulus.
     Bvumod,
     Bvshl,
     Bvlshr,

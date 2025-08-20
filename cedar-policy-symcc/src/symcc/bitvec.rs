@@ -173,7 +173,7 @@ impl BitVec {
         self.extract_bits(self.width - 1, self.width - 1).unwrap().v != BigUint::ZERO
     }
 
-    /// Return whether it is zero
+    /// Returns whether the bit-vector is zero.
     fn is_zero(&self) -> bool {
         self.v == BigUint::ZERO
     }
