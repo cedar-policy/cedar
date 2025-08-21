@@ -29,6 +29,8 @@ use std::sync::Arc;
 use cedar_policy_core::ast::Var;
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp};
 
+use crate::ext::ExtError;
+
 use super::bitvec::BitVec;
 use super::env::{SymEntities, SymEnv, SymRequest};
 use super::ext::Ext;
@@ -422,12 +424,15 @@ pub fn compile_record(ats: Vec<(Attr, Term)>) -> Result<Term> {
     ))
 }
 
-pub fn compile_call0(mk: impl Fn(&str) -> Option<Ext>, arg: Term) -> Result<Term> {
+pub fn compile_call0(
+    mk: impl Fn(&str) -> std::result::Result<Ext, ExtError>,
+    arg: Term,
+) -> Result<Term> {
     match arg {
         Term::Some(t) => match t.as_ref() {
             Term::Prim(TermPrim::String(s)) => match mk(s) {
-                Some(v) => Ok(some_of(v.into())),
-                None => Err(CompileError::TypeError),
+                Ok(v) => Ok(some_of(v.into())),
+                Err(..) => Err(CompileError::TypeError),
             },
             _ => Err(CompileError::TypeError),
         },

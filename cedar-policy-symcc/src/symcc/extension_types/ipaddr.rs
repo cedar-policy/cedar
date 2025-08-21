@@ -20,7 +20,7 @@
 
 // ----- IPv4Addr and IPv6Addr -----
 
-use std::sync::LazyLock;
+use std::{str::FromStr, sync::LazyLock};
 
 use miette::Diagnostic;
 use num_bigint::BigUint;
@@ -40,6 +40,9 @@ pub enum IPError {
     /// Expected octets when constructing IP addresses.
     #[error("expected octets when constructing IP addresses")]
     ExepectedOctet,
+    /// Parse error.
+    #[error("unable to parse `{0}` as an IPv4 or IPv6 address")]
+    ParseError(String),
 }
 
 type Result<T> = std::result::Result<T, IPError>;
@@ -410,10 +413,15 @@ impl IPNet {
             IPNet::V6(_) => &MULTICAST_CIDR_V6,
         })
     }
+}
 
-    /// Parses an [`IPNet`] from a string.
-    pub fn parse(s: &str) -> Option<IPNet> {
-        parse_ipv4_net(s).or_else(|| parse_ipv6_net(s))
+impl FromStr for IPNet {
+    type Err = IPError;
+
+    fn from_str(s: &str) -> Result<Self> {
+        parse_ipv4_net(s)
+            .or_else(|| parse_ipv6_net(s))
+            .ok_or_else(|| IPError::ParseError(s.to_string()))
     }
 }
 
@@ -660,11 +668,11 @@ mod tests {
     use super::*;
 
     fn test_valid(str: &str, expected: IPNet) {
-        assert_eq!(IPNet::parse(str), Some(expected));
+        assert_eq!(IPNet::from_str(str).unwrap(), expected);
     }
 
     fn test_invalid(str: &str, _msg: &str) {
-        assert_eq!(IPNet::parse(str), None);
+        assert!(IPNet::from_str(str).is_err());
     }
 
     fn ipv4(a0: u8, a1: u8, a2: u8, a3: u8, pre: Width) -> IPNet {
@@ -730,7 +738,7 @@ mod tests {
     }
 
     fn parse_unwrap(s: &str) -> IPNet {
-        IPNet::parse(s).unwrap()
+        IPNet::from_str(s).unwrap()
     }
 
     #[test]
@@ -775,12 +783,30 @@ mod tests {
 
     #[test]
     fn tests_for_ipnet_equality() {
-        assert_eq!(IPNet::parse("10.0.0.0"), IPNet::parse("10.0.0.0"));
-        assert_ne!(IPNet::parse("10.0.0.0"), IPNet::parse("10.0.0.1"));
-        assert_eq!(IPNet::parse("10.0.0.0/32"), IPNet::parse("10.0.0.0"));
-        assert_ne!(IPNet::parse("10.0.0.0/24"), IPNet::parse("10.0.0.0"));
-        assert_eq!(IPNet::parse("10.0.0.0/24"), IPNet::parse("10.0.0.0/24"));
-        assert_ne!(IPNet::parse("10.0.0.0/24"), IPNet::parse("10.0.0.0/29"));
+        assert_eq!(
+            IPNet::from_str("10.0.0.0").unwrap(),
+            IPNet::from_str("10.0.0.0").unwrap()
+        );
+        assert_ne!(
+            IPNet::from_str("10.0.0.0").unwrap(),
+            IPNet::from_str("10.0.0.1").unwrap()
+        );
+        assert_eq!(
+            IPNet::from_str("10.0.0.0/32").unwrap(),
+            IPNet::from_str("10.0.0.0").unwrap()
+        );
+        assert_ne!(
+            IPNet::from_str("10.0.0.0/24").unwrap(),
+            IPNet::from_str("10.0.0.0").unwrap()
+        );
+        assert_eq!(
+            IPNet::from_str("10.0.0.0/24").unwrap(),
+            IPNet::from_str("10.0.0.0/24").unwrap()
+        );
+        assert_ne!(
+            IPNet::from_str("10.0.0.0/24").unwrap(),
+            IPNet::from_str("10.0.0.0/29").unwrap()
+        );
     }
 
     #[test]

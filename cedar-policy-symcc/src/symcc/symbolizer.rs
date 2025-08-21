@@ -32,7 +32,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use super::env::{StandardEntitySchemaEntry, SymEntities, SymRequest};
-use super::ext::{Ext, ExtConvertError};
+use super::ext::{Ext, ExtError};
 use super::tags::SymTags;
 use super::term::Term;
 use super::term_type::TermType;
@@ -47,8 +47,8 @@ pub enum SymbolizeError {
     UnableToSymbolizeValue(Value),
     #[error("compile error")]
     CompileError(#[from] CompileError),
-    #[error("unsupported extension value")]
-    ExtConvertError(#[from] ExtConvertError),
+    #[error("extension error")]
+    ExtError(#[from] ExtError),
     #[error("partial request not supported")]
     PartialRequest,
     #[error("entities error")]

@@ -21,7 +21,9 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 pub use crate::symcc::{
-    BitVecError, CompileError, ConcretizeError, DecodeError, EncodeError, IPError, SolverError,
+    ext::ExtError, extension_types::datetime::DatetimeError,
+    extension_types::decimal::DecimalError, extension_types::ipaddr::IPError, BitVecError,
+    CompileError, ConcretizeError, DecodeError, EncodeError, SolverError,
 };
 
 /// Top-level errors from the whole `cedar-policy-symcc` crate.

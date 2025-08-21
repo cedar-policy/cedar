@@ -24,6 +24,11 @@
 // For instance, 10.234 is a decimal number. Its integer part is 10 and its fractional part is 0.234
 // We restrict the number of the digits after the decimal point to 4.
 
+use std::str::FromStr;
+
+use miette::Diagnostic;
+use thiserror::Error;
+
 static DECIMAL_DIGITS: u32 = 4;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -33,18 +38,29 @@ static DECIMAL_DIGITS: u32 = 4;
 /// In Lean `Decimal` is just a type-def for `Int64`.
 pub struct Decimal(pub i64);
 
+/// Errors in [`Decimal`] operations.
+#[derive(Debug, Diagnostic, Error)]
+pub enum DecimalError {
+    /// Parse error.
+    #[error("unable to parse `{0}` as a Decimal")]
+    ParseError(String),
+}
+
 // ----- Definitions -----
 
-impl Decimal {
-    /// Parses a [`Decimal`] from a string.
-    pub fn parse(s: &str) -> Option<Decimal> {
+impl FromStr for Decimal {
+    type Err = DecimalError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.split(".").collect::<Vec<&str>>() {
             // PANIC SAFETY
             #[allow(
                 clippy::indexing_slicing,
                 reason = "List of length 2 can be indexed by 0"
             )]
-            list if list.len() == 2 && list[0] == "-" => None,
+            list if list.len() == 2 && list[0] == "-" => {
+                Err(DecimalError::ParseError(s.to_string()))
+            }
             // PANIC SAFETY
             #[allow(
                 clippy::indexing_slicing,
@@ -74,17 +90,17 @@ impl Decimal {
                                 l_prime - r_prime
                             };
                             match i.try_into() {
-                                Ok(i) => Some(Decimal(i)),
-                                Err(_) => None,
+                                Ok(i) => Ok(Decimal(i)),
+                                Err(_) => Err(DecimalError::ParseError(s.to_string())),
                             }
                         }
-                        (_, _) => None,
+                        (_, _) => Err(DecimalError::ParseError(s.to_string())),
                     }
                 } else {
-                    None
+                    Err(DecimalError::ParseError(s.to_string()))
                 }
             }
-            _ => None,
+            _ => Err(DecimalError::ParseError(s.to_string())),
         }
     }
 }
@@ -102,18 +118,16 @@ impl std::fmt::Display for Decimal {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use crate::symcc::extension_types::decimal::Decimal;
 
-    fn decimal(i: i64) -> Option<Decimal> {
-        Some(Decimal(i))
-    }
-
     fn test_valid(str: &str, rep: i64) {
-        assert_eq!(Decimal::parse(str), decimal(rep));
+        assert_eq!(Decimal::from_str(str).unwrap(), Decimal(rep));
     }
 
     fn test_invalid(str: &str, msg: &str) {
-        assert_eq!(Decimal::parse(str), None, "{}", msg);
+        assert!(Decimal::from_str(str).is_err(), "{}", msg);
     }
 
     #[test]

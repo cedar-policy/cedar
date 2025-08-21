@@ -62,7 +62,7 @@ impl BitVec {
     }
 
     /// Converts a (signed) [`Int`] into a [`BitVec`] of the given width.
-    pub fn of_int(width: u32, v: Int) -> Result<Self> {
+    pub fn of_int(width: Width, v: Int) -> Result<Self> {
         if v >= BigInt::ZERO {
             #[allow(
                 clippy::unwrap_used,

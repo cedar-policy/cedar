@@ -61,7 +61,6 @@ pub use concretizer::Env;
 pub use decoder::DecodeError;
 pub use encoder::EncodeError;
 pub use env::{Environment, SymEnv};
-pub use extension_types::ipaddr::IPError;
 pub use interpretation::Interpretation;
 pub use result::CompileError;
 pub use smtlib_script::SmtLibScript;
