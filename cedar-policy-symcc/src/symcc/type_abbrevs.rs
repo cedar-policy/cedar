@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#![allow(missing_docs)]
-
 //! Various type abbreviations used throughout SymCC.
 
 use num_bigint::{BigInt, BigUint};
@@ -23,14 +21,22 @@ use ref_cast::RefCast;
 use smol_str::SmolStr;
 use std::{cmp::Ordering, ops::Deref};
 
+#[allow(missing_docs)]
 pub type EntityType = cedar_policy::EntityTypeName;
+#[allow(missing_docs)]
 pub type EntityID = cedar_policy::EntityId;
+#[allow(missing_docs)]
 pub type EntityUID = cedar_policy::EntityUid;
+#[allow(missing_docs)]
 pub type Attr = SmolStr;
-
-pub type Nat = BigUint;
-pub type Int = BigInt;
+#[allow(missing_docs)]
 pub type Prim = cedar_policy_core::ast::Literal;
+
+#[allow(missing_docs)]
+pub type Nat = BigUint;
+#[allow(missing_docs)]
+pub type Int = BigInt;
+#[allow(missing_docs)]
 pub type Width = u32;
 
 /// Convert `ast::EntityType` into `EntityType` in O(1)

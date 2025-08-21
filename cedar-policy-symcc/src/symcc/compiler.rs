@@ -422,9 +422,9 @@ pub fn compile_record(ats: Vec<(Attr, Term)>) -> Result<Term> {
     ))
 }
 
-pub fn compile_call0(mk: impl Fn(String) -> Option<Ext>, arg: Term) -> Result<Term> {
+pub fn compile_call0(mk: impl Fn(&str) -> Option<Ext>, arg: Term) -> Result<Term> {
     match arg {
-        Term::Some(t) => match Arc::unwrap_or_clone(t) {
+        Term::Some(t) => match t.as_ref() {
             Term::Prim(TermPrim::String(s)) => match mk(s) {
                 Some(v) => Ok(some_of(v.into())),
                 None => Err(CompileError::TypeError),

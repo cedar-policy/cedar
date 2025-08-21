@@ -23,15 +23,14 @@ use thiserror::Error;
 
 use super::extension_types::datetime::{Datetime, Duration};
 use super::extension_types::decimal::Decimal;
-
-type IPAddr = super::extension_types::ipaddr::IPNet;
+use super::extension_types::ipaddr::IPNet;
 
 /// Internal representation of extension values.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[allow(missing_docs)]
 pub enum Ext {
     Decimal { d: Decimal },
-    Ipaddr { ip: IPAddr },
+    Ipaddr { ip: IPNet },
     Datetime { dt: Datetime },
     Duration { d: Duration },
 }
@@ -61,39 +60,23 @@ pub enum ExtConvertError {
 
 impl Ext {
     /// Parses a `decimal` extension value from a string.
-    #[allow(
-        clippy::needless_pass_by_value,
-        reason = "Pass by value expected by consumer"
-    )]
-    pub fn parse_decimal(str: String) -> Option<Ext> {
-        super::extension_types::decimal::parse(&str).map(|d| Ext::Decimal { d })
+    pub fn parse_decimal(s: &str) -> Option<Ext> {
+        Decimal::parse(s).map(|d| Ext::Decimal { d })
     }
 
     /// Parses a `datetime` extension value from a string.
-    #[allow(
-        clippy::needless_pass_by_value,
-        reason = "Pass by value expected by consumer"
-    )]
-    pub fn parse_datetime(str: String) -> Option<Ext> {
-        super::extension_types::datetime::Datetime::parse(&str).map(|dt| Ext::Datetime { dt })
+    pub fn parse_datetime(s: &str) -> Option<Ext> {
+        Datetime::parse(s).map(|dt| Ext::Datetime { dt })
     }
 
     /// Parses a `duration` extension value from a string.
-    #[allow(
-        clippy::needless_pass_by_value,
-        reason = "Pass by value expected by consumer"
-    )]
-    pub fn parse_duration(str: String) -> Option<Ext> {
-        super::extension_types::datetime::Duration::parse(&str).map(|d| Ext::Duration { d })
+    pub fn parse_duration(s: &str) -> Option<Ext> {
+        Duration::parse(s).map(|d| Ext::Duration { d })
     }
 
     /// Parses an `ipaddr` extension value from a string.
-    #[allow(
-        clippy::needless_pass_by_value,
-        reason = "Pass by value expected by consumer"
-    )]
-    pub fn parse_ip(str: String) -> Option<Ext> {
-        super::extension_types::ipaddr::IPNet::parse(&str).map(|ip| Ext::Ipaddr { ip })
+    pub fn parse_ip(s: &str) -> Option<Ext> {
+        IPNet::parse(s).map(|ip| Ext::Ipaddr { ip })
     }
 }
 
@@ -106,9 +89,9 @@ impl Ext {
         // Recover the string representation of supported extension values
         // and then convert them to corresponding `Term`s.
         match (name.as_ref().to_string().as_str(), args.as_slice()) {
-            ("decimal", &[arg]) => Self::parse_decimal(arg.as_string()?.to_string()),
-            ("duration", &[arg]) => Self::parse_duration(arg.as_string()?.to_string()),
-            ("datetime", &[arg]) => Self::parse_datetime(arg.as_string()?.to_string()),
+            ("decimal", &[arg]) => Self::parse_decimal(arg.as_string()?.as_str()),
+            ("duration", &[arg]) => Self::parse_duration(arg.as_string()?.as_str()),
+            ("datetime", &[arg]) => Self::parse_datetime(arg.as_string()?.as_str()),
             // A `datetime` value is sometimes represented as `datetime(<epoch>).offset(<...>)`
             ("offset", &[arg1, arg2]) => {
                 let (arg1_name, arg1_args) = arg1.as_extn_fn_call()?;
@@ -139,7 +122,7 @@ impl Ext {
                 )?;
                 Some(Ext::Datetime { dt: dt.offset(&d)? }.into())
             }
-            ("ip", &[arg]) => Self::parse_ip(arg.as_string()?.to_string()),
+            ("ip", &[arg]) => Self::parse_ip(arg.as_string()?.as_str()),
             _ => None,
         }
     }

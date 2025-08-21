@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-#![allow(missing_docs)]
+#![allow(
+    missing_docs,
+    reason = "The meaning of most functions is clear from their names"
+)]
 
 //! Utility functions to construct [`Term`]s.
 

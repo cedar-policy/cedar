@@ -35,55 +35,57 @@ pub struct Decimal(pub i64);
 
 // ----- Definitions -----
 
-/// Parses a [`Decimal`] from a string.
-pub fn parse(s: &str) -> Option<Decimal> {
-    match s.split(".").collect::<Vec<&str>>() {
-        // PANIC SAFETY
-        #[allow(
-            clippy::indexing_slicing,
-            reason = "List of length 2 can be indexed by 0"
-        )]
-        list if list.len() == 2 && list[0] == "-" => None,
-        // PANIC SAFETY
-        #[allow(
-            clippy::indexing_slicing,
-            reason = "List of length 2 can be indexed by 0 or 1"
-        )]
-        list if list.len() == 2 => {
-            let left = list[0];
-            let right = list[1];
-            let rlen = right.len();
-            if 0 < rlen && rlen <= DECIMAL_DIGITS as usize {
-                // The Lean code uses `toNat` which handles a `-` after the decimal point.
-                // We parse into `u32` to achieve the same effect.
-                match (left.parse::<i128>(), right.parse::<u32>()) {
-                    (Ok(l), Ok(r)) => {
-                        let l_prime = l * 10_i128.pow(DECIMAL_DIGITS);
-                        // PANIC SAFETY
-                        #[allow(
-                            clippy::unwrap_used,
-                            reason = "cannot panic as we previously checked that rlen is between 0 and 4."
-                        )]
-                        let rlen_u32: u32 = rlen.try_into().unwrap();
-                        let r: i128 = r.into();
-                        let r_prime = r * 10_i128.pow(DECIMAL_DIGITS - rlen_u32);
-                        let i = if l >= 0 {
-                            l_prime + r_prime
-                        } else {
-                            l_prime - r_prime
-                        };
-                        match i.try_into() {
-                            Ok(i) => Some(Decimal(i)),
-                            Err(_) => None,
+impl Decimal {
+    /// Parses a [`Decimal`] from a string.
+    pub fn parse(s: &str) -> Option<Decimal> {
+        match s.split(".").collect::<Vec<&str>>() {
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 2 can be indexed by 0"
+            )]
+            list if list.len() == 2 && list[0] == "-" => None,
+            // PANIC SAFETY
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "List of length 2 can be indexed by 0 or 1"
+            )]
+            list if list.len() == 2 => {
+                let left = list[0];
+                let right = list[1];
+                let rlen = right.len();
+                if 0 < rlen && rlen <= DECIMAL_DIGITS as usize {
+                    // The Lean code uses `toNat` which handles a `-` after the decimal point.
+                    // We parse into `u32` to achieve the same effect.
+                    match (left.parse::<i128>(), right.parse::<u32>()) {
+                        (Ok(l), Ok(r)) => {
+                            let l_prime = l * 10_i128.pow(DECIMAL_DIGITS);
+                            // PANIC SAFETY
+                            #[allow(
+                                clippy::unwrap_used,
+                                reason = "cannot panic as we previously checked that rlen is between 0 and 4."
+                            )]
+                            let rlen_u32: u32 = rlen.try_into().unwrap();
+                            let r: i128 = r.into();
+                            let r_prime = r * 10_i128.pow(DECIMAL_DIGITS - rlen_u32);
+                            let i = if l >= 0 {
+                                l_prime + r_prime
+                            } else {
+                                l_prime - r_prime
+                            };
+                            match i.try_into() {
+                                Ok(i) => Some(Decimal(i)),
+                                Err(_) => None,
+                            }
                         }
+                        (_, _) => None,
                     }
-                    (_, _) => None,
+                } else {
+                    None
                 }
-            } else {
-                None
             }
+            _ => None,
         }
-        _ => None,
     }
 }
 
@@ -100,18 +102,18 @@ impl std::fmt::Display for Decimal {
 
 #[cfg(test)]
 mod tests {
-    use crate::symcc::extension_types::decimal::{parse, Decimal};
+    use crate::symcc::extension_types::decimal::Decimal;
 
     fn decimal(i: i64) -> Option<Decimal> {
         Some(Decimal(i))
     }
 
     fn test_valid(str: &str, rep: i64) {
-        assert_eq!(parse(str), decimal(rep));
+        assert_eq!(Decimal::parse(str), decimal(rep));
     }
 
     fn test_invalid(str: &str, msg: &str) {
-        assert_eq!(parse(str), None, "{}", msg);
+        assert_eq!(Decimal::parse(str), None, "{}", msg);
     }
 
     #[test]

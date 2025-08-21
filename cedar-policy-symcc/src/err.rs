@@ -45,7 +45,7 @@ pub enum Error {
     /// Policy is not well-typed.
     #[error("input policy (set) is not well typed with respect to the schema {errs:?}")]
     PolicyNotWellTyped {
-        /// [`ValidationError`]s from the type checker.
+        /// Errors from the policy validator.
         errs: Vec<ValidationError>,
     },
     /// Failed to decode the SMT model.
@@ -56,5 +56,5 @@ pub enum Error {
     ConcretizeError(#[from] ConcretizeError),
 }
 
-/// A result type potentially returning [`Error`].
+/// A result type that potentially returns a SymCC [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;

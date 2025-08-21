@@ -34,7 +34,10 @@ async fn emitln(
     reason = "We would like consumers to be able to use these functions asyncronously"
 )]
 pub trait SmtLibScript {
-    #![allow(missing_docs)]
+    #![allow(
+        missing_docs,
+        reason = "Names of these trait members are exactly their corresponding SMT-LIB commands"
+    )]
     async fn set_logic(&mut self, logic: &str) -> tokio::io::Result<()>;
     async fn set_option(&mut self, option: &str, value: &str) -> tokio::io::Result<()>;
     async fn comment(&mut self, comment: &str) -> tokio::io::Result<()>;

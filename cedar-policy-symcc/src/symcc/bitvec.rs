@@ -83,12 +83,12 @@ impl BitVec {
         }
     }
 
-    /// Converts a `u128` into a [`BitVec`] of the given width.
+    /// Converts a [`u128`] into a [`BitVec`] of the given width.
     pub fn of_u128(width: Width, val: u128) -> Result<Self> {
         BitVec::of_nat(width, BigUint::from(val))
     }
 
-    /// Converts an `i128` into a [`BitVec`] of the given width.
+    /// Converts an [`i128`] into a [`BitVec`] of the given width.
     pub fn of_i128(width: Width, val: i128) -> Result<Self> {
         BitVec::of_int(width, BigInt::from(val))
     }
@@ -187,7 +187,7 @@ impl BitVec {
         self.width
     }
 
-    /// Returns the minimum signed value that fits in a particular bit-width.
+    /// Returns the minimum signed value that fits in the given bit-width.
     pub fn signed_min(n: Width) -> Result<Int> {
         if n == 0 {
             Err(BitVecError::ZeroWidthBitVec)
@@ -201,7 +201,7 @@ impl BitVec {
         }
     }
 
-    /// Returns the maximum signed value that fits in a particular bit-width.
+    /// Returns the maximum signed value that fits in the given bit-width.
     pub fn signed_max(n: Width) -> Result<Int> {
         if n == 0 {
             Err(BitVecError::ZeroWidthBitVec)
@@ -224,12 +224,12 @@ impl BitVec {
     // Functions from Lean BitVec standard library
     ////
 
-    /// Bitwise inverse.
+    /// Bitwise not.
     pub fn not(&self) -> Result<Self> {
         BitVec::new(self.width, &self.v ^ BitVec::all_ones(self.width)?.v)
     }
 
-    /// Negation.
+    /// Bit-vector negation.
     pub fn neg(&self) -> Result<Self> {
         #[allow(
             clippy::unwrap_used,
@@ -239,7 +239,7 @@ impl BitVec {
         BitVec::add(&self.not()?, &one)
     }
 
-    /// Minimum signed value of a particular bit-width.
+    /// Minimum signed value of the given bit-width, encoded as a [`BitVec`].
     pub fn int_min(width: Width) -> Result<Self> {
         BitVec::of_nat(width, TWO.pow(width - 1))
     }
