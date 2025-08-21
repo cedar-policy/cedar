@@ -17,8 +17,8 @@
 use itertools::Itertools;
 use tokio::io::AsyncWriteExt;
 
-/// a helper function here, rather than a trait method, because we want it to be
-/// private, and we can't make trait methods private
+/// A helper function here, rather than a trait method, because we want it to be
+/// private, and we can't make trait methods private.
 async fn emitln(
     w: &mut (impl tokio::io::AsyncWrite + Unpin + ?Sized),
     str: &str,
@@ -28,10 +28,14 @@ async fn emitln(
     Ok(())
 }
 
-/// Abstraction layer to write output in the SMTLib2 format
+/// Abstraction layer to write output in the SMTLib2 format.
 #[allow(
     async_fn_in_trait,
     reason = "We would like consumers to be able to use these functions asyncronously"
+)]
+#[allow(
+    missing_docs,
+    reason = "Names of these trait members are exactly their corresponding SMT-LIB commands"
 )]
 pub trait SmtLibScript {
     async fn set_logic(&mut self, logic: &str) -> tokio::io::Result<()>;

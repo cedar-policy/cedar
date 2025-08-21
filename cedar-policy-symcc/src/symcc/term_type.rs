@@ -24,7 +24,9 @@ use super::{entity_tag::EntityTag, type_abbrevs::*};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+/// Types of the intermediate [`super::term::Term`] representation.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[allow(missing_docs)]
 pub enum TermType {
     Bool,
     Bitvec { n: Width },
@@ -37,17 +39,21 @@ pub enum TermType {
 }
 
 impl TermType {
-    /// No corresponding Lean function; convenience constructor used in Rust
+    /// Constructs a set type with the given element type.
+    ///
+    /// No corresponding Lean function; convenience constructor used in Rust.
     pub fn set_of(ty: TermType) -> Self {
         Self::Set { ty: Arc::new(ty) }
     }
 
+    /// Returns the type of tag keys in the symbolic representation of tags.
     pub fn tag_for(ety: EntityType) -> Self {
         Self::Record {
             rty: Arc::new(EntityTag::mk(TermType::Entity { ety }, TermType::String).0),
         }
     }
 
+    /// Checks if the term type is a primitive type (i.e., not set or record).
     pub fn is_prim_type(&self) -> bool {
         matches!(
             self,
@@ -59,34 +65,38 @@ impl TermType {
         )
     }
 
+    /// Checks if the term type is an entity type.
     pub fn is_entity_type(&self) -> bool {
         matches!(self, TermType::Entity { .. })
     }
 
+    /// Checks if the term type is a record type.
     pub fn is_record_type(&self) -> bool {
         matches!(self, TermType::Record { .. })
     }
 
+    /// Checks if the term type is an option type.
     pub fn is_option_type(&self) -> bool {
         matches!(self, TermType::Option { .. })
     }
 
+    /// Checks if the term type is an entity type wrapped in an option type.
     pub fn is_option_entity_type(&self) -> bool {
         matches!(self, TermType::Option { ty, .. } if ty.is_entity_type())
     }
 
-    // This doesn't match the Lean because `cedar_policy_core::validator::types::Type` doesn't
-    // TODO: test this
+    /// Converts a Cedar [`Type`] into a [`TermType`].
+    ///
+    /// This doesn't match the Lean model because [`Type`] doesn't.
     pub fn of_type(ty: &Type) -> Result<Self, CompileError> {
         use cedar_policy::EntityTypeName;
+        use cedar_policy_core::validator::types::{EntityRecordKind, Primitive};
         use std::str::FromStr;
         match ty {
             Type::Primitive { primitive_type } => match primitive_type {
-                cedar_policy_core::validator::types::Primitive::Bool => Ok(TermType::Bool),
-                cedar_policy_core::validator::types::Primitive::Long => {
-                    Ok(TermType::Bitvec { n: 64 })
-                }
-                cedar_policy_core::validator::types::Primitive::String => Ok(TermType::String),
+                Primitive::Bool => Ok(TermType::Bool),
+                Primitive::Long => Ok(TermType::Bitvec { n: 64 }),
+                Primitive::String => Ok(TermType::String),
             },
             Type::ExtensionType { name } => match name.basename().to_string().as_str() {
                 "ipaddr" => Ok(TermType::Ext {
@@ -107,7 +117,7 @@ impl TermType {
             },
             Type::EntityOrRecord(entity_record_kind) => {
                 match entity_record_kind {
-                    cedar_policy_core::validator::types::EntityRecordKind::Record {
+                    EntityRecordKind::Record {
                         attrs,
                         open_attributes,
                     } => {
@@ -140,23 +150,18 @@ impl TermType {
                             ))
                         }
                     }
-                    cedar_policy_core::validator::types::EntityRecordKind::AnyEntity => Err(
-                        CompileError::UnsupportedFeature("AnyEntity is not supported".into()),
-                    ),
-                    cedar_policy_core::validator::types::EntityRecordKind::Entity(entity_lub) => {
-                        match entity_lub.get_single_entity() {
-                            Some(name) => Ok(TermType::Entity {
-                                ety: core_entity_type_into_entity_type(name).clone(),
-                            }),
-                            None => Err(CompileError::UnsupportedFeature(
-                                "EntityLUB has multiple elements".into(),
-                            )),
-                        }
-                    }
-                    cedar_policy_core::validator::types::EntityRecordKind::ActionEntity {
-                        name,
-                        ..
-                    } => Ok(TermType::Entity {
+                    EntityRecordKind::AnyEntity => Err(CompileError::UnsupportedFeature(
+                        "AnyEntity is not supported".into(),
+                    )),
+                    EntityRecordKind::Entity(entity_lub) => match entity_lub.get_single_entity() {
+                        Some(name) => Ok(TermType::Entity {
+                            ety: core_entity_type_into_entity_type(name).clone(),
+                        }),
+                        None => Err(CompileError::UnsupportedFeature(
+                            "EntityLUB has multiple elements".into(),
+                        )),
+                    },
+                    EntityRecordKind::ActionEntity { name, .. } => Ok(TermType::Entity {
                         // todo: expose `From<core::Name> for api::EntityTypeName`?
                         // PANIC SAFETY
                         #[allow(

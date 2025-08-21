@@ -38,12 +38,13 @@ use super::{factory, SymEnv};
 /// - A map from UUF to UDFs
 #[derive(Debug)]
 pub struct Interpretation<'a> {
-    pub vars: BTreeMap<TermVar, Term>,
-    pub funs: BTreeMap<Uuf, Udf>,
-    pub env: &'a SymEnv,
+    pub(super) vars: BTreeMap<TermVar, Term>,
+    pub(super) funs: BTreeMap<Uuf, Udf>,
+    pub(super) env: &'a SymEnv,
 }
 
 impl<'a> Interpretation<'a> {
+    /// Returns a literal symbolic environments with default terms.
     pub fn default(env: &'a SymEnv) -> Self {
         Self {
             vars: BTreeMap::new(),

@@ -38,7 +38,9 @@ use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 
+/// Satisfiability decision from the SMT solver.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[allow(missing_docs)]
 pub enum Decision {
     Sat,
     Unsat,
@@ -124,6 +126,9 @@ impl LocalSolver {
         })
     }
 
+    /// Spawns a cvc5 solver process by looking up the
+    /// executable using the `CVC5` environment variable
+    /// or the `cvc5` binary in `PATH`.
     pub fn cvc5() -> Result<Self> {
         Self::new(
             std::env::var("CVC5").unwrap_or_else(|_| "cvc5".into()),

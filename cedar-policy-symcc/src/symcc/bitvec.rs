@@ -34,7 +34,7 @@ pub struct BitVec {
     v: BigUint,
 }
 
-pub static TWO: LazyLock<BigUint> = LazyLock::new(|| BigUint::from(2u128));
+static TWO: LazyLock<BigUint> = LazyLock::new(|| BigUint::from(2u128));
 
 /// Errors in [`BitVec`] operations.
 #[derive(Debug, Diagnostic, Error)]
@@ -56,11 +56,13 @@ pub enum BitVecError {
 type Result<T> = std::result::Result<T, BitVecError>;
 
 impl BitVec {
+    /// Converts an (unsigned) [`Nat`] into a [`BitVec`] of the given width.
     pub fn of_nat(width: Width, v: Nat) -> Result<Self> {
         BitVec::new(width, v)
     }
 
-    pub fn of_int(width: u32, v: Int) -> Result<Self> {
+    /// Converts a (signed) [`Int`] into a [`BitVec`] of the given width.
+    pub fn of_int(width: Width, v: Int) -> Result<Self> {
         if v >= BigInt::ZERO {
             #[allow(
                 clippy::unwrap_used,
@@ -81,18 +83,22 @@ impl BitVec {
         }
     }
 
+    /// Converts a [`u128`] into a [`BitVec`] of the given width.
     pub fn of_u128(width: Width, val: u128) -> Result<Self> {
         BitVec::of_nat(width, BigUint::from(val))
     }
 
+    /// Converts an [`i128`] into a [`BitVec`] of the given width.
     pub fn of_i128(width: Width, val: i128) -> Result<Self> {
         BitVec::of_int(width, BigInt::from(val))
     }
 
+    /// Interprets a [`BitVec`] as a [`Nat`].
     pub fn to_nat(&self) -> Nat {
         self.v.clone()
     }
 
+    /// Interprets a [`BitVec`] as an [`Int`].
     pub fn to_int(&self) -> Int {
         let sign_bit = self.msb();
         if self.width < 2 {
@@ -129,7 +135,7 @@ impl BitVec {
         }
     }
 
-    // Return an integer representing the extracted bits from low to high, inclusive.
+    /// Returns an integer representing the extracted bits from low to high, inclusive.
     pub fn extract_bits(&self, low: Width, high: Width) -> Result<Self> {
         if high >= self.width || low > high {
             Err(BitVecError::ExtractOutOfBounds)
@@ -167,18 +173,21 @@ impl BitVec {
         self.extract_bits(self.width - 1, self.width - 1).unwrap().v != BigUint::ZERO
     }
 
-    // Return whether it is zero
+    /// Returns whether the bit-vector is zero.
     fn is_zero(&self) -> bool {
         self.v == BigUint::ZERO
     }
+
     ////
     // Functions from SymCC/Data.lean
     ////
 
+    /// Returns the bit-width of the bit-vector.
     pub const fn width(&self) -> Width {
         self.width
     }
 
+    /// Returns the minimum signed value that fits in the given bit-width.
     pub fn signed_min(n: Width) -> Result<Int> {
         if n == 0 {
             Err(BitVecError::ZeroWidthBitVec)
@@ -192,6 +201,7 @@ impl BitVec {
         }
     }
 
+    /// Returns the maximum signed value that fits in the given bit-width.
     pub fn signed_max(n: Width) -> Result<Int> {
         if n == 0 {
             Err(BitVecError::ZeroWidthBitVec)
@@ -205,6 +215,7 @@ impl BitVec {
         }
     }
 
+    /// Checks if the given [`Int`] fits in the bit-width.
     pub fn overflows(n: Width, i: &Int) -> Result<bool> {
         Ok(i < &BitVec::signed_min(n)? || i > &BitVec::signed_max(n)?)
     }
@@ -213,10 +224,12 @@ impl BitVec {
     // Functions from Lean BitVec standard library
     ////
 
+    /// Bitwise not.
     pub fn not(&self) -> Result<Self> {
         BitVec::new(self.width, &self.v ^ BitVec::all_ones(self.width)?.v)
     }
 
+    /// Bit-vector negation.
     pub fn neg(&self) -> Result<Self> {
         #[allow(
             clippy::unwrap_used,
@@ -226,9 +239,12 @@ impl BitVec {
         BitVec::add(&self.not()?, &one)
     }
 
+    /// Minimum signed value of the given bit-width, encoded as a [`BitVec`].
     pub fn int_min(width: Width) -> Result<Self> {
         BitVec::of_nat(width, TWO.pow(width - 1))
     }
+
+    /// Bit-vector signed less-than.
     pub fn slt(lhs: &Self, rhs: &Self) -> Result<bool> {
         if lhs.width != rhs.width {
             Err(BitVecError::MismatchedWidths("slt".into()))
@@ -237,6 +253,7 @@ impl BitVec {
         }
     }
 
+    /// Bit-vector signed less-than-or-equal.
     pub fn sle(lhs: &Self, rhs: &Self) -> Result<bool> {
         if lhs.width != rhs.width {
             Err(BitVecError::MismatchedWidths("sle".into()))
@@ -245,6 +262,7 @@ impl BitVec {
         }
     }
 
+    /// Bit-vector unsigned less-than-or-equal.
     pub fn ule(lhs: &Self, rhs: &Self) -> Result<bool> {
         if lhs.width != rhs.width {
             Err(BitVecError::MismatchedWidths("ule".into()))
@@ -253,6 +271,7 @@ impl BitVec {
         }
     }
 
+    /// Bit-vector unsigned less-than.
     pub fn ult(lhs: &Self, rhs: &Self) -> Result<bool> {
         if lhs.width != rhs.width {
             Err(BitVecError::MismatchedWidths("ult".into()))
@@ -261,6 +280,7 @@ impl BitVec {
         }
     }
 
+    /// Bit-vector addition.
     pub fn add(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             Err(BitVecError::MismatchedWidths("add".into()))
@@ -269,6 +289,7 @@ impl BitVec {
         }
     }
 
+    /// Bit-vector subtraction.
     pub fn sub(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             Err(BitVecError::MismatchedWidths("sub".into()))
@@ -277,6 +298,7 @@ impl BitVec {
         }
     }
 
+    /// Bit-vector multiplication.
     pub fn mul(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             Err(BitVecError::MismatchedWidths("mul".into()))
@@ -285,7 +307,9 @@ impl BitVec {
         }
     }
 
-    // semantics to match SMT bit-vector theory here: https://smt-lib.org/theories-FixedSizeBitVectors.shtml
+    /// Bit-vector unsigned division.
+    ///
+    /// Semantics to match SMT bit-vector theory here: <https://smt-lib.org/theories-FixedSizeBitVectors.shtml>
     pub fn udiv(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("udiv".into()));
@@ -297,7 +321,9 @@ impl BitVec {
         }
     }
 
-    // semantics to match SMT bit-vector theory here: https://smt-lib.org/theories-FixedSizeBitVectors.shtml
+    /// Bit-vector unsigned remainder.
+    ///
+    /// Semantics to match SMT bit-vector theory here: <https://smt-lib.org/theories-FixedSizeBitVectors.shtml>
     pub fn urem(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("urem".into()));
@@ -309,7 +335,9 @@ impl BitVec {
         }
     }
 
-    // semantics to match SMT bit-vector logic here: https://smt-lib.org/logics-all.shtml
+    /// Bit-vector signed division.
+    ///
+    /// Semantics to match SMT bit-vector logic here: <https://smt-lib.org/logics-all.shtml>
     pub fn sdiv(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("sdiv".into()));
@@ -328,7 +356,9 @@ impl BitVec {
         }
     }
 
-    // semantics to match SMT bit-vector logic here: https://smt-lib.org/logics-all.shtml
+    /// Bit-vector signed remainder.
+    ///
+    /// Semantics to match SMT bit-vector logic here: <https://smt-lib.org/logics-all.shtml>
     pub fn srem(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("srem".into()));
@@ -347,7 +377,9 @@ impl BitVec {
         }
     }
 
-    // semantics to match SMT bit-vector logic here: https://smt-lib.org/logics-all.shtml
+    /// Bit-vector signed modulus.
+    ///
+    /// Semantics to match SMT bit-vector logic here: <https://smt-lib.org/logics-all.shtml>
     pub fn smod(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("smod".into()));
@@ -379,6 +411,7 @@ impl BitVec {
         }
     }
 
+    /// Bit-vector left shift.
     pub fn shl(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("shl".into()));
@@ -388,6 +421,7 @@ impl BitVec {
         BitVec::of_nat(lhs.width, val)
     }
 
+    /// Bit-vector logical right shift.
     pub fn lshr(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("lshr".into()));
@@ -397,16 +431,19 @@ impl BitVec {
         BitVec::of_nat(lhs.width, val)
     }
 
+    /// Bit-vector concatenation.
     pub fn concat(lhs: &Self, rhs: &Self) -> Result<Self> {
         let width = lhs.width + rhs.width;
         let new_val = (&lhs.v << rhs.width()) + &rhs.v;
         BitVec::of_nat(width, new_val)
     }
 
-    // This matches the Lean implementation that just adjusts the length of the
-    // bit-vector to match n (and not the SMT-LIB implementation that zero extends
-    // the bit-vector by n bits). If n is less than the current bit-width it will
-    // truncate
+    /// Bit-vector unsigned (zero) extension.
+    ///
+    /// This matches the Lean implementation that just adjusts the length of the
+    /// bit-vector to match n (and not the SMT-LIB implementation that zero extends
+    /// the bit-vector by n bits). If n is less than the current bit-width it will
+    /// truncate
     pub fn zero_extend(bv: &Self, n: Width) -> Result<Self> {
         BitVec::of_nat(n, bv.to_nat())
     }

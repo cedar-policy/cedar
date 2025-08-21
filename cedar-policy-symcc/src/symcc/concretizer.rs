@@ -37,7 +37,7 @@ use crate::symcc::enforcer::footprint;
 use crate::symcc::factory;
 
 use super::env::{SymEntities, SymEntityData, SymRequest};
-use super::ext::ExtConvertError;
+use super::ext::ExtError;
 use super::function::{Udf, UnaryFunction};
 use super::term::{Term, TermPrim};
 use super::SymEnv;
@@ -74,13 +74,14 @@ pub enum ConcretizeError {
     /// Fail to convert from big integer.
     #[error("Unable to convert BitVec to integer")]
     TryFromBigIntError(#[from] TryFromBigIntError<BigInt>),
-    /// Errors in extension conversion.
-    #[error("unsupported extension value")]
-    ExtConvertError(#[from] ExtConvertError),
+    /// Extension error.
+    #[error("extension error")]
+    ExtError(#[from] ExtError),
 }
 
 /// A concrete environment recovered from a [`SymEnv`].
 #[derive(Debug, Clone)]
+#[allow(missing_docs)]
 pub struct Env {
     pub request: Request,
     pub entities: Entities,

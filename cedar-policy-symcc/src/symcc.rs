@@ -61,7 +61,6 @@ pub use concretizer::Env;
 pub use decoder::DecodeError;
 pub use encoder::EncodeError;
 pub use env::{Environment, SymEnv};
-pub use extension_types::ipaddr::IPError;
 pub use interpretation::Interpretation;
 pub use result::CompileError;
 pub use smtlib_script::SmtLibScript;
@@ -441,8 +440,10 @@ fn well_typed_policy_inner(
             policy.effect(),
             expr.into_expr::<ExprBuilder<()>>(),
             policy.id().clone(),
-            // The additional `into()` is to avoid build failure with or without the
-            // `raw-parsing` feature in `cedar-policy-core` (which changes the type of `MaybeLoc`).
+            #[allow(
+                clippy::useless_conversion,
+                reason = "Additional `into()` to avoid build failure when the feature `cedar-policy-core:raw-parsing` is enabled"
+            )]
             policy.loc().cloned().map(|l| l.into()),
         )),
         Irrelevant(errs, expr) =>
@@ -455,6 +456,10 @@ fn well_typed_policy_inner(
                     policy.effect(),
                     expr.into_expr::<ExprBuilder<()>>(),
                     policy.id().clone(),
+                    #[allow(
+                        clippy::useless_conversion,
+                        reason = "Additional `into()` to avoid build failure when the feature `cedar-policy-core:raw-parsing` is enabled"
+                    )]
                     policy.loc().cloned().map(|l| l.into()),
                 ))
             } else {
