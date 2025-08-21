@@ -59,7 +59,8 @@ const V6_SIZE: Width = addr_size(V6_WIDTH);
 /// Internal representation of IPv4 addresses.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IPv4Addr {
-    pub(crate) val: BitVec,
+    /// The 32-bit value of the IPv4 address.
+    pub val: BitVec,
 }
 
 impl IPv4Addr {
@@ -92,7 +93,8 @@ impl IPv4Addr {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 
 pub struct IPv6Addr {
-    pub(crate) val: BitVec,
+    /// The 128-bit value of the IPv6 address.
+    pub val: BitVec,
 }
 
 impl IPv6Addr {
@@ -159,7 +161,8 @@ impl IPv6Addr {
 /// Internal representation of IPv4 prefixes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IPv4Prefix {
-    pub(crate) val: Option<BitVec>,
+    /// Optional IPv4 prefix value.
+    pub val: Option<BitVec>,
 }
 
 impl IPv4Prefix {
@@ -185,8 +188,10 @@ impl IPv4Prefix {
 /// Internal representation of IPv6 prefixes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IPv6Prefix {
-    pub(crate) val: Option<BitVec>,
+    /// Optional IPv6 prefix value.
+    pub val: Option<BitVec>,
 }
+
 impl IPv6Prefix {
     fn of_nat(pre: Nat) -> Self {
         if pre < nat(V6_SIZE) {
