@@ -973,7 +973,7 @@ mod datetime_tests {
         assert!(
             matches!(
                 compile(&datetime_lit(str), &sym_env),
-                Err(CompileError::TypeError),
+                Err(CompileError::ExtError(_)),
             ),
             "{msg}"
         );
