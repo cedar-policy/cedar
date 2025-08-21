@@ -120,7 +120,7 @@ impl Ext {
                 let d = super::extension_types::datetime::Duration::parse(
                     arg2_args[0].as_string()?.as_str(),
                 )?;
-                Some(Ext::Datetime { dt: dt.offset(&d)? }.into())
+                Some(Ext::Datetime { dt: dt.offset(&d)? })
             }
             ("ip", &[arg]) => Self::parse_ip(arg.as_string()?.as_str()),
             _ => None,
