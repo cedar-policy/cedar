@@ -16,7 +16,7 @@
 
 //! All error types in SymCC.
 
-use cedar_policy_core::validator::ValidationError;
+use cedar_policy_core::validator::{RequestValidationError, ValidationError};
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -51,6 +51,12 @@ pub enum Error {
     /// Errors during concretization.
     #[error("failed to recover a concrete counterexample")]
     ConcretizeError(#[from] ConcretizeError),
+    /// Template is not well-typed.
+    #[error("input template is not well typed with respect to the schema {errs:?}")]
+    TemplateNotWellTyped { errs: Vec<ValidationError> },
+    /// Request is not well-typed
+    #[error("request is not well typed with respect to the schema")]
+    RequestNotWellTyped(#[from] RequestValidationError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
