@@ -2167,3 +2167,20 @@ async fn entity_uid_quote() {
     assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
     assert_does_not_always_allow(&mut compiler, &pset, &envs).await;
 }
+
+/// Tests `LocalSolver::cvc5_with_args`
+#[tokio::test]
+async fn cvc5_with_args() {
+    let validator = Validator::new(attributes_schema());
+    let mut compiler =
+        CedarSymCompiler::new(LocalSolver::cvc5_with_args(["--rlimit=1000"]).unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Dept");
+    let pset = utils::pset_from_text(
+        r#"
+        permit(principal, action, resource)
+        when { principal == User::"alice" };
+    "#,
+        &validator,
+    );
+    assert_does_not_always_allow(&mut compiler, &pset, &envs).await;
+}
