@@ -33,7 +33,9 @@
 
 use super::smtlib_script::SmtLibScript;
 use miette::Diagnostic;
-use std::{future::Future, path::Path, process::Stdio};
+use std::ffi::OsStr;
+use std::future::Future;
+use std::process::Stdio;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
@@ -102,9 +104,12 @@ pub struct LocalSolver {
 }
 
 impl LocalSolver {
-    fn new<'a>(path: impl AsRef<Path>, args: impl IntoIterator<Item = &'a str>) -> Result<Self> {
-        let child = Command::new(path.as_ref())
-            .args(args)
+    /// Creates a new [`LocalSolver`] from a custom [`Command`].
+    ///
+    /// The input command is expected to act as an interactive SMT solver
+    /// that reads queries from stdin in SMT-LIB 2 format (e.g., `cvc5 --lang smt` or `z3`).
+    pub fn from_command(mut cmd: Command) -> Result<Self> {
+        let child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -125,10 +130,20 @@ impl LocalSolver {
     }
 
     pub fn cvc5() -> Result<Self> {
-        Self::new(
-            std::env::var("CVC5").unwrap_or_else(|_| "cvc5".into()),
-            ["--lang", "smt", "--tlimit=60000"], // limit of 60000ms = 1 min of wall time for local solves, for now
-        )
+        let path = std::env::var("CVC5").unwrap_or_else(|_| "cvc5".into());
+        let mut cmd = Command::new(path);
+        // limit of 60000ms = 1 min of wall time for local solves, for now
+        cmd.args(["--lang", "smt", "--tlimit=60000"]);
+        Self::from_command(cmd)
+    }
+
+    /// Similar to [`Self::cvc5`] but with custom arguments.
+    pub fn cvc5_with_args(args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Result<Self> {
+        let path = std::env::var("CVC5").unwrap_or_else(|_| "cvc5".into());
+        let mut cmd = Command::new(path);
+        cmd.args(["--lang", "smt"]);
+        cmd.args(args);
+        Self::from_command(cmd)
     }
 }
 
