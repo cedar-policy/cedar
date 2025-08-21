@@ -443,7 +443,7 @@ fn well_typed_policy_inner(
             policy.id().clone(),
             #[allow(
                 clippy::useless_conversion,
-                reason = "Additional `into()` to avoid build failure when feature `cedar-policy-core:raw-parsing` is enabled"
+                reason = "Additional `into()` to avoid build failure when the feature `cedar-policy-core:raw-parsing` is enabled"
             )]
             policy.loc().cloned().map(|l| l.into()),
         )),
@@ -459,7 +459,7 @@ fn well_typed_policy_inner(
                     policy.id().clone(),
                     #[allow(
                         clippy::useless_conversion,
-                        reason = "Additional `into()` to avoid build failure when feature `cedar-policy-core:raw-parsing` is enabled"
+                        reason = "Additional `into()` to avoid build failure when the feature `cedar-policy-core:raw-parsing` is enabled"
                     )]
                     policy.loc().cloned().map(|l| l.into()),
                 ))
