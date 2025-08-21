@@ -93,8 +93,27 @@ pub trait Solver {
     fn get_model(&mut self) -> impl Future<Output = Result<Option<String>>> + Send;
 }
 
-/// Implements `Solver` by launching an SMT solver in a new process and
-/// communicating with it
+/// A solver instance that communicates with a local SMT solver process
+/// through stdin/stdout.
+///
+/// We officially support [cvc5](https://github.com/cvc5/cvc5),
+/// but other SMT solvers such as [Z3](https://github.com/Z3Prover/z3)
+/// may also work with a subset of SymCC's functionality.
+///
+/// Examples:
+/// ```no_run
+/// use tokio::process::Command;
+/// use cedar_policy_symcc::solver::LocalSolver;
+///
+/// // Spawns a cvc5 process with the default arguments
+/// let solver = LocalSolver::cvc5().unwrap();
+///
+/// // Spawns a cvc5 process with custom arguments
+/// let solver = LocalSolver::cvc5_with_args(["--rlimit=1000"]).unwrap();
+///
+/// // Spawns a custom solver process
+/// let solver = LocalSolver::from_command(Command::new("z3").args(["rlimit", "1000"])).unwrap();
+/// ```
 #[derive(Debug)]
 pub struct LocalSolver {
     solver_stdin: BufWriter<ChildStdin>,
