@@ -18,7 +18,8 @@
 //! It is based on
 //! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/Spec/Ext/Datetime.lean>
 
-use std::{num::ParseIntError, str::FromStr};
+use std::num::ParseIntError;
+use std::str::FromStr;
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use miette::Diagnostic;
