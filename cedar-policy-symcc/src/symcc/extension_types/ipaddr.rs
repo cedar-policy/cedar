@@ -210,9 +210,10 @@ impl IPv6Prefix {
 /// Internal representation of a single IPv4 address,
 /// or a range of IPv4 addresses defined by a CIDR suffix.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[allow(missing_docs)]
 pub struct CIDRv4 {
-    pub(crate) addr: IPv4Addr,
-    pub(crate) prefix: IPv4Prefix,
+    pub addr: IPv4Addr,
+    pub prefix: IPv4Prefix,
 }
 
 impl CIDRv4 {
@@ -270,9 +271,10 @@ impl CIDRv4 {
 /// Internal representation of a single IPv6 address,
 /// or a range of IPv6 addresses defined by a CIDR suffix.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[allow(missing_docs)]
 pub struct CIDRv6 {
-    pub(crate) addr: IPv6Addr,
-    pub(crate) prefix: IPv6Prefix,
+    pub addr: IPv6Addr,
+    pub prefix: IPv6Prefix,
 }
 
 impl CIDRv6 {
