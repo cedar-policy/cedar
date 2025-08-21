@@ -18,6 +18,15 @@
 //! It is based on
 //! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/Spec/Ext/Datetime.lean>
 
+use std::num::ParseIntError;
+use std::str::FromStr;
+
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use miette::Diagnostic;
+use thiserror::Error;
+
+/// Internal representation of Cedar `datetime` values.
+///
 /// A datetime value is measured in milliseconds and constructed from a datetime string.
 /// A datetime string must be of one of the forms:
 ///   - `YYYY-MM-DD` (date only)
@@ -30,29 +39,51 @@
 ///
 /// The datetime type does not provide a way to create a datetime from a Unix timestamp.
 /// One of the readable formats listed above must be used instead.
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Datetime {
     val: i64,
+}
+
+/// Errors in [`Datetime`] and [`Duration`] operations.
+#[derive(Debug, Diagnostic, Error)]
+pub enum DatetimeError {
+    /// Datetime parse error.
+    #[error("unable to parse `{0}` as a Datetime")]
+    DatetimeParseError(String),
+    /// Chrono internal parse error.
+    #[error("chrono parse error")]
+    ChronoParseError(#[from] chrono::ParseError),
+    /// Integer overflow during parsing.
+    #[error("integer overflow during parsing")]
+    IntegerOverflowDuringParsing,
+    /// Invalid unit.
+    #[error("invalid unit `{0}` in duration string")]
+    InvalidUnit(String),
+    /// Unable to parse int.
+    #[error("unable to parse int")]
+    ParseIntError(#[from] ParseIntError),
 }
 
 const MILLISECONDS_PER_SECOND: i64 = 1000;
 const MILLISECONDS_PER_DAY: i64 = 86400000;
 
 impl Datetime {
+    /// Computes a [`Datetime`] offset by the given [`Duration`].
+    /// Returns [`None`] if the operation would overflow.
     pub fn offset(&self, duration: &Duration) -> Option<Datetime> {
         Some(Self {
             val: self.val.checked_add(duration.val)?,
         })
     }
 
+    /// Computes the duration between two [`Datetime`]'s.
     pub fn duration_since(&self, other: &Self) -> Option<Duration> {
         Some(Duration {
             val: self.val.checked_sub(other.val)?,
         })
     }
 
+    /// Extracts the date portion of a [`Datetime`] as a new [`Datetime`].
     pub fn to_date(&self) -> Option<Datetime> {
         if self.val >= 0 {
             Some(Self {
@@ -67,6 +98,7 @@ impl Datetime {
         }
     }
 
+    /// Extracts the time portion of a [`Datetime`] as a new [`Datetime`].
     pub fn to_time(&self) -> Option<Datetime> {
         if self.val >= 0 {
             Some(Self {
@@ -84,12 +116,12 @@ impl Datetime {
         }
     }
 
-    // Returns true iff s is a datetime str in one of our accepted formats and contains a leap second
+    /// Returns true iff s is a datetime str in one of our accepted formats and contains a leap second
     fn date_contains_leap_seconds(s: &str) -> bool {
         s.len() >= 20 && s.get(17..19) == Some("60")
     }
 
-    // Returns true iff s contains the expected delimiters within one of our accepted datetime str formats
+    /// Returns true iff s contains the expected delimiters within one of our accepted datetime str formats
     fn check_component_len(s: &str) -> bool {
         let check_date_component = |s: &str| -> bool {
             match s.split('-').collect::<Vec<_>>().as_slice() {
@@ -129,14 +161,18 @@ impl Datetime {
                 .and_then(|s| s.parse::<u32>().ok())
                 .is_some_and(|mins_offset| mins_offset < 60)
     }
+}
 
-    pub fn parse(s: &str) -> Option<Self> {
+impl FromStr for Datetime {
+    type Err = DatetimeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Validate datetime str
         if Self::date_contains_leap_seconds(s)
             || !Self::check_component_len(s)
             || !Self::tz_offset_mins_lt_60(s)
         {
-            return None;
+            return Err(DatetimeError::DatetimeParseError(s.to_string()));
         }
 
         // Define the format strings
@@ -172,8 +208,7 @@ impl Datetime {
             .or_else(|_| {
                 DateTime::parse_from_str(s, DATE_WITH_OFFSET_MILLIS)
                     .map(|dt| dt.with_timezone(&Utc))
-            })
-            .ok()?;
+            })?;
 
         // Check if the original timezone offset is within bounds (need to parse again for offset checks)
         let offset = if let Ok(dt) = DateTime::parse_from_str(s, DATE_WITH_OFFSET) {
@@ -185,11 +220,11 @@ impl Datetime {
         };
 
         if offset.abs() < MAX_OFFSET_SECONDS {
-            Some(Self {
+            Ok(Self {
                 val: datetime.timestamp_millis(),
             })
         } else {
-            None
+            Err(DatetimeError::DatetimeParseError(s.to_string()))
         }
     }
 }
@@ -242,27 +277,37 @@ pub struct Duration {
 }
 
 impl Duration {
+    /// Converts [`Duration`] to milliseconds.
     pub fn to_milliseconds(&self) -> i64 {
         self.val
     }
 
+    /// Converts [`Duration`] to seconds.
     pub fn to_seconds(&self) -> i64 {
         self.val / MILLISECONDS_PER_SECOND
     }
 
+    /// Converts [`Duration`] to minutes.
     pub fn to_minutes(&self) -> i64 {
         self.to_seconds() / 60
     }
 
+    /// Converts [`Duration`] to hours.
     pub fn to_hours(&self) -> i64 {
         self.to_minutes() / 60
     }
 
+    /// Converts [`Duration`] to days.
     pub fn to_days(&self) -> i64 {
         self.to_hours() / 24
     }
 
-    fn parse_unit<'a>(s: &'a str, is_neg: bool, suffix: &str) -> Option<(i64, &'a str)> {
+    /// Parses the unit part of a duration string.
+    fn parse_unit<'a>(
+        s: &'a str,
+        is_neg: bool,
+        suffix: &str,
+    ) -> Result<(i64, &'a str), DatetimeError> {
         match s.strip_suffix(suffix) {
             Some(prefix) => {
                 let pos = prefix
@@ -277,7 +322,7 @@ impl Duration {
                     i64::MIN
                 } else {
                     // Parse absolute value. Any remaining overflow / parse errors
-                    let abs_val = digits.parse::<i64>().ok()?;
+                    let abs_val = digits.parse::<i64>()?;
                     // negate as necessary
                     if is_neg {
                         -abs_val
@@ -287,26 +332,38 @@ impl Duration {
                 };
                 let ms_val = match suffix {
                     "ms" => val,
-                    "s" => val.checked_mul(1000)?,
-                    "m" => val.checked_mul(60 * 1000)?,
-                    "h" => val.checked_mul(60 * 60 * 1000)?,
-                    "d" => val.checked_mul(24 * 60 * 60 * 1000)?,
-                    _ => return None,
+                    "s" => val
+                        .checked_mul(1000)
+                        .ok_or(DatetimeError::IntegerOverflowDuringParsing)?,
+                    "m" => val
+                        .checked_mul(60 * 1000)
+                        .ok_or(DatetimeError::IntegerOverflowDuringParsing)?,
+                    "h" => val
+                        .checked_mul(60 * 60 * 1000)
+                        .ok_or(DatetimeError::IntegerOverflowDuringParsing)?,
+                    "d" => val
+                        .checked_mul(24 * 60 * 60 * 1000)
+                        .ok_or(DatetimeError::IntegerOverflowDuringParsing)?,
+                    _ => return Err(DatetimeError::InvalidUnit(suffix.to_string())),
                 };
-                Some((ms_val, prefix))
+                Ok((ms_val, prefix))
             }
-            None => Some((0, s)),
+            None => Ok((0, s)),
         }
     }
+}
 
-    pub fn parse(s: &str) -> Option<Duration> {
+impl FromStr for Duration {
+    type Err = DatetimeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (is_neg, s) = match s.strip_prefix('-') {
             Some(s) => (true, s),
             None => (false, s),
         };
 
         if s.is_empty() {
-            return None;
+            return Err(DatetimeError::DatetimeParseError(s.to_string()));
         }
 
         let (ms, s) = Self::parse_unit(s, is_neg, "ms")?;
@@ -316,15 +373,19 @@ impl Duration {
         let (days, s) = Self::parse_unit(s, is_neg, "d")?;
 
         if !s.is_empty() {
-            return None;
+            return Err(DatetimeError::DatetimeParseError(s.to_string()));
         }
 
-        Some(Self {
+        Ok(Self {
             val: days
-                .checked_add(hr)?
-                .checked_add(min)?
-                .checked_add(sec)?
-                .checked_add(ms)?,
+                .checked_add(hr)
+                .ok_or(DatetimeError::IntegerOverflowDuringParsing)?
+                .checked_add(min)
+                .ok_or(DatetimeError::IntegerOverflowDuringParsing)?
+                .checked_add(sec)
+                .ok_or(DatetimeError::IntegerOverflowDuringParsing)?
+                .checked_add(ms)
+                .ok_or(DatetimeError::IntegerOverflowDuringParsing)?,
         })
     }
 }
@@ -359,18 +420,16 @@ impl From<i64> for Duration {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use crate::symcc::extension_types::datetime::{Datetime, Duration};
 
-    fn datetime(i: i64) -> Option<Datetime> {
-        Some(Datetime { val: i })
-    }
-
     fn test_valid_datetime(str: &str, rep: i64) {
-        assert_eq!(Datetime::parse(str), datetime(rep));
+        assert_eq!(Datetime::from_str(str).unwrap(), Datetime { val: rep });
     }
 
     fn test_invalid_datetime(str: &str, msg: &str) {
-        assert_eq!(Datetime::parse(str), None, "{}", msg);
+        assert!(Datetime::from_str(str).is_err(), "{}", msg);
     }
 
     #[test]
@@ -464,16 +523,12 @@ mod tests {
         );
     }
 
-    fn duration(i: i64) -> Option<Duration> {
-        Some(Duration { val: i })
-    }
-
     fn test_valid_duration(str: &str, rep: i64) {
-        assert_eq!(Duration::parse(str), duration(rep));
+        assert_eq!(Duration::from_str(str).unwrap(), Duration { val: rep });
     }
 
     fn test_invalid_duration(str: &str, msg: &str) {
-        assert_eq!(Duration::parse(str), None, "{}", msg);
+        assert!(Duration::from_str(str).is_err(), "{}", msg);
     }
 
     #[test]

@@ -21,7 +21,9 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 pub use crate::symcc::{
-    BitVecError, CompileError, ConcretizeError, DecodeError, EncodeError, IPError, SolverError,
+    ext::ExtError, extension_types::datetime::DatetimeError,
+    extension_types::decimal::DecimalError, extension_types::ipaddr::IPError, BitVecError,
+    CompileError, ConcretizeError, DecodeError, EncodeError, SolverError,
 };
 
 /// Top-level errors from the whole `cedar-policy-symcc` crate.
@@ -44,7 +46,10 @@ pub enum Error {
     SolverUnknown,
     /// Policy is not well-typed.
     #[error("input policy (set) is not well typed with respect to the schema {errs:?}")]
-    PolicyNotWellTyped { errs: Vec<ValidationError> },
+    PolicyNotWellTyped {
+        /// Errors from the policy validator.
+        errs: Vec<ValidationError>,
+    },
     /// Failed to decode the SMT model.
     #[error("failed to decode model: {0}")]
     DecodeModel(#[from] DecodeError),
@@ -53,4 +58,5 @@ pub enum Error {
     ConcretizeError(#[from] ConcretizeError),
 }
 
+/// A result type that potentially returns a SymCC [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;

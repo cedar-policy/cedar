@@ -29,6 +29,8 @@ use std::sync::Arc;
 use cedar_policy_core::ast::Var;
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp};
 
+use crate::ext::ExtError;
+
 use super::bitvec::BitVec;
 use super::env::{SymEntities, SymEnv, SymRequest};
 use super::ext::Ext;
@@ -422,12 +424,15 @@ pub fn compile_record(ats: Vec<(Attr, Term)>) -> Result<Term> {
     ))
 }
 
-pub fn compile_call0(mk: impl Fn(String) -> Option<Ext>, arg: Term, fn_name: &str) -> Result<Term> {
+pub fn compile_call0(
+    mk: impl Fn(&str) -> std::result::Result<Ext, ExtError>,
+    arg: Term,
+) -> Result<Term> {
     match arg {
-        Term::Some(t) => match Arc::unwrap_or_clone(t) {
+        Term::Some(t) => match t.as_ref() {
             Term::Prim(TermPrim::String(s)) => match mk(s) {
-                Some(v) => Ok(some_of(v.into())),
-                None => Err(CompileError::ExtensionFunctionApp(fn_name.to_owned())),
+                Ok(v) => Ok(some_of(v.into())),
+                Err(err) => Err(CompileError::ExtError(err)),
             },
             _ => Err(CompileError::TypeError),
         },
@@ -515,7 +520,7 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
     match (xfn.to_string().as_str(), ts.len()) {
         ("decimal", 1) => {
             let t1 = extract_first(ts);
-            compile_call0(Ext::parse_decimal, t1, "decimal")
+            compile_call0(Ext::parse_decimal, t1)
         }
         ("lessThan", 2) => {
             let (t1, t2) = extract_first2(ts);
@@ -535,7 +540,7 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
         }
         ("ip", 1) => {
             let t1 = extract_first(ts);
-            compile_call0(Ext::parse_ip, t1, "ip")
+            compile_call0(Ext::parse_ip, t1)
         }
         ("isIpv4", 1) => {
             let t1 = extract_first(ts);
@@ -559,11 +564,11 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
         }
         ("datetime", 1) => {
             let t1 = extract_first(ts);
-            compile_call0(Ext::parse_datetime, t1, "datetime")
+            compile_call0(Ext::parse_datetime, t1)
         }
         ("duration", 1) => {
             let t1 = extract_first(ts);
-            compile_call0(Ext::parse_duration, t1, "duration")
+            compile_call0(Ext::parse_duration, t1)
         }
         ("offset", 2) => {
             let (t1, t2) = extract_first2(ts);

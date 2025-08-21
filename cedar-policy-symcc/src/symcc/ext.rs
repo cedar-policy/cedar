@@ -16,27 +16,34 @@
 
 //! Extension values in SymCC.
 
+use std::str::FromStr;
+
 use cedar_policy::EvaluationError;
 use cedar_policy_core::ast::{Extension, Name, PartialValue, RestrictedExpr, Value, ValueKind};
 use miette::Diagnostic;
 use thiserror::Error;
 
+use crate::err::IPError;
+use crate::extension_types::datetime::DatetimeError;
+use crate::extension_types::decimal::DecimalError;
+
 use super::extension_types::datetime::{Datetime, Duration};
 use super::extension_types::decimal::Decimal;
+use super::extension_types::ipaddr::IPNet;
 
-type IPAddr = super::extension_types::ipaddr::IPNet;
-
+/// Internal representation of extension values.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[allow(missing_docs)]
 pub enum Ext {
     Decimal { d: Decimal },
-    Ipaddr { ip: IPAddr },
+    Ipaddr { ip: IPNet },
     Datetime { dt: Datetime },
     Duration { d: Duration },
 }
 
-/// Errors in [`Ext`] conversions.
+/// Errors in [`Ext`] operations.
 #[derive(Debug, Diagnostic, Error)]
-pub enum ExtConvertError {
+pub enum ExtError {
     /// Failed to convert from the given [`Value`].
     #[error("fail to convert value to an extension term: {0}")]
     FromValue(Value),
@@ -55,39 +62,36 @@ pub enum ExtConvertError {
     /// Failed to parse extension function name.
     #[error("failed to parse extension function name")]
     ExtensionFunctionParseError,
+    /// Datetime error.
+    #[error("datetime error")]
+    DatetimeError(#[from] DatetimeError),
+    /// Decimal error.
+    #[error("decimal error")]
+    DecimalError(#[from] DecimalError),
+    /// IP error.
+    #[error("IP error")]
+    IPError(#[from] IPError),
 }
 
 impl Ext {
-    #[allow(
-        clippy::needless_pass_by_value,
-        reason = "Pass by value expected by consumer"
-    )]
-    pub fn parse_decimal(str: String) -> Option<Ext> {
-        super::extension_types::decimal::parse(&str).map(|d| Ext::Decimal { d })
+    /// Parses a `decimal` extension value from a string.
+    pub fn parse_decimal(s: &str) -> Result<Ext, ExtError> {
+        Ok(Decimal::from_str(s).map(|d| Ext::Decimal { d })?)
     }
 
-    #[allow(
-        clippy::needless_pass_by_value,
-        reason = "Pass by value expected by consumer"
-    )]
-    pub fn parse_datetime(str: String) -> Option<Ext> {
-        super::extension_types::datetime::Datetime::parse(&str).map(|dt| Ext::Datetime { dt })
+    /// Parses a `datetime` extension value from a string.
+    pub fn parse_datetime(s: &str) -> Result<Ext, ExtError> {
+        Ok(Datetime::from_str(s).map(|dt| Ext::Datetime { dt })?)
     }
 
-    #[allow(
-        clippy::needless_pass_by_value,
-        reason = "Pass by value expected by consumer"
-    )]
-    pub fn parse_duration(str: String) -> Option<Ext> {
-        super::extension_types::datetime::Duration::parse(&str).map(|d| Ext::Duration { d })
+    /// Parses a `duration` extension value from a string.
+    pub fn parse_duration(s: &str) -> Result<Ext, ExtError> {
+        Ok(Duration::from_str(s).map(|d| Ext::Duration { d })?)
     }
 
-    #[allow(
-        clippy::needless_pass_by_value,
-        reason = "Pass by value expected by consumer"
-    )]
-    pub fn parse_ip(str: String) -> Option<Ext> {
-        super::extension_types::ipaddr::parse(&str).map(|ip| Ext::Ipaddr { ip })
+    /// Parses an `ipaddr` extension value from a string.
+    pub fn parse_ip(s: &str) -> Result<Ext, ExtError> {
+        Ok(IPNet::from_str(s).map(|ip| Ext::Ipaddr { ip })?)
     }
 }
 
@@ -100,9 +104,9 @@ impl Ext {
         // Recover the string representation of supported extension values
         // and then convert them to corresponding `Term`s.
         match (name.as_ref().to_string().as_str(), args.as_slice()) {
-            ("decimal", &[arg]) => Self::parse_decimal(arg.as_string()?.to_string()),
-            ("duration", &[arg]) => Self::parse_duration(arg.as_string()?.to_string()),
-            ("datetime", &[arg]) => Self::parse_datetime(arg.as_string()?.to_string()),
+            ("decimal", &[arg]) => Self::parse_decimal(arg.as_string()?.as_str()).ok(),
+            ("duration", &[arg]) => Self::parse_duration(arg.as_string()?.as_str()).ok(),
+            ("datetime", &[arg]) => Self::parse_datetime(arg.as_string()?.as_str()).ok(),
             // A `datetime` value is sometimes represented as `datetime(<epoch>).offset(<...>)`
             ("offset", &[arg1, arg2]) => {
                 let (arg1_name, arg1_args) = arg1.as_extn_fn_call()?;
@@ -121,19 +125,15 @@ impl Ext {
                     clippy::indexing_slicing,
                     reason = "arg1_args.len() == 1 thus indexing by 0 should not panic"
                 )]
-                let dt = super::extension_types::datetime::Datetime::parse(
-                    arg1_args[0].as_string()?.as_str(),
-                )?;
+                let dt = Datetime::from_str(arg1_args[0].as_string()?.as_str()).ok()?;
                 #[allow(
                     clippy::indexing_slicing,
                     reason = "arg2_args.len() == 1 thus indexing by 0 should not panic"
                 )]
-                let d = super::extension_types::datetime::Duration::parse(
-                    arg2_args[0].as_string()?.as_str(),
-                )?;
-                Some(Ext::Datetime { dt: dt.offset(&d)? }.into())
+                let d = Duration::from_str(arg2_args[0].as_string()?.as_str()).ok()?;
+                Some(Ext::Datetime { dt: dt.offset(&d)? })
             }
-            ("ip", &[arg]) => Self::parse_ip(arg.as_string()?.to_string()),
+            ("ip", &[arg]) => Self::parse_ip(arg.as_string()?.as_str()).ok(),
             _ => None,
         }
     }
@@ -143,45 +143,40 @@ impl Ext {
 /// of extension values (whereas the Lean model uses the same),
 /// so we need these utility functions to convert between them.
 impl TryFrom<&RestrictedExpr> for Ext {
-    type Error = ExtConvertError;
+    type Error = ExtError;
 
     fn try_from(rexp: &RestrictedExpr) -> Result<Self, Self::Error> {
-        Self::from_ext_value(rexp).ok_or_else(|| ExtConvertError::FromRestrictedExpr(rexp.clone()))
+        Self::from_ext_value(rexp).ok_or_else(|| ExtError::FromRestrictedExpr(rexp.clone()))
     }
 }
 
 impl TryFrom<&Value> for Ext {
-    type Error = ExtConvertError;
+    type Error = ExtError;
 
     fn try_from(v: &Value) -> Result<Self, Self::Error> {
         let ValueKind::ExtensionValue(ext) = v.value_kind() else {
-            return Err(ExtConvertError::FromValue(v.clone()));
+            return Err(ExtError::FromValue(v.clone()));
         };
         let rexp = RestrictedExpr::from(ext.as_ref().clone());
-        Self::from_ext_value(&rexp).ok_or_else(|| ExtConvertError::FromValue(v.clone()))
+        Self::from_ext_value(&rexp).ok_or_else(|| ExtError::FromValue(v.clone()))
     }
 }
 
 /// A utility function to call an extension function
-fn call_extension_func(
-    ext: &Extension,
-    name: &str,
-    args: &[Value],
-) -> Result<Value, ExtConvertError> {
-    let name =
-        Name::parse_unqualified_name(name).or(Err(ExtConvertError::ExtensionFunctionParseError))?;
+fn call_extension_func(ext: &Extension, name: &str, args: &[Value]) -> Result<Value, ExtError> {
+    let name = Name::parse_unqualified_name(name).or(Err(ExtError::ExtensionFunctionParseError))?;
     match ext
         .get_func(&name)
-        .ok_or_else(|| ExtConvertError::ExtensionFunctionNotFound(name.to_string()))?
+        .ok_or_else(|| ExtError::ExtensionFunctionNotFound(name.to_string()))?
         .call(args)?
     {
         PartialValue::Value(v) => Ok(v),
-        _ => Err(ExtConvertError::UnsupportedPartialValue),
+        _ => Err(ExtError::UnsupportedPartialValue),
     }
 }
 
 impl TryFrom<&Ext> for Value {
-    type Error = ExtConvertError;
+    type Error = ExtError;
 
     fn try_from(ext: &Ext) -> Result<Self, Self::Error> {
         use cedar_policy_core::extensions::{datetime, decimal, ipaddr};

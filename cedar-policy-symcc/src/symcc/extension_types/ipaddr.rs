@@ -20,7 +20,7 @@
 
 // ----- IPv4Addr and IPv6Addr -----
 
-use std::sync::LazyLock;
+use std::{str::FromStr, sync::LazyLock};
 
 use miette::Diagnostic;
 use num_bigint::BigUint;
@@ -40,14 +40,17 @@ pub enum IPError {
     /// Expected octets when constructing IP addresses.
     #[error("expected octets when constructing IP addresses")]
     ExepectedOctet,
+    /// Parse error.
+    #[error("unable to parse `{0}` as an IPv4 or IPv6 address")]
+    ParseError(String),
 }
 
 type Result<T> = std::result::Result<T, IPError>;
 
 // ----- IPNetPrefix, CIDR, and IPNet -----
 
-pub const V4_WIDTH: Width = 5;
-pub const V6_WIDTH: Width = 7;
+pub(crate) const V4_WIDTH: Width = 5;
+pub(crate) const V6_WIDTH: Width = 7;
 
 const fn addr_size(w: Width) -> Width {
     2u32.pow(w)
@@ -56,13 +59,15 @@ const fn addr_size(w: Width) -> Width {
 const V4_SIZE: Width = addr_size(V4_WIDTH);
 const V6_SIZE: Width = addr_size(V6_WIDTH);
 
+/// Internal representation of IPv4 addresses.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IPv4Addr {
+    /// The 32-bit value of the IPv4 address.
     pub val: BitVec,
 }
 
 impl IPv4Addr {
-    pub fn mk(a0: &BitVec, a1: &BitVec, a2: &BitVec, a3: &BitVec) -> Result<Self> {
+    fn mk(a0: &BitVec, a1: &BitVec, a2: &BitVec, a3: &BitVec) -> Result<Self> {
         if a0.width() == 8 && a1.width() == 8 && a2.width() == 8 && a3.width() == 8 {
             let val = BitVec::concat(a0, &BitVec::concat(a1, &BitVec::concat(a2, a3)?)?)?;
             Ok(Self { val })
@@ -71,8 +76,8 @@ impl IPv4Addr {
         }
     }
 
-    // Helper method that does not exist in the corresponding Lean code
-    pub fn mk_u8(a0: u8, a1: u8, a2: u8, a3: u8) -> Self {
+    /// Helper method that does not exist in the corresponding Lean code
+    fn mk_u8(a0: u8, a1: u8, a2: u8, a3: u8) -> Self {
         #[allow(
             clippy::unwrap_used,
             reason = "Cannot panic because bitwidth is guaranteed to be 8."
@@ -87,15 +92,17 @@ impl IPv4Addr {
     }
 }
 
+/// Internal representation of IPv6 addresses.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 
 pub struct IPv6Addr {
+    /// The 128-bit value of the IPv6 address.
     pub val: BitVec,
 }
 
 impl IPv6Addr {
     #[allow(clippy::too_many_arguments)]
-    pub fn mk(
+    fn mk(
         a0: &BitVec,
         a1: &BitVec,
         a2: &BitVec,
@@ -133,9 +140,9 @@ impl IPv6Addr {
         }
     }
 
-    // Helper method that does not exist in the corresponding Lean code
+    /// Helper method that does not exist in the corresponding Lean code
     #[allow(clippy::too_many_arguments)]
-    pub fn mk_u16(a0: u16, a1: u16, a2: u16, a3: u16, a4: u16, a5: u16, a6: u16, a7: u16) -> Self {
+    fn mk_u16(a0: u16, a1: u16, a2: u16, a3: u16, a4: u16, a5: u16, a6: u16, a7: u16) -> Self {
         #[allow(
             clippy::unwrap_used,
             reason = "Cannot panic because bitwidth is guaranteed to be 16."
@@ -154,13 +161,15 @@ impl IPv6Addr {
     }
 }
 
+/// Internal representation of IPv4 prefixes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IPv4Prefix {
+    /// Optional IPv4 prefix value.
     pub val: Option<BitVec>,
 }
 
 impl IPv4Prefix {
-    pub fn of_nat(pre: Nat) -> Self {
+    fn of_nat(pre: Nat) -> Self {
         if pre < nat(V4_SIZE) {
             #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
             Self {
@@ -171,7 +180,7 @@ impl IPv4Prefix {
         }
     }
 
-    pub fn to_nat(pre: &Self) -> Nat {
+    fn to_nat(pre: &Self) -> Nat {
         match &pre.val {
             Some(bv) => bv.to_nat(),
             None => nat(V4_SIZE),
@@ -179,12 +188,15 @@ impl IPv4Prefix {
     }
 }
 
+/// Internal representation of IPv6 prefixes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IPv6Prefix {
+    /// Optional IPv6 prefix value.
     pub val: Option<BitVec>,
 }
+
 impl IPv6Prefix {
-    pub fn of_nat(pre: Nat) -> Self {
+    fn of_nat(pre: Nat) -> Self {
         if pre < nat(V6_SIZE) {
             #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
             Self {
@@ -195,7 +207,7 @@ impl IPv6Prefix {
         }
     }
 
-    pub fn to_nat(pre: &Self) -> Nat {
+    fn to_nat(pre: &Self) -> Nat {
         match &pre.val {
             Some(bv) => bv.to_nat(),
             None => nat(V6_SIZE),
@@ -203,7 +215,10 @@ impl IPv6Prefix {
     }
 }
 
+/// Internal representation of a single IPv4 address,
+/// or a range of IPv4 addresses defined by a CIDR suffix.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[allow(missing_docs)]
 pub struct CIDRv4 {
     pub addr: IPv4Addr,
     pub prefix: IPv4Prefix,
@@ -212,7 +227,7 @@ pub struct CIDRv4 {
 impl CIDRv4 {
     const SIZE: u32 = V4_SIZE;
 
-    pub fn subnet_width(&self) -> BitVec {
+    fn subnet_width(&self) -> BitVec {
         match &self.prefix.val {
             #[allow(
                 clippy::unwrap_used,
@@ -228,7 +243,7 @@ impl CIDRv4 {
         }
     }
 
-    pub fn range(&self) -> (IPv4Addr, IPv4Addr) {
+    fn range(&self) -> (IPv4Addr, IPv4Addr) {
         let width = self.subnet_width();
         #[allow(
             clippy::unwrap_used,
@@ -253,7 +268,7 @@ impl CIDRv4 {
         clippy::unwrap_used,
         reason = "Ule cannot panic because range returns bit-vectors of width Self::SIZE which are the same bitwidth."
     )]
-    pub fn in_range(&self, other: &CIDRv4) -> bool {
+    fn in_range(&self, other: &CIDRv4) -> bool {
         let (lo, hi) = self.range();
         let (other_lo, other_hi) = other.range();
 
@@ -261,7 +276,10 @@ impl CIDRv4 {
     }
 }
 
+/// Internal representation of a single IPv6 address,
+/// or a range of IPv6 addresses defined by a CIDR suffix.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[allow(missing_docs)]
 pub struct CIDRv6 {
     pub addr: IPv6Addr,
     pub prefix: IPv6Prefix,
@@ -270,7 +288,7 @@ pub struct CIDRv6 {
 impl CIDRv6 {
     const SIZE: u32 = V6_SIZE;
 
-    pub fn subnet_width(&self) -> BitVec {
+    fn subnet_width(&self) -> BitVec {
         match &self.prefix.val {
             #[allow(
                 clippy::unwrap_used,
@@ -286,7 +304,7 @@ impl CIDRv6 {
         }
     }
 
-    pub fn range(&self) -> (IPv6Addr, IPv6Addr) {
+    fn range(&self) -> (IPv6Addr, IPv6Addr) {
         let width = self.subnet_width();
         #[allow(
             clippy::unwrap_used,
@@ -311,29 +329,32 @@ impl CIDRv6 {
         clippy::unwrap_used,
         reason = "Ule cannot panic because range returns bit-vectors of width Self::SIZE which are the same bitwidth."
     )]
-    pub fn in_range(&self, other: &CIDRv6) -> bool {
+    fn in_range(&self, other: &CIDRv6) -> bool {
         let (lo, hi) = self.range();
         let (other_lo, other_hi) = other.range();
         BitVec::ule(&hi.val, &other_hi.val).unwrap() && BitVec::ule(&other_lo.val, &lo.val).unwrap()
     }
 }
 
+/// Internal representation of a Cedar `ipaddr` value.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IPNet {
+    /// An IPv4 address.
     V4(CIDRv4),
+    /// An IPv6 address.
     V6(CIDRv6),
 }
 
 static LOOP_BACK_ADDRESS_V4: LazyLock<IPv4Addr> = LazyLock::new(|| IPv4Addr::mk_u8(127, 0, 0, 0));
 static LOOP_BACK_ADDRESS_V6: LazyLock<IPv6Addr> =
     LazyLock::new(|| IPv6Addr::mk_u16(0, 0, 0, 0, 0, 0, 0, 1));
-pub static LOOP_BACK_CIDR_V4: LazyLock<IPNet> = LazyLock::new(|| {
+pub(crate) static LOOP_BACK_CIDR_V4: LazyLock<IPNet> = LazyLock::new(|| {
     IPNet::V4(CIDRv4 {
         addr: (*LOOP_BACK_ADDRESS_V4).clone(),
         prefix: IPv4Prefix::of_nat(nat(8)),
     })
 });
-pub static LOOP_BACK_CIDR_V6: LazyLock<IPNet> = LazyLock::new(|| {
+pub(crate) static LOOP_BACK_CIDR_V6: LazyLock<IPNet> = LazyLock::new(|| {
     IPNet::V6(CIDRv6 {
         addr: (*LOOP_BACK_ADDRESS_V6).clone(),
         prefix: IPv6Prefix::of_nat(nat(128)),
@@ -344,13 +365,13 @@ static MULTICAST_ADDRESS_V4: LazyLock<IPv4Addr> =
     LazyLock::new(|| IPv4Addr::mk_u8(0b11100000, 0, 0, 0));
 static MULTICAST_ADDRESS_V6: LazyLock<IPv6Addr> =
     LazyLock::new(|| IPv6Addr::mk_u16(0xff00, 0, 0, 0, 0, 0, 0, 0));
-pub static MULTICAST_CIDR_V4: LazyLock<IPNet> = LazyLock::new(|| {
+pub(crate) static MULTICAST_CIDR_V4: LazyLock<IPNet> = LazyLock::new(|| {
     IPNet::V4(CIDRv4 {
         addr: (*MULTICAST_ADDRESS_V4).clone(),
         prefix: IPv4Prefix::of_nat(nat(4)),
     })
 });
-pub static MULTICAST_CIDR_V6: LazyLock<IPNet> = LazyLock::new(|| {
+pub(crate) static MULTICAST_CIDR_V6: LazyLock<IPNet> = LazyLock::new(|| {
     IPNet::V6(CIDRv6 {
         addr: (*MULTICAST_ADDRESS_V6).clone(),
         prefix: IPv6Prefix::of_nat(nat(8)),
@@ -358,14 +379,17 @@ pub static MULTICAST_CIDR_V6: LazyLock<IPNet> = LazyLock::new(|| {
 });
 
 impl IPNet {
+    /// Checks if the [`IPNet`] is an IPv4 address.
     pub fn is_v4(&self) -> bool {
         matches!(self, IPNet::V4 { .. })
     }
 
+    /// Checks if the [`IPNet`] is an IPv6 address.
     pub fn is_v6(&self) -> bool {
         matches!(self, IPNet::V6 { .. })
     }
 
+    /// Checks if the [`IPNet`] is in the range of another [`IPNet`].
     pub fn in_range(&self, other: &IPNet) -> bool {
         match (self, other) {
             (IPNet::V4(v4), IPNet::V4(other_v4)) => v4.in_range(other_v4),
@@ -374,6 +398,7 @@ impl IPNet {
         }
     }
 
+    /// Checks if the [`IPNet`] is a loopback address.
     pub fn is_loopback(&self) -> bool {
         self.in_range(match self {
             IPNet::V4(_) => &LOOP_BACK_CIDR_V4,
@@ -381,11 +406,22 @@ impl IPNet {
         })
     }
 
+    /// Checks if the [`IPNet`] is a multicast address.
     pub fn is_multicast(&self) -> bool {
         self.in_range(match self {
             IPNet::V4(_) => &MULTICAST_CIDR_V4,
             IPNet::V6(_) => &MULTICAST_CIDR_V6,
         })
+    }
+}
+
+impl FromStr for IPNet {
+    type Err = IPError;
+
+    fn from_str(s: &str) -> Result<Self> {
+        parse_ipv4_net(s)
+            .or_else(|| parse_ipv6_net(s))
+            .ok_or_else(|| IPError::ParseError(s.to_string()))
     }
 }
 
@@ -578,10 +614,6 @@ fn parse_ipv6_net(s: &str) -> Option<IPNet> {
     }
 }
 
-pub fn parse(s: &str) -> Option<IPNet> {
-    parse_ipv4_net(s).or_else(|| parse_ipv6_net(s))
-}
-
 impl std::fmt::Display for IPNet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -636,11 +668,11 @@ mod tests {
     use super::*;
 
     fn test_valid(str: &str, expected: IPNet) {
-        assert_eq!(parse(str), Some(expected));
+        assert_eq!(IPNet::from_str(str).unwrap(), expected);
     }
 
     fn test_invalid(str: &str, _msg: &str) {
-        assert_eq!(parse(str), None);
+        assert!(IPNet::from_str(str).is_err());
     }
 
     fn ipv4(a0: u8, a1: u8, a2: u8, a3: u8, pre: Width) -> IPNet {
@@ -706,7 +738,7 @@ mod tests {
     }
 
     fn parse_unwrap(s: &str) -> IPNet {
-        parse(s).unwrap()
+        IPNet::from_str(s).unwrap()
     }
 
     #[test]
@@ -751,12 +783,30 @@ mod tests {
 
     #[test]
     fn tests_for_ipnet_equality() {
-        assert_eq!(parse("10.0.0.0"), parse("10.0.0.0"));
-        assert_ne!(parse("10.0.0.0"), parse("10.0.0.1"));
-        assert_eq!(parse("10.0.0.0/32"), parse("10.0.0.0"));
-        assert_ne!(parse("10.0.0.0/24"), parse("10.0.0.0"));
-        assert_eq!(parse("10.0.0.0/24"), parse("10.0.0.0/24"));
-        assert_ne!(parse("10.0.0.0/24"), parse("10.0.0.0/29"));
+        assert_eq!(
+            IPNet::from_str("10.0.0.0").unwrap(),
+            IPNet::from_str("10.0.0.0").unwrap()
+        );
+        assert_ne!(
+            IPNet::from_str("10.0.0.0").unwrap(),
+            IPNet::from_str("10.0.0.1").unwrap()
+        );
+        assert_eq!(
+            IPNet::from_str("10.0.0.0/32").unwrap(),
+            IPNet::from_str("10.0.0.0").unwrap()
+        );
+        assert_ne!(
+            IPNet::from_str("10.0.0.0/24").unwrap(),
+            IPNet::from_str("10.0.0.0").unwrap()
+        );
+        assert_eq!(
+            IPNet::from_str("10.0.0.0/24").unwrap(),
+            IPNet::from_str("10.0.0.0/24").unwrap()
+        );
+        assert_ne!(
+            IPNet::from_str("10.0.0.0/24").unwrap(),
+            IPNet::from_str("10.0.0.0/29").unwrap()
+        );
     }
 
     #[test]

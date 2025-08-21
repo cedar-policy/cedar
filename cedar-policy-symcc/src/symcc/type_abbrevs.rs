@@ -21,15 +21,24 @@ use ref_cast::RefCast;
 use smol_str::SmolStr;
 use std::{cmp::Ordering, ops::Deref};
 
+#[allow(missing_docs)]
 pub type EntityType = cedar_policy::EntityTypeName;
+#[allow(missing_docs)]
 pub type EntityID = cedar_policy::EntityId;
+#[allow(missing_docs)]
 pub type EntityUID = cedar_policy::EntityUid;
+#[allow(missing_docs)]
 pub type Attr = SmolStr;
-
-pub type Nat = BigUint;
-pub type Int = BigInt;
+#[allow(missing_docs)]
 pub type Prim = cedar_policy_core::ast::Literal;
+
+#[allow(missing_docs)]
+pub type Nat = BigUint;
+#[allow(missing_docs)]
+pub type Int = BigInt;
+#[allow(missing_docs)]
 pub type Width = u32;
+
 /// Convert `ast::EntityType` into `EntityType` in O(1)
 pub fn core_entity_type_into_entity_type(
     entity_type: &cedar_policy_core::ast::EntityType,
@@ -42,7 +51,9 @@ pub fn core_uid_into_uid(uid: &cedar_policy_core::ast::EntityUID) -> &EntityUID 
     EntityUID::ref_cast(uid)
 }
 
+/// Types of extensions.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[allow(missing_docs)]
 pub enum ExtType {
     IpAddr,
     Decimal,
@@ -50,6 +61,7 @@ pub enum ExtType {
     Duration,
 }
 
+/// Converts [`u32`] to [`Nat`].
 pub fn nat(v: u32) -> Nat {
     BigUint::from(v)
 }
@@ -62,6 +74,7 @@ pub struct Fin {
 }
 
 impl Fin {
+    /// Tries to construct a [`Fin`] with the given bound.
     pub fn try_new(upper_bound: Nat, v: Nat) -> Option<Self> {
         if v < upper_bound {
             Some(Self { upper_bound, v })
@@ -70,11 +83,13 @@ impl Fin {
         }
     }
 
+    /// Converts to [`Nat`].
     pub fn to_nat(&self) -> Nat {
         self.v.clone()
     }
 }
 
+/// A wrapper for Cedar [`cedar_policy_core::ast::Pattern`]s.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct OrdPattern(cedar_policy_core::ast::Pattern);
 

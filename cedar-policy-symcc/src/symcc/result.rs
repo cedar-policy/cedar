@@ -22,6 +22,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use super::bitvec::BitVecError;
+use super::ext::ExtError;
 use super::extension_types::ipaddr::IPError;
 
 /// Errors that can occur during symbolic compilation.
@@ -49,7 +50,7 @@ pub enum CompileError {
     /// Context type is not a record.
     #[error("context type is not a record")]
     NonRecordContext,
-    /// Extension function application error.
-    #[error("fail to apply extension function: {0}")]
-    ExtensionFunctionApp(String),
+    /// Extension error.
+    #[error("extension error")]
+    ExtError(#[from] ExtError),
 }
