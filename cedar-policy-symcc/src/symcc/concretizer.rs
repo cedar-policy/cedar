@@ -482,7 +482,8 @@ impl SymEnv {
 
     /// Concretizes a literal [`SymEnv`] to a concrete [`Env`].
     ///
-    /// Use [`SymEnv::extract`] in most cases to ensure well-formed output.
+    /// In most cases, one should use [`SymEnv::extract`] instead
+    /// to ensure well-formed output [`Env`].
     pub(crate) fn concretize<'a>(
         &self,
         exprs: impl Iterator<Item = &'a Expr>,
