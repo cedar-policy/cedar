@@ -78,7 +78,7 @@ impl Interpretation<'_> {
     /// that introduce cycles in the ancestor functions.
     ///
     /// This function repairs that by mappinng all inputs in the
-    /// ancestor functions taht are not in the footprint to empty sets
+    /// ancestor functions that are not in the footprint to empty sets
     ///
     /// Corresponds to `Interpretation.repair` in `Extractor.lean`
     pub fn repair_as_counterexample<'b>(&self, exprs: impl Iterator<Item = &'b Expr>) -> Self {
