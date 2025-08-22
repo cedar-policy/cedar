@@ -18,19 +18,14 @@
 //! can SymRequest/SymEntities be interpreted with
 //! an Interpretation.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use cedar_policy::EntityTypeName;
-use cedar_policy_core::ast::Expr;
-
-use super::enforcer::footprint;
 use super::env::{SymEntities, SymEntityData, SymRequest};
 use super::function::{Udf, UnaryFunction};
 use super::op::{ExtOp, Op, Uuf};
 use super::tags::SymTags;
-use super::term::{Term, TermPrim, TermVar};
-use super::type_abbrevs::EntityUID;
+use super::term::{Term, TermVar};
 use super::{factory, SymEnv};
 
 /// An interpretation extracted from an SMT model consists of
@@ -70,78 +65,6 @@ impl Interpretation<'_> {
             .get(fun)
             .cloned()
             .unwrap_or_else(|| fun.default_udf(self.env))
-    }
-
-    /// Our acyclicity constraints only apply to the footprint,
-    /// but SMT solver may choose to add additional elements
-    /// that introduce cycles in the ancestor functions.
-    ///
-    /// This function repairs that by mappinng all inputs in the
-    /// ancestor functions taht are not in the footprint to empty sets
-    ///
-    /// Corresponds to `Interpretation.cex` in `Counterexample.lean`
-    pub fn repair_as_counterexample<'b>(&self, exprs: impl Iterator<Item = &'b Expr>) -> Self {
-        let mut footprint_uids = BTreeSet::new();
-
-        // Interpret every term in the footprint to collect concrete EUIDs
-        // occurring in them
-        for term in exprs.flat_map(|e| footprint(e, self.env).collect::<Vec<_>>()) {
-            term.interpret(self)
-                .get_all_entity_uids(&mut footprint_uids);
-        }
-
-        let mut funs = self.funs.clone();
-
-        // Repair all ancestor functions
-        for (ety, ent_data) in self.env.entities.iter() {
-            for fun in ent_data.ancestors.values() {
-                if let UnaryFunction::Uuf(uuf) = fun {
-                    funs.insert(
-                        uuf.clone(),
-                        uuf.repair_as_counterexample(ety, &footprint_uids, self),
-                    );
-                }
-            }
-        }
-
-        Self {
-            vars: self.vars.clone(),
-            funs,
-            env: self.env,
-        }
-    }
-}
-
-impl Uuf {
-    /// Corresponds to `UUF.cexAncestors` in `Counterexample.lean`.
-    fn repair_as_counterexample(
-        &self,
-        arg_ety: &EntityTypeName,
-        footprints: &BTreeSet<EntityUID>,
-        interp: &Interpretation<'_>,
-    ) -> Udf {
-        // Get the current, potentially incorrect interpretation
-        let udf = interp.interpret_fun(self);
-
-        // Generate a new look-up table only including the footprints (of the right type)
-        let new_table = footprints
-            .iter()
-            .filter_map(|uid| {
-                if uid.type_name() == arg_ety {
-                    let t = Term::Prim(TermPrim::Entity(uid.clone()));
-                    // In the domain of this ancestor function
-                    Some((t.clone(), factory::app(UnaryFunction::Udf(udf.clone()), t)))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        Udf {
-            table: new_table,
-            default: udf.out.default_literal(interp.env), // i.e., empty set
-            ..udf
-        }
     }
 }
 
@@ -387,8 +310,9 @@ mod interpret_test {
     use std::str::FromStr;
 
     use cedar_policy::{RequestEnv, Schema};
+    use cedar_policy_core::ast::Expr;
 
-    use crate::symcc::compiler::compile;
+    use crate::{symcc::compiler::compile, term::TermPrim};
 
     use super::*;
 

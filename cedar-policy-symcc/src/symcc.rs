@@ -29,6 +29,7 @@ mod env;
 pub mod ext;
 pub mod extension_types;
 mod extfun;
+mod extractor;
 pub mod factory;
 mod function;
 mod interpretation;
@@ -177,15 +178,9 @@ impl<S: Solver> SymCompiler<S> {
                     let Some(model_str) = self.solver.get_model().await? else {
                         return Ok(None);
                     };
-
-                    let exprs = footprint.collect::<Vec<_>>();
                     let model = parse_sexpr(model_str.as_bytes())?;
                     let interp = model.decode_model(symenv, &id_maps)?;
-                    let interp = interp.repair_as_counterexample(exprs.iter().copied());
-
-                    Ok(Some(
-                        symenv.interpret(&interp).concretize(exprs.into_iter())?,
-                    ))
+                    Ok(Some(symenv.extract(footprint, &interp)?))
                 }
                 Decision::Unknown => Err(Error::SolverUnknown),
             }
