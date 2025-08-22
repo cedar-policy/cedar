@@ -420,9 +420,9 @@ impl SymEntities {
 /// An [`ExprVisitor`] to collect all entity UIDs occurring in an expression.
 ///
 /// Corresponds to `Expr.entityUIDs` in `Concretize.lean`.
-struct GetAllUIDsVisitor<'a>(&'a mut BTreeSet<EntityUid>);
+struct EntityUIDCollector<'a>(&'a mut BTreeSet<EntityUid>);
 
-impl ExprVisitor for GetAllUIDsVisitor<'_> {
+impl ExprVisitor for EntityUIDCollector<'_> {
     type Output = ();
 
     fn visit_literal(&mut self, lit: &Literal, _: Option<&Loc>) -> Option<Self::Output> {
@@ -449,7 +449,7 @@ impl SymEnv {
         // Instead of using `footprint` and `Term::get_all_entity_uids`,
         // we collect EUIDs in expressions directly to avoid incorrect
         // short-circuiting in an incomplete entity store.
-        let mut visitor = GetAllUIDsVisitor(&mut uids);
+        let mut visitor = EntityUIDCollector(&mut uids);
         for expr in exprs {
             visitor.visit_expr(expr);
         }
