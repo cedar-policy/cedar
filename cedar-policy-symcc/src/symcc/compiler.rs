@@ -432,7 +432,7 @@ pub fn compile_call0(
         Term::Some(t) => match t.as_ref() {
             Term::Prim(TermPrim::String(s)) => match mk(s) {
                 Ok(v) => Ok(some_of(v.into())),
-                Err(..) => Err(CompileError::TypeError),
+                Err(err) => Err(CompileError::ExtError(err)),
             },
             _ => Err(CompileError::TypeError),
         },
@@ -723,6 +723,7 @@ mod decimal_tests {
     use cedar_policy_core::ast::Name;
 
     use cedar_policy::{RequestEnv, Schema};
+    use cool_asserts::assert_matches;
 
     use crate::symcc::{extension_types::decimal::Decimal, result::CompileError};
 
@@ -793,12 +794,11 @@ mod decimal_tests {
     #[track_caller]
     fn test_invalid(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&decimal_schema(), &request_env()).expect("Malformed sym env.");
-        assert!(
-            matches!(
-                compile(&dec_lit(str), &sym_env),
-                Err(CompileError::TypeError),
-            ),
-            "{msg}"
+        assert_matches!(
+            compile(&dec_lit(str), &sym_env),
+            Err(CompileError::ExtError(_)),
+            "{}",
+            msg
         );
     }
 
@@ -835,11 +835,10 @@ mod decimal_tests {
         test_invalid("922337203685477.5808", "overflow");
         test_invalid("-922337203685477.5809", "overflow");
         let s = Expr::get_attr(Expr::var(Var::Context), "s".into());
-        assert!(
-            matches!(
-                compile(&dec_expr(s), &sym_env()),
-                Err(CompileError::TypeError),
-            ),
+        assert_matches!(
+            compile(&dec_expr(s), &sym_env()),
+            Err(CompileError::TypeError),
+            "{}",
             "Error: applying decimal constructor to a non-literal"
         );
     }
@@ -869,6 +868,7 @@ mod datetime_tests {
     use cedar_policy_core::ast::Name;
 
     use cedar_policy::{RequestEnv, Schema};
+    use cool_asserts::assert_matches;
 
     use crate::symcc::{
         extension_types::datetime::{Datetime, Duration},
@@ -970,12 +970,11 @@ mod datetime_tests {
     #[track_caller]
     fn test_invalid_datetime_constructor(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&datetime_schema(), &request_env()).expect("Malformed sym env.");
-        assert!(
-            matches!(
-                compile(&datetime_lit(str), &sym_env),
-                Err(CompileError::TypeError),
-            ),
-            "{msg}"
+        assert_matches!(
+            compile(&datetime_lit(str), &sym_env),
+            Err(CompileError::ExtError(_)),
+            "{}",
+            msg
         );
     }
 
@@ -993,12 +992,11 @@ mod datetime_tests {
     #[track_caller]
     fn test_invalid_duration_constructor(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&duration_schema(), &request_env()).expect("Malformed sym env.");
-        assert!(
-            matches!(
-                compile(&duration_lit(str), &sym_env),
-                Err(CompileError::TypeError),
-            ),
-            "{msg}"
+        assert_matches!(
+            compile(&duration_lit(str), &sym_env),
+            Err(CompileError::ExtError(_)),
+            "{}",
+            msg
         );
     }
 

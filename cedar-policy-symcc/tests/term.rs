@@ -16,12 +16,12 @@
 
 //! This module contains tests for the experimental `term` feature.
 
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 use cedar_policy::{Authorizer, Schema, Validator};
 use cedar_policy_symcc::{
-    compile_always_denies, solver::LocalSolver, term::*, term_factory, term_type::*,
-    CedarSymCompiler, WellFormedAsserts, WellTypedPolicies,
+    compile_always_allows, compile_always_denies, solver::LocalSolver, term::*, term_factory,
+    term_type::*, CedarSymCompiler, SymEnv, WellFormedAsserts, WellTypedPolicies,
 };
 
 use crate::utils::{assert_always_allows, assert_does_not_always_deny, Environments};
@@ -247,4 +247,37 @@ async fn term_cex_custom_symenv_set() {
 
     assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
     assert_always_allows(&mut compiler, &pset, &envs).await;
+}
+
+#[test]
+fn duration() {
+    let schema = Schema::from_str(
+        r#"
+        entity a;
+        action "" appliesTo {
+            principal: a,
+            resource: a,
+        };
+    "#,
+    )
+    .unwrap();
+    let policies = utils::pset_from_text(
+        r#"
+        forbid(
+      principal,
+      action in [Action::""],
+      resource
+    ) when {
+      ((true && ((((duration("-0h0m09223372036854775808ms")).toHours()) - 0) <= 0)) && false) && false
+    };
+        "#,
+        &Validator::new(schema.clone()),
+    );
+
+    for req_env in schema.request_envs() {
+        let ps = WellTypedPolicies::from_policies(&policies, &req_env, &schema).unwrap();
+        let sym_env = SymEnv::new(&schema, &req_env).unwrap();
+        let terms = compile_always_allows(&ps, &sym_env);
+        assert!(terms.is_ok(), "terms: {terms:?}");
+    }
 }

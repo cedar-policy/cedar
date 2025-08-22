@@ -18,11 +18,11 @@
 //! It is based on
 //! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/Spec/Ext/Datetime.lean>
 
-use std::num::ParseIntError;
 use std::str::FromStr;
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use miette::Diagnostic;
+use num_bigint::{BigInt, BigUint, ParseBigIntError, Sign};
 use thiserror::Error;
 
 /// Internal representation of Cedar `datetime` values.
@@ -61,7 +61,7 @@ pub enum DatetimeError {
     InvalidUnit(String),
     /// Unable to parse int.
     #[error("unable to parse int")]
-    ParseIntError(#[from] ParseIntError),
+    ParseIntError(#[from] ParseBigIntError),
 }
 
 const MILLISECONDS_PER_SECOND: i64 = 1000;
@@ -316,20 +316,13 @@ impl Duration {
                 // PANIC SAFETY: by construction pos must be a valid index into prefix
                 let (prefix, digits) = prefix.split_at(pos);
 
-                // Compute the unscaled unit value (# of days/hrs/min/sec/ms)
-                let val = if is_neg && digits == "9223372036854775808" {
-                    // ensure we don't overflow when parsing
-                    i64::MIN
-                } else {
-                    // Parse absolute value. Any remaining overflow / parse errors
-                    let abs_val = digits.parse::<i64>()?;
-                    // negate as necessary
-                    if is_neg {
-                        -abs_val
-                    } else {
-                        abs_val
-                    }
-                };
+                let val: i64 = BigInt::from_biguint(
+                    if is_neg { Sign::Minus } else { Sign::Plus },
+                    digits.parse::<BigUint>()?,
+                )
+                .try_into()
+                .map_err(|_| DatetimeError::IntegerOverflowDuringParsing)?;
+
                 let ms_val = match suffix {
                     "ms" => val,
                     "s" => val

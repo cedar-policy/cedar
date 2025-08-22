@@ -33,10 +33,10 @@ pub enum Error {
     #[error("action not found in schema: {0}")]
     ActionNotInSchema(String),
     /// Errors during symbolic compilation.
-    #[error("symbolic compilation failed")]
+    #[error("symbolic compilation failed: {0}")]
     CompileError(#[from] CompileError),
     /// Errors from the SMT encoder.
-    #[error("failed to encode SMT terms")]
+    #[error("failed to encode SMT terms: {0}")]
     EncodeError(#[from] EncodeError),
     /// Solver-related errors.
     #[error(transparent)]
@@ -51,10 +51,10 @@ pub enum Error {
         errs: Vec<ValidationError>,
     },
     /// Failed to decode the SMT model.
-    #[error("failed to decode model")]
+    #[error("failed to decode model: {0}")]
     DecodeModel(#[from] DecodeError),
     /// Errors during concretization.
-    #[error("failed to recover a concrete counterexample")]
+    #[error("failed to recover a concrete counterexample: {0}")]
     ConcretizeError(#[from] ConcretizeError),
 }
 

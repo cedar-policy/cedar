@@ -39,13 +39,13 @@ pub enum CompileError {
     #[error("term type error")]
     TypeError,
     /// Unsupported features.
-    #[error("unsupported feature in SymCC")]
+    #[error("unsupported feature in SymCC: {0}")]
     UnsupportedFeature(String),
     /// Bit-vector error.
-    #[error("bit-vector error ")]
+    #[error("bit-vector error: {0}")]
     BitVecError(#[from] BitVecError),
     /// IP address error.
-    #[error("IP address error")]
+    #[error("IP address error: {0}")]
     IPError(#[from] IPError),
     /// Context type is not a record.
     #[error("context type is not a record")]
