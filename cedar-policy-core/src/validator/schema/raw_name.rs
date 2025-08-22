@@ -136,7 +136,7 @@ impl RawName {
                     // the `RawName` does not have any namespace attached, so it refers
                     // to something in the current namespace if available; otherwise, it
                     // refers to something in the empty namespace
-                    nonempty![self.qualify_with(Some(ns)), self.qualify_with(None),]
+                    nonempty![self.qualify_with(Some(ns)), self.qualify_with(None)]
                 }
                 None => {
                     // Same as the above case, but since the current/active
