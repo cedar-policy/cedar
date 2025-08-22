@@ -322,13 +322,11 @@ impl Duration {
                     i64::MIN
                 } else {
                     // Parse absolute value. Any remaining overflow / parse errors
-                    let abs_val = digits.parse::<i64>()?;
+                    let abs_val = digits.parse::<i128>()?;
                     // negate as necessary
-                    if is_neg {
-                        -abs_val
-                    } else {
-                        abs_val
-                    }
+                    if is_neg { -abs_val } else { abs_val }
+                        .try_into()
+                        .map_err(|_| DatetimeError::IntegerOverflowDuringParsing)?
                 };
                 let ms_val = match suffix {
                     "ms" => val,
