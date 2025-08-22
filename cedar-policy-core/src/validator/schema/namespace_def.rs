@@ -667,10 +667,9 @@ impl ActionsDef<ConditionalName, ConditionalName> {
                 Entry::Vacant(ventry) => {
                     let frag = ActionFragment::from_raw_action(
                         ventry.key(),
-                        action_type.clone(),
+                        action_type,
                         schema_namespace,
                         extensions,
-                        action_type.loc.as_loc_ref(),
                     )?;
                     ventry.insert(frag);
                 }
@@ -743,7 +742,6 @@ impl ActionFragment<ConditionalName, ConditionalName> {
         action_type: json_schema::ActionType<RawName>,
         schema_namespace: Option<&InternalName>,
         extensions: &Extensions<'_>,
-        loc: Option<&Loc>,
     ) -> crate::validator::err::Result<Self> {
         let (principal_types, resource_types, context) = action_type
             .applies_to
@@ -786,7 +784,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                 .collect(),
             attribute_types,
             attributes,
-            loc: loc.into_maybe_loc(),
+            loc: action_type.loc,
         })
     }
 
