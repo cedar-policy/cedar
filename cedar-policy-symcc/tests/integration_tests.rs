@@ -2167,3 +2167,67 @@ async fn entity_uid_quote() {
     assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
     assert_does_not_always_allow(&mut compiler, &pset, &envs).await;
 }
+
+/// Tests `LocalSolver::cvc5_with_args`
+#[tokio::test]
+async fn cvc5_with_args() {
+    let validator = Validator::new(attributes_schema());
+    let mut compiler =
+        CedarSymCompiler::new(LocalSolver::cvc5_with_args(["--rlimit=1000"]).unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Dept");
+    let pset = utils::pset_from_text(
+        r#"
+        permit(principal, action, resource)
+        when { principal == User::"alice" };
+    "#,
+        &validator,
+    );
+    assert_does_not_always_allow(&mut compiler, &pset, &envs).await;
+}
+
+/// A cex generation bug
+#[tokio::test]
+async fn cex_bug_1800() {
+    let validator = Validator::new(
+        Schema::from_json_str(
+            r#"{ "": {
+                "entityTypes": {
+                    "a": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "ZB": { "type": "Record", "attributes": {}, "required": false }
+                            }
+                        }
+                    }
+                },
+                "actions": {
+                    "action": {
+                        "appliesTo": {
+                            "resourceTypes": [ "a" ],
+                            "principalTypes": [ "a" ]
+                        },
+                        "memberOf": []
+                    }
+                }
+            }
+        }"#,
+        )
+        .unwrap(),
+    );
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "a", "Action::\"action\"", "a");
+    let pset = utils::pset_from_text(
+        r#"
+        permit(
+            principal,
+            action in [Action::"action"],
+            resource
+        ) when {
+            true && (a::"" has "ZB")
+        };
+    "#,
+        &validator,
+    );
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+}

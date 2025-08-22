@@ -33,7 +33,9 @@
 
 use super::smtlib_script::SmtLibScript;
 use miette::Diagnostic;
-use std::{future::Future, path::Path, process::Stdio};
+use std::ffi::OsStr;
+use std::future::Future;
+use std::process::Stdio;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
@@ -93,8 +95,27 @@ pub trait Solver {
     fn get_model(&mut self) -> impl Future<Output = Result<Option<String>>> + Send;
 }
 
-/// Implements `Solver` by launching an SMT solver in a new process and
-/// communicating with it
+/// A solver instance that communicates with a local SMT solver process
+/// through stdin/stdout.
+///
+/// We officially support [cvc5](https://github.com/cvc5/cvc5),
+/// but other SMT solvers such as [Z3](https://github.com/Z3Prover/z3)
+/// may also work with a subset of SymCC's functionality.
+///
+/// Examples:
+/// ```no_run
+/// use tokio::process::Command;
+/// use cedar_policy_symcc::solver::LocalSolver;
+///
+/// // Spawns a cvc5 process with the default arguments
+/// let solver = LocalSolver::cvc5().unwrap();
+///
+/// // Spawns a cvc5 process with custom arguments
+/// let solver = LocalSolver::cvc5_with_args(["--rlimit=1000"]).unwrap();
+///
+/// // Spawns a custom solver process
+/// let solver = LocalSolver::from_command(Command::new("z3").args(["rlimit", "1000"])).unwrap();
+/// ```
 #[derive(Debug)]
 pub struct LocalSolver {
     solver_stdin: BufWriter<ChildStdin>,
@@ -104,9 +125,12 @@ pub struct LocalSolver {
 }
 
 impl LocalSolver {
-    fn new<'a>(path: impl AsRef<Path>, args: impl IntoIterator<Item = &'a str>) -> Result<Self> {
-        let child = Command::new(path.as_ref())
-            .args(args)
+    /// Creates a new [`LocalSolver`] from a custom [`Command`].
+    ///
+    /// The input command is expected to behave as an interactive SMT solver
+    /// that reads queries from stdin in SMT-LIB 2 format (e.g., `cvc5 --lang smt` or `z3`).
+    pub fn from_command(cmd: &mut Command) -> Result<Self> {
+        let child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -130,10 +154,15 @@ impl LocalSolver {
     /// executable using the `CVC5` environment variable
     /// or the `cvc5` binary in `PATH`.
     pub fn cvc5() -> Result<Self> {
-        Self::new(
-            std::env::var("CVC5").unwrap_or_else(|_| "cvc5".into()),
-            ["--lang", "smt", "--tlimit=60000"], // limit of 60000ms = 1 min of wall time for local solves, for now
-        )
+        let path = std::env::var("CVC5").unwrap_or_else(|_| "cvc5".into());
+        // Limit of 60000ms = 1 min of wall time for local solves, for now
+        Self::from_command(Command::new(path).args(["--lang", "smt", "--tlimit=60000"]))
+    }
+
+    /// Similar to [`Self::cvc5`] but with custom arguments.
+    pub fn cvc5_with_args(args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> Result<Self> {
+        let path = std::env::var("CVC5").unwrap_or_else(|_| "cvc5".into());
+        Self::from_command(Command::new(path).args(["--lang", "smt"]).args(args))
     }
 }
 
