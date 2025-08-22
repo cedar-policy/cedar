@@ -2187,6 +2187,63 @@ async fn cvc5_with_args() {
 
 /// A cex generation bug
 #[tokio::test]
+async fn cex_bug_1799() {
+    let validator = Validator::new(
+        Schema::from_json_str(
+            r#"{ "": {
+                "entityTypes": {
+                    "a": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "r": {
+                                    "type": "Boolean"
+                                }
+                            }
+                        },
+                        "tags": {
+                            "type": "Extension",
+                            "name": "datetime"
+                        }
+                    }
+                },
+                "actions": {
+                    "action": {
+                        "appliesTo": {
+                            "resourceTypes": [
+                                "a"
+                            ],
+                            "principalTypes": [
+                                "a"
+                            ]
+                        },
+                        "memberOf": []
+                    }
+                }
+            }
+        }"#,
+        )
+        .unwrap(),
+    );
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "a", "Action::\"action\"", "a");
+    let pset = utils::pset_from_text(
+        r#"
+        permit(
+            principal,
+            action in [Action::"action"],
+            resource
+        ) when {
+            ((true && (a::"*"["r"])) && true) && true
+        };
+    "#,
+        &validator,
+    );
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+}
+
+/// A cex generation bug
+#[tokio::test]
 async fn cex_bug_1800() {
     let validator = Validator::new(
         Schema::from_json_str(

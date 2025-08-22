@@ -33,7 +33,6 @@ use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::symcc::enforcer::footprint;
 use crate::symcc::factory;
 
 use super::env::{SymEntities, SymEntityData, SymRequest};
@@ -77,6 +76,9 @@ pub enum ConcretizeError {
     /// Extension error.
     #[error("extension error")]
     ExtError(#[from] ExtError),
+    /// Unsupported expression.
+    #[error("unsupported expression: {0}")]
+    UnsupportedExpr(Expr),
 }
 
 /// A concrete environment recovered from a [`SymEnv`].
@@ -415,6 +417,69 @@ impl SymEntities {
 }
 
 impl SymEnv {
+    /// Corresponds to `Prim.entityUIDs` in `Concretize.lean`
+    fn get_all_entity_uids_in_literal(lit: &Literal, uids: &mut BTreeSet<EntityUid>) {
+        if let Literal::EntityUID(euid) = lit {
+            uids.insert(euid.as_ref().clone().into());
+        }
+    }
+
+    /// Corresponds to `Expr.entityUIDs` in `Concretize.lean`
+    fn get_all_entity_uids_in_expr(
+        expr: &Expr,
+        uids: &mut BTreeSet<EntityUid>,
+    ) -> Result<(), ConcretizeError> {
+        use cedar_policy_core::ast::ExprKind::*;
+        match expr.expr_kind() {
+            Lit(lit) => Self::get_all_entity_uids_in_literal(lit, uids),
+            Var(..) => {}
+            If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => {
+                Self::get_all_entity_uids_in_expr(test_expr, uids)?;
+                Self::get_all_entity_uids_in_expr(then_expr, uids)?;
+                Self::get_all_entity_uids_in_expr(else_expr, uids)?;
+            }
+            And { left, right } => {
+                Self::get_all_entity_uids_in_expr(left, uids)?;
+                Self::get_all_entity_uids_in_expr(right, uids)?;
+            }
+            Or { left, right } => {
+                Self::get_all_entity_uids_in_expr(left, uids)?;
+                Self::get_all_entity_uids_in_expr(right, uids)?;
+            }
+            UnaryApp { arg, .. } => {
+                Self::get_all_entity_uids_in_expr(arg, uids)?;
+            }
+            BinaryApp { arg1, arg2, .. } => {
+                Self::get_all_entity_uids_in_expr(arg1, uids)?;
+                Self::get_all_entity_uids_in_expr(arg2, uids)?;
+            }
+            ExtensionFunctionApp { args, .. } => {
+                for arg in args.iter() {
+                    Self::get_all_entity_uids_in_expr(arg, uids)?;
+                }
+            }
+            GetAttr { expr, .. } | HasAttr { expr, .. } | Like { expr, .. } | Is { expr, .. } => {
+                Self::get_all_entity_uids_in_expr(expr, uids)?;
+            }
+            Set(exprs) => {
+                for expr in exprs.iter() {
+                    Self::get_all_entity_uids_in_expr(expr, uids)?;
+                }
+            }
+            Record(rec) => {
+                for expr in rec.values() {
+                    Self::get_all_entity_uids_in_expr(expr, uids)?;
+                }
+            }
+            _ => return Err(ConcretizeError::UnsupportedExpr(expr.clone())),
+        }
+        Ok(())
+    }
+
     /// Concretizes a literal SymEnv to a Context
     pub fn concretize<'a>(
         &self,
@@ -424,8 +489,11 @@ impl SymEnv {
         self.request.get_all_entity_uids(&mut uids);
         self.entities.get_all_entity_uids(&mut uids);
 
-        for term in exprs.flat_map(|e| footprint(e, self).collect::<Vec<_>>()) {
-            term.get_all_entity_uids(&mut uids);
+        // Instead of using `footprint` and `Term::get_all_entity_uids`,
+        // we collect EUIDs in expressions directly to avoid incorrect
+        // short-circuiting in an incomplete entity store.
+        for expr in exprs {
+            Self::get_all_entity_uids_in_expr(expr, &mut uids)?;
         }
 
         Ok(Env {
