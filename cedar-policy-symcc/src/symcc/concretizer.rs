@@ -23,17 +23,17 @@ use std::sync::Arc;
 
 use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request};
 use cedar_policy_core::ast::{
-    Context, Entity, EntityAttrEvaluationError, Expr, Literal, Set, Value, ValueKind,
+    Context, Entity, EntityAttrEvaluationError, Expr, ExprVisitor, Literal, Set, Value, ValueKind,
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
 use cedar_policy_core::extensions::Extensions;
+use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use num_bigint::{BigInt, TryFromBigIntError};
 use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::symcc::enforcer::footprint;
 use crate::symcc::factory;
 
 use super::env::{SymEntities, SymEntityData, SymRequest};
@@ -77,6 +77,9 @@ pub enum ConcretizeError {
     /// Extension error.
     #[error("extension error")]
     ExtError(#[from] ExtError),
+    /// Unsupported expression.
+    #[error("unsupported expression: {0}")]
+    UnsupportedExpr(Expr),
 }
 
 /// A concrete environment recovered from a [`SymEnv`].
@@ -414,9 +417,28 @@ impl SymEntities {
     }
 }
 
+/// An [`ExprVisitor`] to collect all entity UIDs occurring in an expression.
+///
+/// Corresponds to `Expr.entityUIDs` in `Concretize.lean`.
+struct EntityUIDCollector<'a>(&'a mut BTreeSet<EntityUid>);
+
+impl ExprVisitor for EntityUIDCollector<'_> {
+    type Output = ();
+
+    fn visit_literal(&mut self, lit: &Literal, _: Option<&Loc>) -> Option<Self::Output> {
+        if let Literal::EntityUID(euid) = lit {
+            self.0.insert(euid.as_ref().clone().into());
+        }
+        None
+    }
+}
+
 impl SymEnv {
-    /// Concretizes a literal SymEnv to a Context
-    pub fn concretize<'a>(
+    /// Concretizes a literal [`SymEnv`] to a concrete [`Env`].
+    ///
+    /// In most cases, one should use [`SymEnv::extract`] instead
+    /// to ensure well-formed output [`Env`].
+    pub(crate) fn concretize<'a>(
         &self,
         exprs: impl Iterator<Item = &'a Expr>,
     ) -> Result<Env, ConcretizeError> {
@@ -424,8 +446,12 @@ impl SymEnv {
         self.request.get_all_entity_uids(&mut uids);
         self.entities.get_all_entity_uids(&mut uids);
 
-        for term in exprs.flat_map(|e| footprint(e, self).collect::<Vec<_>>()) {
-            term.get_all_entity_uids(&mut uids);
+        // Instead of using `footprint` and `Term::get_all_entity_uids`,
+        // we collect EUIDs in expressions directly to avoid incorrect
+        // short-circuiting in an incomplete entity store.
+        let mut visitor = EntityUIDCollector(&mut uids);
+        for expr in exprs {
+            visitor.visit_expr(expr);
         }
 
         Ok(Env {
