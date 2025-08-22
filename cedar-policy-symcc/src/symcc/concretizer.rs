@@ -23,10 +23,11 @@ use std::sync::Arc;
 
 use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request};
 use cedar_policy_core::ast::{
-    Context, Entity, EntityAttrEvaluationError, Expr, Literal, Set, Value, ValueKind,
+    Context, Entity, EntityAttrEvaluationError, Expr, ExprVisitor, Literal, Set, Value, ValueKind,
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
 use cedar_policy_core::extensions::Extensions;
+use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use num_bigint::{BigInt, TryFromBigIntError};
 use ref_cast::RefCast;
@@ -416,70 +417,23 @@ impl SymEntities {
     }
 }
 
-impl SymEnv {
-    /// Corresponds to `Prim.entityUIDs` in `Concretize.lean`
-    fn get_all_entity_uids_in_literal(lit: &Literal, uids: &mut BTreeSet<EntityUid>) {
+/// An [`ExprVisitor`] to collect all entity UIDs occurring in an expression.
+///
+/// Corresponds to `Expr.entityUIDs` in `Concretize.lean`.
+struct GetAllUIDsVisitor<'a>(&'a mut BTreeSet<EntityUid>);
+
+impl ExprVisitor for GetAllUIDsVisitor<'_> {
+    type Output = ();
+
+    fn visit_literal(&mut self, lit: &Literal, _: Option<&Loc>) -> Option<Self::Output> {
         if let Literal::EntityUID(euid) = lit {
-            uids.insert(euid.as_ref().clone().into());
+            self.0.insert(euid.as_ref().clone().into());
         }
+        None
     }
+}
 
-    /// Corresponds to `Expr.entityUIDs` in `Concretize.lean`
-    fn get_all_entity_uids_in_expr(
-        expr: &Expr,
-        uids: &mut BTreeSet<EntityUid>,
-    ) -> Result<(), ConcretizeError> {
-        use cedar_policy_core::ast::ExprKind::*;
-        match expr.expr_kind() {
-            Lit(lit) => Self::get_all_entity_uids_in_literal(lit, uids),
-            Var(..) => {}
-            If {
-                test_expr,
-                then_expr,
-                else_expr,
-            } => {
-                Self::get_all_entity_uids_in_expr(test_expr, uids)?;
-                Self::get_all_entity_uids_in_expr(then_expr, uids)?;
-                Self::get_all_entity_uids_in_expr(else_expr, uids)?;
-            }
-            And { left, right } => {
-                Self::get_all_entity_uids_in_expr(left, uids)?;
-                Self::get_all_entity_uids_in_expr(right, uids)?;
-            }
-            Or { left, right } => {
-                Self::get_all_entity_uids_in_expr(left, uids)?;
-                Self::get_all_entity_uids_in_expr(right, uids)?;
-            }
-            UnaryApp { arg, .. } => {
-                Self::get_all_entity_uids_in_expr(arg, uids)?;
-            }
-            BinaryApp { arg1, arg2, .. } => {
-                Self::get_all_entity_uids_in_expr(arg1, uids)?;
-                Self::get_all_entity_uids_in_expr(arg2, uids)?;
-            }
-            ExtensionFunctionApp { args, .. } => {
-                for arg in args.iter() {
-                    Self::get_all_entity_uids_in_expr(arg, uids)?;
-                }
-            }
-            GetAttr { expr, .. } | HasAttr { expr, .. } | Like { expr, .. } | Is { expr, .. } => {
-                Self::get_all_entity_uids_in_expr(expr, uids)?;
-            }
-            Set(exprs) => {
-                for expr in exprs.iter() {
-                    Self::get_all_entity_uids_in_expr(expr, uids)?;
-                }
-            }
-            Record(rec) => {
-                for expr in rec.values() {
-                    Self::get_all_entity_uids_in_expr(expr, uids)?;
-                }
-            }
-            _ => return Err(ConcretizeError::UnsupportedExpr(expr.clone())),
-        }
-        Ok(())
-    }
-
+impl SymEnv {
     /// Concretizes a literal [`SymEnv`] to a concrete [`Env`].
     ///
     /// In most cases, one should use [`SymEnv::extract`] instead
@@ -495,8 +449,9 @@ impl SymEnv {
         // Instead of using `footprint` and `Term::get_all_entity_uids`,
         // we collect EUIDs in expressions directly to avoid incorrect
         // short-circuiting in an incomplete entity store.
+        let mut visitor = GetAllUIDsVisitor(&mut uids);
         for expr in exprs {
-            Self::get_all_entity_uids_in_expr(expr, &mut uids)?;
+            visitor.visit_expr(expr);
         }
 
         Ok(Env {
