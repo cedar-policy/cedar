@@ -2184,3 +2184,50 @@ async fn cvc5_with_args() {
     );
     assert_does_not_always_allow(&mut compiler, &pset, &envs).await;
 }
+
+/// A cex generation bug
+#[tokio::test]
+async fn cex_bug_1800() {
+    let validator = Validator::new(
+        Schema::from_json_str(
+            r#"{ "": {
+                "entityTypes": {
+                    "a": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "ZB": { "type": "Record", "attributes": {}, "required": false }
+                            }
+                        }
+                    }
+                },
+                "actions": {
+                    "action": {
+                        "appliesTo": {
+                            "resourceTypes": [ "a" ],
+                            "principalTypes": [ "a" ]
+                        },
+                        "memberOf": []
+                    }
+                }
+            }
+        }"#,
+        )
+        .unwrap(),
+    );
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "a", "Action::\"action\"", "a");
+    let pset = utils::pset_from_text(
+        r#"
+        permit(
+            principal,
+            action in [Action::"action"],
+            resource
+        ) when {
+            true && (a::"" has "ZB")
+        };
+    "#,
+        &validator,
+    );
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+}

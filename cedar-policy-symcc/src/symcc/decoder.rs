@@ -1019,6 +1019,11 @@ impl SExpr {
             SExpr::Symbol(s) if s == "true" => Ok(Term::Prim(TermPrim::Bool(true))),
             SExpr::Symbol(s) if s == "false" => Ok(Term::Prim(TermPrim::Bool(false))),
 
+            // Empty record type
+            SExpr::Symbol(s) if id_maps.types.contains_key(s) => {
+                self.decode_entity_or_record(id_maps, s, &[])
+            }
+
             // Entity enum
             SExpr::Symbol(e) => id_maps
                 .enums
