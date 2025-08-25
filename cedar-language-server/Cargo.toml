@@ -21,8 +21,8 @@ ropey = "1.6.1"
 smol_str = "0.3"
 tracing = "0.1.41"
 serde = "1"
-serde_json = "1.0.142"
-regex = "1.11.1"
+serde_json = "1.0.143"
+regex = "1.11.2"
 tower-lsp-server = "0.22.1"
 
 # Dependencies needed only for the language server binary
