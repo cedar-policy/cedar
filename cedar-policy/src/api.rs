@@ -5544,19 +5544,19 @@ action CreateList in Create appliesTo {
 
         use cedar_policy_core::validator::{
             types::{EntityRecordKind, Type},
-            ValidatorCommonType,
+            LocatedCommonType,
         };
 
         let schema = schema();
         assert_eq!(schema.0.common_types().collect::<HashSet<_>>().len(), 3);
-        let task_type = ValidatorCommonType {
+        let task_type = LocatedCommonType {
             name: "Task".into(),
             name_loc: None,
             type_loc: None,
         };
         assert!(schema.0.common_types().contains(&task_type));
 
-        let tasks_type = ValidatorCommonType {
+        let tasks_type = LocatedCommonType {
             name: "Tasks".into(),
             name_loc: None,
             type_loc: None,
@@ -5565,7 +5565,7 @@ action CreateList in Create appliesTo {
         assert!(schema.0.common_types().all(|ct| ct.name_loc.is_some()));
         assert!(schema.0.common_types().all(|ct| ct.type_loc.is_some()));
 
-        let tasks_type = ValidatorCommonType {
+        let tasks_type = LocatedCommonType {
             name: "T".into(),
             name_loc: None,
             type_loc: None,
