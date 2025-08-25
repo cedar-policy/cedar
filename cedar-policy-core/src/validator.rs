@@ -28,7 +28,6 @@
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
 use crate::ast::{Policy, PolicySet, Template};
-use serde::Serialize;
 use std::collections::HashSet;
 mod level_validate;
 
@@ -56,7 +55,7 @@ mod partition_nonempty;
 pub mod types;
 
 /// Used to select how a policy will be validated.
-#[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Serialize)]
+#[derive(Default, Eq, PartialEq, Copy, Clone, Debug)]
 pub enum ValidationMode {
     /// Strict mode
     #[default]
