@@ -1,0 +1,15 @@
+name: Nightly downstream
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+env: 
+  CARGO_TERM_COLOR: always
+jobs:
+  build-cedar-java:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-java/.github/workflows/run_cedar_java_reusable.yml@main
+    with:
+      cedar_policy_ref: 'main'
+      cedar_java_ref: 'main'
