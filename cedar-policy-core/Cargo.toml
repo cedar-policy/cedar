@@ -29,7 +29,7 @@ miette = { version = "7.6.0", features = ["serde"] }
 nonempty = { version = "0.12.0", features = ["serialize"] }
 educe = "0.6.0"
 unicode-security = "0.1.0"
-regex = { version = "1.8", features = ["unicode"]}
+regex = { version = "1.11", features = ["unicode"]}
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
