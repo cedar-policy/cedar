@@ -24,7 +24,6 @@ use educe::Educe;
 pub use request_env::*;
 
 use itertools::Itertools;
-use serde::Serialize;
 use smol_str::SmolStr;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -50,7 +49,7 @@ use crate::validator::{validation_errors::LubHelp, ValidationMode};
 use super::schema::{ValidatorActionId, ValidatorEntityType, ValidatorSchema};
 
 /// The main type structure.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone)]
 pub enum Type {
     /// Bottom type. Sub-type of all types.
     Never,
@@ -63,7 +62,6 @@ pub enum Type {
     /// Primitive types: bool, long, and string.
     Primitive {
         /// Which primitive type: bool, long, or string
-        #[serde(rename = "primitiveType")]
         primitive_type: Primitive,
     },
 
@@ -74,7 +72,6 @@ pub enum Type {
         /// used in a subtype comparison (commonly done through `expect_type` in
         /// `typecheck.rs`) or for error reporting through the `TypeError`
         /// structure.
-        #[serde(rename = "elementType")]
         element_type: Option<Box<Type>>,
     },
 
@@ -801,7 +798,7 @@ impl TryFrom<Type> for CoreSchemaType {
 /// Represents the least upper bound of multiple entity types. This can be used
 /// to represent the least upper bound of a single entity type, in which case it
 /// is exactly that entity type.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone)]
 pub struct EntityLUB {
     /// We store `EntityType` here because these are entity types.
     /// As of this writing, `EntityType` is backed by `Name` (rather than
@@ -939,7 +936,7 @@ impl EntityLUB {
 
 /// Represents the attributes of a record or entity type. Each attribute has an
 /// identifier, a flag indicating weather it is required, and a type.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize, Default)]
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Default)]
 pub struct Attributes {
     /// Attributes map
     attrs: BTreeMap<SmolStr, AttributeType>,
@@ -1079,7 +1076,7 @@ impl IntoIterator for Attributes {
 
 /// Used to tag record types to indicate if their attributes record is open or
 /// closed.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Serialize, Default)]
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Default)]
 pub enum OpenTag {
     /// The attributes are open. A value of this type may have attributes other
     /// than those listed.
@@ -1103,7 +1100,7 @@ impl OpenTag {
 ///
 /// The subtyping lattice for these types is that
 /// `Entity` <: `AnyEntity`. `Record` does not subtype anything.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone)]
 pub enum EntityRecordKind {
     /// A record type
     Record {
@@ -1401,9 +1398,8 @@ impl EntityRecordKind {
 }
 
 /// Contains the type of a record attribute and if the attribute is required.
-#[derive(Ord, PartialOrd, Educe, Debug, Clone, Serialize)]
+#[derive(Ord, PartialOrd, Educe, Debug, Clone)]
 #[educe(Eq, PartialEq, Hash)]
-#[serde(rename_all = "camelCase")]
 pub struct AttributeType {
     /// The type of the attribute.
     pub attr_type: Type,
@@ -1413,7 +1409,6 @@ pub struct AttributeType {
     pub is_required: bool,
     ///  Source location - if available
     #[cfg(feature = "extended-schema")]
-    #[serde(skip)]
     #[educe(Eq(ignore))]
     pub loc: MaybeLoc,
 }
@@ -1496,7 +1491,7 @@ impl AttributeType {
 }
 
 /// Represent the possible primitive types.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone)]
 pub enum Primitive {
     /// Primitive boolean type.
     Bool,

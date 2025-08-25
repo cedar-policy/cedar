@@ -21,7 +21,6 @@ use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::MaybeLoc;
 use miette::Diagnostic;
-use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -50,8 +49,11 @@ pub struct Request {
 }
 
 /// Represents the principal type, resource type, and action UID.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "entity-manifest",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct RequestType {
     /// Principal type
     pub principal: EntityType,
