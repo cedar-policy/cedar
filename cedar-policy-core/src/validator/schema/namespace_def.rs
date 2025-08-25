@@ -1164,17 +1164,16 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
 
 /// Convert a [`json_schema::RecordType`] (with fully qualified names) into the
 /// [`Type`] type used by the validator.
-#[cfg_attr(not(feature = "extended-schema"), allow(unused_variables))]
 pub(crate) fn try_record_type_into_validator_type(
     rty: json_schema::RecordType<InternalName>,
     extensions: &Extensions<'_>,
-    _loc: MaybeLoc,
+    loc: MaybeLoc,
 ) -> crate::validator::err::Result<WithUnresolvedCommonTypeRefs<LocatedType>> {
     if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
     } else {
         #[cfg(feature = "extended-schema")]
-        let attr_loc = _loc.clone();
+        let attr_loc = loc.clone();
         #[cfg(not(feature = "extended-schema"))]
         let attr_loc = None;
         Ok(
@@ -1189,7 +1188,7 @@ pub(crate) fn try_record_type_into_validator_type(
                                 OpenTag::ClosedAttributes
                             },
                         ),
-                        &_loc,
+                        &loc,
                     )
                 },
             ),
