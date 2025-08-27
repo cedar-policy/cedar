@@ -153,17 +153,19 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     }
 }
 
-/// Main Type struct that includes source location if available in the `extended-schema`
+/// A wrapper around the main Type struct that may include the types source
+/// location in the schema, if one is available and the the `extended-schema`
+/// feature is enabled.
 #[derive(Clone, Debug, Educe)]
 #[educe(Eq, PartialEq)]
-pub struct ValidatorType {
+pub struct LocatedType {
     ty: Type,
     #[cfg(feature = "extended-schema")]
     loc: MaybeLoc,
 }
 
-impl ValidatorType {
-    /// New validator type
+impl LocatedType {
+    /// Construct a located type without a location.
     pub fn new(ty: Type) -> Self {
         Self {
             ty,
@@ -171,18 +173,41 @@ impl ValidatorType {
             loc: None,
         }
     }
-    /// New validator type with source location
-    #[cfg(feature = "extended-schema")]
-    pub fn new_with_loc(ty: Type, loc: MaybeLoc) -> Self {
-        Self { ty, loc }
+
+    /// New located type with source location. If the `extend-schema` feature is
+    /// not enabled, the `loc` is not stored.
+    pub fn new_with_loc(ty: Type, _loc: &MaybeLoc) -> Self {
+        Self {
+            ty,
+            #[cfg(feature = "extended-schema")]
+            loc: _loc.clone(),
+        }
+    }
+
+    /// Deconstruct this `LocatedType` into the type and location where the type
+    /// is defined. If `extend-schema` is not enabled, then the location
+    /// returned by this function is always `None`.
+    pub fn into_type_and_loc(self) -> (Type, MaybeLoc) {
+        (
+            self.ty,
+            #[cfg(feature = "extended-schema")]
+            self.loc,
+            #[cfg(not(feature = "extended-schema"))]
+            None,
+        )
     }
 }
 
-/// Represents common types - in extended-schema we maintain the set of common type names as well as source location data
+/// Represents common types definition in the schema.  With the `extended-schema`
+/// feature enabled, we maintain the set of common type names as well as source
+/// location data for where the type is defined. This does not store the actual
+/// `Type` defined by the common type. Common types are inlined during schema
+/// construction, so the only thing we need them for is go-to source operations in
+/// the LSP.
 #[cfg(feature = "extended-schema")]
 #[derive(Clone, Debug, Educe)]
 #[educe(Eq, PartialEq, Hash)]
-pub struct ValidatorCommonType {
+pub struct LocatedCommonType {
     /// Common type name
     pub name: SmolStr,
 
@@ -196,9 +221,9 @@ pub struct ValidatorCommonType {
 }
 
 #[cfg(feature = "extended-schema")]
-impl ValidatorCommonType {
-    /// Create new `ValidatorCommonType` based on `InternalName` and `ValidatorType`
-    pub fn new(name: &InternalName, ty: ValidatorType) -> Self {
+impl LocatedCommonType {
+    /// Create new `ValidatorCommonType` based on `InternalName` and `LocatedType`
+    pub fn new(name: &InternalName, ty: LocatedType) -> Self {
         Self {
             name: name.basename().clone().into_smolstr(),
             name_loc: name.loc().into_maybe_loc(),
@@ -207,11 +232,15 @@ impl ValidatorCommonType {
     }
 }
 
-/// Represents namespace - in extended-schema we maintain the set of namespace names as well as source location data
+/// Represents a namespace definition in the schema. This does not store the
+/// actual contents of the namespace and instead only stores where the namespace
+/// was defined. Namespaces are used to quality type definitions while
+/// constructing the schema. Once the schema is built, we only need to know
+/// about namespace definitions to support go-to source operations in the LSP.
 #[cfg(feature = "extended-schema")]
 #[derive(Clone, Debug, Educe)]
 #[educe(Eq, PartialEq, Hash)]
-pub struct ValidatorNamespace {
+pub struct LocatedNamespace {
     /// Name of namespace
     pub name: SmolStr,
     /// Namespace name source location if available
@@ -243,9 +272,16 @@ pub struct ValidatorSchema {
     pub(crate) actions: HashMap<EntityUID, Arc<Entity>>,
 
     #[cfg(feature = "extended-schema")]
-    common_types: HashSet<ValidatorCommonType>,
+    /// Track where each common type is defined in the schema. Common types are
+    /// inlined into types where they are used when constructing the schema, so
+    /// this does not contain any information used during typechecking.
+    common_types: HashSet<LocatedCommonType>,
+
     #[cfg(feature = "extended-schema")]
-    namespaces: HashSet<ValidatorNamespace>,
+    /// Track where each namespace is defined in the schema. Namespaces are used
+    /// to qualify type definitions when constructing the schema, so this does
+    /// not contain any information used during typechecking.
+    namespaces: HashSet<LocatedNamespace>,
 }
 
 /// Construct [`ValidatorSchema`] from a string containing a schema formatted
@@ -307,8 +343,8 @@ impl ValidatorSchema {
     fn new_from_maps(
         entity_types: HashMap<EntityType, ValidatorEntityType>,
         action_ids: HashMap<EntityUID, ValidatorActionId>,
-        #[cfg(feature = "extended-schema")] common_types: HashSet<ValidatorCommonType>,
-        #[cfg(feature = "extended-schema")] namespaces: HashSet<ValidatorNamespace>,
+        #[cfg(feature = "extended-schema")] common_types: HashSet<LocatedCommonType>,
+        #[cfg(feature = "extended-schema")] namespaces: HashSet<LocatedNamespace>,
     ) -> Self {
         let actions = Self::action_entities_iter(&action_ids)
             .map(|e| (e.uid().clone(), Arc::new(e)))
@@ -326,13 +362,13 @@ impl ValidatorSchema {
 
     /// Returns an iter of common types in the schema
     #[cfg(feature = "extended-schema")]
-    pub fn common_types(&self) -> impl Iterator<Item = &ValidatorCommonType> {
+    pub fn common_types(&self) -> impl Iterator<Item = &LocatedCommonType> {
         self.common_types.iter()
     }
 
     /// Returns an iter of validator namespaces in the schema
     #[cfg(feature = "extended-schema")]
-    pub fn namespaces(&self) -> impl Iterator<Item = &ValidatorNamespace> {
+    pub fn namespaces(&self) -> impl Iterator<Item = &LocatedNamespace> {
         self.namespaces.iter()
     }
 
@@ -559,7 +595,7 @@ impl ValidatorSchema {
                 (Some(name), loc) => Some((name, loc)),
                 (None, _) => None,
             })
-            .map(|n| ValidatorNamespace {
+            .map(|n| LocatedNamespace {
                 name: n.0.to_smolstr(),
                 name_loc: n.0.loc().into_maybe_loc(),
                 def_loc: n.1,
@@ -675,7 +711,7 @@ impl ValidatorSchema {
         }
 
         let resolver = CommonTypeResolver::new(&common_types);
-        let common_types: HashMap<&InternalName, ValidatorType> = resolver.resolve(extensions)?;
+        let common_types: HashMap<&InternalName, LocatedType> = resolver.resolve(extensions)?;
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -817,7 +853,7 @@ impl ValidatorSchema {
                 let ct_name = ct.0.clone();
                 ct_name.loc().is_some() && !Primitive::is_primitive(ct_name.basename().as_ref())
             })
-            .map(|ct| ValidatorCommonType::new(ct.0, ct.1))
+            .map(|ct| LocatedCommonType::new(ct.0, ct.1))
             .collect();
 
         // Return with an error if there is an undeclared entity or action
@@ -854,7 +890,7 @@ impl ValidatorSchema {
         undeclared_parent_entities: impl IntoIterator<Item = EntityType>,
         action_ids: &HashMap<EntityUID, ValidatorActionId>,
         undeclared_parent_actions: impl IntoIterator<Item = EntityUID>,
-        common_types: impl IntoIterator<Item = ValidatorType>,
+        common_types: impl IntoIterator<Item = LocatedType>,
     ) -> Result<()> {
         // When we constructed `entity_types`, we removed entity types from  the
         // `entity_children` map as we encountered a declaration for that type.
@@ -911,7 +947,7 @@ impl ValidatorSchema {
         Ok(())
     }
 
-    fn record_attributes_or_none(ty: ValidatorType) -> Option<(Attributes, OpenTag)> {
+    fn record_attributes_or_none(ty: LocatedType) -> Option<(Attributes, OpenTag)> {
         match ty.ty {
             Type::EntityOrRecord(EntityRecordKind::Record {
                 attrs,
@@ -1574,14 +1610,14 @@ impl<'a> CommonTypeResolver<'a> {
     fn resolve(
         &self,
         extensions: &Extensions<'_>,
-    ) -> Result<HashMap<&'a InternalName, ValidatorType>> {
+    ) -> Result<HashMap<&'a InternalName, LocatedType>> {
         let sorted_names = self.topo_sort().map_err(|n| {
             SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { ty: n })
         })?;
 
         let mut resolve_table: HashMap<&InternalName, json_schema::Type<InternalName>> =
             HashMap::new();
-        let mut tys: HashMap<&'a InternalName, ValidatorType> = HashMap::new();
+        let mut tys: HashMap<&'a InternalName, LocatedType> = HashMap::new();
 
         for &name in sorted_names.iter() {
             // PANIC SAFETY: `name.basename()` should be an existing common type id
@@ -2298,7 +2334,7 @@ pub(crate) mod test {
             InternalName::from_str("Bar").unwrap(),
         ]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: ValidatorType =
+        let ty: LocatedType =
             try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
@@ -2327,7 +2363,7 @@ pub(crate) mod test {
             InternalName::from_str("Foo").unwrap(),
         ]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: ValidatorType =
+        let ty: LocatedType =
             try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
@@ -2361,7 +2397,7 @@ pub(crate) mod test {
         let schema_ty = schema_ty.conditionally_qualify_type_references(None);
         let all_defs = AllDefs::from_entity_defs([InternalName::from_str("Foo").unwrap()]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: ValidatorType =
+        let ty: LocatedType =
             try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
@@ -5043,14 +5079,14 @@ mod test_resolver {
     use crate::{ast::InternalName, extensions::Extensions};
     use cool_asserts::assert_matches;
 
-    use super::{AllDefs, CommonTypeResolver, ValidatorType};
+    use super::{AllDefs, CommonTypeResolver, LocatedType};
     use crate::validator::{
         err::SchemaError, json_schema, types::Type, ConditionalName, ValidatorSchemaFragment,
     };
 
     fn resolve(
         schema_json: serde_json::Value,
-    ) -> Result<HashMap<InternalName, ValidatorType>, SchemaError> {
+    ) -> Result<HashMap<InternalName, LocatedType>, SchemaError> {
         let sfrag = json_schema::Fragment::from_json_value(schema_json).unwrap();
         let schema: ValidatorSchemaFragment<ConditionalName, ConditionalName> =
             sfrag.try_into().unwrap();
@@ -5090,11 +5126,11 @@ mod test_resolver {
             HashMap::from_iter([
                 (
                     "a".parse().unwrap(),
-                    ValidatorType::new(Type::primitive_boolean())
+                    LocatedType::new(Type::primitive_boolean())
                 ),
                 (
                     "b".parse().unwrap(),
-                    ValidatorType::new(Type::primitive_boolean())
+                    LocatedType::new(Type::primitive_boolean())
                 )
             ])
         );
@@ -5124,15 +5160,15 @@ mod test_resolver {
             HashMap::from_iter([
                 (
                     "a".parse().unwrap(),
-                    ValidatorType::new(Type::primitive_boolean())
+                    LocatedType::new(Type::primitive_boolean())
                 ),
                 (
                     "b".parse().unwrap(),
-                    ValidatorType::new(Type::primitive_boolean())
+                    LocatedType::new(Type::primitive_boolean())
                 ),
                 (
                     "c".parse().unwrap(),
-                    ValidatorType::new(Type::primitive_boolean())
+                    LocatedType::new(Type::primitive_boolean())
                 )
             ])
         );
@@ -5165,11 +5201,11 @@ mod test_resolver {
             HashMap::from_iter([
                 (
                     "a".parse().unwrap(),
-                    ValidatorType::new(Type::set(Type::primitive_boolean()))
+                    LocatedType::new(Type::set(Type::primitive_boolean()))
                 ),
                 (
                     "b".parse().unwrap(),
-                    ValidatorType::new(Type::primitive_boolean())
+                    LocatedType::new(Type::primitive_boolean())
                 )
             ])
         );
@@ -5204,14 +5240,14 @@ mod test_resolver {
             HashMap::from_iter([
                 (
                     "a".parse().unwrap(),
-                    ValidatorType::new(Type::record_with_required_attributes(
+                    LocatedType::new(Type::record_with_required_attributes(
                         [("foo".into(), Type::primitive_boolean())],
                         crate::validator::types::OpenTag::ClosedAttributes
                     ))
                 ),
                 (
                     "b".parse().unwrap(),
-                    ValidatorType::new(Type::primitive_boolean())
+                    LocatedType::new(Type::primitive_boolean())
                 )
             ])
         );
@@ -5247,11 +5283,11 @@ mod test_resolver {
             HashMap::from_iter([
                 (
                     "A::a".parse().unwrap(),
-                    ValidatorType::new(Type::primitive_boolean())
+                    LocatedType::new(Type::primitive_boolean())
                 ),
                 (
                     "B::a".parse().unwrap(),
-                    ValidatorType::new(Type::primitive_boolean())
+                    LocatedType::new(Type::primitive_boolean())
                 )
             ])
         );
