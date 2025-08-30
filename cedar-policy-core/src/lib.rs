@@ -17,10 +17,6 @@
 //! Implementation of the Cedar parser and evaluation engine in Rust.
 #![warn(missing_docs)]
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
-#![allow(
-    text_direction_codepoint_in_literal,
-    reason = "Must specify at crate level to allow for tests with direction codepoints"
-)]
 
 #[macro_use]
 extern crate lalrpop_util;
