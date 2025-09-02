@@ -563,16 +563,6 @@ impl Entity {
         &self.uid
     }
 
-    /// Get the value for the given attribute, or `None` if not present
-    pub fn get(&self, attr: &str) -> Option<&PartialValue> {
-        self.attrs.get(attr)
-    }
-
-    /// Get the value for the given tag, or `None` if not present
-    pub fn get_tag(&self, tag: &str) -> Option<&PartialValue> {
-        self.tags.get(tag)
-    }
-
     /// Is this `Entity` a (direct or indirect) descendant of `e` in the entity hierarchy?
     pub fn is_descendant_of(&self, e: &EntityUID) -> bool {
         self.parents.contains(e) || self.indirect_ancestors.contains(e)
@@ -635,6 +625,17 @@ impl Entity {
 
     /// Create an `Entity` with the given UID, no attributes, no parents, and no tags.
     pub fn with_uid(uid: EntityUID) -> Self {
+        Self {
+            uid,
+            attrs: BTreeMap::new(),
+            indirect_ancestors: HashSet::new(),
+            parents: HashSet::new(),
+            tags: BTreeMap::new(),
+        }
+    }
+
+    /// Construct a new missing entity.
+    pub fn new_missing(uid: EntityUID) -> Self {
         Self {
             uid,
             attrs: BTreeMap::new(),

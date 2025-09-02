@@ -21,7 +21,11 @@
 //! the "authorization engine".
 
 use crate::ast::*;
+use crate::entities::err::EntitiesError;
+use crate::entities::Dereference;
 use crate::entities::Entities;
+use crate::entities::NoEntitiesSchema;
+use crate::entities::TCComputation;
 use crate::evaluator::Evaluator;
 use crate::extensions::Extensions;
 use itertools::{Either, Itertools};
@@ -104,21 +108,45 @@ impl Authorizer {
         policy_set: &PolicySet,
         loader: &mut dyn FnMut(&HashSet<EntityUID>) -> HashMap<EntityUID, Option<Entity>>,
         max_iters: usize,
-    ) -> PartialResponse {
-        let mut entities = HashMap::<EntityUID, Option<Entity>>::new();
-        let mut current_res = PartialResponse::from_policy_set(policy_set, Arc::new(request));
+    ) -> Result<PartialResponse, EntitiesError> {
+        let mut entities = Entities::new();
+        let mut current_res =
+            PartialResponse::from_policy_set(policy_set, Arc::new(request.clone()));
 
-        for i in 0..max_iters {
-            let mut to_load: HashSet<EntityUID> = current_res
+        for _i in 0..max_iters {
+            let ids = current_res
                 .all_literal_uids()
-                .filter(|uid| !entities.contains_key(uid))
-                .map(|uid| (*uid).clone())
-                .collect();
-            let loaded = loader(&to_load);
-            entities.extend(loaded);
+                .map(|uid| (*uid).clone());
+            let mut to_load = HashSet::new();
+            // filter to_load for already loaded entities
+            for uid in ids {
+                if matches!(&entities.entity(&uid), Dereference::NoSuchEntity) {
+                   to_load.insert(uid); 
+                }
+            }
+            // Subtle: missing entities are equivalent empty entities in both normal and partial evaluation.
+            let loaded = loader(&to_load)
+                .into_iter()
+                .map(|(id, e_option)| match e_option {
+                    Some(e) => Arc::new(e),
+                    None => Arc::new(Entity::with_uid(id)),
+                });
+            entities = entities.add_entities(
+                loaded,
+                None::<&NoEntitiesSchema>,
+                TCComputation::AssumeAlreadyComputed,
+                self.extensions,
+            )?;
+
+            let eval = Evaluator::new(request.clone(), &entities, self.extensions);
+            current_res = self.is_authorized_core_mut(&eval, current_res);
+
+            if current_res.decision().is_some() {
+                break;
+            }
         }
 
-        todo!()
+        Ok(current_res)
     }
 
     /// The same as is_authorized_core, but for any Evaluator.
@@ -127,34 +155,130 @@ impl Authorizer {
         &self,
         eval: &Evaluator<'_>,
         q: Request,
+        pset: &PolicySet,
+    ) -> PartialResponse {
+        let mut true_permits = vec![];
+        let mut true_forbids = vec![];
+        let mut false_permits = vec![];
+        let mut false_forbids = vec![];
+        let mut residual_permits = vec![];
+        let mut residual_forbids = vec![];
+        let mut errors = vec![];
+
+        for p in pset.policies() {
+            let (id, annotations) = (p.id().clone(), p.annotations_arc().clone());
+            match eval.partial_evaluate(p) {
+                Ok(Either::Left(satisfied)) => match (satisfied, p.effect()) {
+                    (true, Effect::Permit) => true_permits.push((id, annotations)),
+                    (true, Effect::Forbid) => true_forbids.push((id, annotations)),
+                    (false, Effect::Permit) => {
+                        false_permits.push((id, (ErrorState::NoError, annotations)))
+                    }
+                    (false, Effect::Forbid) => {
+                        false_forbids.push((id, (ErrorState::NoError, annotations)))
+                    }
+                },
+                Ok(Either::Right(residual)) => match p.effect() {
+                    Effect::Permit => {
+                        residual_permits.push((id, (Arc::new(residual), annotations)))
+                    }
+                    Effect::Forbid => {
+                        residual_forbids.push((id, (Arc::new(residual), annotations)))
+                    }
+                },
+                Err(e) => {
+                    errors.push(AuthorizationError::PolicyEvaluationError {
+                        id: id.clone(),
+                        error: e,
+                    });
+                    let satisfied = match self.error_handling {
+                        ErrorHandling::Skip => false,
+                    };
+                    match (satisfied, p.effect()) {
+                        (true, Effect::Permit) => true_permits.push((id, annotations)),
+                        (true, Effect::Forbid) => true_forbids.push((id, annotations)),
+                        (false, Effect::Permit) => {
+                            false_permits.push((id, (ErrorState::Error, annotations)))
+                        }
+                        (false, Effect::Forbid) => {
+                            false_forbids.push((id, (ErrorState::Error, annotations)))
+                        }
+                    }
+                }
+            };
+        }
+
+        PartialResponse::new(
+            true_permits,
+            false_permits,
+            residual_permits,
+            true_forbids,
+            false_forbids,
+            residual_forbids,
+            errors,
+            Arc::new(q),
+        )
+    }
+
+    /// Like is_authorized_core_internal for subsequent iterations
+    /// of batched evaluation.
+    /// Assumes we already have a [`PartialResponse`] from a previous
+    /// partial evaluation.
+    ///
+    /// TODO deduplicate code with is_authorized_core_internal?
+    /// Problems:
+    /// - need to save SlotEnv in PartialResponse, currently missing but not needed after first iteration
+    /// - added overhead of converting to PartialResponse first?
+    pub(crate) fn is_authorized_core_mut(
+        &self,
+        eval: &Evaluator<'_>,
         mut state: PartialResponse,
     ) -> PartialResponse {
         let permits = std::mem::take(&mut state.residual_permits);
         let forbids = std::mem::take(&mut state.residual_forbids);
+        let permits_len = permits.len();
         for (i, (id, (p, annotations))) in permits.into_iter().chain(forbids).enumerate() {
-            let effect = if i < permits.len() {
+            let effect = if i < permits_len {
                 Effect::Permit
             } else {
                 Effect::Forbid
             };
-            match eval.partial_evaluate(p) {
+            let interpreted = match eval.partial_interpret(&p, &SlotEnv::new()) {
+                Ok(PartialValue::Value(v)) => v.get_as_bool().map(Either::Left),
+                Ok(PartialValue::Residual(e)) => Ok(Either::Right(e)),
+                Err(e) => Err(e),
+            };
+
+            match interpreted {
                 Ok(Either::Left(satisfied)) => match (satisfied, effect) {
-                    (true, Effect::Permit) => state.satisfied_permits.insert(id, annotations),
-                    (true, Effect::Forbid) => state.satisfied_forbids.insert(id, annotations),
-                    (false, Effect::Permit) => state
-                        .false_permits
-                        .insert(id, (ErrorState::NoError, annotations)),
-                    (false, Effect::Forbid) => state
-                        .false_forbids
-                        .insert(id, (ErrorState::NoError, annotations)),
+                    (true, Effect::Permit) => {
+                        state.satisfied_permits.insert(id, annotations);
+                    }
+                    (true, Effect::Forbid) => {
+                        state.satisfied_forbids.insert(id, annotations);
+                    }
+                    (false, Effect::Permit) => {
+                        state
+                            .false_permits
+                            .insert(id, (ErrorState::NoError, annotations));
+                    }
+                    (false, Effect::Forbid) => {
+                        state
+                            .false_forbids
+                            .insert(id, (ErrorState::NoError, annotations));
+                    }
                 },
-                Ok(Either::Right(residual)) => match p.effect() {
-                    Effect::Permit => state
-                        .residual_permits
-                        .push((id, (Arc::new(residual), annotations))),
-                    Effect::Forbid => state
-                        .residual_forbids
-                        .push((id, (Arc::new(residual), annotations))),
+                Ok(Either::Right(residual)) => match effect {
+                    Effect::Permit => {
+                        state
+                            .residual_permits
+                            .insert(id, (Arc::new(residual), annotations));
+                    }
+                    Effect::Forbid => {
+                        state
+                            .residual_forbids
+                            .insert(id, (Arc::new(residual), annotations));
+                    }
                 },
                 Err(e) => {
                     state
@@ -166,15 +290,23 @@ impl Authorizer {
                     let satisfied = match self.error_handling {
                         ErrorHandling::Skip => false,
                     };
-                    match (satisfied, p.effect()) {
-                        (true, Effect::Permit) => state.true_permits.push((id, annotations)),
-                        (true, Effect::Forbid) => state.true_forbids.push((id, annotations)),
-                        (false, Effect::Permit) => state
-                            .false_permits
-                            .push((id, (ErrorState::Error, annotations))),
-                        (false, Effect::Forbid) => state
-                            .false_forbids
-                            .push((id, (ErrorState::Error, annotations))),
+                    match (satisfied, effect) {
+                        (true, Effect::Permit) => {
+                            state.satisfied_permits.insert(id, annotations);
+                        }
+                        (true, Effect::Forbid) => {
+                            state.satisfied_forbids.insert(id, annotations);
+                        }
+                        (false, Effect::Permit) => {
+                            state
+                                .false_permits
+                                .insert(id, (ErrorState::Error, annotations));
+                        }
+                        (false, Effect::Forbid) => {
+                            state
+                                .false_forbids
+                                .insert(id, (ErrorState::Error, annotations));
+                        }
                     }
                 }
             };

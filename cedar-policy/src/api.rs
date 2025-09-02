@@ -1083,7 +1083,7 @@ impl Authorizer {
         policy_set: &PolicySet,
         loader: dyn EntityLoader,
         max_iters: usize,
-    ) -> PartialResponse {
+    ) -> Result<PartialResponse, EntitiesError> {
         let loader_internal = move |requested| loader.load(requested);
 
         let response = self.0.is_authorized_batched(
@@ -1091,7 +1091,7 @@ impl Authorizer {
             &policy_set.ast,
             loader_internal,
             max_iters,
-        );
+        )?;
         PartialResponse(response)
     }
 
