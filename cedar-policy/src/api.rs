@@ -1067,6 +1067,34 @@ impl Authorizer {
         self.0.is_authorized(r.0.clone(), &p.ast, &e.0).into()
     }
 
+    /// Like [`Authorizer::is_authorized`] but uses an [`EntityLoader`] to load
+    /// entities on demand.
+    ///
+    /// Calls `loader` at most `max_iters` times, returning
+    /// early if an authorization result is reached.
+    /// Otherwise, it iterates `max_iters` times and returns
+    /// a partial result.
+    ///
+    #[doc = include_str!("../experimental_warning.md")]
+    #[cfg(feature = "partial-eval")]
+    pub fn is_authorized_batched(
+        &self,
+        query: &Request,
+        policy_set: &PolicySet,
+        loader: dyn EntityLoader,
+        max_iters: usize,
+    ) -> PartialResponse {
+        let loader_internal = move |requested| loader.load(requested);
+
+        let response = self.0.is_authorized_batched(
+            query.0.clone(),
+            &policy_set.ast,
+            loader_internal,
+            max_iters,
+        );
+        PartialResponse(response)
+    }
+
     /// A partially evaluated authorization request.
     /// The Authorizer will attempt to make as much progress as possible in the presence of unknowns.
     /// If the Authorizer can reach a response, it will return that response.
@@ -4215,7 +4243,7 @@ impl std::fmt::Display for Expression {
 ///     `.contains()`
 ///   - if-then-else expressions
 #[repr(transparent)]
-#[derive(Debug, Clone, RefCast)]
+#[derive(Debug, Clone, RefCast, PartialEq, Eq)]
 pub struct RestrictedExpression(pub(crate) ast::RestrictedExpr);
 
 #[doc(hidden)] // because this converts to a private/internal type
@@ -5336,6 +5364,10 @@ mod tpe {
             Ok(Response(res))
         }
 
+        pub fn batched_eval() {
+            todo!()
+        }
+
         /// Perform a permission query on the resource
         pub fn query_resource(
             &self,
@@ -6096,4 +6128,43 @@ pub fn compute_entity_manifest(
 ) -> Result<EntityManifest, EntityManifestError> {
     entity_manifest::compute_entity_manifest(&validator.0, &pset.ast)
         .map_err(std::convert::Into::into)
+}
+
+/// Entity loader trait for batched evaluation.
+/// Loads entities on demand, returning `None` for missing entities.
+/// Loading more entities than requested is allowed.
+pub trait EntityLoader {
+    /// Load all entities for the given set of entity UIDs.
+    /// Returns a map from [`EntityUID`] to Option<Entity>, where `None` indicates
+    /// the entity does not exist.
+    fn load_entities(
+        &self,
+        uids: &std::collections::HashSet<EntityUid>,
+    ) -> std::collections::HashMap<EntityUid, Option<Entity>>;
+}
+
+/// Simple entity loader implementation that loads from a pre-existing Entities store
+pub struct TestEntityLoader<'a> {
+    entities: &'a Entities,
+}
+
+impl<'a> TestEntityLoader<'a> {
+    /// Create a new [`TestEntityLoader`] from an existing Entities store
+    pub fn new(entities: &'a Entities) -> Self {
+        Self { entities }
+    }
+}
+
+impl<'_> EntityLoader for TestEntityLoader<'_> {
+    fn load_entities(
+        &self,
+        uids: &std::collections::HashSet<EntityUid>,
+    ) -> std::collections::HashMap<EntityUid, Option<Entity>> {
+        uids.iter()
+            .map(|uid| {
+                let entity = self.entities.get(uid).cloned();
+                (uid.clone(), entity)
+            })
+            .collect()
+    }
 }

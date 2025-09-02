@@ -288,6 +288,16 @@ impl<T> Expr<T> {
         expr_iterator::ExprIterator::new(self)
     }
 
+    /// Iterate over all literal [`EntityUID`] referenced in
+    /// this expression.
+    pub fn all_literal_uids(&self) -> impl Iterator<Item = Arc<EntityUID>> {
+        self.subexpressions()
+            .filter_map(|exp| match &exp.expr_kind {
+                ExprKind::Lit(Literal::EntityUID(uid)) => Some(uid),
+                _ => None,
+            })
+    }
+
     /// Iterate over all of the slots in this policy AST
     pub fn slots(&self) -> impl Iterator<Item = Slot> + '_ {
         self.subexpressions()
