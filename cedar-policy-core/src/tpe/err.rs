@@ -21,7 +21,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::{
-    ast::{Eid, EntityType, EntityUID},
+    ast::{Eid, EntityType, EntityUID, PartialValueToValueError},
     entities::{
         conformance::err::{EntitySchemaConformanceError, InvalidEnumEntityError},
         err::Duplicate,
@@ -103,6 +103,25 @@ pub enum TPEError {
     #[error("Failed validation: {:#?}", .0)]
     Validation(Vec<ValidationError>),
 }
+
+/// Errors for Batched Evaluation
+#[derive(Debug, Error)]
+pub enum BatchedEvalError {
+    #[error(transparent)]
+    TPE(#[from] TPEError),
+    #[error(transparent)]
+    RequestValidation(#[from] RequestValidationError),
+    #[error(transparent)]
+    PartialRequest(#[from] PartialRequestError),
+    #[error(transparent)]
+    Entities(#[from] EntitiesError),
+    #[error(transparent)]
+    PartialValueToValue(#[from] PartialValueToValueError),
+}
+
+#[derive(Debug, Error)]
+#[error("Found a partial request when a concrete request was expected")]
+pub struct PartialRequestError {}
 
 /// Error thrown when there is no matching request environment according to a
 /// schema

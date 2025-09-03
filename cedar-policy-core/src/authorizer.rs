@@ -30,7 +30,6 @@ use crate::evaluator::Evaluator;
 use crate::extensions::Extensions;
 use itertools::{Either, Itertools};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -70,9 +69,6 @@ impl Default for ErrorHandling {
     }
 }
 
-pub type EntityLoaderInternal =
-    dyn FnMut(&HashSet<EntityUID>) -> HashMap<EntityUID, Option<Entity>>;
-
 impl Authorizer {
     /// Create a new `Authorizer`
     pub fn new() -> Self {
@@ -101,53 +97,6 @@ impl Authorizer {
     ) -> PartialResponse {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
         self.is_authorized_core_internal(&eval, q, pset)
-    }
-
-    /// Perform authorization using loader function instead
-    /// of an [`Entities`] store.
-    pub fn is_authorized_batched(
-        &self,
-        request: &Request,
-        policy_set: &PolicySet,
-        loader: &mut EntityLoaderInternal,
-        max_iters: usize,
-    ) -> Result<PartialResponse, EntitiesError> {
-        let mut entities = Entities::new();
-        let mut current_res =
-            PartialResponse::from_policy_set(policy_set, Arc::new(request.clone()));
-
-        for _i in 0..max_iters {
-            let ids = current_res.all_literal_uids();
-            let mut to_load = HashSet::new();
-            // filter to_load for already loaded entities
-            for uid in ids {
-                if matches!(&entities.entity(&uid), Dereference::NoSuchEntity) {
-                    to_load.insert(uid);
-                }
-            }
-            // Subtle: missing entities are equivalent empty entities in both normal and partial evaluation.
-            let loaded = loader(&to_load)
-                .into_iter()
-                .map(|(id, e_option)| match e_option {
-                    Some(e) => Arc::new(e),
-                    None => Arc::new(Entity::with_uid(id)),
-                });
-            entities = entities.add_entities(
-                loaded,
-                None::<&NoEntitiesSchema>,
-                TCComputation::AssumeAlreadyComputed,
-                self.extensions,
-            )?;
-
-            let eval = Evaluator::new(request.clone(), &entities, self.extensions);
-            current_res = self.is_authorized_core_mut(&eval, current_res);
-
-            if current_res.decision().is_some() {
-                break;
-            }
-        }
-
-        Ok(current_res)
     }
 
     /// The same as is_authorized_core, but for any Evaluator.

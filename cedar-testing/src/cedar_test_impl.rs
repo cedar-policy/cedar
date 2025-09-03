@@ -130,12 +130,11 @@ pub trait CedarTestImplementation {
     ) -> TestResult<TestResponse>;
 
     /// Custom batched authorizer entry point.
-    #[cfg(feature = "partial-eval")]
     fn is_authorized_batched(
         &self,
         request: &Request,
         policies: &PolicySet,
-        loader: cedar_policy::TestEntityLoader,
+        loader: &mut cedar_policy::TestEntityLoader<'_>,
         max_iters: usize,
     ) -> TestResult<cedar_policy::PartialResponse>;
 
@@ -375,12 +374,11 @@ impl CedarTestImplementation for RustEngine {
         TestResult::Success(response)
     }
 
-    #[cfg(feature = "partial-eval")]
     fn is_authorized_batched(
         &self,
         request: &Request,
         policies: &PolicySet,
-        loader: cedar_policy::TestEntityLoader,
+        loader: &mut cedar_policy::TestEntityLoader<'_>,
         max_iters: usize,
     ) -> TestResult<cedar_policy::PartialResponse> {
         let authorizer = Authorizer::new();

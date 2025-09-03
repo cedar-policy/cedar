@@ -342,22 +342,21 @@ pub fn perform_integration_test(
         }
 
         // check that batched evaluation arrives at the same answer
-        #[cfg(feature = "partial-eval")]
-        {
-            use cedar_policy::TestEntityLoader;
-            let loader = TestEntityLoader::new(entities);
-            let batched_response = test_impl
-                .is_authorized_batched(&request, policies, loader, 5)
-                .expect("Batched authorization failed");
-            
-            // Compare the decision from batched evaluation with regular evaluation
-            assert_eq!(
+        use cedar_policy::TestEntityLoader;
+        let mut loader = TestEntityLoader::new(entities);
+        // TODO use level instead of 50 here
+        let batched_response = test_impl
+            .is_authorized_batched(&request, policies, &mut loader, 50)
+            .expect("Batched authorization failed");
+        eprintln!("batched response: {:?}", batched_response);
+
+        // Compare the decision from batched evaluation with regular evaluation
+        assert_eq!(
                 batched_response.decision(),
                 Some(response.response.decision()),
                 "test {test_name} failed for request \"{}\": batched evaluation decision differs from regular evaluation",
                 &json_request.description
             );
-        }
     }
 }
 

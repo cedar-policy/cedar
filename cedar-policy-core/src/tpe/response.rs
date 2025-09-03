@@ -22,7 +22,7 @@ use std::{
 };
 
 use crate::{
-    ast::{Effect, Expr, Policy, PolicyID, PolicySet, Request, RequestSchema},
+    ast::{Effect, EntityUID, Expr, Policy, PolicyID, PolicySet, Request, RequestSchema},
     authorizer::{Authorizer, Decision},
     entities::{conformance::EntitySchemaConformanceChecker, Entities},
     extensions::Extensions,
@@ -60,6 +60,11 @@ impl ResidualPolicy {
     pub fn get_policy_id(&self) -> PolicyID {
         self.policy.id().clone()
     }
+
+    /// All literal uids referenced by this residual
+    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
+        self.residual.all_literal_uids()
+    }
 }
 
 impl From<ResidualPolicy> for Policy {
@@ -94,8 +99,9 @@ pub struct Response<'a> {
     non_trivial_forbids: HashSet<PolicyID>,
     // request
     request: &'a PartialRequest,
-    // entities
-    entities: &'a PartialEntities,
+    // entities used for this partial evaluation, if any
+    // this is [`None`] for batched evaluation
+    entities: Option<&'a PartialEntities>,
     // schema
     schema: &'a ValidatorSchema,
 }
@@ -105,7 +111,7 @@ impl<'a> Response<'a> {
     pub fn new(
         residuals: impl Iterator<Item = ResidualPolicy>,
         request: &'a PartialRequest,
-        entities: &'a PartialEntities,
+        entities: Option<&'a PartialEntities>,
         schema: &'a ValidatorSchema,
     ) -> Self {
         let mut residual_map = HashMap::new();
@@ -232,8 +238,10 @@ impl<'a> Response<'a> {
         for entity in entities.iter() {
             entities_checker.validate_entity(entity)?;
         }
-        self.entities.check_consistency(entities)?;
-        self.request.check_consistency(request)?;
+        if let Some(partial_entities) = self.entities {
+            let _ = partial_entities.check_consistency(entities)?;
+        }
+        let _ = self.request.check_consistency(request)?;
         let authorizer = Authorizer::new();
         // PANIC SAFETY: policy ids should not clash
         #[allow(clippy::unwrap_used)]

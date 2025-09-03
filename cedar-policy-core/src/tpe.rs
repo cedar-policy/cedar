@@ -23,11 +23,16 @@ pub mod request;
 pub mod residual;
 pub mod response;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::tpe::err::{NonstaticPolicyError, TPEError};
+use crate::ast::{Entity, EntityUID, EntityUIDEntry, Expr, PolicyID, Request};
+use crate::entities::Entities;
+use crate::tpe::entities::PartialEntity;
+use crate::tpe::err::{BatchedEvalError, NonstaticPolicyError, PartialRequestError, TPEError};
+use crate::tpe::request::PartialEntityUID;
 use crate::tpe::response::{ResidualPolicy, Response};
+use crate::validator::types::Type;
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
     ValidatorSchema,
@@ -36,19 +41,14 @@ use crate::{ast::PolicySet, extensions::Extensions};
 
 use crate::tpe::{entities::PartialEntities, evaluator::Evaluator, request::PartialRequest};
 
-/// Type-aware partial-evaluation on a `PolicySet`.
-/// Both `request` and `entities` should be valid and hence be constructed
-/// using their safe constructors.
-/// Policies must be static.
-pub fn is_authorized<'a>(
-    ps: &PolicySet,
+fn policy_expr_map<'a>(
     request: &'a PartialRequest,
-    entities: &'a PartialEntities,
-    schema: &'a ValidatorSchema,
-) -> std::result::Result<Response<'a>, TPEError> {
-    let env = request.find_request_env(schema)?;
-    let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
+    ps: &'a PolicySet,
+    schema: &ValidatorSchema,
+) -> std::result::Result<HashMap<&'a PolicyID, Expr<Option<Type>>>, TPEError> {
     let mut exprs = HashMap::new();
+    let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
+    let env = request.find_request_env(schema)?;
     for p in ps.policies() {
         if !p.is_static() {
             return Err(NonstaticPolicyError.into());
@@ -70,22 +70,164 @@ pub fn is_authorized<'a>(
             }
         }
     }
+    Ok(exprs)
+}
+
+/// Type-aware partial-evaluation on a `PolicySet`.
+/// Both `request` and `entities` should be valid and hence be constructed
+/// using their safe constructors.
+/// Policies must be static.
+pub fn is_authorized<'a>(
+    ps: &PolicySet,
+    request: &'a PartialRequest,
+    entities: &'a PartialEntities,
+    schema: &'a ValidatorSchema,
+) -> std::result::Result<Response<'a>, TPEError> {
+    let exprs = policy_expr_map(request, ps, schema)?;
     let evaluator = Evaluator {
         request,
         entities,
         extensions: Extensions::all_available(),
     };
+    let residuals = exprs.into_iter().map(|(id, expr)| {
+        ResidualPolicy::new(
+            Arc::new(evaluator.interpret_expr(&expr)),
+            Arc::new(ps.get(id).unwrap().clone()),
+        )
+    });
+
     // PANIC SAFETY: `id` should exist in the policy set
     #[allow(clippy::unwrap_used)]
-    Ok(Response::new(
-        exprs.into_iter().map(|(id, expr)| {
+    Ok(Response::new(residuals, request, entities, schema))
+}
+
+/// Internal version of [`EntityLoader`]
+pub trait EntityLoaderInternal {
+    /// Load all entities for the given set of entity UIDs.
+    /// Returns a map from [`EntityUID`] to Option<Entity>, where `None` indicates
+    /// the entity does not exist.
+    fn load_entities(
+        &mut self,
+        uids: &std::collections::HashSet<EntityUID>,
+    ) -> std::collections::HashMap<EntityUID, Option<Entity>>;
+}
+
+fn concrete_request_to_partial(
+    request: &Request,
+    schema: &ValidatorSchema,
+) -> Result<PartialRequest, BatchedEvalError> {
+    // Convert principal EntityUIDEntry to PartialEntityUID
+    let principal = match &request.principal {
+        EntityUIDEntry::Known { euid, .. } => PartialEntityUID::from(euid.as_ref().clone()),
+        EntityUIDEntry::Unknown { ty, .. } => return Err(PartialRequestError {}.into()),
+    };
+
+    // Convert action EntityUIDEntry to EntityUID (must be concrete)
+    let action = match &request.action {
+        EntityUIDEntry::Known { euid, .. } => euid.as_ref().clone(),
+        EntityUIDEntry::Unknown { .. } => return Err(PartialRequestError {}.into()),
+    };
+
+    // Convert resource EntityUIDEntry to PartialEntityUID
+    let resource = match &request.resource {
+        EntityUIDEntry::Known { euid, .. } => PartialEntityUID::from(euid.as_ref().clone()),
+        EntityUIDEntry::Unknown { ty, .. } => return Err(PartialRequestError {}.into()),
+    };
+
+    // Convert context
+    let context = match &request.context {
+        Some(crate::ast::Context::Value(attrs)) => Some(attrs.clone()),
+        Some(crate::ast::Context::RestrictedResidual(_)) => {
+            return Err(PartialRequestError {}.into())
+        }
+        None => None,
+    };
+
+    Ok(PartialRequest::new(
+        principal, action, resource, context, schema,
+    )?)
+}
+
+/// Perform authorization using loader function instead
+/// of an [`Entities`] store.
+pub fn is_authorized_batched<'a>(
+    request: &Request,
+    ps: &PolicySet,
+    schema: &'a ValidatorSchema,
+    loader: &mut dyn EntityLoaderInternal,
+    max_iters: usize,
+) -> Result<Response<'a>, BatchedEvalError> {
+    let request = concrete_request_to_partial(request, schema)?;
+    let exprs = policy_expr_map(&request, ps, schema)?;
+    let mut entities = PartialEntities::default();
+    let initial_evaluator = Evaluator {
+        request: &request,
+        entities: &entities,
+        extensions: Extensions::all_available(),
+    };
+    let mut residuals: Vec<ResidualPolicy> = exprs
+        .into_iter()
+        .map(|(id, expr)| {
             ResidualPolicy::new(
-                Arc::new(evaluator.interpret(&expr)),
+                Arc::new(initial_evaluator.interpret_expr(&expr)),
                 Arc::new(ps.get(id).unwrap().clone()),
             )
-        }),
-        request,
-        entities,
+        })
+        .collect();
+
+    for i in 0..max_iters {
+        eprintln!("iter {i}");
+        let ids = residuals.iter().flat_map(|r| r.all_literal_uids());
+        let mut to_load = HashSet::new();
+        // filter to_load for already loaded entities
+        for uid in ids {
+            if entities.entities.get(&uid).is_none() {
+                to_load.insert(uid);
+            }
+        }
+        for id in to_load.iter() {
+            eprintln!("to_load: {}", id);
+        }
+        // Subtle: missing entities are equivalent empty entities in both normal and partial evaluation.
+        let loaded_entities = loader.load_entities(&to_load);
+        let mut loaded_partial = vec![];
+        for (id, e_option) in loaded_entities {
+            loaded_partial.push(match e_option {
+                Some(e) => (id, PartialEntity::try_from(e)?),
+                None => (id.clone(), PartialEntity::try_from(Entity::with_uid(id))?),
+            })
+        }
+
+        entities.add_entities(loaded_partial.into_iter(), schema)?;
+        for entity in entities.entities.iter() {
+            eprintln!("have: {}", entity.0);
+        }
+
+        let evaluator = Evaluator {
+            request: &request,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        // perform partial evaluation again
+        residuals = residuals
+            .into_iter()
+            .map(|residual| {
+                ResidualPolicy::new(
+                    Arc::new(evaluator.interpret(&residual.get_residual())),
+                    Arc::new(ps.get(&residual.get_policy_id()).unwrap().clone()),
+                )
+            })
+            .collect();
+
+        // if all the residuals are done exit
+        if residuals.iter().all(|r| r.get_residual().is_concrete()) {
+            break;
+        }
+    }
+    Ok(Response::new(
+        residuals.into_iter(),
+        &request,
+        None,
         schema,
     ))
 }

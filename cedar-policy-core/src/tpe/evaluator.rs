@@ -39,27 +39,35 @@ pub struct Evaluator<'e> {
 }
 
 impl Evaluator<'_> {
+    pub fn interpret_expr(&self, e: &Expr<Option<Type>>) -> Residual {
+        let res: Result<Residual, ()> = Residual::from_expr(e);
+        match res {
+            Ok(r) => self.interpret(&r),
+            // TODO better error here
+            Err(_) => panic!("Error converting Expr to Residual"),
+        }
+    }
+
     /// Interpret a typed expression into a residual
     /// This function always succeeds because it wraps an error encountered
     /// into a `ResidualKind::Error`
-    #[allow(clippy::cognitive_complexity)]
-    pub fn interpret(&self, e: &Expr<Option<Type>>) -> Residual {
-        // PANIC SAFETY: the validator should produce expressions with types
-        #[allow(clippy::expect_used)]
-        let ty = e
-            .data()
-            .clone()
-            .expect("type checked should provide a type");
-        match e.expr_kind() {
-            ExprKind::Lit(l) => Residual::Concrete {
-                value: l.clone().into(),
-                ty,
-            },
-            ExprKind::Var(Var::Action) => Residual::Concrete {
+    pub fn interpret(&self, r: &Residual) -> Residual {
+        let ty = r.ty().clone();
+        let kind = match r {
+            Residual::Concrete { .. } => {
+                return r.clone();
+            }
+            Residual::Error(_) => {
+                return r.clone();
+            }
+            Residual::Partial { kind, ty: _ty } => kind,
+        };
+        match kind {
+            ResidualKind::Var(Var::Action) => Residual::Concrete {
                 value: self.request.action.clone().into(),
                 ty,
             },
-            ExprKind::Var(Var::Principal) => {
+            ResidualKind::Var(Var::Principal) => {
                 if let Ok(principal) = EntityUID::try_from(self.request.principal.clone()) {
                     Residual::Concrete {
                         value: principal.into(),
@@ -72,7 +80,7 @@ impl Evaluator<'_> {
                     }
                 }
             }
-            ExprKind::Var(Var::Resource) => {
+            ResidualKind::Var(Var::Resource) => {
                 if let Ok(resource) = EntityUID::try_from(self.request.resource.clone()) {
                     Residual::Concrete {
                         value: resource.into(),
@@ -85,7 +93,7 @@ impl Evaluator<'_> {
                     }
                 }
             }
-            ExprKind::Var(Var::Context) => {
+            ResidualKind::Var(Var::Context) => {
                 if let Some(context) = &self.request.context {
                     Residual::Concrete {
                         value: Value::record_arc(context.clone(), None),
@@ -98,7 +106,7 @@ impl Evaluator<'_> {
                     }
                 }
             }
-            ExprKind::And { left, right } => {
+            ResidualKind::And { left, right } => {
                 let left = self.interpret(left);
                 match &left {
                     Residual::Concrete {
@@ -141,7 +149,7 @@ impl Evaluator<'_> {
                     Residual::Error(_) => Residual::Error(ty),
                 }
             }
-            ExprKind::Or { left, right } => {
+            ResidualKind::Or { left, right } => {
                 let left = self.interpret(left);
                 match &left {
                     Residual::Concrete {
@@ -184,7 +192,7 @@ impl Evaluator<'_> {
                     Residual::Error(_) => Residual::Error(ty),
                 }
             }
-            ExprKind::If {
+            ResidualKind::If {
                 test_expr,
                 then_expr,
                 else_expr,
@@ -217,7 +225,7 @@ impl Evaluator<'_> {
                     Residual::Error(_) => Residual::Error(ty),
                 }
             }
-            ExprKind::Is { expr, entity_type } => {
+            ResidualKind::Is { expr, entity_type } => {
                 let r = self.interpret(expr);
                 match &r {
                     Residual::Concrete {
@@ -256,7 +264,7 @@ impl Evaluator<'_> {
                     Residual::Error(_) => Residual::Error(ty),
                 }
             }
-            ExprKind::Like { expr, pattern } => {
+            ResidualKind::Like { expr, pattern } => {
                 let r = self.interpret(expr);
                 match &r {
                     Residual::Concrete {
@@ -281,7 +289,7 @@ impl Evaluator<'_> {
                     Residual::Error(_) => Residual::Error(ty),
                 }
             }
-            ExprKind::BinaryApp { op, arg1, arg2 } => {
+            ResidualKind::BinaryApp { op, arg1, arg2 } => {
                 let arg1 = self.interpret(arg1);
                 let arg2 = self.interpret(arg2);
                 let residual = |arg1, arg2, ty| Residual::Partial {
@@ -450,7 +458,7 @@ impl Evaluator<'_> {
                     (_, _) => residual(arg1, arg2, ty),
                 }
             }
-            ExprKind::ExtensionFunctionApp { fn_name, args } => {
+            ResidualKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = args.iter().map(|a| self.interpret(a)).collect::<Vec<_>>();
                 // If the arguments are all concrete values, we proceed to
                 // evaluate the function call
@@ -480,7 +488,7 @@ impl Evaluator<'_> {
                     }
                 }
             }
-            ExprKind::GetAttr { expr, attr } => {
+            ResidualKind::GetAttr { expr, attr } => {
                 let r = self.interpret(expr);
                 match &r {
                     Residual::Concrete {
@@ -539,7 +547,7 @@ impl Evaluator<'_> {
                     Residual::Error(_) => Residual::Error(ty),
                 }
             }
-            ExprKind::HasAttr { expr, attr } => {
+            ResidualKind::HasAttr { expr, attr } => {
                 let r = self.interpret(expr);
                 match &r {
                     Residual::Concrete {
@@ -588,15 +596,7 @@ impl Evaluator<'_> {
                     Residual::Error(_) => Residual::Error(ty),
                 }
             }
-            // PANIC SAFETY: TPE does not expect explicit unknowns in policies
-            #[allow(clippy::panic)]
-            ExprKind::Unknown { .. } => panic!("we should not unexpect unknowns"),
-            // PANIC SAFETY: TPE currently only works on static policies
-            #[allow(clippy::panic)]
-            ExprKind::Slot(_) => panic!("we should not unexpect slot for now"),
-            #[cfg(feature = "tolerant-ast")]
-            ExprKind::Error { .. } => Residual::Error(ty),
-            ExprKind::UnaryApp { op, arg } => {
+            ResidualKind::UnaryApp { op, arg } => {
                 let arg = self.interpret(arg);
                 match &arg {
                     Residual::Concrete { value, .. } => {
@@ -616,7 +616,7 @@ impl Evaluator<'_> {
                     Residual::Error(_) => Residual::Error(ty),
                 }
             }
-            ExprKind::Set(es) => {
+            ResidualKind::Set(es) => {
                 let rs = es.iter().map(|a| self.interpret(a)).collect::<Vec<_>>();
                 if let Ok(vals) = rs
                     .iter()
@@ -639,7 +639,7 @@ impl Evaluator<'_> {
                     }
                 }
             }
-            ExprKind::Record(m) => {
+            ResidualKind::Record(m) => {
                 let record = m
                     .as_ref()
                     .iter()
@@ -764,7 +764,7 @@ mod tests {
         };
         // principal -> principal because its eid is unknown
         assert_matches!(
-            eval.interpret(&builder().var(Var::Principal)),
+            eval.interpret_expr(&builder().var(Var::Principal)),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Principal),
                 ..
@@ -772,7 +772,7 @@ mod tests {
         );
         // resource -> E::""
         assert_matches!(
-            eval.interpret(&builder().var(Var::Resource)),
+            eval.interpret_expr(&builder().var(Var::Resource)),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::EntityUID(uid)),
@@ -785,7 +785,7 @@ mod tests {
         );
         // action is always known
         assert_matches!(
-            eval.interpret(&builder().var(Var::Action)),
+            eval.interpret_expr(&builder().var(Var::Action)),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::EntityUID(uid)),
@@ -798,7 +798,7 @@ mod tests {
         );
         // context is always unknown
         assert_matches!(
-            eval.interpret(&builder().var(Var::Context)),
+            eval.interpret_expr(&builder().var(Var::Context)),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Context),
                 ..
@@ -828,7 +828,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret(&builder().and(
+            eval.interpret_expr(&builder().and(
                 builder().noteq(builder().var(Var::Resource), builder().var(Var::Resource)),
                 builder().val(42)
             )),
@@ -843,14 +843,14 @@ mod tests {
         // Note that this expression is not an invalid input
         // The evaluator does not perform any validation
         assert_matches!(
-            eval.interpret(&builder().and(builder().var(Var::Principal), builder().val(true))),
+            eval.interpret_expr(&builder().and(builder().var(Var::Principal), builder().val(true))),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Principal),
                 ..
             }
         );
         assert_matches!(
-            eval.interpret(&builder().and(
+            eval.interpret_expr(&builder().and(
                 builder().noteq(
                     builder().mul(builder().val(i64::MAX), builder().val(2)),
                     builder().val(0)
@@ -863,7 +863,7 @@ mod tests {
         // Note that this expression is not an invalid input
         // The evaluator does not perform any validation
         assert_matches!(
-            eval.interpret(&builder().and(
+            eval.interpret_expr(&builder().and(
                 builder().binary_app(
                     BinaryOp::Eq,
                     builder().var(Var::Resource),
@@ -898,7 +898,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret(&builder().or(
+            eval.interpret_expr(&builder().or(
                 builder().binary_app(
                     BinaryOp::Eq,
                     builder().var(Var::Resource),
@@ -917,14 +917,14 @@ mod tests {
         // Note that this expression is not an invalid input
         // The evaluator does not perform any validation
         assert_matches!(
-            eval.interpret(&builder().or(builder().var(Var::Principal), builder().val(false))),
+            eval.interpret_expr(&builder().or(builder().var(Var::Principal), builder().val(false))),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Principal),
                 ..
             }
         );
         assert_matches!(
-            eval.interpret(&builder().or(
+            eval.interpret_expr(&builder().or(
                 builder().noteq(
                     builder().mul(builder().val(i64::MAX), builder().val(2)),
                     builder().val(0)
@@ -937,7 +937,7 @@ mod tests {
         // Note that this expression is not an invalid input
         // The evaluator does not perform any validation
         assert_matches!(
-            eval.interpret(&builder().or(
+            eval.interpret_expr(&builder().or(
                 builder().noteq(builder().var(Var::Resource), builder().var(Var::Resource)),
                 builder().val(42)
             )),
@@ -968,7 +968,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret(&builder().ite(
+            eval.interpret_expr(&builder().ite(
                 builder().is_eq(builder().var(Var::Action), builder().var(Var::Action)),
                 builder().var(Var::Principal),
                 builder().val(2)
@@ -979,7 +979,7 @@ mod tests {
             }
         );
         assert_matches!(
-            eval.interpret(&builder().ite(
+            eval.interpret_expr(&builder().ite(
                 builder().is_eq(builder().var(Var::Principal), builder().var(Var::Principal)),
                 builder().var(Var::Principal),
                 builder().val(2)
@@ -1012,7 +1012,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret(&builder().is_entity_type(
+            eval.interpret_expr(&builder().is_entity_type(
                 builder().var(Var::Resource),
                 dummy_uid().entity_type().clone()
             )),
@@ -1026,7 +1026,7 @@ mod tests {
         );
         // Note that the Lean model evaluates it to `principal is E`
         assert_matches!(
-            eval.interpret(&builder().is_entity_type(
+            eval.interpret_expr(&builder().is_entity_type(
                 builder().var(Var::Principal),
                 dummy_uid().entity_type().clone()
             )),
@@ -1057,7 +1057,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret(&builder().like(
+            eval.interpret_expr(&builder().like(
                 builder().val("aaa"),
                 Pattern::from(vec![PatternElem::Char('a'), PatternElem::Wildcard])
             )),
@@ -1071,7 +1071,7 @@ mod tests {
         );
         // Note that this expression is not valid input
         assert_matches!(
-            eval.interpret(&builder().like(builder().var(Var::Principal), Pattern::from(vec![PatternElem::Char('a'), PatternElem::Wildcard]))),
+            eval.interpret_expr(&builder().like(builder().var(Var::Principal), Pattern::from(vec![PatternElem::Char('a'), PatternElem::Wildcard]))),
            Residual::Partial { kind: ResidualKind::Like { expr, .. }, .. } => {
                 assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
             }
@@ -1095,7 +1095,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret(&builder().unary_app(UnaryOp::Neg, builder().val(42))),
+            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(42))),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Long(-42)),
@@ -1106,13 +1106,13 @@ mod tests {
         );
         // This is not a valid input
         assert_matches!(
-            eval.interpret(&builder().unary_app(UnaryOp::Neg, builder().var(Var::Principal))),
+            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().var(Var::Principal))),
             Residual::Partial { kind: ResidualKind::UnaryApp { op: UnaryOp::Neg, arg }, .. } => {
                 assert_matches!(arg.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
             }
         );
         assert_matches!(
-            eval.interpret(&builder().unary_app(UnaryOp::Neg, builder().val(i64::MIN))),
+            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(i64::MIN))),
             Residual::Error(_),
         );
     }
@@ -1159,7 +1159,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret(&builder().get_attr(builder().var(Var::Resource), "s".parse().unwrap())),
+            eval.interpret_expr(&builder().get_attr(builder().var(Var::Resource), "s".parse().unwrap())),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::String(s)),
@@ -1173,7 +1173,7 @@ mod tests {
 
         // When LHS is unknown, the entire expression is
         assert_matches!(
-            eval.interpret(&builder().get_attr(
+            eval.interpret_expr(&builder().get_attr(
                 builder().var(Var::Principal),
                 "s".parse().unwrap()
             )),
@@ -1183,7 +1183,7 @@ mod tests {
         );
         // When LHS is not in the entities, the entire expression is unknown
         assert_matches!(
-            eval.interpret(&builder().get_attr(
+            eval.interpret_expr(&builder().get_attr(
                 builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
                 "s".parse().unwrap()
             )),
@@ -1194,7 +1194,7 @@ mod tests {
         // When LHS is in the entities, but its attributes are `None`, the
         // entire expression is unknown
         assert_matches!(
-            eval.interpret(&builder().get_attr(
+            eval.interpret_expr(&builder().get_attr(
                 builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
                 "s".parse().unwrap()
             )),
@@ -1203,7 +1203,7 @@ mod tests {
             }
         );
         assert_matches!(
-            eval.interpret(
+            eval.interpret_expr(
                 &builder().get_attr(builder().var(Var::Resource), "baz".parse().unwrap())
             ),
             Residual::Error(_),
@@ -1252,7 +1252,9 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret(&builder().has_attr(builder().var(Var::Resource), "s".parse().unwrap())),
+            eval.interpret_expr(
+                &builder().has_attr(builder().var(Var::Resource), "s".parse().unwrap())
+            ),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1262,7 +1264,7 @@ mod tests {
             }
         );
         assert_matches!(
-            eval.interpret(&builder().has_attr(builder().var(Var::Principal), "s".parse().unwrap())),
+            eval.interpret_expr(&builder().has_attr(builder().var(Var::Principal), "s".parse().unwrap())),
             Residual::Partial {
                 kind: ResidualKind::HasAttr { expr, .. },
                 ..
@@ -1272,7 +1274,7 @@ mod tests {
         );
         // When LHS is not in the entities, the entire expression is unknown
         assert_matches!(
-            eval.interpret(&builder().has_attr(
+            eval.interpret_expr(&builder().has_attr(
                 builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
                 "s".parse().unwrap()
             )),
@@ -1283,7 +1285,7 @@ mod tests {
         // When LHS is in the entities, but its attributes are `None`, the
         // entire expression is unknown
         assert_matches!(
-            eval.interpret(&builder().has_attr(
+            eval.interpret_expr(&builder().has_attr(
                 builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
                 "s".parse().unwrap()
             )),
@@ -1310,7 +1312,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret(&builder().set(
+            eval.interpret_expr(&builder().set(
                 [builder().var(Var::Resource)]
             )),
             Residual::Concrete {
@@ -1324,7 +1326,7 @@ mod tests {
             }
         );
         assert_matches!(
-            eval.interpret(&builder().set(
+            eval.interpret_expr(&builder().set(
                 [builder().var(Var::Principal),
                 builder().var(Var::Resource),]
             )),
@@ -1338,7 +1340,7 @@ mod tests {
 
         // Error is propagated
         assert_matches!(
-            eval.interpret(&builder().set([
+            eval.interpret_expr(&builder().set([
                 builder().neg(builder().val(i64::MIN)),
                 builder().var(Var::Resource),
             ])),
@@ -1363,7 +1365,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret(&builder().record(
+            eval.interpret_expr(&builder().record(
                 [(
                     "s".into(),
                     builder().var(Var::Resource),
@@ -1380,7 +1382,7 @@ mod tests {
             }
         );
         assert_matches!(
-            eval.interpret(&builder().record(
+            eval.interpret_expr(&builder().record(
                 [(
                     "s".into(),
                     builder().var(Var::Principal),
@@ -1396,7 +1398,7 @@ mod tests {
 
         // Error is propagated
         assert_matches!(
-            eval.interpret(
+            eval.interpret_expr(
                 &builder()
                     .record([
                         ("s".into(), builder().neg(builder().val(i64::MIN)),),
@@ -1425,7 +1427,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret(
+            eval.interpret_expr(
                 &builder().call_extension_fn("decimal".parse().unwrap(), [builder().val("0.0")])
             ),
             Residual::Concrete {
@@ -1438,7 +1440,7 @@ mod tests {
         );
         // not a valid input
         assert_matches!(
-            eval.interpret(&builder().call_extension_fn(
+            eval.interpret_expr(&builder().call_extension_fn(
                 "decimal".parse().unwrap(),
                 [builder().var(Var::Principal)]
             )),
@@ -1453,7 +1455,7 @@ mod tests {
 
         // Error is propagated
         assert_matches!(
-            eval.interpret(&builder().call_extension_fn(
+            eval.interpret_expr(&builder().call_extension_fn(
                 "decimal".parse().unwrap(),
                 [builder().neg(builder().val(i64::MIN))]
             )),
@@ -1505,7 +1507,7 @@ mod tests {
         };
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::Eq,
                 builder().var(Var::Resource),
                 builder().val(dummy_uid())
@@ -1520,7 +1522,7 @@ mod tests {
         );
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::Eq,
                 builder().var(Var::Principal),
                 builder().val(dummy_uid())
@@ -1531,7 +1533,7 @@ mod tests {
         );
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::Add,
                 builder().val(i64::MAX),
                 builder().val(i64::MAX)
@@ -1540,7 +1542,7 @@ mod tests {
         );
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::Contains,
                 builder().set([builder().val(dummy_uid())]),
                 builder().var(Var::Resource)
@@ -1555,7 +1557,7 @@ mod tests {
         );
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::Contains,
                 builder().set([builder().val(dummy_uid())]),
                 builder().var(Var::Principal)
@@ -1566,7 +1568,7 @@ mod tests {
         );
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::In,
                 builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
                 builder().var(Var::Resource)
@@ -1582,7 +1584,7 @@ mod tests {
 
         // LHS of `in` has unknown ancestors
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::In,
                 builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
                 builder().var(Var::Resource)
@@ -1595,7 +1597,7 @@ mod tests {
 
         // LHS of `in` is not in the entities
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::In,
                 builder().val(EntityUID::from_normalized_str(r#"E::"a""#).unwrap()),
                 builder().var(Var::Resource)
@@ -1607,7 +1609,7 @@ mod tests {
         );
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::HasTag,
                 builder().var(Var::Resource),
                 builder().val("s")
@@ -1622,7 +1624,7 @@ mod tests {
         );
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::GetTag,
                 builder().var(Var::Resource),
                 builder().val("s")
@@ -1640,7 +1642,7 @@ mod tests {
 
         // LHS of hasTag/getTag has unknown tags
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::HasTag,
                 builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
                 builder().val("s")
@@ -1652,7 +1654,7 @@ mod tests {
 
         // LHS of hasTag/getTag is not in the entities
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::HasTag,
                 builder().val(EntityUID::from_normalized_str(r#"E::"a""#).unwrap()),
                 builder().val("s")
@@ -1682,7 +1684,7 @@ mod tests {
         };
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::ContainsAll,
                 builder().set([builder().val(true), builder().val(false)]),
                 builder().set([builder().val(true), builder().val(true)])
@@ -1697,7 +1699,7 @@ mod tests {
         );
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::ContainsAll,
                 builder().set([builder().val(true), builder().binary_app(BinaryOp::Eq, builder().var(Var::Principal), builder().var(Var::Resource))]),
                 builder().set([builder().val(true), builder().val(true)])
@@ -1716,7 +1718,7 @@ mod tests {
         );
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::ContainsAny,
                 builder().set([builder().val(true), builder().val(false)]),
                 builder().set([builder().val(true), builder().val(true)])
@@ -1731,7 +1733,7 @@ mod tests {
         );
 
         assert_matches!(
-            eval.interpret(&builder().binary_app(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::ContainsAny,
                 builder().set([builder().val(true), builder().binary_app(BinaryOp::Eq, builder().var(Var::Principal), builder().var(Var::Resource))]),
                 builder().set([builder().val(true), builder().val(true)])

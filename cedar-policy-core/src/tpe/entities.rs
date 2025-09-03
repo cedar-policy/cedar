@@ -525,6 +525,26 @@ impl PartialEntities {
         Ok(entities)
     }
 
+    pub fn add_entities(
+        &mut self,
+        entity_mappings: impl Iterator<Item = (EntityUID, PartialEntity)>,
+        schema: &ValidatorSchema,
+    ) -> std::result::Result<(), EntitiesError> {
+        for (uid, entity) in entity_mappings {
+            if self.entities.contains_key(&uid) {
+                return Err(Duplicate { euid: uid }.into());
+            } else {
+                self.entities.insert(uid, entity);
+            }
+        }
+        for e in self.entities.values() {
+            e.validate(schema)?;
+        }
+        validate_ancestors(&self.entities)?;
+        self.compute_tc()?;
+        Ok(())
+    }
+
     /// Like `from_entities` but do not perform any validation and tc computation
     pub fn from_entities_unchecked(
         entities: impl Iterator<Item = (EntityUID, PartialEntity)>,

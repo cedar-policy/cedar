@@ -45,7 +45,7 @@ pub use authorizer::Decision;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
 use cedar_policy_core::ast::{self, RequestSchema, RestrictedExpr};
-use cedar_policy_core::authorizer;
+use cedar_policy_core::authorizer::{self, EntityLoaderInternal};
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
 use cedar_policy_core::evaluator::Evaluator;
@@ -1065,44 +1065,6 @@ impl Authorizer {
     /// ```
     pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Response {
         self.0.is_authorized(r.0.clone(), &p.ast, &e.0).into()
-    }
-
-    /// Like [`Authorizer::is_authorized`] but uses an [`EntityLoader`] to load
-    /// entities on demand.
-    ///
-    /// Calls `loader` at most `max_iters` times, returning
-    /// early if an authorization result is reached.
-    /// Otherwise, it iterates `max_iters` times and returns
-    /// a partial result.
-    ///
-    #[doc = include_str!("../experimental_warning.md")]
-    #[cfg(feature = "partial-eval")]
-    pub fn is_authorized_batched(
-        &self,
-        query: &Request,
-        policy_set: &PolicySet,
-        loader: &dyn EntityLoader,
-        max_iters: usize,
-    ) -> Result<PartialResponse, EntitiesError> {
-        use cedar_policy_core::authorizer::EntityLoaderInternal;
-
-        let response = self.0.is_authorized_batched(
-            &query.0,
-            &policy_set.ast,
-            &mut move |requested| {
-                let requested = requested
-                    .into_iter()
-                    .map(|id| EntityUid::ref_cast(id).clone())
-                    .collect();
-                loader
-                    .load_entities(&requested)
-                    .into_iter()
-                    .map(|(uid, entity)| (uid.0, entity.map(|e| e.0)))
-                    .collect()
-            },
-            max_iters,
-        )?;
-        Ok(PartialResponse(response))
     }
 
     /// A partially evaluated authorization request.
@@ -5374,6 +5336,34 @@ mod tpe {
             Ok(Response(res))
         }
 
+        /// Like [`Authorizer::is_authorized`] but uses an [`EntityLoader`] to load
+        /// entities on demand.
+        ///
+        /// Calls `loader` at most `max_iters` times, returning
+        /// early if an authorization result is reached.
+        /// Otherwise, it iterates `max_iters` times and returns
+        /// a partial result.
+        ///
+        #[doc = include_str!("../experimental_warning.md")]
+        #[cfg(feature = "partial-eval")]
+        pub fn is_authorized_batched(
+            &self,
+            query: &Request,
+            schema: &'a Schema,
+            loader: &mut dyn EntityLoader,
+            max_iters: usize,
+        ) -> Result<PartialResponse, EntitiesError> {
+            use cedar_policy_core::tpe::is_authorized_batched;
+            let response = is_authorized_batched(
+                &query.0,
+                &self.ast,
+                schema,
+                &mut EntityLoaderWrapper(loader),
+                max_iters,
+            )?;
+            Ok(PartialResponse(response))
+        }
+
         /// Perform a permission query on the resource
         pub fn query_resource(
             &self,
@@ -6144,12 +6134,33 @@ pub trait EntityLoader {
     /// Returns a map from [`EntityUID`] to Option<Entity>, where `None` indicates
     /// the entity does not exist.
     fn load_entities(
-        &self,
+        &mut self,
         uids: &std::collections::HashSet<EntityUid>,
     ) -> std::collections::HashMap<EntityUid, Option<Entity>>;
 }
 
+// Wrapper struct used to convert an EntityLoader to an `EntityLoaderInternal`
+struct EntityLoaderWrapper<'a>(&'a mut dyn EntityLoader);
+
+impl<'a> EntityLoaderInternal for EntityLoaderWrapper<'a> {
+    fn load_entities(
+        &mut self,
+        uids: &std::collections::HashSet<ast::EntityUID>,
+    ) -> std::collections::HashMap<ast::EntityUID, Option<ast::Entity>> {
+        let ids = uids
+            .iter()
+            .map(|id| EntityUid::ref_cast(id).clone())
+            .collect();
+        self.0
+            .load_entities(&ids)
+            .into_iter()
+            .map(|(uid, entity)| (uid.0, entity.map(|e| e.0)))
+            .collect()
+    }
+}
+
 /// Simple entity loader implementation that loads from a pre-existing Entities store
+#[derive(Debug)]
 pub struct TestEntityLoader<'a> {
     entities: &'a Entities,
 }
@@ -6163,7 +6174,7 @@ impl<'a> TestEntityLoader<'a> {
 
 impl EntityLoader for TestEntityLoader<'_> {
     fn load_entities(
-        &self,
+        &mut self,
         uids: &std::collections::HashSet<EntityUid>,
     ) -> std::collections::HashMap<EntityUid, Option<Entity>> {
         uids.iter()

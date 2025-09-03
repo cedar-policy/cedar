@@ -528,6 +528,7 @@ impl<'e> Evaluator<'e> {
                 PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::unary_app(*op, r))),
             },
             ExprKind::BinaryApp { op, arg1, arg2 } => {
+                eprintln!("doing op {}", op);
                 // NOTE: There are more precise partial eval opportunities here, esp w/ typed unknowns
                 // Current limitations:
                 //   Operators are not partially evaluated, except in a few 'simple' cases when comparing a concrete value with an unknown of known type
@@ -538,12 +539,14 @@ impl<'e> Evaluator<'e> {
                 ) {
                     (PartialValue::Value(v1), PartialValue::Value(v2)) => (v1, v2),
                     (PartialValue::Value(v1), PartialValue::Residual(e2)) => {
+                        eprintln!("val and r {} {}", v1, e2);
                         if let Some(val) = self.short_circuit_value_and_residual(&v1, &e2, *op) {
                             return Ok(val);
                         }
                         return Ok(PartialValue::Residual(Expr::binary_app(*op, v1.into(), e2)));
                     }
                     (PartialValue::Residual(e1), PartialValue::Value(v2)) => {
+                        eprintln!("r and v {} {}", e1, v2);
                         if let Some(val) = self.short_circuit_residual_and_value(&e1, &v2, *op) {
                             return Ok(val);
                         }
@@ -556,6 +559,7 @@ impl<'e> Evaluator<'e> {
                         return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, e2)));
                     }
                 };
+                eprintln!("arg1 and arg2: {} {}", arg1, arg2);
                 match op {
                     BinaryOp::Eq | BinaryOp::Less | BinaryOp::LessEq => {
                         binary_relation(*op, &arg1, &arg2, self.extensions).map(Into::into)
