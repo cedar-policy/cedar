@@ -136,7 +136,7 @@ pub trait CedarTestImplementation {
         policies: &PolicySet,
         schema: &'a Schema,
         loader: &mut cedar_policy::TestEntityLoader<'_>,
-        max_iters: usize,
+        max_iters: u32,
     ) -> TestResult<TPEResponse<'a>>;
 
     /// Custom evaluator entry point. The bool return value indicates the whether
@@ -381,7 +381,7 @@ impl CedarTestImplementation for RustEngine {
         policies: &PolicySet,
         schema: &'a Schema,
         loader: &mut cedar_policy::TestEntityLoader<'_>,
-        max_iters: usize,
+        max_iters: u32,
     ) -> TestResult<TPEResponse<'a>> {
         match policies.is_authorized_batched(request, schema, loader, max_iters) {
             Ok(response) => TestResult::Success(response),

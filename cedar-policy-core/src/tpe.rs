@@ -168,7 +168,7 @@ pub fn is_authorized_batched<'a>(
     ps: &PolicySet,
     schema: &'a ValidatorSchema,
     loader: &mut dyn EntityLoaderInternal,
-    max_iters: usize,
+    max_iters: u32,
 ) -> Result<Response<'a>, BatchedEvalError> {
     let request = concrete_request_to_partial(request, schema)?;
     let exprs = policy_expr_map(&request, ps, schema)?;
@@ -224,9 +224,6 @@ pub fn is_authorized_batched<'a>(
             schema,
             TCComputation::AssumeAlreadyComputed,
         )?;
-        for entity in entities.entities.iter() {
-            eprintln!("have: {}", entity.0);
-        }
 
         let evaluator = Evaluator {
             request: &request,

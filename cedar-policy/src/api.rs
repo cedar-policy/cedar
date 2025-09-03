@@ -1492,6 +1492,20 @@ impl Validator {
                 .validate_with_level(&pset.ast, mode.into(), max_deref_level),
         )
     }
+
+    /// Calculate the minimum level at which the policy set will
+    /// validate. Does this very simply as a loop starting from 0.
+    // PANIC SAFETY: Cedar programs are less than u32::MAX in size
+    // If we somehow reach here (which should be impossible), panic
+    #[allow(clippy::panic)]
+    pub fn calculate_minimum_level(
+        &self,
+        pset: &PolicySet,
+        mode: ValidationMode,
+    ) -> (u32, ValidationResult) {
+        let (level, res) = self.0.calculate_minimum_level(&pset.ast, mode.into());
+        (level, res.into())
+    }
 }
 
 /// Contains all the type information used to construct a `Schema` that can be
@@ -5419,7 +5433,7 @@ mod tpe {
             query: &Request,
             schema: &'a Schema,
             loader: &mut dyn EntityLoader,
-            max_iters: usize,
+            max_iters: u32,
         ) -> Result<TPEResponse<'a>, BatchedEvalError> {
             use cedar_policy_core::tpe::is_authorized_batched;
 

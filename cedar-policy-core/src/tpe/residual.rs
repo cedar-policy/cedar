@@ -165,6 +165,7 @@ impl Residual {
             // These are not supported in residuals
             ast::ExprKind::Slot(_) => return Err(SlotNotSupportedError.into()),
             ast::ExprKind::Unknown(_) => return Err(UnknownNotSupportedError.into()),
+            #[cfg(feature = "tolerant-ast")]
             ast::ExprKind::Error { .. } => return Err(ErrorNotSupportedError.into()),
         };
 

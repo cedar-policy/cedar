@@ -23,9 +23,10 @@
 
 use crate::cedar_test_impl::*;
 #[cfg(feature = "entity-manifest")]
-use cedar_policy::{compute_entity_manifest, Validator};
+use cedar_policy::compute_entity_manifest;
 use cedar_policy::{
     Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, Schema, ValidationMode,
+    Validator,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -344,12 +345,14 @@ pub fn perform_integration_test(
         // check that batched evaluation arrives at the same answer
         use cedar_policy::TestEntityLoader;
         let mut loader = TestEntityLoader::new(entities);
-        // TODO use level instead of 50 here
+        // Calculate the required level from the policies using the new calculate_minimum_level function
+        let validator = Validator::new(schema.clone());
+        let (policy_level, validation) =
+            validator.calculate_minimum_level(policies, ValidationMode::default());
+        assert!(validation.validation_errors().next().is_none());
         let batched_response = test_impl
-            .is_authorized_batched(&request, policies, schema, &mut loader, 50)
+            .is_authorized_batched(&request, policies, schema, &mut loader, policy_level)
             .expect("Batched authorization failed");
-        eprintln!("batched response: {:?}", batched_response);
-
         // Compare the decision from batched evaluation with regular evaluation
         assert_eq!(
                 batched_response.decision(),
