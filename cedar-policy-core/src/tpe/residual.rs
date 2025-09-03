@@ -20,7 +20,10 @@ use std::collections::HashSet;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::ast::{Annotations, Effect, EntityUID, Literal, Policy, PolicyID, ValueKind};
-use crate::tpe::err::{ExprToResidualError, MissingTypeAnnotationError, SlotNotSupportedError, UnknownNotSupportedError, ErrorNotSupportedError};
+use crate::tpe::err::{
+    ErrorNotSupportedError, ExprToResidualError, MissingTypeAnnotationError, SlotNotSupportedError,
+    UnknownNotSupportedError,
+};
 use crate::validator::types::Type;
 use crate::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
@@ -88,9 +91,7 @@ impl Residual {
     /// Convert an expression to a residual, returning an error if it can't be converted
     /// due to slots, unknowns, or missing type annotations.
     pub fn from_expr(expr: &Expr<Option<Type>>) -> std::result::Result<Self, ExprToResidualError> {
-        let ty = expr.data().clone().ok_or_else(|| {
-            MissingTypeAnnotationError
-        })?;
+        let ty = expr.data().clone().ok_or(MissingTypeAnnotationError)?;
 
         // Otherwise, convert to a partial residual
         let kind = match expr.expr_kind() {
@@ -146,7 +147,7 @@ impl Residual {
             },
             ast::ExprKind::Set(elements) => {
                 let residual_elements: Result<Vec<_>, _> =
-                    elements.iter().map(|elem| Self::from_expr(elem)).collect();
+                    elements.iter().map(Self::from_expr).collect();
                 ResidualKind::Set(Arc::new(residual_elements?))
             }
             ast::ExprKind::Record(map) => {
