@@ -503,10 +503,17 @@ impl PartialEntities {
     ) -> std::result::Result<Self, EntitiesError> {
         let mut entities: HashMap<EntityUID, PartialEntity> = HashMap::new();
         for (uid, entity) in entity_mappings {
-            if entities.contains_key(&uid) {
-                return Err(Duplicate { euid: uid }.into());
-            } else {
-                entities.insert(uid, entity);
+            use std::collections::hash_map::Entry;
+            match entities.entry(uid) {
+                Entry::Vacant(e) => {
+                    e.insert(entity);
+                }
+                Entry::Occupied(e) => {
+                    return Err(Duplicate {
+                        euid: e.key().clone(),
+                    }
+                    .into())
+                }
             }
         }
         for e in entities.values() {

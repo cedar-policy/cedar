@@ -58,7 +58,7 @@ static ALL_AVAILABLE_EXTENSION_SCHEMA_OBJECTS: LazyLock<Vec<ExtensionSchema>> =
     });
 
 static ALL_AVAILABLE_EXTENSION_SCHEMAS: LazyLock<ExtensionSchemas<'static>> =
-    LazyLock::new(|| ExtensionSchemas::build_all_available());
+    LazyLock::new(ExtensionSchemas::build_all_available);
 
 /// Aggregate structure containing information such as function signatures for multiple [`ExtensionSchema`].
 /// Ensures that no function name is defined mode than once.

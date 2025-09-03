@@ -14,10 +14,7 @@
  * limitations under the License.
  */
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 
 use anyhow::Ok;
 use dashmap::DashMap;
@@ -369,9 +366,9 @@ impl SchemaDocument {
     #[must_use]
     pub(crate) fn get_linked_document_diagnostics(
         &self,
-    ) -> Option<HashMap<Uri, DiagnosticFragment>> {
+    ) -> Option<DashMap<Uri, DiagnosticFragment>> {
         let documents = self.state.documents.upgrade()?;
-        let mut diagnostics = HashMap::new();
+        let diagnostics = DashMap::new();
         let doc_list = documents
             .iter()
             .map(|guard| guard.value().clone())

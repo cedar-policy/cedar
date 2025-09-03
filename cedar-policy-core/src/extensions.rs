@@ -53,7 +53,7 @@ static ALL_AVAILABLE_EXTENSION_OBJECTS: LazyLock<Vec<Extension>> = LazyLock::new
 });
 
 static ALL_AVAILABLE_EXTENSIONS: LazyLock<Extensions<'static>> =
-    LazyLock::new(|| Extensions::build_all_available());
+    LazyLock::new(Extensions::build_all_available);
 
 static EXTENSIONS_NONE: LazyLock<Extensions<'static>> = LazyLock::new(|| Extensions {
     extensions: &[],
@@ -176,7 +176,7 @@ impl<'a> Extensions<'a> {
     }
 
     /// Lookup a single-argument constructor by its return type
-    pub(crate) fn lookup_single_arg_constructor<'b>(
+    pub(crate) fn lookup_single_arg_constructor(
         &self,
         return_type: &SchemaType,
     ) -> Option<&ExtensionFunction> {

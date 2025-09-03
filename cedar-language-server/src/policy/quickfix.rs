@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-use std::collections::HashMap;
-
+use dashmap::DashMap;
 use tower_lsp_server::lsp_types::{
     CodeAction, CodeActionContext, CodeActionKind, TextEdit, Uri, WorkspaceEdit,
 };
@@ -42,10 +41,10 @@ pub fn policy_quickfix_code_actions(
                 };
 
                 // Create a workspace edit
-                let mut changes = HashMap::new();
+                let changes = DashMap::new();
                 changes.insert(uri.clone(), vec![edit]);
                 let workspace_edit = WorkspaceEdit {
-                    changes: Some(changes),
+                    changes: Some(changes.into_iter().collect()),
                     document_changes: None,
                     change_annotations: None,
                 };
