@@ -48,7 +48,7 @@ pub fn policy_quickfix_code_actions(
                 )]
                 let changes = HashMap::from([(uri.clone(), vec![edit])]);
                 let workspace_edit = WorkspaceEdit {
-                    changes: Some(changes.into_iter().collect()),
+                    changes: Some(changes),
                     document_changes: None,
                     change_annotations: None,
                 };
