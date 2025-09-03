@@ -114,14 +114,12 @@ impl Authorizer {
             PartialResponse::from_policy_set(policy_set, Arc::new(request.clone()));
 
         for _i in 0..max_iters {
-            let ids = current_res
-                .all_literal_uids()
-                .map(|uid| (*uid).clone());
+            let ids = current_res.all_literal_uids();
             let mut to_load = HashSet::new();
             // filter to_load for already loaded entities
             for uid in ids {
                 if matches!(&entities.entity(&uid), Dereference::NoSuchEntity) {
-                   to_load.insert(uid); 
+                    to_load.insert(uid);
                 }
             }
             // Subtle: missing entities are equivalent empty entities in both normal and partial evaluation.

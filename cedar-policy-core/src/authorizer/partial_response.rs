@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use either::Either;
 use std::sync::Arc;
@@ -147,8 +147,8 @@ impl PartialResponse {
 
     /// Iterate over all [`EntityUID`] referenced by residuals
     /// in this partial response.
-    pub fn all_literal_uids(&self) -> impl Iterator<Item = Arc<EntityUID>> + use<'_> {
-        self.all_residuals().map(|p| p.all_literal_uids()).flatten()
+    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
+        self.all_residuals().map(|p| p.all_literal_uids().into_iter()).flatten().collect()
     }
 
     /// Convert this response into a concrete evaluation response.

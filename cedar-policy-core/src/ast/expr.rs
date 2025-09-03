@@ -290,10 +290,10 @@ impl<T> Expr<T> {
 
     /// Iterate over all literal [`EntityUID`] referenced in
     /// this expression.
-    pub fn all_literal_uids(&self) -> impl Iterator<Item = Arc<EntityUID>> {
+    pub fn all_literal_uids(&self) -> impl Iterator<Item = Arc<EntityUID>> + use<'_, T> {
         self.subexpressions()
             .filter_map(|exp| match &exp.expr_kind {
-                ExprKind::Lit(Literal::EntityUID(uid)) => Some(uid),
+                ExprKind::Lit(Literal::EntityUID(uid)) => Some(uid.clone()),
                 _ => None,
             })
     }

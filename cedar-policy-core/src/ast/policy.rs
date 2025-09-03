@@ -253,8 +253,12 @@ impl Template {
     }
 
     /// All literal uids referenced by this template
-    pub fn all_literal_uids(&self) -> impl Iterator<Item = Arc<EntityUID>> {
-        self.body.condition().all_literal_uids()
+    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
+        self.body
+            .condition()
+            .all_literal_uids()
+            .map(|uid| (*uid).clone())
+            .collect()
     }
 
     /// Check if this template is a static policy
@@ -458,7 +462,7 @@ impl Policy {
     }
 
     /// Iterate over all literal uids referenced by this policy.
-    pub fn all_literal_uids(&self) -> impl Iterator<Item = Arc<EntityUID>> {
+    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
         self.template.all_literal_uids()
     }
 
