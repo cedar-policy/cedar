@@ -21,7 +21,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use crate::tpe::err::ExprToResidualError;
 use crate::validator::types::Type;
 use crate::{
-    ast::{self, BinaryOp, EntityUID, Expr, ExprKind, PartialValue, Set, Value, ValueKind, Var},
+    ast::{self, BinaryOp, EntityUID, Expr, PartialValue, Set, Value, ValueKind, Var},
     extensions::Extensions,
 };
 
@@ -827,7 +827,8 @@ mod tests {
             eval.interpret_expr(&builder().and(
                 builder().noteq(builder().var(Var::Resource), builder().var(Var::Resource)),
                 builder().val(42)
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(false)),
@@ -839,7 +840,8 @@ mod tests {
         // Note that this expression is not an invalid input
         // The evaluator does not perform any validation
         assert_matches!(
-            eval.interpret_expr(&builder().and(builder().var(Var::Principal), builder().val(true))).unwrap(),
+            eval.interpret_expr(&builder().and(builder().var(Var::Principal), builder().val(true)))
+                .unwrap(),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Principal),
                 ..
@@ -852,7 +854,8 @@ mod tests {
                     builder().val(0)
                 ),
                 builder().val(42)
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Error(_),
         );
         // resource == resource && 42 => 42
@@ -866,7 +869,8 @@ mod tests {
                     builder().var(Var::Resource)
                 ),
                 builder().val(42)
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Long(42)),
@@ -901,7 +905,8 @@ mod tests {
                     builder().var(Var::Resource)
                 ),
                 builder().val(42)
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -913,7 +918,8 @@ mod tests {
         // Note that this expression is not an invalid input
         // The evaluator does not perform any validation
         assert_matches!(
-            eval.interpret_expr(&builder().or(builder().var(Var::Principal), builder().val(false))).unwrap(),
+            eval.interpret_expr(&builder().or(builder().var(Var::Principal), builder().val(false)))
+                .unwrap(),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Principal),
                 ..
@@ -926,17 +932,19 @@ mod tests {
                     builder().val(0)
                 ),
                 builder().val(42)
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Error(_),
         );
         // resource != resource || 42 => 42
         // Note that this expression is not an invalid input
         // The evaluator does not perform any validation
         assert_matches!(
-            eval.interpret_expr(&builder().and(
+            eval.interpret_expr(&builder().or(
                 builder().noteq(builder().var(Var::Resource), builder().var(Var::Resource)),
                 builder().val(42)
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Long(42)),
@@ -968,7 +976,8 @@ mod tests {
                 builder().is_eq(builder().var(Var::Action), builder().var(Var::Action)),
                 builder().var(Var::Principal),
                 builder().val(2)
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Principal),
                 ..
@@ -1011,7 +1020,8 @@ mod tests {
             eval.interpret_expr(&builder().is_entity_type(
                 builder().var(Var::Resource),
                 dummy_uid().entity_type().clone()
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1025,7 +1035,8 @@ mod tests {
             eval.interpret_expr(&builder().is_entity_type(
                 builder().var(Var::Principal),
                 dummy_uid().entity_type().clone()
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1056,7 +1067,8 @@ mod tests {
             eval.interpret_expr(&builder().like(
                 builder().val("aaa"),
                 Pattern::from(vec![PatternElem::Char('a'), PatternElem::Wildcard])
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1091,7 +1103,8 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(42))).unwrap(),
+            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(42)))
+                .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Long(-42)),
@@ -1108,7 +1121,8 @@ mod tests {
             }
         );
         assert_matches!(
-            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(i64::MIN))).unwrap(),
+            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(i64::MIN)))
+                .unwrap(),
             Residual::Error(_),
         );
     }
@@ -1201,7 +1215,8 @@ mod tests {
         assert_matches!(
             eval.interpret_expr(
                 &builder().get_attr(builder().var(Var::Resource), "baz".parse().unwrap())
-            ).unwrap(),
+            )
+            .unwrap(),
             Residual::Error(_),
         );
     }
@@ -1250,7 +1265,8 @@ mod tests {
         assert_matches!(
             eval.interpret_expr(
                 &builder().has_attr(builder().var(Var::Resource), "s".parse().unwrap())
-            ).unwrap(),
+            )
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1339,7 +1355,8 @@ mod tests {
             eval.interpret_expr(&builder().set([
                 builder().neg(builder().val(i64::MIN)),
                 builder().var(Var::Resource),
-            ])).unwrap(),
+            ]))
+            .unwrap(),
             Residual::Error(_)
         )
     }
@@ -1401,7 +1418,8 @@ mod tests {
                         ("".into(), builder().var(Var::Resource),)
                     ])
                     .unwrap()
-            ).unwrap(),
+            )
+            .unwrap(),
             Residual::Error(_)
         )
     }
@@ -1425,7 +1443,8 @@ mod tests {
         assert_matches!(
             eval.interpret_expr(
                 &builder().call_extension_fn("decimal".parse().unwrap(), [builder().val("0.0")])
-            ).unwrap(),
+            )
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::ExtensionValue(_),
@@ -1454,7 +1473,8 @@ mod tests {
             eval.interpret_expr(&builder().call_extension_fn(
                 "decimal".parse().unwrap(),
                 [builder().neg(builder().val(i64::MIN))]
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Error(_)
         )
     }
@@ -1507,7 +1527,8 @@ mod tests {
                 BinaryOp::Eq,
                 builder().var(Var::Resource),
                 builder().val(dummy_uid())
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1533,7 +1554,8 @@ mod tests {
                 BinaryOp::Add,
                 builder().val(i64::MAX),
                 builder().val(i64::MAX)
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Error(_)
         );
 
@@ -1542,7 +1564,8 @@ mod tests {
                 BinaryOp::Contains,
                 builder().set([builder().val(dummy_uid())]),
                 builder().var(Var::Resource)
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1568,7 +1591,8 @@ mod tests {
                 BinaryOp::In,
                 builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
                 builder().var(Var::Resource)
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(false)),
@@ -1609,7 +1633,8 @@ mod tests {
                 BinaryOp::HasTag,
                 builder().var(Var::Resource),
                 builder().val("s")
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1684,7 +1709,8 @@ mod tests {
                 BinaryOp::ContainsAll,
                 builder().set([builder().val(true), builder().val(false)]),
                 builder().set([builder().val(true), builder().val(true)])
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1718,7 +1744,8 @@ mod tests {
                 BinaryOp::ContainsAny,
                 builder().set([builder().val(true), builder().val(false)]),
                 builder().set([builder().val(true), builder().val(true)])
-            )).unwrap(),
+            ))
+            .unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),

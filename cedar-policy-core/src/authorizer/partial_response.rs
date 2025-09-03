@@ -148,7 +148,9 @@ impl PartialResponse {
     /// Iterate over all [`EntityUID`] referenced by residuals
     /// in this partial response.
     pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
-        self.all_residuals().flat_map(|p| p.all_literal_uids().into_iter()).collect()
+        self.all_residuals()
+            .flat_map(|p| p.all_literal_uids().into_iter())
+            .collect()
     }
 
     /// Convert this response into a concrete evaluation response.

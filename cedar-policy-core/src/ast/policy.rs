@@ -252,15 +252,6 @@ impl Template {
         self.slots.iter()
     }
 
-    /// All literal uids referenced by this template
-    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
-        self.body
-            .condition()
-            .all_literal_uids()
-            .map(|uid| (*uid).clone())
-            .collect()
-    }
-
     /// Check if this template is a static policy
     ///
     /// Static policies can be linked without any slots,
@@ -459,11 +450,6 @@ impl Policy {
             loc,
             Arc::new(Annotations::default()),
         )
-    }
-
-    /// Iterate over all literal uids referenced by this policy.
-    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
-        self.template.all_literal_uids()
     }
 
     /// Build a policy with a given effect, given when clause, and unconstrained scope variables

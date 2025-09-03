@@ -194,7 +194,6 @@ pub fn is_authorized_batched<'a>(
     let mut residuals = residuals?;
 
     for i in 0..max_iters {
-        eprintln!("iter {i}");
         let ids = residuals.iter().flat_map(|r| r.all_literal_uids());
         let mut to_load = HashSet::new();
         // filter to_load for already loaded entities
@@ -202,9 +201,6 @@ pub fn is_authorized_batched<'a>(
             if entities.entities.get(&uid).is_none() {
                 to_load.insert(uid);
             }
-        }
-        for id in to_load.iter() {
-            eprintln!("to_load: {}", id);
         }
         // Subtle: missing entities are equivalent empty entities in both normal and partial evaluation.
         let loaded_entities = loader.load_entities(&to_load);
