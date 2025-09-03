@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use either::Either;
 use std::sync::Arc;
@@ -23,11 +23,7 @@ use super::{
     Annotations, AuthorizationError, Decision, Effect, EntityUIDEntry, Expr, Policy, Request,
     Response,
 };
-use crate::{
-    ast::{EntityUID, PolicyID},
-    evaluator::EvaluationError,
-    parser::IntoMaybeLoc,
-};
+use crate::{ast::PolicyID, evaluator::EvaluationError, parser::IntoMaybeLoc};
 
 #[cfg(feature = "partial-eval")]
 use smol_str::SmolStr;

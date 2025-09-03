@@ -5324,7 +5324,10 @@ mod tpe {
     }
 
     /// Entity loader trait for batched evaluation.
+    ///
     /// Loads entities on demand, returning `None` for missing entities.
+    /// The `load_entities` function must load all requested entities,
+    /// and must compute and include all ancestors of the requested entities.
     /// Loading more entities than requested is allowed.
     #[cfg(feature = "tpe")]
     pub trait EntityLoader {
@@ -5337,7 +5340,7 @@ mod tpe {
         ) -> std::collections::HashMap<EntityUid, Option<Entity>>;
     }
 
-    /// Wrapper struct used to convert an EntityLoader to an `EntityLoaderInternal`
+    /// Wrapper struct used to convert an [`EntityLoader`] to an `EntityLoaderInternal`
     struct EntityLoaderWrapper<'a>(&'a mut dyn EntityLoader);
 
     impl<'a> EntityLoaderInternal for EntityLoaderWrapper<'a> {

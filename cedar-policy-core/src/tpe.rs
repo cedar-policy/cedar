@@ -27,7 +27,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::ast::{Entity, EntityUID, EntityUIDEntry, Expr, PolicyID, Request};
-use crate::entities::Entities;
+use crate::entities::TCComputation;
 use crate::tpe::entities::PartialEntity;
 use crate::tpe::err::{BatchedEvalError, NonstaticPolicyError, PartialRequestError, TPEError};
 use crate::tpe::request::PartialEntityUID;
@@ -103,12 +103,11 @@ pub fn is_authorized<'a>(
             ))
         })
         .collect();
-    let residuals = residuals?;
 
     // PANIC SAFETY: `id` should exist in the policy set
     #[allow(clippy::unwrap_used)]
     Ok(Response::new(
-        residuals.into_iter(),
+        residuals?.into_iter(),
         Some(request),
         Some(entities),
         schema,
@@ -133,7 +132,7 @@ fn concrete_request_to_partial(
     // Convert principal EntityUIDEntry to PartialEntityUID
     let principal = match &request.principal {
         EntityUIDEntry::Known { euid, .. } => PartialEntityUID::from(euid.as_ref().clone()),
-        EntityUIDEntry::Unknown { ty, .. } => return Err(PartialRequestError {}.into()),
+        EntityUIDEntry::Unknown { .. } => return Err(PartialRequestError {}.into()),
     };
 
     // Convert action EntityUIDEntry to EntityUID (must be concrete)
@@ -145,7 +144,7 @@ fn concrete_request_to_partial(
     // Convert resource EntityUIDEntry to PartialEntityUID
     let resource = match &request.resource {
         EntityUIDEntry::Known { euid, .. } => PartialEntityUID::from(euid.as_ref().clone()),
-        EntityUIDEntry::Unknown { ty, .. } => return Err(PartialRequestError {}.into()),
+        EntityUIDEntry::Unknown { .. } => return Err(PartialRequestError {}.into()),
     };
 
     // Convert context
@@ -179,42 +178,52 @@ pub fn is_authorized_batched<'a>(
         entities: &entities,
         extensions: Extensions::all_available(),
     };
-    let mut residuals: Result<Vec<ResidualPolicy>, BatchedEvalError> = exprs
+    let residuals_res: Result<Vec<ResidualPolicy>, BatchedEvalError> = exprs
         .into_iter()
         .map(|(id, expr)| {
             let residual = initial_evaluator
                 .interpret_expr(&expr)
                 .map_err(BatchedEvalError::from)?;
+            // PANIC SAFETY: exprs and policy set contain the same policy ids
+            #[allow(clippy::unwrap_used)]
             Ok(ResidualPolicy::new(
                 Arc::new(residual),
                 Arc::new(ps.get(id).unwrap().clone()),
             ))
         })
         .collect();
-    let mut residuals = residuals?;
+    let mut residuals = residuals_res?;
 
-    for i in 0..max_iters {
+    // PANIC SAFETY: residuals and policy set contain the same policy ids
+    #[allow(clippy::unwrap_used)]
+    for _i in 0..max_iters {
         let ids = residuals.iter().flat_map(|r| r.all_literal_uids());
         let mut to_load = HashSet::new();
         // filter to_load for already loaded entities
         for uid in ids {
-            if entities.entities.get(&uid).is_none() {
+            if !entities.entities.contains_key(&uid) {
                 to_load.insert(uid);
             }
         }
         // Subtle: missing entities are equivalent empty entities in both normal and partial evaluation.
         let loaded_entities = loader.load_entities(&to_load);
+
+        // check that all requested entities were loaded and return error otherwise
+
         let mut loaded_partial = vec![];
         for (id, e_option) in loaded_entities {
             let partial_entity = match e_option {
-                Some(e) => PartialEntity::try_from(e).map_err(BatchedEvalError::from)?,
-                None => PartialEntity::try_from(Entity::with_uid(id.clone()))
-                    .map_err(BatchedEvalError::from)?,
+                Some(e) => PartialEntity::try_from(e)?,
+                None => PartialEntity::try_from(Entity::with_uid(id.clone()))?,
             };
             loaded_partial.push((id, partial_entity));
         }
 
-        entities.add_entities(loaded_partial.into_iter(), schema)?;
+        entities.add_entities(
+            loaded_partial.into_iter(),
+            schema,
+            TCComputation::AssumeAlreadyComputed,
+        )?;
         for entity in entities.entities.iter() {
             eprintln!("have: {}", entity.0);
         }

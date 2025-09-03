@@ -102,6 +102,7 @@ pub enum TPEError {
     /// Error thrown when the typechecker fails to typecheck a policy
     #[error("Failed validation: {:#?}", .0)]
     Validation(Vec<ValidationError>),
+    /// Error thrown when using invalid expressions with TPE. See [`ExprToResidualError`].
     #[error(transparent)]
     ExprToResidual(ExprToResidualError),
 }
@@ -109,18 +110,27 @@ pub enum TPEError {
 /// Errors for Batched Evaluation
 #[derive(Debug, Error)]
 pub enum BatchedEvalError {
+    /// Error thrown by TPE
     #[error(transparent)]
     TPE(#[from] TPEError),
+    /// Error when the request is not valid
     #[error(transparent)]
     RequestValidation(#[from] RequestValidationError),
+    /// Error when the request is partial
     #[error(transparent)]
     PartialRequest(#[from] PartialRequestError),
+    /// Error when the loaded entities are not valid
     #[error(transparent)]
     Entities(#[from] EntitiesError),
+    /// Error thrown when a entity loader provided entity was partial instead of fully concrete
     #[error(transparent)]
     PartialValueToValue(#[from] PartialValueToValueError),
+    /// Error when an expression is not supported by batched evaluation
     #[error(transparent)]
     ExprToResidualError(#[from] ExprToResidualError),
+    /// Error the entity loader failed to load all requested entities
+    #[error(transparent)]
+    MissingEntities(#[from] MissingEntitiesError),
 }
 
 /// Residuals require fully typed expressions without
@@ -161,6 +171,7 @@ pub struct UnknownNotSupportedError;
 #[error("Expression contains an error which is not supported in residuals")]
 pub struct ErrorNotSupportedError;
 
+/// Error when a request was expected to be concrete
 #[derive(Debug, Error)]
 #[error("Found a partial request when a concrete request was expected")]
 pub struct PartialRequestError {}
@@ -354,6 +365,20 @@ pub struct MissingEntityError {
 #[error("Concrete entities contains unknown entity `{uid}`")]
 pub struct UnknownEntityError {
     pub(super) uid: EntityUID,
+}
+
+/// Error thrown when some requested entities were not loaded
+#[derive(Debug, Error)]
+#[error("Failed to load entities: {}", .missing_entities.iter().map(|uid| uid.to_string()).collect::<Vec<_>>().join(", "))]
+pub struct MissingEntitiesError {
+    pub(super) missing_entities: Vec<EntityUID>,
+}
+
+impl MissingEntitiesError {
+    /// Construct a new [`MissingEntitiesError`]
+    pub fn new(missing_entities: Vec<EntityUID>) -> Self {
+        Self { missing_entities }
+    }
 }
 
 /// Error thrown when a [`PartialRequest`] is consistent with a [`Request`]

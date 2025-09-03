@@ -21,11 +21,7 @@
 //! the "authorization engine".
 
 use crate::ast::*;
-use crate::entities::err::EntitiesError;
-use crate::entities::Dereference;
 use crate::entities::Entities;
-use crate::entities::NoEntitiesSchema;
-use crate::entities::TCComputation;
 use crate::evaluator::Evaluator;
 use crate::extensions::Extensions;
 use itertools::{Either, Itertools};

@@ -19,7 +19,7 @@
 use crate::ast::{Entity, PartialValueToValueError};
 use crate::entities::conformance::err::EntitySchemaConformanceError;
 use crate::entities::err::Duplicate;
-use crate::entities::{Dereference, Entities};
+use crate::entities::{Dereference, Entities, TCComputation};
 use crate::tpe::err::{
     AncestorValidationError, EntitiesConsistencyError, EntitiesError, EntityConsistencyError,
     EntityValidationError, JsonDeserializationError, MismatchedActionAncestorsError,
@@ -27,7 +27,7 @@ use crate::tpe::err::{
     UnexpectedActionError, UnknownActionComponentError, UnknownAttributeError, UnknownEntityError,
     UnknownTagError,
 };
-use crate::transitive_closure::TcError;
+use crate::transitive_closure::{enforce_tc_and_dag, TcError};
 use crate::validator::{CoreSchema, ValidatorSchema};
 use crate::{
     ast::PartialValue,
@@ -496,6 +496,10 @@ impl PartialEntities {
         compute_tc(&mut self.entities, true)
     }
 
+    pub fn enforce_tc_and_dag(&self) -> std::result::Result<(), TcError<EntityUID>> {
+        enforce_tc_and_dag(&self.entities)
+    }
+
     /// Construct `PartialEntities` from an iterator
     pub fn from_entities(
         entity_mappings: impl Iterator<Item = (EntityUID, PartialEntity)>,
@@ -525,10 +529,13 @@ impl PartialEntities {
         Ok(entities)
     }
 
+    /// Add a set of partial entities to this store,
+    /// erroring on duplicates.
     pub fn add_entities(
         &mut self,
         entity_mappings: impl Iterator<Item = (EntityUID, PartialEntity)>,
         schema: &ValidatorSchema,
+        tc_computation: TCComputation,
     ) -> std::result::Result<(), EntitiesError> {
         for (uid, entity) in entity_mappings {
             if self.entities.contains_key(&uid) {
@@ -541,7 +548,16 @@ impl PartialEntities {
             e.validate(schema)?;
         }
         validate_ancestors(&self.entities)?;
-        self.compute_tc()?;
+
+        match tc_computation {
+            TCComputation::AssumeAlreadyComputed => (),
+            TCComputation::EnforceAlreadyComputed => {
+                self.enforce_tc_and_dag();
+            }
+            TCComputation::ComputeNow => {
+                self.compute_tc();
+            }
+        }
         Ok(())
     }
 
