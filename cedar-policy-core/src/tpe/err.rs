@@ -117,7 +117,47 @@ pub enum BatchedEvalError {
     Entities(#[from] EntitiesError),
     #[error(transparent)]
     PartialValueToValue(#[from] PartialValueToValueError),
+    #[error(transparent)]
+    ExprToResidualError(#[from] ExprToResidualError),
 }
+
+/// Residuals require fully typed expressions without
+/// unknowns or parse errors.
+#[derive(Debug, Error)]
+pub enum ExprToResidualError {
+    /// Expression is missing type annotation
+    #[error(transparent)]
+    MissingTypeAnnotation(#[from] MissingTypeAnnotationError),
+    /// Expression contains a slot which is not supported in residuals
+    #[error(transparent)]
+    SlotNotSupported(#[from] SlotNotSupportedError),
+    /// Expression contains an unknown which is not supported in residuals
+    #[error(transparent)]
+    UnknownNotSupported(#[from] UnknownNotSupportedError),
+    /// Expression contains an error which is not supported in residuals
+    #[error(transparent)]
+    ErrorNotSupported(#[from] ErrorNotSupportedError),
+}
+
+/// Error thrown when expression is missing type annotation
+#[derive(Debug, Error)]
+#[error("Expression is missing type annotation")]
+pub struct MissingTypeAnnotationError;
+
+/// Error thrown when expression contains a slot which is not supported in residuals
+#[derive(Debug, Error)]
+#[error("Expression contains a slot which is not supported in residuals")]
+pub struct SlotNotSupportedError;
+
+/// Error thrown when expression contains an unknown which is not supported in residuals
+#[derive(Debug, Error)]
+#[error("Expression contains an unknown which is not supported in residuals")]
+pub struct UnknownNotSupportedError;
+
+/// Error thrown when expression contains an error which is not supported in residuals
+#[derive(Debug, Error)]
+#[error("Expression contains an error which is not supported in residuals")]
+pub struct ErrorNotSupportedError;
 
 #[derive(Debug, Error)]
 #[error("Found a partial request when a concrete request was expected")]

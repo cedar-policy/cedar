@@ -18,6 +18,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
+use crate::tpe::err::ExprToResidualError;
 use crate::validator::types::Type;
 use crate::{
     ast::{self, BinaryOp, EntityUID, Expr, ExprKind, PartialValue, Set, Value, ValueKind, Var},
@@ -39,13 +40,8 @@ pub struct Evaluator<'e> {
 }
 
 impl Evaluator<'_> {
-    pub fn interpret_expr(&self, e: &Expr<Option<Type>>) -> Residual {
-        let res: Result<Residual, ()> = Residual::from_expr(e);
-        match res {
-            Ok(r) => self.interpret(&r),
-            // TODO better error here
-            Err(_) => panic!("Error converting Expr to Residual"),
-        }
+    pub fn interpret_expr(&self, e: &Expr<Option<Type>>) -> Result<Residual, ExprToResidualError> {
+        self.interpret(&Residual::from_expr(e)?)
     }
 
     /// Interpret a typed expression into a residual
@@ -764,7 +760,7 @@ mod tests {
         };
         // principal -> principal because its eid is unknown
         assert_matches!(
-            eval.interpret_expr(&builder().var(Var::Principal)),
+            eval.interpret_expr(&builder().var(Var::Principal)).unwrap(),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Principal),
                 ..
@@ -772,7 +768,7 @@ mod tests {
         );
         // resource -> E::""
         assert_matches!(
-            eval.interpret_expr(&builder().var(Var::Resource)),
+            eval.interpret_expr(&builder().var(Var::Resource)).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::EntityUID(uid)),
@@ -785,7 +781,7 @@ mod tests {
         );
         // action is always known
         assert_matches!(
-            eval.interpret_expr(&builder().var(Var::Action)),
+            eval.interpret_expr(&builder().var(Var::Action)).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::EntityUID(uid)),
@@ -798,7 +794,7 @@ mod tests {
         );
         // context is always unknown
         assert_matches!(
-            eval.interpret_expr(&builder().var(Var::Context)),
+            eval.interpret_expr(&builder().var(Var::Context)).unwrap(),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Context),
                 ..
@@ -831,7 +827,7 @@ mod tests {
             eval.interpret_expr(&builder().and(
                 builder().noteq(builder().var(Var::Resource), builder().var(Var::Resource)),
                 builder().val(42)
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(false)),
@@ -937,10 +933,10 @@ mod tests {
         // Note that this expression is not an invalid input
         // The evaluator does not perform any validation
         assert_matches!(
-            eval.interpret_expr(&builder().or(
+            eval.interpret_expr(&builder().and(
                 builder().noteq(builder().var(Var::Resource), builder().var(Var::Resource)),
                 builder().val(42)
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Long(42)),

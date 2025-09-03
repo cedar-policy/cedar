@@ -20,6 +20,7 @@ use std::collections::HashSet;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::ast::{Annotations, Effect, EntityUID, Literal, Policy, PolicyID, ValueKind};
+use crate::tpe::err::{ExprToResidualError, MissingTypeAnnotationError, SlotNotSupportedError, UnknownNotSupportedError, ErrorNotSupportedError};
 use crate::validator::types::Type;
 use crate::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
@@ -73,7 +74,7 @@ impl Residual {
 
     /// Returns whether or not this residual is a concrete value
     pub fn is_concrete(&self) -> bool {
-        todo!()
+        matches!(self, Residual::Concrete { .. })
     }
 
     pub fn ty(&self) -> &Type {
@@ -84,10 +85,89 @@ impl Residual {
         }
     }
 
-    pub fn from_expr(value: &Expr<Option<Type>>) -> std::result::Result<Self, ()> {
-        match value {
-            _ => todo!(),
-        }
+    /// Convert an expression to a residual, returning an error if it can't be converted
+    /// due to slots, unknowns, or missing type annotations.
+    pub fn from_expr(expr: &Expr<Option<Type>>) -> std::result::Result<Self, ExprToResidualError> {
+        let ty = expr.data().clone().ok_or_else(|| {
+            MissingTypeAnnotationError
+        })?;
+
+        // Otherwise, convert to a partial residual
+        let kind = match expr.expr_kind() {
+            ast::ExprKind::Var(var) => ResidualKind::Var(*var),
+            ast::ExprKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => ResidualKind::If {
+                test_expr: Arc::new(Self::from_expr(test_expr)?),
+                then_expr: Arc::new(Self::from_expr(then_expr)?),
+                else_expr: Arc::new(Self::from_expr(else_expr)?),
+            },
+            ast::ExprKind::And { left, right } => ResidualKind::And {
+                left: Arc::new(Self::from_expr(left)?),
+                right: Arc::new(Self::from_expr(right)?),
+            },
+            ast::ExprKind::Or { left, right } => ResidualKind::Or {
+                left: Arc::new(Self::from_expr(left)?),
+                right: Arc::new(Self::from_expr(right)?),
+            },
+            ast::ExprKind::UnaryApp { op, arg } => ResidualKind::UnaryApp {
+                op: *op,
+                arg: Arc::new(Self::from_expr(arg)?),
+            },
+            ast::ExprKind::BinaryApp { op, arg1, arg2 } => ResidualKind::BinaryApp {
+                op: *op,
+                arg1: Arc::new(Self::from_expr(arg1)?),
+                arg2: Arc::new(Self::from_expr(arg2)?),
+            },
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                let residual_args: Result<Vec<_>, _> = args.iter().map(Self::from_expr).collect();
+                ResidualKind::ExtensionFunctionApp {
+                    fn_name: fn_name.clone(),
+                    args: Arc::new(residual_args?),
+                }
+            }
+            ast::ExprKind::GetAttr { expr, attr } => ResidualKind::GetAttr {
+                expr: Arc::new(Self::from_expr(expr)?),
+                attr: attr.clone(),
+            },
+            ast::ExprKind::HasAttr { expr, attr } => ResidualKind::HasAttr {
+                expr: Arc::new(Self::from_expr(expr)?),
+                attr: attr.clone(),
+            },
+            ast::ExprKind::Like { expr, pattern } => ResidualKind::Like {
+                expr: Arc::new(Self::from_expr(expr)?),
+                pattern: pattern.clone(),
+            },
+            ast::ExprKind::Is { expr, entity_type } => ResidualKind::Is {
+                expr: Arc::new(Self::from_expr(expr)?),
+                entity_type: entity_type.clone(),
+            },
+            ast::ExprKind::Set(elements) => {
+                let residual_elements: Result<Vec<_>, _> =
+                    elements.iter().map(|elem| Self::from_expr(elem)).collect();
+                ResidualKind::Set(Arc::new(residual_elements?))
+            }
+            ast::ExprKind::Record(map) => {
+                let residual_map: Result<BTreeMap<_, _>, _> = map
+                    .iter()
+                    .map(|(k, v)| Ok((k.clone(), Self::from_expr(v)?)))
+                    .collect();
+                ResidualKind::Record(Arc::new(residual_map?))
+            }
+            // Literals should be converted to concrete values
+            ast::ExprKind::Lit(lit) => {
+                let value = Value::new(lit.clone(), None);
+                return Ok(Residual::Concrete { value, ty });
+            }
+            // These are not supported in residuals
+            ast::ExprKind::Slot(_) => return Err(SlotNotSupportedError.into()),
+            ast::ExprKind::Unknown(_) => return Err(UnknownNotSupportedError.into()),
+            ast::ExprKind::Error { .. } => return Err(ErrorNotSupportedError.into()),
+        };
+
+        Ok(Residual::Partial { kind, ty })
     }
 }
 
