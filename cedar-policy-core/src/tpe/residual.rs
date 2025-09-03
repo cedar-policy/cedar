@@ -62,9 +62,13 @@ impl Residual {
         )
     }
 
-    /// All literal uids referenced by this template
+    /// All literal uids referenced by this residual
     pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
-        todo!()
+        match self {
+            Residual::Partial { kind, .. } => kind.all_literal_uids(),
+            Residual::Concrete { value, .. } => value.all_literal_uids(),
+            Residual::Error(_) => HashSet::new(),
+        }
     }
 
     /// Returns whether or not this residual is a concrete value
@@ -193,6 +197,61 @@ pub enum ResidualKind {
     Set(Arc<Vec<Residual>>),
     /// Anonymous record (whose elements may be arbitrary expressions)
     Record(Arc<BTreeMap<SmolStr, Residual>>),
+}
+
+impl ResidualKind {
+    /// All literal uids referenced by this residual kind
+    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
+        match self {
+            ResidualKind::Var(_) => HashSet::new(),
+            ResidualKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => {
+                let mut uids = test_expr.all_literal_uids();
+                uids.extend(then_expr.all_literal_uids());
+                uids.extend(else_expr.all_literal_uids());
+                uids
+            }
+            ResidualKind::And { left, right } | ResidualKind::Or { left, right } => {
+                let mut uids = left.all_literal_uids();
+                uids.extend(right.all_literal_uids());
+                uids
+            }
+            ResidualKind::UnaryApp { arg, .. } => arg.all_literal_uids(),
+            ResidualKind::BinaryApp { arg1, arg2, .. } => {
+                let mut uids = arg1.all_literal_uids();
+                uids.extend(arg2.all_literal_uids());
+                uids
+            }
+            ResidualKind::ExtensionFunctionApp { args, .. } => {
+                let mut uids = HashSet::new();
+                for arg in args.as_ref() {
+                    uids.extend(arg.all_literal_uids());
+                }
+                uids
+            }
+            ResidualKind::GetAttr { expr, .. }
+            | ResidualKind::HasAttr { expr, .. }
+            | ResidualKind::Like { expr, .. }
+            | ResidualKind::Is { expr, .. } => expr.all_literal_uids(),
+            ResidualKind::Set(elements) => {
+                let mut uids = HashSet::new();
+                for element in elements.as_ref() {
+                    uids.extend(element.all_literal_uids());
+                }
+                uids
+            }
+            ResidualKind::Record(map) => {
+                let mut uids = HashSet::new();
+                for value in map.values() {
+                    uids.extend(value.all_literal_uids());
+                }
+                uids
+            }
+        }
+    }
 }
 
 impl Residual {
