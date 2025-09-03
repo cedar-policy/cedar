@@ -1081,18 +1081,28 @@ impl Authorizer {
         &self,
         query: &Request,
         policy_set: &PolicySet,
-        loader: dyn EntityLoader,
+        loader: &dyn EntityLoader,
         max_iters: usize,
     ) -> Result<PartialResponse, EntitiesError> {
-        let loader_internal = move |requested| loader.load(requested);
+        use cedar_policy_core::authorizer::EntityLoaderInternal;
 
         let response = self.0.is_authorized_batched(
-            query.0.clone(),
+            &query.0,
             &policy_set.ast,
-            loader_internal,
+            &mut move |requested| {
+                let requested = requested
+                    .into_iter()
+                    .map(|id| EntityUid::ref_cast(id).clone())
+                    .collect();
+                loader
+                    .load_entities(&requested)
+                    .into_iter()
+                    .map(|(uid, entity)| (uid.0, entity.map(|e| e.0)))
+                    .collect()
+            },
             max_iters,
         )?;
-        PartialResponse(response)
+        Ok(PartialResponse(response))
     }
 
     /// A partially evaluated authorization request.
@@ -6151,7 +6161,7 @@ impl<'a> TestEntityLoader<'a> {
     }
 }
 
-impl<'_> EntityLoader for TestEntityLoader<'_> {
+impl EntityLoader for TestEntityLoader<'_> {
     fn load_entities(
         &self,
         uids: &std::collections::HashSet<EntityUid>,

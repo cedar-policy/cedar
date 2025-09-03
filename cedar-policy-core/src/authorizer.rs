@@ -70,6 +70,9 @@ impl Default for ErrorHandling {
     }
 }
 
+pub type EntityLoaderInternal =
+    dyn FnMut(&HashSet<EntityUID>) -> HashMap<EntityUID, Option<Entity>>;
+
 impl Authorizer {
     /// Create a new `Authorizer`
     pub fn new() -> Self {
@@ -104,9 +107,9 @@ impl Authorizer {
     /// of an [`Entities`] store.
     pub fn is_authorized_batched(
         &self,
-        request: Request,
+        request: &Request,
         policy_set: &PolicySet,
-        loader: &mut dyn FnMut(&HashSet<EntityUID>) -> HashMap<EntityUID, Option<Entity>>,
+        loader: &mut EntityLoaderInternal,
         max_iters: usize,
     ) -> Result<PartialResponse, EntitiesError> {
         let mut entities = Entities::new();
