@@ -45,7 +45,7 @@ pub use authorizer::Decision;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
 use cedar_policy_core::ast::{self, RequestSchema, RestrictedExpr};
-use cedar_policy_core::authorizer::{self, EntityLoaderInternal};
+use cedar_policy_core::authorizer::{self};
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
 use cedar_policy_core::evaluator::Evaluator;
@@ -6129,6 +6129,7 @@ pub fn compute_entity_manifest(
 /// Entity loader trait for batched evaluation.
 /// Loads entities on demand, returning `None` for missing entities.
 /// Loading more entities than requested is allowed.
+#[cfg(feature = "tpe")]
 pub trait EntityLoader {
     /// Load all entities for the given set of entity UIDs.
     /// Returns a map from [`EntityUID`] to Option<Entity>, where `None` indicates
@@ -6139,9 +6140,11 @@ pub trait EntityLoader {
     ) -> std::collections::HashMap<EntityUid, Option<Entity>>;
 }
 
-// Wrapper struct used to convert an EntityLoader to an `EntityLoaderInternal`
+/// Wrapper struct used to convert an EntityLoader to an `EntityLoaderInternal`
+#[cfg(feature = "tpe")]
 struct EntityLoaderWrapper<'a>(&'a mut dyn EntityLoader);
 
+#[cfg(feature = "tpe")]
 impl<'a> EntityLoaderInternal for EntityLoaderWrapper<'a> {
     fn load_entities(
         &mut self,
@@ -6161,10 +6164,12 @@ impl<'a> EntityLoaderInternal for EntityLoaderWrapper<'a> {
 
 /// Simple entity loader implementation that loads from a pre-existing Entities store
 #[derive(Debug)]
+#[cfg(feature = "tpe")]
 pub struct TestEntityLoader<'a> {
     entities: &'a Entities,
 }
 
+#[cfg(feature = "tpe")]
 impl<'a> TestEntityLoader<'a> {
     /// Create a new [`TestEntityLoader`] from an existing Entities store
     pub fn new(entities: &'a Entities) -> Self {
@@ -6172,6 +6177,7 @@ impl<'a> TestEntityLoader<'a> {
     }
 }
 
+#[cfg(feature = "tpe")]
 impl EntityLoader for TestEntityLoader<'_> {
     fn load_entities(
         &mut self,

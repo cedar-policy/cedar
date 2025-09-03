@@ -97,8 +97,11 @@ pub struct Response<'a> {
     false_forbids: HashSet<PolicyID>,
     // All of the [`Effect::Forbid`] policies that evaluated to a residual
     non_trivial_forbids: HashSet<PolicyID>,
-    // request
-    request: &'a PartialRequest,
+    // TODO we could make this owned, but would require a clone
+    // request used for this partial evaluation
+    // this is [`None`] for batched evaluation
+    request: Option<&'a PartialRequest>,
+    // TODO we could make this owned, but would require a clone
     // entities used for this partial evaluation, if any
     // this is [`None`] for batched evaluation
     entities: Option<&'a PartialEntities>,
@@ -110,7 +113,7 @@ impl<'a> Response<'a> {
     /// Construct a [`Response`] from an iterator of [`ResidualPolicy`]s
     pub fn new(
         residuals: impl Iterator<Item = ResidualPolicy>,
-        request: &'a PartialRequest,
+        request: Option<&'a PartialRequest>,
         entities: Option<&'a PartialEntities>,
         schema: &'a ValidatorSchema,
     ) -> Self {
@@ -241,7 +244,10 @@ impl<'a> Response<'a> {
         if let Some(partial_entities) = self.entities {
             let _ = partial_entities.check_consistency(entities)?;
         }
-        let _ = self.request.check_consistency(request)?;
+        if let Some(partial_request) = self.request {
+            let _ = partial_request.check_consistency(request)?;
+        }
+
         let authorizer = Authorizer::new();
         // PANIC SAFETY: policy ids should not clash
         #[allow(clippy::unwrap_used)]

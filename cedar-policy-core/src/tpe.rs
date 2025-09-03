@@ -98,7 +98,7 @@ pub fn is_authorized<'a>(
 
     // PANIC SAFETY: `id` should exist in the policy set
     #[allow(clippy::unwrap_used)]
-    Ok(Response::new(residuals, request, entities, schema))
+    Ok(Response::new(residuals, Some(request), Some(entities), schema))
 }
 
 /// Internal version of [`EntityLoader`]
@@ -226,7 +226,7 @@ pub fn is_authorized_batched<'a>(
     }
     Ok(Response::new(
         residuals.into_iter(),
-        &request,
+        None,
         None,
         schema,
     ))
