@@ -370,11 +370,11 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
             let Some((_, mut doc)) = self.documents.remove(&old_uri) else {
                 continue;
             };
-            if let Some(schema) = doc.clone().into_schema() {
+            if let Some(schema) = doc.as_schema() {
                 let _ = schema.update_linked_documents(Some(&new_uri));
             }
             doc.set_uri(new_uri.clone());
-            self.documents.insert(new_uri.clone(), doc.clone());
+            self.documents.insert(new_uri.clone(), doc);
         }
 
         let _ = self.client.code_lens_refresh().await;
