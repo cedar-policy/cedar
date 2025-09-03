@@ -102,6 +102,8 @@ pub enum TPEError {
     /// Error thrown when the typechecker fails to typecheck a policy
     #[error("Failed validation: {:#?}", .0)]
     Validation(Vec<ValidationError>),
+    #[error(transparent)]
+    ExprToResidual(ExprToResidualError),
 }
 
 /// Errors for Batched Evaluation

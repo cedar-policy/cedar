@@ -41,7 +41,7 @@ pub struct Evaluator<'e> {
 
 impl Evaluator<'_> {
     pub fn interpret_expr(&self, e: &Expr<Option<Type>>) -> Result<Residual, ExprToResidualError> {
-        self.interpret(&Residual::from_expr(e)?)
+        Ok(self.interpret(&Residual::from_expr(e)?))
     }
 
     /// Interpret a typed expression into a residual
@@ -839,7 +839,7 @@ mod tests {
         // Note that this expression is not an invalid input
         // The evaluator does not perform any validation
         assert_matches!(
-            eval.interpret_expr(&builder().and(builder().var(Var::Principal), builder().val(true))),
+            eval.interpret_expr(&builder().and(builder().var(Var::Principal), builder().val(true))).unwrap(),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Principal),
                 ..
@@ -852,7 +852,7 @@ mod tests {
                     builder().val(0)
                 ),
                 builder().val(42)
-            )),
+            )).unwrap(),
             Residual::Error(_),
         );
         // resource == resource && 42 => 42
@@ -866,7 +866,7 @@ mod tests {
                     builder().var(Var::Resource)
                 ),
                 builder().val(42)
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Long(42)),
@@ -901,7 +901,7 @@ mod tests {
                     builder().var(Var::Resource)
                 ),
                 builder().val(42)
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -913,7 +913,7 @@ mod tests {
         // Note that this expression is not an invalid input
         // The evaluator does not perform any validation
         assert_matches!(
-            eval.interpret_expr(&builder().or(builder().var(Var::Principal), builder().val(false))),
+            eval.interpret_expr(&builder().or(builder().var(Var::Principal), builder().val(false))).unwrap(),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Principal),
                 ..
@@ -926,7 +926,7 @@ mod tests {
                     builder().val(0)
                 ),
                 builder().val(42)
-            )),
+            )).unwrap(),
             Residual::Error(_),
         );
         // resource != resource || 42 => 42
@@ -968,7 +968,7 @@ mod tests {
                 builder().is_eq(builder().var(Var::Action), builder().var(Var::Action)),
                 builder().var(Var::Principal),
                 builder().val(2)
-            )),
+            )).unwrap(),
             Residual::Partial {
                 kind: ResidualKind::Var(Var::Principal),
                 ..
@@ -979,7 +979,7 @@ mod tests {
                 builder().is_eq(builder().var(Var::Principal), builder().var(Var::Principal)),
                 builder().var(Var::Principal),
                 builder().val(2)
-            )),
+            )).unwrap(),
             Residual::Partial {
                 kind: ResidualKind::If { test_expr, then_expr, else_expr },
                 ..
@@ -1011,7 +1011,7 @@ mod tests {
             eval.interpret_expr(&builder().is_entity_type(
                 builder().var(Var::Resource),
                 dummy_uid().entity_type().clone()
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1025,7 +1025,7 @@ mod tests {
             eval.interpret_expr(&builder().is_entity_type(
                 builder().var(Var::Principal),
                 dummy_uid().entity_type().clone()
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1056,7 +1056,7 @@ mod tests {
             eval.interpret_expr(&builder().like(
                 builder().val("aaa"),
                 Pattern::from(vec![PatternElem::Char('a'), PatternElem::Wildcard])
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1067,7 +1067,7 @@ mod tests {
         );
         // Note that this expression is not valid input
         assert_matches!(
-            eval.interpret_expr(&builder().like(builder().var(Var::Principal), Pattern::from(vec![PatternElem::Char('a'), PatternElem::Wildcard]))),
+            eval.interpret_expr(&builder().like(builder().var(Var::Principal), Pattern::from(vec![PatternElem::Char('a'), PatternElem::Wildcard]))).unwrap(),
            Residual::Partial { kind: ResidualKind::Like { expr, .. }, .. } => {
                 assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
             }
@@ -1091,7 +1091,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(42))),
+            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(42))).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Long(-42)),
@@ -1102,13 +1102,13 @@ mod tests {
         );
         // This is not a valid input
         assert_matches!(
-            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().var(Var::Principal))),
+            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().var(Var::Principal))).unwrap(),
             Residual::Partial { kind: ResidualKind::UnaryApp { op: UnaryOp::Neg, arg }, .. } => {
                 assert_matches!(arg.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
             }
         );
         assert_matches!(
-            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(i64::MIN))),
+            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(i64::MIN))).unwrap(),
             Residual::Error(_),
         );
     }
@@ -1155,7 +1155,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         assert_matches!(
-            eval.interpret_expr(&builder().get_attr(builder().var(Var::Resource), "s".parse().unwrap())),
+            eval.interpret_expr(&builder().get_attr(builder().var(Var::Resource), "s".parse().unwrap())).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::String(s)),
@@ -1172,7 +1172,7 @@ mod tests {
             eval.interpret_expr(&builder().get_attr(
                 builder().var(Var::Principal),
                 "s".parse().unwrap()
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::GetAttr { expr, .. }, .. } => {
                 assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
             }
@@ -1182,7 +1182,7 @@ mod tests {
             eval.interpret_expr(&builder().get_attr(
                 builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
                 "s".parse().unwrap()
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::GetAttr { expr, .. }, .. } => {
                 assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
             }
@@ -1193,7 +1193,7 @@ mod tests {
             eval.interpret_expr(&builder().get_attr(
                 builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
                 "s".parse().unwrap()
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::GetAttr { expr, .. }, .. } => {
                 assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
             }
@@ -1201,7 +1201,7 @@ mod tests {
         assert_matches!(
             eval.interpret_expr(
                 &builder().get_attr(builder().var(Var::Resource), "baz".parse().unwrap())
-            ),
+            ).unwrap(),
             Residual::Error(_),
         );
     }
@@ -1250,7 +1250,7 @@ mod tests {
         assert_matches!(
             eval.interpret_expr(
                 &builder().has_attr(builder().var(Var::Resource), "s".parse().unwrap())
-            ),
+            ).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1260,7 +1260,7 @@ mod tests {
             }
         );
         assert_matches!(
-            eval.interpret_expr(&builder().has_attr(builder().var(Var::Principal), "s".parse().unwrap())),
+            eval.interpret_expr(&builder().has_attr(builder().var(Var::Principal), "s".parse().unwrap())).unwrap(),
             Residual::Partial {
                 kind: ResidualKind::HasAttr { expr, .. },
                 ..
@@ -1273,7 +1273,7 @@ mod tests {
             eval.interpret_expr(&builder().has_attr(
                 builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
                 "s".parse().unwrap()
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::HasAttr { expr, .. }, .. } => {
                 assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
             }
@@ -1284,7 +1284,7 @@ mod tests {
             eval.interpret_expr(&builder().has_attr(
                 builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
                 "s".parse().unwrap()
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::HasAttr { expr, .. }, .. } => {
                 assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
             }
@@ -1310,7 +1310,7 @@ mod tests {
         assert_matches!(
             eval.interpret_expr(&builder().set(
                 [builder().var(Var::Resource)]
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Set(s),
@@ -1325,7 +1325,7 @@ mod tests {
             eval.interpret_expr(&builder().set(
                 [builder().var(Var::Principal),
                 builder().var(Var::Resource),]
-            )),
+            )).unwrap(),
             Residual::Partial {
                 kind: ResidualKind::Set(s),
                 ..
@@ -1339,7 +1339,7 @@ mod tests {
             eval.interpret_expr(&builder().set([
                 builder().neg(builder().val(i64::MIN)),
                 builder().var(Var::Resource),
-            ])),
+            ])).unwrap(),
             Residual::Error(_)
         )
     }
@@ -1366,7 +1366,7 @@ mod tests {
                     "s".into(),
                     builder().var(Var::Resource),
                 )]
-            ).unwrap()),
+            ).unwrap()).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Record(m),
@@ -1383,7 +1383,7 @@ mod tests {
                     "s".into(),
                     builder().var(Var::Principal),
                 )]
-            ).unwrap()),
+            ).unwrap()).unwrap(),
             Residual::Partial {
                 kind: ResidualKind::Record(m),
                 ..
@@ -1401,7 +1401,7 @@ mod tests {
                         ("".into(), builder().var(Var::Resource),)
                     ])
                     .unwrap()
-            ),
+            ).unwrap(),
             Residual::Error(_)
         )
     }
@@ -1425,7 +1425,7 @@ mod tests {
         assert_matches!(
             eval.interpret_expr(
                 &builder().call_extension_fn("decimal".parse().unwrap(), [builder().val("0.0")])
-            ),
+            ).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::ExtensionValue(_),
@@ -1439,7 +1439,7 @@ mod tests {
             eval.interpret_expr(&builder().call_extension_fn(
                 "decimal".parse().unwrap(),
                 [builder().var(Var::Principal)]
-            )),
+            )).unwrap(),
             Residual::Partial {
                 kind: ResidualKind::ExtensionFunctionApp { fn_name, args, .. },
                 ..
@@ -1454,7 +1454,7 @@ mod tests {
             eval.interpret_expr(&builder().call_extension_fn(
                 "decimal".parse().unwrap(),
                 [builder().neg(builder().val(i64::MIN))]
-            )),
+            )).unwrap(),
             Residual::Error(_)
         )
     }
@@ -1507,7 +1507,7 @@ mod tests {
                 BinaryOp::Eq,
                 builder().var(Var::Resource),
                 builder().val(dummy_uid())
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1522,7 +1522,7 @@ mod tests {
                 BinaryOp::Eq,
                 builder().var(Var::Principal),
                 builder().val(dummy_uid())
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, .. }, .. } => {
                 assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
             }
@@ -1533,7 +1533,7 @@ mod tests {
                 BinaryOp::Add,
                 builder().val(i64::MAX),
                 builder().val(i64::MAX)
-            )),
+            )).unwrap(),
             Residual::Error(_)
         );
 
@@ -1542,7 +1542,7 @@ mod tests {
                 BinaryOp::Contains,
                 builder().set([builder().val(dummy_uid())]),
                 builder().var(Var::Resource)
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1557,7 +1557,7 @@ mod tests {
                 BinaryOp::Contains,
                 builder().set([builder().val(dummy_uid())]),
                 builder().var(Var::Principal)
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Contains, arg2, .. }, .. } => {
                 assert_matches!(arg2.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
             }
@@ -1568,7 +1568,7 @@ mod tests {
                 BinaryOp::In,
                 builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
                 builder().var(Var::Resource)
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(false)),
@@ -1584,7 +1584,7 @@ mod tests {
                 BinaryOp::In,
                 builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
                 builder().var(Var::Resource)
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::In, arg1, arg2 }, .. } => {
                 assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
                 assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
@@ -1597,7 +1597,7 @@ mod tests {
                 BinaryOp::In,
                 builder().val(EntityUID::from_normalized_str(r#"E::"a""#).unwrap()),
                 builder().var(Var::Resource)
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::In, arg1, arg2 }, .. } => {
                 assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
                 assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
@@ -1609,7 +1609,7 @@ mod tests {
                 BinaryOp::HasTag,
                 builder().var(Var::Resource),
                 builder().val("s")
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1624,7 +1624,7 @@ mod tests {
                 BinaryOp::GetTag,
                 builder().var(Var::Resource),
                 builder().val("s")
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::String(s)),
@@ -1642,7 +1642,7 @@ mod tests {
                 BinaryOp::HasTag,
                 builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
                 builder().val("s")
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::HasTag, arg1, .. }, .. } => {
                 assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
             }
@@ -1654,7 +1654,7 @@ mod tests {
                 BinaryOp::HasTag,
                 builder().val(EntityUID::from_normalized_str(r#"E::"a""#).unwrap()),
                 builder().val("s")
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::HasTag, arg1, .. }, .. } => {
                 assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
             }
@@ -1684,7 +1684,7 @@ mod tests {
                 BinaryOp::ContainsAll,
                 builder().set([builder().val(true), builder().val(false)]),
                 builder().set([builder().val(true), builder().val(true)])
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1699,7 +1699,7 @@ mod tests {
                 BinaryOp::ContainsAll,
                 builder().set([builder().val(true), builder().binary_app(BinaryOp::Eq, builder().var(Var::Principal), builder().var(Var::Resource))]),
                 builder().set([builder().val(true), builder().val(true)])
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::ContainsAll, arg1, arg2 }, .. } => {
                 assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Set(s), ..} => {
                     assert_matches!(s.as_slice(), [Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::Bool(true)), .. }, .. }, Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }] => {
@@ -1718,7 +1718,7 @@ mod tests {
                 BinaryOp::ContainsAny,
                 builder().set([builder().val(true), builder().val(false)]),
                 builder().set([builder().val(true), builder().val(true)])
-            )),
+            )).unwrap(),
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(true)),
@@ -1733,7 +1733,7 @@ mod tests {
                 BinaryOp::ContainsAny,
                 builder().set([builder().val(true), builder().binary_app(BinaryOp::Eq, builder().var(Var::Principal), builder().var(Var::Resource))]),
                 builder().set([builder().val(true), builder().val(true)])
-            )),
+            )).unwrap(),
             Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::ContainsAny, arg1, arg2 }, .. } => {
                 assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Set(s), ..} => {
                     assert_matches!(s.as_slice(), [Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::Bool(true)), .. }, .. }, Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }] => {

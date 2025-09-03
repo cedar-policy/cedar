@@ -150,7 +150,7 @@ impl Residual {
                 ResidualKind::Set(Arc::new(residual_elements?))
             }
             ast::ExprKind::Record(map) => {
-                let residual_map: Result<BTreeMap<_, _>, _> = map
+                let residual_map: Result<BTreeMap<_, _>, ExprToResidualError> = map
                     .iter()
                     .map(|(k, v)| Ok((k.clone(), Self::from_expr(v)?)))
                     .collect();

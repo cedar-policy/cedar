@@ -89,16 +89,30 @@ pub fn is_authorized<'a>(
         entities,
         extensions: Extensions::all_available(),
     };
-    let residuals = exprs.into_iter().map(|(id, expr)| {
-        ResidualPolicy::new(
-            Arc::new(evaluator.interpret_expr(&expr)),
-            Arc::new(ps.get(id).unwrap().clone()),
-        )
-    });
+    let residuals: Result<Vec<_>, TPEError> = exprs
+        .into_iter()
+        .map(|(id, expr)| {
+            let residual = evaluator
+                .interpret_expr(&expr)
+                .map_err(TPEError::ExprToResidual)?;
+            // PANIC SAFETY: exprs and policy set contain the same policy ids
+            #[allow(clippy::unwrap_used)]
+            Ok(ResidualPolicy::new(
+                Arc::new(residual),
+                Arc::new(ps.get(id).unwrap().clone()),
+            ))
+        })
+        .collect();
+    let residuals = residuals?;
 
     // PANIC SAFETY: `id` should exist in the policy set
     #[allow(clippy::unwrap_used)]
-    Ok(Response::new(residuals, Some(request), Some(entities), schema))
+    Ok(Response::new(
+        residuals.into_iter(),
+        Some(request),
+        Some(entities),
+        schema,
+    ))
 }
 
 /// Internal version of [`EntityLoader`]
@@ -165,15 +179,19 @@ pub fn is_authorized_batched<'a>(
         entities: &entities,
         extensions: Extensions::all_available(),
     };
-    let mut residuals: Vec<ResidualPolicy> = exprs
+    let mut residuals: Result<Vec<ResidualPolicy>, BatchedEvalError> = exprs
         .into_iter()
         .map(|(id, expr)| {
-            ResidualPolicy::new(
-                Arc::new(initial_evaluator.interpret_expr(&expr)),
+            let residual = initial_evaluator
+                .interpret_expr(&expr)
+                .map_err(BatchedEvalError::from)?;
+            Ok(ResidualPolicy::new(
+                Arc::new(residual),
                 Arc::new(ps.get(id).unwrap().clone()),
-            )
+            ))
         })
         .collect();
+    let mut residuals = residuals?;
 
     for i in 0..max_iters {
         eprintln!("iter {i}");
@@ -192,10 +210,12 @@ pub fn is_authorized_batched<'a>(
         let loaded_entities = loader.load_entities(&to_load);
         let mut loaded_partial = vec![];
         for (id, e_option) in loaded_entities {
-            loaded_partial.push(match e_option {
-                Some(e) => (id, PartialEntity::try_from(e)?),
-                None => (id.clone(), PartialEntity::try_from(Entity::with_uid(id))?),
-            })
+            let partial_entity = match e_option {
+                Some(e) => PartialEntity::try_from(e).map_err(BatchedEvalError::from)?,
+                None => PartialEntity::try_from(Entity::with_uid(id.clone()))
+                    .map_err(BatchedEvalError::from)?,
+            };
+            loaded_partial.push((id, partial_entity));
         }
 
         entities.add_entities(loaded_partial.into_iter(), schema)?;
@@ -224,12 +244,7 @@ pub fn is_authorized_batched<'a>(
             break;
         }
     }
-    Ok(Response::new(
-        residuals.into_iter(),
-        None,
-        None,
-        schema,
-    ))
+    Ok(Response::new(residuals.into_iter(), None, None, schema))
 }
 
 #[cfg(test)]
