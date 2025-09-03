@@ -103,7 +103,6 @@ impl EntityUIDEntry {
     /// A value, if the entry is concrete
     /// An unknown corresponding to the passed `var`
     pub fn evaluate(&self, var: Var) -> PartialValue {
-        eprintln!("evaluating var {} entry {:?}", var, self);
         match self {
             EntityUIDEntry::Known { euid, loc } => {
                 Value::new(Arc::unwrap_or_clone(Arc::clone(euid)), loc.clone()).into()

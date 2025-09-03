@@ -111,48 +111,6 @@ impl PartialResponse {
         }
     }
 
-    /// Create a partial response from a set of policies,
-    /// making all of them initially a residual.
-    pub fn from_policy_set(policy_set: &PolicySet, request: Arc<Request>) -> Self {
-        let mut residual_permits = HashMap::new();
-        let mut residual_forbids = HashMap::new();
-        for policy in policy_set.policies() {
-            let annotations = policy.annotations_arc().clone();
-            match policy.effect() {
-                Effect::Permit => {
-                    residual_permits.insert(
-                        policy.id().clone(),
-                        (Arc::new(policy.condition()).clone(), annotations),
-                    );
-                }
-                Effect::Forbid => {
-                    residual_forbids.insert(
-                        policy.id().clone(),
-                        (Arc::new(policy.condition()).clone(), annotations),
-                    );
-                }
-            }
-        }
-        Self::new(
-            HashMap::new(), // satisfied_permits
-            HashMap::new(), // false_permits
-            residual_permits,
-            HashMap::new(), // satisfied_forbids
-            HashMap::new(), // false_forbids
-            residual_forbids,
-            Vec::new(),
-            request,
-        )
-    }
-
-    /// Iterate over all [`EntityUID`] referenced by residuals
-    /// in this partial response.
-    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
-        self.all_residuals()
-            .flat_map(|p| p.all_literal_uids().into_iter())
-            .collect()
-    }
-
     /// Convert this response into a concrete evaluation response.
     /// All residuals are treated as errors
     pub fn concretize(self) -> Response {
