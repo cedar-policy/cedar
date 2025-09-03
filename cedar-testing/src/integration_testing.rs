@@ -346,7 +346,7 @@ pub fn perform_integration_test(
         let mut loader = TestEntityLoader::new(entities);
         // TODO use level instead of 50 here
         let batched_response = test_impl
-            .is_authorized_batched(&request, policies, &mut loader, 50)
+            .is_authorized_batched(&request, policies, schema, &mut loader, 50)
             .expect("Batched authorization failed");
         eprintln!("batched response: {:?}", batched_response);
 

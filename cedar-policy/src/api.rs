@@ -5116,6 +5116,7 @@ mod tpe {
     use cedar_policy_core::ast;
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::tpe;
+    use cedar_policy_core::tpe::{err::BatchedEvalError, EntityLoaderInternal};
     use cedar_policy_core::{
         entities::conformance::EntitySchemaConformanceChecker, extensions::Extensions,
         validator::CoreSchema,
@@ -5123,6 +5124,8 @@ mod tpe {
     use itertools::Itertools;
     use ref_cast::RefCast;
 
+    use crate::Entity;
+    #[cfg(feature = "partial-eval")]
     use crate::{
         api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
         PartialRequestCreationError, PermissionQueryError, Policy, PolicySet, Request,
@@ -5299,9 +5302,9 @@ mod tpe {
     /// A partial [`Response`]
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
-    pub struct Response<'a>(pub(crate) tpe::response::Response<'a>);
+    pub struct TPEResponse<'a>(pub(crate) tpe::response::Response<'a>);
 
-    impl Response<'_> {
+    impl TPEResponse<'_> {
         /// Attempt to get the authorization decision
         pub fn decision(&self) -> Option<Decision> {
             self.0.decision()
@@ -5320,6 +5323,70 @@ mod tpe {
         }
     }
 
+    /// Entity loader trait for batched evaluation.
+    /// Loads entities on demand, returning `None` for missing entities.
+    /// Loading more entities than requested is allowed.
+    #[cfg(feature = "tpe")]
+    pub trait EntityLoader {
+        /// Load all entities for the given set of entity UIDs.
+        /// Returns a map from [`EntityUID`] to Option<Entity>, where `None` indicates
+        /// the entity does not exist.
+        fn load_entities(
+            &mut self,
+            uids: &std::collections::HashSet<EntityUid>,
+        ) -> std::collections::HashMap<EntityUid, Option<Entity>>;
+    }
+
+    /// Wrapper struct used to convert an EntityLoader to an `EntityLoaderInternal`
+    struct EntityLoaderWrapper<'a>(&'a mut dyn EntityLoader);
+
+    impl<'a> EntityLoaderInternal for EntityLoaderWrapper<'a> {
+        fn load_entities(
+            &mut self,
+            uids: &std::collections::HashSet<ast::EntityUID>,
+        ) -> std::collections::HashMap<ast::EntityUID, Option<ast::Entity>> {
+            let ids = uids
+                .iter()
+                .map(|id| EntityUid::ref_cast(id).clone())
+                .collect();
+            self.0
+                .load_entities(&ids)
+                .into_iter()
+                .map(|(uid, entity)| (uid.0, entity.map(|e| e.0)))
+                .collect()
+        }
+    }
+
+    /// Simple entity loader implementation that loads from a pre-existing Entities store
+    #[derive(Debug)]
+    #[cfg(feature = "tpe")]
+    pub struct TestEntityLoader<'a> {
+        entities: &'a Entities,
+    }
+
+    #[cfg(feature = "tpe")]
+    impl<'a> TestEntityLoader<'a> {
+        /// Create a new [`TestEntityLoader`] from an existing Entities store
+        pub fn new(entities: &'a Entities) -> Self {
+            Self { entities }
+        }
+    }
+
+    #[cfg(feature = "tpe")]
+    impl EntityLoader for TestEntityLoader<'_> {
+        fn load_entities(
+            &mut self,
+            uids: &std::collections::HashSet<EntityUid>,
+        ) -> std::collections::HashMap<EntityUid, Option<Entity>> {
+            uids.iter()
+                .map(|uid| {
+                    let entity = self.entities.get(uid).cloned();
+                    (uid.clone(), entity)
+                })
+                .collect()
+        }
+    }
+
     impl PolicySet {
         /// Perform type-aware partial evaluation on this [`PolicySet`]
         /// If successful, the result is a [`PolicySet`] containing residual
@@ -5329,11 +5396,11 @@ mod tpe {
             request: &'a PartialRequest,
             entities: &'a PartialEntities,
             schema: &'a Schema,
-        ) -> Result<Response<'a>, tpe_err::TPEError> {
+        ) -> Result<TPEResponse<'a>, tpe_err::TPEError> {
             use cedar_policy_core::tpe::is_authorized;
             let ps = &self.ast;
             let res = is_authorized(ps, &request.0, &entities.0, &schema.0)?;
-            Ok(Response(res))
+            Ok(TPEResponse(res))
         }
 
         /// Like [`Authorizer::is_authorized`] but uses an [`EntityLoader`] to load
@@ -5344,24 +5411,23 @@ mod tpe {
         /// Otherwise, it iterates `max_iters` times and returns
         /// a partial result.
         ///
-        #[doc = include_str!("../experimental_warning.md")]
-        #[cfg(feature = "partial-eval")]
-        pub fn is_authorized_batched(
+        pub fn is_authorized_batched<'a>(
             &self,
             query: &Request,
             schema: &'a Schema,
             loader: &mut dyn EntityLoader,
             max_iters: usize,
-        ) -> Result<PartialResponse, EntitiesError> {
+        ) -> Result<TPEResponse<'a>, BatchedEvalError> {
             use cedar_policy_core::tpe::is_authorized_batched;
+
             let response = is_authorized_batched(
                 &query.0,
                 &self.ast,
-                schema,
+                &schema.0,
                 &mut EntityLoaderWrapper(loader),
                 max_iters,
             )?;
-            Ok(PartialResponse(response))
+            Ok(TPEResponse(response))
         }
 
         /// Perform a permission query on the resource
@@ -6124,70 +6190,4 @@ pub fn compute_entity_manifest(
 ) -> Result<EntityManifest, EntityManifestError> {
     entity_manifest::compute_entity_manifest(&validator.0, &pset.ast)
         .map_err(std::convert::Into::into)
-}
-
-/// Entity loader trait for batched evaluation.
-/// Loads entities on demand, returning `None` for missing entities.
-/// Loading more entities than requested is allowed.
-#[cfg(feature = "tpe")]
-pub trait EntityLoader {
-    /// Load all entities for the given set of entity UIDs.
-    /// Returns a map from [`EntityUID`] to Option<Entity>, where `None` indicates
-    /// the entity does not exist.
-    fn load_entities(
-        &mut self,
-        uids: &std::collections::HashSet<EntityUid>,
-    ) -> std::collections::HashMap<EntityUid, Option<Entity>>;
-}
-
-/// Wrapper struct used to convert an EntityLoader to an `EntityLoaderInternal`
-#[cfg(feature = "tpe")]
-struct EntityLoaderWrapper<'a>(&'a mut dyn EntityLoader);
-
-#[cfg(feature = "tpe")]
-impl<'a> EntityLoaderInternal for EntityLoaderWrapper<'a> {
-    fn load_entities(
-        &mut self,
-        uids: &std::collections::HashSet<ast::EntityUID>,
-    ) -> std::collections::HashMap<ast::EntityUID, Option<ast::Entity>> {
-        let ids = uids
-            .iter()
-            .map(|id| EntityUid::ref_cast(id).clone())
-            .collect();
-        self.0
-            .load_entities(&ids)
-            .into_iter()
-            .map(|(uid, entity)| (uid.0, entity.map(|e| e.0)))
-            .collect()
-    }
-}
-
-/// Simple entity loader implementation that loads from a pre-existing Entities store
-#[derive(Debug)]
-#[cfg(feature = "tpe")]
-pub struct TestEntityLoader<'a> {
-    entities: &'a Entities,
-}
-
-#[cfg(feature = "tpe")]
-impl<'a> TestEntityLoader<'a> {
-    /// Create a new [`TestEntityLoader`] from an existing Entities store
-    pub fn new(entities: &'a Entities) -> Self {
-        Self { entities }
-    }
-}
-
-#[cfg(feature = "tpe")]
-impl EntityLoader for TestEntityLoader<'_> {
-    fn load_entities(
-        &mut self,
-        uids: &std::collections::HashSet<EntityUid>,
-    ) -> std::collections::HashMap<EntityUid, Option<Entity>> {
-        uids.iter()
-            .map(|uid| {
-                let entity = self.entities.get(uid).cloned();
-                (uid.clone(), entity)
-            })
-            .collect()
-    }
 }
