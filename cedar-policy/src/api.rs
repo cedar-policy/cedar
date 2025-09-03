@@ -5364,10 +5364,6 @@ mod tpe {
             Ok(Response(res))
         }
 
-        pub fn batched_eval() {
-            todo!()
-        }
-
         /// Perform a permission query on the resource
         pub fn query_resource(
             &self,
