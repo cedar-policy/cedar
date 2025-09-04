@@ -25,8 +25,7 @@ use crate::cedar_test_impl::*;
 #[cfg(feature = "entity-manifest")]
 use cedar_policy::compute_entity_manifest;
 use cedar_policy::{
-    Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, Schema, ValidationMode,
-    Validator,
+    Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, Schema, TestEntityLoader, ValidationMode, Validator
 };
 use serde::{Deserialize, Serialize};
 use std::{
