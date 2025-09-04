@@ -215,7 +215,7 @@ impl<'a> Response<'a> {
 
     /// Attempt to get the authorization decision
     pub fn decision(&self) -> Option<Decision> {
-        self.decison.clone()
+        self.decison
     }
 
     /// Perform reauthorization
@@ -224,17 +224,16 @@ impl<'a> Response<'a> {
         request: &Request,
         entities: &Entities,
     ) -> Result<crate::authorizer::Response, ReauthorizationError> {
-        let _ = self
-            .schema
+        self.schema
             .validate_request(request, Extensions::all_available())?;
-        let core_schema = CoreSchema::new(&self.schema);
+        let core_schema = CoreSchema::new(self.schema);
         let entities_checker =
             EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
         for entity in entities.iter() {
-            entities_checker.validate_entity(&entity)?;
+            entities_checker.validate_entity(entity)?;
         }
-        let _ = self.entities.check_consistency(entities)?;
-        let _ = self.request.check_consistency(request)?;
+        self.entities.check_consistency(entities)?;
+        self.request.check_consistency(request)?;
         let authorizer = Authorizer::new();
         // PANIC SAFETY: policy ids should not clash
         #[allow(clippy::unwrap_used)]

@@ -82,8 +82,7 @@ fn parse_collect_errors<'a, P, T>(
 }
 
 // Thread-safe "global" parsers, initialized at first use
-static SCHEMA_PARSER: LazyLock<grammar::SchemaParser> =
-    LazyLock::new(|| grammar::SchemaParser::new());
+static SCHEMA_PARSER: LazyLock<grammar::SchemaParser> = LazyLock::new(grammar::SchemaParser::new);
 
 /// Parse errors for parsing a schema in the Cedar syntax
 //

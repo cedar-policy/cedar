@@ -71,7 +71,7 @@ pub fn is_authorized<'a>(
         }
     }
     let evaluator = Evaluator {
-        request: &request,
+        request,
         entities,
         extensions: Extensions::all_available(),
     };

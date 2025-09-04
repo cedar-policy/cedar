@@ -5219,7 +5219,7 @@ mod tpe {
                          .0
                         .get_context_attrs()
                         .unwrap()
-                        .into_iter()
+                        .iter()
                         .map(|(a, v)| (a.to_string(), RestrictedExpression(v.clone().into()))),
                 )
                 .unwrap(),
@@ -5272,7 +5272,7 @@ mod tpe {
                          .0
                         .get_context_attrs()
                         .unwrap()
-                        .into_iter()
+                        .iter()
                         .map(|(a, v)| (a.to_string(), RestrictedExpression(v.clone().into()))),
                 )
                 .unwrap(),
@@ -5354,7 +5354,7 @@ mod tpe {
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
             // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
             #[allow(clippy::unwrap_used)]
-            let policies = &PolicySet::from_policies(
+            let policies = &Self::from_policies(
                 residuals
                     .0
                     .residual_policies()
@@ -5370,7 +5370,7 @@ mod tpe {
                     .filter(|entity| {
                         entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
                     })
-                    .map(|entity| entity.uid())
+                    .map(super::Entity::uid)
                     .collect_vec()
                     .into_iter()),
                 Some(Decision::Deny) => Ok(vec![].into_iter()),
@@ -5390,7 +5390,7 @@ mod tpe {
                             .decision
                             == Decision::Allow
                     })
-                    .map(|entity| entity.uid())
+                    .map(super::Entity::uid)
                     .collect_vec()
                     .into_iter()),
             }
@@ -5414,7 +5414,7 @@ mod tpe {
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
             // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
             #[allow(clippy::unwrap_used)]
-            let policies = &PolicySet::from_policies(
+            let policies = &Self::from_policies(
                 residuals
                     .0
                     .residual_policies()
@@ -5430,7 +5430,7 @@ mod tpe {
                     .filter(|entity| {
                         entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
                     })
-                    .map(|entity| entity.uid())
+                    .map(super::Entity::uid)
                     .collect_vec()
                     .into_iter()),
                 Some(Decision::Deny) => Ok(vec![].into_iter()),
@@ -5450,7 +5450,7 @@ mod tpe {
                             .decision
                             == Decision::Allow
                     })
-                    .map(|entity| entity.uid())
+                    .map(super::Entity::uid)
                     .collect_vec()
                     .into_iter()),
             }

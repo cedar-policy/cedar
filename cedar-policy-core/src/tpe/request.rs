@@ -98,8 +98,8 @@ impl PartialRequest {
     ) -> std::result::Result<Self, RequestValidationError> {
         let req = Self {
             principal,
-            resource,
             action,
+            resource,
             context,
         };
         req.validate(schema)?;
@@ -115,8 +115,8 @@ impl PartialRequest {
     ) -> Self {
         Self {
             principal,
-            resource,
             action,
+            resource,
             context,
         }
     }
@@ -217,17 +217,14 @@ impl PartialRequest {
                     }
                     .into());
                 }
-                match &self.principal.eid {
-                    Some(eid) => {
-                        if eid != euid.eid() {
-                            return Err(InconsistentPrincipalEidError {
-                                partial: eid.clone(),
-                                concrete: euid.eid().clone(),
-                            }
-                            .into());
+                if let Some(eid) = &self.principal.eid {
+                    if eid != euid.eid() {
+                        return Err(InconsistentPrincipalEidError {
+                            partial: eid.clone(),
+                            concrete: euid.eid().clone(),
                         }
+                        .into());
                     }
-                    None => {}
                 }
             }
         }
@@ -244,17 +241,14 @@ impl PartialRequest {
                     }
                     .into());
                 }
-                match &self.resource.eid {
-                    Some(eid) => {
-                        if eid != euid.eid() {
-                            return Err(InconsistentResourceEidError {
-                                partial: eid.clone(),
-                                concrete: euid.eid().clone(),
-                            }
-                            .into());
+                if let Some(eid) = &self.resource.eid {
+                    if eid != euid.eid() {
+                        return Err(InconsistentResourceEidError {
+                            partial: eid.clone(),
+                            concrete: euid.eid().clone(),
                         }
+                        .into());
                     }
-                    None => {}
                 }
             }
         }
@@ -382,23 +376,23 @@ impl<'s> RequestBuilder<'s> {
         candidate: &EntityUID,
     ) -> std::result::Result<(), RequestBuilderError> {
         if let PartialEntityUID { eid: Some(eid), .. } = &self.partial_request.principal {
-            return Err(ExistingPrincipalError {
+            Err(ExistingPrincipalError {
                 principal: EntityUID::from_components(
                     self.partial_request.principal.ty.clone(),
                     eid.clone(),
                     None,
                 ),
             }
-            .into());
+            .into())
         } else {
             // PANIC SAFETY: partial_request is validated and hence the entity type must exist in the schema
             #[allow(clippy::unwrap_used)]
             if candidate.entity_type() != &self.partial_request.principal.ty {
-                return Err(IncorrectPrincipalEntityTypeError {
+                Err(IncorrectPrincipalEntityTypeError {
                     ty: candidate.entity_type().clone(),
                     expected: self.partial_request.principal.ty.clone(),
                 }
-                .into());
+                .into())
             } else {
                 let principal_ty = self
                     .schema
@@ -430,23 +424,23 @@ impl<'s> RequestBuilder<'s> {
         candidate: &EntityUID,
     ) -> std::result::Result<(), RequestBuilderError> {
         if let PartialEntityUID { eid: Some(eid), .. } = &self.partial_request.resource {
-            return Err(ExistingResourceError {
+            Err(ExistingResourceError {
                 resource: EntityUID::from_components(
                     self.partial_request.resource.ty.clone(),
                     eid.clone(),
                     None,
                 ),
             }
-            .into());
+            .into())
         } else {
             // PANIC SAFETY: partial_request is validated and hence the entity type must exist in the schema
             #[allow(clippy::unwrap_used)]
             if candidate.entity_type() != &self.partial_request.resource.ty {
-                return Err(IncorrectResourceEntityTypeError {
+                Err(IncorrectResourceEntityTypeError {
                     ty: candidate.entity_type().clone(),
                     expected: self.partial_request.resource.ty.clone(),
                 }
-                .into());
+                .into())
             } else {
                 let resource_ty = self
                     .schema
@@ -478,8 +472,8 @@ impl<'s> RequestBuilder<'s> {
         candidate: &Context,
     ) -> std::result::Result<(), RequestBuilderError> {
         if let Context::Value(v) = candidate {
-            if let Some(_) = &self.partial_request.context {
-                return Err(RequestBuilderError::ExistingContext);
+            if self.partial_request.context.is_some() {
+                Err(RequestBuilderError::ExistingContext)
             } else {
                 self.schema
                     .validate_context(
@@ -492,7 +486,7 @@ impl<'s> RequestBuilder<'s> {
                 Ok(())
             }
         } else {
-            return Err(RequestBuilderError::UnknownContextCandidate);
+            Err(RequestBuilderError::UnknownContextCandidate)
         }
     }
 }
