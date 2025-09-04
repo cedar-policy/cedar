@@ -5340,7 +5340,6 @@ mod tpe {
     /// The `load_entities` function must load all requested entities,
     /// and must compute and include all ancestors of the requested entities.
     /// Loading more entities than requested is allowed.
-
     pub trait EntityLoader {
         /// Load all entities for the given set of entity UIDs.
         /// Returns a map from [`EntityUID`] to Option<Entity>, where `None` indicates
@@ -5354,7 +5353,7 @@ mod tpe {
     /// Wrapper struct used to convert an [`EntityLoader`] to an `EntityLoaderInternal`
     struct EntityLoaderWrapper<'a>(&'a mut dyn EntityLoader);
 
-    impl<'a> EntityLoaderInternal for EntityLoaderWrapper<'a> {
+    impl EntityLoaderInternal for EntityLoaderWrapper<'_> {
         fn load_entities(
             &mut self,
             uids: &std::collections::HashSet<ast::EntityUID>,

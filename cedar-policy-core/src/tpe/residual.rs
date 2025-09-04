@@ -80,6 +80,7 @@ impl Residual {
         matches!(self, Residual::Concrete { .. })
     }
 
+    /// Get the type of this residual
     pub fn ty(&self) -> &Type {
         match self {
             Residual::Partial { ty, .. } => ty,
