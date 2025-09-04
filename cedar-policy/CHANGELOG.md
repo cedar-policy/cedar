@@ -23,6 +23,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
   experimental flag `tpe`. (#1575)
 - Implemented variadic `ipaddr.isInRange` that returns true if the child `ipaddr` is in range for any of the arguments [RFC 99](github.com/cedar-policy/rfcs/pull/99)
 - Implemented batched evaluation under the experimental flag `tpe`. Batched evaluation allows for permission queries against large databases of entities. (#1812) 
+- Added `calculate_minimum_level` which computes the minimum level at which policies validate. (#1812)
 
 ### Changed
 

@@ -1495,9 +1495,6 @@ impl Validator {
 
     /// Calculate the minimum level at which the policy set will
     /// validate. Does this very simply as a loop starting from 0.
-    // PANIC SAFETY: Cedar programs are less than u32::MAX in size
-    // If we somehow reach here (which should be impossible), panic
-    #[allow(clippy::panic)]
     pub fn calculate_minimum_level(
         &self,
         pset: &PolicySet,
