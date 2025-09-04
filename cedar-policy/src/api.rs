@@ -5310,7 +5310,7 @@ mod tpe {
         }
     }
 
-    /// A partial [`Response`]
+    /// A partial version of [`crate::Response`].
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
     pub struct TPEResponse<'a>(pub(crate) tpe::response::Response<'a>);
@@ -5342,7 +5342,7 @@ mod tpe {
     /// Loading more entities than requested is allowed.
     pub trait EntityLoader {
         /// Load all entities for the given set of entity UIDs.
-        /// Returns a map from [`EntityUID`] to Option<Entity>, where `None` indicates
+        /// Returns a map from [`EntityUid`] to [`Option<Entity>`], where `None` indicates
         /// the entity does not exist.
         fn load_entities(
             &mut self,
