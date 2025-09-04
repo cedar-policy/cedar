@@ -161,7 +161,6 @@ impl Validator {
     /// Returns a [`ValidationResult`] which contains errors if there are any type errors.
     ///
     // PANIC SAFETY: Cedar programs are less than u32::MAX in size
-    // If we somehow reach here (which should be impossible), panic
     #[allow(clippy::panic)]
     pub fn calculate_minimum_level<'a>(
         &'a self,
