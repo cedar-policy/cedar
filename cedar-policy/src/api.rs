@@ -5340,7 +5340,7 @@ mod tpe {
     /// The `load_entities` function must load all requested entities,
     /// and must compute and include all ancestors of the requested entities.
     /// Loading more entities than requested is allowed.
-    #[cfg(feature = "tpe")]
+
     pub trait EntityLoader {
         /// Load all entities for the given set of entity UIDs.
         /// Returns a map from [`EntityUID`] to Option<Entity>, where `None` indicates
@@ -5373,12 +5373,11 @@ mod tpe {
 
     /// Simple entity loader implementation that loads from a pre-existing Entities store
     #[derive(Debug)]
-    #[cfg(feature = "tpe")]
+
     pub struct TestEntityLoader<'a> {
         entities: &'a Entities,
     }
 
-    #[cfg(feature = "tpe")]
     impl<'a> TestEntityLoader<'a> {
         /// Create a new [`TestEntityLoader`] from an existing Entities store
         pub fn new(entities: &'a Entities) -> Self {
@@ -5386,7 +5385,6 @@ mod tpe {
         }
     }
 
-    #[cfg(feature = "tpe")]
     impl EntityLoader for TestEntityLoader<'_> {
         fn load_entities(
             &mut self,
