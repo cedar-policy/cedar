@@ -20,8 +20,10 @@ use std::collections::HashSet;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::ast::{Annotations, Effect, EntityUID, Literal, Policy, PolicyID, ValueKind};
+#[cfg(feature = "tolerant-ast")]
+use crate::tpe::err::ErrorNotSupportedError;
 use crate::tpe::err::{
-    ErrorNotSupportedError, ExprToResidualError, MissingTypeAnnotationError, SlotNotSupportedError,
+    ExprToResidualError, MissingTypeAnnotationError, SlotNotSupportedError,
     UnknownNotSupportedError,
 };
 use crate::validator::types::Type;
@@ -167,7 +169,9 @@ impl Residual {
             ast::ExprKind::Slot(_) => return Err(SlotNotSupportedError.into()),
             ast::ExprKind::Unknown(_) => return Err(UnknownNotSupportedError.into()),
             #[cfg(feature = "tolerant-ast")]
-            ast::ExprKind::Error { .. } => return Err(ErrorNotSupportedError.into()),
+            ast::ExprKind::Error { .. } => {
+                return Err(ErrorNotSupportedError.into());
+            }
         };
 
         Ok(Residual::Partial { kind, ty })
