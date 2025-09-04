@@ -92,11 +92,7 @@ pub fn is_authorized<'a>(
     let residuals: Result<Vec<_>, TPEError> = exprs
         .into_iter()
         .map(|(id, expr)| {
-            // PANIC SAFETY: this panic was here as of "4.5.1", we should return an error instead
-            #[allow(clippy::unwrap_used)]
-            let residual = evaluator
-                .interpret_expr(&expr)
-                .unwrap();
+            let residual = evaluator.interpret_expr(&expr)?;
             // PANIC SAFETY: exprs and policy set contain the same policy ids
             #[allow(clippy::unwrap_used)]
             Ok(ResidualPolicy::new(
@@ -185,7 +181,7 @@ pub fn is_authorized_batched<'a>(
         .map(|(id, expr)| {
             let residual = initial_evaluator
                 .interpret_expr(&expr)
-                .map_err(BatchedEvalError::from)?;
+                .map_err(TPEError::from)?;
             // PANIC SAFETY: exprs and policy set contain the same policy ids
             #[allow(clippy::unwrap_used)]
             Ok(ResidualPolicy::new(

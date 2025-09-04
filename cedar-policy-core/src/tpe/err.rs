@@ -102,6 +102,9 @@ pub enum TPEError {
     /// Error thrown when the typechecker fails to typecheck a policy
     #[error("Failed validation: {:#?}", .0)]
     Validation(Vec<ValidationError>),
+    /// Error when an expression is not supported by batched evaluation
+    #[error(transparent)]
+    ExprToResidualError(#[from] ExprToResidualError),
 }
 
 /// Errors for Batched Evaluation
@@ -123,9 +126,6 @@ pub enum BatchedEvalError {
     /// Error thrown when a entity loader provided entity was partial instead of fully concrete
     #[error(transparent)]
     PartialValueToValue(#[from] PartialValueToValueError),
-    /// Error when an expression is not supported by batched evaluation
-    #[error(transparent)]
-    ExprToResidualError(#[from] ExprToResidualError),
     /// Error the entity loader failed to load all requested entities
     #[error(transparent)]
     MissingEntities(#[from] MissingEntitiesError),
