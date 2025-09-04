@@ -343,7 +343,6 @@ pub fn perform_integration_test(
         }
 
         // check that batched evaluation arrives at the same answer
-        use cedar_policy::TestEntityLoader;
         let mut loader = TestEntityLoader::new(entities);
         // Calculate the required level from the policies using the new calculate_minimum_level function
         let validator = Validator::new(schema.clone());
