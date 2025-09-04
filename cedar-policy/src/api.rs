@@ -5371,34 +5371,6 @@ mod tpe {
         }
     }
 
-    /// Simple entity loader implementation that loads from a pre-existing Entities store
-    #[derive(Debug)]
-
-    pub struct TestEntityLoader<'a> {
-        entities: &'a Entities,
-    }
-
-    impl<'a> TestEntityLoader<'a> {
-        /// Create a new [`TestEntityLoader`] from an existing Entities store
-        pub fn new(entities: &'a Entities) -> Self {
-            Self { entities }
-        }
-    }
-
-    impl EntityLoader for TestEntityLoader<'_> {
-        fn load_entities(
-            &mut self,
-            uids: &std::collections::HashSet<EntityUid>,
-        ) -> std::collections::HashMap<EntityUid, Option<Entity>> {
-            uids.iter()
-                .map(|uid| {
-                    let entity = self.entities.get(uid).cloned();
-                    (uid.clone(), entity)
-                })
-                .collect()
-        }
-    }
-
     impl PolicySet {
         /// Perform type-aware partial evaluation on this [`PolicySet`]
         /// If successful, the result is a [`PolicySet`] containing residual
