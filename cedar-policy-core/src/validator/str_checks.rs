@@ -299,11 +299,15 @@ mod test {
 
     #[test]
     fn trojan_source() {
-        let src = r#"
+        // The unicode directional markers make this string
+        // display as if the closing quotation mark is after
+        // "user" when it is logically at the end of the line,
+        // completely changing the meaning of the condition.
+        let src = "
         permit(principal, action, resource) when {
-            principal.access_level != "user‮ ⁦&& principal.is_admin⁩ ⁦"
+            principal.access_level != \"user\u{202e} \u{2066}&& principal.is_admin\u{2069} \u{2066}\"
         };
-        "#;
+        ";
         let mut s = PolicySet::new();
         let p = parse_policy(Some(PolicyID::from_string("test")), src).unwrap();
         s.add_static(p).unwrap();
@@ -316,12 +320,12 @@ mod test {
             &ValidationWarning::bidi_chars_strings(
                 Loc::new(90..131, Arc::from(src)).into_maybe_loc(),
                 PolicyID::from_string("test"),
-                r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#
+                "user\u{202e} \u{2066}&& principal.is_admin\u{2069} \u{2066}"
             )
         );
         assert_eq!(
             format!("{warning}"),
-            "for policy `test`, string `\"user‮ ⁦&& principal.is_admin⁩ ⁦\"` contains BIDI control characters"
+            "for policy `test`, string `\"user\u{202e} \u{2066}&& principal.is_admin\u{2069} \u{2066}\"` contains BIDI control characters"
         );
     }
 }
