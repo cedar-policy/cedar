@@ -8784,7 +8784,7 @@ unless
         use itertools::Itertools;
 
         use crate::{
-            Context, Entities, PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
+            Context, Entities, PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema, TestEntityLoader, ValidationMode, Validator
         };
 
         #[track_caller]
@@ -9081,7 +9081,7 @@ when { principal in resource.admins };
         fn query_principal() {
             let schema = schema();
             let request = PrincipalQueryRequest::new(
-                r#"User"#.parse().unwrap(),
+                r"User".parse().unwrap(),
                 r#"Action::"pull""#.parse().unwrap(),
                 r#"Repository::"secret""#.parse().unwrap(),
                 Context::empty(),
@@ -9092,6 +9092,83 @@ when { principal in resource.admins };
             assert_matches!(&policies.query_principal(&request, &entities(), &schema).unwrap().collect_vec(), [uid] => {
                 assert_eq!(uid, &r#"User::"jane""#.parse().unwrap());
             });
+        }
+
+        #[test]
+        fn test_is_authorized_vs_is_authorized_batched() {
+            use crate::{Authorizer, Request};
+
+            let schema = schema();
+            let policies = policy_set();
+            let entities = entities();
+            let authorizer = Authorizer::new();
+
+            // Create a set of test requests
+            let test_requests = vec![
+                // Request 1: alice can push to common_knowledge (should be allowed)
+                Request::new(
+                    r#"User::"alice""#.parse().unwrap(),
+                    r#"Action::"push""#.parse().unwrap(),
+                    r#"Repository::"common_knowledge""#.parse().unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                ).unwrap(),
+                // Request 2: jane can pull from secret (should be allowed)
+                Request::new(
+                    r#"User::"jane""#.parse().unwrap(),
+                    r#"Action::"pull""#.parse().unwrap(),
+                    r#"Repository::"secret""#.parse().unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                ).unwrap(),
+                // Request 3: bob cannot push to common_knowledge (should be denied)
+                Request::new(
+                    r#"User::"bob""#.parse().unwrap(),
+                    r#"Action::"push""#.parse().unwrap(),
+                    r#"Repository::"common_knowledge""#.parse().unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                ).unwrap(),
+                // Request 4: alice can fork common_knowledge (should be allowed)
+                Request::new(
+                    r#"User::"alice""#.parse().unwrap(),
+                    r#"Action::"fork""#.parse().unwrap(),
+                    r#"Repository::"common_knowledge""#.parse().unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                ).unwrap(),
+            ];
+
+            // Test each request with both methods and compare results
+            for (i, request) in test_requests.iter().enumerate() {
+                // Get result from is_authorized
+                let standard_response = authorizer.is_authorized(request, &policies, &entities);
+                
+                // Get result from is_authorized_batched (if TPE feature is enabled)
+                let mut loader = TestEntityLoader::new(&entities);
+                let validator = Validator::new(schema.clone());
+                let (policy_level, _validation) =
+                validator.calculate_minimum_level(&policies, ValidationMode::default());
+                    let batched_response = policies.is_authorized_batched(
+                        request,
+                        &schema,
+                        &mut loader,
+                        policy_level, // max_iters
+                    ).unwrap();
+                    
+                    // Compare decisions - they should be the same
+                    let standard_decision = standard_response.decision();
+                    let batched_decision = batched_response.decision().unwrap();
+                    
+                    assert_eq!(
+                        standard_decision, 
+                        batched_decision,
+                        "Request {}: is_authorized returned {:?} but is_authorized_batched returned {:?}",
+                        i + 1,
+                        standard_decision,
+                        batched_decision
+                    );
+            }
         }
     }
 }
