@@ -102,13 +102,11 @@ pub enum TPEError {
     /// Error thrown when the typechecker fails to typecheck a policy
     #[error("Failed validation: {:#?}", .0)]
     Validation(Vec<ValidationError>),
-    /// Error thrown when using invalid expressions with TPE. See [`ExprToResidualError`].
-    #[error(transparent)]
-    ExprToResidual(ExprToResidualError),
 }
 
 /// Errors for Batched Evaluation
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum BatchedEvalError {
     /// Error thrown by TPE
     #[error(transparent)]
@@ -136,6 +134,7 @@ pub enum BatchedEvalError {
 /// Residuals require fully typed expressions without
 /// unknowns or parse errors.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ExprToResidualError {
     /// Expression is missing type annotation
     #[error(transparent)]
