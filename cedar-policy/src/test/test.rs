@@ -9168,7 +9168,7 @@ when { principal in resource.admins };
                 let batched_decision = batched_response.decision().unwrap();
 
                 assert_eq!(
-                        standard_decision, 
+                        standard_decision,
                         batched_decision,
                         "Request {}: is_authorized returned {:?} but is_authorized_batched returned {:?}",
                         i + 1,
