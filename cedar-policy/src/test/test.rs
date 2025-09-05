@@ -8784,7 +8784,8 @@ unless
         use itertools::Itertools;
 
         use crate::{
-            Context, Entities, PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema, TestEntityLoader, ValidationMode, Validator
+            Context, Entities, PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
+            TestEntityLoader, ValidationMode, Validator,
         };
 
         #[track_caller]
@@ -9112,7 +9113,8 @@ when { principal in resource.admins };
                     r#"Repository::"common_knowledge""#.parse().unwrap(),
                     Context::empty(),
                     Some(&schema),
-                ).unwrap(),
+                )
+                .unwrap(),
                 // Request 2: jane can pull from secret (should be allowed)
                 Request::new(
                     r#"User::"jane""#.parse().unwrap(),
@@ -9120,7 +9122,8 @@ when { principal in resource.admins };
                     r#"Repository::"secret""#.parse().unwrap(),
                     Context::empty(),
                     Some(&schema),
-                ).unwrap(),
+                )
+                .unwrap(),
                 // Request 3: bob cannot push to common_knowledge (should be denied)
                 Request::new(
                     r#"User::"bob""#.parse().unwrap(),
@@ -9128,7 +9131,8 @@ when { principal in resource.admins };
                     r#"Repository::"common_knowledge""#.parse().unwrap(),
                     Context::empty(),
                     Some(&schema),
-                ).unwrap(),
+                )
+                .unwrap(),
                 // Request 4: alice can fork common_knowledge (should be allowed)
                 Request::new(
                     r#"User::"alice""#.parse().unwrap(),
@@ -9136,31 +9140,34 @@ when { principal in resource.admins };
                     r#"Repository::"common_knowledge""#.parse().unwrap(),
                     Context::empty(),
                     Some(&schema),
-                ).unwrap(),
+                )
+                .unwrap(),
             ];
 
             // Test each request with both methods and compare results
             for (i, request) in test_requests.iter().enumerate() {
                 // Get result from is_authorized
                 let standard_response = authorizer.is_authorized(request, &policies, &entities);
-                
+
                 // Get result from is_authorized_batched (if TPE feature is enabled)
                 let mut loader = TestEntityLoader::new(&entities);
                 let validator = Validator::new(schema.clone());
                 let (policy_level, _validation) =
-                validator.calculate_minimum_level(&policies, ValidationMode::default());
-                    let batched_response = policies.is_authorized_batched(
+                    validator.calculate_minimum_level(&policies, ValidationMode::default());
+                let batched_response = policies
+                    .is_authorized_batched(
                         request,
                         &schema,
                         &mut loader,
                         policy_level, // max_iters
-                    ).unwrap();
-                    
-                    // Compare decisions - they should be the same
-                    let standard_decision = standard_response.decision();
-                    let batched_decision = batched_response.decision().unwrap();
-                    
-                    assert_eq!(
+                    )
+                    .unwrap();
+
+                // Compare decisions - they should be the same
+                let standard_decision = standard_response.decision();
+                let batched_decision = batched_response.decision().unwrap();
+
+                assert_eq!(
                         standard_decision, 
                         batched_decision,
                         "Request {}: is_authorized returned {:?} but is_authorized_batched returned {:?}",
