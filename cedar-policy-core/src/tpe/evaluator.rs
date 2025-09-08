@@ -42,12 +42,13 @@ pub struct Evaluator<'e> {
 impl Evaluator<'_> {
     /// Interpret a typed expression by converting to a [`Residual`]
     pub fn interpret_expr(&self, e: &Expr<Option<Type>>) -> Result<Residual, ExprToResidualError> {
-        Ok(self.interpret(&Residual::from_expr(e)?))
+        Ok(self.interpret(Residual::from_expr(e)?))
     }
 
     /// Interpret a typed expression into a residual
     /// This function always succeeds because it wraps an error encountered
     /// into a `ResidualKind::Error`
+    #[allow(clippy::cognitive_complexity)]
     pub fn interpret(&self, r: &Residual) -> Residual {
         let ty = r.ty().clone();
         let kind = match r {

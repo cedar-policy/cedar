@@ -5127,7 +5127,7 @@ mod tpe {
     use cedar_policy_core::ast;
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::tpe;
-    use cedar_policy_core::tpe::{err::BatchedEvalError, EntityLoaderInternal};
+    use cedar_policy_core::tpe::{err::BatchedEvalError, EntityLoader};
     use cedar_policy_core::{
         entities::conformance::EntitySchemaConformanceChecker, extensions::Extensions,
         validator::CoreSchema,
@@ -5353,7 +5353,7 @@ mod tpe {
     /// Wrapper struct used to convert an [`EntityLoader`] to an `EntityLoaderInternal`
     struct EntityLoaderWrapper<'a>(&'a mut dyn EntityLoader);
 
-    impl EntityLoaderInternal for EntityLoaderWrapper<'_> {
+    impl EntityLoader for EntityLoaderWrapper<'_> {
         fn load_entities(
             &mut self,
             uids: &std::collections::HashSet<ast::EntityUID>,
