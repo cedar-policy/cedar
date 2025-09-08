@@ -20,7 +20,7 @@ regex = { version= "1.11.2", features = ["unicode"] }
 miette = { version = "7.6.0" }
 
 [dev-dependencies]
-insta = { version = "1.43.1", features = ["glob"] }
+insta = { version = "1.43.2", features = ["glob"] }
 
 [lints]
 workspace = true
