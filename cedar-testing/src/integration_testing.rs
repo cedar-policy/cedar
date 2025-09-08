@@ -343,22 +343,24 @@ pub fn perform_integration_test(
         }
 
         // check that batched evaluation arrives at the same answer
-        let mut loader = TestEntityLoader::new(entities);
-        // Calculate the required level from the policies using the new calculate_minimum_level function
-        let validator = Validator::new(schema.clone());
-        let (policy_level, validation) =
-            validator.calculate_minimum_level(policies, ValidationMode::default());
-        assert!(validation.validation_errors().next().is_none());
-        let batched_response = test_impl
-            .is_authorized_batched(&request, policies, schema, &mut loader, policy_level)
-            .expect("Batched authorization failed");
-        // Compare the decision from batched evaluation with regular evaluation
-        assert_eq!(
+        if should_validate {
+            let mut loader = TestEntityLoader::new(entities);
+            // Calculate the required level from the policies using the new calculate_minimum_level function
+            let validator = Validator::new(schema.clone());
+            let (policy_level, validation) =
+                validator.calculate_minimum_level(policies, ValidationMode::default());
+            assert!(validation.validation_errors().next().is_none());
+            let batched_response = test_impl
+                .is_authorized_batched(&request, policies, schema, &mut loader, policy_level)
+                .expect("Batched authorization failed");
+            // Compare the decision from batched evaluation with regular evaluation
+            assert_eq!(
                 batched_response.decision(),
                 Some(response.response.decision()),
                 "test {test_name} failed for request \"{}\": batched evaluation decision differs from regular evaluation",
                 &json_request.description
             );
+        }
     }
 }
 
