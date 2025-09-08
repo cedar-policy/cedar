@@ -5127,7 +5127,8 @@ mod tpe {
     use cedar_policy_core::ast;
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::tpe;
-    use cedar_policy_core::tpe::{err::BatchedEvalError, EntityLoader};
+    use cedar_policy_core::tpe::batched_evaluator::is_authorized_batched;
+    use cedar_policy_core::tpe::{err::BatchedEvalError, batched_evaluator::{EntityLoader as EntityLoaderInternal}};
     use cedar_policy_core::{
         entities::conformance::EntitySchemaConformanceChecker, extensions::Extensions,
         validator::CoreSchema,
@@ -5353,7 +5354,7 @@ mod tpe {
     /// Wrapper struct used to convert an [`EntityLoader`] to an `EntityLoaderInternal`
     struct EntityLoaderWrapper<'a>(&'a mut dyn EntityLoader);
 
-    impl EntityLoader for EntityLoaderWrapper<'_> {
+    impl EntityLoaderInternal for EntityLoaderWrapper<'_> {
         fn load_entities(
             &mut self,
             uids: &std::collections::HashSet<ast::EntityUID>,
@@ -5429,8 +5430,6 @@ mod tpe {
             loader: &mut dyn EntityLoader,
             max_iters: u32,
         ) -> Result<TPEResponse<'a>, BatchedEvalError> {
-            use cedar_policy_core::tpe::is_authorized_batched;
-
             let response = is_authorized_batched(
                 &query.0,
                 &self.ast,

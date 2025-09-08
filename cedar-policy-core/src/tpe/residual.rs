@@ -90,10 +90,21 @@ impl Residual {
             Residual::Error(ty) => ty,
         }
     }
+}
 
-    /// Convert an expression to a residual, returning an error if it can't be converted
-    /// due to slots, unknowns, or missing type annotations.
-    pub fn from_expr(expr: &Expr<Option<Type>>) -> std::result::Result<Self, ExprToResidualError> {
+impl TryFrom<Residual> for Value {
+    type Error = ();
+    fn try_from(value: Residual) -> std::result::Result<Self, Self::Error> {
+        match value {
+            Residual::Concrete { value, .. } => Ok(value),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<&Expr<Option<Type>>> for Residual {
+    type Error = ExprToResidualError;
+    fn try_from(expr: &Expr<Option<Type>>) -> std::result::Result<Self, ExprToResidualError> {
         let ty = expr.data().clone().ok_or(MissingTypeAnnotationError)?;
 
         // Otherwise, convert to a partial residual
@@ -104,59 +115,59 @@ impl Residual {
                 then_expr,
                 else_expr,
             } => ResidualKind::If {
-                test_expr: Arc::new(Self::from_expr(test_expr)?),
-                then_expr: Arc::new(Self::from_expr(then_expr)?),
-                else_expr: Arc::new(Self::from_expr(else_expr)?),
+                test_expr: Arc::new(Self::try_from(&(**test_expr))?),
+                then_expr: Arc::new(Self::try_from(&(**then_expr))?),
+                else_expr: Arc::new(Self::try_from(&(**else_expr))?),
             },
             ast::ExprKind::And { left, right } => ResidualKind::And {
-                left: Arc::new(Self::from_expr(left)?),
-                right: Arc::new(Self::from_expr(right)?),
+                left: Arc::new(Self::try_from(&(**left))?),
+                right: Arc::new(Self::try_from(&(**right))?),
             },
             ast::ExprKind::Or { left, right } => ResidualKind::Or {
-                left: Arc::new(Self::from_expr(left)?),
-                right: Arc::new(Self::from_expr(right)?),
+                left: Arc::new(Self::try_from(&(**left))?),
+                right: Arc::new(Self::try_from(&(**right))?),
             },
             ast::ExprKind::UnaryApp { op, arg } => ResidualKind::UnaryApp {
                 op: *op,
-                arg: Arc::new(Self::from_expr(arg)?),
+                arg: Arc::new(Self::try_from(&(**arg))?),
             },
             ast::ExprKind::BinaryApp { op, arg1, arg2 } => ResidualKind::BinaryApp {
                 op: *op,
-                arg1: Arc::new(Self::from_expr(arg1)?),
-                arg2: Arc::new(Self::from_expr(arg2)?),
+                arg1: Arc::new(Self::try_from(&(**arg1))?),
+                arg2: Arc::new(Self::try_from(&(**arg2))?),
             },
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let residual_args: Result<Vec<_>, _> = args.iter().map(Self::from_expr).collect();
+                let residual_args: Result<Vec<_>, _> = args.iter().map(Self::try_from).collect();
                 ResidualKind::ExtensionFunctionApp {
                     fn_name: fn_name.clone(),
                     args: Arc::new(residual_args?),
                 }
             }
             ast::ExprKind::GetAttr { expr, attr } => ResidualKind::GetAttr {
-                expr: Arc::new(Self::from_expr(expr)?),
+                expr: Arc::new(Self::try_from(&(**expr))?),
                 attr: attr.clone(),
             },
             ast::ExprKind::HasAttr { expr, attr } => ResidualKind::HasAttr {
-                expr: Arc::new(Self::from_expr(expr)?),
+                expr: Arc::new(Self::try_from(&(**expr))?),
                 attr: attr.clone(),
             },
             ast::ExprKind::Like { expr, pattern } => ResidualKind::Like {
-                expr: Arc::new(Self::from_expr(expr)?),
+                expr: Arc::new(Self::try_from(&(**expr))?),
                 pattern: pattern.clone(),
             },
             ast::ExprKind::Is { expr, entity_type } => ResidualKind::Is {
-                expr: Arc::new(Self::from_expr(expr)?),
+                expr: Arc::new(Self::try_from(&(**expr))?),
                 entity_type: entity_type.clone(),
             },
             ast::ExprKind::Set(elements) => {
                 let residual_elements: Result<Vec<_>, _> =
-                    elements.iter().map(Self::from_expr).collect();
+                    elements.iter().map(Self::try_from).collect();
                 ResidualKind::Set(Arc::new(residual_elements?))
             }
             ast::ExprKind::Record(map) => {
                 let residual_map: Result<BTreeMap<_, _>, ExprToResidualError> = map
                     .iter()
-                    .map(|(k, v)| Ok((k.clone(), Self::from_expr(v)?)))
+                    .map(|(k, v)| Ok((k.clone(), Self::try_from(v)?)))
                     .collect();
                 ResidualKind::Record(Arc::new(residual_map?))
             }
@@ -175,16 +186,6 @@ impl Residual {
         };
 
         Ok(Residual::Partial { kind, ty })
-    }
-}
-
-impl TryFrom<Residual> for Value {
-    type Error = ();
-    fn try_from(value: Residual) -> std::result::Result<Self, Self::Error> {
-        match value {
-            Residual::Concrete { value, .. } => Ok(value),
-            _ => Err(()),
-        }
     }
 }
 
