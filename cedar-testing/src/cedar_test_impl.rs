@@ -21,8 +21,8 @@
 
 pub use cedar_policy::ffi;
 use cedar_policy::{
-    Authorizer, Entities, Entity, EntityLoader, EntityUid, EvalResult, Expression, PolicySet,
-    Request, RequestBuilder, Schema, TPEResponse, TestEntityLoader, ValidationMode, Validator,
+    Authorizer, Entities, EvalResult, Expression, PolicySet, Request, RequestBuilder, Schema,
+    TPEResponse, TestEntityLoader, ValidationMode, Validator,
 };
 use miette::miette;
 use serde::Deserialize;
