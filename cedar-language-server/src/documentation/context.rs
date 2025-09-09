@@ -90,7 +90,7 @@ mod test {
                 }
              }
           };
-          
+
           action View appliesTo {
              principal: User,
              resource: Photo,

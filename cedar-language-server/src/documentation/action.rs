@@ -159,7 +159,7 @@ mod test {
                 }
              }
           };
-          
+
           action Write appliesTo {
              principal: User,
              resource: Photo,
