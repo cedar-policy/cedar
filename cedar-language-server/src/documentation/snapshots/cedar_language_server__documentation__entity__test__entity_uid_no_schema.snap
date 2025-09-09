@@ -1,0 +1,9 @@
+---
+source: cedar-language-server/src/documentation/entity.rs
+expression: uid.to_documentation_string(None)
+---
+**Entity**
+
+Entity: `User::"alice"`
+
+Type: `User`

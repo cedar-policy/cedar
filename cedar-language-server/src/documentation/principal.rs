@@ -81,9 +81,7 @@ mod test {
         let docs = PrincipalDocumentation::new(EntityTypeKind::Concrete(Arc::new(
             "User".parse().unwrap(),
         )));
-        assert_snapshot!(
-            docs.to_documentation_string(None)
-        );
+        assert_snapshot!(docs.to_documentation_string(None));
     }
 
     #[test]
@@ -98,8 +96,6 @@ mod test {
         let docs = PrincipalDocumentation::new(EntityTypeKind::Concrete(Arc::new(
             "User".parse().unwrap(),
         )));
-        assert_snapshot!(
-            docs.to_documentation_string(Some(&schema))
-        );
+        assert_snapshot!(docs.to_documentation_string(Some(&schema)));
     }
 }

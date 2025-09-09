@@ -1,0 +1,24 @@
+---
+source: cedar-language-server/src/documentation/entity.rs
+expression: entity_type_kind.to_documentation_string(Some(&schema))
+---
+**Possible Types**
+
+This entity can be any of the following entity types:
+
+**Type: `Photo`**
+
+Attributes:
+
+```cedarschema
+No attributes defined.
+```
+
+**Type: `User`**
+
+Attributes:
+
+```cedarschema
+age: Long
+name: String
+```

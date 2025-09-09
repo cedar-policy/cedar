@@ -1,0 +1,7 @@
+---
+source: cedar-language-server/src/documentation/entity.rs
+expression: et.to_documentation_string(None)
+---
+**Type**
+
+Entity Type: `User`
