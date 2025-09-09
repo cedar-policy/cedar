@@ -847,7 +847,8 @@ fn action_literal_in_action_typechecks_true() {
             ),
             Expr::var(Var::Action),
         ),
-        &Type::True,
+        // Lean types it as `Type::True`
+        &Type::primitive_boolean(),
     );
 }
 
