@@ -6,7 +6,6 @@ use crate::{
         AsLocRef, IntoMaybeLoc, Loc, MaybeLoc,
     },
 };
-use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
     collections::{btree_map, BTreeMap},
@@ -14,7 +13,8 @@ use std::{
 };
 use thiserror::Error;
 
-#[derive(Error, Debug, Serialize, Deserialize, Hash, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Hash, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "tolerant-ast", derive(serde::Serialize, serde::Deserialize))]
 pub enum AstExprErrorKind {
     #[error("Invalid expression node: {0}")]
     InvalidExpr(String),
@@ -411,7 +411,11 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         self.clone().not(self.less(e1, e2))
     }
 
-    fn and_nary(self, first: Self::Expr, others: impl IntoIterator<Item = Self::Expr>) -> Self::Expr
+    fn and_naryl(
+        self,
+        first: Self::Expr,
+        others: impl IntoIterator<Item = Self::Expr>,
+    ) -> Self::Expr
     where
         Self: Sized,
     {

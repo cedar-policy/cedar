@@ -253,13 +253,7 @@ impl From<Residual> for Expr {
                     // PANIC SAFETY: record construction should succeed
                     #[allow(clippy::expect_used)]
                     ResidualKind::Record(map) => builder
-                        .record(
-                            map.as_ref()
-                                .clone()
-                                .into_iter()
-                                .map(|(k, v)| (k, v.into()))
-                                .collect::<Vec<(_, _)>>(),
-                        )
+                        .record(map.as_ref().clone().into_iter().map(|(k, v)| (k, v.into())))
                         .expect("should succeed"),
                     ResidualKind::Set(set) => builder.set(
                         set.as_ref()

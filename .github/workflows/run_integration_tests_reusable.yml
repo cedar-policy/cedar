@@ -47,6 +47,24 @@ jobs:
         run: tar xzf corpus-tests.tar.gz
       - name: Prepare Rust build
         run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: sudo apt-get update && sudo apt-get install protobuf-compiler
+      # Required to run cedar-symcc tests
+      - name: Install cvc5
+        shell: bash
+        run: |
+              ARCH=$(uname -m)
+              if [ "$ARCH" = "x86_64" ]; then
+                ARCH_NAME="x86_64"
+              elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+                ARCH_NAME="arm64"
+              else
+                echo "Unsupported architecture: $ARCH"
+                exit 1
+              fi
+              wget https://github.com/cvc5/cvc5/releases/download/cvc5-1.2.1/cvc5-Linux-${ARCH_NAME}-static.zip
+              unzip cvc5-Linux-${ARCH_NAME}-static.zip
+              chmod +x cvc5-Linux-${ARCH_NAME}-static/bin/cvc5
+              echo "CVC5=$GITHUB_WORKSPACE/cvc5-Linux-${ARCH_NAME}-static/bin/cvc5" >> $GITHUB_ENV
       - name: Run handwritten integration tests
         working-directory: ./cedar
         run: cargo test --verbose --features "integration-testing"

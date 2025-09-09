@@ -28,7 +28,6 @@
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
 use crate::ast::{Policy, PolicySet, Template};
-use serde::Serialize;
 use std::collections::HashSet;
 mod level_validate;
 
@@ -56,7 +55,7 @@ mod partition_nonempty;
 pub mod types;
 
 /// Used to select how a policy will be validated.
-#[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Serialize)]
+#[derive(Default, Eq, PartialEq, Copy, Clone, Debug)]
 pub enum ValidationMode {
     /// Strict mode
     #[default]
@@ -175,9 +174,9 @@ impl Validator {
             None
         } else {
             Some(
-                self.validate_entity_types(p)
-                    .chain(self.validate_enum_entity(p))
-                    .chain(self.validate_action_ids(p))
+                Validator::validate_entity_types(&self.schema, p)
+                    .chain(Validator::validate_enum_entity(&self.schema, p))
+                    .chain(Validator::validate_action_ids(&self.schema, p))
                     // We could usefully update this pass to apply to partial
                     // schema if it only failed when there is a known action
                     // applied to known principal/resource entity types that are

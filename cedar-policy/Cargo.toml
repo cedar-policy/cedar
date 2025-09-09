@@ -16,23 +16,20 @@ cedar-policy-formatter = { version = "=4.5.1", path = "../cedar-policy-formatter
 ref-cast = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-lalrpop-util = { version = "0.22.2", features = ["lexer"] }
 itertools = "0.14"
 miette = "7.6.0"
 thiserror = "2.0"
 smol_str = { version = "0.3", features = ["serde"] }
 dhat = { version = "0.3.2", optional = true }
 serde_with = "3.13.0"
-nonempty = "0.12"
+nonempty = { version = "0.12", optional = true }
 prost = { version = "0.14", optional = true }
 
 # wasm dependencies
-serde-wasm-bindgen = { version = "0.6", optional = true }
 # Intentionally not updated to 0.5.5, see issue #1744
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
 semver = "1.0.26"
-lazy_static = "1.5.0"
 
 [build-dependencies]
 prost-build = { version = "0.14", optional = true }
@@ -57,8 +54,8 @@ entity-manifest = ["cedar-policy-core/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-core/partial-validate"]
-protobufs = ["dep:prost", "dep:prost-build"]
-wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+protobufs = ["dep:nonempty", "dep:prost", "dep:prost-build"]
+wasm = ["tsify", "wasm-bindgen"]
 tolerant-ast = ["cedar-policy-core/tolerant-ast", "cedar-policy-formatter/tolerant-ast"]
 extended-schema = ["cedar-policy-core/extended-schema"]
 # Not exactly experimental but rather a feature for supporting deprecated

@@ -1,0 +1,80 @@
+// Entities
+// entity Job enum ["internal", "distributor", "customer", "other"];
+entity Job;
+entity User in [Market] {
+  job: Job,
+  customerId: String, // irrelevant for Job::"internal"
+};
+entity Market;
+entity Presentation {
+  owner: User,
+  viewers: Set<User>,
+  editors: Set<User>,
+};
+entity Template {
+  owner: User,
+  viewers: Set<User>,
+  editors: Set<User>,
+  viewerMarkets: Set<Market>,
+  editorMarkets: Set<Market>,  
+};
+// Actions -- Presentations
+action InternalPrezViewActions;
+action ExternalPrezViewActions;
+action PrezEditActions; 
+action viewPresentation, removeSelfAccessFromPresentation 
+    in [InternalPrezViewActions, ExternalPrezViewActions, PrezEditActions]
+  appliesTo {
+    principal: User,
+    resource: Presentation,
+  };
+action duplicatePresentation in [InternalPrezViewActions, PrezEditActions]
+  appliesTo {
+    principal: User,
+    resource: Presentation,
+  };
+action editPresentation in [PrezEditActions]
+  appliesTo {
+    principal: User,
+    resource: Presentation,
+  };
+// granting access depends on who it is -- context has target
+action grantViewAccessToPresentation, grantEditAccessToPresentation
+    in [PrezEditActions]
+  appliesTo {
+    principal: User,
+    resource: Presentation,
+    context: { target: User, },
+  };
+  
+// Actions -- Templates
+action InternalTemplateViewActions;
+action MarketTemplateViewActions;
+action TemplateEditActions;
+action viewTemplate, duplicateTemplate
+   in [InternalTemplateViewActions, TemplateEditActions,
+       MarketTemplateViewActions]
+  appliesTo {
+    principal: User,
+    resource: Template,
+  };
+action removeSelfAccessFromTemplate
+   in [InternalTemplateViewActions, TemplateEditActions]
+  appliesTo {
+    principal: User,
+    resource: Template
+  };
+action editTemplate, removeOthersAccessToTemplate in [TemplateEditActions]
+  appliesTo {
+    principal: User,
+    resource: Template
+  };
+// granting access depends on who, or what, it is -- spec. in context
+action grantViewAccessToTemplate, grantEditAccessToTemplate
+    in [TemplateEditActions]
+  appliesTo {
+    principal: User,
+    resource: Template,
+    context: { targetMarket?: Market, targetUser?: User },
+  };
+

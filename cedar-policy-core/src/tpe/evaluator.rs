@@ -42,6 +42,7 @@ impl Evaluator<'_> {
     /// Interpret a typed expression into a residual
     /// This function always succeeds because it wraps an error encountered
     /// into a `ResidualKind::Error`
+    #[allow(clippy::cognitive_complexity)]
     pub fn interpret(&self, e: &Expr<Option<Type>>) -> Residual {
         // PANIC SAFETY: the validator should produce expressions with types
         #[allow(clippy::expect_used)]
@@ -120,7 +121,7 @@ impl Evaluator<'_> {
                         ..
                     } => self.interpret(right),
                     Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
-                    Residual::Partial { .. } => match &self.interpret(&right) {
+                    Residual::Partial { .. } => match &self.interpret(right) {
                         Residual::Concrete {
                             value:
                                 Value {
@@ -163,7 +164,7 @@ impl Evaluator<'_> {
                         ..
                     } => self.interpret(right),
                     Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
-                    Residual::Partial { .. } => match &self.interpret(&right) {
+                    Residual::Partial { .. } => match &self.interpret(right) {
                         Residual::Concrete {
                             value:
                                 Value {
@@ -467,17 +468,15 @@ impl Evaluator<'_> {
                         }
                     }
                     Residual::Error(ty)
+                } else if args.iter().any(|r| matches!(r, Residual::Error(_))) {
+                    Residual::Error(ty)
                 } else {
-                    if args.iter().any(|r| matches!(r, Residual::Error(_))) {
-                        Residual::Error(ty)
-                    } else {
-                        Residual::Partial {
-                            kind: ResidualKind::ExtensionFunctionApp {
-                                fn_name: fn_name.clone(),
-                                args: Arc::new(args),
-                            },
-                            ty,
-                        }
+                    Residual::Partial {
+                        kind: ResidualKind::ExtensionFunctionApp {
+                            fn_name: fn_name.clone(),
+                            args: Arc::new(args),
+                        },
+                        ty,
                     }
                 }
             }
@@ -631,14 +630,12 @@ impl Evaluator<'_> {
                         },
                         ty,
                     }
+                } else if rs.iter().any(|r| matches!(r, Residual::Error(_))) {
+                    Residual::Error(ty)
                 } else {
-                    if rs.iter().any(|r| matches!(r, Residual::Error(_))) {
-                        Residual::Error(ty)
-                    } else {
-                        Residual::Partial {
-                            kind: ResidualKind::Set(Arc::new(rs)),
-                            ty,
-                        }
+                    Residual::Partial {
+                        kind: ResidualKind::Set(Arc::new(rs)),
+                        ty,
                     }
                 }
             }

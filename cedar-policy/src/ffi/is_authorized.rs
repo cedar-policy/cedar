@@ -28,8 +28,6 @@ use serde_with::serde_as;
 #[cfg(feature = "partial-eval")]
 use std::collections::HashMap;
 use std::collections::HashSet;
-#[cfg(feature = "partial-eval")]
-use std::convert::Infallible;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -219,11 +217,9 @@ impl From<crate::Response> for Response {
 }
 
 #[cfg(feature = "partial-eval")]
-impl TryFrom<crate::PartialResponse> for Response {
-    type Error = Infallible;
-
-    fn try_from(partial_response: crate::PartialResponse) -> Result<Self, Self::Error> {
-        Ok(partial_response.concretize().into())
+impl From<crate::PartialResponse> for Response {
+    fn from(partial_response: crate::PartialResponse) -> Self {
+        partial_response.concretize().into()
     }
 }
 
@@ -881,7 +877,7 @@ mod test {
              }
             },
             "policies": {
-                "staticPolicies": "permit(principal == User::\"alice\", action, resource) when { context.is_authenticated && context.source_ip.isInRange(ip(\"222.222.222.0/24\")) };"
+                "staticPolicies": "permit(principal == User::\"alice\", action, resource) when { context.is_authenticated && context.source_ip.isInRange(ip(\"192.167.0.1/24\"), ip(\"222.222.222.0/24\")) };"
             },
             "entities": []
         });

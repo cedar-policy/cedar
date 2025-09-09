@@ -44,21 +44,29 @@ mod constants {
     use super::EXTENSION_NAME;
     use crate::ast::Name;
     use regex::Regex;
+    use std::sync::LazyLock;
 
     // PANIC SAFETY all of the names here are valid names
-    lazy_static::lazy_static! {
-        pub static ref DECIMAL_FROM_STR_NAME : Name = Name::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier");
-        pub static ref LESS_THAN : Name = Name::parse_unqualified_name("lessThan").expect("should be a valid identifier");
-        pub static ref LESS_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("lessThanOrEqual").expect("should be a valid identifier");
-        pub static ref GREATER_THAN : Name = Name::parse_unqualified_name("greaterThan").expect("should be a valid identifier");
-        pub static ref GREATER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("greaterThanOrEqual").expect("should be a valid identifier");
-    }
+    pub static DECIMAL_FROM_STR_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier")
+    });
+    pub static LESS_THAN: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("lessThan").expect("should be a valid identifier")
+    });
+    pub static LESS_THAN_OR_EQUAL: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("lessThanOrEqual").expect("should be a valid identifier")
+    });
+    pub static GREATER_THAN: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("greaterThan").expect("should be a valid identifier")
+    });
+    pub static GREATER_THAN_OR_EQUAL: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name("greaterThanOrEqual").expect("should be a valid identifier")
+    });
 
     // Global regex, initialized at first use
     // PANIC SAFETY This is a valid `Regex`
-    lazy_static::lazy_static! {
-        pub static ref DECIMAL_REGEX : Regex = Regex::new(r"^(-?\d+)\.(\d+)$").unwrap();
-    }
+    pub static DECIMAL_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(-?\d+)\.(\d+)$").unwrap());
 }
 
 /// Help message to display when a String was provided where a decimal value was expected.

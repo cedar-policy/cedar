@@ -65,6 +65,7 @@ pub fn extension_schema() -> ExtensionSchema {
             get_argument_types(&fstring),
             return_type,
             None,
+            f.is_variadic(),
         )
     });
     ExtensionSchema::new(pe_ext.name().clone(), fun_tys, std::iter::empty())

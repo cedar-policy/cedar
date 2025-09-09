@@ -14,21 +14,21 @@ repository.workspace = true
 cedar-policy-core = { version = "=4.5.1", path = "../cedar-policy-core", features = ["tolerant-ast", "extended-schema"] }
 cedar-policy-formatter = { version = "=4.5.1", path = "../cedar-policy-formatter", features = ["tolerant-ast"] }
 cedar-policy = { version = "=4.5.1", path = "../cedar-policy", features = ["tolerant-ast"]}
-anyhow = "1.0.95"
+anyhow = "1.0.99"
 itertools = "0.14.0"
 miette = "7.4.0"
 ropey = "1.6.1"
 smol_str = "0.3"
 tracing = "0.1.41"
 serde = "1"
-serde_json = "1.0.142"
-regex = "1.11.1"
+serde_json = "1.0.143"
+regex = "1.11.2"
 tower-lsp-server = "0.22.1"
 
 # Dependencies needed only for the language server binary
 tokio = { version = "1.47.1", features = ["full"], optional = true }
 tracing-appender = { version = "0.2.3", optional = true }
-tracing-subscriber = { version = "0.3.19", features = ["json"], optional = true}
+tracing-subscriber = { version = "0.3.20", features = ["json"], optional = true}
 tower-service = { version = "0.3.3", optional = true}
 dashmap = { version = "6.1.0", optional = true}
 

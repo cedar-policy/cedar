@@ -14,10 +14,7 @@
  * limitations under the License.
  */
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 
 use anyhow::Ok;
 use dashmap::DashMap;
@@ -171,6 +168,11 @@ impl Document {
     pub(crate) fn set_version(&mut self, version: i32) {
         let state = self.state_mut();
         state.version = version;
+    }
+
+    pub(crate) fn set_uri(&mut self, new_uri: Uri) {
+        let state = self.state_mut();
+        state.uri = new_uri;
     }
 
     #[must_use]
@@ -367,81 +369,56 @@ impl SchemaDocument {
     }
 
     #[must_use]
-    pub(crate) fn get_linked_document_diagnostics(
-        &self,
-    ) -> Option<HashMap<Uri, DiagnosticFragment>> {
+    pub(crate) fn get_linked_document_diagnostics(&self) -> Option<Vec<(Uri, DiagnosticFragment)>> {
         let documents = self.state.documents.upgrade()?;
-        let mut diagnostics = HashMap::new();
-        let doc_list = documents
+        let diagnostics = documents
             .iter()
-            .map(|guard| guard.value().clone())
-            .collect_vec();
-
-        for doc in doc_list {
-            match &doc {
-                Document::Policy(policy) => {
-                    if let Some(schema_uri) = &policy.schema_uri {
-                        if schema_uri == &self.state.uri {
-                            let d = policy.get_diagnostics_with_schema(self).ok()?;
-                            let frag = DiagnosticFragment {
-                                version: policy.state.version,
-                                diagnostics: d,
-                            };
-                            diagnostics.insert(policy.state.uri.clone(), frag);
-                        }
-                    }
+            .filter_map(|guard| match guard.value() {
+                Document::Policy(policy) if policy.schema_uri.as_ref() == Some(&self.state.uri) => {
+                    let d = policy.get_diagnostics_with_schema(self).ok()?;
+                    let frag = DiagnosticFragment {
+                        version: policy.state.version,
+                        diagnostics: d,
+                    };
+                    Some((policy.state.uri.clone(), frag))
                 }
-                Document::Entities(entities) => {
-                    if let Some(schema_uri) = &entities.schema_uri {
-                        if schema_uri == &self.state.uri {
-                            let d = entities.get_diagnostics_with_schema(self).ok()?;
-                            let frag = DiagnosticFragment {
-                                version: entities.state.version,
-                                diagnostics: d,
-                            };
-                            diagnostics.insert(entities.state.uri.clone(), frag);
-                        }
-                    }
+                Document::Entities(entities)
+                    if entities.schema_uri.as_ref() == Some(&self.state.uri) =>
+                {
+                    let d = entities.get_diagnostics_with_schema(self).ok()?;
+                    let frag = DiagnosticFragment {
+                        version: entities.state.version,
+                        diagnostics: d,
+                    };
+                    Some((entities.state.uri.clone(), frag))
                 }
-                Document::Schema(_) => {}
-            }
-        }
-
-        if diagnostics.is_empty() {
-            return None;
-        }
-
+                _ => None,
+            })
+            .collect();
         Some(diagnostics)
     }
 
     #[must_use]
-    pub(crate) fn update_linked_documents(&self, new_uri: Option<&Uri>) -> Vec<Uri> {
+    pub(crate) fn update_linked_documents(&self, new_schema_uri: Option<&Uri>) -> Vec<Uri> {
         let Some(documents) = self.state.documents.upgrade() else {
             return vec![];
         };
-        let mut updated_doc_uris = vec![];
         documents
             .iter_mut()
-            .for_each(|mut doc| match doc.value_mut() {
-                Document::Policy(policy) => {
-                    if let Some(schema_uri) = &policy.schema_uri {
-                        if schema_uri == &self.state.uri {
-                            policy.schema_uri = new_uri.cloned();
-                            updated_doc_uris.push(policy.state.uri.clone());
-                        }
-                    }
+            .filter_map(|mut doc| match doc.value_mut() {
+                Document::Policy(policy) if policy.schema_uri.as_ref() == Some(&self.state.uri) => {
+                    policy.schema_uri = new_schema_uri.cloned();
+                    Some(policy.state.uri.clone())
                 }
-                Document::Entities(entities) => {
-                    if let Some(schema_uri) = &entities.schema_uri {
-                        if schema_uri == &self.state.uri {
-                            entities.schema_uri = new_uri.cloned();
-                            updated_doc_uris.push(entities.state.uri.clone());
-                        }
-                    }
+                Document::Entities(entities)
+                    if entities.schema_uri.as_ref() == Some(&self.state.uri) =>
+                {
+                    entities.schema_uri = new_schema_uri.cloned();
+                    Some(entities.state.uri.clone())
                 }
-                Document::Schema(_) => {}
-            });
-        updated_doc_uris
+                _ => None,
+            })
+            .collect()
     }
 }
 

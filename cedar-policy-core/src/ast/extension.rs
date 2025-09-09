@@ -132,6 +132,8 @@ pub type UnaryExtensionFunctionObject = extension_function_object!(&Value);
 pub type BinaryExtensionFunctionObject = extension_function_object!(&Value, &Value);
 /// Trait object that implements the extension function call accepting exactly 3 arguments
 pub type TernaryExtensionFunctionObject = extension_function_object!(&Value, &Value, &Value);
+/// Trait object that implements the extension function call that takes one argument, followed by a variadic number of arguments.
+pub type VariadicExtensionFunctionObject = extension_function_object!(&Value, &[Value]);
 
 /// Extension function. These can be called by the given `name` in Ceder
 /// expressions.
@@ -153,6 +155,9 @@ pub struct ExtensionFunction {
     return_type: Option<SchemaType>,
     /// The argument types that this function expects, as `SchemaType`s.
     arg_types: Vec<SchemaType>,
+    /// Whether this is a variadic function or not. If it is a variadic function it can accept 1 or more arguments
+    /// of the last argument type.
+    is_variadic: bool,
 }
 
 impl ExtensionFunction {
@@ -163,6 +168,7 @@ impl ExtensionFunction {
         func: ExtensionFunctionObject,
         return_type: Option<SchemaType>,
         arg_types: Vec<SchemaType>,
+        is_variadic: bool,
     ) -> Self {
         Self {
             name,
@@ -170,6 +176,7 @@ impl ExtensionFunction {
             func,
             return_type,
             arg_types,
+            is_variadic,
         }
     }
 
@@ -197,6 +204,7 @@ impl ExtensionFunction {
             }),
             Some(return_type),
             vec![],
+            false,
         )
     }
 
@@ -222,6 +230,7 @@ impl ExtensionFunction {
             }),
             None,
             vec![arg_type],
+            false,
         )
     }
 
@@ -248,6 +257,7 @@ impl ExtensionFunction {
             }),
             Some(return_type),
             vec![arg_type],
+            false,
         )
     }
 
@@ -274,6 +284,7 @@ impl ExtensionFunction {
             }),
             Some(return_type),
             vec![arg_types.0, arg_types.1],
+            false,
         )
     }
 
@@ -300,6 +311,34 @@ impl ExtensionFunction {
             }),
             Some(return_type),
             vec![arg_types.0, arg_types.1, arg_types.2],
+            false,
+        )
+    }
+
+    /// Create a new variadic `ExtensionFunction` taking two or more argument.
+    #[allow(clippy::type_complexity)]
+    pub fn variadic(
+        name: Name,
+        style: CallStyle,
+        func: VariadicExtensionFunctionObject,
+        return_type: SchemaType,
+        arg_types: (SchemaType, SchemaType),
+    ) -> Self {
+        Self::new(
+            name.clone(),
+            style,
+            Box::new(move |args: &[Value]| match &args {
+                &[first, rest @ ..] => func(first, rest),
+                _ => Err(evaluator::EvaluationError::wrong_num_arguments(
+                    name.clone(),
+                    2,
+                    args.len(),
+                    None, // evaluator will add the source location later
+                )),
+            }),
+            Some(return_type),
+            vec![arg_types.0, arg_types.1],
+            true,
         )
     }
 
@@ -323,6 +362,11 @@ impl ExtensionFunction {
     /// Get the argument types of the `ExtensionFunction`.
     pub fn arg_types(&self) -> &[SchemaType] {
         &self.arg_types
+    }
+
+    /// Whether this is a variadic function.
+    pub fn is_variadic(&self) -> bool {
+        self.is_variadic
     }
 
     /// Returns `true` if this function is considered a single argument
