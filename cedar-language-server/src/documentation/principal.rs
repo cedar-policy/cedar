@@ -69,3 +69,37 @@ impl ToDocumentationString for PrincipalDocumentation {
         builder.build().into()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use insta::assert_snapshot;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_concrete_entity_type_no_schema() {
+        let docs = PrincipalDocumentation::new(EntityTypeKind::Concrete(Arc::new(
+            "User".parse().unwrap(),
+        )));
+        assert_snapshot!(
+            docs.to_documentation_string(None)
+        );
+    }
+
+    #[test]
+    fn test_concrete_entity_type_with_schema() {
+        let schema = r#"
+          entity User {
+            age: Long
+          };
+        "#
+        .parse()
+        .unwrap();
+        let docs = PrincipalDocumentation::new(EntityTypeKind::Concrete(Arc::new(
+            "User".parse().unwrap(),
+        )));
+        assert_snapshot!(
+            docs.to_documentation_string(Some(&schema))
+        );
+    }
+}

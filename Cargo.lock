@@ -290,6 +290,7 @@ dependencies = [
  "cedar-policy-formatter",
  "cool_asserts",
  "dashmap",
+ "insta",
  "itertools 0.14.0",
  "miette",
  "regex",

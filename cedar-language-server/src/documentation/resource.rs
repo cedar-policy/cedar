@@ -69,3 +69,34 @@ impl ToDocumentationString for ResourceDocumentation {
         builder.build().into()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use insta::assert_snapshot;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_concrete_entity_type_no_schema() {
+        let docs = ResourceDocumentation::new(EntityTypeKind::Concrete(Arc::new(
+            "Photo".parse().unwrap(),
+        )));
+        assert_snapshot!(docs.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_concrete_entity_type_with_schema() {
+        let schema = r#"
+          entity Photo {
+            private: Bool,
+            size: Long
+          };
+        "#
+        .parse()
+        .unwrap();
+        let docs = ResourceDocumentation::new(EntityTypeKind::Concrete(Arc::new(
+            "Photo".parse().unwrap(),
+        )));
+        assert_snapshot!(docs.to_documentation_string(Some(&schema)));
+    }
+}

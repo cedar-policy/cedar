@@ -285,7 +285,7 @@ impl ToDocumentationString for CedarTypeKind {
                     .into()
             }
             Self::Set(element_type) => {
-                SetDocumentation::new(element_type.to_string()).to_documentation_string(schema)
+                SetDocumentation::new(element_type.as_ref().clone()).to_documentation_string(schema)
             }
             Self::EmptySet => SetDocumentation::default().to_documentation_string(schema),
             Self::Extension(name) => {

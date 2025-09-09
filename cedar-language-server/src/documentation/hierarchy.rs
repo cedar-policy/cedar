@@ -17,19 +17,16 @@ use std::borrow::Cow;
 
 use cedar_policy_core::validator::ValidatorSchema;
 
-use crate::impl_documentation_from_markdown_file;
+use crate::{impl_documentation_from_markdown_file, policy::cedar::CedarTypeKind};
 
 use super::ToDocumentationString;
 
 #[derive(Default)]
-pub(crate) struct SetDocumentation(Option<String>);
+pub(crate) struct SetDocumentation(Option<CedarTypeKind>);
 
 impl SetDocumentation {
-    pub(crate) fn new<T>(set_type: T) -> Self
-    where
-        T: Into<Option<String>>,
-    {
-        Self(set_type.into())
+    pub(crate) fn new(set_type: CedarTypeKind) -> Self {
+        Self(Some(set_type))
     }
 }
 
@@ -37,7 +34,7 @@ impl ToDocumentationString for SetDocumentation {
     fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         let content = include_str!("markdown/hierarchy/set.md");
         match &self.0 {
-            Some(elem_type) => content.replace('?', elem_type).into(),
+            Some(elem_type) => content.replace('?', &elem_type.to_string()).into(),
             None => content.into(),
         }
     }
@@ -56,3 +53,29 @@ impl_documentation_from_markdown_file!(
     "markdown/hierarchy/contains_any.md"
 );
 impl_documentation_from_markdown_file!(IsEmptyDocumentation, "markdown/hierarchy/is_empty.md");
+
+#[cfg(test)]
+mod test {
+    use std::{collections::BTreeMap, sync::Arc};
+
+    use insta::assert_snapshot;
+    use smol_str::ToSmolStr;
+
+    use crate::{
+        documentation::{SetDocumentation, ToDocumentationString},
+        policy::cedar::{Attribute, CedarTypeKind, Record},
+    };
+
+    #[test]
+    fn test_set() {
+        let docs = SetDocumentation::new(CedarTypeKind::String);
+        assert_snapshot!(docs.to_documentation_string(None));
+        let docs = SetDocumentation::new(CedarTypeKind::Record(Record {
+            attrs: Arc::new(BTreeMap::from([(
+                "foo".to_smolstr(),
+                Attribute::new("foo".to_smolstr(), true, Some(CedarTypeKind::Bool)),
+            )])),
+        }));
+        assert_snapshot!(docs.to_documentation_string(None));
+    }
+}
