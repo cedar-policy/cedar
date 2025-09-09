@@ -18,11 +18,14 @@ use std::borrow::Cow;
 use std::{collections::BTreeSet, fmt::Display, hash::Hash, sync::Arc};
 
 use cedar_policy_core::ast::EntityUID;
+use cedar_policy_core::validator::types::{AttributeType, Attributes};
+use cedar_policy_core::validator::ValidatorActionId;
 use cedar_policy_core::validator::{
-    types::{Attributes, EntityRecordKind, Type},
+    types::{EntityRecordKind, Type},
     ValidatorSchema,
 };
 use itertools::Itertools;
+use smol_str::SmolStr;
 
 use crate::documentation::ToDocumentationString;
 use crate::{markdown::MarkdownBuilder, policy::types::format_attributes};
@@ -86,9 +89,11 @@ impl ContextKind {
 
     #[must_use]
     pub(crate) fn attributes(&self, schema: Option<&ValidatorSchema>) -> Vec<Attribute> {
+        let Some(schema) = schema else {
+            return Vec::new();
+        };
         self.schema_attributes(schema)
-            .iter()
-            .flat_map(cedar_policy_core::validator::types::Attributes::iter)
+            .into_iter()
             .map(std::convert::Into::into)
             .collect()
     }
@@ -105,52 +110,38 @@ impl ContextKind {
             .and_then(super::attribute::Attribute::cedar_type)
     }
 
-    fn schema_attributes(&self, schema: Option<&ValidatorSchema>) -> Option<Attributes> {
-        let schema = schema?;
-
+    fn actions_iter<'a>(
+        &'a self,
+        schema: &'a ValidatorSchema,
+    ) -> Box<dyn Iterator<Item = &'a ValidatorActionId> + 'a> {
         match self {
-            Self::AnyContext => {
-                let iter = schema
-                    .action_ids()
-                    .map(cedar_policy_core::validator::ValidatorActionId::context_type)
-                    .filter_map(|c| match c {
-                        Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => Some(attrs),
-                        _ => None,
-                    })
-                    .flat_map(cedar_policy_core::validator::types::Attributes::iter)
-                    .unique()
-                    .map(|(k, v)| (k.clone(), v.clone()));
-                Some(Attributes::with_attributes(iter))
-            }
+            Self::AnyContext => Box::new(schema.action_ids()),
             Self::Action(entity_uid) => {
                 let action_id = schema.get_action_id(entity_uid);
-                let iter = action_id
-                    .iter()
-                    .map(|a| a.context_type())
-                    .filter_map(|c| match c {
-                        Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => Some(attrs),
-                        _ => None,
-                    })
-                    .flat_map(cedar_policy_core::validator::types::Attributes::iter)
-                    .unique()
-                    .map(|(k, v)| (k.clone(), v.clone()));
-                Some(Attributes::with_attributes(iter))
+                Box::new(action_id.into_iter())
             }
-            Self::ActionSet(btree_set) => {
-                let iter = btree_set
+            Self::ActionSet(btree_set) => Box::new(
+                btree_set
                     .iter()
-                    .filter_map(|entity_uid| schema.get_action_id(entity_uid))
-                    .map(cedar_policy_core::validator::ValidatorActionId::context_type)
-                    .filter_map(|c| match c {
-                        Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => Some(attrs),
-                        _ => None,
-                    })
-                    .flat_map(cedar_policy_core::validator::types::Attributes::iter)
-                    .unique()
-                    .map(|(k, v)| (k.clone(), v.clone()));
-                Some(Attributes::with_attributes(iter))
-            }
+                    .filter_map(|entity_uid| schema.get_action_id(entity_uid)),
+            ),
         }
+    }
+
+    fn schema_attributes<'a>(
+        &'a self,
+        schema: &'a ValidatorSchema,
+    ) -> Vec<(&'a SmolStr, &'a AttributeType)> {
+        self.actions_iter(schema)
+            .map(ValidatorActionId::context_type)
+            .filter_map(|c| match c {
+                Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => Some(attrs),
+                _ => None,
+            })
+            .flat_map(Attributes::iter)
+            .unique()
+            .sorted()
+            .collect()
     }
 }
 
@@ -178,13 +169,14 @@ impl ToDocumentationString for ContextKind {
             Self::AnyContext => {
                 builder.header("Available Context Attributes");
 
-                if let Some(attrs) = self.schema_attributes(schema) {
-                    if attrs.keys().peekable().peek().is_none() {
+                if let Some(schema) = schema {
+                    let attrs = self.schema_attributes(schema);
+                    if attrs.is_empty() {
                         builder.paragraph("No context attributes defined in the schema.");
                     } else {
                         builder
                             .paragraph("The following context attributes are available:")
-                            .code_block("cedarschema", &format_attributes(&attrs));
+                            .code_block("cedarschema", &format_attributes(attrs.into_iter()));
                     }
                 } else {
                     builder.paragraph("*Schema not available - context structure unknown*");
@@ -198,11 +190,12 @@ impl ToDocumentationString for ContextKind {
                         "Context attributes available for the action `{action_euid}`:"
                     ));
 
-                if let Some(attrs) = self.schema_attributes(schema) {
-                    if attrs.keys().peekable().peek().is_none() {
+                if let Some(schema) = schema {
+                    let attrs = self.schema_attributes(schema);
+                    if attrs.is_empty() {
                         builder.paragraph("No context attributes defined for this action.");
                     } else {
-                        builder.code_block("cedarschema", &format_attributes(&attrs));
+                        builder.code_block("cedarschema", &format_attributes(attrs.into_iter()));
                     }
                 } else {
                     builder.paragraph("*Schema not available - context structure unknown*");
@@ -247,11 +240,12 @@ impl ToDocumentationString for ContextKind {
                     ));
                 }
 
-                if let Some(attrs) = self.schema_attributes(schema) {
-                    if attrs.iter().peekable().peek().is_none() {
+                if let Some(schema) = schema {
+                    let attrs = self.schema_attributes(schema);
+                    if attrs.is_empty() {
                         builder.paragraph("No context attributes defined for these actions.");
                     } else {
-                        builder.code_block("cedarschema", &format_attributes(&attrs));
+                        builder.code_block("cedarschema", &format_attributes(attrs.into_iter()));
                     }
                 } else {
                     builder.paragraph("*Schema not available - context structure unknown*");

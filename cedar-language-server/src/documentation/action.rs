@@ -91,7 +91,7 @@ impl ToDocumentationString for ActionDocumentation<'_> {
                         {
                             builder
                                 .header("Context Attributes")
-                                .code_block("cedarschema", &format_attributes(attrs));
+                                .code_block("cedarschema", &format_attributes(attrs.iter()));
                         }
                     }
                 }

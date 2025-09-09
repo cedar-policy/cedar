@@ -39,7 +39,7 @@ impl ToDocumentationString for EntityType {
             if !attrs.keys().count() > 0 {
                 builder
                     .paragraph("Attributes:")
-                    .code_block("cedarschema", &format_attributes(attrs));
+                    .code_block("cedarschema", &format_attributes(attrs.iter()));
             }
         }
 
@@ -61,7 +61,7 @@ impl ToDocumentationString for EntityUID {
                 if !attrs.keys().count() > 0 {
                     builder
                         .paragraph("Available Attributes:")
-                        .code_block("cedarschema", &format_attributes(attrs));
+                        .code_block("cedarschema", &format_attributes(attrs.iter()));
                 }
             }
         }
@@ -98,7 +98,7 @@ where
                 if !attrs.keys().count() > 0 {
                     builder
                         .paragraph("Attributes:")
-                        .code_block("cedarschema", &format_attributes(attrs));
+                        .code_block("cedarschema", &format_attributes(attrs.iter()));
                 }
             }
         }

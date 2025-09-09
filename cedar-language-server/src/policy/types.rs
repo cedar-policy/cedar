@@ -26,11 +26,12 @@ use cedar_policy_core::ast::{
 use cedar_policy_core::parser::Loc;
 use cedar_policy_core::validator::ValidatorSchema;
 use cedar_policy_core::validator::{
-    types::{AttributeType, Attributes, EntityRecordKind, Type},
+    types::{AttributeType, EntityRecordKind, Type},
     ValidatorEntityType,
 };
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use tower_lsp_server::lsp_types::{CompletionItem, Position};
 
 use crate::policy::completion::items::{
@@ -399,10 +400,12 @@ impl<'a> DocumentContext<'a> {
 }
 
 #[must_use]
-pub(crate) fn format_attributes(attrs: &Attributes) -> String {
+pub(crate) fn format_attributes<'a>(
+    attrs: impl Iterator<Item = (&'a SmolStr, &'a AttributeType)>,
+) -> String {
     let mut lines = Vec::new();
 
-    for (name, attr_type) in attrs.iter() {
+    for (name, attr_type) in attrs {
         lines.push(format_attribute(name, attr_type, 0));
     }
 
