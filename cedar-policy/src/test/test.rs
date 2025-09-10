@@ -9152,15 +9152,11 @@ when { principal in resource.admins };
                 // Get result from is_authorized_batched (if TPE feature is enabled)
                 let mut loader = TestEntityLoader::new(&entities);
                 let validator = Validator::new(schema.clone());
-                let (policy_level, _validation) =
-                    validator.calculate_minimum_level(&policies, ValidationMode::default());
+                let policy_level = validator
+                    .calculate_minimum_level(&policies, ValidationMode::default())
+                    .unwrap_or(u32::MAX);
                 let batched_response = policies
-                    .is_authorized_batched(
-                        request,
-                        &schema,
-                        &mut loader,
-                        policy_level, // max_iters
-                    )
+                    .is_authorized_batched(request, &schema, &mut loader, policy_level)
                     .unwrap();
 
                 // Compare decisions - they should be the same

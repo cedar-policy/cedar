@@ -180,7 +180,7 @@ impl Validator {
         }
 
         // must validate at u32::MAX since we checked u32::MAX at the beginning of the function
-        std::result::Result::Ok(u32::MAX);
+        std::result::Result::Ok(u32::MAX)
     }
 
     /// Run all validations against a single static policy or template (note
