@@ -182,10 +182,7 @@ pub fn is_authorized_batched<'a>(
             TCComputation::AssumeAlreadyComputed,
         )?;
 
-        entities.add_entities_trusted(
-            loaded_empty_partial.into_iter(),
-        )?;
-
+        entities.add_entities_trusted(loaded_empty_partial.into_iter())?;
 
         let evaluator = Evaluator {
             request: &request,
