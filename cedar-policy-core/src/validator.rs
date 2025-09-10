@@ -166,20 +166,21 @@ impl Validator {
         &'a self,
         p: &'a PolicySet,
         mode: ValidationMode,
-    ) -> (u32, ValidationResult) {
-        let initial_result = self.validate(p, mode);
+    ) -> std::result::Result<u32, ValidationResult> {
+        let initial_result = self.validate_with_level(p, mode, u32::MAX);
         if initial_result.validation_errors().count() > 0 {
-            return (u32::MAX, initial_result);
+            return std::result::Result::Err(initial_result);
         }
 
         for i in 0..u32::MAX {
             let res = self.validate_with_level(p, mode, i);
             if res.validation_errors().count() == 0 {
-                return (i, res);
+                return std::result::Result::Ok(i);
             }
         }
 
-        panic!("Failed to find minimum level of policy");
+        // must validate at u32::MAX since we checked u32::MAX at the beginning of the function
+        std::result::Result::Ok(u32::MAX);
     }
 
     /// Run all validations against a single static policy or template (note

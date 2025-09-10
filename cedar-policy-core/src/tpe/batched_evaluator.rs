@@ -147,7 +147,8 @@ pub fn is_authorized_batched<'a>(
 
     // PANIC SAFETY: residuals and policy set contain the same policy ids
     #[allow(clippy::unwrap_used)]
-    for _i in 0..max_iters {
+    for i in 0..max_iters {
+        eprintln!("iter {}", i);
         let ids = residuals.iter().flat_map(|r| r.all_literal_uids());
         let mut to_load = HashSet::new();
         // filter to_load for already loaded entities
