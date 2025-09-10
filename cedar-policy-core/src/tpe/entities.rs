@@ -531,6 +531,30 @@ impl PartialEntities {
         Ok(entities)
     }
 
+    /// Add entities without checking if they conform to a schema.
+    /// Also assume that the TC is already computed.
+    /// Still errors on duplicates.
+    pub(crate) fn add_entities_trusted(
+        &mut self,
+        entity_mappings: impl Iterator<Item = (EntityUID, PartialEntity)>,
+    ) -> std::result::Result<(), EntitiesError> {
+        for (uid, entity) in entity_mappings {
+            match self.entities.entry(uid) {
+                Entry::Vacant(e) => {
+                    e.insert(entity);
+                }
+                Entry::Occupied(e) => {
+                    return Err(Duplicate {
+                        euid: e.key().clone(),
+                    }
+                    .into())
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Add a set of partial entities to this store,
     /// erroring on duplicates.
     pub fn add_entities(

@@ -24,6 +24,7 @@ use crate::entities::TCComputation;
 use crate::tpe::entities::PartialEntity;
 use crate::tpe::err::{BatchedEvalError, NonstaticPolicyError, PartialRequestError, TPEError};
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
+use crate::tpe::residual::Residual;
 use crate::tpe::response::{ResidualPolicy, Response};
 use crate::validator::typecheck::{PolicyCheck, Typechecker};
 use crate::validator::types::Type;
@@ -147,7 +148,7 @@ pub fn is_authorized_batched<'a>(
 
     // PANIC SAFETY: residuals and policy set contain the same policy ids
     #[allow(clippy::unwrap_used)]
-    for i in 0..max_iters {
+    for _i in 0..max_iters {
         let ids = residuals.iter().flat_map(|r| r.all_literal_uids());
         let mut to_load = HashSet::new();
         // filter to_load for already loaded entities
@@ -162,12 +163,17 @@ pub fn is_authorized_batched<'a>(
         // check that all requested entities were loaded and return error otherwise
 
         let mut loaded_partial = vec![];
+        let mut loaded_empty_partial = vec![];
         for (id, e_option) in loaded_entities {
-            let partial_entity = match e_option {
-                Some(e) => PartialEntity::try_from(e)?,
-                None => PartialEntity::try_from(Entity::with_uid(id.clone()))?,
-            };
-            loaded_partial.push((id, partial_entity));
+            match e_option {
+                Some(e) => {
+                    loaded_partial.push((id, PartialEntity::try_from(e)?));
+                }
+                None => {
+                    loaded_empty_partial
+                        .push((id.clone(), PartialEntity::try_from(Entity::with_uid(id))?));
+                }
+            }
         }
 
         entities.add_entities(
@@ -175,6 +181,11 @@ pub fn is_authorized_batched<'a>(
             schema,
             TCComputation::AssumeAlreadyComputed,
         )?;
+
+        entities.add_entities_trusted(
+            loaded_empty_partial.into_iter(),
+        )?;
+
 
         let evaluator = Evaluator {
             request: &request,
@@ -192,8 +203,11 @@ pub fn is_authorized_batched<'a>(
             })
             .collect();
 
-        // if all the residuals are done exit
-        if residuals.iter().all(|r| r.get_residual().is_concrete()) {
+        // if all the residuals are done, exit
+        if residuals
+            .iter()
+            .all(|r| !matches!(*(r.get_residual()), Residual::Partial { .. }))
+        {
             break;
         }
     }

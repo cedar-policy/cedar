@@ -77,11 +77,6 @@ impl Residual {
         }
     }
 
-    /// Returns whether or not this residual is a concrete value
-    pub fn is_concrete(&self) -> bool {
-        matches!(self, Residual::Concrete { .. })
-    }
-
     /// Get the type of this residual
     pub fn ty(&self) -> &Type {
         match self {
@@ -369,6 +364,11 @@ impl Residual {
                 ..
             }
         )
+    }
+
+    /// If a residual is an error
+    pub fn is_error(&self) -> bool {
+        matches!(self, Residual::Error { .. })
     }
 }
 
