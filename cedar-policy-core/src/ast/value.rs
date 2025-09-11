@@ -205,25 +205,11 @@ impl ValueKind {
     /// All literal uids referenced by this value kind
     pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
         match self {
-            ValueKind::Lit(Literal::EntityUID(uid)) => {
-                let mut uids = HashSet::new();
-                uids.insert((**uid).clone());
-                uids
-            }
+            ValueKind::Lit(Literal::EntityUID(uid)) => HashSet::from([uid.as_ref().clone()]),
             ValueKind::Lit(_) => HashSet::new(),
-            ValueKind::Set(set) => {
-                let mut uids = HashSet::new();
-                for value in set.iter() {
-                    uids.extend(value.all_literal_uids());
-                }
-                uids
-            }
+            ValueKind::Set(set) => set.iter().flat_map(Value::all_literal_uids).collect(),
             ValueKind::Record(record) => {
-                let mut uids = HashSet::new();
-                for value in record.values() {
-                    uids.extend(value.all_literal_uids());
-                }
-                uids
+                record.values().flat_map(Value::all_literal_uids).collect()
             }
             ValueKind::ExtensionValue(_) => HashSet::new(),
         }

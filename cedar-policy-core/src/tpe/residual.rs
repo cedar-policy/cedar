@@ -110,26 +110,26 @@ impl TryFrom<&Expr<Option<Type>>> for Residual {
                 then_expr,
                 else_expr,
             } => ResidualKind::If {
-                test_expr: Arc::new(Self::try_from(&(**test_expr))?),
-                then_expr: Arc::new(Self::try_from(&(**then_expr))?),
-                else_expr: Arc::new(Self::try_from(&(**else_expr))?),
+                test_expr: Arc::new(Self::try_from(test_expr.as_ref())?),
+                then_expr: Arc::new(Self::try_from(then_expr.as_ref())?),
+                else_expr: Arc::new(Self::try_from(else_expr.as_ref())?),
             },
             ast::ExprKind::And { left, right } => ResidualKind::And {
-                left: Arc::new(Self::try_from(&(**left))?),
-                right: Arc::new(Self::try_from(&(**right))?),
+                left: Arc::new(Self::try_from(left.as_ref())?),
+                right: Arc::new(Self::try_from(right.as_ref())?),
             },
             ast::ExprKind::Or { left, right } => ResidualKind::Or {
-                left: Arc::new(Self::try_from(&(**left))?),
-                right: Arc::new(Self::try_from(&(**right))?),
+                left: Arc::new(Self::try_from(left.as_ref())?),
+                right: Arc::new(Self::try_from(right.as_ref())?),
             },
             ast::ExprKind::UnaryApp { op, arg } => ResidualKind::UnaryApp {
                 op: *op,
-                arg: Arc::new(Self::try_from(&(**arg))?),
+                arg: Arc::new(Self::try_from(arg.as_ref())?),
             },
             ast::ExprKind::BinaryApp { op, arg1, arg2 } => ResidualKind::BinaryApp {
                 op: *op,
-                arg1: Arc::new(Self::try_from(&(**arg1))?),
-                arg2: Arc::new(Self::try_from(&(**arg2))?),
+                arg1: Arc::new(Self::try_from(arg1.as_ref())?),
+                arg2: Arc::new(Self::try_from(arg2.as_ref())?),
             },
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let residual_args: Result<Vec<_>, _> = args.iter().map(Self::try_from).collect();
@@ -139,19 +139,19 @@ impl TryFrom<&Expr<Option<Type>>> for Residual {
                 }
             }
             ast::ExprKind::GetAttr { expr, attr } => ResidualKind::GetAttr {
-                expr: Arc::new(Self::try_from(&(**expr))?),
+                expr: Arc::new(Self::try_from(expr.as_ref())?),
                 attr: attr.clone(),
             },
             ast::ExprKind::HasAttr { expr, attr } => ResidualKind::HasAttr {
-                expr: Arc::new(Self::try_from(&(**expr))?),
+                expr: Arc::new(Self::try_from(expr.as_ref())?),
                 attr: attr.clone(),
             },
             ast::ExprKind::Like { expr, pattern } => ResidualKind::Like {
-                expr: Arc::new(Self::try_from(&(**expr))?),
+                expr: Arc::new(Self::try_from(expr.as_ref())?),
                 pattern: pattern.clone(),
             },
             ast::ExprKind::Is { expr, entity_type } => ResidualKind::Is {
-                expr: Arc::new(Self::try_from(&(**expr))?),
+                expr: Arc::new(Self::try_from(expr.as_ref())?),
                 entity_type: entity_type.clone(),
             },
             ast::ExprKind::Set(elements) => {

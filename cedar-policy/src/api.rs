@@ -5338,8 +5338,8 @@ mod tpe {
         /// the entity does not exist.
         fn load_entities(
             &mut self,
-            uids: &std::collections::HashSet<EntityUid>,
-        ) -> std::collections::HashMap<EntityUid, Option<Entity>>;
+            uids: &HashSet<EntityUid>,
+        ) -> HashMap<EntityUid, Option<Entity>>;
     }
 
     /// Wrapper struct used to convert an [`EntityLoader`] to an `EntityLoaderInternal`
@@ -5348,8 +5348,8 @@ mod tpe {
     impl EntityLoaderInternal for EntityLoaderWrapper<'_> {
         fn load_entities(
             &mut self,
-            uids: &std::collections::HashSet<ast::EntityUID>,
-        ) -> std::collections::HashMap<ast::EntityUID, Option<ast::Entity>> {
+            uids: &HashSet<ast::EntityUID>,
+        ) -> HashMap<ast::EntityUID, Option<ast::Entity>> {
             let ids = uids
                 .iter()
                 .map(|id| EntityUid::ref_cast(id).clone())
@@ -5379,8 +5379,8 @@ mod tpe {
     impl EntityLoader for TestEntityLoader<'_> {
         fn load_entities(
             &mut self,
-            uids: &std::collections::HashSet<EntityUid>,
-        ) -> std::collections::HashMap<EntityUid, Option<Entity>> {
+            uids: &HashSet<EntityUid>,
+        ) -> HashMap<EntityUid, Option<Entity>> {
             uids.iter()
                 .map(|uid| {
                     let entity = self.entities.get(uid).cloned();

@@ -17,6 +17,7 @@
 //! This module contains the batched evaluator implementation and the (internal) definition of [`EntityLoader`]
 
 use std::collections::{HashMap, HashSet};
+use std::iter;
 use std::sync::Arc;
 
 use crate::ast::{Entity, EntityUID, EntityUIDEntry, Expr, PolicyID, Request};
@@ -37,12 +38,9 @@ use crate::tpe::{entities::PartialEntities, evaluator::Evaluator};
 /// See the public version in `api.rs`
 pub trait EntityLoader {
     /// Load all entities for the given set of entity UIDs.
-    /// Returns a map from [`EntityUID`] to Option<Entity>, where `None` indicates
+    /// Returns a map from [`EntityUID`] to `Option<Entity>`, where `None` indicates
     /// the entity does not exist.
-    fn load_entities(
-        &mut self,
-        uids: &std::collections::HashSet<EntityUID>,
-    ) -> std::collections::HashMap<EntityUID, Option<Entity>>;
+    fn load_entities(&mut self, uids: &HashSet<EntityUID>) -> HashMap<EntityUID, Option<Entity>>;
 }
 
 pub(crate) fn policy_expr_map<'a>(
@@ -162,27 +160,23 @@ pub fn is_authorized_batched<'a>(
 
         // check that all requested entities were loaded and return error otherwise
 
-        let mut loaded_partial = vec![];
-        let mut loaded_empty_partial = vec![];
         for (id, e_option) in loaded_entities {
             match e_option {
                 Some(e) => {
-                    loaded_partial.push((id, PartialEntity::try_from(e)?));
+                    entities.add_entities(
+                        iter::once((id, PartialEntity::try_from(e)?)),
+                        schema,
+                        TCComputation::AssumeAlreadyComputed,
+                    )?;
                 }
                 None => {
-                    loaded_empty_partial
-                        .push((id.clone(), PartialEntity::try_from(Entity::with_uid(id))?));
+                    entities.add_entity_trusted(
+                        id.clone(),
+                        PartialEntity::try_from(Entity::with_uid(id))?,
+                    )?;
                 }
             }
         }
-
-        entities.add_entities(
-            loaded_partial.into_iter(),
-            schema,
-            TCComputation::AssumeAlreadyComputed,
-        )?;
-
-        entities.add_entities_trusted(loaded_empty_partial.into_iter())?;
 
         let evaluator = Evaluator {
             request: &request,

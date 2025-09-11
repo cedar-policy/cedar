@@ -17,6 +17,8 @@
 //! This module contains possible errors thrown by various components of the
 //! type-aware partial evaluator.
 
+use std::fmt::Display;
+
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -368,7 +370,6 @@ pub struct UnknownEntityError {
 
 /// Error thrown when some requested entities were not loaded
 #[derive(Debug, Error)]
-#[error("Failed to load entities: {}", .missing_entities.iter().map(|uid| uid.to_string()).collect::<Vec<_>>().join(", "))]
 pub struct MissingEntitiesError {
     pub(super) missing_entities: Vec<EntityUID>,
 }
@@ -377,6 +378,20 @@ impl MissingEntitiesError {
     /// Construct a new [`MissingEntitiesError`]
     pub fn new(missing_entities: Vec<EntityUID>) -> Self {
         Self { missing_entities }
+    }
+}
+
+impl Display for MissingEntitiesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Failed to load entities: {}",
+            self.missing_entities
+                .iter()
+                .map(|uid| uid.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 
