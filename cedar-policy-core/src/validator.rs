@@ -155,34 +155,6 @@ impl Validator {
         )
     }
 
-    /// Calculate the minimum level at which the policy set will
-    /// validate. Does this very simply as a loop starting from 0.
-    ///
-    /// Returns a [`ValidationResult`] which contains errors if there are any type errors.
-    ///
-    // PANIC SAFETY: Cedar programs are less than u32::MAX in size
-    #[allow(clippy::panic)]
-    pub fn calculate_minimum_level<'a>(
-        &'a self,
-        p: &'a PolicySet,
-        mode: ValidationMode,
-    ) -> std::result::Result<u32, ValidationResult> {
-        let initial_result = self.validate_with_level(p, mode, u32::MAX);
-        if initial_result.validation_errors().count() > 0 {
-            return std::result::Result::Err(initial_result);
-        }
-
-        for i in 0..u32::MAX {
-            let res = self.validate_with_level(p, mode, i);
-            if res.validation_errors().count() == 0 {
-                return std::result::Result::Ok(i);
-            }
-        }
-
-        // must validate at u32::MAX since we checked u32::MAX at the beginning of the function
-        std::result::Result::Ok(u32::MAX)
-    }
-
     /// Run all validations against a single static policy or template (note
     /// that Core `Template` includes static policies as well), gathering all
     /// validation errors and warnings in the returned iterators.

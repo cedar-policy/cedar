@@ -1492,21 +1492,6 @@ impl Validator {
                 .validate_with_level(&pset.ast, mode.into(), max_deref_level),
         )
     }
-
-    /// Calculate the minimum level at which the policy set will
-    /// validates. Does this very simply as a loop starting from 0.
-    ///
-    /// If the policy does not validate at [`u32::MAX`]
-    /// returns a [`ValidationResult`] with errors attached.
-    pub fn calculate_minimum_level(
-        &self,
-        pset: &PolicySet,
-        mode: ValidationMode,
-    ) -> Result<u32, ValidationResult> {
-        self.0
-            .calculate_minimum_level(&pset.ast, mode.into())
-            .map_err(std::convert::Into::into)
-    }
 }
 
 /// Contains all the type information used to construct a `Schema` that can be

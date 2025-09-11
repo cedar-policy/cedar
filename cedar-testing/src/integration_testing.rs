@@ -345,13 +345,9 @@ pub fn perform_integration_test(
         // check that batched evaluation arrives at the same answer
         if should_validate {
             let mut loader = TestEntityLoader::new(entities);
-            // Calculate the required level from the policies using the new calculate_minimum_level function
-            let validator = Validator::new(schema.clone());
-            let policy_level = validator
-                .calculate_minimum_level(policies, ValidationMode::default())
-                .unwrap_or(u32::MAX);
+            // TODO use policy level here instead of u32::MAX once policy level can be computed
             let batched_response = test_impl
-                .is_authorized_batched(&request, policies, schema, &mut loader, policy_level)
+                .is_authorized_batched(&request, policies, schema, &mut loader, u32::MAX)
                 .expect("Batched authorization failed");
             // Compare the decision from batched evaluation with regular evaluation
             assert_eq!(
