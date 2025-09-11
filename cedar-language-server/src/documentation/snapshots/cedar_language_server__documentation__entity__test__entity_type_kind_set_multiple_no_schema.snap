@@ -1,0 +1,11 @@
+---
+source: cedar-language-server/src/documentation/entity.rs
+expression: entity_type_kind.to_documentation_string(None)
+---
+**Possible Types**
+
+This entity can be any of the following entity types:
+
+**Type: `Photo`**
+
+**Type: `User`**

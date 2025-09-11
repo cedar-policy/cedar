@@ -1,0 +1,11 @@
+---
+source: cedar-language-server/src/documentation/hierarchy.rs
+expression: docs.to_documentation_string(None)
+---
+# Set Type
+
+```cedarschema
+Set<{ foo: bool }>
+```
+
+A collection type that contains elements of type `{ foo: bool }`.

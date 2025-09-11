@@ -485,7 +485,7 @@ mod tests {
     schema_hover_test!(
         hover_over_set,
         r"permit(principal, action, resource) when { principal.hotelAd|caret|minPermissions.isEmpty() };",
-        expr: SetDocumentation::new("Hotel".to_string())
+        expr: SetDocumentation::new(CedarTypeKind::EntityType(EntityTypeKind::Concrete(Arc::new("Hotel".parse().unwrap()))))
     );
 
     schema_hover_test!(

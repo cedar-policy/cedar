@@ -27,50 +27,6 @@ use crate::{
     policy::{cedar::EntityTypeKind, format_attributes},
 };
 
-pub(crate) struct EntityTypeDocumentation<'a> {
-    et: &'a EntityType,
-    formatted_attributes: Option<String>,
-}
-
-impl<'a> EntityTypeDocumentation<'a> {
-    pub(crate) fn new<S>(et: &EntityType, schema: S) -> EntityTypeDocumentation<'_>
-    where
-        S: for<'b> Into<Option<&'a ValidatorSchema>>,
-    {
-        if let Some(schema_type) = schema.into().and_then(|schema| schema.get_entity_type(et)) {
-            let attrs = schema_type.attributes();
-            if !attrs.keys().count() > 0 {
-                let attrs = format_attributes(attrs);
-                return EntityTypeDocumentation {
-                    et,
-                    formatted_attributes: Some(attrs),
-                };
-            }
-        }
-        EntityTypeDocumentation {
-            et,
-            formatted_attributes: None,
-        }
-    }
-}
-
-impl ToDocumentationString for EntityTypeDocumentation<'_> {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
-        let mut builder = MarkdownBuilder::new();
-        builder
-            .header("Type")
-            .paragraph(&format!("Entity Type: `{}`", self.et));
-
-        if let Some(attrs) = &self.formatted_attributes {
-            builder
-                .paragraph("Attributes:")
-                .code_block("cedarschema", attrs);
-        }
-
-        builder.build().into()
-    }
-}
-
 impl ToDocumentationString for EntityType {
     fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         let mut builder = MarkdownBuilder::new();
@@ -83,7 +39,7 @@ impl ToDocumentationString for EntityType {
             if !attrs.keys().count() > 0 {
                 builder
                     .paragraph("Attributes:")
-                    .code_block("cedarschema", &format_attributes(attrs));
+                    .code_block("cedarschema", &format_attributes(attrs.iter()));
             }
         }
 
@@ -105,7 +61,7 @@ impl ToDocumentationString for EntityUID {
                 if !attrs.keys().count() > 0 {
                     builder
                         .paragraph("Available Attributes:")
-                        .code_block("cedarschema", &format_attributes(attrs));
+                        .code_block("cedarschema", &format_attributes(attrs.iter()));
                 }
             }
         }
@@ -142,7 +98,7 @@ where
                 if !attrs.keys().count() > 0 {
                     builder
                         .paragraph("Attributes:")
-                        .code_block("cedarschema", &format_attributes(attrs));
+                        .code_block("cedarschema", &format_attributes(attrs.iter()));
                 }
             }
         }
@@ -153,9 +109,7 @@ where
 impl ToDocumentationString for EntityTypeKind {
     fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         match self {
-            Self::Concrete(entity_type) => {
-                EntityTypeDocumentation::new(entity_type, schema).to_documentation_string(schema)
-            }
+            Self::Concrete(entity_type) => entity_type.to_documentation_string(schema),
             Self::Set(set) => set.to_documentation_string(schema),
             Self::AnyPrincipal => {
                 let Some(schema) = schema else {
@@ -178,5 +132,135 @@ impl ToDocumentationString for EntityTypeKind {
                 set.to_documentation_string(Some(schema))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::Arc;
+
+    use super::*;
+    use cedar_policy_core::validator::ValidatorSchema;
+    use insta::assert_snapshot;
+
+    fn test_schema() -> ValidatorSchema {
+        r#"
+          entity Photo;
+          entity User {
+            name: String,
+            age: Long
+          };
+
+          action Act appliesTo {
+             principal: User,
+             resource: Photo,
+          };
+        "#
+        .parse()
+        .unwrap()
+    }
+
+    #[test]
+    fn test_entity_uid_no_schema() {
+        let uid: EntityUID = "User::\"alice\"".parse().unwrap();
+        assert_snapshot!(uid.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_entity_uid_with_schema() {
+        let uid: EntityUID = "User::\"alice\"".parse().unwrap();
+        let schema = test_schema();
+        assert_snapshot!(uid.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_entity_type_no_schema() {
+        let et: EntityType = "User".parse().unwrap();
+        assert_snapshot!(et.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_entity_type_with_schema() {
+        let et: EntityType = "User".parse().unwrap();
+        let schema = test_schema();
+        assert_snapshot!(et.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_entity_type_kind_concrete() {
+        let et: EntityType = "User".parse().unwrap();
+        let entity_type_kind = EntityTypeKind::Concrete(Arc::new(et));
+        let schema = test_schema();
+        assert_snapshot!(entity_type_kind.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_entity_type_kind_concrete_no_schema() {
+        let et: EntityType = "User".parse().unwrap();
+        let entity_type_kind = EntityTypeKind::Concrete(Arc::new(et));
+        assert_snapshot!(entity_type_kind.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_entity_type_kind_set_empty() {
+        let set = BTreeSet::from([Arc::new("User".parse().unwrap())]);
+        let entity_type_kind = EntityTypeKind::Set(set);
+        let schema = test_schema();
+        assert_snapshot!(entity_type_kind.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_entity_type_kind_set_single() {
+        let set = BTreeSet::from([Arc::new("User".parse().unwrap())]);
+        let entity_type_kind = EntityTypeKind::Set(set);
+        let schema = test_schema();
+        assert_snapshot!(entity_type_kind.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_entity_type_kind_set_multiple() {
+        let set = BTreeSet::from([
+            Arc::new("User".parse().unwrap()),
+            Arc::new("Photo".parse().unwrap()),
+        ]);
+        let entity_type_kind = EntityTypeKind::Set(set);
+        let schema = test_schema();
+        assert_snapshot!(entity_type_kind.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_entity_type_kind_set_multiple_no_schema() {
+        let set = BTreeSet::from([
+            Arc::new("User".parse().unwrap()),
+            Arc::new("Photo".parse().unwrap()),
+        ]);
+        let entity_type_kind = EntityTypeKind::Set(set);
+        assert_snapshot!(entity_type_kind.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_entity_type_kind_any_principal_no_schema() {
+        let entity_type_kind = EntityTypeKind::AnyPrincipal;
+        assert_snapshot!(entity_type_kind.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_entity_type_kind_any_principal_with_schema() {
+        let entity_type_kind = EntityTypeKind::AnyPrincipal;
+        let schema = test_schema();
+        assert_snapshot!(entity_type_kind.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_entity_type_kind_any_resource_no_schema() {
+        let entity_type_kind = EntityTypeKind::AnyResource;
+        assert_snapshot!(entity_type_kind.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_entity_type_kind_any_resource_with_schema() {
+        let entity_type_kind = EntityTypeKind::AnyResource;
+        let schema = test_schema();
+        assert_snapshot!(entity_type_kind.to_documentation_string(Some(&schema)));
     }
 }

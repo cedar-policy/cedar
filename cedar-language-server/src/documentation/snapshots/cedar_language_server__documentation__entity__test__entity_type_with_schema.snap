@@ -1,0 +1,14 @@
+---
+source: cedar-language-server/src/documentation/entity.rs
+expression: et.to_documentation_string(Some(&schema))
+---
+**Type**
+
+Entity Type: `User`
+
+Attributes:
+
+```cedarschema
+age: Long
+name: String
+```

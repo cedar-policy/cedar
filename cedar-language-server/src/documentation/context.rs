@@ -61,3 +61,185 @@ impl From<Option<&DocumentContext<'_>>> for ContextDocumentation {
         value.map(Into::into).unwrap_or_default()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use cedar_policy_core::ast::EntityUID;
+    use cedar_policy_core::validator::ValidatorSchema;
+    use insta::assert_snapshot;
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::policy::cedar::ContextKind;
+
+    fn test_schema() -> ValidatorSchema {
+        r#"
+          entity Photo;
+          entity User {
+            name: String,
+            age: Long
+          };
+
+          action Act appliesTo {
+             principal: User,
+             resource: Photo,
+             context: {
+                authenticated: Bool,
+                request: {
+                   timestamp: datetime
+                }
+             }
+          };
+
+          action View appliesTo {
+             principal: User,
+             resource: Photo,
+             context: {
+                ip_address: String,
+                request: {
+                   path: String
+                }
+             }
+          };
+
+          action NoContext appliesTo {
+             principal: User,
+             resource: Photo
+          };
+        "#
+        .parse()
+        .unwrap()
+    }
+
+    #[test]
+    fn test_context_documentation_default_no_schema() {
+        let context_doc = ContextDocumentation::default();
+        assert_snapshot!(context_doc.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_context_documentation_default_with_schema() {
+        let schema = test_schema();
+        let context_doc = ContextDocumentation::default();
+        assert_snapshot!(context_doc.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_context_documentation_any_context_no_schema() {
+        let context_kind = ContextKind::any();
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        assert_snapshot!(context_doc.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_context_documentation_any_context_with_schema() {
+        let context_kind = ContextKind::any();
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        let schema = test_schema();
+        assert_snapshot!(context_doc.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_context_documentation_action_no_schema() {
+        let action_euid: EntityUID = "Action::\"Act\"".parse().unwrap();
+        let context_kind = ContextKind::action(Arc::new(action_euid));
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        assert_snapshot!(context_doc.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_context_documentation_action_with_schema() {
+        let action_euid: EntityUID = "Action::\"Act\"".parse().unwrap();
+        let context_kind = ContextKind::action(Arc::new(action_euid));
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        let schema = test_schema();
+        assert_snapshot!(context_doc.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_context_documentation_action_set_empty_no_schema() {
+        let actions = std::iter::empty();
+        let context_kind = ContextKind::action_set(actions);
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        assert_snapshot!(context_doc.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_context_documentation_action_set_empty_with_schema() {
+        let actions = std::iter::empty();
+        let context_kind = ContextKind::action_set(actions);
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        let schema = test_schema();
+        assert_snapshot!(context_doc.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_context_documentation_action_set_single_no_schema() {
+        let action_euid: EntityUID = "Action::\"Act\"".parse().unwrap();
+        let actions = std::iter::once(Arc::new(action_euid));
+        let context_kind = ContextKind::action_set(actions);
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        assert_snapshot!(context_doc.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_context_documentation_action_set_single_with_schema() {
+        let action_euid: EntityUID = "Action::\"Act\"".parse().unwrap();
+        let actions = std::iter::once(Arc::new(action_euid));
+        let context_kind = ContextKind::action_set(actions);
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        let schema = test_schema();
+        assert_snapshot!(context_doc.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_context_documentation_action_set_multiple_no_schema() {
+        let act_euid: EntityUID = "Action::\"Act\"".parse().unwrap();
+        let view_euid: EntityUID = "Action::\"View\"".parse().unwrap();
+        let actions = vec![Arc::new(act_euid), Arc::new(view_euid)].into_iter();
+        let context_kind = ContextKind::action_set(actions);
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        assert_snapshot!(context_doc.to_documentation_string(None));
+    }
+
+    #[test]
+    fn test_context_documentation_action_set_multiple_with_schema() {
+        let act_euid: EntityUID = "Action::\"Act\"".parse().unwrap();
+        let view_euid: EntityUID = "Action::\"View\"".parse().unwrap();
+        let actions = vec![Arc::new(act_euid), Arc::new(view_euid)].into_iter();
+        let context_kind = ContextKind::action_set(actions);
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        let schema = test_schema();
+        assert_snapshot!(context_doc.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_context_documentation_no_context_action() {
+        let action_euid: EntityUID = "Action::\"NoContext\"".parse().unwrap();
+        let context_kind = ContextKind::action(Arc::new(action_euid));
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        let schema = test_schema();
+        assert_snapshot!(context_doc.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_context_documentation_action_set_no_context() {
+        let action_euid: EntityUID = "Action::\"NoContext\"".parse().unwrap();
+        let actions = std::iter::once(Arc::new(action_euid));
+        let context_kind = ContextKind::action_set(actions);
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        let schema = test_schema();
+        assert_snapshot!(context_doc.to_documentation_string(Some(&schema)));
+    }
+
+    #[test]
+    fn test_context_documentation_action_set_mixed_context() {
+        let no_context_euid: EntityUID = "Action::\"NoContext\"".parse().unwrap();
+        let act_euid: EntityUID = "Action::\"Act\"".parse().unwrap();
+        let actions = vec![Arc::new(no_context_euid), Arc::new(act_euid)].into_iter();
+        let context_kind = ContextKind::action_set(actions);
+        let context_doc = ContextDocumentation::new(Some(context_kind));
+        let schema = test_schema();
+        assert_snapshot!(context_doc.to_documentation_string(Some(&schema)));
+    }
+}
