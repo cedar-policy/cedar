@@ -5113,6 +5113,8 @@ pub use tpe::*;
 
 #[cfg(feature = "tpe")]
 mod tpe {
+    use std::collections::{HashMap, HashSet};
+
     use cedar_policy_core::ast;
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::tpe;

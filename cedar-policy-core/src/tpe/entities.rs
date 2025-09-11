@@ -564,7 +564,7 @@ impl PartialEntities {
     ) -> std::result::Result<(), EntitiesError> {
         for (id, entity) in entity_mappings {
             entity.validate(schema)?;
-            self.add_entity_trusted(id, entity);
+            self.add_entity_trusted(id, entity)?;
         }
 
         validate_ancestors(&self.entities)?;
