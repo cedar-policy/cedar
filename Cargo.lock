@@ -294,6 +294,7 @@ dependencies = [
  "serde_json",
  "similar-asserts",
  "smol_str",
+ "tempfile",
  "tokio",
  "tower-lsp-server",
  "tower-service",

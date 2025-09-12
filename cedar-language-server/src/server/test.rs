@@ -1378,24 +1378,26 @@ async fn schema_association_with_unopened_schema_in_file() {
         &backend,
         "file:///test/document.cedar",
         "cedar",
-        "permit(principal, action, resource);",
+        "permit(principal == User::\"alice\", action, resource) when { principal.nonexistent > 18 };",
     )
     .await;
 
-    let nonexistent_schema_uri = "file:///test/nonexistent_schema.cedarschema"
+    let temp_file = tempfile::NamedTempFile::with_suffix(".cedarschema").unwrap();
+    let schema_content =
+        "entity User { age: Long }; action Action appliesTo { principal: User, resource: User };";
+    std::fs::write(temp_file.path(), schema_content).unwrap();
+    let schema_uri: Uri = format!("file://{}", temp_file.path().to_string_lossy())
         .parse()
         .unwrap();
-    associate_schema(&backend, &policy_uri, &nonexistent_schema_uri).await;
+    associate_schema(&backend, &policy_uri, &schema_uri).await;
 
-    // The document should still exist and not have a schema association
-    assert!(backend.documents.contains_key(&policy_uri));
     let doc = backend.documents.get(&policy_uri).unwrap();
-    assert_eq!(doc.schema_uri(), None);
+    assert_eq!(doc.schema_uri(), Some(&schema_uri));
+    drop(doc);
 
-    let diagnostic = &get_diagnostics(&backend, &policy_uri);
-    assert_eq!(diagnostic, &vec![]);
+    let diagnostic = &get_diagnostics(&backend, &policy_uri)[0];
+    assert_eq!(diagnostic.message, "for policy `policy0`, attribute `nonexistent` on entity type `User` not found. did you mean `age`?");
 }
-
 
 #[tokio::test]
 async fn schema_association_with_invalid_schema() {
