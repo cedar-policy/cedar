@@ -21,9 +21,13 @@ use std::iter;
 use std::sync::Arc;
 
 use crate::ast::{Entity, EntityUID, EntityUIDEntry, Expr, PolicyID, Request};
+use crate::authorizer::Decision;
 use crate::entities::TCComputation;
 use crate::tpe::entities::PartialEntity;
-use crate::tpe::err::{BatchedEvalError, NonstaticPolicyError, PartialRequestError, TPEError};
+use crate::tpe::err::{
+    BatchedEvalError, InsufficientIterationsError, NonstaticPolicyError, PartialRequestError,
+    TPEError,
+};
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
 use crate::tpe::residual::Residual;
 use crate::tpe::response::{ResidualPolicy, Response};
@@ -119,7 +123,7 @@ pub fn is_authorized_batched<'a>(
     schema: &'a ValidatorSchema,
     loader: &mut dyn EntityLoader,
     max_iters: u32,
-) -> Result<Response<'a>, BatchedEvalError> {
+) -> Result<Decision, BatchedEvalError> {
     let request = concrete_request_to_partial(request, schema)?;
     let exprs = policy_expr_map(&request, ps, schema)?;
     let mut entities = PartialEntities::default();
@@ -202,5 +206,11 @@ pub fn is_authorized_batched<'a>(
             break;
         }
     }
-    Ok(Response::new(residuals.into_iter(), None, None, schema))
+
+    let response = Response::new(residuals.into_iter(), &request, &entities, schema);
+
+    match response.decision() {
+        Some(decision) => Ok(decision),
+        None => Err(InsufficientIterationsError {}.into()),
+    }
 }

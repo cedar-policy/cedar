@@ -5424,18 +5424,13 @@ mod tpe {
             loader: &mut dyn EntityLoader,
             max_iters: u32,
         ) -> Result<Decision, BatchedEvalError> {
-            let response = is_authorized_batched(
+            is_authorized_batched(
                 &query.0,
                 &self.ast,
                 &schema.0,
                 &mut EntityLoaderWrapper(loader),
                 max_iters,
-            )?;
-
-            match response.decision() {
-                Some(decision) => Ok(decision),
-                None => Err(InsufficientIterationsError {}.into()),
-            }
+            )?
         }
 
         /// Perform a permission query on the resource
