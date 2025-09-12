@@ -5119,7 +5119,6 @@ mod tpe {
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::tpe;
     use cedar_policy_core::tpe::batched_evaluator::is_authorized_batched;
-    use cedar_policy_core::tpe::err::InsufficientIterationsError;
     use cedar_policy_core::tpe::{
         batched_evaluator::EntityLoader as EntityLoaderInternal, err::BatchedEvalError,
     };
