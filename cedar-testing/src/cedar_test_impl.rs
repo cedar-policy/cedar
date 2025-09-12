@@ -21,8 +21,8 @@
 
 pub use cedar_policy::ffi;
 use cedar_policy::{
-    Authorizer, Decision, Entities, EvalResult, Expression, PolicySet, Request, RequestBuilder,
-    Schema, TestEntityLoader, ValidationMode, Validator,
+    Authorizer, Entities, EvalResult, Expression, PolicySet, Request, RequestBuilder, Schema,
+    ValidationMode, Validator,
 };
 use miette::miette;
 use serde::Deserialize;
@@ -128,16 +128,6 @@ pub trait CedarTestImplementation {
         policies: &PolicySet,
         entities: &Entities,
     ) -> TestResult<TestResponse>;
-
-    /// Custom batched authorizer entry point.
-    fn is_authorized_batched<'a>(
-        &self,
-        request: &Request,
-        policies: &PolicySet,
-        schema: &'a Schema,
-        loader: &mut TestEntityLoader<'_>,
-        max_iters: u32,
-    ) -> TestResult<Decision>;
 
     /// Custom evaluator entry point. The bool return value indicates the whether
     /// evaluating the provided expression produces the expected value.
@@ -373,20 +363,6 @@ impl CedarTestImplementation for RustEngine {
             timing_info: HashMap::from([("validate_request".into(), Micros(dur.as_micros()))]),
         };
         TestResult::Success(response)
-    }
-
-    fn is_authorized_batched<'a>(
-        &self,
-        request: &Request,
-        policies: &PolicySet,
-        schema: &'a Schema,
-        loader: &mut TestEntityLoader<'_>,
-        max_iters: u32,
-    ) -> TestResult<Decision> {
-        match policies.is_authorized_batched(request, schema, loader, max_iters) {
-            Ok(response) => TestResult::Success(response),
-            Err(e) => TestResult::Failure(format!("Batched authorization failed: {e}")),
-        }
     }
 
     fn error_comparison_mode(&self) -> ErrorComparisonMode {
