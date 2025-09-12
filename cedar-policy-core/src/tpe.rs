@@ -67,8 +67,8 @@ pub fn is_authorized<'a>(
     #[allow(clippy::unwrap_used)]
     Ok(Response::new(
         residuals?.into_iter(),
-        Some(request),
-        Some(entities),
+        request,
+        entities,
         schema,
     ))
 }
