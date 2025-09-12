@@ -25,7 +25,8 @@ use crate::cedar_test_impl::*;
 #[cfg(feature = "entity-manifest")]
 use cedar_policy::{compute_entity_manifest, Validator};
 use cedar_policy::{
-    Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, Schema, ValidationMode,
+    Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, Schema, TestEntityLoader,
+    ValidationMode,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -338,6 +339,22 @@ pub fn perform_integration_test(
                 &json_request,
                 &test_impl.error_comparison_mode(),
                 test_name,
+            );
+        }
+
+        // check that batched evaluation arrives at the same answer
+        if should_validate {
+            let mut loader = TestEntityLoader::new(entities);
+            // TODO use policy level here instead of u32::MAX once policy level can be computed
+            let batched_response = policies
+                .is_authorized_batched(&request, schema, &mut loader, u32::MAX)
+                .expect("Batched authorization failed");
+            // Compare the decision from batched evaluation with regular evaluation
+            assert_eq!(
+                batched_response,
+                response.response.decision(),
+                "test {test_name} failed for request \"{}\": batched evaluation decision differs from regular evaluation",
+                &json_request.description
             );
         }
     }

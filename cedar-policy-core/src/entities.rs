@@ -1045,7 +1045,7 @@ mod json_parsing_tests {
             [initial],
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .unwrap();
 

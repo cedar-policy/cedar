@@ -8778,13 +8778,18 @@ unless
     }
 
     mod github {
-        use std::str::FromStr;
+        use std::{
+            collections::{HashMap, HashSet},
+            str::FromStr,
+        };
 
+        use cedar_policy_core::tpe::err::{BatchedEvalError, TPEError};
         use cool_asserts::assert_matches;
         use itertools::Itertools;
 
         use crate::{
-            Context, Entities, PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
+            Context, Entities, EntityUid, PolicySet, PrincipalQueryRequest, Request,
+            ResourceQueryRequest, RestrictedExpression, Schema, TestEntityLoader,
         };
 
         #[track_caller]
@@ -9081,7 +9086,7 @@ when { principal in resource.admins };
         fn query_principal() {
             let schema = schema();
             let request = PrincipalQueryRequest::new(
-                r#"User"#.parse().unwrap(),
+                r"User".parse().unwrap(),
                 r#"Action::"pull""#.parse().unwrap(),
                 r#"Repository::"secret""#.parse().unwrap(),
                 Context::empty(),
@@ -9092,6 +9097,265 @@ when { principal in resource.admins };
             assert_matches!(&policies.query_principal(&request, &entities(), &schema).unwrap().collect_vec(), [uid] => {
                 assert_eq!(uid, &r#"User::"jane""#.parse().unwrap());
             });
+        }
+
+        #[test]
+        fn test_is_authorized_vs_is_authorized_batched() {
+            use crate::{Authorizer, Request};
+
+            let schema = schema();
+            let policies = policy_set();
+            let entities = entities();
+            let authorizer = Authorizer::new();
+
+            // Create a set of test requests
+            let test_requests = vec![
+                // Request 1: alice can push to common_knowledge (should be allowed)
+                Request::new(
+                    r#"User::"alice""#.parse().unwrap(),
+                    r#"Action::"push""#.parse().unwrap(),
+                    r#"Repository::"common_knowledge""#.parse().unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                )
+                .unwrap(),
+                // Request 2: jane can pull from secret (should be allowed)
+                Request::new(
+                    r#"User::"jane""#.parse().unwrap(),
+                    r#"Action::"pull""#.parse().unwrap(),
+                    r#"Repository::"secret""#.parse().unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                )
+                .unwrap(),
+                // Request 3: bob cannot push to common_knowledge (should be denied)
+                Request::new(
+                    r#"User::"bob""#.parse().unwrap(),
+                    r#"Action::"push""#.parse().unwrap(),
+                    r#"Repository::"common_knowledge""#.parse().unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                )
+                .unwrap(),
+                // Request 4: alice can fork common_knowledge (should be allowed)
+                Request::new(
+                    r#"User::"alice""#.parse().unwrap(),
+                    r#"Action::"fork""#.parse().unwrap(),
+                    r#"Repository::"common_knowledge""#.parse().unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                )
+                .unwrap(),
+            ];
+
+            // Test each request with both methods and compare results
+            for (i, request) in test_requests.iter().enumerate() {
+                // Get result from is_authorized
+                let standard_response = authorizer.is_authorized(request, &policies, &entities);
+
+                // Get result from is_authorized_batched (if TPE feature is enabled)
+                let mut loader = TestEntityLoader::new(&entities);
+                let batched_decision = policies
+                    .is_authorized_batched(request, &schema, &mut loader, u32::MAX)
+                    .unwrap();
+
+                // Compare decisions - they should be the same
+                let standard_decision = standard_response.decision();
+
+                assert_eq!(
+                        standard_decision,
+                        batched_decision,
+                        "Request {}: is_authorized returned {:?} but is_authorized_batched returned {:?}",
+                        i + 1,
+                        standard_decision,
+                        batched_decision
+                    );
+            }
+        }
+
+        #[test]
+        fn test_batched_evaluation_error_validation() {
+            let schema = schema();
+            let policies = PolicySet::from_str(
+                    r#"permit(principal, action, resource) when { principal.nonexistent_attr == "value" };"#
+                ).unwrap();
+
+            let request = Request::new(
+                EntityUid::from_str("User::\"alice\"").unwrap(),
+                EntityUid::from_str("Action::\"push\"").unwrap(),
+                EntityUid::from_str("Repository::\"repo\"").unwrap(),
+                Context::empty(),
+                Some(&schema),
+            )
+            .unwrap();
+
+            let entities = entities();
+            let mut loader = TestEntityLoader::new(&entities);
+            let result = policies.is_authorized_batched(&request, &schema, &mut loader, 10);
+
+            assert!(matches!(
+                result,
+                Err(BatchedEvalError::TPE(TPEError::Validation(_)))
+            ));
+        }
+
+        #[test]
+        fn test_batched_evaluation_error_partial_request() {
+            let context_with_unknown = Context::from_pairs([(
+                "key".to_string(),
+                RestrictedExpression::new_unknown("test_unknown"),
+            )])
+            .unwrap();
+
+            let request = Request::new(
+                EntityUid::from_str("User::\"alice\"").unwrap(),
+                EntityUid::from_str("Action::\"view\"").unwrap(),
+                EntityUid::from_str("Resource::\"doc\"").unwrap(),
+                context_with_unknown,
+                None,
+            )
+            .unwrap();
+            let schema = schema();
+
+            let pset = PolicySet::from_str("permit(principal, action, resource);").unwrap();
+            let entities = Entities::empty();
+            let mut loader = TestEntityLoader::new(&entities);
+            let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
+
+            assert!(matches!(result, Err(BatchedEvalError::PartialRequest(_))));
+        }
+
+        #[test]
+        fn test_batched_evaluation_error_invalid_entity() {
+            // Create an entity loader that returns an invalid entity (wrong attribute type)
+            struct InvalidEntityLoader;
+            impl crate::EntityLoader for InvalidEntityLoader {
+                fn load_entities(
+                    &mut self,
+                    _uids: &HashSet<EntityUid>,
+                ) -> HashMap<EntityUid, Option<crate::Entity>> {
+                    let mut result = HashMap::new();
+                    let uid = EntityUid::from_strs("Org", "myorg");
+                    let entity = crate::Entity::new(
+                        uid.clone(),
+                        [
+                            (
+                                "members".to_string(),
+                                RestrictedExpression::new_string("not_a_usergroup".to_string()),
+                            ),
+                            (
+                                "owners".to_string(),
+                                RestrictedExpression::new_entity_uid(EntityUid::from_strs(
+                                    "UserGroup",
+                                    "2",
+                                )),
+                            ),
+                        ]
+                        .into(),
+                        HashSet::new(),
+                    )
+                    .unwrap();
+                    result.insert(uid, Some(entity));
+                    result
+                }
+            }
+
+            let schema = schema();
+            let pset = PolicySet::from_str(
+                "permit(principal, action, resource) when { Org::\"myorg\".members == UserGroup::\"1\"};",
+            )
+            .unwrap();
+
+            let request = Request::new(
+                r#"User::"alice""#.parse().unwrap(),
+                r#"Action::"push""#.parse().unwrap(),
+                r#"Repository::"common_knowledge""#.parse().unwrap(),
+                Context::empty(),
+                Some(&schema),
+            )
+            .unwrap();
+
+            let mut loader = InvalidEntityLoader;
+            let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
+
+            assert!(matches!(result, Err(BatchedEvalError::Entities(_))));
+        }
+
+        #[test]
+        fn test_batched_evaluation_error_partial_entity() {
+            // Create an entity loader that returns a partial entity (contains unknowns)
+            struct PartialEntityLoader;
+            impl crate::EntityLoader for PartialEntityLoader {
+                fn load_entities(
+                    &mut self,
+                    _uids: &HashSet<EntityUid>,
+                ) -> HashMap<EntityUid, Option<crate::Entity>> {
+                    let mut result = HashMap::new();
+                    let uid = EntityUid::from_strs("Org", "myorg");
+                    let entity = crate::Entity::new(
+                        uid.clone(),
+                        [
+                            (
+                                "members".to_string(),
+                                RestrictedExpression::new_unknown("partial_members"),
+                            ),
+                            (
+                                "owners".to_string(),
+                                RestrictedExpression::new_entity_uid(EntityUid::from_strs(
+                                    "UserGroup",
+                                    "2",
+                                )),
+                            ),
+                        ]
+                        .into(),
+                        HashSet::new(),
+                    )
+                    .unwrap();
+                    result.insert(uid, Some(entity));
+                    result
+                }
+            }
+
+            let schema = schema();
+            let pset = PolicySet::from_str(
+                "permit(principal, action, resource) when { Org::\"myorg\".members == UserGroup::\"1\"};",
+            )
+            .unwrap();
+
+            let request = Request::new(
+                r#"User::"alice""#.parse().unwrap(),
+                r#"Action::"push""#.parse().unwrap(),
+                r#"Repository::"common_knowledge""#.parse().unwrap(),
+                Context::empty(),
+                Some(&schema),
+            )
+            .unwrap();
+
+            let mut loader = PartialEntityLoader;
+            let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
+
+            assert_matches!(result, Err(BatchedEvalError::PartialValueToValue(_)));
+        }
+
+        #[test]
+        fn test_batched_evaluation_error_insufficient_iters() {
+            let schema = schema();
+            let policies = policy_set();
+            let entities = entities();
+
+            let request = Request::new(
+                r#"User::"alice""#.parse().unwrap(),
+                r#"Action::"push""#.parse().unwrap(),
+                r#"Repository::"common_knowledge""#.parse().unwrap(),
+                Context::empty(),
+                Some(&schema),
+            )
+            .unwrap();
+
+            let mut loader = TestEntityLoader::new(&entities);
+            let result = policies.is_authorized_batched(&request, &schema, &mut loader, 0);
+
+            assert_matches!(result, Err(BatchedEvalError::InsufficientIterations(_)));
         }
     }
 }

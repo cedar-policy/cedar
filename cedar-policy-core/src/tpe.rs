@@ -16,6 +16,7 @@
 
 //! This module contains the type-aware partial evaluator.
 
+pub mod batched_evaluator;
 pub mod entities;
 pub mod err;
 pub mod evaluator;
@@ -23,15 +24,12 @@ pub mod request;
 pub mod residual;
 pub mod response;
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::tpe::err::{NonstaticPolicyError, TPEError};
+use crate::tpe::batched_evaluator::policy_expr_map;
+use crate::tpe::err::TPEError;
 use crate::tpe::response::{ResidualPolicy, Response};
-use crate::validator::{
-    typecheck::{PolicyCheck, Typechecker},
-    ValidatorSchema,
-};
+use crate::validator::ValidatorSchema;
 use crate::{ast::PolicySet, extensions::Extensions};
 
 use crate::tpe::{entities::PartialEntities, evaluator::Evaluator, request::PartialRequest};
@@ -46,44 +44,29 @@ pub fn is_authorized<'a>(
     entities: &'a PartialEntities,
     schema: &'a ValidatorSchema,
 ) -> std::result::Result<Response<'a>, TPEError> {
-    let env = request.find_request_env(schema)?;
-    let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
-    let mut exprs = HashMap::new();
-    for p in ps.policies() {
-        if !p.is_static() {
-            return Err(NonstaticPolicyError.into());
-        }
-        let t = p.template();
-        match tc.typecheck_by_single_request_env(t, &env) {
-            PolicyCheck::Success(expr) => {
-                exprs.insert(p.id(), expr);
-            }
-            PolicyCheck::Fail(errs) => {
-                return Err(TPEError::Validation(errs));
-            }
-            PolicyCheck::Irrelevant(errs, expr) => {
-                if errs.is_empty() {
-                    exprs.insert(p.id(), expr);
-                } else {
-                    return Err(TPEError::Validation(errs));
-                }
-            }
-        }
-    }
+    let exprs = policy_expr_map(request, ps, schema)?;
     let evaluator = Evaluator {
         request,
         entities,
         extensions: Extensions::all_available(),
     };
+    let residuals: Result<Vec<_>, TPEError> = exprs
+        .into_iter()
+        .map(|(id, expr)| {
+            let residual = evaluator.interpret_expr(&expr)?;
+            // PANIC SAFETY: exprs and policy set contain the same policy ids
+            #[allow(clippy::unwrap_used)]
+            Ok(ResidualPolicy::new(
+                Arc::new(residual),
+                Arc::new(ps.get(id).unwrap().clone()),
+            ))
+        })
+        .collect();
+
     // PANIC SAFETY: `id` should exist in the policy set
     #[allow(clippy::unwrap_used)]
     Ok(Response::new(
-        exprs.into_iter().map(|(id, expr)| {
-            ResidualPolicy::new(
-                Arc::new(evaluator.interpret(&expr)),
-                Arc::new(ps.get(id).unwrap().clone()),
-            )
-        }),
+        residuals?.into_iter(),
         request,
         entities,
         schema,
@@ -454,11 +437,11 @@ when { principal in resource.editors };
         assert!(true_permits.is_empty());
         let true_forbids: HashSet<&PolicyID> = residuals.satisfied_forbids().collect();
         assert!(true_forbids.is_empty());
-        let non_trivial_permits: HashSet<&PolicyID> = residuals.non_trival_permits().collect();
+        let non_trivial_permits: HashSet<&PolicyID> = residuals.non_trivial_permits().collect();
         assert!(non_trivial_permits.len() == 2);
         assert!(non_trivial_permits.contains(policy1.id()));
         assert!(non_trivial_permits.contains(policy2.id()));
-        let non_trivial_forbids: HashSet<&PolicyID> = residuals.non_trival_forbids().collect();
+        let non_trivial_forbids: HashSet<&PolicyID> = residuals.non_trivial_forbids().collect();
         assert!(non_trivial_forbids.is_empty());
         assert_matches!(residuals.decision(), None);
         // (resource["owner"]) == User::"aaron"

@@ -16,9 +16,16 @@
 
 //! This module contains the residual.
 
+use std::collections::HashSet;
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::ast::{Annotations, Effect, Literal, Policy, PolicyID, ValueKind};
+use crate::ast::{Annotations, Effect, EntityUID, Literal, Policy, PolicyID, ValueKind};
+#[cfg(feature = "tolerant-ast")]
+use crate::tpe::err::ErrorNotSupportedError;
+use crate::tpe::err::{
+    ExprToResidualError, MissingTypeAnnotationError, SlotNotSupportedError,
+    UnknownNotSupportedError,
+};
 use crate::validator::types::Type;
 use crate::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
@@ -60,6 +67,24 @@ impl Residual {
             Arc::new(annotations),
         )
     }
+
+    /// All literal uids referenced by this residual
+    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
+        match self {
+            Residual::Partial { kind, .. } => kind.all_literal_uids(),
+            Residual::Concrete { value, .. } => value.all_literal_uids(),
+            Residual::Error(_) => HashSet::new(),
+        }
+    }
+
+    /// Get the type of this residual
+    pub fn ty(&self) -> &Type {
+        match self {
+            Residual::Partial { ty, .. } => ty,
+            Residual::Concrete { ty, .. } => ty,
+            Residual::Error(ty) => ty,
+        }
+    }
 }
 
 impl TryFrom<Residual> for Value {
@@ -69,6 +94,93 @@ impl TryFrom<Residual> for Value {
             Residual::Concrete { value, .. } => Ok(value),
             _ => Err(()),
         }
+    }
+}
+
+impl TryFrom<&Expr<Option<Type>>> for Residual {
+    type Error = ExprToResidualError;
+    fn try_from(expr: &Expr<Option<Type>>) -> std::result::Result<Self, ExprToResidualError> {
+        let ty = expr.data().clone().ok_or(MissingTypeAnnotationError)?;
+
+        // Otherwise, convert to a partial residual
+        let kind = match expr.expr_kind() {
+            ast::ExprKind::Var(var) => ResidualKind::Var(*var),
+            ast::ExprKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => ResidualKind::If {
+                test_expr: Arc::new(Self::try_from(test_expr.as_ref())?),
+                then_expr: Arc::new(Self::try_from(then_expr.as_ref())?),
+                else_expr: Arc::new(Self::try_from(else_expr.as_ref())?),
+            },
+            ast::ExprKind::And { left, right } => ResidualKind::And {
+                left: Arc::new(Self::try_from(left.as_ref())?),
+                right: Arc::new(Self::try_from(right.as_ref())?),
+            },
+            ast::ExprKind::Or { left, right } => ResidualKind::Or {
+                left: Arc::new(Self::try_from(left.as_ref())?),
+                right: Arc::new(Self::try_from(right.as_ref())?),
+            },
+            ast::ExprKind::UnaryApp { op, arg } => ResidualKind::UnaryApp {
+                op: *op,
+                arg: Arc::new(Self::try_from(arg.as_ref())?),
+            },
+            ast::ExprKind::BinaryApp { op, arg1, arg2 } => ResidualKind::BinaryApp {
+                op: *op,
+                arg1: Arc::new(Self::try_from(arg1.as_ref())?),
+                arg2: Arc::new(Self::try_from(arg2.as_ref())?),
+            },
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                let residual_args: Result<Vec<_>, _> = args.iter().map(Self::try_from).collect();
+                ResidualKind::ExtensionFunctionApp {
+                    fn_name: fn_name.clone(),
+                    args: Arc::new(residual_args?),
+                }
+            }
+            ast::ExprKind::GetAttr { expr, attr } => ResidualKind::GetAttr {
+                expr: Arc::new(Self::try_from(expr.as_ref())?),
+                attr: attr.clone(),
+            },
+            ast::ExprKind::HasAttr { expr, attr } => ResidualKind::HasAttr {
+                expr: Arc::new(Self::try_from(expr.as_ref())?),
+                attr: attr.clone(),
+            },
+            ast::ExprKind::Like { expr, pattern } => ResidualKind::Like {
+                expr: Arc::new(Self::try_from(expr.as_ref())?),
+                pattern: pattern.clone(),
+            },
+            ast::ExprKind::Is { expr, entity_type } => ResidualKind::Is {
+                expr: Arc::new(Self::try_from(expr.as_ref())?),
+                entity_type: entity_type.clone(),
+            },
+            ast::ExprKind::Set(elements) => {
+                let residual_elements: Result<Vec<_>, _> =
+                    elements.iter().map(Self::try_from).collect();
+                ResidualKind::Set(Arc::new(residual_elements?))
+            }
+            ast::ExprKind::Record(map) => {
+                let residual_map: Result<BTreeMap<_, _>, ExprToResidualError> = map
+                    .iter()
+                    .map(|(k, v)| Ok((k.clone(), Self::try_from(v)?)))
+                    .collect();
+                ResidualKind::Record(Arc::new(residual_map?))
+            }
+            // Literals should be converted to concrete values
+            ast::ExprKind::Lit(lit) => {
+                let value = Value::new(lit.clone(), None);
+                return Ok(Residual::Concrete { value, ty });
+            }
+            // These are not supported in residuals
+            ast::ExprKind::Slot(_) => return Err(SlotNotSupportedError.into()),
+            ast::ExprKind::Unknown(_) => return Err(UnknownNotSupportedError.into()),
+            #[cfg(feature = "tolerant-ast")]
+            ast::ExprKind::Error { .. } => {
+                return Err(ErrorNotSupportedError.into());
+            }
+        };
+
+        Ok(Residual::Partial { kind, ty })
     }
 }
 
@@ -170,6 +282,61 @@ pub enum ResidualKind {
     Record(Arc<BTreeMap<SmolStr, Residual>>),
 }
 
+impl ResidualKind {
+    /// All literal uids referenced by this residual kind
+    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
+        match self {
+            ResidualKind::Var(_) => HashSet::new(),
+            ResidualKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => {
+                let mut uids = test_expr.all_literal_uids();
+                uids.extend(then_expr.all_literal_uids());
+                uids.extend(else_expr.all_literal_uids());
+                uids
+            }
+            ResidualKind::And { left, right } | ResidualKind::Or { left, right } => {
+                let mut uids = left.all_literal_uids();
+                uids.extend(right.all_literal_uids());
+                uids
+            }
+            ResidualKind::UnaryApp { arg, .. } => arg.all_literal_uids(),
+            ResidualKind::BinaryApp { arg1, arg2, .. } => {
+                let mut uids = arg1.all_literal_uids();
+                uids.extend(arg2.all_literal_uids());
+                uids
+            }
+            ResidualKind::ExtensionFunctionApp { args, .. } => {
+                let mut uids = HashSet::new();
+                for arg in args.as_ref() {
+                    uids.extend(arg.all_literal_uids());
+                }
+                uids
+            }
+            ResidualKind::GetAttr { expr, .. }
+            | ResidualKind::HasAttr { expr, .. }
+            | ResidualKind::Like { expr, .. }
+            | ResidualKind::Is { expr, .. } => expr.all_literal_uids(),
+            ResidualKind::Set(elements) => {
+                let mut uids = HashSet::new();
+                for element in elements.as_ref() {
+                    uids.extend(element.all_literal_uids());
+                }
+                uids
+            }
+            ResidualKind::Record(map) => {
+                let mut uids = HashSet::new();
+                for value in map.values() {
+                    uids.extend(value.all_literal_uids());
+                }
+                uids
+            }
+        }
+    }
+}
+
 impl Residual {
     /// If a residual is trivially true
     pub fn is_true(&self) -> bool {
@@ -197,6 +364,11 @@ impl Residual {
                 ..
             }
         )
+    }
+
+    /// If a residual is an error
+    pub fn is_error(&self) -> bool {
+        matches!(self, Residual::Error { .. })
     }
 }
 

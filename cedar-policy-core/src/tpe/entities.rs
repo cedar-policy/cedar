@@ -19,7 +19,7 @@
 use crate::ast::{Entity, PartialValueToValueError};
 use crate::entities::conformance::err::EntitySchemaConformanceError;
 use crate::entities::err::Duplicate;
-use crate::entities::{Dereference, Entities};
+use crate::entities::{Dereference, Entities, TCComputation};
 use crate::tpe::err::{
     AncestorValidationError, EntitiesConsistencyError, EntitiesError, EntityConsistencyError,
     EntityValidationError, JsonDeserializationError, MismatchedActionAncestorsError,
@@ -27,7 +27,7 @@ use crate::tpe::err::{
     UnexpectedActionError, UnknownActionComponentError, UnknownAttributeError, UnknownEntityError,
     UnknownTagError,
 };
-use crate::transitive_closure::TcError;
+use crate::transitive_closure::{enforce_tc_and_dag, TcError};
 use crate::validator::{CoreSchema, ValidatorSchema};
 use crate::{
     ast::PartialValue,
@@ -53,6 +53,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
+use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -496,6 +497,11 @@ impl PartialEntities {
         compute_tc(&mut self.entities, true)
     }
 
+    /// Check that the tc is computed and forms a dag
+    pub fn enforce_tc_and_dag(&self) -> std::result::Result<(), TcError<EntityUID>> {
+        enforce_tc_and_dag(&self.entities)
+    }
+
     /// Construct `PartialEntities` from an iterator
     pub fn from_entities(
         entity_mappings: impl Iterator<Item = (EntityUID, PartialEntity)>,
@@ -523,6 +529,56 @@ impl PartialEntities {
         let mut entities = Self { entities };
         entities.compute_tc()?;
         Ok(entities)
+    }
+
+    /// Add a partial entity without checking if it conforms to the schema,
+    /// assuming the TC is already computed.
+    /// Errors on duplicate entries.
+    pub(crate) fn add_entity_trusted(
+        &mut self,
+        uid: EntityUID,
+        entity: PartialEntity,
+    ) -> std::result::Result<(), EntitiesError> {
+        match self.entities.entry(uid) {
+            Entry::Vacant(e) => {
+                e.insert(entity);
+            }
+            Entry::Occupied(e) => {
+                return Err(Duplicate {
+                    euid: e.key().clone(),
+                }
+                .into())
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Add a set of partial entities to this store,
+    /// erroring on duplicates.
+    pub fn add_entities(
+        &mut self,
+        entity_mappings: impl Iterator<Item = (EntityUID, PartialEntity)>,
+        schema: &ValidatorSchema,
+        tc_computation: TCComputation,
+    ) -> std::result::Result<(), EntitiesError> {
+        for (id, entity) in entity_mappings {
+            entity.validate(schema)?;
+            self.add_entity_trusted(id, entity)?;
+        }
+
+        validate_ancestors(&self.entities)?;
+
+        match tc_computation {
+            TCComputation::AssumeAlreadyComputed => (),
+            TCComputation::EnforceAlreadyComputed => {
+                self.enforce_tc_and_dag()?;
+            }
+            TCComputation::ComputeNow => {
+                self.compute_tc()?;
+            }
+        }
+        Ok(())
     }
 
     /// Like `from_entities` but do not perform any validation and tc computation

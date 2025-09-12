@@ -143,6 +143,11 @@ impl Value {
     pub fn eq_and_same_source_loc(&self, other: &Self) -> bool {
         self == other && self.source_loc() == other.source_loc()
     }
+
+    /// All literal uids referenced by this value
+    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
+        self.value.all_literal_uids()
+    }
 }
 
 impl BoundedDisplay for Value {
@@ -194,6 +199,19 @@ impl ValueKind {
         match &self {
             Self::Lit(lit) => Some(lit),
             _ => None,
+        }
+    }
+
+    /// All literal uids referenced by this value kind
+    pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
+        match self {
+            ValueKind::Lit(Literal::EntityUID(uid)) => HashSet::from([uid.as_ref().clone()]),
+            ValueKind::Lit(_) => HashSet::new(),
+            ValueKind::Set(set) => set.iter().flat_map(Value::all_literal_uids).collect(),
+            ValueKind::Record(record) => {
+                record.values().flat_map(Value::all_literal_uids).collect()
+            }
+            ValueKind::ExtensionValue(_) => HashSet::new(),
         }
     }
 }

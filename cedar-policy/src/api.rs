@@ -45,7 +45,7 @@ pub use authorizer::Decision;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
 use cedar_policy_core::ast::{self, RequestSchema, RestrictedExpr};
-use cedar_policy_core::authorizer;
+use cedar_policy_core::authorizer::{self};
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
 use cedar_policy_core::evaluator::Evaluator;
@@ -4215,7 +4215,7 @@ impl std::fmt::Display for Expression {
 ///     `.contains()`
 ///   - if-then-else expressions
 #[repr(transparent)]
-#[derive(Debug, Clone, RefCast)]
+#[derive(Debug, Clone, RefCast, PartialEq, Eq)]
 pub struct RestrictedExpression(pub(crate) ast::RestrictedExpr);
 
 #[doc(hidden)] // because this converts to a private/internal type
@@ -5113,9 +5113,15 @@ pub use tpe::*;
 
 #[cfg(feature = "tpe")]
 mod tpe {
+    use std::collections::{HashMap, HashSet};
+
     use cedar_policy_core::ast;
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::tpe;
+    use cedar_policy_core::tpe::batched_evaluator::is_authorized_batched;
+    use cedar_policy_core::tpe::{
+        batched_evaluator::EntityLoader as EntityLoaderInternal, err::BatchedEvalError,
+    };
     use cedar_policy_core::{
         entities::conformance::EntitySchemaConformanceChecker, extensions::Extensions,
         validator::CoreSchema,
@@ -5123,6 +5129,8 @@ mod tpe {
     use itertools::Itertools;
     use ref_cast::RefCast;
 
+    use crate::Entity;
+    #[cfg(feature = "partial-eval")]
     use crate::{
         api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
         PartialRequestCreationError, PermissionQueryError, Policy, PolicySet, Request,
@@ -5296,12 +5304,12 @@ mod tpe {
         }
     }
 
-    /// A partial [`Response`]
+    /// A partial version of [`crate::Response`].
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
-    pub struct Response<'a>(pub(crate) tpe::response::Response<'a>);
+    pub struct TPEResponse<'a>(pub(crate) tpe::response::Response<'a>);
 
-    impl Response<'_> {
+    impl TPEResponse<'_> {
         /// Attempt to get the authorization decision
         pub fn decision(&self) -> Option<Decision> {
             self.0.decision()
@@ -5320,6 +5328,70 @@ mod tpe {
         }
     }
 
+    /// Entity loader trait for batched evaluation.
+    ///
+    /// Loads entities on demand, returning `None` for missing entities.
+    /// The `load_entities` function must load all requested entities,
+    /// and must compute and include all ancestors of the requested entities.
+    /// Loading more entities than requested is allowed.
+    pub trait EntityLoader {
+        /// Load all entities for the given set of entity UIDs.
+        /// Returns a map from [`EntityUid`] to [`Option<Entity>`], where `None` indicates
+        /// the entity does not exist.
+        fn load_entities(
+            &mut self,
+            uids: &HashSet<EntityUid>,
+        ) -> HashMap<EntityUid, Option<Entity>>;
+    }
+
+    /// Wrapper struct used to convert an [`EntityLoader`] to an `EntityLoaderInternal`
+    struct EntityLoaderWrapper<'a>(&'a mut dyn EntityLoader);
+
+    impl EntityLoaderInternal for EntityLoaderWrapper<'_> {
+        fn load_entities(
+            &mut self,
+            uids: &HashSet<ast::EntityUID>,
+        ) -> HashMap<ast::EntityUID, Option<ast::Entity>> {
+            let ids = uids
+                .iter()
+                .map(|id| EntityUid::ref_cast(id).clone())
+                .collect();
+            self.0
+                .load_entities(&ids)
+                .into_iter()
+                .map(|(uid, entity)| (uid.0, entity.map(|e| e.0)))
+                .collect()
+        }
+    }
+
+    /// Simple entity loader implementation that loads from a pre-existing Entities store
+    #[derive(Debug)]
+
+    pub struct TestEntityLoader<'a> {
+        entities: &'a Entities,
+    }
+
+    impl<'a> TestEntityLoader<'a> {
+        /// Create a new [`TestEntityLoader`] from an existing Entities store
+        pub fn new(entities: &'a Entities) -> Self {
+            Self { entities }
+        }
+    }
+
+    impl EntityLoader for TestEntityLoader<'_> {
+        fn load_entities(
+            &mut self,
+            uids: &HashSet<EntityUid>,
+        ) -> HashMap<EntityUid, Option<Entity>> {
+            uids.iter()
+                .map(|uid| {
+                    let entity = self.entities.get(uid).cloned();
+                    (uid.clone(), entity)
+                })
+                .collect()
+        }
+    }
+
     impl PolicySet {
         /// Perform type-aware partial evaluation on this [`PolicySet`]
         /// If successful, the result is a [`PolicySet`] containing residual
@@ -5329,11 +5401,35 @@ mod tpe {
             request: &'a PartialRequest,
             entities: &'a PartialEntities,
             schema: &'a Schema,
-        ) -> Result<Response<'a>, tpe_err::TPEError> {
+        ) -> Result<TPEResponse<'a>, tpe_err::TPEError> {
             use cedar_policy_core::tpe::is_authorized;
             let ps = &self.ast;
             let res = is_authorized(ps, &request.0, &entities.0, &schema.0)?;
-            Ok(Response(res))
+            Ok(TPEResponse(res))
+        }
+
+        /// Like [`Authorizer::is_authorized`] but uses an [`EntityLoader`] to load
+        /// entities on demand.
+        ///
+        /// Calls `loader` at most `max_iters` times, returning
+        /// early if an authorization result is reached.
+        /// Otherwise, it iterates `max_iters` times and returns
+        /// a partial result.
+        ///
+        pub fn is_authorized_batched(
+            &self,
+            query: &Request,
+            schema: &Schema,
+            loader: &mut dyn EntityLoader,
+            max_iters: u32,
+        ) -> Result<Decision, BatchedEvalError> {
+            is_authorized_batched(
+                &query.0,
+                &self.ast,
+                &schema.0,
+                &mut EntityLoaderWrapper(loader),
+                max_iters,
+            )
         }
 
         /// Perform a permission query on the resource

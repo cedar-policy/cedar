@@ -534,7 +534,7 @@ impl Entity {
         })
     }
 
-    /// Create a new `Entity` with this UID, attributes, ancestors, and tags
+    /// Create a new [`Entity`] with this UID, attributes, ancestors, and tags
     ///
     /// Unlike in `Entity::new()`, in this constructor, attributes and tags are
     /// expressed as `PartialValue`.

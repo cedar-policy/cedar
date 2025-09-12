@@ -17,11 +17,13 @@
 //! This module contains possible errors thrown by various components of the
 //! type-aware partial evaluator.
 
+use std::fmt::Display;
+
 use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::{
-    ast::{Eid, EntityType, EntityUID},
+    ast::{Eid, EntityType, EntityUID, PartialValueToValueError},
     entities::{
         conformance::err::{EntitySchemaConformanceError, InvalidEnumEntityError},
         err::Duplicate,
@@ -102,7 +104,87 @@ pub enum TPEError {
     /// Error thrown when the typechecker fails to typecheck a policy
     #[error("Failed validation: {:#?}", .0)]
     Validation(Vec<ValidationError>),
+    /// Error when an expression is not supported by batched evaluation
+    #[error(transparent)]
+    ExprToResidualError(#[from] ExprToResidualError),
 }
+
+/// Errors for Batched Evaluation
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum BatchedEvalError {
+    /// Error thrown by TPE
+    #[error(transparent)]
+    TPE(#[from] TPEError),
+    /// Error when the request is not valid
+    #[error(transparent)]
+    RequestValidation(#[from] RequestValidationError),
+    /// Error when the request is partial
+    #[error(transparent)]
+    PartialRequest(#[from] PartialRequestError),
+    /// Error when the loaded entities are not valid
+    #[error(transparent)]
+    Entities(#[from] EntitiesError),
+    /// Error thrown when a entity loader provided entity was partial instead of fully concrete
+    #[error(transparent)]
+    PartialValueToValue(#[from] PartialValueToValueError),
+    /// Error the entity loader failed to load all requested entities
+    #[error(transparent)]
+    MissingEntities(#[from] MissingEntitiesError),
+    /// Error when batched evaluation did not converge due to the iteration limit
+    #[error(transparent)]
+    InsufficientIterations(#[from] InsufficientIterationsError),
+}
+
+/// Batched evaluation may not return an answer when the maximum
+/// iterations is too low.
+#[derive(Debug, Error)]
+#[error("Batched evaluation failed: insufficient iteration limit.")]
+pub struct InsufficientIterationsError {}
+
+/// Residuals require fully typed expressions without
+/// unknowns or parse errors.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum ExprToResidualError {
+    /// Expression is missing type annotation
+    #[error(transparent)]
+    MissingTypeAnnotation(#[from] MissingTypeAnnotationError),
+    /// Expression contains a slot which is not supported in residuals
+    #[error(transparent)]
+    SlotNotSupported(#[from] SlotNotSupportedError),
+    /// Expression contains an unknown which is not supported in residuals
+    #[error(transparent)]
+    UnknownNotSupported(#[from] UnknownNotSupportedError),
+    /// Expression contains an error which is not supported in residuals
+    #[error(transparent)]
+    ErrorNotSupported(#[from] ErrorNotSupportedError),
+}
+
+/// Error thrown when expression is missing type annotation
+#[derive(Debug, Error)]
+#[error("Expression is missing type annotation")]
+pub struct MissingTypeAnnotationError;
+
+/// Error thrown when expression contains a slot which is not supported in residuals
+#[derive(Debug, Error)]
+#[error("Expression contains a slot which is not supported in residuals")]
+pub struct SlotNotSupportedError;
+
+/// Error thrown when expression contains an unknown which is not supported in residuals
+#[derive(Debug, Error)]
+#[error("Expression contains an unknown which is not supported in residuals")]
+pub struct UnknownNotSupportedError;
+
+/// Error thrown when expression contains an error which is not supported in residuals
+#[derive(Debug, Error)]
+#[error("Expression contains an error which is not supported in residuals")]
+pub struct ErrorNotSupportedError;
+
+/// Error when a request was expected to be concrete
+#[derive(Debug, Error)]
+#[error("Found a partial request when a concrete request was expected")]
+pub struct PartialRequestError {}
 
 /// Error thrown when there is no matching request environment according to a
 /// schema
@@ -293,6 +375,33 @@ pub struct MissingEntityError {
 #[error("Concrete entities contains unknown entity `{uid}`")]
 pub struct UnknownEntityError {
     pub(super) uid: EntityUID,
+}
+
+/// Error thrown when some requested entities were not loaded
+#[derive(Debug, Error)]
+pub struct MissingEntitiesError {
+    pub(super) missing_entities: Vec<EntityUID>,
+}
+
+impl MissingEntitiesError {
+    /// Construct a new [`MissingEntitiesError`]
+    pub fn new(missing_entities: Vec<EntityUID>) -> Self {
+        Self { missing_entities }
+    }
+}
+
+impl Display for MissingEntitiesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Failed to load entities: {}",
+            self.missing_entities
+                .iter()
+                .map(|uid| uid.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
 }
 
 /// Error thrown when a [`PartialRequest`] is consistent with a [`Request`]
