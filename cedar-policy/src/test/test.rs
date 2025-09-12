@@ -8785,7 +8785,7 @@ unless
 
         use crate::{
             Context, Entities, PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
-            TestEntityLoader, ValidationMode, Validator,
+            TestEntityLoader,
         };
 
         #[track_caller]
@@ -9151,13 +9151,12 @@ when { principal in resource.admins };
 
                 // Get result from is_authorized_batched (if TPE feature is enabled)
                 let mut loader = TestEntityLoader::new(&entities);
-                let batched_response = policies
+                let batched_decision = policies
                     .is_authorized_batched(request, &schema, &mut loader, u32::MAX)
                     .unwrap();
 
                 // Compare decisions - they should be the same
                 let standard_decision = standard_response.decision();
-                let batched_decision = batched_response.decision().unwrap();
 
                 assert_eq!(
                         standard_decision,

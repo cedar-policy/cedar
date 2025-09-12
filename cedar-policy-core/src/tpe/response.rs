@@ -208,12 +208,12 @@ impl<'a> Response<'a> {
     }
 
     /// Get policy ids of non-trivial permit residual policies
-    pub fn non_trival_permits(&self) -> impl Iterator<Item = &PolicyID> {
+    pub fn non_trivial_permits(&self) -> impl Iterator<Item = &PolicyID> {
         self.non_trivial_permits.iter()
     }
 
     /// Get policy ids of non-trivial forbid residual policies
-    pub fn non_trival_forbids(&self) -> impl Iterator<Item = &PolicyID> {
+    pub fn non_trivial_forbids(&self) -> impl Iterator<Item = &PolicyID> {
         self.non_trivial_forbids.iter()
     }
 
