@@ -9283,7 +9283,58 @@ when { principal in resource.admins };
 
         #[test]
         fn test_batched_evaluation_error_partial_entity() {
-            // return a partial entity from an entity loader
+            // Create an entity loader that returns a partial entity (contains unknowns)
+            struct PartialEntityLoader;
+            impl crate::EntityLoader for PartialEntityLoader {
+                fn load_entities(
+                    &mut self,
+                    _uids: &HashSet<EntityUid>,
+                ) -> HashMap<EntityUid, Option<crate::Entity>> {
+                    let mut result = HashMap::new();
+                    let uid = EntityUid::from_strs("Org", "myorg");
+                    let entity = crate::Entity::new(
+                        uid.clone(),
+                        [
+                            (
+                                "members".to_string(),
+                                RestrictedExpression::new_unknown("partial_members"),
+                            ),
+                            (
+                                "owners".to_string(),
+                                RestrictedExpression::new_entity_uid(EntityUid::from_strs(
+                                    "UserGroup",
+                                    "2",
+                                )),
+                            ),
+                        ]
+                        .into(),
+                        HashSet::new(),
+                    )
+                    .unwrap();
+                    result.insert(uid, Some(entity));
+                    result
+                }
+            }
+
+            let schema = schema();
+            let pset = PolicySet::from_str(
+                "permit(principal, action, resource) when { Org::\"myorg\".members == UserGroup::\"1\"};",
+            )
+            .unwrap();
+
+            let request = Request::new(
+                r#"User::"alice""#.parse().unwrap(),
+                r#"Action::"push""#.parse().unwrap(),
+                r#"Repository::"common_knowledge""#.parse().unwrap(),
+                Context::empty(),
+                Some(&schema),
+            )
+            .unwrap();
+
+            let mut loader = PartialEntityLoader;
+            let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
+
+            assert_matches!(result, Err(BatchedEvalError::PartialValueToValue(_)));
         }
 
         #[test]
