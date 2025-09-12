@@ -90,13 +90,13 @@ pub struct Response<'a> {
     // All of the [`Effect::Permit`] policies that were not satisfied
     false_permits: HashSet<PolicyID>,
     // All of the [`Effect::Permit`] policies that evaluated to a residual
-    non_trivial_permits: HashSet<PolicyID>,
+    residual_permits: HashSet<PolicyID>,
     // All of the [`Effect::Forbid`] policies that were satisfied
     satisfied_forbids: HashSet<PolicyID>,
     // All of the [`Effect::Forbid`] policies that were not satisfied
     false_forbids: HashSet<PolicyID>,
     // All of the [`Effect::Forbid`] policies that evaluated to a residual
-    non_trivial_forbids: HashSet<PolicyID>,
+    residual_forbids: HashSet<PolicyID>,
     // request used for this partial evaluation
     request: &'a PartialRequest,
     // entities used for this partial evaluation
@@ -170,10 +170,10 @@ impl<'a> Response<'a> {
             residuals: residual_map,
             satisfied_permits,
             false_permits,
-            non_trivial_permits: residual_permits,
+            residual_permits,
             satisfied_forbids,
             false_forbids,
-            non_trivial_forbids: residual_forbids,
+            residual_forbids,
             request,
             entities,
             schema,
@@ -201,13 +201,13 @@ impl<'a> Response<'a> {
     }
 
     /// Get policy ids of non-trivial permit residual policies
-    pub fn non_trivial_permits(&self) -> impl Iterator<Item = &PolicyID> {
-        self.non_trivial_permits.iter()
+    pub fn residual_permits(&self) -> impl Iterator<Item = &PolicyID> {
+        self.residual_permits.iter()
     }
 
     /// Get policy ids of non-trivial forbid residual policies
-    pub fn non_trivial_forbids(&self) -> impl Iterator<Item = &PolicyID> {
-        self.non_trivial_forbids.iter()
+    pub fn residual_forbids(&self) -> impl Iterator<Item = &PolicyID> {
+        self.residual_forbids.iter()
     }
 
     /// Look up the [`Residual`] by [`PolicyID`]
