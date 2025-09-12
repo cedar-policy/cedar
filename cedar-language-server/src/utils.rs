@@ -1010,7 +1010,9 @@ permit(
 
     #[test]
     fn test_parens_in_policy_scope() {
-        let (policies, carets) = remove_all_caret_markers(r#"permit(princ|caret|ipal == (User::"alice"), ac|caret|tion in [(Action::"bar")], res|caret|ource in ((Album::"foo")));"#);
+        let (policies, carets) = remove_all_caret_markers(
+            r#"permit(princ|caret|ipal == (User::"alice"), ac|caret|tion in [(Action::"bar")], res|caret|ource in ((Album::"foo")));"#,
+        );
 
         let result = get_policy_scope_variable(&policies, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
@@ -1042,12 +1044,48 @@ permit(
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");
 
-        let (policies, carets) = remove_all_caret_markers(r#"permit(princi|caret|pal, a|caret|ction, );"#);
+        let (policies, carets) =
+            remove_all_caret_markers(r#"permit(princi|caret|pal, a|caret|ction, );"#);
         let result = get_policy_scope_variable(&policies, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");
         let result = get_policy_scope_variable(&policies, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
+    }
+
+    #[test]
+    fn test_extract_common_type_name() {
+        assert_eq!(
+            extract_common_type_name("type SimpleType = String;"),
+            Some("SimpleType".to_string())
+        );
+        assert_eq!(
+            extract_common_type_name("type MyRecord = { name: String };"),
+            Some("MyRecord".to_string())
+        );
+        assert_eq!(
+            extract_common_type_name("type MySet = Set<String>;"),
+            Some("MySet".to_string())
+        );
+        assert_eq!(
+            extract_common_type_name("  type  SpacedType  =  Long;  "),
+            Some("SpacedType".to_string())
+        );
+
+        // Multi-line type declarations
+        let (multiline_type, _) = remove_all_caret_markers(
+            "type \n NewLines \n = {\n  field1: String,\n  field2: Long\n};",
+        );
+        assert_eq!(
+            extract_common_type_name(&multiline_type),
+            Some("NewLines".to_string())
+        );
+
+        // Type with namespace
+        assert_eq!(
+            extract_common_type_name("type Namespace::TypeName = String;"),
+            Some("Namespace::TypeName".to_string())
+        );
     }
 }
