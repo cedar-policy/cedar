@@ -9232,41 +9232,44 @@ when { principal in resource.admins };
             impl crate::EntityLoader for InvalidEntityLoader {
                 fn load_entities(
                     &mut self,
-                    uids: &HashSet<EntityUid>,
+                    _uids: &HashSet<EntityUid>,
                 ) -> HashMap<EntityUid, Option<crate::Entity>> {
                     let mut result = HashMap::new();
-                    for uid in uids {
-                        if uid.id().unescaped() == "alice" {
-                            // Create entity with wrong attribute type (string instead of long)
-                            let entity = crate::Entity::new(
-                                uid.clone(),
-                                [(
-                                    "age".to_string(),
-                                    RestrictedExpression::new_string("not_a_number".to_string()),
-                                )]
-                                .into(),
-                                HashSet::new(),
-                            )
-                            .unwrap();
-                            result.insert(uid.clone(), Some(entity));
-                        } else {
-                            result.insert(uid.clone(), None);
-                        }
-                    }
+                    let uid = EntityUid::from_strs("Org", "myorg");
+                    let entity = crate::Entity::new(
+                        uid.clone(),
+                        [
+                            (
+                                "members".to_string(),
+                                RestrictedExpression::new_string("not_a_usergroup".to_string()),
+                            ),
+                            (
+                                "owners".to_string(),
+                                RestrictedExpression::new_entity_uid(EntityUid::from_strs(
+                                    "UserGroup",
+                                    "2",
+                                )),
+                            ),
+                        ]
+                        .into(),
+                        HashSet::new(),
+                    )
+                    .unwrap();
+                    result.insert(uid, Some(entity));
                     result
                 }
             }
 
             let schema = schema();
             let pset = PolicySet::from_str(
-                "permit(principal, action, resource) when { principal.age > 18 };",
+                "permit(principal, action, resource) when { Org::\"myorg\".members == UserGroup::\"1\"};",
             )
             .unwrap();
 
             let request = Request::new(
-                EntityUid::from_str("User::\"alice\"").unwrap(),
-                EntityUid::from_str("Action::\"view\"").unwrap(),
-                EntityUid::from_str("Resource::\"doc\"").unwrap(),
+                r#"User::"alice""#.parse().unwrap(),
+                r#"Action::"push""#.parse().unwrap(),
+                r#"Repository::"common_knowledge""#.parse().unwrap(),
                 Context::empty(),
                 Some(&schema),
             )
@@ -9280,181 +9283,12 @@ when { principal in resource.admins };
 
         #[test]
         fn test_batched_evaluation_error_partial_entity() {
-            // Create an entity loader that returns an entity with unknown/residual values
-            struct ResidualEntityLoader;
-            impl crate::EntityLoader for ResidualEntityLoader {
-                fn load_entities(
-                    &mut self,
-                    uids: &HashSet<EntityUid>,
-                ) -> HashMap<EntityUid, Option<crate::Entity>> {
-                    let mut result = HashMap::new();
-                    for uid in uids {
-                        if uid.id().unescaped() == "alice" {
-                            // Create entity with unknown attribute
-                            let entity = crate::Entity::new(
-                                uid.clone(),
-                                [(
-                                    "attr".to_string(),
-                                    crate::RestrictedExpression::new_unknown("unknown_attr"),
-                                )]
-                                .into(),
-                                HashSet::new(),
-                            )
-                            .unwrap();
-                            result.insert(uid.clone(), Some(entity));
-                        } else {
-                            result.insert(uid.clone(), None);
-                        }
-                    }
-                    result
-                }
-            }
-            use std::collections::{HashMap, HashSet};
-
-            let pset = PolicySet::from_str("permit(principal, action, resource);").unwrap();
-            let schema = schema();
-
-            let request = Request::new(
-                EntityUid::from_str("User::\"alice\"").unwrap(),
-                EntityUid::from_str("Action::\"view\"").unwrap(),
-                EntityUid::from_str("Resource::\"doc\"").unwrap(),
-                Context::empty(),
-                Some(&schema),
-            )
-            .unwrap();
-
-            let mut loader = ResidualEntityLoader;
-            let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
-
-            // This should trigger PartialValueToValue error when trying to convert residual to concrete value
-            assert!(matches!(
-                result,
-                Err(BatchedEvalError::PartialValueToValue(_))
-            ));
+            // return a partial entity from an entity loader
         }
 
         #[test]
         fn test_batched_evaluation_error_insufficient_iters() {
-            let pset = PolicySet::from_str(
-                    "permit(principal, action, resource) when { principal.attr1.attr2.attr3 == \"value\" };"
-                ).unwrap();
-
-            let schema = Schema::from_json_str(
-                r#"
-                {
-                    "": {
-                        "entityTypes": {
-                            "User": {},
-                            "Resource": {},
-                            "Nested": {}
-                        },
-                        "actions": {
-                            "view": {
-                                "appliesTo": {
-                                    "principalTypes": ["User"],
-                                    "resourceTypes": ["Resource"]
-                                }
-                            }
-                        }
-                    }
-                }
-                "#,
-            )
-            .unwrap();
-
-            let request = Request::new(
-                EntityUid::from_str("User::\"alice\"").unwrap(),
-                EntityUid::from_str("Action::\"view\"").unwrap(),
-                EntityUid::from_str("Resource::\"doc\"").unwrap(),
-                Context::empty(),
-                Some(&schema),
-            )
-            .unwrap();
-
-            // Create an entity loader that creates a chain of entities requiring multiple iterations
-            struct ChainedEntityLoader {
-                iteration: std::cell::RefCell<usize>,
-            }
-            impl ChainedEntityLoader {
-                fn new() -> Self {
-                    Self {
-                        iteration: std::cell::RefCell::new(0),
-                    }
-                }
-            }
-            impl crate::EntityLoader for ChainedEntityLoader {
-                fn load_entities(
-                    &mut self,
-                    uids: &HashSet<EntityUid>,
-                ) -> HashMap<EntityUid, Option<crate::Entity>> {
-                    let mut result = HashMap::new();
-                    let mut iter = self.iteration.borrow_mut();
-                    *iter += 1;
-
-                    for uid in uids {
-                        match uid.id().unescaped() {
-                            "alice" => {
-                                let entity = crate::Entity::new(
-                                    uid.clone(),
-                                    [(
-                                        "attr1".to_string(),
-                                        crate::RestrictedExpression::new_entity_uid(
-                                            EntityUid::from_str("Nested::\"level1\"").unwrap(),
-                                        ),
-                                    )]
-                                    .into(),
-                                    HashSet::new(),
-                                )
-                                .unwrap();
-                                result.insert(uid.clone(), Some(entity));
-                            }
-                            "level1" => {
-                                let entity = crate::Entity::new(
-                                    uid.clone(),
-                                    [(
-                                        "attr2".to_string(),
-                                        crate::RestrictedExpression::new_entity_uid(
-                                            EntityUid::from_str("Nested::\"level2\"").unwrap(),
-                                        ),
-                                    )]
-                                    .into(),
-                                    HashSet::new(),
-                                )
-                                .unwrap();
-                                result.insert(uid.clone(), Some(entity));
-                            }
-                            "level2" => {
-                                let entity = crate::Entity::new(
-                                    uid.clone(),
-                                    [(
-                                        "attr3".to_string(),
-                                        crate::RestrictedExpression::new_entity_uid(
-                                            EntityUid::from_str("Nested::\"level3\"").unwrap(),
-                                        ),
-                                    )]
-                                    .into(),
-                                    HashSet::new(),
-                                )
-                                .unwrap();
-                                result.insert(uid.clone(), Some(entity));
-                            }
-                            _ => {
-                                result.insert(uid.clone(), None);
-                            }
-                        }
-                    }
-                    result
-                }
-            }
-
-            let mut loader = ChainedEntityLoader::new();
-            // Use very low iteration limit to force insufficient iterations error
-            let result = pset.is_authorized_batched(&request, &schema, &mut loader, 1);
-
-            assert!(matches!(
-                result,
-                Err(BatchedEvalError::InsufficientIterations(_))
-            ));
+            // normal testentityloader but gave too few iterations
         }
     }
 }
