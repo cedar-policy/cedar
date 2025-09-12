@@ -5130,13 +5130,13 @@ mod tpe {
     use itertools::Itertools;
     use ref_cast::RefCast;
 
+    use crate::Entity;
     #[cfg(feature = "partial-eval")]
     use crate::{
         api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
         PartialRequestCreationError, PermissionQueryError, Policy, PolicySet, Request,
         RequestValidationError, RestrictedExpression, Schema, TPEReauthorizationError,
     };
-    use crate::Entity;
 
     /// A partial [`EntityUid`]
     /// That is, its [`EntityId`] could be unknown
