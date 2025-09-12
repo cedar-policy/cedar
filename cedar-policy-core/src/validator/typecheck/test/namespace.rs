@@ -1300,7 +1300,7 @@ fn action_in_precision() {
         .unwrap(),
     );
     assert_policy_typechecks(
-        schema.clone(),
+        schema,
         parse_policy(
             None,
             r#"permit(principal, action == Action::"A", resource) when {
@@ -1362,7 +1362,7 @@ fn action_in_soundness() {
         .unwrap(),
     );
     assert_policy_typecheck_fails(
-        schema.clone(),
+        schema,
         parse_policy(
             None,
             r#"permit(principal, action == Action::"B", resource) when {

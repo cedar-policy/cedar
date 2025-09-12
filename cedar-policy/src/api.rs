@@ -5430,7 +5430,7 @@ mod tpe {
                 &schema.0,
                 &mut EntityLoaderWrapper(loader),
                 max_iters,
-            )?
+            )
         }
 
         /// Perform a permission query on the resource

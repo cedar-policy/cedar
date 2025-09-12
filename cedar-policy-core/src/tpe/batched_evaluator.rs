@@ -117,10 +117,10 @@ fn concrete_request_to_partial(
 
 /// Perform authorization using loader function instead
 /// of an [`Entities`] store.
-pub fn is_authorized_batched<'a>(
+pub fn is_authorized_batched(
     request: &Request,
     ps: &PolicySet,
-    schema: &'a ValidatorSchema,
+    schema: &ValidatorSchema,
     loader: &mut dyn EntityLoader,
     max_iters: u32,
 ) -> Result<Decision, BatchedEvalError> {

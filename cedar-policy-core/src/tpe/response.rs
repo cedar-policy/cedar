@@ -239,8 +239,8 @@ impl<'a> Response<'a> {
         for entity in entities.iter() {
             entities_checker.validate_entity(entity)?;
         }
-        let _ = self.entities.check_consistency(entities)?;
-        let _ = self.request.check_consistency(request)?;
+        self.entities.check_consistency(entities)?;
+        self.request.check_consistency(request)?;
 
         let authorizer = Authorizer::new();
         // PANIC SAFETY: policy ids should not clash
