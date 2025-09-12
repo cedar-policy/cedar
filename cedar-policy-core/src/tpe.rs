@@ -437,11 +437,11 @@ when { principal in resource.editors };
         assert!(true_permits.is_empty());
         let true_forbids: HashSet<&PolicyID> = residuals.satisfied_forbids().collect();
         assert!(true_forbids.is_empty());
-        let non_trivial_permits: HashSet<&PolicyID> = residuals.non_trival_permits().collect();
+        let non_trivial_permits: HashSet<&PolicyID> = residuals.non_trivial_permits().collect();
         assert!(non_trivial_permits.len() == 2);
         assert!(non_trivial_permits.contains(policy1.id()));
         assert!(non_trivial_permits.contains(policy2.id()));
-        let non_trivial_forbids: HashSet<&PolicyID> = residuals.non_trival_forbids().collect();
+        let non_trivial_forbids: HashSet<&PolicyID> = residuals.non_trivial_forbids().collect();
         assert!(non_trivial_forbids.is_empty());
         assert_matches!(residuals.decision(), None);
         // (resource["owner"]) == User::"aaron"

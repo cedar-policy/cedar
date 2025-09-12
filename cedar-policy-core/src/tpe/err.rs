@@ -131,7 +131,16 @@ pub enum BatchedEvalError {
     /// Error the entity loader failed to load all requested entities
     #[error(transparent)]
     MissingEntities(#[from] MissingEntitiesError),
+    /// Error when batched evaluation did not converge due to the iteration limit
+    #[error(transparent)]
+    InsufficientIterations(#[from] InsufficientIterationsError),
 }
+
+/// Batched evaluation may not return an answer when the maximum
+/// iterations is too low.
+#[derive(Debug, Error)]
+#[error("Batched evaluation failed: insufficient iteration limit.")]
+pub struct InsufficientIterationsError {}
 
 /// Residuals require fully typed expressions without
 /// unknowns or parse errors.

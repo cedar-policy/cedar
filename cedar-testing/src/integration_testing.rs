@@ -23,10 +23,10 @@
 
 use crate::cedar_test_impl::*;
 #[cfg(feature = "entity-manifest")]
-use cedar_policy::compute_entity_manifest;
+use cedar_policy::{compute_entity_manifest, Validator};
 use cedar_policy::{
     Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, Schema, TestEntityLoader,
-    ValidationMode, Validator,
+    ValidationMode,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -351,8 +351,8 @@ pub fn perform_integration_test(
                 .expect("Batched authorization failed");
             // Compare the decision from batched evaluation with regular evaluation
             assert_eq!(
-                batched_response.decision(),
-                Some(response.response.decision()),
+                batched_response,
+                response.response.decision(),
                 "test {test_name} failed for request \"{}\": batched evaluation decision differs from regular evaluation",
                 &json_request.description
             );

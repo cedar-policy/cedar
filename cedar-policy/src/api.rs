@@ -5119,6 +5119,7 @@ mod tpe {
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::tpe;
     use cedar_policy_core::tpe::batched_evaluator::is_authorized_batched;
+    use cedar_policy_core::tpe::err::InsufficientIterationsError;
     use cedar_policy_core::tpe::{
         batched_evaluator::EntityLoader as EntityLoaderInternal, err::BatchedEvalError,
     };
@@ -5129,13 +5130,13 @@ mod tpe {
     use itertools::Itertools;
     use ref_cast::RefCast;
 
-    use crate::Entity;
     #[cfg(feature = "partial-eval")]
     use crate::{
         api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
         PartialRequestCreationError, PermissionQueryError, Policy, PolicySet, Request,
         RequestValidationError, RestrictedExpression, Schema, TPEReauthorizationError,
     };
+    use crate::Entity;
 
     /// A partial [`EntityUid`]
     /// That is, its [`EntityId`] could be unknown
@@ -5422,7 +5423,7 @@ mod tpe {
             schema: &'a Schema,
             loader: &mut dyn EntityLoader,
             max_iters: u32,
-        ) -> Result<TPEResponse<'a>, BatchedEvalError> {
+        ) -> Result<Decision, BatchedEvalError> {
             let response = is_authorized_batched(
                 &query.0,
                 &self.ast,
@@ -5430,7 +5431,11 @@ mod tpe {
                 &mut EntityLoaderWrapper(loader),
                 max_iters,
             )?;
-            Ok(TPEResponse(response))
+
+            match response.decision() {
+                Some(decision) => Ok(decision),
+                None => Err(InsufficientIterationsError {}.into()),
+            }
         }
 
         /// Perform a permission query on the resource
