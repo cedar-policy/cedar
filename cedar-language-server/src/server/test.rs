@@ -83,7 +83,9 @@ impl MockClient {
 }
 
 impl Client for MockClient {
-    async fn log_message(&self, _: MessageType, _: impl std::fmt::Display + Send) {}
+    async fn log_message(&self, mty: MessageType, msg: impl std::fmt::Display + Send) {
+        println!("{mty:?}: {msg}")
+    }
 
     async fn publish_diagnostics(&self, uri: Uri, diagnostics: Vec<Diagnostic>, _: Option<i32>) {
         self.diagnostics.insert(uri.to_string(), diagnostics);
@@ -145,6 +147,14 @@ async fn did_open_did_close() {
     };
 
     backend.did_close(params).await;
+}
+
+#[tokio::test]
+async fn did_open_unk_filetype() {
+    let backend = Backend::new(MockClient::new());
+    let uri = open_test_document(&backend, "file:///test/document.rs", "rust", "").await;
+
+    assert!(!backend.documents.contains_key(&uri));
 }
 
 #[tokio::test]
@@ -296,6 +306,32 @@ async fn policy_formatting() {
 }
 
 #[tokio::test]
+async fn schema_formatting() {
+    let backend = Backend::new(MockClient::new());
+
+    let uri = open_test_document(
+        &backend,
+        "file:///test/document.cedarschema",
+        "cedarschema",
+        "entity E;",
+    )
+    .await;
+
+    let format_params = DocumentFormattingParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        options: FormattingOptions {
+            tab_size: 4,
+            insert_spaces: true,
+            ..Default::default()
+        },
+        work_done_progress_params: WorkDoneProgressParams::default(),
+    };
+
+    let result = backend.formatting(format_params).await.unwrap();
+    assert_eq!(result, None);
+}
+
+#[tokio::test]
 async fn schema_assoc_code_lens() {
     let backend = Backend::new(MockClient::new());
 
@@ -420,7 +456,7 @@ async fn schema_completion() {
 }
 
 #[tokio::test]
-async fn document_symbol() {
+async fn policy_symbol() {
     let backend = Backend::new(MockClient::new());
 
     let uri = open_test_document(
@@ -437,15 +473,42 @@ async fn document_symbol() {
         partial_result_params: PartialResultParams::default(),
     };
 
-    backend
+    let symbols = backend
         .document_symbol(symbol_params)
         .await
         .unwrap()
         .unwrap();
+    assert_matches!(symbols, DocumentSymbolResponse::Nested(symbols) => assert_eq!(symbols[0].name, "policy0"));
 }
 
 #[tokio::test]
-async fn folding_range() {
+async fn schema_symbol() {
+    let backend = Backend::new(MockClient::new());
+
+    let uri = open_test_document(
+        &backend,
+        "file:///test/document.cedarschema",
+        "cedarschema",
+        "entity E;",
+    )
+    .await;
+
+    let symbol_params = DocumentSymbolParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+
+    let symbols = backend
+        .document_symbol(symbol_params)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_matches!(symbols, DocumentSymbolResponse::Nested(symbols) => assert_eq!(symbols[0].name, "E"));
+}
+
+#[tokio::test]
+async fn policy_folding_range() {
     let backend = Backend::new(MockClient::new());
 
     let uri = open_test_document(
@@ -469,6 +532,33 @@ async fn folding_range() {
         .unwrap()[0];
     assert_eq!(range.start_line, 1);
     assert_eq!(range.end_line, 5);
+}
+
+#[tokio::test]
+async fn schema_folding_range() {
+    let backend = Backend::new(MockClient::new());
+
+    let uri = open_test_document(
+        &backend,
+        "file:///test/document.cedarschema",
+        "cedarschema",
+        "entity A {\n foo: Long\n };",
+    )
+    .await;
+
+    let folding_params = FoldingRangeParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+        work_done_progress_params: WorkDoneProgressParams::default(),
+        partial_result_params: PartialResultParams::default(),
+    };
+
+    let ranges = &backend
+        .folding_range(folding_params)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(ranges[0].start_line, 0);
+    assert_eq!(ranges[0].end_line, 2);
 }
 
 #[tokio::test]
@@ -777,6 +867,13 @@ async fn rename_linked_schema_send_diagnostics() {
     };
     backend.will_rename_files(rename_params).await.unwrap();
 
+    let doc = backend.documents.get(&policy_uri).unwrap();
+    assert_eq!(doc.schema_uri(), Some(&new_schema_uri));
+    drop(doc);
+    let doc = backend.documents.get(&entities_uri).unwrap();
+    assert_eq!(doc.schema_uri(), Some(&new_schema_uri));
+    drop(doc);
+
     let policy_change_params = DidChangeTextDocumentParams {
         text_document: VersionedTextDocumentIdentifier {
             uri: policy_uri.clone(),
@@ -855,6 +952,10 @@ async fn remove_schema_assoc_no_diagnostics() {
 
     let _ = backend.execute_command(command_params).await.unwrap();
 
+    let doc = backend.documents.get(&policy_uri).unwrap();
+    assert_eq!(doc.schema_uri(), None);
+    drop(doc);
+
     // introducing an error, but there's no longer a schema to detect it
     let policy_change_params = DidChangeTextDocumentParams {
         text_document: VersionedTextDocumentIdentifier {
@@ -902,6 +1003,10 @@ async fn delete_schema_no_diagnostics() {
     backend.will_delete_files(delete_params).await.unwrap();
     assert!(!backend.documents.contains_key(&old_schema_uri));
 
+    let doc = backend.documents.get(&policy_uri).unwrap();
+    assert_eq!(doc.schema_uri(), None);
+    drop(doc);
+
     // introducing an error, but there's no longer a schema to detect it
     let policy_change_params = DidChangeTextDocumentParams {
         text_document: VersionedTextDocumentIdentifier {
@@ -917,6 +1022,38 @@ async fn delete_schema_no_diagnostics() {
     backend.did_change(policy_change_params).await;
 
     assert_eq!(get_diagnostics(&backend, &policy_uri), Vec::new());
+}
+
+#[tokio::test]
+async fn reopen_file_after_schema_assoc() {
+    let backend = Backend::new(MockClient::new());
+
+    let schema_src =
+        "entity User { age: Long }; action Action appliesTo {principal: User, resource: User};";
+    let schema_uri = open_test_document(
+        &backend,
+        "file:///test/schema.cedarschema",
+        "cedarschema",
+        schema_src,
+    )
+    .await;
+
+    let policy_src = "permit(principal, action, resource) when { principal.age > 18 };";
+    let policy_uri =
+        open_test_document(&backend, "file:///test/policy.cedar", "cedar", policy_src).await;
+
+    associate_schema(&backend, &policy_uri, &schema_uri).await;
+
+    let doc = backend.documents.get(&policy_uri).unwrap();
+    assert_eq!(doc.schema_uri(), Some(&schema_uri));
+    drop(doc);
+
+    // Re-open the document with the same URI. Schema association should persist.
+    let _ = open_test_document(&backend, "file:///test/policy.cedar", "cedar", policy_src).await;
+
+    let doc = backend.documents.get(&policy_uri).unwrap();
+    assert_eq!(doc.schema_uri(), Some(&schema_uri));
+    drop(doc);
 }
 
 #[tokio::test]
@@ -1228,4 +1365,65 @@ async fn schema_association_with_nonexistent_schema() {
     assert!(backend.documents.contains_key(&policy_uri));
     let doc = backend.documents.get(&policy_uri).unwrap();
     assert_eq!(doc.schema_uri(), None);
+
+    let diagnostic = &get_diagnostics(&backend, &policy_uri);
+    assert_eq!(diagnostic, &vec![]);
+}
+
+#[tokio::test]
+async fn schema_association_with_unopened_schema_in_file() {
+    let backend = Backend::new(MockClient::new());
+
+    let policy_uri = open_test_document(
+        &backend,
+        "file:///test/document.cedar",
+        "cedar",
+        "permit(principal, action, resource);",
+    )
+    .await;
+
+    let nonexistent_schema_uri = "file:///test/nonexistent_schema.cedarschema"
+        .parse()
+        .unwrap();
+    associate_schema(&backend, &policy_uri, &nonexistent_schema_uri).await;
+
+    // The document should still exist and not have a schema association
+    assert!(backend.documents.contains_key(&policy_uri));
+    let doc = backend.documents.get(&policy_uri).unwrap();
+    assert_eq!(doc.schema_uri(), None);
+
+    let diagnostic = &get_diagnostics(&backend, &policy_uri);
+    assert_eq!(diagnostic, &vec![]);
+}
+
+
+#[tokio::test]
+async fn schema_association_with_invalid_schema() {
+    let backend = Backend::new(MockClient::new());
+
+    let doc_uri = open_test_document(
+        &backend,
+        "file:///test/document.cedar",
+        "cedar",
+        "permit(principal, action, resource) when { 1 in [1, 2] };",
+    )
+    .await;
+
+    let schema_uri = open_test_document(
+        &backend,
+        "file:///test/schema.cedarschema",
+        "cedarschema",
+        "bogus",
+    )
+    .await;
+
+    associate_schema(&backend, &doc_uri, &schema_uri).await;
+
+    // schema is associated, but we can't get and diagnostic because it's bogus
+    let doc = backend.documents.get(&doc_uri).unwrap();
+    assert_eq!(doc.schema_uri(), Some(&schema_uri));
+    drop(doc);
+
+    let diagnostic = &get_diagnostics(&backend, &doc_uri);
+    assert_eq!(diagnostic, &vec![]);
 }
