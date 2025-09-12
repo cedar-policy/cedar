@@ -216,7 +216,7 @@ impl PartialResponse {
 
     /// Returns the set of non-trivial (meaning more than just `true` or `false`) residuals expressions
     pub fn nontrivial_residuals(&'_ self) -> impl Iterator<Item = Policy> + '_ {
-        self.nontrival_permits().chain(self.nontrival_forbids())
+        self.nontrivial_permits().chain(self.nontrivial_forbids())
     }
 
     /// Returns the set of ids of non-trivial (meaning more than just `true` or `false`) residuals expressions
@@ -227,7 +227,7 @@ impl PartialResponse {
     }
 
     /// Returns the set of non-trivial (meaning more than just `true` or `false`) residuals expressions from [`Effect::Permit`]
-    fn nontrival_permits(&self) -> impl Iterator<Item = Policy> + '_ {
+    fn nontrivial_permits(&self) -> impl Iterator<Item = Policy> + '_ {
         self.residual_permits
             .iter()
             .map(|(id, (expr, annotations))| {
@@ -236,7 +236,7 @@ impl PartialResponse {
     }
 
     /// Returns the set of non-trivial (meaning more than just `true` or `false`) residuals expressions from [`Effect::Forbid`]
-    pub fn nontrival_forbids(&self) -> impl Iterator<Item = Policy> + '_ {
+    pub fn nontrivial_forbids(&self) -> impl Iterator<Item = Policy> + '_ {
         self.residual_forbids
             .iter()
             .map(|(id, (expr, annotations))| {
