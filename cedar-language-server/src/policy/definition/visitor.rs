@@ -22,8 +22,8 @@ use cedar_policy_core::validator::{
 };
 use cedar_policy_core::{
     ast::{
-        ActionConstraint, EntityReference, EntityType, Expr, ExprVisitor, Literal,
-        PrincipalOrResourceConstraint, Var,
+        ActionConstraint, EntityType, Expr, ExprVisitor, Literal, PrincipalOrResourceConstraint,
+        Var,
     },
     parser::Loc,
 };
@@ -220,14 +220,6 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
                 if self.doc_context.is_cursor_over_loc(et.loc()) =>
             {
                 let vet = self.schema.get_entity_type(et)?;
-                let loc = vet.loc.as_ref()?;
-                Some(vec![loc.to_range()])
-            }
-            PrincipalOrResourceConstraint::In(EntityReference::EUID(et))
-            | PrincipalOrResourceConstraint::Eq(EntityReference::EUID(et))
-                if self.doc_context.is_cursor_over_loc(et.loc()) =>
-            {
-                let vet = self.schema.get_entity_type(et.entity_type())?;
                 let loc = vet.loc.as_ref()?;
                 Some(vec![loc.to_range()])
             }
