@@ -865,243 +865,188 @@ permit(
 
     #[test]
     fn get_policy_scope_single_line() {
-        let policy = "permit(principal, action, resource) when { true };";
-
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 0,
-                character: 10,
-            },
+        let (policy, carets) = remove_all_caret_markers(
+            "permit(princ|caret|ipal, act|caret|ion, reso|caret|urce) when { true };|caret|",
         );
+
+        let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");
 
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 0,
-                character: 20,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
 
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 0,
-                character: 30,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource");
 
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 0,
-                character: 0,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[3]);
         assert_eq!(result.variable_type, PolicyScopeVariable::None);
         assert_eq!(result.text, "");
     }
 
     #[test]
     fn get_policy_scope_multi_line() {
-        let policy = "permit(
-            principal,
-            action,
-            resource
-        );";
+        let (policy, carets) = remove_all_caret_markers(
+            "permit(
+            princ|caret|ipal,
+            act|caret|ion,
+            reso|caret|urce
+        );",
+        );
 
         // Test cursor in principal section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 1,
-                character: 4,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");
 
         // Test cursor in action section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 2,
-                character: 4,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
 
         // Test cursor in resource section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 3,
-                character: 4,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource");
     }
 
     #[test]
     fn get_policy_scope_in_operator() {
-        let policy = r#"
+        let (policy, carets) = remove_all_caret_markers(
+            r#"
         permit(
-            principal in User:"alice",
-            action in [Action::"act"],
-            resource in Resource::"data"
-        );"#;
+            princ|caret|ipal in User:"alice",
+            act|caret|ion in [Action::"act"],
+            reso|caret|urce in Resource::"data"
+        );"#,
+        );
 
         // Test cursor in complex principal section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 2,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal in User:\"alice\"");
 
         // Test cursor in action section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 3,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action in [Action::\"act\"]");
 
         // Test cursor in complex resource section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 4,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource in Resource::\"data\"");
     }
 
     #[test]
     fn get_policy_scope_eq_operator() {
-        let policy = r#"
+        let (policy, carets) = remove_all_caret_markers(
+            r#"
         permit(
-            principal == User:"alice",
-            action == Action::"act",
-            resource == Resource::"data"
-        );"#;
+            princ|caret|ipal == User:"alice",
+            act|caret|ion == Action::"act",
+            reso|caret|urce == Resource::"data"
+        );"#,
+        );
 
         // Test cursor in complex principal section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 2,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal == User:\"alice\"");
 
         // Test cursor in action section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 3,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action == Action::\"act\"");
 
         // Test cursor in complex resource section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 4,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource == Resource::\"data\"");
     }
 
     #[test]
     fn get_policy_scope_is_operator() {
-        let policy = r"
+        let (policy, carets) = remove_all_caret_markers(
+            r"
         permit(
-            principal is User,
-            action,
-            resource is Resource
-        );";
+            pri|caret|ncipal is User,
+            act|caret|ion,
+            reso|caret|urce is Resource
+        );",
+        );
 
         // Test cursor in complex principal section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 2,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal is User");
 
         // Test cursor in action section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 3,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
 
         // Test cursor in complex resource section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 4,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource is Resource");
     }
 
     #[test]
     fn test_multiple_policies() {
-        let policies = "permit(principal, action, resource);\nforbid(principal, action, resource);";
+        let (policies, carets) = remove_all_caret_markers("permit(princ|caret|ipal, action, resource);\nforbid(principal, actio|caret|n, resource);");
 
         // Test cursor in first policy
-        let result = get_policy_scope_variable(
-            policies,
-            Position {
-                line: 0,
-                character: 10,
-            },
-        );
+        let result = get_policy_scope_variable(&policies, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");
 
         // Test cursor in second policy
-        let result = get_policy_scope_variable(
-            policies,
-            Position {
-                line: 1,
-                character: 20,
-            },
-        );
+        let result = get_policy_scope_variable(&policies, carets[1]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action");
+    }
+
+    #[test]
+    fn test_parens_in_policy_scope() {
+        let (policies, carets) = remove_all_caret_markers(r#"permit(princ|caret|ipal == (User::"alice"), ac|caret|tion in [(Action::"bar")], res|caret|ource in ((Album::"foo")));"#);
+
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, r#"principal == (User::"alice")"#);
+
+        let result = get_policy_scope_variable(&policies, carets[1]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, r#"action in [(Action::"bar")]"#);
+
+        let result = get_policy_scope_variable(&policies, carets[2]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, r#"resource in ((Album::"foo"))"#);
+    }
+
+    #[test]
+    fn test_incomplete_policy_scope() {
+        let (policies, carets) = remove_all_caret_markers(r#"permit(|caret|);"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "");
+
+        let (policies, carets) = remove_all_caret_markers(r#"permit(princi|caret|pal);"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+
+        let (policies, carets) = remove_all_caret_markers(r#"permit(princi|caret|pal, );"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+
+        let (policies, carets) = remove_all_caret_markers(r#"permit(princi|caret|pal, a|caret|ction, );"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+        let result = get_policy_scope_variable(&policies, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
     }
