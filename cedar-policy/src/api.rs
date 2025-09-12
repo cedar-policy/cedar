@@ -5416,10 +5416,10 @@ mod tpe {
         /// Otherwise, it iterates `max_iters` times and returns
         /// a partial result.
         ///
-        pub fn is_authorized_batched<'a>(
+        pub fn is_authorized_batched(
             &self,
             query: &Request,
-            schema: &'a Schema,
+            schema: &Schema,
             loader: &mut dyn EntityLoader,
             max_iters: u32,
         ) -> Result<Decision, BatchedEvalError> {
