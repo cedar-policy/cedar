@@ -9339,7 +9339,23 @@ when { principal in resource.admins };
 
         #[test]
         fn test_batched_evaluation_error_insufficient_iters() {
-            // normal testentityloader but gave too few iterations
+            let schema = schema();
+            let policies = policy_set();
+            let entities = entities();
+
+            let request = Request::new(
+                r#"User::"alice""#.parse().unwrap(),
+                r#"Action::"push""#.parse().unwrap(),
+                r#"Repository::"common_knowledge""#.parse().unwrap(),
+                Context::empty(),
+                Some(&schema),
+            )
+            .unwrap();
+
+            let mut loader = TestEntityLoader::new(&entities);
+            let result = policies.is_authorized_batched(&request, &schema, &mut loader, 0);
+
+            assert_matches!(result, Err(BatchedEvalError::InsufficientIterations(_)));
         }
     }
 }
