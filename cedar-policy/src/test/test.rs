@@ -9168,6 +9168,389 @@ when { principal in resource.admins };
                     );
             }
         }
+
+        #[test]
+        fn test_batched_evaluation_errors() {
+            use crate::{
+                Context, Entities, EntityUid, PolicySet, Request, Schema, TestEntityLoader,
+            };
+            use cedar_policy_core::tpe::err::BatchedEvalError;
+            use std::collections::{HashMap, HashSet};
+            use std::str::FromStr;
+
+            // Test 1: TPEError::Validation
+            {
+                
+            }
+
+            // Test 2: RequestValidation Error - Invalid principal type
+            {
+                let pset = PolicySet::from_str("permit(principal, action, resource);").unwrap();
+
+                let schema = Schema::from_json_str(
+                    r#"
+                {
+                    "": {
+                        "entityTypes": {
+                            "ValidUser": {},
+                            "Resource": {}
+                        },
+                        "actions": {
+                            "view": {
+                                "appliesTo": {
+                                    "principalTypes": ["ValidUser"],
+                                    "resourceTypes": ["Resource"]
+                                }
+                            }
+                        }
+                    }
+                }
+                "#,
+                )
+                .unwrap();
+
+                // Create request with invalid principal type
+                let request = Request::new(
+                    EntityUid::from_str("InvalidUser::\"alice\"").unwrap(),
+                    EntityUid::from_str("Action::\"view\"").unwrap(),
+                    EntityUid::from_str("Resource::\"doc\"").unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                );
+
+                assert!(request.is_err());
+            }
+
+            // Test 3: PartialRequest Error - Context contains unknowns
+            #[cfg(feature = "partial-eval")]
+            {
+                use crate::RestrictedExpression;
+
+                let context_with_unknown = Context::from_pairs([(
+                    "key".to_string(),
+                    RestrictedExpression::new_unknown("test_unknown"),
+                )])
+                .unwrap();
+
+                let request = Request::new(
+                    EntityUid::from_str("User::\"alice\"").unwrap(),
+                    EntityUid::from_str("Action::\"view\"").unwrap(),
+                    EntityUid::from_str("Resource::\"doc\"").unwrap(),
+                    context_with_unknown,
+                    None,
+                )
+                .unwrap();
+
+                let schema = Schema::from_json_str(
+                    r#"
+                {
+                    "": {
+                        "entityTypes": {
+                            "User": {},
+                            "Resource": {}
+                        },
+                        "actions": {
+                            "view": {
+                                "appliesTo": {
+                                    "principalTypes": ["User"],
+                                    "resourceTypes": ["Resource"]
+                                }
+                            }
+                        }
+                    }
+                }
+                "#,
+                )
+                .unwrap();
+
+                let pset = PolicySet::from_str("permit(principal, action, resource);").unwrap();
+                let entities = Entities::empty();
+                let mut loader = TestEntityLoader::new(&entities);
+                let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
+
+                assert!(matches!(result, Err(BatchedEvalError::PartialRequest(_))));
+            }
+
+            // Test 4: Entities Error - Invalid entity
+            {
+                let pset = PolicySet::from_str("permit(principal, action, resource);").unwrap();
+
+                let schema = Schema::from_json_str(
+                    r#"
+                {
+                    "": {
+                        "entityTypes": {
+                            "User": {
+                                "shape": {
+                                    "type": "Record",
+                                    "attributes": {
+                                        "age": { "type": "Long" }
+                                    }
+                                }
+                            },
+                            "Resource": {}
+                        },
+                        "actions": {
+                            "view": {
+                                "appliesTo": {
+                                    "principalTypes": ["User"],
+                                    "resourceTypes": ["Resource"]
+                                }
+                            }
+                        }
+                    }
+                }
+                "#,
+                )
+                .unwrap();
+
+                let request = Request::new(
+                    EntityUid::from_str("User::\"alice\"").unwrap(),
+                    EntityUid::from_str("Action::\"view\"").unwrap(),
+                    EntityUid::from_str("Resource::\"doc\"").unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                )
+                .unwrap();
+
+                // Create an entity loader that returns an invalid entity (wrong attribute type)
+                struct InvalidEntityLoader;
+                impl crate::EntityLoader for InvalidEntityLoader {
+                    fn load_entities(
+                        &mut self,
+                        uids: &HashSet<EntityUid>,
+                    ) -> HashMap<EntityUid, Option<crate::Entity>> {
+                        let mut result = HashMap::new();
+                        for uid in uids {
+                            if uid.id().unescaped() == "alice" {
+                                // Create entity with wrong attribute type (string instead of long)
+                                let entity = crate::Entity::new(
+                                    uid.clone(),
+                                    [(
+                                        "age".to_string(),
+                                        crate::RestrictedExpression::new_string(
+                                            "not_a_number".to_string(),
+                                        ),
+                                    )]
+                                    .into(),
+                                    HashSet::new(),
+                                )
+                                .unwrap();
+                                result.insert(uid.clone(), Some(entity));
+                            } else {
+                                result.insert(uid.clone(), None);
+                            }
+                        }
+                        result
+                    }
+                }
+
+                let mut loader = InvalidEntityLoader;
+                let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
+
+                assert!(matches!(result, Err(BatchedEvalError::Entities(_))));
+            }
+
+            // Test 5: PartialValueToValue Error - Entity with residual expression
+            #[cfg(feature = "partial-eval")]
+            {
+                let pset = PolicySet::from_str("permit(principal, action, resource);").unwrap();
+
+                let schema = Schema::from_json_str(
+                    r#"
+                {
+                    "": {
+                        "entityTypes": {
+                            "User": {},
+                            "Resource": {}
+                        },
+                        "actions": {
+                            "view": {
+                                "appliesTo": {
+                                    "principalTypes": ["User"],
+                                    "resourceTypes": ["Resource"]
+                                }
+                            }
+                        }
+                    }
+                }
+                "#,
+                )
+                .unwrap();
+
+                let request = Request::new(
+                    EntityUid::from_str("User::\"alice\"").unwrap(),
+                    EntityUid::from_str("Action::\"view\"").unwrap(),
+                    EntityUid::from_str("Resource::\"doc\"").unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                )
+                .unwrap();
+
+                // Create an entity loader that returns an entity with unknown/residual values
+                struct ResidualEntityLoader;
+                impl crate::EntityLoader for ResidualEntityLoader {
+                    fn load_entities(
+                        &mut self,
+                        uids: &HashSet<EntityUid>,
+                    ) -> HashMap<EntityUid, Option<crate::Entity>> {
+                        let mut result = HashMap::new();
+                        for uid in uids {
+                            if uid.id().unescaped() == "alice" {
+                                // Create entity with unknown attribute
+                                let entity = crate::Entity::new(
+                                    uid.clone(),
+                                    [(
+                                        "attr".to_string(),
+                                        crate::RestrictedExpression::new_unknown("unknown_attr"),
+                                    )]
+                                    .into(),
+                                    HashSet::new(),
+                                )
+                                .unwrap();
+                                result.insert(uid.clone(), Some(entity));
+                            } else {
+                                result.insert(uid.clone(), None);
+                            }
+                        }
+                        result
+                    }
+                }
+
+                let mut loader = ResidualEntityLoader;
+                let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
+
+                // This should trigger PartialValueToValue error when trying to convert residual to concrete value
+                assert!(matches!(
+                    result,
+                    Err(BatchedEvalError::PartialValueToValue(_))
+                ));
+            }
+
+            // Test 6: InsufficientIterations Error - Iteration limit reached
+            {
+                let pset = PolicySet::from_str(
+                    "permit(principal, action, resource) when { principal.attr1.attr2.attr3 == \"value\" };"
+                ).unwrap();
+
+                let schema = Schema::from_json_str(
+                    r#"
+                {
+                    "": {
+                        "entityTypes": {
+                            "User": {},
+                            "Resource": {},
+                            "Nested": {}
+                        },
+                        "actions": {
+                            "view": {
+                                "appliesTo": {
+                                    "principalTypes": ["User"],
+                                    "resourceTypes": ["Resource"]
+                                }
+                            }
+                        }
+                    }
+                }
+                "#,
+                )
+                .unwrap();
+
+                let request = Request::new(
+                    EntityUid::from_str("User::\"alice\"").unwrap(),
+                    EntityUid::from_str("Action::\"view\"").unwrap(),
+                    EntityUid::from_str("Resource::\"doc\"").unwrap(),
+                    Context::empty(),
+                    Some(&schema),
+                )
+                .unwrap();
+
+                // Create an entity loader that creates a chain of entities requiring multiple iterations
+                struct ChainedEntityLoader {
+                    iteration: std::cell::RefCell<usize>,
+                }
+                impl ChainedEntityLoader {
+                    fn new() -> Self {
+                        Self {
+                            iteration: std::cell::RefCell::new(0),
+                        }
+                    }
+                }
+                impl crate::EntityLoader for ChainedEntityLoader {
+                    fn load_entities(
+                        &mut self,
+                        uids: &HashSet<EntityUid>,
+                    ) -> HashMap<EntityUid, Option<crate::Entity>> {
+                        let mut result = HashMap::new();
+                        let mut iter = self.iteration.borrow_mut();
+                        *iter += 1;
+
+                        for uid in uids {
+                            match uid.id().unescaped() {
+                                "alice" => {
+                                    let entity = crate::Entity::new(
+                                        uid.clone(),
+                                        [(
+                                            "attr1".to_string(),
+                                            crate::RestrictedExpression::new_entity_uid(
+                                                EntityUid::from_str("Nested::\"level1\"").unwrap(),
+                                            ),
+                                        )]
+                                        .into(),
+                                        HashSet::new(),
+                                    )
+                                    .unwrap();
+                                    result.insert(uid.clone(), Some(entity));
+                                }
+                                "level1" => {
+                                    let entity = crate::Entity::new(
+                                        uid.clone(),
+                                        [(
+                                            "attr2".to_string(),
+                                            crate::RestrictedExpression::new_entity_uid(
+                                                EntityUid::from_str("Nested::\"level2\"").unwrap(),
+                                            ),
+                                        )]
+                                        .into(),
+                                        HashSet::new(),
+                                    )
+                                    .unwrap();
+                                    result.insert(uid.clone(), Some(entity));
+                                }
+                                "level2" => {
+                                    let entity = crate::Entity::new(
+                                        uid.clone(),
+                                        [(
+                                            "attr3".to_string(),
+                                            crate::RestrictedExpression::new_entity_uid(
+                                                EntityUid::from_str("Nested::\"level3\"").unwrap(),
+                                            ),
+                                        )]
+                                        .into(),
+                                        HashSet::new(),
+                                    )
+                                    .unwrap();
+                                    result.insert(uid.clone(), Some(entity));
+                                }
+                                _ => {
+                                    result.insert(uid.clone(), None);
+                                }
+                            }
+                        }
+                        result
+                    }
+                }
+
+                let mut loader = ChainedEntityLoader::new();
+                // Use very low iteration limit to force insufficient iterations error
+                let result = pset.is_authorized_batched(&request, &schema, &mut loader, 1);
+
+                assert!(matches!(
+                    result,
+                    Err(BatchedEvalError::InsufficientIterations(_))
+                ));
+            }
+        }
     }
 }
 
