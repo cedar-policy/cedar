@@ -17,9 +17,7 @@
 #![cfg(test)]
 use crate::server::Backend;
 use crate::server::Client;
-use crate::utils::tests::remove_all_caret_markers;
-use crate::utils::tests::remove_caret_marker;
-use crate::utils::tests::slice_range;
+use crate::test_utils::{remove_all_caret_markers, remove_caret_marker, slice_range};
 use cool_asserts::assert_matches;
 use dashmap::DashMap;
 use similar_asserts::assert_eq;

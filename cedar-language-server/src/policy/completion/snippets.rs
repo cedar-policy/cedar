@@ -25,7 +25,7 @@ use crate::{
         },
         items::{HasCompletionItem, IfCompletionItem, InCompletionItem, LikeCompletionItem},
     },
-    utils::position_within_loc,
+    position::position_within_loc,
 };
 
 use crate::policy::DocumentContext;

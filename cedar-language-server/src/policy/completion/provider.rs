@@ -29,7 +29,7 @@ use crate::{
         completion::snippets::{get_snippets, should_show_policy_snippets},
         DocumentContext, PolicyLanguageFeatures,
     },
-    utils::position_within_loc,
+    position::position_within_loc,
 };
 
 mod ast;
@@ -168,7 +168,7 @@ pub(crate) mod tests {
 
     use itertools::Itertools;
 
-    use crate::utils::tests::{remove_caret_marker, schema};
+    use crate::test_utils::{remove_caret_marker, schema};
     use tracing_test::traced_test;
 
     macro_rules! schema_completion_test {

@@ -20,7 +20,7 @@ use itertools::Itertools;
 use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Location, Position, Uri};
 use visitor::PolicyGotoSchemaDefinition;
 
-use crate::{schema::SchemaInfo, utils::position_within_loc};
+use crate::{position::position_within_loc, schema::SchemaInfo};
 
 use super::types::{DocumentContext, PolicyLanguageFeatures};
 
@@ -104,10 +104,9 @@ mod tests {
     use tower_lsp_server::lsp_types::{self, Uri};
     use tracing_test::traced_test;
 
-    use crate::utils::tests::slice_range;
     use crate::{
         schema::SchemaInfo,
-        utils::tests::{remove_caret_marker, schema_info},
+        test_utils::{remove_caret_marker, schema_info, slice_range},
     };
 
     static URI: LazyLock<Uri> = LazyLock::new(|| "https://example.net".parse().ok().unwrap());

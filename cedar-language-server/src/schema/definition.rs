@@ -24,7 +24,10 @@ use cedar_policy_core::validator::{
 use itertools::Itertools;
 use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 
-use crate::utils::{get_word_at_position, position_within_loc, ToRange};
+use crate::{
+    position::{position_within_loc, ToRange},
+    utils::get_word_at_position,
+};
 
 use super::SchemaInfo;
 
@@ -144,7 +147,7 @@ impl FindDefinition for ValidatorActionId {
                     .filter(|a| a.descendants().contains(self.name()))
                     .find(|a| a.name().eid().escaped() == cx.cursor_word)
                     .and_then(|v| v.loc())
-                    .map(super::super::utils::ToRange::to_range)
+                    .map(ToRange::to_range)
             })
     }
 }
@@ -165,7 +168,7 @@ impl FindDefinition for ValidatorEntityType {
                     .filter(|et| et.has_descendant_entity_type(self.name()))
                     .filter(|et| et.name().to_string() == cx.cursor_word)
                     .filter_map(|et| et.loc.as_ref())
-                    .map(super::super::utils::ToRange::to_range)
+                    .map(ToRange::to_range)
                     .next()
             })
     }
@@ -271,7 +274,7 @@ mod test {
 
     use crate::{
         schema::SchemaInfo,
-        utils::tests::{remove_caret_marker, slice_range},
+        test_utils::{remove_caret_marker, slice_range},
     };
 
     use tracing_test::traced_test;

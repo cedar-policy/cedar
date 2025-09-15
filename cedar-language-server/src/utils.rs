@@ -16,26 +16,10 @@
 
 use std::fmt::Write;
 
-use cedar_policy_core::parser::Loc;
-use miette::SourceSpan;
 use smol_str::SmolStr;
 use tower_lsp_server::lsp_types::{self, Position, Range};
 
-pub(crate) trait ToRange {
-    fn to_range(&self) -> Range;
-}
-
-impl ToRange for Loc {
-    fn to_range(&self) -> Range {
-        to_range(&self.span, &self.src)
-    }
-}
-
-impl ToRange for Box<Loc> {
-    fn to_range(&self) -> Range {
-        to_range(&self.span, &self.src)
-    }
-}
+use crate::position::to_range;
 
 /// Defines the length-zero source range occurring at the start of the file.
 /// Used as the source range we don't have anything better available.
@@ -94,50 +78,6 @@ pub(crate) fn to_lsp_diagnostics<'a>(
         diagnostics.extend(related.flat_map(|d| to_lsp_diagnostics(d, src)));
     }
     diagnostics
-}
-
-pub(crate) fn to_range(source_span: &SourceSpan, src: &str) -> Range {
-    let text = &src[..source_span.offset()];
-    let start_line = text.chars().filter(|&c| c == '\n').count();
-    let start_col = text.chars().rev().take_while(|&c| c != '\n').count();
-
-    let end = source_span.offset() + source_span.len();
-    let text = &src[..end];
-    let end_line = text.chars().filter(|&c| c == '\n').count();
-    let end_col = text.chars().rev().take_while(|&c| c != '\n').count();
-
-    Range {
-        start: Position {
-            line: start_line as u32,
-            character: start_col as u32,
-        },
-        end: Position {
-            line: end_line as u32,
-            character: end_col as u32,
-        },
-    }
-}
-
-pub(crate) fn get_char_at_position(position: Position, src: &str) -> Option<char> {
-    src.lines()
-        .nth(position.line as usize)?
-        .chars()
-        .nth(position.character as usize)
-}
-
-pub(crate) fn position_within_loc<'a, R, I>(position: Position, range: I) -> bool
-where
-    R: ToRange + 'a,
-    I: Into<Option<&'a R>>,
-{
-    let Some(range) = range.into() else {
-        return false;
-    };
-    let range = range.to_range();
-    position.line >= range.start.line
-        && position.line <= range.end.line
-        && (position.line != range.start.line || position.character >= range.start.character)
-        && (position.line != range.end.line || position.character <= range.end.character)
 }
 
 pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<&str> {
@@ -460,10 +400,6 @@ pub(crate) fn extract_common_type_name(type_dec_snippet: &str) -> Option<&str> {
     Some(type_name)
 }
 
-pub(crate) fn ranges_intersect(a: &Range, b: &Range) -> bool {
-    a.start <= b.end && b.start <= a.end
-}
-
 pub(crate) fn is_cursor_in_condition_braces(position: Position, source_text: &str) -> bool {
     #[derive(PartialEq)]
     enum State {
@@ -545,108 +481,12 @@ pub(crate) fn is_cursor_in_condition_braces(position: Position, source_text: &st
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::{fs::read_to_string, str::FromStr};
-
-    use cedar_policy_core::ast::PolicyID;
-    use cedar_policy_core::validator::ValidatorSchema;
     use tracing_test::traced_test;
 
-    use crate::{
-        policy::{DocumentContext, PolicyLanguageFeatures},
-        schema::SchemaInfo,
-    };
+    use crate::test_utils::{insert_caret, remove_all_caret_markers, remove_caret_marker};
     use similar_asserts::assert_eq;
 
     use super::*;
-
-    pub(crate) fn remove_caret_marker(policy: impl AsRef<str>) -> (String, Position) {
-        let marker = "|caret|";
-        let (before, after) = policy
-            .as_ref()
-            .split_once(marker)
-            .expect("Caret marker not found");
-        let position = if before.is_empty() {
-            Position {
-                line: 0,
-                character: 0,
-            }
-        } else {
-            Position {
-                line: (before.lines().count() - 1).try_into().unwrap(),
-                character: before.lines().last().unwrap().len().try_into().unwrap(),
-            }
-        };
-
-        (format!("{before}{after}"), position)
-    }
-
-    pub(crate) fn remove_all_caret_markers(src: impl AsRef<str>) -> (String, Vec<Position>) {
-        let mut src = src.as_ref().to_owned();
-        let mut caret_positions = Vec::new();
-        while src.contains("|caret|") {
-            let (new_src, pos) = remove_caret_marker(src);
-            src = new_src;
-            caret_positions.push(pos);
-        }
-        (src, caret_positions)
-    }
-
-    /// Get the byte offset of a position (line and column) in a string,
-    /// accounting for the actual position of newlines in the string.
-    pub(crate) fn position_byte_offset(src: &str, pos: Position) -> usize {
-        let line_offset = if pos.line == 0 {
-            0
-        } else {
-            1 + src
-                .char_indices()
-                .filter(|(_, c)| c == &'\n')
-                .nth((pos.line - 1).try_into().unwrap())
-                .unwrap()
-                .0
-        };
-
-        line_offset + TryInto::<usize>::try_into(pos.character).unwrap()
-    }
-
-    pub(crate) fn insert_caret(src: &str, pos: Position) -> String {
-        let offset = position_byte_offset(src, pos);
-        format!("{}|caret|{}", &src[..offset], &src[offset..])
-    }
-
-    /// Given a range - a pair of (line, column) positions - extract the slice
-    /// for this range from a string slice.
-    pub(crate) fn slice_range(src: &str, range: Range) -> &str {
-        let start_offset = position_byte_offset(src, range.start);
-        let end_offset = position_byte_offset(src, range.end);
-        &src[start_offset..end_offset]
-    }
-
-    pub(crate) fn schema() -> ValidatorSchema {
-        let schema_str = read_to_string("test-data/policies.cedarschema").unwrap();
-
-        ValidatorSchema::from_str(&schema_str).unwrap()
-    }
-
-    pub(crate) fn schema_info(schema_name: &str) -> SchemaInfo {
-        let schema_str = read_to_string(format!("test-data/{schema_name}")).unwrap();
-
-        SchemaInfo::cedar_schema(schema_str)
-    }
-
-    pub(crate) fn schema_document_context(policy: &str, position: Position) -> DocumentContext<'_> {
-        let template =
-            cedar_policy_core::parser::text_to_cst::parse_policy_tolerant(policy).unwrap();
-        let ast = template
-            .to_policy_template_tolerant(PolicyID::from_string("0"))
-            .unwrap();
-        DocumentContext::new(
-            Some(schema()),
-            ast,
-            policy,
-            position,
-            PolicyLanguageFeatures::default(),
-        )
-    }
 
     #[test]
     fn test_get_operator() {

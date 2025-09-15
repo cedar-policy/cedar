@@ -37,10 +37,11 @@ use tower_lsp_server::lsp_types::{CompletionItem, Position};
 use crate::policy::completion::items::{
     ActionCompletionItem, ContextCompletionIem, PrincipalCompletionItem, ResourceCompletionItem,
 };
+use crate::position::{get_char_at_position, position_within_loc};
 use crate::utils::{
-    get_char_at_position, get_operator_at_position, get_policy_scope_variable,
-    get_word_at_position, is_cursor_in_condition_braces, is_cursor_within_policy_scope,
-    position_within_loc, PolicyScopeVariable, ScopeVariableInfo,
+    get_operator_at_position, get_policy_scope_variable, get_word_at_position,
+    is_cursor_in_condition_braces, is_cursor_within_policy_scope, PolicyScopeVariable,
+    ScopeVariableInfo,
 };
 
 #[cfg(feature = "wasm")]

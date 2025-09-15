@@ -20,7 +20,8 @@ use crate::{
         PrincipalDocumentation, ResourceDocumentation, ToDocumentationString,
     },
     policy::types::cedar::CedarTypeKind,
-    utils::{PolicyScopeVariable, ToRange},
+    position::{position_within_loc, ToRange},
+    utils::PolicyScopeVariable,
 };
 use cedar_policy_core::ast::{
     ActionConstraint, ExprVisitor, PolicyID, PrincipalConstraint, PrincipalOrResourceConstraint,
@@ -30,7 +31,7 @@ use cedar_policy_core::validator::ValidatorSchema;
 use tower_lsp_server::lsp_types::{self, Hover, HoverContents, MarkupKind, Position};
 use visitor::HoverVisitor;
 
-use crate::{schema::SchemaInfo, utils::position_within_loc};
+use crate::schema::SchemaInfo;
 
 use super::types::{cedar::EntityTypeKind, DocumentContext, PolicyLanguageFeatures};
 
@@ -260,7 +261,7 @@ mod tests {
             StringDocumentation, SubtractDocumentation,
         },
         policy::{cedar::EntityTypeKind, hover::ToHover, types::cedar::CedarTypeKind},
-        utils::tests::{remove_caret_marker, schema_document_context, schema_info},
+        test_utils::{remove_caret_marker, schema_document_context, schema_info},
     };
     use cedar_policy_core::ast::EntityType;
 

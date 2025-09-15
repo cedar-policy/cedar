@@ -17,7 +17,7 @@
 use cedar_policy_core::parser::text_to_cst::parse_policies_tolerant;
 use tower_lsp_server::lsp_types::{self, FoldingRange};
 
-use crate::utils::ToRange;
+use crate::position::ToRange;
 
 /// Generates folding ranges for Cedar policies in a document.
 ///

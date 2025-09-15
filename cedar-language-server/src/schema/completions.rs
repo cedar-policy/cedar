@@ -403,7 +403,7 @@ const NAMESPACE_SNIPPET: &str = r"namespace ${1} {
 #[cfg(test)]
 mod test {
     use super::CedarSchemaParser;
-    use crate::utils::tests::remove_caret_marker;
+    use crate::test_utils::remove_caret_marker;
     use itertools::Itertools;
     use tracing_test::traced_test;
 
