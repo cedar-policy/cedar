@@ -16,7 +16,6 @@
 
 //! This module contains the type-aware partial evaluator.
 
-pub mod batched_evaluator;
 pub mod entities;
 pub mod err;
 pub mod evaluator;
@@ -24,15 +23,48 @@ pub mod request;
 pub mod residual;
 pub mod response;
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
-use crate::tpe::batched_evaluator::policy_expr_map;
-use crate::tpe::err::TPEError;
+use crate::ast::{Expr, PolicyID};
+use crate::tpe::err::{NonstaticPolicyError, TPEError};
 use crate::tpe::response::{ResidualPolicy, Response};
-use crate::validator::ValidatorSchema;
+use crate::validator::types::Type;
+use crate::validator::{typecheck::PolicyCheck, typecheck::Typechecker, ValidatorSchema};
 use crate::{ast::PolicySet, extensions::Extensions};
 
 use crate::tpe::{entities::PartialEntities, evaluator::Evaluator, request::PartialRequest};
+
+pub(crate) fn policy_expr_map<'a>(
+    request: &'a PartialRequest,
+    ps: &'a PolicySet,
+    schema: &ValidatorSchema,
+) -> std::result::Result<HashMap<&'a PolicyID, Expr<Option<Type>>>, TPEError> {
+    let mut exprs = HashMap::new();
+    let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
+    let env = request.find_request_env(schema)?;
+    for p in ps.policies() {
+        if !p.is_static() {
+            return Err(NonstaticPolicyError.into());
+        }
+        let t = p.template();
+        match tc.typecheck_by_single_request_env(t, &env) {
+            PolicyCheck::Success(expr) => {
+                exprs.insert(p.id(), expr);
+            }
+            PolicyCheck::Fail(errs) => {
+                return Err(TPEError::Validation(errs));
+            }
+            PolicyCheck::Irrelevant(errs, expr) => {
+                if errs.is_empty() {
+                    exprs.insert(p.id(), expr);
+                } else {
+                    return Err(TPEError::Validation(errs));
+                }
+            }
+        }
+    }
+    Ok(exprs)
+}
 
 /// Type-aware partial-evaluation on a `PolicySet`.
 /// Both `request` and `entities` should be valid and hence be constructed

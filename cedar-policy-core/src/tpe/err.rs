@@ -23,7 +23,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::{
-    ast::{Eid, EntityType, EntityUID, PartialValueToValueError},
+    ast::{Eid, EntityType, EntityUID},
     entities::{
         conformance::err::{EntitySchemaConformanceError, InvalidEnumEntityError},
         err::Duplicate,
@@ -108,39 +108,6 @@ pub enum TPEError {
     #[error(transparent)]
     ExprToResidualError(#[from] ExprToResidualError),
 }
-
-/// Errors for Batched Evaluation
-#[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum BatchedEvalError {
-    /// Error thrown by TPE
-    #[error(transparent)]
-    TPE(#[from] TPEError),
-    /// Error when the request is not valid
-    #[error(transparent)]
-    RequestValidation(#[from] RequestValidationError),
-    /// Error when the request is partial
-    #[error(transparent)]
-    PartialRequest(#[from] PartialRequestError),
-    /// Error when the loaded entities are not valid
-    #[error(transparent)]
-    Entities(#[from] EntitiesError),
-    /// Error thrown when a entity loader provided entity was partial instead of fully concrete
-    #[error(transparent)]
-    PartialValueToValue(#[from] PartialValueToValueError),
-    /// Error the entity loader failed to load all requested entities
-    #[error(transparent)]
-    MissingEntities(#[from] MissingEntitiesError),
-    /// Error when batched evaluation did not converge due to the iteration limit
-    #[error(transparent)]
-    InsufficientIterations(#[from] InsufficientIterationsError),
-}
-
-/// Batched evaluation may not return an answer when the maximum
-/// iterations is too low.
-#[derive(Debug, Error)]
-#[error("Batched evaluation failed: insufficient iteration limit.")]
-pub struct InsufficientIterationsError {}
 
 /// Residuals require fully typed expressions without
 /// unknowns or parse errors.

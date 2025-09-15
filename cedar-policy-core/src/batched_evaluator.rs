@@ -16,23 +16,22 @@
 
 //! This module contains the batched evaluator implementation and the (internal) definition of [`EntityLoader`]
 
+pub mod err;
+
 use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::sync::Arc;
 
-use crate::ast::{Entity, EntityUID, EntityUIDEntry, Expr, PolicyID, Request};
+use crate::ast::{Entity, EntityUID, EntityUIDEntry, Request};
 use crate::authorizer::Decision;
+use crate::batched_evaluator::err::{BatchedEvalError, InsufficientIterationsError};
 use crate::entities::TCComputation;
 use crate::tpe::entities::PartialEntity;
-use crate::tpe::err::{
-    BatchedEvalError, InsufficientIterationsError, NonstaticPolicyError, PartialRequestError,
-    TPEError,
-};
+use crate::tpe::err::{PartialRequestError, TPEError};
+use crate::tpe::policy_expr_map;
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
 use crate::tpe::residual::Residual;
 use crate::tpe::response::{ResidualPolicy, Response};
-use crate::validator::typecheck::{PolicyCheck, Typechecker};
-use crate::validator::types::Type;
 use crate::validator::ValidatorSchema;
 use crate::{ast::PolicySet, extensions::Extensions};
 
@@ -45,38 +44,6 @@ pub trait EntityLoader {
     /// Returns a map from [`EntityUID`] to `Option<Entity>`, where `None` indicates
     /// the entity does not exist.
     fn load_entities(&mut self, uids: &HashSet<EntityUID>) -> HashMap<EntityUID, Option<Entity>>;
-}
-
-pub(crate) fn policy_expr_map<'a>(
-    request: &'a PartialRequest,
-    ps: &'a PolicySet,
-    schema: &ValidatorSchema,
-) -> std::result::Result<HashMap<&'a PolicyID, Expr<Option<Type>>>, TPEError> {
-    let mut exprs = HashMap::new();
-    let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
-    let env = request.find_request_env(schema)?;
-    for p in ps.policies() {
-        if !p.is_static() {
-            return Err(NonstaticPolicyError.into());
-        }
-        let t = p.template();
-        match tc.typecheck_by_single_request_env(t, &env) {
-            PolicyCheck::Success(expr) => {
-                exprs.insert(p.id(), expr);
-            }
-            PolicyCheck::Fail(errs) => {
-                return Err(TPEError::Validation(errs));
-            }
-            PolicyCheck::Irrelevant(errs, expr) => {
-                if errs.is_empty() {
-                    exprs.insert(p.id(), expr);
-                } else {
-                    return Err(TPEError::Validation(errs));
-                }
-            }
-        }
-    }
-    Ok(exprs)
 }
 
 fn concrete_request_to_partial(
