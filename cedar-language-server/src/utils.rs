@@ -1088,4 +1088,103 @@ permit(
         assert_eq!(extract_common_type_name("entity foo;"), None);
         assert_eq!(extract_common_type_name("entity foo;"), None);
     }
+
+    #[test]
+    fn test_get_word_at_position_basic() {
+        let (text, position) = remove_caret_marker("he|caret|llo");
+        assert_eq!(get_word_at_position(position, &text), Some("hello"));
+
+        let (text, position) = remove_caret_marker("hello |caret|world");
+        assert_eq!(get_word_at_position(position, &text), Some("world"));
+
+        let (text, position) = remove_caret_marker("|caret|hello world");
+        assert_eq!(get_word_at_position(position, &text), Some("hello"));
+
+        let (text, position) = remove_caret_marker("hello wor|caret|ld");
+        assert_eq!(get_word_at_position(position, &text), Some("world"));
+
+        let (text, position) = remove_caret_marker("hello world|caret|");
+        assert_eq!(get_word_at_position(position, &text), Some("world"));
+    }
+
+    #[test]
+    fn test_get_word_at_position_word_characters() {
+        let (text, position) = remove_caret_marker("test|caret|123");
+        assert_eq!(get_word_at_position(position, &text), Some("test123"));
+
+        let (text, position) = remove_caret_marker("my_|caret|variable");
+        assert_eq!(get_word_at_position(position, &text), Some("my_variable"));
+
+        let (text, position) = remove_caret_marker("User:|caret|:alice");
+        assert_eq!(get_word_at_position(position, &text), Some("User::alice"));
+
+        let (text, position) = remove_caret_marker("x |caret|== y");
+        assert_eq!(get_word_at_position(position, &text), Some("=="));
+    }
+
+    #[test]
+    fn test_get_word_at_position_none() {
+        let (text, position) = remove_caret_marker("hello |caret| world");
+        assert_eq!(get_word_at_position(position, &text), None);
+
+        let (text, position) = remove_caret_marker("|caret|");
+        assert_eq!(get_word_at_position(position, &text), None);
+
+        let (text, position) = remove_caret_marker("   |caret|   ");
+        assert_eq!(get_word_at_position(position, &text), None);
+
+        let (text, position) = remove_caret_marker("line1\n\n|caret|\nline3");
+        assert_eq!(get_word_at_position(position, &text), None);
+
+        assert_eq!(
+            get_word_at_position(
+                Position {
+                    line: 0,
+                    character: 20
+                },
+                "hello world"
+            ),
+            None
+        );
+        assert_eq!(
+            get_word_at_position(
+                Position {
+                    line: 2,
+                    character: 0
+                },
+                "hello world"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_get_word_at_position_multiline() {
+        let (text, position) = remove_caret_marker("line1|caret|\nline2");
+        assert_eq!(get_word_at_position(position, &text), Some("line1"));
+
+        let (text, position) = remove_caret_marker("line1\nli|caret|ne2");
+        assert_eq!(get_word_at_position(position, &text), Some("line2"));
+    }
+
+    #[test]
+    fn test_get_word_at_position_cedar_syntax() {
+        let (text, position) = remove_caret_marker("permit(|caret|principal, action, resource)");
+        assert_eq!(get_word_at_position(position, &text), Some("principal"));
+
+        let (text, position) = remove_caret_marker("User::|caret|\"alice\"");
+        assert_eq!(get_word_at_position(position, &text), Some("User::"));
+
+        let (text, position) = remove_caret_marker("principal |caret|== User::\"alice\"");
+        assert_eq!(get_word_at_position(position, &text), Some("=="));
+
+        let (text, position) = remove_caret_marker("resource in Photo::|caret|\"vacation.jpg\"");
+        assert_eq!(get_word_at_position(position, &text), Some("Photo::"));
+
+        let (text, position) = remove_caret_marker("principal.|caret|department");
+        assert_eq!(get_word_at_position(position, &text), Some("department"));
+
+        let (text, position) = remove_caret_marker("principal has |caret|department");
+        assert_eq!(get_word_at_position(position, &text), Some("department"));
+    }
 }
