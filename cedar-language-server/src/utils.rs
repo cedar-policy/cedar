@@ -66,7 +66,10 @@ pub(crate) fn to_lsp_diagnostics<'a>(
     if let Some(labels) = diagnostic.labels() {
         diagnostics.extend(labels.map(move |l| lsp_types::Diagnostic {
             severity,
-            ..lsp_types::Diagnostic::new_simple(to_range(l.inner(), src), message.clone())
+            ..lsp_types::Diagnostic::new_simple(
+                to_range(l.inner(), src).unwrap_or(START_RANGE),
+                message.clone(),
+            )
         }));
     } else {
         diagnostics.push(lsp_types::Diagnostic {
