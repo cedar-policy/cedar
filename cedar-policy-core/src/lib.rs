@@ -28,6 +28,8 @@ pub use from_normalized_str::*;
 pub mod entities;
 #[macro_use]
 mod error_macros;
+#[cfg(feature = "tpe")]
+pub mod batched_evaluator;
 pub mod est;
 pub mod evaluator;
 pub mod expr_builder;

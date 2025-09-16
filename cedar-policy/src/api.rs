@@ -5117,11 +5117,11 @@ mod tpe {
 
     use cedar_policy_core::ast;
     use cedar_policy_core::authorizer::Decision;
-    use cedar_policy_core::tpe;
-    use cedar_policy_core::tpe::batched_evaluator::is_authorized_batched;
-    use cedar_policy_core::tpe::{
-        batched_evaluator::EntityLoader as EntityLoaderInternal, err::BatchedEvalError,
+    use cedar_policy_core::batched_evaluator::is_authorized_batched;
+    use cedar_policy_core::batched_evaluator::{
+        err::BatchedEvalError, EntityLoader as EntityLoaderInternal,
     };
+    use cedar_policy_core::tpe;
     use cedar_policy_core::{
         entities::conformance::EntitySchemaConformanceChecker, extensions::Extensions,
         validator::CoreSchema,
@@ -5154,8 +5154,8 @@ mod tpe {
     }
 
     /// A partial [`Request`]
-    /// Its principal and resource could have unknown [`EntityId`]; its action
-    /// must be know; and its context could be unknown
+    /// Its principal/resource types and action must be known and its context
+    /// must either be fully known or unknown
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
     pub struct PartialRequest(pub(crate) tpe::request::PartialRequest);
@@ -5296,6 +5296,8 @@ mod tpe {
 
     impl PartialEntities {
         /// Construct [`PartialEntities`] from a JSON value
+        /// The `parent`, `attrs`, `tags` field must be either fully known or
+        /// unknown. And parent entities cannot have unknown parents.
         pub fn from_json_value(
             value: serde_json::Value,
             schema: &Schema,

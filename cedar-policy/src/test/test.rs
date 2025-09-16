@@ -8783,7 +8783,8 @@ unless
             str::FromStr,
         };
 
-        use cedar_policy_core::tpe::err::{BatchedEvalError, TPEError};
+        use cedar_policy_core::batched_evaluator::err::BatchedEvalError;
+        use cedar_policy_core::tpe::err::TPEError;
         use cool_asserts::assert_matches;
         use itertools::Itertools;
 
