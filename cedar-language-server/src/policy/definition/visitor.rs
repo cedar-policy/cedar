@@ -216,14 +216,7 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
         }
 
         match constraint {
-            PrincipalOrResourceConstraint::Is(et)
-                if self.doc_context.is_cursor_over_loc(et.loc()) =>
-            {
-                let vet = self.schema.get_entity_type(et)?;
-                let loc = vet.loc.as_ref()?;
-                Some(vec![loc.to_range()])
-            }
-            PrincipalOrResourceConstraint::IsIn(et, ..)
+            PrincipalOrResourceConstraint::Is(et) | PrincipalOrResourceConstraint::IsIn(et, ..)
                 if self.doc_context.is_cursor_over_loc(et.loc()) =>
             {
                 let vet = self.schema.get_entity_type(et)?;
@@ -231,13 +224,7 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
                 Some(vec![loc.to_range()])
             }
             PrincipalOrResourceConstraint::In(EntityReference::EUID(et))
-                if self.doc_context.is_cursor_over_loc(et.loc()) =>
-            {
-                let vet = self.schema.get_entity_type(et.entity_type())?;
-                let loc = vet.loc.as_ref()?;
-                Some(vec![loc.to_range()])
-            }
-            PrincipalOrResourceConstraint::Eq(EntityReference::EUID(et))
+            | PrincipalOrResourceConstraint::Eq(EntityReference::EUID(et))
                 if self.doc_context.is_cursor_over_loc(et.loc()) =>
             {
                 let vet = self.schema.get_entity_type(et.entity_type())?;

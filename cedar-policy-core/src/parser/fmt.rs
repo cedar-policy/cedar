@@ -97,7 +97,6 @@ impl fmt::Display for Policy {
             for c in policy.conds.iter() {
                 write!(f, "\n{:#}", View(c))?;
             }
-            write!(f, ";")?;
         } else {
             write!(f, "{}(", View(&policy.effect))?;
             let mut vars = policy.variables.iter();
@@ -115,8 +114,8 @@ impl fmt::Display for Policy {
             for c in policy.conds.iter() {
                 write!(f, " {}", View(c))?;
             }
-            write!(f, ";")?;
         }
+        write!(f, ";")?;
         Ok(())
     }
 }
