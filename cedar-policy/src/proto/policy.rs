@@ -60,13 +60,13 @@ impl From<&models::Policy> for ast::LiteralPolicy {
     }
 }
 
-impl TryFrom<&models::Policy> for ast::Policy {
-    type Error = ast::ReificationError;
-    fn try_from(policy: &models::Policy) -> Result<Self, Self::Error> {
-        // TODO: do we need to provide a nonempty `templates` argument to `.reify()`
-        ast::LiteralPolicy::from(policy).reify(&HashMap::new())
-    }
-}
+// impl TryFrom<&models::Policy> for ast::Policy {
+//     type Error = ast::ReificationError;
+//     fn try_from(policy: &models::Policy) -> Result<Self, Self::Error> {
+//         // TODO: do we need to provide a nonempty `templates` argument to `.reify()`
+//         Ok(ast::LiteralPolicy::from(policy)).reify()?
+//     }
+// }
 
 impl From<&ast::LiteralPolicy> for models::Policy {
     fn from(v: &ast::LiteralPolicy) -> Self {

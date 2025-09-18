@@ -16,8 +16,12 @@
 
 //! This module provides general-purpose JSON utilities not specific to Cedar.
 
+use std::marker::PhantomData;
+
+use linked_hash_map::LinkedHashMap;
 use serde::de::{MapAccess, SeqAccess, Visitor};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::fmt;
 
 /// Wrapper around `serde_json::Value`, with a different `Deserialize`
 /// implementation, such that duplicate keys in JSON objects (maps/records) are
@@ -168,4 +172,57 @@ impl From<JsonValueWithNoDuplicateKeys> for serde_json::Value {
     fn from(value: JsonValueWithNoDuplicateKeys) -> Self {
         value.0
     }
+}
+
+struct LinkedHashMapVisitor<K, V> {
+    marker: PhantomData<fn() -> LinkedHashMap<K, V>>,
+}
+
+impl<K, V> LinkedHashMapVisitor<K, V> {
+    fn new() -> Self {
+        LinkedHashMapVisitor {
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<'de, K, V> Visitor<'de> for LinkedHashMapVisitor<K, V>
+where
+    K: serde::Deserialize<'de> + std::hash::Hash + Eq,
+    V: serde::Deserialize<'de>,
+{
+    type Value = LinkedHashMap<K, V>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a linked hash map")
+    }
+
+    fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut map = LinkedHashMap::new();
+
+        while let Some((key, value)) = access.next_entry()? {
+            if map.contains_key(&key) {
+                return Err(serde::de::Error::custom(
+                    "invalid entry: found duplicate key",
+                ));
+            }
+            map.insert(key, value);
+        }
+
+        Ok(map)
+    }
+}
+
+pub(crate) fn deserialize_linked_hash_map_no_duplicates<'de, D, K, V>(
+    deserializer: D,
+) -> Result<LinkedHashMap<K, V>, D::Error>
+where
+    D: Deserializer<'de>,
+    K: serde::Deserialize<'de> + std::hash::Hash + Eq,
+    V: serde::Deserialize<'de>,
+{
+    deserializer.deserialize_map(LinkedHashMapVisitor::new())
 }

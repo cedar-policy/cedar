@@ -19,25 +19,26 @@ use super::PolicySetFromJsonError;
 use crate::ast::{self, EntityUID, PolicyID, SlotId};
 use crate::entities::json::err::JsonDeserializationErrorContext;
 use crate::entities::json::EntityUidJson;
+use crate::jsonvalue::deserialize_linked_hash_map_no_duplicates;
 use crate::parser::cst::Policies;
 use crate::parser::err::ParseErrors;
 use crate::parser::Node;
+use linked_hash_map::LinkedHashMap;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::HashMap;
 
 /// Serde JSON structure for a policy set in the EST format
-#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct PolicySet {
     /// The set of templates in a policy set
-    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
-    pub templates: HashMap<PolicyID, Policy>,
+    #[serde(deserialize_with = "deserialize_linked_hash_map_no_duplicates")]
+    pub templates: LinkedHashMap<PolicyID, Policy>,
     /// The set of static policies in a policy set
-    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
-    pub static_policies: HashMap<PolicyID, Policy>,
+    #[serde(deserialize_with = "deserialize_linked_hash_map_no_duplicates")]
+    pub static_policies: LinkedHashMap<PolicyID, Policy>,
     /// The set of template links
     pub template_links: Vec<TemplateLink>,
 }
@@ -108,14 +109,14 @@ impl TryFrom<PolicySet> for ast::PolicySet {
     fn try_from(value: PolicySet) -> Result<Self, Self::Error> {
         let mut ast_pset = ast::PolicySet::default();
 
-        for (id, policy) in value.templates {
-            let ast = policy.try_into_ast_policy_or_template(Some(id))?;
-            ast_pset.add_template(ast)?;
-        }
-
         for (id, policy) in value.static_policies {
             let ast = policy.try_into_ast_policy(Some(id))?;
             ast_pset.add(ast)?;
+        }
+
+        for (id, policy) in value.templates {
+            let ast = policy.try_into_ast_policy_or_template(Some(id))?;
+            ast_pset.add_template(ast)?;
         }
 
         for TemplateLink {
@@ -135,8 +136,8 @@ impl TryFrom<Node<Option<Policies>>> for PolicySet {
     type Error = ParseErrors;
 
     fn try_from(policies: Node<Option<Policies>>) -> Result<Self, Self::Error> {
-        let mut templates = HashMap::new();
-        let mut static_policies = HashMap::new();
+        let mut templates = LinkedHashMap::new();
+        let mut static_policies = LinkedHashMap::new();
         let mut all_errs: Vec<ParseErrors> = vec![];
         for (policy_id, policy) in policies.with_generated_policyids()? {
             match policy.try_as_inner() {

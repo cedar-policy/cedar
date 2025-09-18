@@ -19,6 +19,7 @@ use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use annotation::{Annotation, Annotations};
 use educe::Educe;
 use itertools::Itertools;
+use linked_hash_map::LinkedHashMap;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
@@ -744,7 +745,7 @@ impl LiteralPolicy {
     /// Consumes the policy.
     pub fn reify(
         self,
-        templates: &HashMap<PolicyID, Arc<Template>>,
+        templates: &LinkedHashMap<PolicyID, Arc<Template>>,
     ) -> Result<Policy, ReificationError> {
         let template = templates
             .get(&self.template_id)
