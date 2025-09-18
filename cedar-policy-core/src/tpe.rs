@@ -46,7 +46,17 @@ pub(crate) fn policy_expr_map<'a>(
         if !p.is_static() {
             return Err(NonstaticPolicyError.into());
         }
+
         let t = p.template();
+
+        let errs: Vec<_> = crate::validator::Validator::validate_entity_types(schema, t)
+            .chain(crate::validator::Validator::validate_enum_entity(schema, t))
+            .chain(crate::validator::Validator::validate_action_ids(schema, t))
+            .collect();
+        if !errs.is_empty() {
+            return Err(TPEError::Validation(errs));
+        }
+
         match tc.typecheck_by_single_request_env(t, &env) {
             PolicyCheck::Success(expr) => {
                 exprs.insert(p.id(), expr);
