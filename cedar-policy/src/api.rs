@@ -55,6 +55,7 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
 use cedar_policy_core::FromNormalizedStr;
 use itertools::{Either, Itertools};
+use linked_hash_map::LinkedHashMap;
 use miette::Diagnostic;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
@@ -2297,9 +2298,9 @@ pub struct PolicySet {
     /// Internally, we ensure that the duplicated information remains consistent.
     pub(crate) ast: ast::PolicySet,
     /// Policies in the set (this includes both static policies and template linked-policies)
-    policies: HashMap<PolicyId, Policy>,
+    policies: LinkedHashMap<PolicyId, Policy>,
     /// Templates in the set
-    templates: HashMap<PolicyId, Template>,
+    templates: LinkedHashMap<PolicyId, Template>,
 }
 
 impl PartialEq for PolicySet {
@@ -2442,7 +2443,7 @@ impl PolicySet {
     fn est(self) -> Result<est::PolicySet, PolicyToJsonError> {
         let (static_policies, template_links): (Vec<_>, Vec<_>) =
             fold_partition(self.policies, is_static_or_link)?;
-        let static_policies = static_policies.into_iter().collect::<HashMap<_, _>>();
+        let static_policies = static_policies.into_iter().collect::<LinkedHashMap<_, _>>();
         let templates = self
             .templates
             .into_iter()
@@ -2452,7 +2453,7 @@ impl PolicySet {
                     .est(|| template.ast.clone().into())
                     .map(|est| (id.into(), est))
             })
-            .collect::<Result<HashMap<_, _>, _>>()?;
+            .collect::<Result<LinkedHashMap<_, _>, _>>()?;
         let est = est::PolicySet {
             templates,
             static_policies,
@@ -2539,8 +2540,8 @@ impl PolicySet {
     pub fn new() -> Self {
         Self {
             ast: ast::PolicySet::new(),
-            policies: HashMap::new(),
-            templates: HashMap::new(),
+            policies: LinkedHashMap::new(),
+            templates: LinkedHashMap::new(),
         }
     }
 
@@ -2560,8 +2561,8 @@ impl PolicySet {
     /// renaming. The type parameter `T` allows this code to be used for
     /// both Templates and Policies.
     fn merge_sets<T>(
-        this: &mut HashMap<PolicyId, T>,
-        other: &HashMap<PolicyId, T>,
+        this: &mut LinkedHashMap<PolicyId, T>,
+        other: &LinkedHashMap<PolicyId, T>,
         renaming: &HashMap<PolicyId, PolicyId>,
     ) where
         T: PartialEq + Clone,

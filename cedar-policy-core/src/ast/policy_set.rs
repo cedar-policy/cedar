@@ -19,10 +19,12 @@ use super::{
     StaticPolicy, Template,
 };
 use itertools::Itertools;
+use linked_hash_map::{Entry, LinkedHashMap};
+use linked_hash_set::LinkedHashSet;
+
 use miette::Diagnostic;
 use smol_str::format_smolstr;
-use std::collections::{hash_map::Entry, HashMap, HashSet};
-use std::{borrow::Borrow, sync::Arc};
+use std::{borrow::Borrow, collections::HashMap, sync::Arc};
 use thiserror::Error;
 
 /// Represents a set of `Policy`s
@@ -33,18 +35,18 @@ pub struct PolicySet {
     /// - A Body of a `Template`, which has slots that need to be filled in
     /// - A Body of a `StaticPolicy`, which has been converted into a `Template` that has zero slots.
     ///   The static policy's [`PolicyID`] is the same in both `templates` and `links`.
-    templates: HashMap<PolicyID, Arc<Template>>,
+    templates: LinkedHashMap<PolicyID, Arc<Template>>,
     /// `links` contains all of the executable policies in the `PolicySet`
     /// A `StaticPolicy` must have exactly one `Policy` in `links`
     ///   (this is managed by `PolicySet::add`)
     ///   The static policy's PolicyID is the same in both `templates` and `links`
     /// A `Template` may have zero or many links
-    links: HashMap<PolicyID, Policy>,
+    links: LinkedHashMap<PolicyID, Policy>,
 
     /// Map from a template `PolicyID` to the set of `PolicyID`s in `links` that are linked to that template.
     /// There is a key `t` iff `templates` contains the key `t`. The value of `t` will be a (possibly empty)
     /// set of every `p` in `links` s.t. `p.template().id() == t`.
-    template_to_links_map: HashMap<PolicyID, HashSet<PolicyID>>,
+    template_to_links_map: LinkedHashMap<PolicyID, LinkedHashSet<PolicyID>>,
 }
 
 /// A Policy Set that contains less rich information than `PolicySet`.
@@ -55,10 +57,10 @@ pub struct PolicySet {
 #[derive(Debug)]
 pub struct LiteralPolicySet {
     /// Like the `templates` field of `PolicySet`
-    templates: HashMap<PolicyID, Template>,
+    templates: LinkedHashMap<PolicyID, Template>,
     /// Like the `links` field of `PolicySet`, but maps to `LiteralPolicy` only.
     /// The same invariants apply: e.g., a `StaticPolicy` must have exactly one `Policy` in `links`.
-    links: HashMap<PolicyID, LiteralPolicy>,
+    links: LinkedHashMap<PolicyID, LiteralPolicy>,
 }
 
 impl LiteralPolicySet {
@@ -98,16 +100,16 @@ impl TryFrom<LiteralPolicySet> for PolicySet {
             .templates
             .into_iter()
             .map(|(id, template)| (id, Arc::new(template)))
-            .collect();
+            .collect::<LinkedHashMap<PolicyID, Arc<Template>>>();
         let links = pset
             .links
             .into_iter()
             .map(|(id, literal)| literal.reify(&templates).map(|linked| (id, linked)))
-            .collect::<Result<HashMap<PolicyID, Policy>, ReificationError>>()?;
+            .collect::<Result<LinkedHashMap<PolicyID, Policy>, ReificationError>>()?;
 
-        let mut template_to_links_map = HashMap::new();
+        let mut template_to_links_map = LinkedHashMap::new();
         for template in &templates {
-            template_to_links_map.insert(template.0.clone(), HashSet::new());
+            template_to_links_map.insert(template.0.clone(), LinkedHashSet::new());
         }
         for (link_id, link) in &links {
             let template = link.template().id();
@@ -207,9 +209,9 @@ impl PolicySet {
     /// Create a fresh empty `PolicySet`
     pub fn new() -> Self {
         Self {
-            templates: HashMap::new(),
-            links: HashMap::new(),
-            template_to_links_map: HashMap::new(),
+            templates: LinkedHashMap::new(),
+            links: LinkedHashMap::new(),
+            template_to_links_map: LinkedHashMap::new(),
         }
     }
 
@@ -249,7 +251,7 @@ impl PolicySet {
                 t.id().clone(),
                 vec![policy.id().clone()]
                     .into_iter()
-                    .collect::<HashSet<PolicyID>>(),
+                    .collect::<LinkedHashSet<PolicyID>>(),
             );
             ventry.insert(t);
         } else {
@@ -277,10 +279,10 @@ impl PolicySet {
     /// to allow this code to be applied to both Templates and Policies.
     fn update_renaming<T>(
         &self,
-        this_contents: &HashMap<PolicyID, T>,
+        this_contents: &LinkedHashMap<PolicyID, T>,
         other: &Self,
-        other_contents: &HashMap<PolicyID, T>,
-        renaming: &mut HashMap<PolicyID, PolicyID>,
+        other_contents: &LinkedHashMap<PolicyID, T>,
+        renaming: &mut LinkedHashMap<PolicyID, PolicyID>,
         start_ind: &mut u32,
     ) where
         T: PartialEq + Clone,
@@ -319,11 +321,11 @@ impl PolicySet {
         &mut self,
         other: &PolicySet,
         rename_duplicates: bool,
-    ) -> Result<HashMap<PolicyID, PolicyID>, PolicySetError> {
+    ) -> Result<LinkedHashMap<PolicyID, PolicyID>, PolicySetError> {
         // Check for conflicting policy ids. If there is a conflict either
         // throw an error or construct a renaming (if `rename_duplicates` is true)
         let mut min_id = 0;
-        let mut renaming = HashMap::new();
+        let mut renaming = LinkedHashMap::new();
         self.update_renaming(
             &self.templates,
             other,
@@ -407,7 +409,7 @@ impl PolicySet {
                     t.id().clone(),
                     vec![p.id().clone()]
                         .into_iter()
-                        .collect::<HashSet<PolicyID>>(),
+                        .collect::<LinkedHashSet<PolicyID>>(),
                 );
                 templates_entry.insert(t);
                 links_entry.insert(p);
@@ -435,7 +437,7 @@ impl PolicySet {
             }),
             Entry::Vacant(ventry) => {
                 self.template_to_links_map
-                    .insert(t.id().clone(), HashSet::new());
+                    .insert(t.id().clone(), LinkedHashSet::new());
                 ventry.insert(Arc::new(t));
                 Ok(())
             }
@@ -566,7 +568,7 @@ impl PolicySet {
 
     /// Consume the `PolicySet`, producing an iterator of all the policies in it
     pub fn into_policies(self) -> impl Iterator<Item = Policy> {
-        self.links.into_values()
+        self.links.into_iter().map(|(_, p)| p)
     }
 
     /// Iterate over everything stored as template, including static policies.
@@ -1133,5 +1135,29 @@ mod test {
         );
         assert!(pset.get(&tid1).is_none());
         assert_eq!(pset.all_templates().count(), 4);
+    }
+
+    #[test]
+    fn policy_set_insertion_order() {
+        let mut pset = PolicySet::new();
+        assert!(pset.is_empty());
+
+        let src = "permit(principal, action, resource);";
+        let ids: Vec<PolicyID> = (1..=4)
+            .map(|i| {
+                let id = PolicyID::from_string(format!("id{i}"));
+                let p = parser::parse_policy(Some(id.clone()), src).unwrap();
+                let added = pset.add(p.into()).is_ok();
+                assert!(added);
+                id
+            })
+            .collect();
+
+        assert_eq!(
+            pset.into_policies()
+                .map(|p| p.id().clone())
+                .collect::<Vec<PolicyID>>(),
+            ids
+        );
     }
 }
