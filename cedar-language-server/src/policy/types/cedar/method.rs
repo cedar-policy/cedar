@@ -145,7 +145,7 @@ impl From<&ExtensionFunction> for MethodInfo {
                 .collect(),
             return_type: value
                 .return_type()
-                .map_or("void".to_string(), std::string::ToString::to_string),
+                .map_or_else(|| "void".to_string(), std::string::ToString::to_string),
         }
     }
 }

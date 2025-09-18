@@ -650,7 +650,7 @@ fn update_namespace_record(
 ) -> Result<(), ToJsonSchemaErrors> {
     match map.entry(name.clone()) {
         Entry::Occupied(entry) => Err(ToJsonSchemaError::duplicate_namespace(
-            &name.map_or("".into(), |n| n.to_smolstr()),
+            &name.map_or_else(|| "".into(), |n| n.to_smolstr()),
             record.loc,
             entry.get().loc.clone(),
         )

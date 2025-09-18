@@ -163,10 +163,10 @@ impl IntoMaybeLoc for Option<&Loc> {
 
 impl IntoMaybeLoc for Option<Box<Loc>> {
     #[inline]
+    #[allow(clippy::single_option_map)]
     fn into_maybe_loc(self) -> MaybeLoc {
         #[cfg(not(feature = "raw-parsing"))]
         {
-            #[allow(clippy::single_option_map)]
             self.map(|loc| *loc)
         }
         #[cfg(feature = "raw-parsing")]
