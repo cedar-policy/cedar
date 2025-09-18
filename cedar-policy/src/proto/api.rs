@@ -67,14 +67,6 @@ impl From<&api::Policy> for models::Policy {
     }
 }
 
-// impl TryFrom<&models::Policy> for api::Policy {
-//     type Error = cedar_policy_core::ast::ReificationError;
-//     fn try_from(v: &models::Policy) -> Result<Self, Self::Error> {
-//         let p = cedar_policy_core::ast::Policy::try_from(v)?;
-//         Ok(Self::from_ast(p))
-//     }
-// }
-
 impl From<&api::PolicySet> for models::PolicySet {
     fn from(v: &api::PolicySet) -> Self {
         Self::from(&v.ast)
