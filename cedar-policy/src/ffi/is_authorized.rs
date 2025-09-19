@@ -18,6 +18,7 @@
 //! is generated from the [`is_authorized()`] function in this file.
 
 #![allow(clippy::module_name_repetitions)]
+use super::check_parse::CheckParseAnswer;
 #[cfg(feature = "partial-eval")]
 use super::utils::JsonValueWithNoDuplicateKeys;
 use super::utils::{Context, DetailedError, Entities, EntityUid, PolicySet, Schema, WithWarnings};
@@ -25,7 +26,6 @@ use crate::{Authorizer, Decision, PolicyId, Request};
 use cedar_policy_core::validator::cedar_schema::SchemaWarning;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-#[cfg(feature = "partial-eval")]
 use std::collections::HashMap;
 use std::collections::HashSet;
 #[cfg(feature = "wasm")]
@@ -37,6 +37,16 @@ extern crate tsify;
 thread_local!(
     /// Per-thread authorizer instance, initialized on first use
     static AUTHORIZER: Authorizer = Authorizer::new();
+    /// Thread-local storage for preparsed policy sets
+    /// RefCell provides interior mutability - allows mutation through immutable references
+    /// from thread_local!.with(), enabling both read (.borrow()) and write (.borrow_mut()) access
+    static PREPARSED_POLICY_SETS: std::cell::RefCell<HashMap<String, crate::PolicySet>> =
+        std::cell::RefCell::new(HashMap::new());
+    /// Thread-local storage for preparsed schemas
+    /// RefCell provides interior mutability - allows mutation through immutable references
+    /// from thread_local!.with(), enabling both read (.borrow()) and write (.borrow_mut()) access
+    static PREPARSED_SCHEMAS: std::cell::RefCell<HashMap<String, crate::Schema>> =
+        std::cell::RefCell::new(HashMap::new());
 );
 
 /// Basic interface, using [`AuthorizationCall`] and [`AuthorizationAnswer`] types
@@ -86,6 +96,52 @@ pub fn is_authorized_json(json: serde_json::Value) -> Result<serde_json::Value, 
 pub fn is_authorized_json_str(json: &str) -> Result<String, serde_json::Error> {
     let ans = is_authorized(serde_json::from_str(json)?);
     serde_json::to_string(&ans)
+}
+
+/// Preparse and cache a policy set in thread-local storage
+///
+/// # Errors
+///
+/// Will return `Err` if the input cannot be parsed. Side-effect free on error.
+#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "preparsePolicySet"))]
+pub fn preparse_policy_set(pset_id: String, policies: PolicySet) -> CheckParseAnswer {
+    use super::check_parse::CheckParseAnswer;
+
+    // Parse the policy set directly (check_parse_policy_set consumes the input)
+    match policies.parse() {
+        Ok(parsed_policies) => {
+            PREPARSED_POLICY_SETS.with(|cache| {
+                cache.borrow_mut().insert(pset_id, parsed_policies);
+            });
+            CheckParseAnswer::Success
+        }
+        Err(errors) => CheckParseAnswer::Failure {
+            errors: errors.into_iter().map(Into::into).collect(),
+        },
+    }
+}
+
+/// Preparse and cache a schema in thread-local storage
+///
+/// # Errors
+///
+/// Will return `Err` if the input cannot be parsed. Side-effect free on error.
+#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "preparseSchema"))]
+pub fn preparse_schema(schema_name: String, schema: Schema) -> CheckParseAnswer {
+    use super::check_parse::CheckParseAnswer;
+
+    // Parse the schema directly (check_parse_schema consumes the input)
+    match schema.parse() {
+        Ok((parsed_schema, _warnings)) => {
+            PREPARSED_SCHEMAS.with(|cache| {
+                cache.borrow_mut().insert(schema_name, parsed_schema);
+            });
+            CheckParseAnswer::Success
+        }
+        Err(error) => CheckParseAnswer::Failure {
+            errors: vec![error.into()],
+        },
+    }
 }
 
 /// Basic interface for partial evaluation, using [`AuthorizationCall`] and
@@ -489,6 +545,40 @@ pub struct AuthorizationCall {
     entities: Entities,
 }
 
+/// Struct containing the input data for stateful authorization using preparsed schemas and policy sets
+#[serde_as]
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+pub struct StatefulAuthorizationCall {
+    /// The principal taking action
+    principal: EntityUid,
+    /// The action the principal is taking
+    action: EntityUid,
+    /// The resource being acted on by the principal
+    resource: EntityUid,
+    /// The context details specific to the request
+    context: Context,
+    /// Optional name of preparsed schema.
+    /// If present, this will inform the parsing: for instance, it will allow
+    /// `__entity` and `__extn` escapes to be implicit, and it will error if
+    /// attributes have the wrong types (e.g., string instead of integer).
+    #[cfg_attr(feature = "wasm", tsify(optional, type = "string"))]
+    preparsed_schema_name: Option<String>,
+    /// If this is `true` and a schema is provided, perform request validation.
+    /// If this is `false`, the schema will only be used for schema-based
+    /// parsing of `context`, and not for request validation.
+    /// If a schema is not provided, this option has no effect.
+    #[serde(default = "constant_true")]
+    validate_request: bool,
+    /// The name of the preparsed policy set to use during authorization
+    preparsed_policy_set_id: String,
+    /// The set of entities to use during authorization
+    entities: Entities,
+}
+
 /// Struct containing the input data for partial authorization
 #[cfg(feature = "partial-eval")]
 #[serde_as]
@@ -522,6 +612,34 @@ pub struct PartialAuthorizationCall {
     policies: PolicySet,
     /// The set of entities to use during authorization
     entities: Entities,
+}
+
+/// Stateful authorization using preparsed schemas and policy sets.
+///
+/// This function works like [`is_authorized`] but retrieves schemas and policy sets
+/// from thread-local cache instead of parsing them on each call.
+#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "statefulIsAuthorized"))]
+pub fn stateful_is_authorized(call: StatefulAuthorizationCall) -> AuthorizationAnswer {
+    match call.parse() {
+        WithWarnings {
+            t: Ok((request, policies, entities)),
+            warnings,
+        } => AuthorizationAnswer::Success {
+            response: AUTHORIZER.with(|authorizer| {
+                authorizer
+                    .is_authorized(&request, &policies, &entities)
+                    .into()
+            }),
+            warnings: warnings.into_iter().map(Into::into).collect(),
+        },
+        WithWarnings {
+            t: Err(errors),
+            warnings,
+        } => AuthorizationAnswer::Failure {
+            errors: errors.into_iter().map(Into::into).collect(),
+            warnings: warnings.into_iter().map(Into::into).collect(),
+        },
+    }
 }
 
 fn constant_true() -> bool {
@@ -601,6 +719,104 @@ impl AuthorizationCall {
                 // At least one of the `errs.push(e)` statements above must have been reached
                 build_error(errs, warnings)
             }
+        }
+    }
+}
+
+impl StatefulAuthorizationCall {
+    /// Parse [`StatefulAuthorizationCall`] into components needed for authorization
+    /// Retrieves preparsed schema and policy set from thread-local storage
+    fn parse(
+        self,
+    ) -> WithWarnings<Result<(Request, crate::PolicySet, crate::Entities), Vec<miette::Report>>>
+    {
+        let mut errs = vec![];
+        let warnings = vec![];
+
+        // Retrieve preparsed schema from thread-local cache if specified
+        let maybe_schema: Result<Option<crate::Schema>, ()> =
+            self.preparsed_schema_name.map_or_else(
+                || Ok(None),
+                |schema_name| {
+                    PREPARSED_SCHEMAS
+                        .with(|cache| cache.borrow().get(&schema_name).cloned())
+                        .map_or_else(
+                            || {
+                                errs.push(miette::miette!(
+                                    "preparsed schema '{}' not found",
+                                    schema_name
+                                ));
+                                Ok(None)
+                            },
+                            |schema| Ok(Some(schema)),
+                        )
+                },
+            );
+
+        // Retrieve preparsed policy set from thread-local cache (required)
+        let maybe_policies: Result<crate::PolicySet, ()> = if let Some(policies) =
+            PREPARSED_POLICY_SETS
+                .with(|cache| cache.borrow().get(&self.preparsed_policy_set_id).cloned())
+        {
+            Ok(policies)
+        } else {
+            errs.push(miette::miette!(
+                "preparsed policy set '{}' not found",
+                self.preparsed_policy_set_id
+            ));
+            Err(())
+        };
+
+        // Parse principal, action, and resource (same as regular authorization)
+        let maybe_principal = self
+            .principal
+            .parse(Some("principal"))
+            .map_err(|e| errs.push(e));
+        let maybe_action = self.action.parse(Some("action")).map_err(|e| errs.push(e));
+        let maybe_resource = self
+            .resource
+            .parse(Some("resource"))
+            .map_err(|e| errs.push(e));
+
+        // Early return if any parsing failed
+        let (Ok(schema), Ok(policies), Ok(principal), Ok(action), Ok(resource)) = (
+            maybe_schema,
+            maybe_policies,
+            maybe_principal,
+            maybe_action,
+            maybe_resource,
+        ) else {
+            return build_error(errs, warnings);
+        };
+
+        // Parse context using schema if available
+        let context = match self.context.parse(schema.as_ref(), Some(&action)) {
+            Ok(context) => context,
+            Err(e) => {
+                return build_error(vec![e], warnings);
+            }
+        };
+
+        // Build request with optional schema validation
+        let schema_opt = if self.validate_request {
+            schema.as_ref()
+        } else {
+            None
+        };
+        let maybe_request = Request::new(principal, action, resource, context, schema_opt)
+            .map_err(|e| errs.push(e.into()));
+        let maybe_entities = self
+            .entities
+            .parse(schema.as_ref())
+            .map_err(|e| errs.push(e));
+
+        // Return final result or accumulated errors
+        match (maybe_request, maybe_entities) {
+            (Ok(request), Ok(entities)) => WithWarnings {
+                t: Ok((request, policies, entities)),
+                warnings: warnings.into_iter().map(Into::into).collect(),
+            },
+            _ => build_error(errs, warnings),
         }
     }
 }
@@ -1581,6 +1797,154 @@ mod test {
             Some("valid resource types for `Action::\"view\"`: `Photo`"),
         );
         assert_is_authorized_json(bad_call_req_validation_disabled);
+    }
+
+    #[test]
+    fn test_preparse_policy_set_success() {
+        let policies = json!({
+            "staticPolicies": "permit(principal == User::\"alice\", action, resource);"
+        });
+        let policy_set: PolicySet = serde_json::from_value(policies).unwrap();
+
+        let result = preparse_policy_set("test_policy_set".to_string(), policy_set);
+        assert_matches!(result, CheckParseAnswer::Success);
+    }
+
+    #[test]
+    fn test_preparse_policy_set_failure() {
+        let policies = json!({
+            "staticPolicies": "invalid policy syntax"
+        });
+        let policy_set: PolicySet = serde_json::from_value(policies).unwrap();
+
+        let result = preparse_policy_set("test_policy_set".to_string(), policy_set);
+        assert_matches!(result, CheckParseAnswer::Failure { .. });
+    }
+
+    #[test]
+    fn test_preparse_schema_success() {
+        let schema =
+            json!("entity User; action view appliesTo { principal: User, resource: User };");
+        let schema_obj: Schema = serde_json::from_value(schema).unwrap();
+
+        let result = preparse_schema("test_schema".to_string(), schema_obj);
+        assert_matches!(result, CheckParseAnswer::Success);
+    }
+
+    #[test]
+    fn test_preparse_schema_failure() {
+        let schema = json!("invalid schema syntax");
+        let schema_obj: Schema = serde_json::from_value(schema).unwrap();
+
+        let result = preparse_schema("test_schema".to_string(), schema_obj);
+        assert_matches!(result, CheckParseAnswer::Failure { .. });
+    }
+
+    #[test]
+    fn test_stateful_is_authorized_success() {
+        // First preparse policy set and schema
+        let policies = json!({
+            "staticPolicies": "permit(principal == User::\"alice\", action, resource);"
+        });
+        let policy_set: PolicySet = serde_json::from_value(policies).unwrap();
+        preparse_policy_set("test_policies".to_string(), policy_set);
+
+        let schema =
+            json!("entity User; action view appliesTo { principal: User, resource: User };");
+        let schema_obj: Schema = serde_json::from_value(schema).unwrap();
+        preparse_schema("test_schema".to_string(), schema_obj);
+
+        // Now test stateful authorization
+        let call = json!({
+            "principal": {
+                "type": "User",
+                "id": "alice"
+            },
+            "action": {
+                "type": "Action",
+                "id": "view"
+            },
+            "resource": {
+                "type": "User",
+                "id": "bob"
+            },
+            "context": {},
+            "preparsedSchemaName": "test_schema",
+            "preparsedPolicySetId": "test_policies",
+            "entities": []
+        });
+
+        let stateful_call: StatefulAuthorizationCall = serde_json::from_value(call).unwrap();
+        let result = stateful_is_authorized(stateful_call);
+
+        assert_matches!(result, AuthorizationAnswer::Success { response, .. } => {
+            assert_eq!(response.decision(), Decision::Allow);
+        });
+    }
+
+    #[test]
+    fn test_stateful_is_authorized_missing_policy_set() {
+        let call = json!({
+            "principal": {
+                "type": "User",
+                "id": "alice"
+            },
+            "action": {
+                "type": "Action",
+                "id": "view"
+            },
+            "resource": {
+                "type": "User",
+                "id": "bob"
+            },
+            "context": {},
+            "preparsedPolicySetId": "nonexistent_policies",
+            "entities": []
+        });
+
+        let stateful_call: StatefulAuthorizationCall = serde_json::from_value(call).unwrap();
+        let result = stateful_is_authorized(stateful_call);
+
+        assert_matches!(result, AuthorizationAnswer::Failure { errors, .. } => {
+            assert!(!errors.is_empty());
+            assert!(errors[0].message.contains("preparsed policy set 'nonexistent_policies' not found"));
+        });
+    }
+
+    #[test]
+    fn test_stateful_is_authorized_without_schema() {
+        // Preparse policy set but don't specify schema
+        let policies = json!({
+            "staticPolicies": "permit(principal == User::\"alice\", action, resource);"
+        });
+        let policy_set: PolicySet = serde_json::from_value(policies).unwrap();
+        preparse_policy_set("test_policies".to_string(), policy_set);
+
+        let call = json!({
+            "principal": {
+                "type": "User",
+                "id": "alice"
+            },
+            "action": {
+                "type": "Action",
+                "id": "view"
+            },
+            "resource": {
+                "type": "User",
+                "id": "bob"
+            },
+            "context": {},
+            "preparsedPolicySetId": "test_policies",
+            "entities": []
+        });
+
+        let stateful_call: StatefulAuthorizationCall = serde_json::from_value(call).unwrap();
+        let result = stateful_is_authorized(stateful_call);
+
+        // Should succeed without schema
+        assert_matches!(result, AuthorizationAnswer::Success { response, .. } => {
+            assert_eq!(response.decision(), Decision::Allow);
+        });
     }
 }
 
