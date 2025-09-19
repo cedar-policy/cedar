@@ -54,13 +54,6 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
     cst.to_policyset()
 }
 
-/// Like [`parse_policyset`], but without retaining source information.
-#[cfg(feature = "raw-parsing")]
-pub fn parse_policyset_raw(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
-    let cst = text_to_cst::parse_policies_raw(text)?;
-    cst.to_policyset()
-}
-
 /// Like `parse_policyset()`, but also returns the (lossless) original text of
 /// each individual policy.
 /// INVARIANT: The `PolicyId` of every `Policy` and `Template` returned by the
@@ -156,18 +149,6 @@ pub fn parse_template(
     validate_template_has_slots(template, cst)
 }
 
-/// Like [`parse_template`], but without retaining source information.
-#[cfg(feature = "raw-parsing")]
-pub fn parse_template_raw(
-    id: Option<ast::PolicyID>,
-    text: &str,
-) -> Result<ast::Template, err::ParseErrors> {
-    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-    let cst = text_to_cst::parse_policy_raw(text)?;
-    let template = cst.to_template(id)?;
-    validate_template_has_slots(template, cst)
-}
-
 /// Main function for parsing a (static) policy.
 /// Will return an error if provided with a template.
 /// If `id` is Some, then the resulting policy will have that `id`.
@@ -178,17 +159,6 @@ pub fn parse_policy(
 ) -> Result<ast::StaticPolicy, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
-    cst.to_policy(id)
-}
-
-/// Like [`parse_policy`], but without retaining source information.
-#[cfg(feature = "raw-parsing")]
-pub fn parse_policy_raw(
-    id: Option<ast::PolicyID>,
-    text: &str,
-) -> Result<ast::StaticPolicy, err::ParseErrors> {
-    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-    let cst = text_to_cst::parse_policy_raw(text)?;
     cst.to_policy(id)
 }
 

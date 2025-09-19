@@ -17,22 +17,7 @@
 use std::sync::Arc;
 
 /// Represents an optional `Loc`.
-#[cfg(not(feature = "raw-parsing"))]
 pub type MaybeLoc = Option<Loc>;
-
-/// Represents an optional `Loc`.
-///
-/// This definition uses heap allocation (Box) to reduce the memory
-/// footprint of structures containing `MaybeLoc`.
-///
-/// The computational performance compared to the unboxed `Option<Loc>` depends on its value:
-/// - `Some` case: Slightly slower due to heap allocation and indirect access
-/// - `None` case: More memory efficient as no space is reserved for the location data
-///
-/// When the `raw-parsing` feature is enabled, we use this type and avoid
-/// storing locations during parsing, maximizing the parsing performance.
-#[cfg(feature = "raw-parsing")]
-pub type MaybeLoc = Option<Box<Loc>>;
 
 /// Represents a source location: index/range, and a reference to the source
 /// code which that index/range indexes into
@@ -121,43 +106,21 @@ pub trait IntoMaybeLoc {
 impl IntoMaybeLoc for Loc {
     #[inline]
     fn into_maybe_loc(self) -> MaybeLoc {
-        #[cfg(not(feature = "raw-parsing"))]
-        {
-            Some(self)
-        }
-        #[cfg(feature = "raw-parsing")]
-        {
-            Some(Box::new(self))
-        }
+        Some(self)
     }
 }
 
 impl IntoMaybeLoc for Option<Loc> {
     #[inline]
     fn into_maybe_loc(self) -> MaybeLoc {
-        #[cfg(not(feature = "raw-parsing"))]
-        {
-            self
-        }
-        #[cfg(feature = "raw-parsing")]
-        {
-            self.map(Box::new)
-        }
+        self
     }
 }
 
 impl IntoMaybeLoc for Option<&Loc> {
     #[inline]
-    #[allow(clippy::single_option_map)]
     fn into_maybe_loc(self) -> MaybeLoc {
-        #[cfg(not(feature = "raw-parsing"))]
-        {
-            self.cloned()
-        }
-        #[cfg(feature = "raw-parsing")]
-        {
-            self.map(|loc| Box::new(loc.clone()))
-        }
+        self.cloned()
     }
 }
 
@@ -165,14 +128,7 @@ impl IntoMaybeLoc for Option<Box<Loc>> {
     #[inline]
     #[allow(clippy::single_option_map)]
     fn into_maybe_loc(self) -> MaybeLoc {
-        #[cfg(not(feature = "raw-parsing"))]
-        {
-            self.map(|loc| *loc)
-        }
-        #[cfg(feature = "raw-parsing")]
-        {
-            self
-        }
+        self.map(|loc| *loc)
     }
 }
 

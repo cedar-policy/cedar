@@ -64,9 +64,6 @@ extended-schema = ["cedar-policy-core/extended-schema"]
 deprecated-schema-compat = []
 tpe = ["cedar-policy-core/tpe"]
 
-# Feature for raw parsing
-raw-parsing = ["cedar-policy-core/raw-parsing"]
-
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }
 cool_asserts = "2.0"
