@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
+use crate::parser::{AsLocRef, Loc};
 use annotation::{Annotation, Annotations};
 use educe::Educe;
 use itertools::Itertools;
@@ -71,7 +71,7 @@ cfg_tolerant_ast! {
             <ExprWithErrsBuilder as ExprBuilder>::new()
                 .error(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::ASTErrorNode,
-                    Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc(),
+                    Some(Loc::new(0..1, "ASTErrorNode".into())),
                 )))
                 .unwrap(),
         )
@@ -118,7 +118,7 @@ impl Template {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: MaybeLoc,
+        loc: Option<Loc>,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -143,7 +143,7 @@ impl Template {
 
     #[cfg(feature = "tolerant-ast")]
     /// Generate a template representing a policy that is unparsable
-    pub fn error(id: PolicyID, loc: MaybeLoc) -> Self {
+    pub fn error(id: PolicyID, loc: Option<Loc>) -> Self {
         let body = TemplateBody::error(id, loc);
         Template::from(body)
     }
@@ -152,7 +152,7 @@ impl Template {
     #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
-        loc: MaybeLoc,
+        loc: Option<Loc>,
         annotations: Arc<Annotations>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -442,7 +442,7 @@ impl Policy {
     }
 
     /// Build a policy with a given effect, given when clause, and unconstrained scope variables
-    pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID, loc: MaybeLoc) -> Self {
+    pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID, loc: Option<Loc>) -> Self {
         Self::from_when_clause_annos(
             effect,
             Arc::new(when),
@@ -457,7 +457,7 @@ impl Policy {
         effect: Effect,
         when: Arc<Expr>,
         id: PolicyID,
-        loc: MaybeLoc,
+        loc: Option<Loc>,
         annotations: Arc<Annotations>,
     ) -> Self {
         let t = Template::new_shared(
@@ -902,7 +902,7 @@ impl StaticPolicy {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: MaybeLoc,
+        loc: Option<Loc>,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -934,9 +934,9 @@ impl TryFrom<Template> for StaticPolicy {
 
     fn try_from(value: Template) -> Result<Self, Self::Error> {
         // INVARIANT (Static policy correctness): Must ensure StaticPolicy contains no slots
-        let o = value.slots().next().cloned();
+        let o = value.slots().next();
         match o {
-            Some(slot_id) => Err(Self::Error::FoundSlot(slot_id)),
+            Some(slot_id) => Err(Self::Error::FoundSlot(slot_id.clone())),
             None => Ok(Self(value.body)),
         }
     }
@@ -966,7 +966,7 @@ pub struct TemplateBodyImpl {
     /// Source location spanning the entire policy
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
-    loc: MaybeLoc,
+    loc: Option<Loc>,
     /// Annotations available for external applications, as key-value store.
     /// Note that the keys are `AnyId`, so Cedar reserved words like `if` and `has`
     /// are explicitly allowed as annotations.
@@ -1000,7 +1000,7 @@ pub enum TemplateBody {
     TemplateBody(TemplateBodyImpl),
     #[cfg(feature = "tolerant-ast")]
     /// Represents a policy that failed to parse
-    TemplateBodyError(PolicyID, MaybeLoc),
+    TemplateBodyError(PolicyID, Option<Loc>),
 }
 
 impl TemplateBody {
@@ -1039,7 +1039,7 @@ impl TemplateBody {
 
     #[cfg(feature = "tolerant-ast")]
     /// Create a template body representing a policy that failed to parse
-    pub fn error(id: PolicyID, loc: MaybeLoc) -> Self {
+    pub fn error(id: PolicyID, loc: Option<Loc>) -> Self {
         TemplateBody::TemplateBodyError(id, loc)
     }
 
@@ -1201,11 +1201,11 @@ impl TemplateBody {
                         self.resource_constraint_expr(),
                         self.non_scope_constraints().clone(),
                     )
-                    .with_maybe_source_loc(self.loc().into_maybe_loc()),
+                    .with_maybe_source_loc(self.loc().cloned()),
                 )
-                .with_maybe_source_loc(self.loc().into_maybe_loc()),
+                .with_maybe_source_loc(self.loc().cloned()),
             )
-            .with_maybe_source_loc(self.loc().into_maybe_loc()),
+            .with_maybe_source_loc(self.loc().cloned()),
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => DEFAULT_ERROR_EXPR.as_ref().clone(),
         }
@@ -1215,7 +1215,7 @@ impl TemplateBody {
     #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
-        loc: MaybeLoc,
+        loc: Option<Loc>,
         annotations: Arc<Annotations>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -1239,7 +1239,7 @@ impl TemplateBody {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: MaybeLoc,
+        loc: Option<Loc>,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -1536,7 +1536,7 @@ pub enum EntityReference {
         #[educe(PartialEq(ignore))]
         #[educe(PartialOrd(ignore))]
         #[educe(Hash(ignore))]
-        MaybeLoc,
+        Option<Loc>,
     ),
 }
 
@@ -2409,13 +2409,13 @@ mod test {
         use std::str::FromStr;
 
         let policy_id = PolicyID::from_string("error_policy");
-        let error_loc = Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc();
+        let error_loc = Some(Loc::new(0..1, "ASTErrorNode".into()));
         let error_body = TemplateBody::TemplateBodyError(policy_id.clone(), error_loc.clone());
 
         let expected_error = <ExprWithErrsBuilder as ExprBuilder>::new()
             .error(ParseErrors::singleton(ToASTError::new(
                 ToASTErrorKind::ASTErrorNode,
-                Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc(),
+                Some(Loc::new(0..1, "ASTErrorNode".into())),
             )))
             .unwrap();
 
@@ -2472,7 +2472,7 @@ mod test {
     #[test]
     fn template_error_methods() {
         let policy_id = PolicyID::from_string("error_policy");
-        let error_loc = Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc();
+        let error_loc = Some(Loc::new(0..1, "ASTErrorNode".into()));
         let error_template = Template::error(policy_id.clone(), error_loc.clone());
 
         // Check template properties

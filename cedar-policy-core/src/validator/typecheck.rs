@@ -39,6 +39,7 @@ use crate::validator::{
     ValidationError, ValidationMode, ValidationWarning,
 };
 
+use crate::fuzzy_match::fuzzy_search;
 use crate::{
     ast::{
         BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
@@ -46,7 +47,6 @@ use crate::{
     },
     expr_builder::ExprBuilder as _,
 };
-use crate::{fuzzy_match::fuzzy_search, parser::IntoMaybeLoc};
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
@@ -123,7 +123,7 @@ impl<'a> Typechecker<'a> {
         // possibly apply to any request.
         if all_false {
             warnings.insert(ValidationWarning::impossible_policy(
-                t.loc().into_maybe_loc(),
+                t.loc().cloned(),
                 t.id().clone(),
             ));
         }
@@ -581,7 +581,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                         // LHS argument is false, so short circuit the `&&` to
                         // `False` _without_ typechecking the RHS.
                         Some(Type::False) => TypecheckAnswer::success(
-                            typ_left.with_maybe_source_loc(e.source_loc().into_maybe_loc()),
+                            typ_left.with_maybe_source_loc(e.source_loc().cloned()),
                         ),
                         _ => {
                             // Similar to the `then` branch of an `if`
@@ -673,7 +673,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     // _without_ typechecking the RHS. Contrary to `&&`, we
                     // keep a capability  when short circuiting `||`.
                     Some(Type::True) => TypecheckAnswer::success_with_capability(
-                        ty_expr_left.with_maybe_source_loc(e.source_loc().into_maybe_loc()),
+                        ty_expr_left.with_maybe_source_loc(e.source_loc().cloned()),
                         capability_left,
                     ),
                     _ => {
@@ -795,7 +795,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 } else {
                                     type_errors.push(
                                         ValidationError::unsafe_optional_attribute_access(
-                                            e.source_loc().into_maybe_loc(),
+                                            e.source_loc().cloned(),
                                             self.policy_id.clone(),
                                             AttributeAccess::from_expr(
                                                 self.request_env,
@@ -825,7 +825,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
                                 let suggestion = fuzzy_search(attr, &borrowed);
                                 type_errors.push(ValidationError::unsafe_attribute_access(
-                                    e.source_loc().into_maybe_loc(),
+                                    e.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     AttributeAccess::from_expr(
                                         self.request_env,
@@ -1076,7 +1076,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     match elem_lub {
                         _ if self.mode.is_strict() && exprs.is_empty() => {
                             type_errors.push(ValidationError::empty_set_forbidden(
-                                e.source_loc().into_maybe_loc(),
+                                e.source_loc().cloned(),
                                 self.policy_id.clone(),
                             ));
                             TypecheckAnswer::fail(
@@ -1249,7 +1249,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     TypecheckAnswer::success(expr)
                                 } else {
                                     type_errors.push(ValidationError::expected_one_of_types(
-                                        expr_ty_arg2.source_loc().into_maybe_loc(),
+                                        expr_ty_arg2.source_loc().cloned(),
                                         self.policy_id.clone(),
                                         self.expected_comparison_op_types(),
                                         other.clone(),
@@ -1263,7 +1263,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     TypecheckAnswer::success(expr)
                                 } else {
                                     type_errors.push(ValidationError::expected_one_of_types(
-                                        expr_ty_arg1.source_loc().into_maybe_loc(),
+                                        expr_ty_arg1.source_loc().cloned(),
                                         self.policy_id.clone(),
                                         self.expected_comparison_op_types(),
                                         other.clone(),
@@ -1284,7 +1284,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 Some(other),
                             ) => {
                                 type_errors.push(ValidationError::expected_one_of_types(
-                                    expr_ty_arg2.source_loc().into_maybe_loc(),
+                                    expr_ty_arg2.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     vec![Type::primitive_long()],
                                     other.clone(),
@@ -1299,7 +1299,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 }),
                             ) => {
                                 type_errors.push(ValidationError::expected_one_of_types(
-                                    expr_ty_arg1.source_loc().into_maybe_loc(),
+                                    expr_ty_arg1.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     vec![Type::primitive_long()],
                                     other.clone(),
@@ -1309,7 +1309,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             }
                             (Some(lhs), Some(rhs)) if self.is_valid_comparison_op_type(lhs) => {
                                 type_errors.push(ValidationError::expected_one_of_types(
-                                    expr_ty_arg2.source_loc().into_maybe_loc(),
+                                    expr_ty_arg2.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     vec![lhs.clone()],
                                     rhs.clone(),
@@ -1319,7 +1319,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             }
                             (Some(lhs), Some(rhs)) if self.is_valid_comparison_op_type(rhs) => {
                                 type_errors.push(ValidationError::expected_one_of_types(
-                                    expr_ty_arg1.source_loc().into_maybe_loc(),
+                                    expr_ty_arg1.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     vec![rhs.clone()],
                                     lhs.clone(),
@@ -1330,14 +1330,14 @@ impl<'a> SingleEnvTypechecker<'a> {
                             (Some(lhs), Some(rhs)) => {
                                 let expected_types = self.expected_comparison_op_types();
                                 type_errors.push(ValidationError::expected_one_of_types(
-                                    expr_ty_arg1.source_loc().into_maybe_loc(),
+                                    expr_ty_arg1.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     expected_types.clone(),
                                     lhs.clone(),
                                     None,
                                 ));
                                 type_errors.push(ValidationError::expected_one_of_types(
-                                    expr_ty_arg2.source_loc().into_maybe_loc(),
+                                    expr_ty_arg2.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     expected_types,
                                     rhs.clone(),
@@ -1531,7 +1531,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // should be unreachable, as we already typechecked that this matches
                                 // `Type::any_entity_reference()`
                                 type_errors.push(ValidationError::internal_invariant_violation(
-                                    bin_expr.source_loc().into_maybe_loc(),
+                                    bin_expr.source_loc().cloned(),
                                     self.policy_id.clone(),
                                 ));
                                 return TypecheckAnswer::fail(
@@ -1550,7 +1550,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // Not an entity type; should be unreachable, as we already typechecked
                                 // that this matches `Type::any_entity_reference()`
                                 type_errors.push(ValidationError::internal_invariant_violation(
-                                    bin_expr.source_loc().into_maybe_loc(),
+                                    bin_expr.source_loc().cloned(),
                                     self.policy_id.clone(),
                                 ));
                                 return TypecheckAnswer::fail(
@@ -1602,7 +1602,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // should be unreachable, as we already typechecked that this matches
                                 // `Type::any_entity_reference()`
                                 type_errors.push(ValidationError::internal_invariant_violation(
-                                    bin_expr.source_loc().into_maybe_loc(),
+                                    bin_expr.source_loc().cloned(),
                                     self.policy_id.clone(),
                                 ));
                                 return TypecheckAnswer::fail(
@@ -1622,7 +1622,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     // `Type::any_entity_reference()`
                                     type_errors.push(
                                         ValidationError::internal_invariant_violation(
-                                            bin_expr.source_loc().into_maybe_loc(),
+                                            bin_expr.source_loc().cloned(),
                                             self.policy_id.clone(),
                                         ),
                                     );
@@ -1646,7 +1646,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     EntityRecordKind::Record { .. } => None,
                                 };
                                 type_errors.push(ValidationError::no_tags_allowed(
-                                    bin_expr.source_loc().into_maybe_loc(),
+                                    bin_expr.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     entity_ty.cloned(),
                                 ));
@@ -1667,7 +1667,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     Ok(ty) => ty,
                                     Err(e) => {
                                         type_errors.push(ValidationError::incompatible_types(
-                                            bin_expr.source_loc().into_maybe_loc(),
+                                            bin_expr.source_loc().cloned(),
                                             self.policy_id.clone(),
                                             tag_types.into_iter().cloned(),
                                             e,
@@ -1688,7 +1688,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             }
                         } else {
                             type_errors.push(ValidationError::unsafe_tag_access(
-                                bin_expr.source_loc().into_maybe_loc(),
+                                bin_expr.source_loc().cloned(),
                                 self.policy_id.clone(),
                                 match kind {
                                     EntityRecordKind::Entity(lub) => Some(lub.clone()),
@@ -1725,7 +1725,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                         Type::least_upper_bound(self.schema, lhs_ty, rhs_ty, self.mode)
                     {
                         type_errors.push(ValidationError::incompatible_types(
-                            unannotated_expr.source_loc().into_maybe_loc(),
+                            unannotated_expr.source_loc().cloned(),
                             self.policy_id.clone(),
                             [lhs_ty.clone(), rhs_ty.clone()],
                             lub_hint,
@@ -2401,7 +2401,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     )
                 }) {
                     type_errors.push(ValidationError::expected_one_of_types(
-                        expr.source_loc().into_maybe_loc(),
+                        expr.source_loc().cloned(),
                         self.policy_id.clone(),
                         expected.to_vec(),
                         actual_ty.clone(),
@@ -2476,7 +2476,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                         // will be None, so this function will correctly report this
                         // as a failure.
                         type_errors.push(ValidationError::incompatible_types(
-                            expr.source_loc().into_maybe_loc(),
+                            expr.source_loc().cloned(),
                             self.policy_id.clone(),
                             typechecked_types,
                             lub_hint,
@@ -2510,7 +2510,7 @@ impl<'a> SingleEnvTypechecker<'a> {
     ) -> Result<&ExtensionFunctionType, ValidationError> {
         self.extensions.func_type(f).ok_or_else(|| {
             ValidationError::undefined_extension(
-                e.source_loc().into_maybe_loc(),
+                e.source_loc().cloned(),
                 self.policy_id.clone(),
                 f.to_string(),
             )
@@ -2552,7 +2552,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                 // variadic functions can take one or more arguments of the last argument type
                 if efunc.is_variadic() && args.len() < arg_tys.len() {
                     type_errors.push(ValidationError::wrong_number_args(
-                        ext_expr.source_loc().into_maybe_loc(),
+                        ext_expr.source_loc().cloned(),
                         self.policy_id.clone(),
                         arg_tys.len(),
                         args.len(),
@@ -2563,7 +2563,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                 // non-variadic functions must take the exact number of argument as the number of argument types
                 if !efunc.is_variadic() && args.len() != arg_tys.len() {
                     type_errors.push(ValidationError::wrong_number_args(
-                        ext_expr.source_loc().into_maybe_loc(),
+                        ext_expr.source_loc().cloned(),
                         self.policy_id.clone(),
                         arg_tys.len(),
                         args.len(),
@@ -2572,7 +2572,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                 }
                 if let Err(msg) = efunc.check_arguments(args) {
                     type_errors.push(ValidationError::function_argument_validation(
-                        ext_expr.source_loc().into_maybe_loc(),
+                        ext_expr.source_loc().cloned(),
                         self.policy_id.clone(),
                         msg,
                     ));
@@ -2586,7 +2586,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                         .all(|e| matches!(e.expr_kind(), ExprKind::Lit(_)))
                 {
                     type_errors.push(ValidationError::non_lit_ext_constructor(
-                        ext_expr.source_loc().into_maybe_loc(),
+                        ext_expr.source_loc().cloned(),
                         self.policy_id.clone(),
                     ));
                     failed = true;

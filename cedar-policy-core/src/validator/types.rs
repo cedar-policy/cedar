@@ -39,13 +39,11 @@ use crate::{
         AttributeType as CoreAttributeType, SchemaType as CoreSchemaType,
     },
     extensions::{ExtensionFunctionLookupError, Extensions},
+    parser::Loc,
+    validator::{validation_errors::LubHelp, ValidationMode},
 };
 
 #[cfg(feature = "extended-schema")]
-use crate::parser::MaybeLoc;
-
-use crate::validator::{validation_errors::LubHelp, ValidationMode};
-
 use super::schema::{ValidatorActionId, ValidatorEntityType, ValidatorSchema};
 
 /// The main type structure.
@@ -1410,7 +1408,7 @@ pub struct AttributeType {
     ///  Source location - if available
     #[cfg(feature = "extended-schema")]
     #[educe(Eq(ignore))]
-    pub loc: MaybeLoc,
+    pub loc: Option<Loc>,
 }
 
 impl AttributeType {
@@ -1428,7 +1426,7 @@ impl AttributeType {
     #[cfg(feature = "extended-schema")]
     /// Construct an [`AttributeType`] with some type that may be required or
     /// optional as specified by the `is_required` parameter - includes source location
-    pub fn new_with_loc(attr_type: Type, is_required: bool, loc: MaybeLoc) -> Self {
+    pub fn new_with_loc(attr_type: Type, is_required: bool, loc: Option<Loc>) -> Self {
         Self {
             attr_type,
             is_required,

@@ -21,7 +21,7 @@ use crate::{
     entities::CedarValueJson,
     est::Annotations,
     extensions::Extensions,
-    parser::{AsLocRef, Loc, MaybeLoc},
+    parser::{AsLocRef, Loc},
     FromNormalizedStr,
 };
 use educe::Educe;
@@ -70,7 +70,7 @@ pub struct CommonType<N> {
     /// corresponding Cedar-syntax structure.)
     #[serde(skip)]
     #[educe(PartialEq(ignore))]
-    pub loc: MaybeLoc,
+    pub loc: Option<Loc>,
 }
 
 /// A [`Fragment`] is split into multiple namespace definitions, and is just a
@@ -341,7 +341,7 @@ pub struct NamespaceDefinition<N> {
     #[cfg(feature = "extended-schema")]
     #[serde(skip)]
     #[educe(Eq(ignore))]
-    pub loc: MaybeLoc,
+    pub loc: Option<Loc>,
 }
 
 #[cfg(test)]
@@ -489,7 +489,7 @@ pub struct EntityType<N> {
     /// corresponding Cedar-syntax structure.)
     #[serde(skip)]
     #[educe(PartialEq(ignore))]
-    pub loc: MaybeLoc,
+    pub loc: Option<Loc>,
 }
 
 impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N> {
@@ -822,13 +822,13 @@ pub struct ActionType<N> {
     /// corresponding Cedar-syntax structure.)
     #[serde(skip)]
     #[educe(PartialEq(ignore))]
-    pub loc: MaybeLoc,
+    pub loc: Option<Loc>,
 
     /// Source location of only the action definition
     #[cfg(feature = "extended-schema")]
     #[serde(skip)]
     #[educe(PartialEq(ignore))]
-    pub(crate) defn_loc: MaybeLoc,
+    pub(crate) defn_loc: Option<Loc>,
 }
 
 impl ActionType<RawName> {
@@ -993,7 +993,7 @@ pub struct ActionEntityUID<N> {
     #[cfg(feature = "extended-schema")]
     #[serde(skip)]
     /// Source location - if available
-    pub loc: MaybeLoc,
+    pub loc: Option<Loc>,
 }
 
 impl ActionEntityUID<RawName> {
@@ -1026,7 +1026,7 @@ impl ActionEntityUID<RawName> {
     // This function is only available for `RawName` and not other values of `N`,
     // in order to uphold the INVARIANT on self.ty.
     #[cfg(feature = "extended-schema")]
-    pub fn default_type_with_loc(id: SmolStr, loc: MaybeLoc) -> Self {
+    pub fn default_type_with_loc(id: SmolStr, loc: Option<Loc>) -> Self {
         Self { id, ty: None, loc }
     }
 }
@@ -1231,7 +1231,7 @@ pub enum Type<N> {
         #[serde(skip)]
         #[educe(PartialEq(ignore))]
         #[educe(PartialOrd(ignore))]
-        loc: MaybeLoc,
+        loc: Option<Loc>,
     },
     /// Reference to a common type
     ///
@@ -1253,7 +1253,7 @@ pub enum Type<N> {
         #[serde(skip)]
         #[educe(PartialEq(ignore))]
         #[educe(PartialOrd(ignore))]
-        loc: MaybeLoc,
+        loc: Option<Loc>,
     },
 }
 
@@ -1335,7 +1335,7 @@ impl<N> Type<N> {
     }
 
     /// Create a new copy of self but with a difference source location
-    pub fn with_loc(self, new_loc: MaybeLoc) -> Self {
+    pub fn with_loc(self, new_loc: Option<Loc>) -> Self {
         match self {
             Self::Type { ty, loc: _loc } => Self::Type { ty, loc: new_loc },
             Self::CommonTypeRef {
@@ -2149,7 +2149,7 @@ pub struct TypeOfAttribute<N> {
     #[cfg(feature = "extended-schema")]
     #[educe(Eq(ignore))]
     #[serde(skip)]
-    pub loc: MaybeLoc,
+    pub loc: Option<Loc>,
 }
 
 impl TypeOfAttribute<RawName> {

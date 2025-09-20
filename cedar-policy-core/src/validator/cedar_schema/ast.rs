@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-use std::{collections::BTreeMap, iter::once};
+use std::{collections::BTreeMap, iter::once, sync::Arc};
 
 use crate::{
     ast::{Annotation, Annotations, AnyId, Id, InternalName},
-    parser::{AsLocRef, Loc, MaybeLoc, Node},
+    parser::{AsLocRef, Loc, Node},
 };
 use itertools::{Either, Itertools};
 use nonempty::NonEmpty;
@@ -57,8 +57,14 @@ pub fn deduplicate_annotations<T>(
         if let Some((old_key, _)) = unique_annotations.get_key_value(&key) {
             return Err(UserError::DuplicateAnnotations(
                 key.node,
-                Node::with_maybe_source_loc((), old_key.loc.clone()),
-                Node::with_maybe_source_loc((), key.loc),
+                Node::with_source_loc(
+                    (),
+                    old_key
+                        .loc
+                        .clone()
+                        .unwrap_or_else(|| Loc::new(0..0, Arc::from(""))),
+                ),
+                Node::with_source_loc((), key.loc.unwrap_or_else(|| Loc::new(0..0, Arc::from("")))),
             ));
         } else {
             unique_annotations.insert(key, value);
@@ -84,25 +90,25 @@ pub fn deduplicate_annotations<T>(
 pub struct Path(Node<PathInternal>);
 impl Path {
     /// Create a [`Path`] with a single entry
-    pub fn single(basename: Id, loc: MaybeLoc) -> Self {
-        Self(Node::with_maybe_source_loc(
+    pub fn single(basename: Id, loc: Option<Loc>) -> Self {
+        Self(Node::with_source_loc(
             PathInternal {
                 basename,
                 namespace: vec![],
             },
-            loc,
+            loc.unwrap_or_else(|| Loc::new(0..0, Arc::from(""))),
         ))
     }
 
     /// Create [`Path`] with a head and an iterator. Most significant name first.
-    pub fn new(basename: Id, namespace: impl IntoIterator<Item = Id>, loc: MaybeLoc) -> Self {
+    pub fn new(basename: Id, namespace: impl IntoIterator<Item = Id>, loc: Option<Loc>) -> Self {
         let namespace = namespace.into_iter().collect();
-        Self(Node::with_maybe_source_loc(
+        Self(Node::with_source_loc(
             PathInternal {
                 basename,
                 namespace,
             },
-            loc,
+            loc.unwrap_or_else(|| Loc::new(0..0, Arc::from(""))),
         ))
     }
 
@@ -218,7 +224,7 @@ pub struct Namespace {
     pub name: Option<Path>,
     /// The [`Declaration`]s contained in this namespace
     pub decls: Vec<Annotated<Node<Declaration>>>,
-    pub loc: MaybeLoc,
+    pub loc: Option<Loc>,
 }
 
 impl Namespace {
@@ -391,8 +397,6 @@ impl Decl for ActionDecl {
 mod test {
     use std::sync::Arc;
 
-    use crate::parser::IntoMaybeLoc;
-
     use super::*;
 
     fn loc() -> Loc {
@@ -405,7 +409,7 @@ mod test {
         let p = Path::new(
             "baz".parse().unwrap(),
             ["foo".parse().unwrap(), "bar".parse().unwrap()],
-            loc().into_maybe_loc(),
+            Some(loc()),
         );
 
         let expected: Vec<Id> = vec![

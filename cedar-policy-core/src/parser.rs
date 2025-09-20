@@ -27,9 +27,7 @@ mod fmt;
 pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
-pub use loc::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
-#[macro_use]
-mod macros;
+pub use loc::{AsLocRef, Loc};
 /// Metadata wrapper for CST Nodes
 mod node;
 pub use node::Node;
@@ -279,11 +277,7 @@ fn validate_template_has_slots(
     cst: Node<Option<cst::Policy>>,
 ) -> Result<ast::Template, err::ParseErrors> {
     if template.slots().count() == 0 {
-        Err(err::ToASTError::new(
-            err::ToASTErrorKind::expected_template(),
-            cst.loc.into_maybe_loc(),
-        )
-        .into())
+        Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc).into())
     } else {
         Ok(template)
     }
@@ -479,25 +473,37 @@ mod tests {
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
         assert_eq!(val, Value::from(false));
-        assert_eq!(val.source_loc(), Some(&Loc::new(0..5, Arc::from(src))));
+        assert_eq!(
+            val.source_loc().cloned(),
+            Some(Loc::new(0..5, Arc::from(src)))
+        );
 
         let src = "true && true";
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
-        assert_eq!(val.source_loc(), Some(&Loc::new(0..12, Arc::from(src))));
+        assert_eq!(
+            val.source_loc().cloned(),
+            Some(Loc::new(0..12, Arc::from(src)))
+        );
 
         let src = "!true || false && !true";
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
         assert_eq!(val, Value::from(false));
-        assert_eq!(val.source_loc(), Some(&Loc::new(0..23, Arc::from(src))));
+        assert_eq!(
+            val.source_loc().cloned(),
+            Some(Loc::new(0..23, Arc::from(src)))
+        );
 
         let src = "!!!!true";
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
-        assert_eq!(val.source_loc(), Some(&Loc::new(0..8, Arc::from(src))));
+        assert_eq!(
+            val.source_loc().cloned(),
+            Some(Loc::new(0..8, Arc::from(src)))
+        );
 
         let src = r#"
         if false || true != 4 then
@@ -508,7 +514,10 @@ mod tests {
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
         assert_eq!(val, Value::from(600));
-        assert_eq!(val.source_loc(), Some(&Loc::new(9..81, Arc::from(src))));
+        assert_eq!(
+            val.source_loc().cloned(),
+            Some(Loc::new(9..81, Arc::from(src)))
+        );
     }
 
     #[test]
@@ -530,7 +539,10 @@ mod tests {
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
         assert_eq!(val, Value::from(false));
-        assert_eq!(val.source_loc(), Some(&Loc::new(10..80, Arc::from(src))));
+        assert_eq!(
+            val.source_loc().cloned(),
+            Some(Loc::new(10..80, Arc::from(src)))
+        );
         // because "10..80" is hard to read, we also assert that the correct portion of `src` is indicated
         assert_eq!(
             val.source_loc().unwrap().snippet(),
@@ -549,7 +561,10 @@ mod tests {
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
-        assert_eq!(val.source_loc(), Some(&Loc::new(10..76, Arc::from(src))));
+        assert_eq!(
+            val.source_loc().cloned(),
+            Some(Loc::new(10..76, Arc::from(src)))
+        );
         assert_eq!(
             val.source_loc().unwrap().snippet(),
             Some(
@@ -567,7 +582,10 @@ mod tests {
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
-        assert_eq!(val.source_loc(), Some(&Loc::new(10..77, Arc::from(src))));
+        assert_eq!(
+            val.source_loc().cloned(),
+            Some(Loc::new(10..77, Arc::from(src)))
+        );
         assert_eq!(
             val.source_loc().unwrap().snippet(),
             Some(
@@ -585,7 +603,10 @@ mod tests {
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
-        assert_eq!(val.source_loc(), Some(&Loc::new(10..82, Arc::from(src))));
+        assert_eq!(
+            val.source_loc().cloned(),
+            Some(Loc::new(10..82, Arc::from(src)))
+        );
         assert_eq!(
             val.source_loc().unwrap().snippet(),
             Some(
@@ -614,7 +635,10 @@ mod tests {
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
         assert_eq!(val, Value::from(false));
-        assert_eq!(val.source_loc(), Some(&Loc::new(14..28, Arc::from(src))));
+        assert_eq!(
+            val.source_loc().cloned(),
+            Some(Loc::new(14..28, Arc::from(src)))
+        );
         // because "14..28" is hard to read, we also assert that the correct portion of `src` is indicated
         assert_eq!(val.source_loc().unwrap().snippet(), Some("3 < 2 || 2 > 3"));
 
@@ -626,7 +650,10 @@ mod tests {
         let expr = parse_expr(src).unwrap();
         let val = evaluator.interpret_inline_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
-        assert_eq!(val.source_loc(), Some(&Loc::new(14..30, Arc::from(src))));
+        assert_eq!(
+            val.source_loc().cloned(),
+            Some(Loc::new(14..30, Arc::from(src)))
+        );
         assert_eq!(
             val.source_loc().unwrap().snippet(),
             Some("7 <= 7 && 4 != 5")

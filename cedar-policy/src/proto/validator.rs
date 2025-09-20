@@ -17,8 +17,8 @@
 #![allow(clippy::use_self)]
 
 use super::models;
+use cedar_policy_core::ast;
 use cedar_policy_core::validator::types;
-use cedar_policy_core::{ast, parser::IntoMaybeLoc};
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
@@ -184,12 +184,7 @@ impl From<&models::EntityDecl> for cedar_policy_core::validator::ValidatorEntity
                 // enumerated entity types must have no attributes or tags.
                 assert_eq!(&v.attributes, &HashMap::new());
                 assert_eq!(&v.tags, &None);
-                Self::new_enum(
-                    name.clone(),
-                    descendants,
-                    enum_choices,
-                    name.loc().into_maybe_loc(),
-                )
+                Self::new_enum(name.clone(), descendants, enum_choices, name.loc().cloned())
             }
         }
     }

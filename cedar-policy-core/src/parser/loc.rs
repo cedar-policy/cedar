@@ -16,9 +16,6 @@
 
 use std::sync::Arc;
 
-/// Represents an optional `Loc`.
-pub type MaybeLoc = Option<Loc>;
-
 /// Represents a source location: index/range, and a reference to the source
 /// code which that index/range indexes into
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -90,45 +87,24 @@ impl AsLocRef for Option<Loc> {
     }
 }
 
-impl AsLocRef for Option<Box<Loc>> {
+impl AsRef<Loc> for Loc {
     #[inline]
-    fn as_loc_ref(&self) -> Option<&Loc> {
-        self.as_deref()
-    }
-}
-
-/// Trait to define conversions into `MaybeLoc`
-pub trait IntoMaybeLoc {
-    /// Automatic conversion to `MaybeLoc`
-    fn into_maybe_loc(self) -> MaybeLoc;
-}
-
-impl IntoMaybeLoc for Loc {
-    #[inline]
-    fn into_maybe_loc(self) -> MaybeLoc {
-        Some(self)
-    }
-}
-
-impl IntoMaybeLoc for Option<Loc> {
-    #[inline]
-    fn into_maybe_loc(self) -> MaybeLoc {
+    fn as_ref(&self) -> &Loc {
         self
     }
 }
 
-impl IntoMaybeLoc for Option<&Loc> {
+impl AsLocRef for Loc {
     #[inline]
-    fn into_maybe_loc(self) -> MaybeLoc {
-        self.cloned()
+    fn as_loc_ref(&self) -> Option<&Loc> {
+        Some(self)
     }
 }
 
-impl IntoMaybeLoc for Option<Box<Loc>> {
+impl AsLocRef for Option<Box<Loc>> {
     #[inline]
-    #[allow(clippy::single_option_map)]
-    fn into_maybe_loc(self) -> MaybeLoc {
-        self.map(|loc| *loc)
+    fn as_loc_ref(&self) -> Option<&Loc> {
+        self.as_deref()
     }
 }
 
