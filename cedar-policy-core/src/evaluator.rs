@@ -259,9 +259,10 @@ impl<'e> RestrictedEvaluator<'e> {
         // also, if there is an error, set its source location to the source
         // location of the input expression as well, unless it already had a
         // more specific location
-        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
+        let expr_loc = expr.source_loc().cloned();
+        res.map(|pval| pval.with_maybe_source_loc(expr_loc.clone()))
             .map_err(|err| match err.source_loc().cloned() {
-                None => err.with_maybe_source_loc(expr.source_loc().cloned()),
+                None => err.with_maybe_source_loc(expr_loc),
                 Some(_) => err,
             })
     }
@@ -432,9 +433,10 @@ impl<'e> Evaluator<'e> {
         // also, if there is an error, set its source location to the source
         // location of the input expression as well, unless it already had a
         // more specific location
-        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
+        let expr_loc = expr.source_loc().cloned();
+        res.map(|pval| pval.with_maybe_source_loc(expr_loc.clone()))
             .map_err(|err| match err.source_loc().cloned() {
-                None => err.with_maybe_source_loc(expr.source_loc().cloned()),
+                None => err.with_maybe_source_loc(expr_loc),
                 Some(_) => err,
             })
     }

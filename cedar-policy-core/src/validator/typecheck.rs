@@ -1193,6 +1193,7 @@ impl<'a> SingleEnvTypechecker<'a> {
         let ExprKind::BinaryApp { op, arg1, arg2 } = bin_expr.expr_kind() else {
             panic!("`typecheck_binary` called with an expression kind other than `BinaryApp`");
         };
+        let bin_expr_loc = bin_expr.source_loc().cloned();
 
         match op {
             // The arguments to `==` may typecheck with any type, but we will
@@ -1531,7 +1532,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // should be unreachable, as we already typechecked that this matches
                                 // `Type::any_entity_reference()`
                                 type_errors.push(ValidationError::internal_invariant_violation(
-                                    bin_expr.source_loc().cloned(),
+                                    bin_expr_loc.clone(),
                                     self.policy_id.clone(),
                                 ));
                                 return TypecheckAnswer::fail(
@@ -1550,7 +1551,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // Not an entity type; should be unreachable, as we already typechecked
                                 // that this matches `Type::any_entity_reference()`
                                 type_errors.push(ValidationError::internal_invariant_violation(
-                                    bin_expr.source_loc().cloned(),
+                                    bin_expr_loc.clone(),
                                     self.policy_id.clone(),
                                 ));
                                 return TypecheckAnswer::fail(
@@ -1602,7 +1603,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // should be unreachable, as we already typechecked that this matches
                                 // `Type::any_entity_reference()`
                                 type_errors.push(ValidationError::internal_invariant_violation(
-                                    bin_expr.source_loc().cloned(),
+                                    bin_expr_loc.clone(),
                                     self.policy_id.clone(),
                                 ));
                                 return TypecheckAnswer::fail(
@@ -1622,7 +1623,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     // `Type::any_entity_reference()`
                                     type_errors.push(
                                         ValidationError::internal_invariant_violation(
-                                            bin_expr.source_loc().cloned(),
+                                            bin_expr_loc.clone(),
                                             self.policy_id.clone(),
                                         ),
                                     );
@@ -1646,7 +1647,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     EntityRecordKind::Record { .. } => None,
                                 };
                                 type_errors.push(ValidationError::no_tags_allowed(
-                                    bin_expr.source_loc().cloned(),
+                                    bin_expr_loc.clone(),
                                     self.policy_id.clone(),
                                     entity_ty.cloned(),
                                 ));
@@ -1667,7 +1668,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     Ok(ty) => ty,
                                     Err(e) => {
                                         type_errors.push(ValidationError::incompatible_types(
-                                            bin_expr.source_loc().cloned(),
+                                            bin_expr_loc.clone(),
                                             self.policy_id.clone(),
                                             tag_types.into_iter().cloned(),
                                             e,
@@ -1688,7 +1689,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             }
                         } else {
                             type_errors.push(ValidationError::unsafe_tag_access(
-                                bin_expr.source_loc().cloned(),
+                                bin_expr_loc.clone(),
                                 self.policy_id.clone(),
                                 match kind {
                                     EntityRecordKind::Entity(lub) => Some(lub.clone()),

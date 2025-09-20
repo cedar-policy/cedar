@@ -1193,19 +1193,22 @@ impl TemplateBody {
     /// the negation of each of the policy's "unless" conditions.
     pub fn condition(&self) -> Expr {
         match self {
-            TemplateBody::TemplateBody(TemplateBodyImpl { .. }) => Expr::and(
-                self.principal_constraint_expr(),
+            TemplateBody::TemplateBody(TemplateBodyImpl { .. }) => {
+                let loc = self.loc().cloned();
                 Expr::and(
-                    self.action_constraint_expr(),
+                    self.principal_constraint_expr(),
                     Expr::and(
-                        self.resource_constraint_expr(),
-                        self.non_scope_constraints().clone(),
+                        self.action_constraint_expr(),
+                        Expr::and(
+                            self.resource_constraint_expr(),
+                            self.non_scope_constraints().clone(),
+                        )
+                        .with_maybe_source_loc(loc.clone()),
                     )
-                    .with_maybe_source_loc(self.loc().cloned()),
+                    .with_maybe_source_loc(loc.clone()),
                 )
-                .with_maybe_source_loc(self.loc().cloned()),
-            )
-            .with_maybe_source_loc(self.loc().cloned()),
+                .with_maybe_source_loc(loc)
+            }
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => DEFAULT_ERROR_EXPR.as_ref().clone(),
         }

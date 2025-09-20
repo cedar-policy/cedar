@@ -203,7 +203,7 @@ AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
 // Type := PRIMTYPE | Path | SetType | RecType
 pub Type: Node<SType> = {
     <p:Path>
-        => { let loc = p.loc().cloned().unwrap_or_else(|| Loc::new(0..0, Arc::from(""))); Node::with_source_loc(SType::Ident(p), loc) },
+        => { let loc = p.loc().cloned(); Node::with_maybe_source_loc(SType::Ident(p), loc) },
     <l:@L> SET "<" <t:Type> ">" <r:@R>
         => Node::with_source_loc(SType::Set(Box::new(t)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "{" <ds:AttrDecls?> "}" <r:@R>
@@ -228,8 +228,8 @@ Comma<E>: Vec<E> = {
 
 // IDENT := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']* - RESERVED
 Ident: Node<Id> = {
-    <id: AnyIdent> =>? Id::from_str(id.node.as_ref()).map(|i| Node::with_source_loc(i, id.loc.clone().unwrap_or_else(|| Loc::new(0..0, Arc::from(""))))).map_err(|err : crate::parser::err::ParseErrors| ParseError::User {
-        error: UserError::ReservedIdentifierUsed(Node::with_source_loc(id.node.to_smolstr(), id.loc.clone().unwrap_or_else(|| Loc::new(0..0, Arc::from("")))))
+    <id: AnyIdent> =>? Id::from_str(id.node.as_ref()).map(|i| Node::with_maybe_source_loc(i, id.loc.clone())).map_err(|err : crate::parser::err::ParseErrors| ParseError::User {
+        error: UserError::ReservedIdentifierUsed(Node::with_maybe_source_loc(id.node.to_smolstr(), id.loc.clone()))
     }),
 }
 

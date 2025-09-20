@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::{collections::BTreeMap, iter::once, sync::Arc};
+use std::{collections::BTreeMap, iter::once};
 
 use crate::{
     ast::{Annotation, Annotations, AnyId, Id, InternalName},
@@ -57,14 +57,8 @@ pub fn deduplicate_annotations<T>(
         if let Some((old_key, _)) = unique_annotations.get_key_value(&key) {
             return Err(UserError::DuplicateAnnotations(
                 key.node,
-                Node::with_source_loc(
-                    (),
-                    old_key
-                        .loc
-                        .clone()
-                        .unwrap_or_else(|| Loc::new(0..0, Arc::from(""))),
-                ),
-                Node::with_source_loc((), key.loc.unwrap_or_else(|| Loc::new(0..0, Arc::from("")))),
+                Node::with_maybe_source_loc((), old_key.loc.clone()),
+                Node::with_maybe_source_loc((), key.loc),
             ));
         } else {
             unique_annotations.insert(key, value);
@@ -91,24 +85,24 @@ pub struct Path(Node<PathInternal>);
 impl Path {
     /// Create a [`Path`] with a single entry
     pub fn single(basename: Id, loc: Option<Loc>) -> Self {
-        Self(Node::with_source_loc(
+        Self(Node::with_maybe_source_loc(
             PathInternal {
                 basename,
                 namespace: vec![],
             },
-            loc.unwrap_or_else(|| Loc::new(0..0, Arc::from(""))),
+            loc,
         ))
     }
 
     /// Create [`Path`] with a head and an iterator. Most significant name first.
     pub fn new(basename: Id, namespace: impl IntoIterator<Item = Id>, loc: Option<Loc>) -> Self {
         let namespace = namespace.into_iter().collect();
-        Self(Node::with_source_loc(
+        Self(Node::with_maybe_source_loc(
             PathInternal {
                 basename,
                 namespace,
             },
-            loc.unwrap_or_else(|| Loc::new(0..0, Arc::from(""))),
+            loc,
         ))
     }
 
