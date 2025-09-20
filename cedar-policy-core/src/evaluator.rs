@@ -19,7 +19,7 @@
 use crate::ast::*;
 use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
-use crate::parser::{IntoMaybeLoc, Loc};
+use crate::parser::Loc;
 #[cfg(feature = "partial-eval")]
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -65,7 +65,7 @@ pub fn unary_app(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> Result<Value> {
                 None => Err(IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
                     op,
                     arg,
-                    source_loc: loc.into_maybe_loc(),
+                    source_loc: loc.cloned(),
                 })
                 .into()),
             }
@@ -160,7 +160,7 @@ pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -
                 op,
                 arg1,
                 arg2,
-                source_loc: loc.into_maybe_loc(),
+                source_loc: loc.cloned(),
             })
             .into()),
         },
@@ -170,7 +170,7 @@ pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -
                 op,
                 arg1,
                 arg2,
-                source_loc: loc.into_maybe_loc(),
+                source_loc: loc.cloned(),
             })
             .into()),
         },
@@ -180,7 +180,7 @@ pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -
                 op,
                 arg1,
                 arg2,
-                source_loc: loc.into_maybe_loc(),
+                source_loc: loc.cloned(),
             })
             .into()),
         },
@@ -259,9 +259,9 @@ impl<'e> RestrictedEvaluator<'e> {
         // also, if there is an error, set its source location to the source
         // location of the input expression as well, unless it already had a
         // more specific location
-        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().into_maybe_loc()))
-            .map_err(|err| match err.source_loc() {
-                None => err.with_maybe_source_loc(expr.source_loc().into_maybe_loc()),
+        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
+            .map_err(|err| match err.source_loc().cloned() {
+                None => err.with_maybe_source_loc(expr.source_loc().cloned()),
                 Some(_) => err,
             })
     }
@@ -286,7 +286,7 @@ impl<'e> RestrictedEvaluator<'e> {
                     .map(|item| self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(item))) // assuming the invariant holds for `e`, it will hold here
                     .collect::<Result<Vec<_>>>()?;
                 match split(vals) {
-                    Either::Left(values) => Ok(Value::set(values, expr.source_loc().into_maybe_loc()).into()),
+                    Either::Left(values) => Ok(Value::set(values, expr.source_loc().cloned()).into()),
                     Either::Right(residuals) => Ok(Expr::set(residuals).into()),
                 }
             }
@@ -298,7 +298,7 @@ impl<'e> RestrictedEvaluator<'e> {
                     .collect::<Result<Vec<_>>>()?;
                 let (names, attrs) : (Vec<_>, Vec<_>) = map.into_iter().unzip();
                 match split(attrs) {
-                    Either::Left(values) => Ok(Value::record(names.into_iter().zip(values), expr.source_loc().into_maybe_loc()).into()),
+                    Either::Left(values) => Ok(Value::record(names.into_iter().zip(values), expr.source_loc().cloned()).into()),
                     Either::Right(residuals) => {
                         // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
                         #[allow(clippy::expect_used)]
@@ -432,9 +432,9 @@ impl<'e> Evaluator<'e> {
         // also, if there is an error, set its source location to the source
         // location of the input expression as well, unless it already had a
         // more specific location
-        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().into_maybe_loc()))
-            .map_err(|err| match err.source_loc() {
-                None => err.with_maybe_source_loc(expr.source_loc().into_maybe_loc()),
+        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
+            .map_err(|err| match err.source_loc().cloned() {
+                None => err.with_maybe_source_loc(expr.source_loc().cloned()),
                 Some(_) => err,
             })
     }
@@ -450,12 +450,12 @@ impl<'e> Evaluator<'e> {
     /// `partial_interpret()`.
     #[allow(clippy::cognitive_complexity)]
     fn partial_interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
-        let loc = expr.source_loc(); // the `loc` describing the location of the entire expression
+        let loc = expr.source_loc().cloned(); // the `loc` describing the location of the entire expression
         match expr.expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Slot(id) => slots
                 .get(id)
-                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc.into_maybe_loc()))
+                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc))
                 .map(|euid| PartialValue::from(euid.clone())),
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate(*v)),
@@ -522,7 +522,7 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::UnaryApp { op, arg } => match self.partial_interpret(arg, slots)? {
-                PartialValue::Value(arg) => unary_app(*op, arg, loc).map(Into::into),
+                PartialValue::Value(arg) => unary_app(*op, arg, loc.as_ref()).map(Into::into),
                 // NOTE, there was a bug here found during manual review. (I forgot to wrap in unary_app call)
                 // Could be a nice target for fault injection
                 PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::unary_app(*op, r))),
@@ -561,7 +561,7 @@ impl<'e> Evaluator<'e> {
                         binary_relation(*op, &arg1, &arg2, self.extensions).map(Into::into)
                     }
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
-                        binary_arith(*op, arg1, arg2, loc).map(Into::into)
+                        binary_arith(*op, arg1, arg2, loc.as_ref()).map(Into::into)
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
@@ -619,7 +619,7 @@ impl<'e> Evaluator<'e> {
                                         // intentionally using the location of the euid (the LHS) and not the entire GetTag expression
                                         Err(EvaluationError::entity_does_not_exist(
                                             Arc::new(uid.clone()),
-                                            arg1.source_loc().into_maybe_loc(),
+                                            arg1.source_loc().cloned(),
                                         ))
                                     }
                                     Dereference::Residual(r) => Ok(PartialValue::Residual(
@@ -634,7 +634,7 @@ impl<'e> Evaluator<'e> {
                                                 entity.tag_keys(),
                                                 entity.get(tag).is_some(),
                                                 entity.tags_len(),
-                                                loc.into_maybe_loc(), // intentionally using the location of the entire `GetTag` expression
+                                                loc, // intentionally using the location of the entire `GetTag` expression
                                             )
                                         })
                                         .cloned(),
@@ -674,7 +674,9 @@ impl<'e> Evaluator<'e> {
                     )),
                 }
             }
-            ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
+            ExprKind::GetAttr { expr, attr } => {
+                self.get_attr(expr.as_ref(), attr, slots, loc.as_ref())
+            }
             ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
                 PartialValue::Value(Value {
                     value: ValueKind::Record(record),
@@ -735,7 +737,7 @@ impl<'e> Evaluator<'e> {
                     .map(|item| self.partial_interpret(item, slots))
                     .collect::<Result<Vec<_>>>()?;
                 match split(vals) {
-                    Either::Left(vals) => Ok(Value::set(vals, loc.into_maybe_loc()).into()),
+                    Either::Left(vals) => Ok(Value::set(vals, loc).into()),
                     Either::Right(r) => Ok(Expr::set(r).into()),
                 }
             }
@@ -747,7 +749,7 @@ impl<'e> Evaluator<'e> {
                 let (names, evalled): (Vec<SmolStr>, Vec<PartialValue>) = map.into_iter().unzip();
                 match split(evalled) {
                     Either::Left(vals) => {
-                        Ok(Value::record(names.into_iter().zip(vals), loc.into_maybe_loc()).into())
+                        Ok(Value::record(names.into_iter().zip(vals), loc).into())
                     }
                     Either::Right(rs) => {
                         // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
@@ -761,9 +763,7 @@ impl<'e> Evaluator<'e> {
                 }
             }
             #[cfg(feature = "tolerant-ast")]
-            ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
-                source_loc: loc.into_maybe_loc(),
-            })),
+            ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError { source_loc: loc })),
         }
     }
 
@@ -881,7 +881,7 @@ impl<'e> Evaluator<'e> {
                                         attr.clone(),
                                         map.keys(),
                                         map.len(),
-                                        source_loc.into_maybe_loc(),
+                                        source_loc.cloned(),
                                     )
                                 })
                                 .and_then(|e| self.partial_interpret(e, slots))
@@ -895,7 +895,7 @@ impl<'e> Evaluator<'e> {
                                 attr.clone(),
                                 map.keys(),
                                 map.len(),
-                                source_loc.into_maybe_loc(),
+                                source_loc.cloned(),
                             ))
                         }
                     }
@@ -914,7 +914,7 @@ impl<'e> Evaluator<'e> {
                         attr.clone(),
                         record.keys(),
                         record.len(),
-                        source_loc.into_maybe_loc(),
+                        source_loc.cloned(),
                     )
                 })
                 .map(|v| PartialValue::Value(v.clone())),
@@ -945,7 +945,7 @@ impl<'e> Evaluator<'e> {
                             entity.keys(),
                             entity.get_tag(attr).is_some(),
                             entity.attrs_len(),
-                            source_loc.into_maybe_loc(),
+                            source_loc.cloned(),
                         )
                     })?,
             },
@@ -1049,11 +1049,15 @@ impl Evaluator<'_> {
         use std::collections::HashMap;
         match self.partial_interpret(e, &HashMap::new())? {
             PartialValue::Value(v) => {
-                debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
+                debug_assert!(
+                    e.source_loc().cloned().is_some() == v.source_loc().cloned().is_some()
+                );
                 Ok(v)
             }
             PartialValue::Residual(r) => {
-                debug_assert!(e.source_loc().is_some() == r.source_loc().is_some());
+                debug_assert!(
+                    e.source_loc().cloned().is_some() == r.source_loc().cloned().is_some()
+                );
                 Err(err::EvaluationError::non_value(r))
             }
         }

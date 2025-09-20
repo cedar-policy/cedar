@@ -24,7 +24,7 @@ use crate::{
     ast::{Entity, EntityType, EntityUID, InternalName, Name, UnreservedId},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
-    parser::{IntoMaybeLoc, MaybeLoc},
+    parser::Loc,
     transitive_closure::compute_tc,
 };
 use educe::Educe;
@@ -161,7 +161,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
 pub struct LocatedType {
     ty: Type,
     #[cfg(feature = "extended-schema")]
-    loc: MaybeLoc,
+    loc: Option<Loc>,
 }
 
 impl LocatedType {
@@ -176,7 +176,7 @@ impl LocatedType {
 
     /// New located type with source location. If the `extend-schema` feature is
     /// not enabled, the `loc` is not stored.
-    pub fn new_with_loc(ty: Type, _loc: &MaybeLoc) -> Self {
+    pub fn new_with_loc(ty: Type, _loc: &Option<Loc>) -> Self {
         Self {
             ty,
             #[cfg(feature = "extended-schema")]
@@ -187,7 +187,7 @@ impl LocatedType {
     /// Deconstruct this `LocatedType` into the type and location where the type
     /// is defined. If `extend-schema` is not enabled, then the location
     /// returned by this function is always `None`.
-    pub fn into_type_and_loc(self) -> (Type, MaybeLoc) {
+    pub fn into_type_and_loc(self) -> (Type, Option<Loc>) {
         (
             self.ty,
             #[cfg(feature = "extended-schema")]
@@ -213,11 +213,11 @@ pub struct LocatedCommonType {
 
     /// Common type name source location if available
     #[educe(Eq(ignore))]
-    pub name_loc: MaybeLoc,
+    pub name_loc: Option<Loc>,
 
     /// Common type definition source location if available
     #[educe(Eq(ignore))]
-    pub type_loc: MaybeLoc,
+    pub type_loc: Option<Loc>,
 }
 
 #[cfg(feature = "extended-schema")]
@@ -226,7 +226,7 @@ impl LocatedCommonType {
     pub fn new(name: &InternalName, ty: LocatedType) -> Self {
         Self {
             name: name.basename().clone().into_smolstr(),
-            name_loc: name.loc().into_maybe_loc(),
+            name_loc: name.loc().cloned(),
             type_loc: ty.loc,
         }
     }
@@ -245,11 +245,11 @@ pub struct LocatedNamespace {
     pub name: SmolStr,
     /// Namespace name source location if available
     #[educe(Eq(ignore))]
-    pub name_loc: MaybeLoc,
+    pub name_loc: Option<Loc>,
 
     /// Namespace definition source location if available
     #[educe(Eq(ignore))]
-    pub def_loc: MaybeLoc,
+    pub def_loc: Option<Loc>,
 }
 
 /// Internal representation of the schema for use by the validator.
@@ -597,7 +597,7 @@ impl ValidatorSchema {
             })
             .map(|n| LocatedNamespace {
                 name: n.0.to_smolstr(),
-                name_loc: n.0.loc().into_maybe_loc(),
+                name_loc: n.0.loc().cloned(),
                 def_loc: n.1,
             })
             .collect::<HashSet<_>>();
@@ -745,7 +745,7 @@ impl ValidatorSchema {
                             name.clone(),
                             descendants,
                             choices,
-                            name.loc().into_maybe_loc(),
+                            name.loc().cloned(),
                         ),
                     )),
                     EntityTypeFragment::Standard {
@@ -754,11 +754,12 @@ impl ValidatorSchema {
                         tags,
                     } => {
                         let (attributes, open_attributes) = {
-                            let attr_loc = attributes.0.loc().into_maybe_loc();
+                            let attr_binding = attributes.0.clone();
+                            let attr_loc = attr_binding.loc();
                             let unresolved = try_jsonschema_type_into_validator_type(
                                 attributes.0,
                                 extensions,
-                                attr_loc,
+                                attr_loc.cloned(),
                             )?;
                             Self::record_attributes_or_none(
                                 unresolved.resolve_common_type_refs(&common_types)?,
@@ -771,8 +772,13 @@ impl ValidatorSchema {
                         };
                         let tags = tags
                             .map(|tags| {
-                                let tags_loc = tags.loc().into_maybe_loc();
-                                try_jsonschema_type_into_validator_type(tags, extensions, tags_loc)
+                                let tags_binding = tags.clone();
+                                let tags_loc = tags_binding.loc();
+                                try_jsonschema_type_into_validator_type(
+                                    tags,
+                                    extensions,
+                                    tags_loc.cloned(),
+                                )
                             })
                             .transpose()?
                             .map(|unresolved| unresolved.resolve_common_type_refs(&common_types))
@@ -786,7 +792,7 @@ impl ValidatorSchema {
                                 attributes,
                                 open_attributes,
                                 tags.map(|t| t.ty),
-                                name.loc().into_maybe_loc(),
+                                name.loc().cloned(),
                             ),
                         ))
                     }
@@ -808,11 +814,12 @@ impl ValidatorSchema {
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
                 let (context, open_context_attributes) = {
-                    let context_loc = action.context.loc().into_maybe_loc();
+                    let context_binding = action.context.clone();
+                    let context_loc = context_binding.loc();
                     let unresolved = try_jsonschema_type_into_validator_type(
                         action.context,
                         extensions,
-                        context_loc,
+                        context_loc.cloned(),
                     )?;
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
@@ -1202,7 +1209,7 @@ fn cedar_fragment(
 fn single_alias_in_empty_namespace(
     id: UnreservedId,
     def: InternalName,
-    loc: MaybeLoc,
+    loc: Option<Loc>,
 ) -> ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_type_def(
         None,
@@ -1625,11 +1632,12 @@ impl<'a> CommonTypeResolver<'a> {
             let ty = self.defs.get(name).unwrap();
             let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
             resolve_table.insert(name, substituted_ty.clone());
-            let substituted_ty_loc = substituted_ty.loc().into_maybe_loc();
+            let substituted_ty_binding = substituted_ty.clone();
+            let substituted_ty_loc = substituted_ty_binding.loc();
             let validator_type = try_jsonschema_type_into_validator_type(
                 substituted_ty,
                 extensions,
-                substituted_ty_loc,
+                substituted_ty_loc.cloned(),
             )?;
             let validator_type = validator_type.resolve_common_type_refs(&HashMap::new())?;
 

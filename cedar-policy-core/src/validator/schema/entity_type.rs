@@ -20,7 +20,7 @@ use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::collections::HashSet;
 
-use crate::{ast::EntityType, parser::MaybeLoc, transitive_closure::TCNode};
+use crate::{ast::EntityType, parser::Loc, transitive_closure::TCNode};
 
 use crate::validator::types::{AttributeType, Attributes, OpenTag, Type};
 
@@ -47,7 +47,7 @@ pub struct ValidatorEntityType {
     pub(crate) attributes: Attributes,
 
     /// Source location - if available
-    pub loc: MaybeLoc,
+    pub loc: Option<Loc>,
 }
 
 /// The kind of validator entity types.
@@ -87,7 +87,7 @@ impl ValidatorEntityType {
         attributes: Attributes,
         open_attributes: OpenTag,
         tags: Option<Type>,
-        loc: MaybeLoc,
+        loc: Option<Loc>,
     ) -> Self {
         Self {
             name,
@@ -109,7 +109,7 @@ impl ValidatorEntityType {
         name: EntityType,
         descendants: impl IntoIterator<Item = EntityType>,
         values: NonEmpty<SmolStr>,
-        loc: MaybeLoc,
+        loc: Option<Loc>,
     ) -> Self {
         Self {
             name,

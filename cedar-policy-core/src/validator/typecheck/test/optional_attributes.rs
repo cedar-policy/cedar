@@ -19,7 +19,7 @@
 
 use crate::{
     ast::{PolicyID, StaticPolicy},
-    parser::{parse_policy, IntoMaybeLoc},
+    parser::parse_policy,
 };
 
 use crate::validator::{
@@ -778,7 +778,7 @@ fn action_attrs_failing() {
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(
-            failing_policy.loc().into_maybe_loc(),
+            failing_policy.loc().cloned(),
             PolicyID::from_string("0"),
         )
     );

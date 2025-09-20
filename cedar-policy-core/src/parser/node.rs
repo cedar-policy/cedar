@@ -20,7 +20,7 @@ use educe::Educe;
 use miette::Diagnostic;
 
 use super::err::{ToASTError, ToASTErrorKind};
-use super::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
+use super::Loc;
 
 /// Metadata for our syntax trees
 #[derive(Educe, Debug, Clone)]
@@ -33,21 +33,11 @@ pub struct Node<T> {
     #[educe(PartialEq(ignore))]
     #[educe(PartialOrd(ignore))]
     #[educe(Hash(ignore))]
-    pub loc: MaybeLoc,
+    pub loc: Option<Loc>,
 }
 
 impl<T> Node<T> {
-    /// Create a new Node with the given (boxed) source location
-    #[cfg(feature = "raw-parsing")]
-    pub fn with_source_loc(node: T, loc: Box<Loc>) -> Self {
-        Node {
-            node,
-            loc: Some(loc),
-        }
-    }
-
     /// Create a new Node with the given source location
-    #[cfg(not(feature = "raw-parsing"))]
     pub fn with_source_loc(node: T, loc: Loc) -> Self {
         Node {
             node,
@@ -55,9 +45,14 @@ impl<T> Node<T> {
         }
     }
 
-    /// Create a new Node with optional source location
-    pub fn with_maybe_source_loc(node: T, loc: MaybeLoc) -> Self {
+    /// Create a new Node with an optional source location
+    pub fn with_maybe_source_loc(node: T, loc: Option<Loc>) -> Self {
         Node { node, loc }
+    }
+
+    /// Create a new Node with no source location
+    pub fn new(node: T) -> Self {
+        Node { node, loc: None }
     }
 
     /// Transform the inner value while retaining the attached source info.
@@ -85,13 +80,18 @@ impl<T> Node<T> {
     }
 
     /// Consume the `Node`, yielding the node and attached source info.
-    pub fn into_inner(self) -> (T, MaybeLoc) {
+    pub fn into_inner(self) -> (T, Option<Loc>) {
         (self.node, self.loc)
     }
 
     /// Utility to construct a `ToAstError` with the source location taken from this node.
     pub fn to_ast_err(&self, error_kind: impl Into<ToASTErrorKind>) -> ToASTError {
         ToASTError::new(error_kind.into(), self.loc.clone())
+    }
+
+    /// Get the source location of this `Node`
+    pub fn loc(&self) -> Option<&Loc> {
+        self.loc.as_ref()
     }
 }
 
@@ -181,16 +181,16 @@ impl<T> Node<Option<T>> {
     where
         F: FnOnce(&T, Option<&Loc>) -> Option<R>,
     {
-        f(self.node.as_ref()?, self.loc.as_loc_ref())
+        f(self.node.as_ref()?, self.loc.as_ref())
     }
 
     /// Apply the function `f` to the main data and `Loc`, consuming them.
     /// Returns `None` if no main data or if `f` returns `None`.
     pub fn into_apply<F, R>(self, f: F) -> Option<R>
     where
-        F: FnOnce(T, MaybeLoc) -> Option<R>,
+        F: FnOnce(T, Option<Loc>) -> Option<R>,
     {
-        f(self.node?, self.loc.into_maybe_loc())
+        f(self.node?, self.loc)
     }
 
     /// Get node data if present or return the error `EmptyNodeInvariantViolation`
@@ -202,11 +202,7 @@ impl<T> Node<Option<T>> {
 
     /// Get node data if present or return the error `EmptyNodeInvariantViolation`
     pub fn try_into_inner(self) -> Result<T, ToASTError> {
-        self.node.ok_or_else(|| {
-            ToASTError::new(
-                ToASTErrorKind::EmptyNodeInvariantViolation,
-                self.loc.into_maybe_loc(),
-            )
-        })
+        self.node
+            .ok_or_else(|| ToASTError::new(ToASTErrorKind::EmptyNodeInvariantViolation, self.loc))
     }
 }

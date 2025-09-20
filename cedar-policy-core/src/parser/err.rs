@@ -32,7 +32,7 @@ use crate::ast::{self, ReservedNameError};
 use crate::parser::fmt::join_with_conjunction;
 use crate::parser::node::Node;
 use crate::parser::unescape::UnescapeError;
-use crate::parser::{AsLocRef, Loc, MaybeLoc};
+use crate::parser::Loc;
 
 use super::cst;
 
@@ -75,7 +75,7 @@ pub enum LiteralParseError {
 #[error("{kind}")]
 pub struct ToASTError {
     kind: ToASTErrorKind,
-    loc: MaybeLoc,
+    loc: Option<Loc>,
 }
 
 // Construct `labels` and `source_code` based on the `loc` in this
@@ -106,7 +106,7 @@ impl Diagnostic for ToASTError {
 
 impl ToASTError {
     /// Construct a new `ToASTError`.
-    pub fn new(kind: ToASTErrorKind, loc: MaybeLoc) -> Self {
+    pub fn new(kind: ToASTErrorKind, loc: Option<Loc>) -> Self {
         Self { kind, loc }
     }
 
@@ -116,7 +116,7 @@ impl ToASTError {
     }
 
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
-        self.loc.as_loc_ref()
+        self.loc.as_ref()
     }
 }
 

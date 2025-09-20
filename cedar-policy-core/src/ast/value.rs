@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
+use crate::parser::{AsLocRef, Loc};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ pub struct Value {
     /// Source location associated with the value, if any
     #[educe(PartialEq(ignore))]
     #[educe(PartialOrd(ignore))]
-    pub loc: MaybeLoc,
+    pub loc: Option<Loc>,
 }
 
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
@@ -55,7 +55,7 @@ pub enum ValueKind {
 
 impl Value {
     /// Create a new empty set
-    pub fn empty_set(loc: MaybeLoc) -> Self {
+    pub fn empty_set(loc: Option<Loc>) -> Self {
         Self {
             value: ValueKind::empty_set(),
             loc,
@@ -63,7 +63,7 @@ impl Value {
     }
 
     /// Create a new empty record
-    pub fn empty_record(loc: MaybeLoc) -> Self {
+    pub fn empty_record(loc: Option<Loc>) -> Self {
         Self {
             value: ValueKind::empty_record(),
             loc,
@@ -72,7 +72,7 @@ impl Value {
 
     /// Create a `Value` from anything that implements `Into<ValueKind>` and an
     /// optional source location
-    pub fn new(value: impl Into<ValueKind>, loc: MaybeLoc) -> Self {
+    pub fn new(value: impl Into<ValueKind>, loc: Option<Loc>) -> Self {
         Self {
             value: value.into(),
             loc,
@@ -80,7 +80,7 @@ impl Value {
     }
 
     /// Create a set with the given `Value`s as elements
-    pub fn set(vals: impl IntoIterator<Item = Value>, loc: MaybeLoc) -> Self {
+    pub fn set(vals: impl IntoIterator<Item = Value>, loc: Option<Loc>) -> Self {
         Self {
             value: ValueKind::set(vals),
             loc,
@@ -91,7 +91,7 @@ impl Value {
     ///
     /// the resulting `Value` will have the given `loc` attached, but its
     /// individual `Literal` elements will not have a source loc attached
-    pub fn set_of_lits(lits: impl IntoIterator<Item = Literal>, loc: MaybeLoc) -> Self {
+    pub fn set_of_lits(lits: impl IntoIterator<Item = Literal>, loc: Option<Loc>) -> Self {
         Self {
             value: ValueKind::set_of_lits(lits),
             loc,
@@ -101,7 +101,7 @@ impl Value {
     /// Create a record with the given (key, value) pairs
     pub fn record<K: Into<SmolStr>, V: Into<Value>>(
         pairs: impl IntoIterator<Item = (K, V)>,
-        loc: MaybeLoc,
+        loc: Option<Loc>,
     ) -> Self {
         Self {
             value: ValueKind::record(pairs),
@@ -110,7 +110,7 @@ impl Value {
     }
 
     /// Create a record with the given attributes/value mapping.
-    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>, loc: MaybeLoc) -> Self {
+    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>, loc: Option<Loc>) -> Self {
         Self {
             value: ValueKind::record_arc(pairs),
             loc,
@@ -118,8 +118,16 @@ impl Value {
     }
 
     /// Return the `Value`, but with the given `Loc` (or `None`)
-    pub fn with_maybe_source_loc(self, loc: MaybeLoc) -> Self {
+    pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
         Self { loc, ..self }
+    }
+
+    /// Return the `Value`, but with the given `Loc`
+    pub fn with_source_loc(self, loc: Loc) -> Self {
+        Self {
+            loc: Some(loc),
+            ..self
+        }
     }
 
     /// Get the `ValueKind` for this `Value`
@@ -309,7 +317,7 @@ pub enum NotValue {
     #[error("not a value")]
     NotValue {
         /// Source location info for the expr that wasn't a value
-        loc: MaybeLoc,
+        loc: Option<Loc>,
     },
 }
 
@@ -335,7 +343,7 @@ impl TryFrom<Expr> for Value {
     type Error = NotValue;
 
     fn try_from(expr: Expr) -> Result<Self, Self::Error> {
-        let loc = expr.source_loc().into_maybe_loc();
+        let loc = expr.source_loc().cloned();
         Ok(Self {
             value: ValueKind::try_from(expr)?,
             loc,
@@ -347,7 +355,7 @@ impl TryFrom<Expr> for ValueKind {
     type Error = NotValue;
 
     fn try_from(expr: Expr) -> Result<Self, Self::Error> {
-        let loc = expr.source_loc().into_maybe_loc();
+        let loc = expr.source_loc().cloned();
         match expr.into_expr_kind() {
             ExprKind::Lit(lit) => Ok(Self::Lit(lit)),
             ExprKind::Unknown(_) => Err(NotValue::NotValue { loc }),

@@ -22,7 +22,7 @@ use crate::ast::{
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
-use crate::parser::IntoMaybeLoc;
+
 use std::sync::Arc;
 
 // PANIC SAFETY All the names are valid names
@@ -321,7 +321,7 @@ fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
 /// Cedar string
 fn ip_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
-    let arg_source_loc = arg.source_loc().into_maybe_loc();
+    let arg_source_loc = arg.source_loc();
     let ipaddr = RepresentableExtensionValue::new(
         Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
         names::IP_FROM_STR_NAME.clone(),
@@ -329,7 +329,7 @@ fn ip_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     );
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(ipaddr)),
-        loc: arg_source_loc, // this gives the loc of the arg. We could perhaps give instead the loc of the entire `ip("...")` call, but that is hard to do at this program point
+        loc: arg_source_loc.cloned(), // this gives the loc of the arg. We could perhaps give instead the loc of the entire `ip("...")` call, but that is hard to do at this program point
     }
     .into())
 }
