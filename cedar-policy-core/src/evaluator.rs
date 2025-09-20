@@ -1049,15 +1049,11 @@ impl Evaluator<'_> {
         use std::collections::HashMap;
         match self.partial_interpret(e, &HashMap::new())? {
             PartialValue::Value(v) => {
-                debug_assert!(
-                    e.source_loc().cloned().is_some() == v.source_loc().cloned().is_some()
-                );
+                debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
                 Ok(v)
             }
             PartialValue::Residual(r) => {
-                debug_assert!(
-                    e.source_loc().cloned().is_some() == r.source_loc().cloned().is_some()
-                );
+                debug_assert!(e.source_loc().is_some() == r.source_loc().is_some());
                 Err(err::EvaluationError::non_value(r))
             }
         }
