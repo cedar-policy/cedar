@@ -39,11 +39,12 @@ use crate::{
         AttributeType as CoreAttributeType, SchemaType as CoreSchemaType,
     },
     extensions::{ExtensionFunctionLookupError, Extensions},
-    parser::Loc,
     validator::{validation_errors::LubHelp, ValidationMode},
 };
 
 #[cfg(feature = "extended-schema")]
+use crate::parser::Loc;
+
 use super::schema::{ValidatorActionId, ValidatorEntityType, ValidatorSchema};
 
 /// The main type structure.
