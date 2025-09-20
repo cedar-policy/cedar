@@ -754,12 +754,11 @@ impl ValidatorSchema {
                         tags,
                     } => {
                         let (attributes, open_attributes) = {
-                            let attr_binding = attributes.0.clone();
-                            let attr_loc = attr_binding.loc();
+                            let attr_loc = attributes.0.loc().cloned();
                             let unresolved = try_jsonschema_type_into_validator_type(
                                 attributes.0,
                                 extensions,
-                                attr_loc.cloned(),
+                                attr_loc,
                             )?;
                             Self::record_attributes_or_none(
                                 unresolved.resolve_common_type_refs(&common_types)?,
@@ -772,13 +771,8 @@ impl ValidatorSchema {
                         };
                         let tags = tags
                             .map(|tags| {
-                                let tags_binding = tags.clone();
-                                let tags_loc = tags_binding.loc();
-                                try_jsonschema_type_into_validator_type(
-                                    tags,
-                                    extensions,
-                                    tags_loc.cloned(),
-                                )
+                                let tags_loc = tags.loc().cloned();
+                                try_jsonschema_type_into_validator_type(tags, extensions, tags_loc)
                             })
                             .transpose()?
                             .map(|unresolved| unresolved.resolve_common_type_refs(&common_types))
@@ -814,12 +808,11 @@ impl ValidatorSchema {
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
                 let (context, open_context_attributes) = {
-                    let context_binding = action.context.clone();
-                    let context_loc = context_binding.loc();
+                    let context_loc = action.context.loc().cloned();
                     let unresolved = try_jsonschema_type_into_validator_type(
                         action.context,
                         extensions,
-                        context_loc.cloned(),
+                        context_loc,
                     )?;
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
@@ -1632,12 +1625,11 @@ impl<'a> CommonTypeResolver<'a> {
             let ty = self.defs.get(name).unwrap();
             let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
             resolve_table.insert(name, substituted_ty.clone());
-            let substituted_ty_binding = substituted_ty.clone();
-            let substituted_ty_loc = substituted_ty_binding.loc();
+            let substituted_ty_loc = substituted_ty.loc().cloned();
             let validator_type = try_jsonschema_type_into_validator_type(
                 substituted_ty,
                 extensions,
-                substituted_ty_loc.cloned(),
+                substituted_ty_loc,
             )?;
             let validator_type = validator_type.resolve_common_type_refs(&HashMap::new())?;
 
