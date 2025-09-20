@@ -995,8 +995,8 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         }
     }
 
-    fn with_source_loc(mut self, maybe_source_loc: &Loc) -> Self {
-        self.source_loc = Some(maybe_source_loc.clone());
+    fn with_source_loc(mut self, source_loc: &Loc) -> Self {
+        self.source_loc = Some(source_loc.clone());
         self
     }
 

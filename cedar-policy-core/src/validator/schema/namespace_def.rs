@@ -958,10 +958,13 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
         f: impl FnOnce(T) -> U + 'static,
     ) -> WithUnresolvedCommonTypeRefs<U> {
         match self {
-            Self::WithUnresolved(resolve_func, loc) => WithUnresolvedCommonTypeRefs::new(
-                move |common_type_defs| resolve_func(common_type_defs).map(f),
-                loc,
-            ),
+            Self::WithUnresolved(_, ref loc) => {
+                let loc = loc.clone();
+                WithUnresolvedCommonTypeRefs::new(
+                    |common_type_defs| self.resolve_common_type_refs(common_type_defs).map(f),
+                    loc,
+                )
+            }
             Self::WithoutUnresolved(v, loc) => {
                 WithUnresolvedCommonTypeRefs::WithoutUnresolved(f(v), loc)
             }

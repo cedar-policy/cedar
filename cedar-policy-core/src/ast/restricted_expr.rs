@@ -87,8 +87,8 @@ impl RestrictedExpr {
     }
 
     /// Return the `RestrictedExpr`, but with the new `source_loc` (or `None`).
-    pub fn with_source_loc(self, source_loc: Loc) -> Self {
-        Self(self.0.with_maybe_source_loc(Some(source_loc)))
+    pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+        Self(self.0.with_maybe_source_loc(source_loc))
     }
 
     /// Create a `RestrictedExpr` that's just a single `Literal`.
@@ -240,10 +240,7 @@ impl RestrictedExpr {
 
 impl From<Value> for RestrictedExpr {
     fn from(value: Value) -> RestrictedExpr {
-        match value.loc {
-            Some(loc) => RestrictedExpr::from(value.value).with_source_loc(loc),
-            None => RestrictedExpr::from(value.value),
-        }
+        RestrictedExpr::from(value.value).with_maybe_source_loc(value.loc)
     }
 }
 
