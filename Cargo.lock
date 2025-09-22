@@ -316,6 +316,7 @@ dependencies = [
  "dhat",
  "globset",
  "itertools 0.14.0",
+ "linked-hash-map",
  "miette",
  "nonempty",
  "oorandom",
@@ -366,6 +367,8 @@ dependencies = [
  "itertools 0.14.0",
  "lalrpop",
  "lalrpop-util",
+ "linked-hash-map",
+ "linked_hash_set",
  "miette",
  "nonempty",
  "ref-cast",
@@ -1341,6 +1344,24 @@ name = "libc"
 version = "0.2.175"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a82ae493e598baaea5209805c49bbf2ea7de956d50d7da0da1164f9c6d28543"
+
+[[package]]
+name = "linked-hash-map"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "linked_hash_set"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bae85b5be22d9843c80e5fc80e9b64c8a3b1f98f867c709956eca3efff4e92e2"
+dependencies = [
+ "linked-hash-map",
+]
 
 [[package]]
 name = "linux-raw-sys"
