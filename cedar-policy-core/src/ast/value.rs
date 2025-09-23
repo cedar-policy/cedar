@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::{AsLocRef, Loc};
+use crate::parser::Loc;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -122,14 +122,6 @@ impl Value {
         Self { loc, ..self }
     }
 
-    /// Return the `Value`, but with the given `Loc`
-    pub fn with_source_loc(self, loc: Loc) -> Self {
-        Self {
-            loc: Some(loc),
-            ..self
-        }
-    }
-
     /// Get the `ValueKind` for this `Value`
     pub fn value_kind(&self) -> &ValueKind {
         &self.value
@@ -137,7 +129,7 @@ impl Value {
 
     /// Get the `Loc` attached to this `Value`, if there is one
     pub fn source_loc(&self) -> Option<&Loc> {
-        self.loc.as_loc_ref()
+        self.loc.as_ref()
     }
 
     /// If the value is a `Literal`, get a reference to the underlying `Literal`
@@ -324,7 +316,7 @@ pub enum NotValue {
 impl Diagnostic for NotValue {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
-            Self::NotValue { loc } => loc.as_loc_ref().map(|loc| {
+            Self::NotValue { loc } => loc.as_ref().map(|loc| {
                 Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _
             }),
         }
@@ -332,9 +324,7 @@ impl Diagnostic for NotValue {
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match self {
-            Self::NotValue { loc } => loc
-                .as_loc_ref()
-                .map(|loc| &loc.src as &dyn miette::SourceCode),
+            Self::NotValue { loc } => loc.as_ref().map(|loc| &loc.src as &dyn miette::SourceCode),
         }
     }
 }

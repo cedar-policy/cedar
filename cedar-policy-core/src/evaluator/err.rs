@@ -16,7 +16,7 @@
 
 use crate::ast::*;
 use crate::extensions::ExtensionFunctionLookupError;
-use crate::parser::{AsLocRef, Loc};
+use crate::parser::Loc;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use smol_str::SmolStr;
@@ -105,19 +105,19 @@ impl EvaluationError {
     /// Extract the source location of the error, if one is attached
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
-            Self::EntityDoesNotExist(e) => e.source_loc.as_loc_ref(),
-            Self::EntityAttrDoesNotExist(e) => e.source_loc.as_loc_ref(),
-            Self::RecordAttrDoesNotExist(e) => e.source_loc.as_loc_ref(),
+            Self::EntityDoesNotExist(e) => e.source_loc.as_ref(),
+            Self::EntityAttrDoesNotExist(e) => e.source_loc.as_ref(),
+            Self::RecordAttrDoesNotExist(e) => e.source_loc.as_ref(),
             Self::FailedExtensionFunctionLookup(e) => e.source_loc(),
-            Self::TypeError(e) => e.source_loc.as_loc_ref(),
-            Self::WrongNumArguments(e) => e.source_loc.as_loc_ref(),
+            Self::TypeError(e) => e.source_loc.as_ref(),
+            Self::WrongNumArguments(e) => e.source_loc.as_ref(),
             Self::IntegerOverflow(e) => e.source_loc(),
-            Self::UnlinkedSlot(e) => e.source_loc.as_loc_ref(),
-            Self::FailedExtensionFunctionExecution(e) => e.source_loc.as_loc_ref(),
-            Self::NonValue(e) => e.source_loc.as_loc_ref(),
-            Self::RecursionLimit(e) => e.source_loc.as_loc_ref(),
+            Self::UnlinkedSlot(e) => e.source_loc.as_ref(),
+            Self::FailedExtensionFunctionExecution(e) => e.source_loc.as_ref(),
+            Self::NonValue(e) => e.source_loc.as_ref(),
+            Self::RecursionLimit(e) => e.source_loc.as_ref(),
             #[cfg(feature = "tolerant-ast")]
-            Self::ASTErrorExpr(e) => e.source_loc.as_loc_ref(),
+            Self::ASTErrorExpr(e) => e.source_loc.as_ref(),
         }
     }
 
@@ -341,7 +341,7 @@ impl EvaluationError {
 /// Error subtypes for [`EvaluationError`]
 pub mod evaluation_errors {
     use crate::ast::{BinaryOp, EntityUID, Expr, SlotId, Type, UnaryOp, Value};
-    use crate::parser::{AsLocRef, Loc};
+    use crate::parser::Loc;
     use itertools::Itertools;
     use miette::Diagnostic;
     use nonempty::NonEmpty;
@@ -582,8 +582,8 @@ pub mod evaluation_errors {
     impl IntegerOverflowError {
         pub(crate) fn source_loc(&self) -> Option<&Loc> {
             match self {
-                Self::BinaryOp(e) => e.source_loc.as_loc_ref(),
-                Self::UnaryOp(e) => e.source_loc.as_loc_ref(),
+                Self::BinaryOp(e) => e.source_loc.as_ref(),
+                Self::UnaryOp(e) => e.source_loc.as_ref(),
             }
         }
 

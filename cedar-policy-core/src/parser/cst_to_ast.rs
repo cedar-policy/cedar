@@ -349,7 +349,7 @@ impl Node<Option<cst::Policy>> {
             action,
             resource,
             conds,
-            self.loc.as_ref(),
+            self.loc(),
         ))
     }
 

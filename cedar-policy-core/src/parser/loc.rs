@@ -74,40 +74,6 @@ impl From<&Loc> for miette::SourceSpan {
     }
 }
 
-/// Trait to define conversions to `Option<&Loc>`
-pub trait AsLocRef {
-    /// Automatic conversion to `Option<&Loc>`
-    fn as_loc_ref(&self) -> Option<&Loc>;
-}
-
-impl AsLocRef for Option<Loc> {
-    #[inline]
-    fn as_loc_ref(&self) -> Option<&Loc> {
-        self.as_ref()
-    }
-}
-
-impl AsRef<Loc> for Loc {
-    #[inline]
-    fn as_ref(&self) -> &Loc {
-        self
-    }
-}
-
-impl AsLocRef for Loc {
-    #[inline]
-    fn as_loc_ref(&self) -> Option<&Loc> {
-        Some(self)
-    }
-}
-
-impl AsLocRef for Option<Box<Loc>> {
-    #[inline]
-    fn as_loc_ref(&self) -> Option<&Loc> {
-        self.as_deref()
-    }
-}
-
 impl miette::SourceCode for Loc {
     fn read_span<'a>(
         &'a self,

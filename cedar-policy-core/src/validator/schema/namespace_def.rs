@@ -19,9 +19,6 @@
 
 use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
-#[cfg(feature = "extended-schema")]
-use crate::parser::Loc;
-#[cfg(not(feature = "extended-schema"))]
 use crate::parser::Loc;
 use crate::{
     ast::{

@@ -19,7 +19,7 @@ use crate::entities::{err::EntitiesError, json::err::JsonSerializationError, Ent
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
-use crate::parser::{AsLocRef, Loc};
+use crate::parser::Loc;
 use crate::transitive_closure::TCNode;
 use crate::FromNormalizedStr;
 use educe::Educe;
@@ -306,7 +306,7 @@ impl EntityUID {
     /// Get the source location for this `EntityUID`.
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_loc_ref(),
+            EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_ref(),
             #[cfg(feature = "tolerant-ast")]
             EntityUID::Error => None,
         }

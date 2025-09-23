@@ -3127,12 +3127,6 @@ impl Template {
         })
     }
 
-    /// Attempt to parse a [`Template`] from source, without retaining source information.
-    /// Returns `None` if the input is a static policy (i.e., has no slots).
-    /// If `id` is Some, then the resulting template will have that `id`.
-    /// If the `id` is None, the parser will use the default "policy0".
-    /// The behavior around None may change in the future.
-
     /// Get the `PolicyId` of this `Template`
     pub fn id(&self) -> &PolicyId {
         PolicyId::ref_cast(self.ast.id())
@@ -3837,16 +3831,6 @@ impl Policy {
             }
         }
     }
-
-    /// Attempt to parse a [`Policy`] from source, without retaining source information.
-    /// If `id` is Some, the policy will be given that Policy Id.
-    /// If `id` is None, then "policy0" will be used.
-    /// The behavior around None may change in the future.
-    ///
-    /// This can fail if the policy fails to parse.
-    /// It can also fail if a template was passed in, as this function only accepts static
-    /// policies.
-    ///
 
     /// Get all the unknown entities from the policy
     #[doc = include_str!("../experimental_warning.md")]

@@ -259,11 +259,13 @@ impl<'e> RestrictedEvaluator<'e> {
         // also, if there is an error, set its source location to the source
         // location of the input expression as well, unless it already had a
         // more specific location
-        let expr_loc = expr.source_loc().cloned();
-        res.map(|pval| pval.with_maybe_source_loc(expr_loc.clone()))
-            .map_err(|err| match err.source_loc().cloned() {
-                None => err.with_maybe_source_loc(expr_loc),
-                Some(_) => err,
+        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
+            .map_err(|err| {
+                if err.source_loc().is_none() {
+                    err.with_maybe_source_loc(expr.source_loc().cloned())
+                } else {
+                    err
+                }
             })
     }
 
@@ -433,11 +435,13 @@ impl<'e> Evaluator<'e> {
         // also, if there is an error, set its source location to the source
         // location of the input expression as well, unless it already had a
         // more specific location
-        let expr_loc = expr.source_loc().cloned();
-        res.map(|pval| pval.with_maybe_source_loc(expr_loc.clone()))
-            .map_err(|err| match err.source_loc().cloned() {
-                None => err.with_maybe_source_loc(expr_loc),
-                Some(_) => err,
+        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
+            .map_err(|err| {
+                if err.source_loc().is_none() {
+                    err.with_maybe_source_loc(expr.source_loc().cloned())
+                } else {
+                    err
+                }
             })
     }
 
@@ -452,12 +456,12 @@ impl<'e> Evaluator<'e> {
     /// `partial_interpret()`.
     #[allow(clippy::cognitive_complexity)]
     fn partial_interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
-        let loc = expr.source_loc().cloned(); // the `loc` describing the location of the entire expression
+        let loc = expr.source_loc(); // the `loc` describing the location of the entire expression
         match expr.expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Slot(id) => slots
                 .get(id)
-                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc))
+                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc.cloned()))
                 .map(|euid| PartialValue::from(euid.clone())),
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate(*v)),
@@ -524,7 +528,7 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::UnaryApp { op, arg } => match self.partial_interpret(arg, slots)? {
-                PartialValue::Value(arg) => unary_app(*op, arg, loc.as_ref()).map(Into::into),
+                PartialValue::Value(arg) => unary_app(*op, arg, loc).map(Into::into),
                 // NOTE, there was a bug here found during manual review. (I forgot to wrap in unary_app call)
                 // Could be a nice target for fault injection
                 PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::unary_app(*op, r))),
@@ -563,7 +567,7 @@ impl<'e> Evaluator<'e> {
                         binary_relation(*op, &arg1, &arg2, self.extensions).map(Into::into)
                     }
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
-                        binary_arith(*op, arg1, arg2, loc.as_ref()).map(Into::into)
+                        binary_arith(*op, arg1, arg2, loc).map(Into::into)
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
@@ -636,7 +640,7 @@ impl<'e> Evaluator<'e> {
                                                 entity.tag_keys(),
                                                 entity.get(tag).is_some(),
                                                 entity.tags_len(),
-                                                loc, // intentionally using the location of the entire `GetTag` expression
+                                                loc.cloned(), // intentionally using the location of the entire `GetTag` expression
                                             )
                                         })
                                         .cloned(),
@@ -676,9 +680,7 @@ impl<'e> Evaluator<'e> {
                     )),
                 }
             }
-            ExprKind::GetAttr { expr, attr } => {
-                self.get_attr(expr.as_ref(), attr, slots, loc.as_ref())
-            }
+            ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
             ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
                 PartialValue::Value(Value {
                     value: ValueKind::Record(record),
@@ -739,7 +741,7 @@ impl<'e> Evaluator<'e> {
                     .map(|item| self.partial_interpret(item, slots))
                     .collect::<Result<Vec<_>>>()?;
                 match split(vals) {
-                    Either::Left(vals) => Ok(Value::set(vals, loc).into()),
+                    Either::Left(vals) => Ok(Value::set(vals, loc.cloned()).into()),
                     Either::Right(r) => Ok(Expr::set(r).into()),
                 }
             }
@@ -751,7 +753,7 @@ impl<'e> Evaluator<'e> {
                 let (names, evalled): (Vec<SmolStr>, Vec<PartialValue>) = map.into_iter().unzip();
                 match split(evalled) {
                     Either::Left(vals) => {
-                        Ok(Value::record(names.into_iter().zip(vals), loc).into())
+                        Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
                     }
                     Either::Right(rs) => {
                         // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
@@ -765,7 +767,9 @@ impl<'e> Evaluator<'e> {
                 }
             }
             #[cfg(feature = "tolerant-ast")]
-            ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError { source_loc: loc })),
+            ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
+                source_loc: loc.cloned(),
+            })),
         }
     }
 

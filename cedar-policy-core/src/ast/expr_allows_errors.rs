@@ -3,7 +3,7 @@ use crate::{
     expr_builder::{self},
     parser::{
         err::{ParseErrors, ToASTErrorKind},
-        AsLocRef, Loc,
+        Loc,
     },
 };
 use smol_str::SmolStr;
@@ -41,7 +41,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
     type ErrorType = Infallible;
 
     fn loc(&self) -> Option<&Loc> {
-        self.source_loc.as_loc_ref()
+        self.source_loc.as_ref()
     }
 
     fn data(&self) -> &Self::Data {

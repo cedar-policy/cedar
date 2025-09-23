@@ -23,7 +23,7 @@ use crate::ast::EntityUID;
 use crate::parser::{
     cst::{self, Literal},
     err::{self, ParseErrors, ToASTError, ToASTErrorKind},
-    AsLocRef, Loc, Node,
+    Loc, Node,
 };
 
 /// Type level marker for parsing sets of entity uids or single uids
@@ -240,7 +240,7 @@ impl Node<Option<cst::Primary>> {
                 // it's the wrong slot. This avoids getting an error
                 // `found ?action instead of ?action` when `action` doesn't
                 // support slots.
-                let slot_ref = T::create_slot(self.loc.as_loc_ref())?;
+                let slot_ref = T::create_slot(self.loc())?;
                 let slot = s.try_as_inner()?;
                 if slot.matches(var) {
                     Ok(slot_ref)
@@ -297,7 +297,7 @@ impl Node<Option<cst::Primary>> {
             cst::Primary::EList(lst) => {
                 // Calling `create_multiple_refs` first so that we error
                 // immediately if we see a set when we don't expect one.
-                let create_multiple_refs = T::create_multiple_refs(self.loc.as_loc_ref())?;
+                let create_multiple_refs = T::create_multiple_refs(self.loc())?;
                 let v = match tolerant_setting {
                     TolerantAstSetting::NotTolerant => {
                         ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?
@@ -491,7 +491,6 @@ mod test {
     use crate::parser::cst::Name;
     use crate::parser::cst_to_ast::to_ref_or_refs::SingleEntity;
     use crate::parser::cst_to_ast::TolerantAstSetting;
-
     use crate::parser::Loc;
     use crate::parser::Node;
 

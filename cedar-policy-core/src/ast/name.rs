@@ -29,7 +29,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::{AsLocRef, Loc};
+use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
 /// Represents the name of an entity type, function, etc.
@@ -122,7 +122,7 @@ impl InternalName {
 
     /// Get the source location
     pub fn loc(&self) -> Option<&Loc> {
-        self.loc.as_loc_ref()
+        self.loc.as_ref()
     }
 
     /// Get the basename of the [`InternalName`] (ie, with namespaces stripped).

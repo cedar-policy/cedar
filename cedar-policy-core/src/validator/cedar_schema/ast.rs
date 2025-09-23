@@ -18,7 +18,7 @@ use std::{collections::BTreeMap, iter::once};
 
 use crate::{
     ast::{Annotation, Annotations, AnyId, Id, InternalName},
-    parser::{AsLocRef, Loc, Node},
+    parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
 use nonempty::NonEmpty;
@@ -113,7 +113,7 @@ impl Path {
 
     /// Source [`Loc`] of this [`Path`]
     pub fn loc(&self) -> Option<&Loc> {
-        self.0.loc.as_loc_ref()
+        self.0.loc.as_ref()
     }
 
     /// Consume the [`Path`] and get an owned iterator over the elements. Most significant name first

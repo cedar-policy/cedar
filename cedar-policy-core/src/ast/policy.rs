@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::{AsLocRef, Loc};
+use crate::parser::Loc;
 use annotation::{Annotation, Annotations};
 use educe::Educe;
 use itertools::Itertools;
@@ -1016,9 +1016,9 @@ impl TemplateBody {
     /// Get the location of this policy
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            TemplateBody::TemplateBody(TemplateBodyImpl { loc, .. }) => loc.as_loc_ref(),
+            TemplateBody::TemplateBody(TemplateBodyImpl { loc, .. }) => loc.as_ref(),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_, loc) => loc.as_loc_ref(),
+            TemplateBody::TemplateBodyError(_, loc) => loc.as_ref(),
         }
     }
 
@@ -1573,7 +1573,7 @@ pub enum UnexpectedSlotError {
 impl Diagnostic for UnexpectedSlotError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
-            Self::FoundSlot(Slot { loc, .. }) => loc.as_loc_ref().map(|loc| {
+            Self::FoundSlot(Slot { loc, .. }) => loc.as_ref().map(|loc| {
                 let label = miette::LabeledSpan::underline(loc.span);
                 Box::new(std::iter::once(label)) as _
             }),
@@ -1582,9 +1582,7 @@ impl Diagnostic for UnexpectedSlotError {
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match self {
-            Self::FoundSlot(Slot { loc, .. }) => {
-                loc.as_loc_ref().map(|l| l as &dyn miette::SourceCode)
-            }
+            Self::FoundSlot(Slot { loc, .. }) => loc.as_ref().map(|l| l as &dyn miette::SourceCode),
         }
     }
 }
@@ -2412,8 +2410,8 @@ mod test {
         use std::str::FromStr;
 
         let policy_id = PolicyID::from_string("error_policy");
-        let error_loc = Some(Loc::new(0..1, "ASTErrorNode".into()));
-        let error_body = TemplateBody::TemplateBodyError(policy_id.clone(), error_loc.clone());
+        let error_loc = Some(&Loc::new(0..1, "ASTErrorNode".into()));
+        let error_body = TemplateBody::TemplateBodyError(policy_id.clone(), error_loc.cloned());
 
         let expected_error = <ExprWithErrsBuilder as ExprBuilder>::new()
             .error(ParseErrors::singleton(ToASTError::new(
@@ -2426,13 +2424,13 @@ mod test {
         assert_eq!(error_body.id(), &policy_id);
 
         // Test loc() method
-        assert_eq!(error_body.loc(), error_loc.as_loc_ref());
+        assert_eq!(error_body.loc(), error_loc);
 
         // Test new_id() method
         let new_policy_id = PolicyID::from_string("new_error_policy");
         let updated_error_body = error_body.new_id(new_policy_id.clone());
         assert_matches!(updated_error_body,
-            TemplateBody::TemplateBodyError(id, loc) if id == new_policy_id && loc.clone() == error_loc
+            TemplateBody::TemplateBodyError(id, loc) if id == new_policy_id && loc.as_ref() == error_loc
         );
 
         // Test effect() method
@@ -2475,8 +2473,8 @@ mod test {
     #[test]
     fn template_error_methods() {
         let policy_id = PolicyID::from_string("error_policy");
-        let error_loc = Some(Loc::new(0..1, "ASTErrorNode".into()));
-        let error_template = Template::error(policy_id.clone(), error_loc.clone());
+        let error_loc = Some(&Loc::new(0..1, "ASTErrorNode".into()));
+        let error_template = Template::error(policy_id.clone(), error_loc.cloned());
 
         // Check template properties
         assert_eq!(error_template.id(), &policy_id);
@@ -2486,7 +2484,7 @@ mod test {
 
         // Check body is an error template body
         assert_matches!(error_template.body,
-            TemplateBody::TemplateBodyError(ref id, ref loc) if id == &policy_id && loc.clone() == error_loc
+            TemplateBody::TemplateBodyError(ref id, ref loc) if id == &policy_id && loc.as_ref() == error_loc
         );
 
         // Test principal_constraint() method
@@ -2514,7 +2512,7 @@ mod test {
         );
 
         // Verify location is None
-        assert_eq!(error_template.loc(), error_loc.as_loc_ref());
+        assert_eq!(error_template.loc(), error_loc);
 
         // Verify annotations are default
         assert!(error_template.annotations().count() == 0);

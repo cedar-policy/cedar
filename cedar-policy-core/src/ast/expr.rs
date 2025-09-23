@@ -24,7 +24,7 @@ use crate::{
     ast::*,
     expr_builder::{self, ExprBuilder as _},
     extensions::Extensions,
-    parser::{err::ParseErrors, AsLocRef, Loc},
+    parser::{err::ParseErrors, Loc},
 };
 use educe::Educe;
 use miette::Diagnostic;
@@ -242,20 +242,12 @@ impl<T> Expr<T> {
 
     /// Access the `Loc` stored on the `Expr`.
     pub fn source_loc(&self) -> Option<&Loc> {
-        self.source_loc.as_loc_ref()
+        self.source_loc.as_ref()
     }
 
     /// Return the `Expr`, but with the new `source_loc` (or `None`).
     pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
         Self { source_loc, ..self }
-    }
-
-    /// Return the `Expr`, but with the new `source_loc`.
-    pub fn with_source_loc(self, source_loc: Loc) -> Self {
-        Self {
-            source_loc: Some(source_loc),
-            ..self
-        }
     }
 
     /// Update the data for this `Expr`. A convenient function used by the
@@ -981,7 +973,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     type ErrorType = ParseErrors;
 
     fn loc(&self) -> Option<&Loc> {
-        self.source_loc.as_loc_ref()
+        self.source_loc.as_ref()
     }
 
     fn data(&self) -> &Self::Data {
@@ -993,11 +985,6 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
             source_loc: None,
             data,
         }
-    }
-
-    fn with_source_loc(mut self, source_loc: &Loc) -> Self {
-        self.source_loc = Some(source_loc.clone());
-        self
     }
 
     fn with_maybe_source_loc(mut self, maybe_source_loc: Option<&Loc>) -> Self {
@@ -1343,7 +1330,7 @@ impl<T: Clone + Default> ExprBuilder<T> {
     /// location as an existing expression. This is done when reconstructing the
     /// `Expr` with type information.
     pub fn with_same_source_loc<U>(self, expr: &Expr<U>) -> Self {
-        self.with_maybe_source_loc(expr.source_loc.as_loc_ref())
+        self.with_maybe_source_loc(expr.source_loc.as_ref())
     }
 }
 

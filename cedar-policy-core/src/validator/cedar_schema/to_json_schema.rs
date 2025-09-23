@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use crate::{
     ast::{Annotations, Id, Name, UnreservedId},
     extensions::Extensions,
-    parser::{AsLocRef, Loc, Node},
+    parser::{Loc, Node},
 };
 use itertools::Either;
 use nonempty::NonEmpty;
@@ -231,7 +231,7 @@ fn convert_action_decl(
     } = a.data.node;
     // Create the internal type from the 'applies_to' clause and 'member_of'
     let applies_to = app_decls
-        .map(|decls| convert_app_decls(&names.first().node, names.first().loc.as_loc_ref(), decls))
+        .map(|decls| convert_app_decls(&names.first().node, names.first().loc.as_ref(), decls))
         .transpose()?
         .unwrap_or_else(|| json_schema::ApplySpec {
             resource_types: vec![],

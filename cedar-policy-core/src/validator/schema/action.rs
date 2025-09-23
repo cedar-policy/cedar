@@ -18,7 +18,7 @@
 
 use crate::{
     ast::{self, EntityType, EntityUID, PartialValue},
-    parser::{AsLocRef, Loc},
+    parser::Loc,
     transitive_closure::TCNode,
 };
 use smol_str::SmolStr;
@@ -100,7 +100,7 @@ impl ValidatorActionId {
 
     /// The source location if available
     pub fn loc(&self) -> Option<&Loc> {
-        self.loc.as_loc_ref()
+        self.loc.as_ref()
     }
 
     /// Iterator over the actions that are members of this action

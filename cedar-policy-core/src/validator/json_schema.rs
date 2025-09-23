@@ -21,7 +21,7 @@ use crate::{
     entities::CedarValueJson,
     est::Annotations,
     extensions::Extensions,
-    parser::{AsLocRef, Loc},
+    parser::Loc,
     FromNormalizedStr,
 };
 use educe::Educe;
@@ -1329,8 +1329,8 @@ impl<N> Type<N> {
     /// Get the source location of this [`Type`]
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            Self::Type { loc, .. } => loc.as_loc_ref(),
-            Self::CommonTypeRef { loc, .. } => loc.as_loc_ref(),
+            Self::Type { loc, .. } => loc.as_ref(),
+            Self::CommonTypeRef { loc, .. } => loc.as_ref(),
         }
     }
 

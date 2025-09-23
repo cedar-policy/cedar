@@ -32,7 +32,7 @@ use std::sync::LazyLock;
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
 use crate::extensions::extension_initialization_errors::MultipleConstructorsSameSignatureError;
-use crate::parser::{AsLocRef, Loc};
+use crate::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -243,7 +243,7 @@ pub enum ExtensionFunctionLookupError {
 impl ExtensionFunctionLookupError {
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
-            Self::FuncDoesNotExist(e) => e.source_loc.as_loc_ref(),
+            Self::FuncDoesNotExist(e) => e.source_loc.as_ref(),
         }
     }
 
