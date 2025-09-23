@@ -1,4 +1,4 @@
-name: Nightly downstream
+name: Nightly Build Downstream Dependencies
 on:
   workflow_dispatch:
   schedule:
@@ -10,8 +10,11 @@ env:
   CARGO_TERM_COLOR: always
 jobs:
   build-cedar-java:
-    needs: get-branch-name
     uses: cedar-policy/cedar-java/.github/workflows/run_cedar_java_reusable.yml@main
     with:
-      cedar_policy_ref: 'main'
-      cedar_java_ref: 'main'
+      # The fully-formed ref of the branch or tag that triggered the workflow run.
+      cedar_policy_ref: ${{ github.ref }}
+      # Since this workflow is not triggered by pull request events, 
+      # this will be the short ref name of the branch or tag that triggered the workflow run.
+      # For more information see: https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context
+      cedar_java_ref: ${{ github.ref_name }} 
