@@ -263,9 +263,10 @@ mod tests {
         policy::{cedar::EntityTypeKind, hover::ToHover, types::cedar::CedarTypeKind},
         test_utils::{remove_caret_marker, schema_document_context, schema_info},
     };
-    use cedar_policy_core::ast::EntityType;
+    use cedar_policy_core::ast::{EntityType, EntityUID};
 
     use tracing_test::traced_test;
+    use similar_asserts::assert_eq;
 
     macro_rules! schema_hover_test {
         ($name:ident, $policy:expr, ty: $expected:ty) => {
@@ -376,6 +377,24 @@ mod tests {
     );
 
     schema_hover_test!(
+        hover_over_entity_in_principal_scope,
+        r#"permit(principal in Us|caret|er::"bob", action, resource);"#,
+        expr: entity_type("User")
+    );
+
+    schema_hover_test!(
+        hover_over_entity_in_resource_scope,
+        r#"permit(principal, action, resource == H|caret|otel::"h" );"#,
+        expr: entity_type("Hotel")
+    );
+
+    schema_hover_test!(
+        hover_over_entity_in_action_scope,
+        r#"permit(principal, action == Actio|caret|n::"act", resource);"#,
+        expr: "Action::\"act\"".parse::<EntityUID>().unwrap()
+    );
+
+    schema_hover_test!(
         hover_over_in_within_action_dec,
         r#"permit(principal in User::"bob", action i|caret|n Action::"foo", resource) when { true };"#,
         expr: InDocumentation
@@ -409,6 +428,18 @@ mod tests {
         hover_over_is_entity_type_within_principal_dec,
         r"permit(principal is Us|caret|er, action, resource) when { true };",
         expr: entity_type("User")
+    );
+
+    schema_hover_test!(
+        hover_over_is_operator_type_within_scope_principal,
+        r"permit(principal i|caret|s User, action, resource);",
+        expr: IsDocumentation
+    );
+
+    schema_hover_test!(
+        hover_over_is_operator_type_within_scope_resource,
+        r"permit(principal is User, action, resource i|caret|s Hotel);",
+        expr: IsDocumentation
     );
 
     schema_hover_test!(

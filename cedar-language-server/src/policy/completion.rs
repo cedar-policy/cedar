@@ -25,7 +25,7 @@ pub(crate) mod snippets;
 
 use snippets::condition_completions;
 
-use std::{fmt::Display, sync::Arc};
+use std::sync::Arc;
 
 use crate::schema::SchemaInfo;
 
@@ -134,24 +134,6 @@ impl CompletionContextKind {
             Self::Identity(completion_items) => completion_items,
             Self::ConditionDefault => condition_completions(document_context),
             _ => Vec::new(),
-        }
-    }
-}
-
-impl Display for CompletionContextKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Attr { .. } => write!(f, "Attr"),
-            Self::EntityLiteral { entity_uid } => {
-                write!(f, "EntityLiteral<{entity_uid}>")
-            }
-            Self::Is { .. } => write!(f, "Is"),
-            Self::Unknown => write!(f, "Unknown"),
-            Self::BinaryOp(binary_op) => write!(f, "{binary_op:?}"),
-            Self::Identity(completion_items) => write!(f, "{completion_items:?}"),
-            Self::None => write!(f, "None"),
-            Self::ScopeDefault => write!(f, "ScopeDefault"),
-            Self::ConditionDefault => write!(f, "ConditionDefault"),
         }
     }
 }
