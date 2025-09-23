@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::{parser::AsLocRef, validator::ValidatorSchema};
+use cedar_policy_core::validator::ValidatorSchema;
 use itertools::Itertools;
 use tower_lsp_server::lsp_types::{self, FoldingRange};
 
@@ -70,18 +70,14 @@ pub(crate) fn fold_schema(schema_info: &SchemaInfo) -> Option<Vec<FoldingRange>>
     let validator = ValidatorSchema::try_from(schema_info).ok()?;
 
     // Get namespace locations first (will contain other elements)
-    let namespace_locs = validator
-        .namespaces()
-        .filter_map(|ns| ns.def_loc.as_loc_ref());
+    let namespace_locs = validator.namespaces().filter_map(|ns| ns.def_loc.as_ref());
 
     // Get locations for all other elements
-    let entity_type_locs = validator
-        .entity_types()
-        .filter_map(|et| et.loc.as_loc_ref());
+    let entity_type_locs = validator.entity_types().filter_map(|et| et.loc.as_ref());
     let action_locs = validator.action_ids().filter_map(|a| a.loc());
     let common_types = validator
         .common_types()
-        .filter_map(|ct| ct.type_loc.as_loc_ref());
+        .filter_map(|ct| ct.type_loc.as_ref());
 
     // Combine all locations and create folding ranges
     let ranges = namespace_locs
