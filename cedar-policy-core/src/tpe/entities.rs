@@ -528,6 +528,7 @@ impl PartialEntities {
         validate_ancestors(&entities)?;
         let mut entities = Self { entities };
         entities.compute_tc()?;
+        entities.insert_actions(schema);
         Ok(entities)
     }
 
@@ -590,6 +591,20 @@ impl PartialEntities {
         }
     }
 
+    // Insert action entities from the schema
+    // Overwriting existing action entities is fine because they should come
+    // from schema or be consistent with schema anyways
+    fn insert_actions(&mut self, schema: &ValidatorSchema) {
+        for (uid, action) in &schema.actions {
+            self.entities.insert(
+                uid.clone(),
+                // PANIC SAFETY: action entities do not contain unknowns
+                #[allow(clippy::unwrap_used)]
+                action.as_ref().clone().try_into().unwrap(),
+            );
+        }
+    }
+
     /// Construct [`PartialEntities`] from a JSON list
     pub fn from_json_value(
         value: serde_json::Value,
@@ -609,17 +624,7 @@ impl PartialEntities {
         partial_entities.compute_tc()?;
 
         // Insert actions from the schema
-        for (uid, action) in &schema.actions {
-            partial_entities.entities.insert(
-                uid.clone(),
-                PartialEntity {
-                    uid: uid.clone(),
-                    attrs: Some(BTreeMap::default()),
-                    ancestors: Some(action.ancestors().cloned().collect()),
-                    tags: Some(BTreeMap::default()),
-                },
-            );
-        }
+        partial_entities.insert_actions(schema);
         Ok(partial_entities)
     }
 
