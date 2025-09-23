@@ -355,12 +355,7 @@ impl PartialEntity {
         let etype = uid.entity_type();
 
         if self.uid.is_action() {
-            if self.attrs.is_none() || self.tags.is_none() {
-                return Err(UnknownActionComponentError {
-                    action: uid.clone(),
-                }
-                .into());
-            }
+            // An Action entity cannot have attributes
             if let Some(attrs) = &self.attrs {
                 if let Some((attr, _)) = attrs.first_key_value() {
                     return Err(EntitySchemaConformanceError::unexpected_entity_attr(
@@ -370,6 +365,7 @@ impl PartialEntity {
                     .into());
                 }
             }
+            // An Action entity cannot have tags
             if let Some(tags) = &self.tags {
                 if let Some((tag, _)) = tags.first_key_value() {
                     return Err(EntitySchemaConformanceError::unexpected_entity_tag(
@@ -379,6 +375,7 @@ impl PartialEntity {
                     .into());
                 }
             }
+            // The Action must exist in the schema, and have the same ancestors as in the schema.
             if let Some(action) = core_schema.action(uid) {
                 if let Some(ancestors) = &self.ancestors {
                     let schema_ancestors: HashSet<EntityUID> =
