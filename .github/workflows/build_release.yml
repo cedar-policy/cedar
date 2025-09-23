@@ -8,7 +8,8 @@ on:
 jobs:
   create_related_repo_tags:
     runs-on: ubuntu-latest
-    if: ${{ vars.APP_ID && secrets.APP_PRIVATE_KEY }}
+    # Check if APP_ID has been set
+    if: vars.APP_ID
     steps:
       - name: Generate GitHub App token
         id: app-token
