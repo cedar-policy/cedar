@@ -2405,7 +2405,7 @@ fn construct_expr_rel<Build: ExprBuilder>(
     }
 }
 
-fn construct_exprs_extended_has<Build: ExprBuilder>(
+pub(crate) fn construct_exprs_extended_has<Build: ExprBuilder>(
     t: Build::Expr,
     attrs: &NonEmpty<SmolStr>,
     loc: Option<&Loc>,

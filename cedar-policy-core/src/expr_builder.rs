@@ -17,6 +17,7 @@
 //! Contains the trait [`ExprBuilder`], defining a generic interface for
 //! building different expression data structures (e.g., AST and EST).
 
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 
 use crate::{
@@ -24,7 +25,7 @@ use crate::{
         BinaryOp, EntityType, ExpressionConstructionError, Literal, Name, Pattern, SlotId, UnaryOp,
         Unknown, Var,
     },
-    parser::{cst, Loc},
+    parser::{cst, cst_to_ast::construct_exprs_extended_has, Loc},
 };
 
 #[cfg(feature = "tolerant-ast")]
@@ -178,6 +179,12 @@ pub trait ExprBuilder: Clone {
     /// Create an `Expr` which tests for the existence of a given
     /// attribute on a given `Entity` or record.
     fn has_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr;
+
+    /// Create an `Expr` which tests for the existence of a given
+    /// non-empty list of attributes on a given `Entity` or record.
+    fn extended_has_attr(self, expr: Self::Expr, attrs: &NonEmpty<SmolStr>) -> Self::Expr {
+        construct_exprs_extended_has::<Self>(expr, attrs, None)
+    }
 
     /// Create a 'like' expression.
     fn like(self, expr: Self::Expr, pattern: Pattern) -> Self::Expr;
