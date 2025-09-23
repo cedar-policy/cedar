@@ -255,7 +255,50 @@ pub(crate) enum PolicyScopeVariable {
 #[derive(Debug, PartialEq)]
 pub(crate) struct ScopeVariableInfo {
     pub(crate) variable_type: PolicyScopeVariable,
-    pub(crate) text: SmolStr,
+    text: SmolStr,
+}
+
+// PANIC SAFETY: These regex are valid and would panic immediately in test if not.
+#[allow(clippy::unwrap_used)]
+mod scope_regex {
+    use regex::Regex;
+    use std::sync::LazyLock;
+
+    pub(super) static PRINCIPAL_IS: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"principal\s+is\s*").unwrap());
+
+    pub(super) static RESOURCE_IS: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"resource\s+is\s*").unwrap());
+
+    pub(super) static ACTION_IN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"action\s+in\s*").unwrap());
+    pub(super) static ACTION_EQ: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"action\s+==\s*").unwrap());
+    pub(super) static ACTION_IN_ARRAY: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"action\s+in\s+\[(?:\s*(?:[A-Za-z]+::)?Action::"[\w]+?"\s*,?)*\s*"#).unwrap()
+    });
+}
+
+impl ScopeVariableInfo {
+    pub(crate) fn is_principal_is(&self) -> bool {
+        scope_regex::PRINCIPAL_IS.is_match(&self.text)
+    }
+
+    pub(crate) fn is_resource_is(&self) -> bool {
+        scope_regex::RESOURCE_IS.is_match(&self.text)
+    }
+
+    pub(crate) fn is_action_in(&self) -> bool {
+        scope_regex::ACTION_IN.is_match(&self.text)
+    }
+
+    pub(crate) fn is_action_eq(&self) -> bool {
+        scope_regex::ACTION_EQ.is_match(&self.text)
+    }
+
+    pub(crate) fn is_action_in_array(&self) -> bool {
+        scope_regex::ACTION_IN_ARRAY.is_match(&self.text)
+    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -715,18 +758,27 @@ permit(
         let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");
+        assert!(!result.is_principal_is());
+        assert!(!result.is_resource_is());
 
         let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
+        assert!(!result.is_action_eq());
+        assert!(!result.is_action_in());
+        assert!(!result.is_action_in_array());
 
         let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource");
+        assert!(!result.is_principal_is());
+        assert!(!result.is_resource_is());
 
         let result = get_policy_scope_variable(&policy, carets[3]);
         assert_eq!(result.variable_type, PolicyScopeVariable::None);
         assert_eq!(result.text, "");
+        assert!(!result.is_principal_is());
+        assert!(!result.is_resource_is());
     }
 
     #[test]
@@ -761,7 +813,7 @@ permit(
             r#"
         permit(
             princ|caret|ipal in User:"alice",
-            act|caret|ion in [Action::"act"],
+            act|caret|ion in Action::"act",
             reso|caret|urce in Resource::"data"
         );"#,
         );
@@ -774,7 +826,10 @@ permit(
         // Test cursor in action section
         let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
-        assert_eq!(result.text, "action in [Action::\"act\"]");
+        assert_eq!(result.text, "action in Action::\"act\"");
+        assert!(result.is_action_in());
+        assert!(!result.is_action_in_array());
+        assert!(!result.is_action_eq());
 
         // Test cursor in complex resource section
         let result = get_policy_scope_variable(&policy, carets[2]);
@@ -802,6 +857,9 @@ permit(
         let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action == Action::\"act\"");
+        assert!(result.is_action_eq());
+        assert!(!result.is_action_in());
+        assert!(!result.is_action_in_array());
 
         // Test cursor in complex resource section
         let result = get_policy_scope_variable(&policy, carets[2]);
@@ -824,6 +882,7 @@ permit(
         let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal is User");
+        assert!(result.is_principal_is());
 
         // Test cursor in action section
         let result = get_policy_scope_variable(&policy, carets[1]);
@@ -834,6 +893,44 @@ permit(
         let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource is Resource");
+        assert!(result.is_resource_is());
+    }
+
+    #[test]
+    fn get_policy_scope_multi_line_var() {
+        let (policy, carets) = remove_all_caret_markers(
+            r#"
+        permit(
+            principal
+                is
+                    |caret|User,
+            action in [
+            |caret|
+            ],
+            reso|caret|urce ==
+            Photo::""
+        );"#,
+        );
+
+        // Test cursor in complex principal section
+        let result = get_policy_scope_variable(&policy, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(
+            result.text,
+            "principal\n                is\n                    User"
+        );
+        assert!(result.is_principal_is());
+
+        // Test cursor in action section
+        let result = get_policy_scope_variable(&policy, carets[1]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action in [\n            \n            ]");
+        assert!(result.is_action_in_array());
+
+        // Test cursor in complex resource section
+        let result = get_policy_scope_variable(&policy, carets[2]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, "resource ==\n            Photo::\"\"");
     }
 
     #[test]
@@ -864,6 +961,7 @@ permit(
         let result = get_policy_scope_variable(&policies, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, r#"action in [(Action::"bar")]"#);
+        assert!(result.is_action_in_array());
 
         let result = get_policy_scope_variable(&policies, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);

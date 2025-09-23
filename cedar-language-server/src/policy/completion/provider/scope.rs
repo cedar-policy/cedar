@@ -32,31 +32,6 @@ use crate::{
         get_policy_scope_variable, get_word_at_position, PolicyScopeVariable, ScopeVariableInfo,
     },
 };
-use regex_consts::{
-    ACTION_EQ_REGEX, ACTION_IN_ARRAY, ACTION_IN_REGEX, PRINCIPAL_IS_REGEX, RESOURCE_IS_REGEX,
-};
-
-// PANIC SAFETY: These regex are valid and would panic immediately in test if not.
-#[allow(clippy::unwrap_used)]
-mod regex_consts {
-    use std::sync::LazyLock;
-
-    use regex::Regex;
-
-    pub(crate) static PRINCIPAL_IS_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"principal\s+is\s*").unwrap());
-
-    pub(crate) static ACTION_IN_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"action\s+in\s*").unwrap());
-    pub(crate) static ACTION_EQ_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"action\s+==\s*").unwrap());
-    pub(crate) static ACTION_IN_ARRAY: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"action\s+in\s+\[(?:\s*(?:[A-Za-z]+::)?Action::"[\w]+?"\s*,?)*\s*"#).unwrap()
-    });
-
-    pub(crate) static RESOURCE_IS_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"resource\s+is\s*").unwrap());
-}
 
 pub(crate) fn get_scope_completions(
     position: Position,
@@ -96,7 +71,7 @@ fn handle_principal_scope(policy: &Template, info: &ScopeVariableInfo) -> Comple
 
         PrincipalOrResourceConstraint::Is(..) => create_is_context(principal_var),
 
-        PrincipalOrResourceConstraint::Any if PRINCIPAL_IS_REGEX.is_match(&info.text) => {
+        PrincipalOrResourceConstraint::Any if info.is_principal_is() => {
             create_is_context(principal_var)
         }
 
@@ -123,7 +98,7 @@ fn handle_resource_scope(policy: &Template, info: &ScopeVariableInfo) -> Complet
 
         PrincipalOrResourceConstraint::Is(..) => create_is_context(resource_var),
 
-        PrincipalOrResourceConstraint::Any if RESOURCE_IS_REGEX.is_match(&info.text) => {
+        PrincipalOrResourceConstraint::Any if info.is_resource_is() => {
             create_is_context(resource_var)
         }
 
@@ -141,7 +116,7 @@ fn handle_action_scope(policy: &Template, info: &ScopeVariableInfo) -> Completio
             Expr::val(Literal::EntityUID(entity_uid.clone())).into(),
         ),
 
-        ActionConstraint::In(entity_uids) if ACTION_IN_ARRAY.is_match(&info.text) => {
+        ActionConstraint::In(entity_uids) if info.is_action_in_array() => {
             let expr_set = Expr::set(entity_uids.iter().map(|euid| Expr::val(euid.clone()))).into();
             create_binary_op_context(Op::in_array(), action_var, expr_set)
         }
@@ -151,17 +126,17 @@ fn handle_action_scope(policy: &Template, info: &ScopeVariableInfo) -> Completio
             create_binary_op_context(Op::in_entity(), action_var, expr_set)
         }
 
-        ActionConstraint::ErrorConstraint if ACTION_IN_ARRAY.is_match(&info.text) => {
+        ActionConstraint::ErrorConstraint if info.is_action_in_array() => {
             let error_expr = Expr::val(Literal::EntityUID(EntityUID::Error.into())).into();
             create_binary_op_context(Op::in_array(), action_var, error_expr)
         }
 
-        ActionConstraint::ErrorConstraint if ACTION_IN_REGEX.is_match(&info.text) => {
+        ActionConstraint::ErrorConstraint if info.is_action_in() => {
             let error_expr = Expr::val(Literal::EntityUID(EntityUID::Error.into())).into();
             create_binary_op_context(Op::in_entity(), action_var, error_expr)
         }
 
-        ActionConstraint::ErrorConstraint if ACTION_EQ_REGEX.is_match(&info.text) => {
+        ActionConstraint::ErrorConstraint if info.is_action_eq() => {
             let error_expr = Expr::val(Literal::EntityUID(EntityUID::Error.into())).into();
             create_binary_op_context(Op::eq(), action_var, error_expr)
         }
