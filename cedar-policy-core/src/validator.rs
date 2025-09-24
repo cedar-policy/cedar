@@ -250,7 +250,7 @@ mod test {
     use crate::{
         ast::{self, PolicyID},
         est::Annotations,
-        parser::{self, IntoMaybeLoc, Loc},
+        parser::{self, Loc},
     };
 
     #[test]
@@ -314,19 +314,19 @@ mod test {
 
         let result = validator.validate(&set, ValidationMode::default());
         let principal_err = ValidationError::unrecognized_entity_type(
-            Loc::new(20..27, Arc::from(policy_b_src)).into_maybe_loc(),
+            Some(Loc::new(20..27, Arc::from(policy_b_src))),
             PolicyID::from_string("polb"),
             "foo_tye".to_string(),
             Some("foo_type".to_string()),
         );
         let resource_err = ValidationError::unrecognized_entity_type(
-            Loc::new(74..81, Arc::from(policy_b_src)).into_maybe_loc(),
+            Some(Loc::new(74..81, Arc::from(policy_b_src))),
             PolicyID::from_string("polb"),
             "br_type".to_string(),
             Some("bar_type".to_string()),
         );
         let action_err = ValidationError::unrecognized_action_id(
-            Loc::new(45..60, Arc::from(policy_a_src)).into_maybe_loc(),
+            Some(Loc::new(45..60, Arc::from(policy_a_src))),
             PolicyID::from_string("pola"),
             "Action::\"actin\"".to_string(),
             Some(UnrecognizedActionIdHelp::SuggestAlternative(
@@ -403,7 +403,7 @@ mod test {
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )
         .expect("Parse Error");
-        let loc = t.loc().into_maybe_loc();
+        let loc = t.loc().cloned();
         set.add_template(t)
             .expect("Template already present in PolicySet");
 

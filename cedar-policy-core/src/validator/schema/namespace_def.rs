@@ -19,8 +19,7 @@
 
 use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
-#[cfg(feature = "extended-schema")]
-use crate::parser::{AsLocRef, IntoMaybeLoc, Loc};
+use crate::parser::Loc;
 use crate::{
     ast::{
         EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name, PartialValue,
@@ -30,7 +29,6 @@ use crate::{
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
     fuzzy_match::fuzzy_search,
-    parser::MaybeLoc,
 };
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
@@ -92,7 +90,7 @@ pub struct ValidatorNamespaceDef<N, A> {
     /// Action declarations.
     pub(super) actions: ActionsDef<N, A>,
     #[cfg(feature = "extended-schema")]
-    pub(super) loc: MaybeLoc,
+    pub(super) loc: Option<Loc>,
 }
 
 impl<N, A> ValidatorNamespaceDef<N, A> {
@@ -735,7 +733,7 @@ pub struct ActionFragment<N, A> {
     /// actual `Entity` objects defined by the schema.
     pub(super) attributes: BTreeMap<SmolStr, PartialValue>,
     /// Source location - if available
-    pub(super) loc: MaybeLoc,
+    pub(super) loc: Option<Loc>,
 }
 
 impl ActionFragment<ConditionalName, ConditionalName> {
@@ -931,15 +929,15 @@ type ResolveFunc<T> =
 /// Represent a type that might be defined in terms of some common-type
 /// definitions which are not necessarily available in the current namespace.
 pub(crate) enum WithUnresolvedCommonTypeRefs<T> {
-    WithUnresolved(Box<ResolveFunc<T>>, MaybeLoc),
-    WithoutUnresolved(T, MaybeLoc),
+    WithUnresolved(Box<ResolveFunc<T>>, Option<Loc>),
+    WithoutUnresolved(T, Option<Loc>),
 }
 
 impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
     pub fn new(
         f: impl FnOnce(&HashMap<&InternalName, LocatedType>) -> crate::validator::err::Result<T>
             + 'static,
-        loc: MaybeLoc,
+        loc: Option<Loc>,
     ) -> Self {
         Self::WithUnresolved(Box::new(f), loc)
     }
@@ -947,8 +945,8 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
     #[cfg(feature = "extended-schema")]
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            WithUnresolvedCommonTypeRefs::WithUnresolved(_, loc) => loc.as_loc_ref(),
-            WithUnresolvedCommonTypeRefs::WithoutUnresolved(_, loc) => loc.as_loc_ref(),
+            WithUnresolvedCommonTypeRefs::WithUnresolved(_, loc) => loc.as_ref(),
+            WithUnresolvedCommonTypeRefs::WithoutUnresolved(_, loc) => loc.as_ref(),
         }
     }
 
@@ -982,8 +980,8 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
         common_type_defs: &HashMap<&InternalName, LocatedType>,
     ) -> crate::validator::err::Result<T> {
         match self {
-            WithUnresolvedCommonTypeRefs::WithUnresolved(f, _loc) => f(common_type_defs),
-            WithUnresolvedCommonTypeRefs::WithoutUnresolved(v, _loc) => Ok(v),
+            WithUnresolvedCommonTypeRefs::WithUnresolved(f, _) => f(common_type_defs),
+            WithUnresolvedCommonTypeRefs::WithoutUnresolved(v, _) => Ok(v),
         }
     }
 }
@@ -1040,7 +1038,7 @@ impl TryInto<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
 pub(crate) fn try_jsonschema_type_into_validator_type(
     schema_ty: json_schema::Type<InternalName>,
     extensions: &Extensions<'_>,
-    loc: MaybeLoc,
+    loc: Option<Loc>,
 ) -> crate::validator::err::Result<WithUnresolvedCommonTypeRefs<LocatedType>> {
     match schema_ty {
         json_schema::Type::Type {
@@ -1167,7 +1165,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
 pub(crate) fn try_record_type_into_validator_type(
     rty: json_schema::RecordType<InternalName>,
     extensions: &Extensions<'_>,
-    loc: MaybeLoc,
+    loc: Option<Loc>,
 ) -> crate::validator::err::Result<WithUnresolvedCommonTypeRefs<LocatedType>> {
     if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
@@ -1203,7 +1201,7 @@ pub(crate) fn try_record_type_into_validator_type(
 fn parse_record_attributes(
     attrs: impl IntoIterator<Item = (SmolStr, json_schema::TypeOfAttribute<InternalName>)>,
     extensions: &Extensions<'_>,
-    loc: MaybeLoc,
+    loc: Option<Loc>,
 ) -> crate::validator::err::Result<WithUnresolvedCommonTypeRefs<Attributes>> {
     let attrs_with_common_type_refs = attrs
         .into_iter()
@@ -1228,7 +1226,7 @@ fn parse_record_attributes(
                 .into_iter()
                 .map(|(s, (attr_ty, is_req))| {
                     #[cfg(feature = "extended-schema")]
-                    let loc = attr_ty.loc().into_maybe_loc();
+                    let loc = attr_ty.loc().cloned();
                     attr_ty
                         .resolve_common_type_refs(common_type_defs)
                         .map(|ty| {

@@ -15,7 +15,7 @@
  */
 
 use crate::ast::{PolicyID, Template};
-use crate::parser::{IntoMaybeLoc, Loc};
+use crate::parser::Loc;
 
 use crate::validator::expr_iterator::expr_text;
 use crate::validator::expr_iterator::TextKind;
@@ -52,13 +52,13 @@ pub fn confusable_string_checks<'a>(
 fn permissable_str(loc: Option<&Loc>, policy_id: &PolicyID, s: &str) -> Option<ValidationWarning> {
     if s.chars().any(is_bidi_char) {
         Some(ValidationWarning::bidi_chars_strings(
-            loc.into_maybe_loc(),
+            loc.cloned(),
             policy_id.clone(),
             s.to_string(),
         ))
     } else if !s.is_single_script() {
         Some(ValidationWarning::mixed_script_string(
-            loc.into_maybe_loc(),
+            loc.cloned(),
             policy_id.clone(),
             s.to_string(),
         ))
@@ -74,7 +74,7 @@ fn permissable_ident(
 ) -> Option<ValidationWarning> {
     if s.chars().any(is_bidi_char) {
         Some(ValidationWarning::bidi_chars_identifier(
-            loc.into_maybe_loc(),
+            loc.cloned(),
             policy_id.clone(),
             s,
         ))
@@ -83,14 +83,14 @@ fn permissable_ident(
         .find(|c| *c != ' ' && !c.is_ascii_graphic() && !c.identifier_allowed())
     {
         Some(ValidationWarning::confusable_identifier(
-            loc.into_maybe_loc(),
+            loc.cloned(),
             policy_id.clone(),
             s,
             c,
         ))
     } else if !s.is_single_script() {
         Some(ValidationWarning::mixed_script_identifier(
-            loc.into_maybe_loc(),
+            loc.cloned(),
             policy_id.clone(),
             s,
         ))
@@ -286,7 +286,7 @@ mod test {
         assert_eq!(
             warning,
             &ValidationWarning::mixed_script_string(
-                Loc::new(64..94, Arc::from(src)).into_maybe_loc(),
+                Some(Loc::new(64..94, Arc::from(src))),
                 PolicyID::from_string("test"),
                 r#"*_һello"#
             )
@@ -318,7 +318,7 @@ mod test {
         assert_eq!(
             warning,
             &ValidationWarning::bidi_chars_strings(
-                Loc::new(90..131, Arc::from(src)).into_maybe_loc(),
+                Some(Loc::new(90..131, Arc::from(src))),
                 PolicyID::from_string("test"),
                 "user\u{202e} \u{2066}&& principal.is_admin\u{2069} \u{2066}"
             )

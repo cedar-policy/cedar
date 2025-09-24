@@ -24,7 +24,7 @@ use std::{collections::HashSet, hash::Hash, sync::Arc};
 use crate::ast::{Context, EntityUID, Expr, PolicyID, Request, Template, ACTION_ENTITY_TYPE};
 use crate::entities::{err::EntitiesError, Entities, EntityJsonParser, TCComputation};
 use crate::extensions::Extensions;
-use crate::parser::{IntoMaybeLoc, Loc, MaybeLoc};
+use crate::parser::Loc;
 
 use crate::validator::{
     json_schema,
@@ -42,24 +42,24 @@ pub fn expr_id_placeholder() -> PolicyID {
     PolicyID::from_string("expr")
 }
 
-/// Get `Loc` corresponding to `snippet` in `src`. Returns a `MaybeLoc` because
+/// Get `Loc` corresponding to `snippet` in `src`. Returns a `Option<Loc>` because
 /// we always want an optional `Loc` instead of a just `Loc`. Panics if
 /// `snippet` is not in `src` to fail fast in tests.
 #[track_caller]
-pub fn get_loc(src: impl AsRef<str>, snippet: impl AsRef<str>) -> MaybeLoc {
+pub fn get_loc(src: impl AsRef<str>, snippet: impl AsRef<str>) -> Option<Loc> {
     let start = src
         .as_ref()
         .find(snippet.as_ref())
         .expect("Snippet does not exist in source!");
     let end = start + snippet.as_ref().len();
-    Loc::new(start..end, src.as_ref().into()).into_maybe_loc()
+    Some(Loc::new(start..end, src.as_ref().into()))
 }
 
 impl ValidationError {
     /// Testing utility for an unexpected type error when exactly one type was
     /// expected.
     pub(crate) fn expected_type(
-        source_loc: MaybeLoc,
+        source_loc: Option<Loc>,
         policy_id: PolicyID,
         expected: Type,
         actual: Type,

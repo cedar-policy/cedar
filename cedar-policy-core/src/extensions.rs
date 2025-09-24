@@ -32,7 +32,7 @@ use std::sync::LazyLock;
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
 use crate::extensions::extension_initialization_errors::MultipleConstructorsSameSignatureError;
-use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
+use crate::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -162,7 +162,7 @@ impl<'a> Extensions<'a> {
         self.functions.get(name).copied().ok_or_else(|| {
             FuncDoesNotExistError {
                 name: name.clone(),
-                source_loc: name.loc().into_maybe_loc(),
+                source_loc: name.loc().cloned(),
             }
             .into()
         })
@@ -243,11 +243,11 @@ pub enum ExtensionFunctionLookupError {
 impl ExtensionFunctionLookupError {
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
-            Self::FuncDoesNotExist(e) => e.source_loc.as_loc_ref(),
+            Self::FuncDoesNotExist(e) => e.source_loc.as_ref(),
         }
     }
 
-    pub(crate) fn with_maybe_source_loc(self, source_loc: MaybeLoc) -> Self {
+    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
         match self {
             Self::FuncDoesNotExist(e) => {
                 Self::FuncDoesNotExist(extension_function_lookup_errors::FuncDoesNotExistError {
@@ -262,7 +262,7 @@ impl ExtensionFunctionLookupError {
 /// Error subtypes for [`ExtensionFunctionLookupError`]
 pub mod extension_function_lookup_errors {
     use crate::ast::Name;
-    use crate::parser::MaybeLoc;
+    use crate::parser::Loc;
     use miette::Diagnostic;
     use thiserror::Error;
 
@@ -277,7 +277,7 @@ pub mod extension_function_lookup_errors {
         /// Name of the function that doesn't exist
         pub(crate) name: Name,
         /// Source location
-        pub(crate) source_loc: MaybeLoc,
+        pub(crate) source_loc: Option<Loc>,
     }
 
     impl Diagnostic for FuncDoesNotExistError {
