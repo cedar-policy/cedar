@@ -17,6 +17,7 @@
 //! Contains the trait [`ExprBuilder`], defining a generic interface for
 //! building different expression data structures (e.g., AST and EST).
 
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 
 use crate::{
@@ -178,6 +179,54 @@ pub trait ExprBuilder: Clone {
     /// Create an `Expr` which tests for the existence of a given
     /// attribute on a given `Entity` or record.
     fn has_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr;
+
+    /// Create an `Expr` which tests for the existence of a given
+    /// non-empty list of attributes on a given `Entity` or record.
+    fn extended_has_attr(self, expr: Self::Expr, attrs: &NonEmpty<SmolStr>) -> Self::Expr {
+        let (first, rest) = attrs.split_first();
+        let has_expr = Self::new()
+            .with_maybe_source_loc(self.loc())
+            .has_attr(expr.clone(), first.to_owned());
+        let get_expr = Self::new()
+            .with_maybe_source_loc(self.loc())
+            .get_attr(expr, first.to_owned());
+        // Foldl on the attribute list
+        // It produces the following for `principal has contactInfo.address.zip`
+        //     Expr.and
+        //   (Expr.and
+        //     (Expr.hasAttr (Expr.var .principal) "contactInfo")
+        //     (Expr.hasAttr
+        //       (Expr.getAttr (Expr.var .principal) "contactInfo")
+        //       "address"))
+        //   (Expr.hasAttr
+        //     (Expr.getAttr
+        //       (Expr.getAttr (Expr.var .principal) "contactInfo")
+        //       "address")
+        //     "zip")
+        // This is sound. However, the evaluator has to recur multiple times to the
+        // left-most node to evaluate the existence of the first attribute. The
+        // desugared expression should be the following to avoid the issue above,
+        // Expr.and
+        //   Expr.hasAttr (Expr.var .principal) "contactInfo"
+        //   (Expr.and
+        //      (Expr.hasAttr (Expr.getAttr (Expr.var .principal) "contactInfo")"address")
+        //      (Expr.hasAttr ..., "zip"))
+        rest.iter()
+            .fold((has_expr, get_expr), |(has_expr, get_expr), attr| {
+                (
+                    Self::new().with_maybe_source_loc(self.loc()).and(
+                        has_expr,
+                        Self::new()
+                            .with_maybe_source_loc(self.loc())
+                            .has_attr(get_expr.clone(), attr.to_owned()),
+                    ),
+                    Self::new()
+                        .with_maybe_source_loc(self.loc())
+                        .get_attr(get_expr, attr.to_owned()),
+                )
+            })
+            .0
+    }
 
     /// Create a 'like' expression.
     fn like(self, expr: Self::Expr, pattern: Pattern) -> Self::Expr;

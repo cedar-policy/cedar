@@ -1444,7 +1444,9 @@ impl Node<Option<cst::Relation>> {
                 });
                 let (target, field) = flatten_tuple_2(maybe_target, maybe_field)?;
                 Ok(ExprOrSpecial::Expr {
-                    expr: construct_exprs_extended_has::<Build>(target, &field, self.loc.as_ref()),
+                    expr: Build::new()
+                        .with_maybe_source_loc(self.loc.as_ref())
+                        .extended_has_attr(target, &field),
                     loc: self.loc.clone(),
                 })
             }
@@ -2361,56 +2363,6 @@ fn construct_expr_rel<Build: ExprBuilder>(
             Err(ToASTError::new(ToASTErrorKind::InvalidSingleEq, loc).into())
         }
     }
-}
-
-fn construct_exprs_extended_has<Build: ExprBuilder>(
-    t: Build::Expr,
-    attrs: &NonEmpty<SmolStr>,
-    loc: Option<&Loc>,
-) -> Build::Expr {
-    let (first, rest) = attrs.split_first();
-    let has_expr = Build::new()
-        .with_maybe_source_loc(loc)
-        .has_attr(t.clone(), first.to_owned());
-    let get_expr = Build::new()
-        .with_maybe_source_loc(loc)
-        .get_attr(t, first.to_owned());
-    // Foldl on the attribute list
-    // It produces the following for `principal has contactInfo.address.zip`
-    //     Expr.and
-    //   (Expr.and
-    //     (Expr.hasAttr (Expr.var .principal) "contactInfo")
-    //     (Expr.hasAttr
-    //       (Expr.getAttr (Expr.var .principal) "contactInfo")
-    //       "address"))
-    //   (Expr.hasAttr
-    //     (Expr.getAttr
-    //       (Expr.getAttr (Expr.var .principal) "contactInfo")
-    //       "address")
-    //     "zip")
-    // This is sound. However, the evaluator has to recur multiple times to the
-    // left-most node to evaluate the existence of the first attribute. The
-    // desugared expression should be the following to avoid the issue above,
-    // Expr.and
-    //   Expr.hasAttr (Expr.var .principal) "contactInfo"
-    //   (Expr.and
-    //      (Expr.hasAttr (Expr.getAttr (Expr.var .principal) "contactInfo")"address")
-    //      (Expr.hasAttr ..., "zip"))
-    rest.iter()
-        .fold((has_expr, get_expr), |(has_expr, get_expr), attr| {
-            (
-                Build::new().with_maybe_source_loc(loc).and(
-                    has_expr,
-                    Build::new()
-                        .with_maybe_source_loc(loc)
-                        .has_attr(get_expr.clone(), attr.to_owned()),
-                ),
-                Build::new()
-                    .with_maybe_source_loc(loc)
-                    .get_attr(get_expr, attr.to_owned()),
-            )
-        })
-        .0
 }
 
 // PANIC SAFETY: Unit Test Code
