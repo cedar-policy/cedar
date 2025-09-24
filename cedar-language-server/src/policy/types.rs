@@ -171,7 +171,7 @@ impl<'a> DocumentContext<'a> {
     }
 
     #[must_use]
-    pub(crate) fn get_scope_variable_info(&self) -> ScopeVariableInfo {
+    pub(crate) fn get_scope_variable_info(&self) -> ScopeVariableInfo<'_> {
         get_policy_scope_variable(self.policy_text, self.cursor_position)
     }
 

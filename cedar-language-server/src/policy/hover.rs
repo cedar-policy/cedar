@@ -265,8 +265,8 @@ mod tests {
     };
     use cedar_policy_core::ast::{EntityType, EntityUID};
 
-    use tracing_test::traced_test;
     use similar_asserts::assert_eq;
+    use tracing_test::traced_test;
 
     macro_rules! schema_hover_test {
         ($name:ident, $policy:expr, ty: $expected:ty) => {

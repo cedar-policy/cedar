@@ -22,6 +22,7 @@ use tower_lsp_server::lsp_types::{Position, Range};
 
 use crate::{
     policy::{DocumentContext, PolicyLanguageFeatures},
+    position::position_byte_offset,
     schema::SchemaInfo,
 };
 
@@ -57,33 +58,18 @@ pub(crate) fn remove_all_caret_markers(src: impl AsRef<str>) -> (String, Vec<Pos
     (src, caret_positions)
 }
 
-/// Get the byte offset of a position (line and column) in a string,
-/// accounting for the actual position of newlines in the string.
-pub(crate) fn position_byte_offset(src: &str, pos: Position) -> usize {
-    let line_offset = if pos.line == 0 {
-        0
-    } else {
-        1 + src
-            .char_indices()
-            .filter(|(_, c)| c == &'\n')
-            .nth((pos.line - 1).try_into().unwrap())
-            .unwrap()
-            .0
-    };
-
-    line_offset + TryInto::<usize>::try_into(pos.character).unwrap()
-}
-
 pub(crate) fn insert_caret(src: &str, pos: Position) -> String {
-    let offset = position_byte_offset(src, pos);
+    let offset = position_byte_offset(src, pos).unwrap();
     format!("{}|caret|{}", &src[..offset], &src[offset..])
 }
 
 /// Given a range - a pair of (line, column) positions - extract the slice
 /// for this range from a string slice.
 pub(crate) fn slice_range(src: &str, range: Range) -> &str {
-    let start_offset = position_byte_offset(src, range.start);
-    let end_offset = position_byte_offset(src, range.end);
+    let start_offset = position_byte_offset(src, range.start)
+        .expect(&format!("{:?} out of range for {:?}", range.start, src));
+    let end_offset = position_byte_offset(src, range.end)
+        .expect(&format!("{:?} out of range for {:?}", range.end, src));
     &src[start_offset..end_offset]
 }
 

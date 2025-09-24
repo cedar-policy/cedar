@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use crate::position::is_position_in_range;
+
 use super::SchemaInfo;
 use regex::Regex;
 use std::collections::HashMap;
@@ -344,25 +346,6 @@ fn find_range(line: &str, line_idx: usize, text: &str) -> Option<Range> {
         start: Position::new(line_idx as u32, start_pos as u32),
         end: Position::new(line_idx as u32, (start_pos + text.len()) as u32),
     })
-}
-
-// Helper function to check if a position is within a range
-fn is_position_in_range(position: Position, range: &Range) -> bool {
-    // Check if position is between start and end lines
-    if position.line < range.start.line || position.line > range.end.line {
-        return false;
-    }
-
-    // Check character position if on boundary lines
-    if position.line == range.start.line && position.character < range.start.character {
-        return false;
-    }
-
-    if position.line == range.end.line && position.character > range.end.character {
-        return false;
-    }
-
-    true
 }
 
 const ACTION_SNIPPET: &str = r#"action "${1}" appliesTo {

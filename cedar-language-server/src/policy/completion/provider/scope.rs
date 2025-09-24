@@ -52,7 +52,10 @@ pub(crate) fn get_scope_completions(
     }
 }
 
-fn handle_principal_scope(policy: &Template, info: &ScopeVariableInfo) -> CompletionContextKind {
+fn handle_principal_scope(
+    policy: &Template,
+    info: &ScopeVariableInfo<'_>,
+) -> CompletionContextKind {
     let principal_var = Expr::var(Var::Principal).into();
 
     match policy.principal_constraint().as_inner() {
@@ -79,7 +82,7 @@ fn handle_principal_scope(policy: &Template, info: &ScopeVariableInfo) -> Comple
     }
 }
 
-fn handle_resource_scope(policy: &Template, info: &ScopeVariableInfo) -> CompletionContextKind {
+fn handle_resource_scope(policy: &Template, info: &ScopeVariableInfo<'_>) -> CompletionContextKind {
     let resource_var = Expr::var(Var::Resource).into();
 
     match policy.resource_constraint().as_inner() {
@@ -106,7 +109,7 @@ fn handle_resource_scope(policy: &Template, info: &ScopeVariableInfo) -> Complet
     }
 }
 
-fn handle_action_scope(policy: &Template, info: &ScopeVariableInfo) -> CompletionContextKind {
+fn handle_action_scope(policy: &Template, info: &ScopeVariableInfo<'_>) -> CompletionContextKind {
     let action_var = Expr::var(Var::Action).into();
 
     match policy.action_constraint() {

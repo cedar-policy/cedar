@@ -50,32 +50,51 @@ impl ToRange for Box<Loc> {
 }
 
 pub(crate) fn to_range(source_span: &SourceSpan, src: &str) -> Option<Range> {
-    let text = src.get(..source_span.offset())?;
-    let start_line = text.chars().filter(|&c| c == '\n').count();
-    let start_col = text.chars().rev().take_while(|&c| c != '\n').count();
-
-    let end = source_span.offset() + source_span.len();
-    let text = src.get(..end)?;
-    let end_line = text.chars().filter(|&c| c == '\n').count();
-    let end_col = text.chars().rev().take_while(|&c| c != '\n').count();
-
     Some(Range {
-        start: Position {
-            line: start_line as u32,
-            character: start_col as u32,
-        },
-        end: Position {
-            line: end_line as u32,
-            character: end_col as u32,
-        },
+        start: offset_to_position(src, source_span.offset())?,
+        end: offset_to_position(src, source_span.offset() + source_span.len())?,
     })
 }
 
+pub(crate) fn offset_to_position(text: &str, offset: usize) -> Option<Position> {
+    let text = text.get(..offset)?;
+    let line = text.chars().filter(|&c| c == '\n').count();
+    let char = text.chars().rev().take_while(|&c| c != '\n').count();
+    Some(Position::new(line as u32, char as u32))
+}
+
+/// Get the byte offset of a position (line and column) in a string,
+/// accounting for the actual position of newlines in the string.
+pub(crate) fn position_byte_offset(src: &str, pos: Position) -> Option<usize> {
+    let mut line_offset = 0;
+    for (line_num, line) in src.lines().enumerate() {
+        if line_num == pos.line as usize {
+            if let Some((char_offset_in_line, _)) = line.char_indices().nth(pos.character as usize)
+            {
+                return Some(line_offset + char_offset_in_line);
+            } else if pos.character as usize == line.chars().count() {
+                return Some(line_offset + line.len());
+            }
+        } else {
+            // `+ 1` to skip past new line
+            line_offset += line.len() + 1;
+        }
+    }
+    None
+}
+
 pub(crate) fn get_char_at_position(position: Position, src: &str) -> Option<char> {
-    src.lines()
-        .nth(position.line as usize)?
-        .chars()
-        .nth(position.character as usize)
+    let offset = position_byte_offset(src, position)?;
+    Some(src[offset..].chars().next().unwrap())
+}
+
+pub(crate) fn get_text_before_position(text: &str, position: Position) -> Option<&str> {
+    let offset = position_byte_offset(text, position)?;
+    Some(&text[..offset])
+}
+
+pub(crate) fn is_position_in_range(position: Position, range: &Range) -> bool {
+    position >= range.start && position <= range.end
 }
 
 pub(crate) fn position_within_loc<'a, R, I>(position: Position, range: I) -> bool
@@ -86,11 +105,7 @@ where
     let Some(range) = range.into() else {
         return false;
     };
-    let range = range.to_range();
-    position.line >= range.start.line
-        && position.line <= range.end.line
-        && (position.line != range.start.line || position.character >= range.start.character)
-        && (position.line != range.end.line || position.character <= range.end.character)
+    is_position_in_range(position, &range.to_range())
 }
 
 pub(crate) fn ranges_intersect(a: &Range, b: &Range) -> bool {
@@ -111,6 +126,57 @@ mod tests {
         }
     }
 
+    mod offset_to_position {
+        use super::*;
+
+        #[test]
+        fn empty_string() {
+            assert_eq!(offset_to_position("", 0).unwrap(), Position::new(0, 0));
+        }
+
+        #[test]
+        fn single_line_all_ascii() {
+            let text = "hello world";
+            assert_eq!(offset_to_position(text, 0).unwrap(), Position::new(0, 0));
+            assert_eq!(offset_to_position(text, 6).unwrap(), Position::new(0, 6));
+            assert_eq!(
+                offset_to_position(text, text.len()).unwrap(),
+                Position::new(0, text.len() as u32)
+            );
+            assert_eq!(offset_to_position(text, 20), None);
+        }
+
+        #[test]
+        fn multi_line_all_ascii() {
+            let text = "line1\nline2\nline3";
+            assert_eq!(offset_to_position(text, 0).unwrap(), Position::new(0, 0));
+            assert_eq!(offset_to_position(text, 3).unwrap(), Position::new(0, 3));
+            assert_eq!(offset_to_position(text, 5).unwrap(), Position::new(0, 5));
+            assert_eq!(offset_to_position(text, 6).unwrap(), Position::new(1, 0));
+            assert_eq!(offset_to_position(text, 14).unwrap(), Position::new(2, 2));
+            assert_eq!(offset_to_position(text, 17).unwrap(), Position::new(2, 5));
+        }
+
+        #[test]
+        fn empty_lines() {
+            let text = "\n\n\n";
+            assert_eq!(offset_to_position(text, 0).unwrap(), Position::new(0, 0));
+            assert_eq!(offset_to_position(text, 1).unwrap(), Position::new(1, 0));
+            assert_eq!(offset_to_position(text, 2).unwrap(), Position::new(2, 0));
+            assert_eq!(offset_to_position(text, 3).unwrap(), Position::new(3, 0));
+            assert_eq!(offset_to_position(text, 4), None);
+        }
+
+        #[test]
+        fn unicode_characters() {
+            let text = "_🚀_";
+            assert_eq!(offset_to_position(text, 0).unwrap(), Position::new(0, 0));
+            assert_eq!(offset_to_position(text, 1).unwrap(), Position::new(0, 1));
+            assert_eq!(offset_to_position(text, 5).unwrap(), Position::new(0, 2));
+            assert_eq!(offset_to_position(text, 7), None);
+        }
+    }
+
     mod to_range {
         use super::*;
 
@@ -123,14 +189,8 @@ mod tests {
             assert_eq!(
                 range,
                 Range {
-                    start: Position {
-                        line: 0,
-                        character: 6
-                    },
-                    end: Position {
-                        line: 0,
-                        character: 11
-                    },
+                    start: Position::new(0, 6),
+                    end: Position::new(0, 11),
                 }
             );
         }
@@ -144,14 +204,8 @@ mod tests {
             assert_eq!(
                 range,
                 Range {
-                    start: Position {
-                        line: 1,
-                        character: 0
-                    },
-                    end: Position {
-                        line: 1,
-                        character: 5
-                    },
+                    start: Position::new(1, 0),
+                    end: Position::new(1, 5),
                 }
             );
         }
@@ -165,14 +219,8 @@ mod tests {
             assert_eq!(
                 range,
                 Range {
-                    start: Position {
-                        line: 0,
-                        character: 3
-                    },
-                    end: Position {
-                        line: 1,
-                        character: 5
-                    },
+                    start: Position::new(0, 3),
+                    end: Position::new(1, 5),
                 }
             );
         }
@@ -186,14 +234,8 @@ mod tests {
             assert_eq!(
                 range,
                 Range {
-                    start: Position {
-                        line: 0,
-                        character: 5
-                    },
-                    end: Position {
-                        line: 0,
-                        character: 5
-                    },
+                    start: Position::new(0, 5),
+                    end: Position::new(0, 5),
                 }
             );
         }
@@ -207,14 +249,8 @@ mod tests {
             assert_eq!(
                 range,
                 Range {
-                    start: Position {
-                        line: 0,
-                        character: 0
-                    },
-                    end: Position {
-                        line: 2,
-                        character: 5
-                    },
+                    start: Position::new(0, 0),
+                    end: Position::new(2, 5),
                 }
             );
         }
@@ -228,14 +264,8 @@ mod tests {
             assert_eq!(
                 range,
                 Range {
-                    start: Position {
-                        line: 0,
-                        character: 0
-                    },
-                    end: Position {
-                        line: 0,
-                        character: 0
-                    },
+                    start: Position::new(0, 0),
+                    end: Position::new(0, 0),
                 }
             );
         }
@@ -249,14 +279,8 @@ mod tests {
             assert_eq!(
                 range,
                 Range {
-                    start: Position {
-                        line: 0,
-                        character: 11
-                    },
-                    end: Position {
-                        line: 0,
-                        character: 11
-                    },
+                    start: Position::new(0, 11),
+                    end: Position::new(0, 11),
                 }
             );
         }
@@ -270,14 +294,8 @@ mod tests {
             assert_eq!(
                 range,
                 Range {
-                    start: Position {
-                        line: 0,
-                        character: 5
-                    },
-                    end: Position {
-                        line: 0,
-                        character: 5
-                    },
+                    start: Position::new(0, 5),
+                    end: Position::new(0, 5),
                 }
             );
         }
@@ -291,14 +309,8 @@ mod tests {
             assert_eq!(
                 range,
                 Range {
-                    start: Position {
-                        line: 0,
-                        character: 5
-                    },
-                    end: Position {
-                        line: 1,
-                        character: 0
-                    },
+                    start: Position::new(0, 5),
+                    end: Position::new(1, 0),
                 }
             );
         }
@@ -312,14 +324,8 @@ mod tests {
             assert_eq!(
                 range,
                 Range {
-                    start: Position {
-                        line: 0,
-                        character: 2
-                    },
-                    end: Position {
-                        line: 0,
-                        character: 7
-                    },
+                    start: Position::new(0, 2),
+                    end: Position::new(0, 7),
                 }
             );
         }
@@ -333,14 +339,8 @@ mod tests {
             assert_eq!(
                 range,
                 Range {
-                    start: Position {
-                        line: 1,
-                        character: 0
-                    },
-                    end: Position {
-                        line: 1,
-                        character: 2
-                    },
+                    start: Position::new(1, 0),
+                    end: Position::new(1, 2),
                 }
             );
         }
@@ -361,135 +361,61 @@ mod tests {
         #[test]
         fn valid_positions() {
             let src = "hello\nworld";
-
-            assert_eq!(
-                get_char_at_position(
-                    Position {
-                        line: 0,
-                        character: 0
-                    },
-                    src
-                ),
-                Some('h')
-            );
-            assert_eq!(
-                get_char_at_position(
-                    Position {
-                        line: 0,
-                        character: 4
-                    },
-                    src
-                ),
-                Some('o')
-            );
-            assert_eq!(
-                get_char_at_position(
-                    Position {
-                        line: 1,
-                        character: 0
-                    },
-                    src
-                ),
-                Some('w')
-            );
-            assert_eq!(
-                get_char_at_position(
-                    Position {
-                        line: 1,
-                        character: 4
-                    },
-                    src
-                ),
-                Some('d')
-            );
+            assert_eq!(get_char_at_position(Position::new(0, 0), src), Some('h'));
+            assert_eq!(get_char_at_position(Position::new(0, 4), src), Some('o'));
+            assert_eq!(get_char_at_position(Position::new(0, 5), src), Some('\n'));
+            assert_eq!(get_char_at_position(Position::new(1, 0), src), Some('w'));
+            assert_eq!(get_char_at_position(Position::new(1, 4), src), Some('d'));
         }
 
         #[test]
         fn invalid_positions() {
             let src = "hello\nworld";
-
-            assert_eq!(
-                get_char_at_position(
-                    Position {
-                        line: 2,
-                        character: 0
-                    },
-                    src
-                ),
-                None
-            );
-
-            assert_eq!(
-                get_char_at_position(
-                    Position {
-                        line: 0,
-                        character: 10
-                    },
-                    src
-                ),
-                None
-            );
-            assert_eq!(
-                get_char_at_position(
-                    Position {
-                        line: 1,
-                        character: 10
-                    },
-                    src
-                ),
-                None
-            );
+            assert_eq!(get_char_at_position(Position::new(2, 0), src), None);
+            assert_eq!(get_char_at_position(Position::new(0, 10), src), None);
+            assert_eq!(get_char_at_position(Position::new(1, 10), src), None);
         }
 
         #[test]
         fn empty() {
-            assert_eq!(
-                get_char_at_position(
-                    Position {
-                        line: 0,
-                        character: 0
-                    },
-                    ""
-                ),
-                None
-            );
+            assert_eq!(get_char_at_position(Position::new(0, 0), ""), None);
+            assert_eq!(get_char_at_position(Position::new(0, 1), ""), None);
+            assert_eq!(get_char_at_position(Position::new(1, 0), ""), None);
+        }
 
-            let src = "hello\n\nworld";
+        #[test]
+        fn newlines() {
             assert_eq!(
-                get_char_at_position(
-                    Position {
-                        line: 1,
-                        character: 0
-                    },
-                    src
-                ),
-                None
+                get_char_at_position(Position::new(1, 0), "hello\n\nworld"),
+                Some('\n')
+            );
+            assert_eq!(
+                get_char_at_position(Position::new(0, 0), "\r\n"),
+                Some('\r')
+            );
+            assert_eq!(get_char_at_position(Position::new(0, 0), "\r"), Some('\r'));
+            assert_eq!(get_char_at_position(Position::new(0, 0), "\n"), Some('\n'));
+            assert_eq!(
+                get_char_at_position(Position::new(0, 0), "\n\n"),
+                Some('\n')
+            );
+            assert_eq!(
+                get_char_at_position(Position::new(1, 0), "\n\n"),
+                Some('\n')
+            );
+            assert_eq!(
+                get_char_at_position(Position::new(1, 0), "\n\r\n"),
+                Some('\r')
             );
         }
 
         #[test]
         fn unicode_characters() {
             let src = "héllo\nwörld";
-            assert_eq!(
-                get_char_at_position(
-                    Position {
-                        line: 0,
-                        character: 1
-                    },
-                    src
-                ),
-                Some('é')
-            );
-            assert_eq!(
-                get_char_at_position(
-                    Position {
-                        line: 1,
-                        character: 1
-                    },
-                    src
-                ),
-                Some('ö')
-            );
+            assert_eq!(get_char_at_position(Position::new(0, 1), src), Some('é'));
+            assert_eq!(get_char_at_position(Position::new(0, 2), src), Some('l'));
+            assert_eq!(get_char_at_position(Position::new(1, 1), src), Some('ö'));
+            assert_eq!(get_char_at_position(Position::new(1, 2), src), Some('r'));
         }
     }
 
@@ -501,42 +427,12 @@ mod tests {
             let src = "hello world";
             let loc = create_loc(src, 6, 5);
 
-            assert!(position_within_loc(
-                Position {
-                    line: 0,
-                    character: 6
-                },
-                Some(&loc)
-            ));
-            assert!(position_within_loc(
-                Position {
-                    line: 0,
-                    character: 8
-                },
-                Some(&loc)
-            ));
-            assert!(position_within_loc(
-                Position {
-                    line: 0,
-                    character: 10
-                },
-                Some(&loc)
-            ));
+            assert!(position_within_loc(Position::new(0, 6), Some(&loc)));
+            assert!(position_within_loc(Position::new(0, 8), Some(&loc)));
+            assert!(position_within_loc(Position::new(0, 10), Some(&loc)));
 
-            assert!(!position_within_loc(
-                Position {
-                    line: 0,
-                    character: 5
-                },
-                Some(&loc)
-            ));
-            assert!(!position_within_loc(
-                Position {
-                    line: 1,
-                    character: 8
-                },
-                Some(&loc)
-            ));
+            assert!(!position_within_loc(Position::new(0, 5), Some(&loc)));
+            assert!(!position_within_loc(Position::new(1, 8), Some(&loc)));
         }
 
         #[test]
@@ -544,49 +440,13 @@ mod tests {
             let src = "line1\nline2\nline3";
             let loc = create_loc(src, 3, 8);
 
-            assert!(position_within_loc(
-                Position {
-                    line: 0,
-                    character: 3
-                },
-                Some(&loc)
-            ));
-            assert!(position_within_loc(
-                Position {
-                    line: 1,
-                    character: 2
-                },
-                Some(&loc)
-            ));
-            assert!(position_within_loc(
-                Position {
-                    line: 1,
-                    character: 5
-                },
-                Some(&loc)
-            ));
+            assert!(position_within_loc(Position::new(0, 3), Some(&loc)));
+            assert!(position_within_loc(Position::new(1, 2), Some(&loc)));
+            assert!(position_within_loc(Position::new(1, 5), Some(&loc)));
 
-            assert!(!position_within_loc(
-                Position {
-                    line: 0,
-                    character: 2
-                },
-                Some(&loc)
-            ));
-            assert!(!position_within_loc(
-                Position {
-                    line: 1,
-                    character: 6
-                },
-                Some(&loc)
-            ));
-            assert!(!position_within_loc(
-                Position {
-                    line: 2,
-                    character: 0
-                },
-                Some(&loc)
-            ));
+            assert!(!position_within_loc(Position::new(0, 2), Some(&loc)));
+            assert!(!position_within_loc(Position::new(1, 6), Some(&loc)));
+            assert!(!position_within_loc(Position::new(2, 0), Some(&loc)));
         }
     }
 
@@ -596,24 +456,12 @@ mod tests {
         #[test]
         fn overlapping_ranges() {
             let range_a = Range {
-                start: Position {
-                    line: 0,
-                    character: 5,
-                },
-                end: Position {
-                    line: 0,
-                    character: 10,
-                },
+                start: Position::new(0, 5),
+                end: Position::new(0, 10),
             };
             let range_b = Range {
-                start: Position {
-                    line: 0,
-                    character: 8,
-                },
-                end: Position {
-                    line: 0,
-                    character: 15,
-                },
+                start: Position::new(0, 8),
+                end: Position::new(0, 15),
             };
 
             assert!(ranges_intersect(&range_a, &range_b));
@@ -623,24 +471,12 @@ mod tests {
         #[test]
         fn separate_ranges() {
             let range_a = Range {
-                start: Position {
-                    line: 0,
-                    character: 5,
-                },
-                end: Position {
-                    line: 0,
-                    character: 10,
-                },
+                start: Position::new(0, 5),
+                end: Position::new(0, 10),
             };
             let range_b = Range {
-                start: Position {
-                    line: 0,
-                    character: 15,
-                },
-                end: Position {
-                    line: 0,
-                    character: 20,
-                },
+                start: Position::new(0, 15),
+                end: Position::new(0, 20),
             };
 
             assert!(!ranges_intersect(&range_a, &range_b));
@@ -650,39 +486,93 @@ mod tests {
         #[test]
         fn multiline_ranges() {
             let range_a = Range {
-                start: Position {
-                    line: 0,
-                    character: 5,
-                },
-                end: Position {
-                    line: 1,
-                    character: 10,
-                },
+                start: Position::new(0, 5),
+                end: Position::new(1, 10),
             };
             let range_b = Range {
-                start: Position {
-                    line: 1,
-                    character: 5,
-                },
-                end: Position {
-                    line: 2,
-                    character: 5,
-                },
+                start: Position::new(1, 5),
+                end: Position::new(2, 5),
             };
 
             assert!(ranges_intersect(&range_a, &range_b));
 
             let range_c = Range {
-                start: Position {
-                    line: 2,
-                    character: 5,
-                },
-                end: Position {
-                    line: 2,
-                    character: 10,
-                },
+                start: Position::new(2, 5),
+                end: Position::new(2, 10),
             };
             assert!(!ranges_intersect(&range_a, &range_c));
+        }
+    }
+
+    mod get_text_before_position {
+        use super::*;
+
+        #[test]
+        fn single_line() {
+            let text = "hello world";
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 0)).unwrap(),
+                ""
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 5)).unwrap(),
+                "hello"
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 11)).unwrap(),
+                "hello world"
+            );
+        }
+
+        #[test]
+        fn multi_line() {
+            let text = "line1\nline2\nline3";
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 0)).unwrap(),
+                ""
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 3)).unwrap(),
+                "lin"
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 5)).unwrap(),
+                "line1"
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(1, 5)).unwrap(),
+                "line1\nline2"
+            );
+        }
+
+        #[test]
+        fn empty_lines() {
+            let text = "\n\n\n";
+            assert_eq!(
+                get_text_before_position(text, Position::new(1, 0)).unwrap(),
+                "\n"
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(2, 0)).unwrap(),
+                "\n\n"
+            );
+        }
+
+        #[test]
+        fn unicode_characters() {
+            let text = "🚀H";
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 0)).unwrap(),
+                ""
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 1)).unwrap(),
+                "🚀"
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 2)).unwrap(),
+                "🚀H"
+            );
         }
     }
 }

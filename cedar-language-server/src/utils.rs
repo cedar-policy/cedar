@@ -16,10 +16,9 @@
 
 use std::fmt::Write;
 
-use smol_str::SmolStr;
 use tower_lsp_server::lsp_types::{self, Position, Range};
 
-use crate::position::to_range;
+use crate::position::{position_byte_offset, to_range};
 
 /// Defines the length-zero source range occurring at the start of the file.
 /// Used as the source range we don't have anything better available.
@@ -253,9 +252,9 @@ pub(crate) enum PolicyScopeVariable {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct ScopeVariableInfo {
+pub(crate) struct ScopeVariableInfo<'a> {
     pub(crate) variable_type: PolicyScopeVariable,
-    text: SmolStr,
+    text: &'a str,
 }
 
 // PANIC SAFETY: These regex are valid and would panic immediately in test if not.
@@ -279,7 +278,7 @@ mod scope_regex {
     });
 }
 
-impl ScopeVariableInfo {
+impl ScopeVariableInfo<'_> {
     pub(crate) fn is_principal_is(&self) -> bool {
         scope_regex::PRINCIPAL_IS.is_match(&self.text)
     }
@@ -305,7 +304,7 @@ impl ScopeVariableInfo {
 pub(crate) fn get_policy_scope_variable(
     policy_text: &str,
     cursor_position: Position,
-) -> ScopeVariableInfo {
+) -> ScopeVariableInfo<'_> {
     // Find the policy that contains the cursor
     let Some(policy_range) = policy_scope_range_containing_cursor(policy_text, cursor_position)
     else {
@@ -381,33 +380,19 @@ pub(crate) fn get_policy_scope_variable(
     let text = if let Some(((start_line, start_pos), (end_line, end_pos))) =
         param_sections.get(param_index)
     {
-        if start_line == end_line {
-            // PANIC SAFETY: Line numbers in `param_sections` are always indexes from enumerating `lines()`.
-            #[allow(clippy::unwrap_used)]
-            let line = policy_text.lines().nth(*start_line).unwrap();
-            line[*start_pos..*end_pos].trim().into()
-        } else {
-            // Handle multi-line parameters
-            let mut text = String::new();
-            for (line_num, item) in policy_text
-                .lines()
-                .enumerate()
-                .take(end_line + 1)
-                .skip(*start_line)
-            {
-                if line_num == *start_line {
-                    text.push_str(&item[*start_pos..]);
-                } else if line_num == *end_line {
-                    text.push_str(&item[..*end_pos]);
-                } else {
-                    text.push_str(item);
-                }
-                text.push('\n');
-            }
-            text.trim().into()
-        }
+        let start = position_byte_offset(
+            policy_text,
+            Position::new(*start_line as u32, *start_pos as u32),
+        )
+        .unwrap();
+        let end = position_byte_offset(
+            policy_text,
+            Position::new(*end_line as u32, *end_pos as u32),
+        )
+        .unwrap();
+        policy_text[start..end].trim()
     } else {
-        "".into()
+        ""
     };
 
     let variable_type = match param_index {
