@@ -22,7 +22,7 @@ use crate::ast::{
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
-use crate::parser::IntoMaybeLoc;
+
 use miette::Diagnostic;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -197,7 +197,7 @@ fn decimal_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let decimal =
         Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string(), None))?;
-    let arg_source_loc = arg.source_loc().into_maybe_loc();
+    let arg_source_loc = arg.source_loc();
     let e = RepresentableExtensionValue::new(
         Arc::new(decimal),
         constants::DECIMAL_FROM_STR_NAME.clone(),
@@ -205,7 +205,7 @@ fn decimal_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     );
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
-        loc: arg_source_loc, // this gives the loc of the arg. We could perhaps give instead the loc of the entire `decimal("x.yz")` call, but that is hard to do at this program point
+        loc: arg_source_loc.cloned(), // this gives the loc of the arg. We could perhaps give instead the loc of the entire `decimal("x.yz")` call, but that is hard to do at this program point
     }
     .into())
 }

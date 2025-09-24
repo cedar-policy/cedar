@@ -27,9 +27,7 @@ mod fmt;
 pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
-pub use loc::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
-#[macro_use]
-mod macros;
+pub use loc::Loc;
 /// Metadata wrapper for CST Nodes
 mod node;
 pub use node::Node;
@@ -51,13 +49,6 @@ use crate::est;
 /// generates numbered ids
 pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
     let cst = text_to_cst::parse_policies(text)?;
-    cst.to_policyset()
-}
-
-/// Like [`parse_policyset`], but without retaining source information.
-#[cfg(feature = "raw-parsing")]
-pub fn parse_policyset_raw(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
-    let cst = text_to_cst::parse_policies_raw(text)?;
     cst.to_policyset()
 }
 
@@ -156,18 +147,6 @@ pub fn parse_template(
     validate_template_has_slots(template, cst)
 }
 
-/// Like [`parse_template`], but without retaining source information.
-#[cfg(feature = "raw-parsing")]
-pub fn parse_template_raw(
-    id: Option<ast::PolicyID>,
-    text: &str,
-) -> Result<ast::Template, err::ParseErrors> {
-    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-    let cst = text_to_cst::parse_policy_raw(text)?;
-    let template = cst.to_template(id)?;
-    validate_template_has_slots(template, cst)
-}
-
 /// Main function for parsing a (static) policy.
 /// Will return an error if provided with a template.
 /// If `id` is Some, then the resulting policy will have that `id`.
@@ -178,17 +157,6 @@ pub fn parse_policy(
 ) -> Result<ast::StaticPolicy, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
-    cst.to_policy(id)
-}
-
-/// Like [`parse_policy`], but without retaining source information.
-#[cfg(feature = "raw-parsing")]
-pub fn parse_policy_raw(
-    id: Option<ast::PolicyID>,
-    text: &str,
-) -> Result<ast::StaticPolicy, err::ParseErrors> {
-    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-    let cst = text_to_cst::parse_policy_raw(text)?;
     cst.to_policy(id)
 }
 
@@ -309,11 +277,7 @@ fn validate_template_has_slots(
     cst: Node<Option<cst::Policy>>,
 ) -> Result<ast::Template, err::ParseErrors> {
     if template.slots().count() == 0 {
-        Err(err::ToASTError::new(
-            err::ToASTErrorKind::expected_template(),
-            cst.loc.into_maybe_loc(),
-        )
-        .into())
+        Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc).into())
     } else {
         Ok(template)
     }

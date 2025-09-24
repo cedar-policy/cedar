@@ -28,7 +28,7 @@ use crate::{
     parser::{
         err::{expected_to_string, ExpectedTokenConfig},
         unescape::UnescapeError,
-        AsLocRef, MaybeLoc, Node,
+        Loc, Node,
     },
 };
 use lalrpop_util as lalr;
@@ -56,11 +56,11 @@ impl UserError {
     // Extract a primary source span locating the error.
     pub(crate) fn primary_source_span(&self) -> Option<SourceSpan> {
         match self {
-            Self::EmptyList(n) => n.loc.as_loc_ref().map(|loc| loc.span),
-            Self::StringEscape(n) => n.loc.as_loc_ref().map(|loc| loc.span),
-            Self::ReservedIdentifierUsed(n) => n.loc.as_loc_ref().map(|loc| loc.span),
+            Self::EmptyList(n) => n.loc.as_ref().map(|loc| loc.span),
+            Self::StringEscape(n) => n.loc.as_ref().map(|loc| loc.span),
+            Self::ReservedIdentifierUsed(n) => n.loc.as_ref().map(|loc| loc.span),
             // use the first occurrence as the primary source span
-            Self::DuplicateAnnotations(_, n, _) => n.loc.as_loc_ref().map(|loc| loc.span),
+            Self::DuplicateAnnotations(_, n, _) => n.loc.as_ref().map(|loc| loc.span),
         }
     }
 }
@@ -208,7 +208,7 @@ impl Diagnostic for ParseError {
             } => {
                 let spans: Vec<_> = [&n1.loc, &n2.loc]
                     .into_iter()
-                    .filter_map(|opt_loc| opt_loc.as_loc_ref())
+                    .filter_map(|opt_loc| opt_loc.as_ref())
                     .map(|loc| LabeledSpan::underline(loc.span))
                     .collect();
 
@@ -447,7 +447,11 @@ pub enum ToJsonSchemaError {
 }
 
 impl ToJsonSchemaError {
-    pub(crate) fn duplicate_context(name: &impl ToSmolStr, loc1: MaybeLoc, loc2: MaybeLoc) -> Self {
+    pub(crate) fn duplicate_context(
+        name: &impl ToSmolStr,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
+    ) -> Self {
         Self::DuplicateContext(DuplicateContext {
             name: name.to_smolstr(),
             loc1,
@@ -455,7 +459,11 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn duplicate_decls(decl: &impl ToSmolStr, loc1: MaybeLoc, loc2: MaybeLoc) -> Self {
+    pub(crate) fn duplicate_decls(
+        decl: &impl ToSmolStr,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
+    ) -> Self {
         Self::DuplicateDeclarations(DuplicateDeclarations {
             decl: decl.to_smolstr(),
             loc1,
@@ -465,8 +473,8 @@ impl ToJsonSchemaError {
 
     pub(crate) fn duplicate_namespace(
         namespace_id: &impl ToSmolStr,
-        loc1: MaybeLoc,
-        loc2: MaybeLoc,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
     ) -> Self {
         Self::DuplicateNamespaces(DuplicateNamespace {
             namespace_id: namespace_id.to_smolstr(),
@@ -477,8 +485,8 @@ impl ToJsonSchemaError {
 
     pub(crate) fn duplicate_principal(
         name: &impl ToSmolStr,
-        loc1: MaybeLoc,
-        loc2: MaybeLoc,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
     ) -> Self {
         Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
             name: name.to_smolstr(),
@@ -490,8 +498,8 @@ impl ToJsonSchemaError {
 
     pub(crate) fn duplicate_resource(
         name: &impl ToSmolStr,
-        loc1: MaybeLoc,
-        loc2: MaybeLoc,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
     ) -> Self {
         Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
             name: name.to_smolstr(),
@@ -501,7 +509,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn no_principal(name: &impl ToSmolStr, name_loc: MaybeLoc) -> Self {
+    pub(crate) fn no_principal(name: &impl ToSmolStr, name_loc: Option<Loc>) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Principal,
             name: name.to_smolstr(),
@@ -510,7 +518,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn no_resource(name: &impl ToSmolStr, name_loc: MaybeLoc) -> Self {
+    pub(crate) fn no_resource(name: &impl ToSmolStr, name_loc: Option<Loc>) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Resource,
             name: name.to_smolstr(),
@@ -521,8 +529,8 @@ impl ToJsonSchemaError {
 
     pub(crate) fn empty_principal(
         name: &impl ToSmolStr,
-        name_loc: MaybeLoc,
-        loc: MaybeLoc,
+        name_loc: Option<Loc>,
+        loc: Option<Loc>,
     ) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Principal,
@@ -532,7 +540,11 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn empty_resource(name: &impl ToSmolStr, name_loc: MaybeLoc, loc: MaybeLoc) -> Self {
+    pub(crate) fn empty_resource(
+        name: &impl ToSmolStr,
+        name_loc: Option<Loc>,
+        loc: Option<Loc>,
+    ) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Resource,
             name: name.to_smolstr(),
@@ -541,14 +553,14 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn reserved_name(name: &impl ToSmolStr, loc: MaybeLoc) -> Self {
+    pub(crate) fn reserved_name(name: &impl ToSmolStr, loc: Option<Loc>) -> Self {
         Self::ReservedName(ReservedName {
             name: name.to_smolstr(),
             loc,
         })
     }
 
-    pub(crate) fn reserved_keyword(keyword: &impl ToSmolStr, loc: MaybeLoc) -> Self {
+    pub(crate) fn reserved_keyword(keyword: &impl ToSmolStr, loc: Option<Loc>) -> Self {
         Self::ReservedSchemaKeyword(ReservedSchemaKeyword {
             keyword: keyword.to_smolstr(),
             loc,
@@ -560,7 +572,7 @@ impl ToJsonSchemaError {
 #[error("this uses a reserved schema keyword: `{keyword}`")]
 pub struct ReservedSchemaKeyword {
     keyword: SmolStr,
-    loc: MaybeLoc,
+    loc: Option<Loc>,
 }
 
 impl Diagnostic for ReservedSchemaKeyword {
@@ -575,7 +587,7 @@ impl Diagnostic for ReservedSchemaKeyword {
 #[error("use of the reserved `__cedar` namespace")]
 pub struct ReservedName {
     name: SmolStr,
-    loc: MaybeLoc,
+    loc: Option<Loc>,
 }
 
 impl Diagnostic for ReservedName {
@@ -592,7 +604,7 @@ impl Diagnostic for ReservedName {
 #[error("unknown type name: `{name}`")]
 pub struct UnknownTypeName {
     name: SmolStr,
-    loc: MaybeLoc,
+    loc: Option<Loc>,
 }
 
 impl Diagnostic for UnknownTypeName {
@@ -612,8 +624,8 @@ impl Diagnostic for UnknownTypeName {
 pub struct DuplicatePrincipalOrResource {
     name: SmolStr,
     kind: PR,
-    loc1: MaybeLoc,
-    loc2: MaybeLoc,
+    loc1: Option<Loc>,
+    loc2: Option<Loc>,
 }
 
 impl Diagnostic for DuplicatePrincipalOrResource {
@@ -629,8 +641,8 @@ impl Diagnostic for DuplicatePrincipalOrResource {
 #[error("duplicate context declaration in action `{name}`")]
 pub struct DuplicateContext {
     name: SmolStr,
-    loc1: MaybeLoc,
-    loc2: MaybeLoc,
+    loc1: Option<Loc>,
+    loc2: Option<Loc>,
 }
 
 impl Diagnostic for DuplicateContext {
@@ -646,8 +658,8 @@ impl Diagnostic for DuplicateContext {
 #[error("`{decl}` is declared twice")]
 pub struct DuplicateDeclarations {
     decl: SmolStr,
-    loc1: MaybeLoc,
-    loc2: MaybeLoc,
+    loc1: Option<Loc>,
+    loc2: Option<Loc>,
 }
 
 impl Diagnostic for DuplicateDeclarations {
@@ -664,7 +676,7 @@ pub struct NoPrincipalOrResource {
     name: SmolStr,
     missing_or_empty: MissingOrEmpty,
     /// Loc of the action name
-    name_loc: MaybeLoc,
+    name_loc: Option<Loc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -674,7 +686,7 @@ enum MissingOrEmpty {
     /// The declaration was present but defined as `[]`
     Empty {
         /// `Loc` of the declaration
-        loc: MaybeLoc,
+        loc: Option<Loc>,
     },
 }
 
@@ -690,15 +702,15 @@ impl Diagnostic for NoPrincipalOrResource {
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match &self.missing_or_empty {
-            MissingOrEmpty::Missing => self.name_loc.as_loc_ref().map(|loc| {
+            MissingOrEmpty::Missing => self.name_loc.as_ref().map(|loc| {
                 Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _
             }),
             MissingOrEmpty::Empty { loc } => {
                 // also underline the bad declaration
-                let action_name = self.name_loc.as_loc_ref().map(|loc| {
+                let action_name = self.name_loc.as_ref().map(|loc| {
                     miette::LabeledSpan::new_with_span(Some("for this action".into()), loc.span)
                 });
-                let decl = loc.as_loc_ref().map(|loc| {
+                let decl = loc.as_ref().map(|loc| {
                     miette::LabeledSpan::new_with_span(Some("must not be `[]`".into()), loc.span)
                 });
                 let spans: Vec<_> = [action_name, decl].into_iter().flatten().collect();
@@ -722,8 +734,8 @@ impl Diagnostic for NoPrincipalOrResource {
 pub struct DuplicateNamespace {
     namespace_id: SmolStr,
     // `Loc`s are optional here as the implicit empty namespace has no location
-    loc1: MaybeLoc,
-    loc2: MaybeLoc,
+    loc1: Option<Loc>,
+    loc2: Option<Loc>,
 }
 
 impl Diagnostic for DuplicateNamespace {
@@ -732,10 +744,7 @@ impl Diagnostic for DuplicateNamespace {
 
 /// Error subtypes for [`SchemaWarning`]
 pub mod schema_warnings {
-    use crate::{
-        impl_diagnostic_from_source_loc_opt_field,
-        parser::{AsLocRef, MaybeLoc},
-    };
+    use crate::{impl_diagnostic_from_source_loc_opt_field, parser::Loc};
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;
@@ -749,7 +758,7 @@ pub mod schema_warnings {
     #[error("The name `{name}` shadows a builtin Cedar name. You'll have to refer to the builtin as `__cedar::{name}`.")]
     pub struct ShadowsBuiltinWarning {
         pub(crate) name: SmolStr,
-        pub(crate) loc: MaybeLoc,
+        pub(crate) loc: Option<Loc>,
     }
 
     impl Diagnostic for ShadowsBuiltinWarning {
@@ -769,15 +778,15 @@ pub mod schema_warnings {
     #[error("The common type name {name} shadows an entity name")]
     pub struct ShadowsEntityWarning {
         pub(crate) name: SmolStr,
-        pub(crate) entity_loc: MaybeLoc,
-        pub(crate) common_loc: MaybeLoc,
+        pub(crate) entity_loc: Option<Loc>,
+        pub(crate) common_loc: Option<Loc>,
     }
 
     impl Diagnostic for ShadowsEntityWarning {
         fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
             let spans: Vec<_> = [&self.entity_loc, &self.common_loc]
                 .into_iter()
-                .filter_map(|loc| loc.as_loc_ref())
+                .filter_map(|loc| loc.as_ref())
                 .map(miette::LabeledSpan::underline)
                 .collect();
 

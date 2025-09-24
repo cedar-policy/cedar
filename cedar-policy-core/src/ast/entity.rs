@@ -19,7 +19,7 @@ use crate::entities::{err::EntitiesError, json::err::JsonSerializationError, Ent
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
-use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
+use crate::parser::Loc;
 use crate::transitive_closure::TCNode;
 use crate::FromNormalizedStr;
 use educe::Educe;
@@ -125,7 +125,7 @@ impl EntityType {
             EntityType::EntityType(name) => EntityType::EntityType(Name(InternalName {
                 id: name.0.id.clone(),
                 path: name.0.path.clone(),
-                loc: loc.into_maybe_loc(),
+                loc: loc.cloned(),
             })),
             #[cfg(feature = "tolerant-ast")]
             EntityType::ErrorEntityType => self.clone(),
@@ -205,12 +205,12 @@ pub struct EntityUIDImpl {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
-    loc: MaybeLoc,
+    loc: Option<Loc>,
 }
 
 impl EntityUIDImpl {
     /// The source location of this entity
-    pub fn loc(&self) -> MaybeLoc {
+    pub fn loc(&self) -> Option<Loc> {
         self.loc.clone()
     }
 }
@@ -306,14 +306,14 @@ impl EntityUID {
     /// Get the source location for this `EntityUID`.
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_loc_ref(),
+            EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_ref(),
             #[cfg(feature = "tolerant-ast")]
             EntityUID::Error => None,
         }
     }
 
     /// Create an [`EntityUID`] with the given typename and [`Eid`]
-    pub fn from_components(ty: EntityType, eid: Eid, loc: MaybeLoc) -> Self {
+    pub fn from_components(ty: EntityType, eid: Eid, loc: Option<Loc>) -> Self {
         Self::EntityUID(EntityUIDImpl { ty, eid, loc })
     }
 

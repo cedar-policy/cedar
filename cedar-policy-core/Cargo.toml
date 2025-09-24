@@ -65,9 +65,6 @@ experimental = ["tpe", "tolerant-ast", "extended-schema", "entity-manifest", "pa
 extended-schema = []
 tpe = []
 
-# Feature for raw parsing
-raw-parsing = []
-
 [build-dependencies]
 lalrpop = "0.22.2"
 

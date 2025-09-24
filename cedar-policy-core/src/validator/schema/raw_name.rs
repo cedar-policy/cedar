@@ -15,7 +15,7 @@
  */
 
 use crate::ast::{Id, InternalName, Name, UnreservedId};
-use crate::parser::{Loc, MaybeLoc};
+use crate::parser::Loc;
 use crate::validator::schema::AllDefs;
 use crate::validator::schema_errors::TypeNotDefinedError;
 use itertools::Itertools;
@@ -34,12 +34,12 @@ pub struct RawName(InternalName);
 
 impl RawName {
     /// Create a new [`RawName`] from the given [`Id`]
-    pub fn new(id: Id, loc: MaybeLoc) -> Self {
+    pub fn new(id: Id, loc: Option<Loc>) -> Self {
         Self(InternalName::unqualified_name(id, loc))
     }
 
     /// Create a new [`RawName`] from the given [`UnreservedId`]
-    pub fn new_from_unreserved(id: UnreservedId, loc: MaybeLoc) -> Self {
+    pub fn new_from_unreserved(id: UnreservedId, loc: Option<Loc>) -> Self {
         Self::new(id.into(), loc)
     }
 

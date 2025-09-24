@@ -26,7 +26,7 @@ use std::vec;
 use crate::{
     ast::{Expr, PolicyID, StaticPolicy},
     extensions::Extensions,
-    parser::{parse_policy, IntoMaybeLoc},
+    parser::parse_policy,
 };
 
 use super::test_utils::{
@@ -591,7 +591,7 @@ fn multi_namespace_action_eq() {
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(
-            policy.loc().into_maybe_loc(),
+            policy.loc().cloned(),
             PolicyID::from_string("policy0"),
         )
     );
@@ -658,7 +658,7 @@ fn multi_namespace_action_in() {
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(
-            policy.loc().into_maybe_loc(),
+            policy.loc().cloned(),
             PolicyID::from_string("policy0"),
         )
     );

@@ -18,7 +18,7 @@
 
 use crate::{
     ast::{self, EntityType, EntityUID, PartialValue},
-    parser::{AsLocRef, Loc, MaybeLoc},
+    parser::Loc,
     transitive_closure::TCNode,
 };
 use smol_str::SmolStr;
@@ -60,7 +60,7 @@ pub struct ValidatorActionId {
     /// typechecking by partial evaluation.
     pub(crate) attributes: BTreeMap<SmolStr, PartialValue>,
     /// Source location - if available
-    pub(crate) loc: MaybeLoc,
+    pub(crate) loc: Option<Loc>,
 }
 
 impl ValidatorActionId {
@@ -77,7 +77,7 @@ impl ValidatorActionId {
         context: Type,
         attribute_types: Attributes,
         attributes: BTreeMap<SmolStr, PartialValue>,
-        loc: MaybeLoc,
+        loc: Option<Loc>,
     ) -> Self {
         Self {
             name,
@@ -100,7 +100,7 @@ impl ValidatorActionId {
 
     /// The source location if available
     pub fn loc(&self) -> Option<&Loc> {
-        self.loc.as_loc_ref()
+        self.loc.as_ref()
     }
 
     /// Iterator over the actions that are members of this action
