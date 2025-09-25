@@ -176,28 +176,30 @@ impl Solver for LocalSolver {
     }
 
     async fn check_sat(&mut self) -> Result<Decision> {
-        if self.child.try_wait()?.is_some() {
-            Err(SolverError::Solver(
-                "Solver process terminated unexpectedly".to_string(),
-            ))?
+        if let Some(status) = self.child.try_wait()? {
+            Err(SolverError::Solver(format!(
+                "Solver process terminated unexpectedly with status: {:?}",
+                status.code()
+            )))?
         }
         self.smtlib_input().check_sat().await?;
         self.solver_stdin.flush().await?;
         let mut output = String::new();
-        self.solver_stdout.read_line(&mut output).await?;
+        self.read_line(&mut output).await?;
         match output.as_str() {
             "sat\n" => Ok(Decision::Sat),
             "unsat\n" => Ok(Decision::Unsat),
             "unknown\n" => Ok(Decision::Unknown),
-            s => Err(self.process_error_output(s).await),
+            s => Err(Self::process_error_output(s).await),
         }
     }
 
     async fn get_model(&mut self) -> Result<Option<String>> {
-        if self.child.try_wait()?.is_some() {
-            Err(SolverError::Solver(
-                "Solver process terminated unexpectedly.".to_string(),
-            ))?
+        if let Some(status) = self.child.try_wait()? {
+            Err(SolverError::Solver(format!(
+                "Solver process terminated unexpectedly with status: {:?}",
+                status.code()
+            )))?
         }
         self.smtlib_input().get_model().await?;
         self.solver_stdin.flush().await?;
@@ -208,37 +210,41 @@ impl Solver for LocalSolver {
         // 2. "(error ...)\n"
 
         // Read the first line
-        self.solver_stdout.read_line(&mut output).await?;
+        self.read_line(&mut output).await?;
         match output.as_str() {
             "(\n" => {
                 // Read until a line ")\n"
                 loop {
-                    let len: usize = self.solver_stdout.read_line(&mut output).await?;
+                    let len: usize = self.read_line(&mut output).await?;
                     if &output[output.len() - len..] == ")\n" {
                         break;
                     }
                 }
                 Ok(Some(output))
             }
-            s => Err(self.process_error_output(s).await),
+            s => Err(Self::process_error_output(s).await),
         }
     }
 }
 
 impl LocalSolver {
-    async fn process_error_output(&mut self, s: &str) -> SolverError {
+    async fn read_line(&mut self, buffer: &mut String) -> Result<usize> {
+        let len = self.solver_stdout.read_line(buffer).await?;
+        if len == 0 {
+            Err(SolverError::Solver(
+                "Encountered EOF while reading from solver output".to_string(),
+            ))
+        } else {
+            Ok(len)
+        }
+    }
+
+    async fn process_error_output(s: &str) -> SolverError {
         match s
             .strip_prefix("(error \"")
             .and_then(|s| s.strip_suffix("\")\n"))
         {
-            Some(e) => {
-                if e.starts_with("Parse Error: ") {
-                    // Parse errors cause CVC5 to quit and need to be handled specially.
-                    // Wait for the process to complete
-                    let _ = self.child.wait().await;
-                }
-                SolverError::Solver(e.to_string())
-            }
+            Some(e) => SolverError::Solver(e.to_string()),
             _ => SolverError::UnrecognizedSolverOutput(s.to_string()),
         }
     }
@@ -363,6 +369,6 @@ mod test {
         assert_matches!(my_solver.check_sat().await, Err(SolverError::Solver(_)));
         // Attempt to reset the solver.
         my_solver.smtlib_input().reset().await.unwrap();
-        assert_matches!(my_solver.check_sat().await, Err(SolverError::Solver(x)) => { assert_eq!(x, "Solver process terminated unexpectedly"); });
+        assert_matches!(my_solver.check_sat().await, Err(SolverError::Solver(x)) => { assert_eq!(x, "Encountered EOF while reading from solver output"); });
     }
 }
