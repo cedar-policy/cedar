@@ -38,7 +38,7 @@ use std::future::Future;
 use std::process::Stdio;
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
-use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
+use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
 
 /// Satisfiability decision from the SMT solver.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
@@ -118,6 +118,8 @@ pub trait Solver {
 /// ```
 #[derive(Debug)]
 pub struct LocalSolver {
+    /// The spawned solver process.
+    child: Child,
     solver_stdin: BufWriter<ChildStdin>,
     solver_stdout: BufReader<ChildStdout>,
     #[expect(unused)]
@@ -130,23 +132,25 @@ impl LocalSolver {
     /// The input command is expected to behave as an interactive SMT solver
     /// that reads queries from stdin in SMT-LIB 2 format (e.g., `cvc5 --lang smt` or `z3`).
     pub fn from_command(cmd: &mut Command) -> Result<Self> {
-        let child = cmd
+        let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
-        let (stdin, stdout, stderr) = match (child.stdin, child.stdout, child.stderr) {
-            (Some(stdin), Some(stdout), Some(stderr)) => (stdin, stdout, stderr),
-            _ => {
-                return Err(SolverError::Solver(
-                    "Failed to fetch IO pipes for solver process".into(),
-                ))
-            }
-        };
+        let (stdin, stdout, stderr) =
+            match (child.stdin.take(), child.stdout.take(), child.stderr.take()) {
+                (Some(stdin), Some(stdout), Some(stderr)) => (stdin, stdout, stderr),
+                _ => {
+                    return Err(SolverError::Solver(
+                        "Failed to fetch IO pipes for solver process".into(),
+                    ))
+                }
+            };
         Ok(Self {
             solver_stdin: BufWriter::new(stdin),
             solver_stdout: BufReader::new(stdout),
             solver_stderr: BufReader::new(stderr),
+            child,
         })
     }
 
@@ -172,6 +176,11 @@ impl Solver for LocalSolver {
     }
 
     async fn check_sat(&mut self) -> Result<Decision> {
+        if self.child.try_wait()?.is_some() {
+            Err(SolverError::Solver(
+                "Solver process terminated unexpectedly".to_string(),
+            ))?
+        }
         self.smtlib_input().check_sat().await?;
         self.solver_stdin.flush().await?;
         let mut output = String::new();
@@ -180,17 +189,16 @@ impl Solver for LocalSolver {
             "sat\n" => Ok(Decision::Sat),
             "unsat\n" => Ok(Decision::Unsat),
             "unknown\n" => Ok(Decision::Unknown),
-            s => match s
-                .strip_prefix("(error \"")
-                .and_then(|s| s.strip_suffix("\")\n"))
-            {
-                Some(e) => Err(SolverError::Solver(e.to_string())),
-                _ => Err(SolverError::UnrecognizedSolverOutput(output)),
-            },
+            s => Err(self.process_error_output(s).await),
         }
     }
 
     async fn get_model(&mut self) -> Result<Option<String>> {
+        if self.child.try_wait()?.is_some() {
+            Err(SolverError::Solver(
+                "Solver process terminated unexpectedly.".to_string(),
+            ))?
+        }
         self.smtlib_input().get_model().await?;
         self.solver_stdin.flush().await?;
         let mut output = String::new();
@@ -212,14 +220,26 @@ impl Solver for LocalSolver {
                 }
                 Ok(Some(output))
             }
+            s => Err(self.process_error_output(s).await),
+        }
+    }
+}
 
-            s => match s
-                .strip_prefix("(error \"")
-                .and_then(|s| s.strip_suffix("\")\n"))
-            {
-                Some(e) => Err(SolverError::Solver(e.to_string())),
-                _ => Err(SolverError::UnrecognizedSolverOutput(output)),
-            },
+impl LocalSolver {
+    async fn process_error_output(&mut self, s: &str) -> SolverError {
+        match s
+            .strip_prefix("(error \"")
+            .and_then(|s| s.strip_suffix("\")\n"))
+        {
+            Some(e) => {
+                if e.starts_with("Parse Error: ") {
+                    // Parse errors cause CVC5 to quit and need to be handled specially.
+                    // Wait for the process to complete
+                    let _ = self.child.wait().await;
+                }
+                SolverError::Solver(e.to_string())
+            }
+            _ => SolverError::UnrecognizedSolverOutput(s.to_string()),
         }
     }
 }
@@ -254,6 +274,8 @@ impl<W: tokio::io::AsyncWrite + Unpin + Send> Solver for WriterSolver<W> {
 
 #[cfg(test)]
 mod test {
+    use cool_asserts::assert_matches;
+
     use super::*;
 
     #[tokio::test]
@@ -330,5 +352,17 @@ mod test {
         let decision = my_solver.check_sat().await.unwrap();
         assert_eq!(decision, Decision::Unsat);
         assert!(my_solver.get_model().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn parse_error_test() {
+        let mut my_solver = LocalSolver::cvc5().unwrap();
+        // Send an invalid expression to the solver.
+        my_solver.smtlib_input().assert("tomato").await.unwrap();
+        // Check that the solver reports an error.
+        assert_matches!(my_solver.check_sat().await, Err(SolverError::Solver(_)));
+        // Attempt to reset the solver.
+        my_solver.smtlib_input().reset().await.unwrap();
+        assert_matches!(my_solver.check_sat().await, Err(SolverError::Solver(x)) => { assert_eq!(x, "Solver process terminated unexpectedly"); });
     }
 }
