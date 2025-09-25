@@ -102,6 +102,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: rustup component add clippy
       # Clippy is configured by `.cargo/config.toml` to deny on lints like
       # `unwrap_used`. They aren't detected by `panic_safety.sh` which only
       # looks for comments where we've added an `allow` directive for clippy.
@@ -119,6 +120,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: rustup component add rustfmt
       - run: cargo fmt --all --check
 
   cargo-deny:
