@@ -253,10 +253,7 @@ mod test {
 
     use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Uri};
 
-    use crate::{
-        schema::SchemaInfo,
-        test_utils::{remove_caret_marker, slice_range},
-    };
+    use crate::{position::get_text_in_range, schema::SchemaInfo, test_utils::remove_caret_marker};
 
     use tracing_test::traced_test;
 
@@ -275,7 +272,7 @@ mod test {
             panic!("Expected exactly one definition");
         };
 
-        let actual_str = slice_range(&schema, actual.range);
+        let actual_str = get_text_in_range(&schema, actual.range).unwrap();
         similar_asserts::assert_eq!(expected, actual_str);
     }
 

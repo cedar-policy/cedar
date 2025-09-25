@@ -36,10 +36,7 @@ pub(crate) fn should_show_policy_snippets(text: &str, cursor_position: Position)
     }
 
     // Get the current line text up to the cursor
-    let lines: Vec<&str> = text.split('\n').collect();
-
-    // Guard against out of bounds
-    let Some(current_line) = lines.get(cursor_position.line as usize) else {
+    let Some(current_line) = text.lines().nth(cursor_position.line as usize) else {
         return false;
     };
 
@@ -64,7 +61,9 @@ pub(crate) fn should_show_policy_snippets(text: &str, cursor_position: Position)
 
     // Check surrounding context for partial policies
     // Look at all text before cursor to check for unclosed parentheses
-    let text_before_cursor = get_text_before_position(text, cursor_position).unwrap();
+    let Some(text_before_cursor) = get_text_before_position(text, cursor_position) else {
+        return false;
+    };
 
     // If we have unclosed parentheses or any policy keyword with unclosed elements,
     // we're likely in the middle of typing a policy

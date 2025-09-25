@@ -105,8 +105,9 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
+        position::get_text_in_range,
         schema::SchemaInfo,
-        test_utils::{remove_caret_marker, schema_info, slice_range},
+        test_utils::{remove_caret_marker, schema_info},
     };
 
     static URI: LazyLock<Uri> = LazyLock::new(|| "https://example.net".parse().ok().unwrap());
@@ -120,11 +121,11 @@ mod tests {
 
         let mut actual = match ranges {
             Some(lsp_types::GotoDefinitionResponse::Scalar(location)) => {
-                vec![slice_range(&schema.text, location.range)]
+                vec![get_text_in_range(&schema.text, location.range).unwrap()]
             }
             Some(lsp_types::GotoDefinitionResponse::Array(locations)) => locations
                 .into_iter()
-                .map(|l| slice_range(&schema.text, l.range))
+                .map(|l| get_text_in_range(&schema.text, l.range).unwrap())
                 .collect(),
             Some(lsp_types::GotoDefinitionResponse::Link(_)) => {
                 panic!("Unexpected GotoDefinitionResponse::Link response")

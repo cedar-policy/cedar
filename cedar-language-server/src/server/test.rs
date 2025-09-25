@@ -15,9 +15,10 @@
  */
 
 #![cfg(test)]
+use crate::position::get_text_in_range;
 use crate::server::Backend;
 use crate::server::Client;
-use crate::test_utils::{remove_all_caret_markers, remove_caret_marker, slice_range};
+use crate::test_utils::{remove_all_caret_markers, remove_caret_marker};
 use cool_asserts::assert_matches;
 use dashmap::DashMap;
 use similar_asserts::assert_eq;
@@ -169,7 +170,7 @@ async fn policy_diagnostic() {
     );
     assert_eq!(
         r#"principal = User::"alice""#,
-        slice_range(src, diagnostic.range),
+        get_text_in_range(src, diagnostic.range).unwrap(),
     );
 }
 
@@ -207,7 +208,10 @@ async fn did_change_diagnostic() {
         diagnostic.message,
         "invalid policy effect: bogus. effect must be either `permit` or `forbid`"
     );
-    assert_eq!("bogus", slice_range(&new_src, diagnostic.range),);
+    assert_eq!(
+        "bogus",
+        get_text_in_range(&new_src, diagnostic.range).unwrap()
+    );
 }
 
 #[tokio::test]
@@ -229,7 +233,7 @@ async fn cedar_schema_diagnostic() {
         diagnostic.message,
         "failed to resolve type: X. `X` has not been declared as a common or entity type"
     );
-    assert_eq!("X", slice_range(src, diagnostic.range),);
+    assert_eq!("X", get_text_in_range(src, diagnostic.range).unwrap());
 }
 
 #[tokio::test]
@@ -589,7 +593,7 @@ async fn goto_definition() {
         .unwrap();
     assert_matches!(def, GotoDefinitionResponse::Scalar(def) => {
         assert_eq!(uri, def.uri);
-        assert_eq!("entity Entity;", slice_range(&src, def.range));
+        assert_eq!("entity Entity;", get_text_in_range(&src, def.range).unwrap());
     });
 }
 
@@ -651,7 +655,10 @@ async fn execute_command_associate_schema() {
         "for policy `policy0`, attribute `fob` on entity type `E` not found. did you mean `foo`?",
         diagnostic.message
     );
-    assert_eq!("principal.fob", slice_range(src, diagnostic.range));
+    assert_eq!(
+        "principal.fob",
+        get_text_in_range(src, diagnostic.range).unwrap()
+    );
 }
 
 #[tokio::test]
@@ -697,7 +704,7 @@ async fn goto_definition_in_schema_from_policy() {
         .unwrap();
     assert_matches!(def, GotoDefinitionResponse::Scalar(def) => {
         assert_eq!(schema_uri, def.uri);
-        assert_eq!("entity User;", slice_range(schema_src, def.range));
+        assert_eq!("entity User;", get_text_in_range(schema_src, def.range).unwrap());
     });
 }
 
@@ -1292,7 +1299,7 @@ async fn code_action_for_misspelled_entity() {
         CodeActionOrCommand::CodeAction(action) =>  {
             let edit = &action.edit.as_ref().unwrap().changes.as_ref().unwrap().get(&policy_uri).unwrap()[0];
             assert_eq!("User", edit.new_text);
-            assert_eq!("Usr", slice_range(policy_text, edit.range));
+            assert_eq!("Usr", get_text_in_range(policy_text, edit.range).unwrap());
         }
     );
 }
@@ -1337,7 +1344,7 @@ async fn code_action_for_misspelled_action() {
         CodeActionOrCommand::CodeAction(action) =>  {
             let edit = &action.edit.as_ref().unwrap().changes.as_ref().unwrap().get(&policy_uri).unwrap()[0];
             assert_eq!("Action::\"Action\"", edit.new_text);
-            assert_eq!("Action::\"Act\"", slice_range(policy_text, edit.range));
+            assert_eq!("Action::\"Act\"", get_text_in_range(policy_text, edit.range).unwrap());
         }
     );
 }

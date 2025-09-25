@@ -93,6 +93,12 @@ pub(crate) fn get_text_before_position(text: &str, position: Position) -> Option
     Some(&text[..offset])
 }
 
+pub(crate) fn get_text_in_range(text: &str, range: Range) -> Option<&str> {
+    let start = position_byte_offset(text, range.start)?;
+    let end = position_byte_offset(text, range.end)?;
+    Some(&text[start..end])
+}
+
 pub(crate) fn is_position_in_range(position: Position, range: &Range) -> bool {
     position >= range.start && position <= range.end
 }
@@ -389,6 +395,7 @@ mod tests {
                 get_char_at_position(Position::new(1, 0), "hello\n\nworld"),
                 Some('\n')
             );
+            assert_eq!(get_char_at_position(Position::new(0, 0), "\n"), Some('\n'));
             assert_eq!(
                 get_char_at_position(Position::new(0, 0), "\r\n"),
                 Some('\r')
@@ -411,9 +418,11 @@ mod tests {
 
         #[test]
         fn unicode_characters() {
-            let src = "héllo\nwörld";
-            assert_eq!(get_char_at_position(Position::new(0, 1), src), Some('é'));
-            assert_eq!(get_char_at_position(Position::new(0, 2), src), Some('l'));
+            let src = "🚀héllo\nwörld";
+            assert_eq!(get_char_at_position(Position::new(0, 0), src), Some('🚀'));
+            assert_eq!(get_char_at_position(Position::new(0, 1), src), Some('h'));
+            assert_eq!(get_char_at_position(Position::new(0, 2), src), Some('é'));
+            assert_eq!(get_char_at_position(Position::new(0, 3), src), Some('l'));
             assert_eq!(get_char_at_position(Position::new(1, 1), src), Some('ö'));
             assert_eq!(get_char_at_position(Position::new(1, 2), src), Some('r'));
         }
@@ -572,6 +581,52 @@ mod tests {
             assert_eq!(
                 get_text_before_position(text, Position::new(0, 2)).unwrap(),
                 "🚀H"
+            );
+        }
+    }
+
+    mod get_text_in_range {
+        use tower_lsp_server::lsp_types::{Position, Range};
+
+        use crate::position::get_text_in_range;
+
+        #[test]
+        fn single_line() {
+            let text = "hello world";
+            assert_eq!(
+                get_text_in_range(text, Range::new(Position::new(0, 0), Position::new(0, 5)))
+                    .unwrap(),
+                "hello"
+            );
+            assert_eq!(
+                get_text_in_range(text, Range::new(Position::new(0, 4), Position::new(0, 7)))
+                    .unwrap(),
+                "o w"
+            );
+            assert_eq!(
+                get_text_in_range(text, Range::new(Position::new(0, 6), Position::new(0, 11)))
+                    .unwrap(),
+                "world"
+            );
+        }
+
+        #[test]
+        fn multi_line() {
+            let text = "hello\nworld";
+            assert_eq!(
+                get_text_in_range(text, Range::new(Position::new(0, 0), Position::new(0, 5)))
+                    .unwrap(),
+                "hello"
+            );
+            assert_eq!(
+                get_text_in_range(text, Range::new(Position::new(0, 4), Position::new(1, 1)))
+                    .unwrap(),
+                "o\nw"
+            );
+            assert_eq!(
+                get_text_in_range(text, Range::new(Position::new(1, 0), Position::new(1, 5)))
+                    .unwrap(),
+                "world"
             );
         }
     }

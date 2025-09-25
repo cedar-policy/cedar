@@ -18,7 +18,7 @@ use std::{fs::read_to_string, str::FromStr};
 
 use cedar_policy_core::ast::PolicyID;
 use cedar_policy_core::validator::ValidatorSchema;
-use tower_lsp_server::lsp_types::{Position, Range};
+use tower_lsp_server::lsp_types::Position;
 
 use crate::{
     policy::{DocumentContext, PolicyLanguageFeatures},
@@ -61,16 +61,6 @@ pub(crate) fn remove_all_caret_markers(src: impl AsRef<str>) -> (String, Vec<Pos
 pub(crate) fn insert_caret(src: &str, pos: Position) -> String {
     let offset = position_byte_offset(src, pos).unwrap();
     format!("{}|caret|{}", &src[..offset], &src[offset..])
-}
-
-/// Given a range - a pair of (line, column) positions - extract the slice
-/// for this range from a string slice.
-pub(crate) fn slice_range(src: &str, range: Range) -> &str {
-    let start_offset = position_byte_offset(src, range.start)
-        .expect(&format!("{:?} out of range for {:?}", range.start, src));
-    let end_offset = position_byte_offset(src, range.end)
-        .expect(&format!("{:?} out of range for {:?}", range.end, src));
-    &src[start_offset..end_offset]
 }
 
 pub(crate) fn schema() -> ValidatorSchema {

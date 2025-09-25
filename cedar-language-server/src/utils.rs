@@ -18,7 +18,7 @@ use std::fmt::Write;
 
 use tower_lsp_server::lsp_types::{self, Position, Range};
 
-use crate::position::{position_byte_offset, to_range};
+use crate::position::{get_text_in_range, to_range};
 
 /// Defines the length-zero source range occurring at the start of the file.
 /// Used as the source range we don't have anything better available.
@@ -380,17 +380,13 @@ pub(crate) fn get_policy_scope_variable(
     let text = if let Some(((start_line, start_pos), (end_line, end_pos))) =
         param_sections.get(param_index)
     {
-        let start = position_byte_offset(
-            policy_text,
+        let param_range = Range::new(
             Position::new(*start_line as u32, *start_pos as u32),
-        )
-        .unwrap();
-        let end = position_byte_offset(
-            policy_text,
             Position::new(*end_line as u32, *end_pos as u32),
-        )
-        .unwrap();
-        policy_text[start..end].trim()
+        );
+        // PANIC SAFETY: Positions in `param_section` as valid offsets into `policy_text`
+        #[allow(clippy::unwrap_used)]
+        get_text_in_range(policy_text, param_range).unwrap().trim()
     } else {
         ""
     };

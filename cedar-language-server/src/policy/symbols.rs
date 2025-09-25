@@ -87,7 +87,7 @@ fn to_symbol(policy: &Template) -> Option<DocumentSymbol> {
 mod test {
     use itertools::Itertools;
 
-    use crate::{policy::policy_set_symbols, test_utils::slice_range};
+    use crate::{policy::policy_set_symbols, position::get_text_in_range};
     use tracing_test::traced_test;
 
     #[track_caller]
@@ -95,7 +95,12 @@ mod test {
         let syms = policy_set_symbols(policy).unwrap();
         let mut actual = syms
             .iter()
-            .map(|sym| (sym.name.as_str(), slice_range(policy, sym.range)))
+            .map(|sym| {
+                (
+                    sym.name.as_str(),
+                    get_text_in_range(policy, sym.range).unwrap(),
+                )
+            })
             .collect_vec();
         actual.sort_unstable();
         expected.sort_unstable();

@@ -182,8 +182,8 @@ mod test {
     use itertools::Itertools;
 
     use crate::{
+        position::get_text_in_range,
         schema::{schema_symbols, SchemaInfo},
-        test_utils::slice_range,
     };
     use tracing_test::traced_test;
 
@@ -192,12 +192,19 @@ mod test {
         let syms = schema_symbols(&SchemaInfo::cedar_schema(schema.to_owned())).unwrap();
         let mut actual = syms
             .iter()
-            .map(|sym| (sym.name.as_str(), slice_range(schema, sym.range)))
+            .map(|sym| {
+                (
+                    sym.name.as_str(),
+                    get_text_in_range(schema, sym.range).unwrap(),
+                )
+            })
             .chain(syms.iter().flat_map(|sym| {
-                sym.children
-                    .iter()
-                    .flatten()
-                    .map(|sym| (sym.name.as_str(), slice_range(schema, sym.range)))
+                sym.children.iter().flatten().map(|sym| {
+                    (
+                        sym.name.as_str(),
+                        get_text_in_range(schema, sym.range).unwrap(),
+                    )
+                })
             }))
             .collect_vec();
 
