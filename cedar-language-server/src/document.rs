@@ -198,7 +198,7 @@ impl Document {
     pub(crate) fn fold(&self) -> Option<Vec<FoldingRange>> {
         match self {
             Self::Policy(ref policy) => fold_policy_set(&policy.state.content.to_string()),
-            Self::Schema(schema) => fold_schema(&schema.into()),
+            Self::Schema(schema) => fold_schema(&schema.schema_info()),
             Self::Entities(_) => None,
         }
     }
@@ -207,7 +207,7 @@ impl Document {
     pub(crate) fn symbols(&self) -> Option<Vec<DocumentSymbol>> {
         match self {
             Self::Policy(ref policy) => policy_set_symbols(&policy.state.content.to_string()),
-            Self::Schema(schema) => schema_symbols(&schema.into()),
+            Self::Schema(schema) => schema_symbols(&schema.schema_info()),
             Self::Entities(_) => None,
         }
     }
@@ -226,7 +226,7 @@ impl Document {
             }
             Self::Schema(schema_document) => schema_goto_definition(
                 position,
-                &schema_document.into(),
+                &schema_document.schema_info(),
                 &schema_document.state.uri,
             ),
             Self::Entities(_) => None,
@@ -246,8 +246,7 @@ impl Document {
                 CompletionResponse::Array(completions).into()
             }
             Self::Schema(schema_document) => {
-                let schema = SchemaInfo::new(schema_document.schema_type, self.text());
-                schema_completions(position, &schema)
+                schema_completions(position, &schema_document.schema_info())
             }
             Self::Entities(_) => None,
         }
@@ -320,7 +319,7 @@ impl PolicyDocument {
             .as_ref()
             .and_then(|schema_uri| self.state.get_document_or_else_read(schema_uri))
             .and_then(Document::into_schema)
-            .map(|s| SchemaInfo::new(s.schema_type, s.state.content.to_string()));
+            .map(|s| s.schema_info());
 
         validate_policyset(&self.state.content.to_string(), schema)
     }
@@ -329,10 +328,7 @@ impl PolicyDocument {
         &self,
         schema: &SchemaDocument,
     ) -> anyhow::Result<Vec<Diagnostic>> {
-        let schema = Some(schema.into());
-
-        let diagnostics = validate_policyset(&self.state.content.to_string(), schema)?;
-        Ok(diagnostics)
+        validate_policyset(&self.state.content.to_string(), Some(schema.schema_info()))
     }
 
     #[must_use]
@@ -341,13 +337,7 @@ impl PolicyDocument {
             .as_ref()
             .and_then(|schema_uri| self.state.get_document_or_else_read(schema_uri))
             .and_then(Document::into_schema)
-            .map(|s| SchemaInfo::new(s.schema_type, s.state.content.to_string()))
-    }
-}
-
-impl From<PolicyDocument> for Document {
-    fn from(value: PolicyDocument) -> Self {
-        Self::Policy(value)
+            .map(|s| s.schema_info())
     }
 }
 
@@ -365,7 +355,7 @@ pub(crate) struct DiagnosticFragment {
 
 impl SchemaDocument {
     fn get_diagnostics(&self) -> Vec<Diagnostic> {
-        validate_entire_schema(&self.into())
+        validate_entire_schema(&self.schema_info())
     }
 
     #[must_use]
@@ -420,17 +410,9 @@ impl SchemaDocument {
             })
             .collect()
     }
-}
 
-impl From<SchemaDocument> for Document {
-    fn from(value: SchemaDocument) -> Self {
-        Self::Schema(value)
-    }
-}
-
-impl From<&SchemaDocument> for SchemaInfo {
-    fn from(value: &SchemaDocument) -> Self {
-        Self::new(value.schema_type, value.state.content.to_string())
+    fn schema_info(&self) -> SchemaInfo {
+        SchemaInfo::new(self.schema_type, self.state.content.to_string())
     }
 }
 
@@ -447,7 +429,7 @@ impl EntitiesDocument {
             .as_ref()
             .and_then(|schema_uri| self.state.get_document_or_else_read(schema_uri))
             .and_then(Document::into_schema)
-            .map(|s| SchemaInfo::new(s.schema_type, s.state.content.to_string()));
+            .map(|s| s.schema_info());
 
         Ok(entities_diagnostics(&self.state.content.to_string(), schema).unwrap_or_default())
     }
@@ -456,17 +438,10 @@ impl EntitiesDocument {
         &self,
         schema: &SchemaDocument,
     ) -> anyhow::Result<Vec<Diagnostic>> {
-        let schema = Some(schema.into());
-
-        let diagnostics =
-            entities_diagnostics(&self.state.content.to_string(), schema).unwrap_or_default();
-        Ok(diagnostics)
-    }
-}
-
-impl From<EntitiesDocument> for Document {
-    fn from(value: EntitiesDocument) -> Self {
-        Self::Entities(value)
+        Ok(
+            entities_diagnostics(&self.state.content.to_string(), Some(schema.schema_info()))
+                .unwrap_or_default(),
+        )
     }
 }
 
