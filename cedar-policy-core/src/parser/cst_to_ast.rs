@@ -2324,7 +2324,6 @@ fn construct_template_policy(
             conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc)),
         ))
     } else {
-        // use `true` to mark the absence of non-scope constraints
         construct_template(None)
     }
 }
