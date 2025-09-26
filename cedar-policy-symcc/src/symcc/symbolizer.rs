@@ -208,12 +208,12 @@ impl SymEntityData {
             }
         }
 
-        Ok(UnaryFunction::Udf(function::Udf {
+        Ok(UnaryFunction::Udf(Arc::new(function::Udf {
             arg: TermType::Entity { ety: ety.clone() },
             out: attrs_udf_out,
-            table: attrs_udf_table,
+            table: Arc::new(attrs_udf_table),
             default: attrs_udf_default,
-        }))
+        })))
     }
 
     /// Implements `Entities.symbolizeAncs?` in Lean
@@ -248,12 +248,12 @@ impl SymEntityData {
         let ancs_udf_out = TermType::set_of(anc_term_ty);
         let ancs_udf_default = ancs_udf_out.default_literal(sym_env);
 
-        Ok(UnaryFunction::Udf(function::Udf {
+        Ok(UnaryFunction::Udf(Arc::new(function::Udf {
             arg: TermType::Entity { ety: ety.clone() },
             out: ancs_udf_out,
-            table: ancs_udf_table,
+            table: Arc::new(ancs_udf_table),
             default: ancs_udf_default,
-        }))
+        })))
     }
 
     /// Implements `Entities.symbolizeTags?` in Lean
@@ -301,18 +301,18 @@ impl SymEntityData {
         }
 
         Ok(SymTags {
-            keys: UnaryFunction::Udf(function::Udf {
+            keys: UnaryFunction::Udf(Arc::new(function::Udf {
                 arg: TermType::Entity { ety: ety.clone() }, // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
                 out: TermType::set_of(TermType::String),
-                table: keys_udf_table,
+                table: Arc::new(keys_udf_table),
                 default: keys_udf_default,
-            }),
-            vals: UnaryFunction::Udf(function::Udf {
+            })),
+            vals: UnaryFunction::Udf(Arc::new(function::Udf {
                 arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
                 out: TermType::of_type(tag_ty)?,
-                table: vals_udf_table,
+                table: Arc::new(vals_udf_table),
                 default: vals_udf_default,
-            }),
+            })),
         })
     }
 
@@ -352,14 +352,14 @@ impl SymEntityData {
             EntitySchemaEntry::Enum(eids) => {
                 // Same as `SymEntityData::of_entity_type` since it does not
                 // contain `UUF`s or variables.
-                let attrs_udf = UnaryFunction::Udf(function::Udf {
+                let attrs_udf = UnaryFunction::Udf(Arc::new(function::Udf {
                     arg: TermType::Entity { ety: ety.clone() },
                     out: TermType::Record {
                         rty: Arc::new(BTreeMap::new()),
                     },
-                    table: BTreeMap::new(),
+                    table: Arc::new(BTreeMap::new()),
                     default: Term::Record(Arc::new(BTreeMap::new())),
-                });
+                }));
                 Ok(SymEntityData {
                     attrs: attrs_udf,
                     ancestors: BTreeMap::new(),
