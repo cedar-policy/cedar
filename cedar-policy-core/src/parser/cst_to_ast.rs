@@ -2320,12 +2320,12 @@ fn construct_template_policy(
     let mut conds_rev_iter = conds.into_iter().rev();
     if let Some(last_expr) = conds_rev_iter.next() {
         let builder = ast::ExprBuilder::new().with_maybe_source_loc(loc);
-        construct_template(
+        construct_template(Some(
             conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc)),
-        )
+        ))
     } else {
         // use `true` to mark the absence of non-scope constraints
-        construct_template(ast::ExprBuilder::new().with_maybe_source_loc(loc).val(true))
+        construct_template(None)
     }
 }
 fn construct_string_from_var(v: ast::Var) -> SmolStr {

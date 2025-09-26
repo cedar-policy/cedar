@@ -642,7 +642,7 @@ mod test {
     use super::*;
     use crate::{
         ast::{
-            annotation::Annotations, ActionConstraint, Effect, Expr, PrincipalConstraint,
+            annotation::Annotations, ActionConstraint, Effect, PrincipalConstraint,
             ResourceConstraint,
         },
         parser,
@@ -926,7 +926,7 @@ mod test {
             PrincipalConstraint::any(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         );
 
         let mut s = PolicySet::new();
@@ -955,7 +955,7 @@ mod test {
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),
             ResourceConstraint::is_in_slot(),
-            Expr::val(true),
+            None,
         );
 
         let mut s = PolicySet::new();
@@ -991,7 +991,7 @@ mod test {
             PrincipalConstraint::any(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         )
         .expect("Policy Creation Failed");
         s.add_static(p).unwrap();
@@ -1020,7 +1020,7 @@ mod test {
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         );
         s.add_template(t).unwrap();
 
@@ -1055,7 +1055,7 @@ mod test {
             PrincipalConstraint::any(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         )
         .expect("Policy Creation Failed");
         let template1 = Template::new(
@@ -1066,7 +1066,7 @@ mod test {
             PrincipalConstraint::any(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         );
         let added = pset.add_static(policy1.clone()).is_ok();
         assert!(added);
@@ -1086,7 +1086,7 @@ mod test {
             PrincipalConstraint::is_eq(Arc::new(EntityUID::with_eid("jane"))),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         )
         .expect("Policy Creation Failed");
         let added = pset.add_static(policy2).is_ok();
@@ -1101,7 +1101,7 @@ mod test {
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         );
         let id3 = PolicyID::from_string("link");
         let added = pset.add_template(template2).is_ok();
