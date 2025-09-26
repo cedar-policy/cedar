@@ -736,7 +736,7 @@ mod test {
         assert_eq!(p.principal_constraint(), PrincipalConstraint::any());
         assert_eq!(p.resource_constraint(), ResourceConstraint::any());
         assert_eq!(p.id(), &id);
-        assert_eq!(p.non_scope_constraints(), e.as_ref());
+        assert_eq!(p.non_scope_constraints(), Some(e.as_ref()));
     }
 
     #[test]
@@ -750,7 +750,7 @@ mod test {
         assert_eq!(p.principal_constraint(), PrincipalConstraint::any());
         assert_eq!(p.resource_constraint(), ResourceConstraint::any());
         assert_eq!(p.id(), &id);
-        assert_eq!(p.non_scope_constraints(), e.as_ref());
+        assert_eq!(p.non_scope_constraints(), Some(e.as_ref()));
     }
 
     #[test]

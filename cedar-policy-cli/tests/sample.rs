@@ -1246,14 +1246,11 @@ fn test_translate_policy() {
     let translated_cedar = std::str::from_utf8(&translate_to_cedar.get_output().stdout)
         .expect("output should be decodable");
 
-    // Converting back from JSON adds an extra `when { true }`
     let expected_translated_cedar = r#"permit(
   principal == User::"alice",
   action == Action::"update",
   resource == Photo::"VacationPhoto94.jpg"
-) when {
-  true
-};
+);
 "#;
 
     assert_eq!(
