@@ -40,8 +40,8 @@ use crate::{
         },
         SchemaActionLoc,
     },
-    position::ToRange,
     utils::PolicyScopeVariable,
+    utils::ToRange,
 };
 
 /// Provides "go to definition" functionality for schema elements in Cedar policies.

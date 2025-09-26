@@ -19,8 +19,8 @@ use tower_lsp_server::lsp_types::{DocumentSymbol, SymbolKind};
 
 use crate::{
     lsp::new_symbol,
-    position::{ranges_intersect, ToRange},
     utils::extract_common_type_name,
+    utils::{ranges_intersect, ToRange},
 };
 
 use super::SchemaInfo;
@@ -182,8 +182,8 @@ mod test {
     use itertools::Itertools;
 
     use crate::{
-        position::get_text_in_range,
         schema::{schema_symbols, SchemaInfo},
+        utils::get_text_in_range,
     };
     use tracing_test::traced_test;
 

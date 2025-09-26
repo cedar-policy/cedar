@@ -22,7 +22,7 @@ use cedar_policy_core::{
 };
 use tower_lsp_server::lsp_types::{DocumentSymbol, SymbolKind};
 
-use crate::{lsp::new_symbol, position::ToRange};
+use crate::{lsp::new_symbol, utils::ToRange};
 
 /// Generates document symbols for Cedar policies in a document.
 ///
@@ -87,7 +87,7 @@ fn to_symbol(policy: &Template) -> Option<DocumentSymbol> {
 mod test {
     use itertools::Itertools;
 
-    use crate::{policy::policy_set_symbols, position::get_text_in_range};
+    use crate::{policy::policy_set_symbols, utils::get_text_in_range};
     use tracing_test::traced_test;
 
     #[track_caller]

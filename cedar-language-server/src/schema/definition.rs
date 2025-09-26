@@ -24,10 +24,10 @@ use cedar_policy_core::validator::{
 use itertools::Itertools;
 use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 
-use crate::position::offset_to_position;
+use crate::utils::offset_to_position;
 use crate::{
-    position::{position_within_loc, ToRange},
     utils::get_word_at_position,
+    utils::{position_within_loc, ToRange},
 };
 
 use super::SchemaInfo;
@@ -253,7 +253,7 @@ mod test {
 
     use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Uri};
 
-    use crate::{position::get_text_in_range, schema::SchemaInfo, test_utils::remove_caret_marker};
+    use crate::{schema::SchemaInfo, utils::get_text_in_range, utils::tests::remove_caret_marker};
 
     use tracing_test::traced_test;
 

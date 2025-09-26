@@ -20,8 +20,8 @@ use crate::{
         PrincipalDocumentation, ResourceDocumentation, ToDocumentationString,
     },
     policy::types::cedar::CedarTypeKind,
-    position::{position_within_loc, ToRange},
     utils::PolicyScopeVariable,
+    utils::{position_within_loc, ToRange},
 };
 use cedar_policy_core::ast::{
     ActionConstraint, ExprVisitor, PolicyID, PrincipalConstraint, PrincipalOrResourceConstraint,
@@ -261,7 +261,7 @@ mod tests {
             StringDocumentation, SubtractDocumentation,
         },
         policy::{cedar::EntityTypeKind, hover::ToHover, types::cedar::CedarTypeKind},
-        test_utils::{remove_caret_marker, schema_document_context, schema_info},
+        utils::tests::{remove_caret_marker, schema_document_context, schema_info},
     };
     use cedar_policy_core::ast::{EntityType, EntityUID};
 

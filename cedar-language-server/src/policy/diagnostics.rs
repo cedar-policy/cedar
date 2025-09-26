@@ -20,9 +20,9 @@ use cedar_policy_core::validator::{ValidationError, ValidationMode, Validator, V
 use serde::{Deserialize, Serialize};
 use tower_lsp_server::lsp_types::{Diagnostic, Range};
 
-use crate::position::ToRange;
 use crate::schema::SchemaInfo;
 use crate::utils::to_lsp_diagnostics;
+use crate::utils::ToRange;
 
 /// Validates a Cedar policy set against a schema and generates diagnostics for any issues.
 ///

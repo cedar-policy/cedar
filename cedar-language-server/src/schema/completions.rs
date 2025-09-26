@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::position::is_position_in_range;
+use crate::utils::is_position_in_range;
 
 use super::SchemaInfo;
 use regex::Regex;
@@ -386,7 +386,7 @@ const NAMESPACE_SNIPPET: &str = r"namespace ${1} {
 #[cfg(test)]
 mod test {
     use super::CedarSchemaParser;
-    use crate::test_utils::remove_caret_marker;
+    use crate::utils::tests::remove_caret_marker;
     use itertools::Itertools;
     use tracing_test::traced_test;
 

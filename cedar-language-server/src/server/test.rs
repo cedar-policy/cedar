@@ -15,10 +15,10 @@
  */
 
 #![cfg(test)]
-use crate::position::get_text_in_range;
 use crate::server::Backend;
 use crate::server::Client;
-use crate::test_utils::{remove_all_caret_markers, remove_caret_marker};
+use crate::utils::get_text_in_range;
+use crate::utils::tests::{remove_all_caret_markers, remove_caret_marker};
 use cool_asserts::assert_matches;
 use dashmap::DashMap;
 use similar_asserts::assert_eq;

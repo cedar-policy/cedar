@@ -16,9 +16,35 @@
 
 use std::fmt::Write;
 
+use cedar_policy_core::parser::Loc;
+use miette::SourceSpan;
 use tower_lsp_server::lsp_types::{self, Position, Range};
 
-use crate::position::{get_text_in_range, to_range};
+pub(crate) trait ToRange {
+    fn to_range(&self) -> Range;
+}
+
+impl ToRange for Loc {
+    fn to_range(&self) -> Range {
+        // Assumes that `span` is in bounds for `src`. This is true if
+        // this `Loc` is constructed by our parser, but is easy to
+        // violate if constructing a `Loc` manually.
+        // PANIC_SAFETY: See above
+        #[allow(clippy::unwrap_used)]
+        to_range(&self.span, &self.src).unwrap()
+    }
+}
+
+impl ToRange for Box<Loc> {
+    fn to_range(&self) -> Range {
+        // Assumes that `span` is in bounds for `src`. This is true if
+        // this `Loc` is constructed by our parsers, but is easy to
+        // violate if constructing a `Loc` manually.
+        // PANIC_SAFETY: See above
+        #[allow(clippy::unwrap_used)]
+        to_range(&self.span, &self.src).unwrap()
+    }
+}
 
 /// Defines the length-zero source range occurring at the start of the file.
 /// Used as the source range we don't have anything better available.
@@ -80,6 +106,75 @@ pub(crate) fn to_lsp_diagnostics<'a>(
         diagnostics.extend(related.flat_map(|d| to_lsp_diagnostics(d, src)));
     }
     diagnostics
+}
+
+pub(crate) fn to_range(source_span: &SourceSpan, src: &str) -> Option<Range> {
+    Some(Range {
+        start: offset_to_position(src, source_span.offset())?,
+        end: offset_to_position(src, source_span.offset() + source_span.len())?,
+    })
+}
+
+pub(crate) fn offset_to_position(text: &str, offset: usize) -> Option<Position> {
+    let text = text.get(..offset)?;
+    let line = text.chars().filter(|&c| c == '\n').count();
+    let char = text.chars().rev().take_while(|&c| c != '\n').count();
+    Some(Position::new(line as u32, char as u32))
+}
+
+/// Get the byte offset of a position (line and column) in a string,
+/// accounting for the actual position of newlines in the string.
+pub(crate) fn position_byte_offset(src: &str, pos: Position) -> Option<usize> {
+    let mut line_offset = 0;
+    for (line_num, line) in src.lines().enumerate() {
+        if line_num == pos.line as usize {
+            if let Some((char_offset_in_line, _)) = line.char_indices().nth(pos.character as usize)
+            {
+                return Some(line_offset + char_offset_in_line);
+            } else if pos.character as usize == line.chars().count() {
+                return Some(line_offset + line.len());
+            }
+        } else {
+            // `+ 1` to skip past new line
+            line_offset += line.len() + 1;
+        }
+    }
+    None
+}
+
+pub(crate) fn get_char_at_position(position: Position, src: &str) -> Option<char> {
+    let offset = position_byte_offset(src, position)?;
+    Some(src[offset..].chars().next().unwrap())
+}
+
+pub(crate) fn get_text_before_position(text: &str, position: Position) -> Option<&str> {
+    let offset = position_byte_offset(text, position)?;
+    Some(&text[..offset])
+}
+
+pub(crate) fn get_text_in_range(text: &str, range: Range) -> Option<&str> {
+    let start = position_byte_offset(text, range.start)?;
+    let end = position_byte_offset(text, range.end)?;
+    Some(&text[start..end])
+}
+
+pub(crate) fn is_position_in_range(position: Position, range: &Range) -> bool {
+    position >= range.start && position <= range.end
+}
+
+pub(crate) fn position_within_loc<'a, R, I>(position: Position, range: I) -> bool
+where
+    R: ToRange + 'a,
+    I: Into<Option<&'a R>>,
+{
+    let Some(range) = range.into() else {
+        return false;
+    };
+    is_position_in_range(position, &range.to_range())
+}
+
+pub(crate) fn ranges_intersect(a: &Range, b: &Range) -> bool {
+    a.start <= b.end && b.start <= a.end
 }
 
 pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<&str> {
@@ -508,12 +603,83 @@ pub(crate) fn is_cursor_in_condition_braces(position: Position, source_text: &st
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::{fs::read_to_string, str::FromStr};
+
+    use cedar_policy_core::{ast::PolicyID, validator::ValidatorSchema};
     use tracing_test::traced_test;
 
-    use crate::test_utils::{insert_caret, remove_all_caret_markers, remove_caret_marker};
     use similar_asserts::assert_eq;
 
+    use crate::{
+        policy::{DocumentContext, PolicyLanguageFeatures},
+        schema::SchemaInfo,
+    };
+
     use super::*;
+
+    pub(crate) fn remove_caret_marker(policy: impl AsRef<str>) -> (String, Position) {
+        let marker = "|caret|";
+        let (before, after) = policy
+            .as_ref()
+            .split_once(marker)
+            .expect("Caret marker not found");
+        let position = if before.is_empty() {
+            Position {
+                line: 0,
+                character: 0,
+            }
+        } else {
+            Position {
+                line: (before.lines().count() - 1).try_into().unwrap(),
+                character: before.lines().last().unwrap().len().try_into().unwrap(),
+            }
+        };
+
+        (format!("{before}{after}"), position)
+    }
+
+    pub(crate) fn remove_all_caret_markers(src: impl AsRef<str>) -> (String, Vec<Position>) {
+        let mut src = src.as_ref().to_owned();
+        let mut caret_positions = Vec::new();
+        while src.contains("|caret|") {
+            let (new_src, pos) = remove_caret_marker(src);
+            src = new_src;
+            caret_positions.push(pos);
+        }
+        (src, caret_positions)
+    }
+
+    pub(crate) fn insert_caret(src: &str, pos: Position) -> String {
+        let offset = position_byte_offset(src, pos).unwrap();
+        format!("{}|caret|{}", &src[..offset], &src[offset..])
+    }
+
+    pub(crate) fn schema() -> ValidatorSchema {
+        let schema_str = read_to_string("test-data/policies.cedarschema").unwrap();
+
+        ValidatorSchema::from_str(&schema_str).unwrap()
+    }
+
+    pub(crate) fn schema_info(schema_name: &str) -> SchemaInfo {
+        let schema_str = read_to_string(format!("test-data/{schema_name}")).unwrap();
+
+        SchemaInfo::cedar_schema(schema_str)
+    }
+
+    pub(crate) fn schema_document_context(policy: &str, position: Position) -> DocumentContext<'_> {
+        let template =
+            cedar_policy_core::parser::text_to_cst::parse_policy_tolerant(policy).unwrap();
+        let ast = template
+            .to_policy_template_tolerant(PolicyID::from_string("0"))
+            .unwrap();
+        DocumentContext::new(
+            Some(schema()),
+            ast,
+            policy,
+            position,
+            PolicyLanguageFeatures::default(),
+        )
+    }
 
     #[test]
     fn test_get_operator() {
@@ -1108,5 +1274,365 @@ permit(
 
         let (text, position) = remove_caret_marker("principal has |caret|department");
         assert_eq!(get_word_at_position(position, &text), Some("department"));
+    }
+
+    mod offset_to_position {
+        use crate::utils::offset_to_position;
+        use similar_asserts::assert_eq;
+        use tower_lsp_server::lsp_types::Position;
+
+        #[test]
+        fn empty_string() {
+            assert_eq!(offset_to_position("", 0).unwrap(), Position::new(0, 0));
+        }
+
+        #[test]
+        fn single_line_all_ascii() {
+            let text = "hello world";
+            assert_eq!(offset_to_position(text, 0).unwrap(), Position::new(0, 0));
+            assert_eq!(offset_to_position(text, 6).unwrap(), Position::new(0, 6));
+            assert_eq!(
+                offset_to_position(text, text.len()).unwrap(),
+                Position::new(0, text.len() as u32)
+            );
+            assert_eq!(offset_to_position(text, 20), None);
+        }
+
+        #[test]
+        fn multi_line_all_ascii() {
+            let text = "line1\nline2\nline3";
+            assert_eq!(offset_to_position(text, 0).unwrap(), Position::new(0, 0));
+            assert_eq!(offset_to_position(text, 3).unwrap(), Position::new(0, 3));
+            assert_eq!(offset_to_position(text, 5).unwrap(), Position::new(0, 5));
+            assert_eq!(offset_to_position(text, 6).unwrap(), Position::new(1, 0));
+            assert_eq!(offset_to_position(text, 14).unwrap(), Position::new(2, 2));
+            assert_eq!(offset_to_position(text, 17).unwrap(), Position::new(2, 5));
+        }
+
+        #[test]
+        fn empty_lines() {
+            let text = "\n\n\n";
+            assert_eq!(offset_to_position(text, 0).unwrap(), Position::new(0, 0));
+            assert_eq!(offset_to_position(text, 1).unwrap(), Position::new(1, 0));
+            assert_eq!(offset_to_position(text, 2).unwrap(), Position::new(2, 0));
+            assert_eq!(offset_to_position(text, 3).unwrap(), Position::new(3, 0));
+            assert_eq!(offset_to_position(text, 4), None);
+        }
+
+        #[test]
+        fn unicode_characters() {
+            let text = "_🚀_";
+            assert_eq!(offset_to_position(text, 0).unwrap(), Position::new(0, 0));
+            assert_eq!(offset_to_position(text, 1).unwrap(), Position::new(0, 1));
+            assert_eq!(offset_to_position(text, 5).unwrap(), Position::new(0, 2));
+            assert_eq!(offset_to_position(text, 7), None);
+        }
+    }
+
+    mod to_range {
+        use super::*;
+        use similar_asserts::assert_eq;
+
+        #[test]
+        fn single_line_span() {
+            let src = "hello world";
+            let span = SourceSpan::new(6.into(), 5);
+            let range = to_range(&span, src).unwrap();
+
+            assert_eq!(
+                range,
+                Range {
+                    start: Position::new(0, 6),
+                    end: Position::new(0, 11),
+                }
+            );
+        }
+
+        #[test]
+        fn multiline_span_within_line() {
+            let src = "line1\nline2\nline3";
+            let span = SourceSpan::new(6.into(), 5); // "line2"
+            let range = to_range(&span, src).unwrap();
+
+            assert_eq!(
+                range,
+                Range {
+                    start: Position::new(1, 0),
+                    end: Position::new(1, 5),
+                }
+            );
+        }
+
+        #[test]
+        fn span_across_lines() {
+            let src = "line1\nline2\nline3";
+            let span = SourceSpan::new(3.into(), 8); // "e1\nline2"
+            let range = to_range(&span, src).unwrap();
+
+            assert_eq!(
+                range,
+                Range {
+                    start: Position::new(0, 3),
+                    end: Position::new(1, 5),
+                }
+            );
+        }
+
+        #[test]
+        fn empty_span() {
+            let src = "hello world";
+            let span = SourceSpan::new(5.into(), 0);
+            let range = to_range(&span, src).unwrap();
+
+            assert_eq!(
+                range,
+                Range {
+                    start: Position::new(0, 5),
+                    end: Position::new(0, 5),
+                }
+            );
+        }
+
+        #[test]
+        fn entire_string() {
+            let src = "line1\nline2\nline3";
+            let span = SourceSpan::new(0.into(), src.len());
+            let range = to_range(&span, src).unwrap();
+
+            assert_eq!(
+                range,
+                Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(2, 5),
+                }
+            );
+        }
+
+        #[test]
+        fn empty_string() {
+            let src = "";
+            let span = SourceSpan::new(0.into(), 0);
+            let range = to_range(&span, src).unwrap();
+
+            assert_eq!(
+                range,
+                Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(0, 0),
+                }
+            );
+        }
+
+        #[test]
+        fn zero_length_at_string_end() {
+            let src = "hello world";
+            let span = SourceSpan::new(11.into(), 0);
+            let range = to_range(&span, src).unwrap();
+
+            assert_eq!(
+                range,
+                Range {
+                    start: Position::new(0, 11),
+                    end: Position::new(0, 11),
+                }
+            );
+        }
+
+        #[test]
+        fn zero_length_at_line_end() {
+            let src = "hello\nworld";
+            let span = SourceSpan::new(5.into(), 0); // at newline
+            let range = to_range(&span, src).unwrap();
+
+            assert_eq!(
+                range,
+                Range {
+                    start: Position::new(0, 5),
+                    end: Position::new(0, 5),
+                }
+            );
+        }
+
+        #[test]
+        fn span_is_newline() {
+            let src = "line1\nline2";
+            let span = SourceSpan::new(5.into(), 1); // the newline character
+            let range = to_range(&span, src).unwrap();
+
+            assert_eq!(
+                range,
+                Range {
+                    start: Position::new(0, 5),
+                    end: Position::new(1, 0),
+                }
+            );
+        }
+
+        #[test]
+        fn multibyte_characters() {
+            let src = "🚀 héllo 世界";
+            let span = SourceSpan::new(5.into(), 6); // "héllo" (é is 2 bytes)
+            let range = to_range(&span, src).unwrap();
+
+            assert_eq!(
+                range,
+                Range {
+                    start: Position::new(0, 2),
+                    end: Position::new(0, 7),
+                }
+            );
+        }
+
+        #[test]
+        fn unicode_across_lines() {
+            let src = "🚀\n世界";
+            let span = SourceSpan::new(5.into(), 6);
+            let range = to_range(&span, src).unwrap();
+
+            assert_eq!(
+                range,
+                Range {
+                    start: Position::new(1, 0),
+                    end: Position::new(1, 2),
+                }
+            );
+        }
+
+        #[test]
+        fn offset_out_of_bounds() {
+            let src = "hello";
+            let span = SourceSpan::new(10.into(), 0);
+            assert_eq!(to_range(&span, src), None);
+            let span = SourceSpan::new(3.into(), 5);
+            assert_eq!(to_range(&span, src), None);
+        }
+    }
+
+    mod get_char_at_position {
+        use super::*;
+        use similar_asserts::assert_eq;
+
+        #[test]
+        fn valid_positions() {
+            let src = "hello\nworld";
+            assert_eq!(get_char_at_position(Position::new(0, 0), src), Some('h'));
+            assert_eq!(get_char_at_position(Position::new(0, 4), src), Some('o'));
+            assert_eq!(get_char_at_position(Position::new(0, 5), src), Some('\n'));
+            assert_eq!(get_char_at_position(Position::new(1, 0), src), Some('w'));
+            assert_eq!(get_char_at_position(Position::new(1, 4), src), Some('d'));
+        }
+
+        #[test]
+        fn newlines() {
+            assert_eq!(
+                get_char_at_position(Position::new(1, 0), "hello\n\nworld"),
+                Some('\n')
+            );
+            assert_eq!(get_char_at_position(Position::new(0, 0), "\n"), Some('\n'));
+            assert_eq!(
+                get_char_at_position(Position::new(0, 0), "\r\n"),
+                Some('\r')
+            );
+            assert_eq!(get_char_at_position(Position::new(0, 0), "\r"), Some('\r'));
+            assert_eq!(get_char_at_position(Position::new(0, 0), "\n"), Some('\n'));
+            assert_eq!(
+                get_char_at_position(Position::new(0, 0), "\n\n"),
+                Some('\n')
+            );
+        }
+
+        #[test]
+        fn unicode_characters() {
+            let src = "🚀héllo\nwörld";
+            assert_eq!(get_char_at_position(Position::new(0, 0), src), Some('🚀'));
+            assert_eq!(get_char_at_position(Position::new(0, 1), src), Some('h'));
+            assert_eq!(get_char_at_position(Position::new(0, 2), src), Some('é'));
+            assert_eq!(get_char_at_position(Position::new(0, 3), src), Some('l'));
+            assert_eq!(get_char_at_position(Position::new(1, 1), src), Some('ö'));
+            assert_eq!(get_char_at_position(Position::new(1, 2), src), Some('r'));
+        }
+    }
+
+    mod get_text_before_position {
+        use super::*;
+        use similar_asserts::assert_eq;
+
+        #[test]
+        fn single_line() {
+            let text = "hello world";
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 0)).unwrap(),
+                ""
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 5)).unwrap(),
+                "hello"
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 11)).unwrap(),
+                "hello world"
+            );
+        }
+
+        #[test]
+        fn multi_line() {
+            let text = "line1\nline2\nline3";
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 5)).unwrap(),
+                "line1"
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(1, 5)).unwrap(),
+                "line1\nline2"
+            );
+        }
+
+        #[test]
+        fn unicode_characters() {
+            let text = "🚀H";
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 0)).unwrap(),
+                ""
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 1)).unwrap(),
+                "🚀"
+            );
+            assert_eq!(
+                get_text_before_position(text, Position::new(0, 2)).unwrap(),
+                "🚀H"
+            );
+        }
+    }
+
+    mod get_text_in_range {
+        use tower_lsp_server::lsp_types::{Position, Range};
+
+        use crate::utils::get_text_in_range;
+
+        #[test]
+        fn single_line() {
+            let text = "hello world";
+            assert_eq!(
+                get_text_in_range(text, Range::new(Position::new(0, 0), Position::new(0, 5)))
+                    .unwrap(),
+                "hello"
+            );
+            assert_eq!(
+                get_text_in_range(text, Range::new(Position::new(0, 6), Position::new(0, 11)))
+                    .unwrap(),
+                "world"
+            );
+        }
+
+        #[test]
+        fn multi_line() {
+            let text = "hello\nworld";
+            assert_eq!(
+                get_text_in_range(text, Range::new(Position::new(0, 4), Position::new(1, 1)))
+                    .unwrap(),
+                "o\nw"
+            );
+        }
     }
 }

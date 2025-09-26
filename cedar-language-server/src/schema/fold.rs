@@ -18,7 +18,7 @@ use cedar_policy_core::validator::ValidatorSchema;
 use itertools::Itertools;
 use tower_lsp_server::lsp_types::{self, FoldingRange};
 
-use crate::position::ToRange;
+use crate::utils::ToRange;
 
 use super::SchemaInfo;
 
