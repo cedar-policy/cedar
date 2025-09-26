@@ -250,7 +250,7 @@ impl LocalSolver {
     }
 
     /// Kills this solver's child process and waits for the child process to exit completely.
-    pub async fn clean_up(mut self) -> Result<()> {
+    pub async fn clean_up(&mut self) -> Result<()> {
         self.child.kill().await.map_err(|e| e.into())
     }
 }
@@ -379,7 +379,9 @@ mod test {
 
     #[tokio::test]
     async fn clean_up_succeeds() {
-        let my_solver = LocalSolver::cvc5().unwrap();
+        let mut my_solver = LocalSolver::cvc5().unwrap();
         my_solver.clean_up().await.unwrap();
+        let status = my_solver.child.try_wait().unwrap();
+        assert!(status.is_some());
     }
 }
