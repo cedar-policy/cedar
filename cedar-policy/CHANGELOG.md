@@ -21,6 +21,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 - Implemented batched evaluation under the experimental flag `tpe`. Batched evaluation allows for permission queries against large databases of entities. (#1812) 
 - Added `calculate_minimum_level` which computes the minimum level at which policies validate. (#1812)
 - Added `stateful_is_authorized`, `preparse_policy_set` and `preparse_schema` to support stateful evaluation using a cached policy set and schema, in the `ffi` module. (#1829)
+- Added `has_non_scope_constraint` for `Policy` and `Template`, returning `true` if the policy or template has a `when` or `unless` condition.
 
 ### Changed
 

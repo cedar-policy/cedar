@@ -2105,17 +2105,8 @@ mod test {
             let p = template.principal_constraint().clone();
             let a = template.action_constraint().clone();
             let r = template.resource_constraint().clone();
-            let non_scope = template.non_scope_constraints().clone();
-            let t2 = Template::new(
-                id,
-                None,
-                Annotations::new(),
-                effect,
-                p,
-                a,
-                r,
-                non_scope.cloned(),
-            );
+            let non_scope = template.non_scope_constraints().cloned();
+            let t2 = Template::new(id, None, Annotations::new(), effect, p, a, r, non_scope);
             assert_eq!(template, t2);
         }
     }
