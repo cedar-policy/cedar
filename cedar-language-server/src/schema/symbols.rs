@@ -134,7 +134,7 @@ pub(crate) fn schema_symbols(schema_info: &SchemaInfo) -> Option<Vec<DocumentSym
                 .zip(ct.type_loc.as_ref())
                 .map(|(name_snip, type_loc)| {
                     let src_range = type_loc.to_range();
-                    new_symbol(name_snip, src_range, SymbolKind::CLASS)
+                    new_symbol(name_snip.to_string(), src_range, SymbolKind::CLASS)
                 })
         })
         .collect();

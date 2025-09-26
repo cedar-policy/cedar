@@ -104,10 +104,9 @@ mod tests {
     use tower_lsp_server::lsp_types::{self, Uri};
     use tracing_test::traced_test;
 
-    use crate::utils::tests::slice_range;
     use crate::{
         schema::SchemaInfo,
-        utils::tests::{remove_caret_marker, schema_info},
+        utils::tests::{remove_caret_marker, schema_info, slice_range},
     };
 
     static URI: LazyLock<Uri> = LazyLock::new(|| "https://example.net".parse().ok().unwrap());
@@ -221,6 +220,16 @@ mod tests {
         "permit(prin|caret|cipal is User in Group::\"test\", action, resource);",
         get_schema_info(),
         "entity User in [Group] {\n  viewPermissions: PermissionsMap,\n  memberPermissions: PermissionsMap,\n  hotelAdminPermissions: Set<Hotel>,\n  propertyAdminPermissions: Set<Property>,\n  lastName?: String,\n  property: Property,\n};"
+    );
+
+    goto_def_test!(
+        go_to_action_unqualified,
+        "permit(principal, a|caret|ction, resource);",
+        get_schema_info(),
+        "action createProperty, createHotel, viewHotel, updateHotel, grantAccessHotel in [propertyManagerActions]\n  appliesTo {\n    principal: User,\n    resource: Hotel,\n    context: {\n      location: String,\n      other_user: User,\n      other: String\n    }\n  };",
+        "action createReservation, viewProperty, updateProperty, grantAccessProperty in [propertyManagerActions]\n  appliesTo {\n    principal: User,\n    resource: Property,\n    context: ComplexType\n  };",
+        "action propertyManagerActions;",
+        "action viewReservation, updateReservation, grantAccessReservation in [propertyManagerActions]\n  appliesTo {\n    principal: User,\n    resource: Reservation,\n    context: {\n      complex: ComplexType,\n      location: String,\n      other: Long,\n    }\n  };"
     );
 
     goto_def_test!(
@@ -391,6 +400,20 @@ mod tests {
     );
 
     goto_def_test!(
+        go_to_var_def_is_lhs,
+        "permit(principal, action, resource) when { princ|caret|ipal is User };",
+        get_schema_info(),
+        "entity User in [Group] {
+  viewPermissions: PermissionsMap,
+  memberPermissions: PermissionsMap,
+  hotelAdminPermissions: Set<Hotel>,
+  propertyAdminPermissions: Set<Property>,
+  lastName?: String,
+  property: Property,
+};"
+    );
+
+    goto_def_test!(
         go_to_entity_type_definition_in_user_condition,
         "permit(principal, action, resource) when { principal in Us|caret|er::\"test\" };",
         get_schema_info(),
@@ -537,6 +560,25 @@ mod tests {
     );
 
     goto_def_test!(
+        go_to_context_definition_unqual_action,
+        r#"permit(principal, action, resource)
+        when { con|caret|text.hotelReservations.isEmpty() };"#,
+        get_schema_info(),
+        "context: ComplexType",
+        "context: {\n      complex: ComplexType,\n      location: String,\n      other: Long,\n    }",
+        "context: {\n      location: String,\n      other_user: User,\n      other: String\n    }"
+    );
+
+    goto_def_test!(
+        go_to_context_definition_action_in_set,
+        r#"permit(principal, action in [Action::"createReservation", Action::"createProperty"], resource)
+        when { con|caret|text.hotelReservations.isEmpty() };"#,
+        get_schema_info(),
+        "context: ComplexType",
+        "context: {\n      location: String,\n      other_user: User,\n      other: String\n    }"
+    );
+
+    goto_def_test!(
         go_to_context_attr_definition,
         r#"permit(principal, action == Action::"createReservation", resource)
         when { context.hot|caret|els.isEmpty() };"#,
@@ -591,6 +633,32 @@ mod tests {
         r"permit(principal, action, resource) when { principal has viewPermissi|caret|ons };",
         get_schema_info(),
         "viewPermissions: PermissionsMap,"
+    );
+
+    goto_def_test!(
+        go_to_principal_in_condition,
+        r#"permit(principal, action, resource) when { p|caret|rincipal == User::"alice" };"#,
+        get_schema_info(),
+        "entity User in [Group] {\n  viewPermissions: PermissionsMap,\n  memberPermissions: PermissionsMap,\n  hotelAdminPermissions: Set<Hotel>,\n  propertyAdminPermissions: Set<Property>,\n  lastName?: String,\n  property: Property,\n};"
+    );
+
+    goto_def_test!(
+        go_to_action_in_condition,
+        r#"permit(principal, action, resource) when { acti|caret|on == Action::"viewHotel" };"#,
+        get_schema_info(),
+        "action createProperty, createHotel, viewHotel, updateHotel, grantAccessHotel in [propertyManagerActions]\n  appliesTo {\n    principal: User,\n    resource: Hotel,\n    context: {\n      location: String,\n      other_user: User,\n      other: String\n    }\n  };",
+        "action createReservation, viewProperty, updateProperty, grantAccessProperty in [propertyManagerActions]\n  appliesTo {\n    principal: User,\n    resource: Property,\n    context: ComplexType\n  };",
+        "action propertyManagerActions;",
+        "action viewReservation, updateReservation, grantAccessReservation in [propertyManagerActions]\n  appliesTo {\n    principal: User,\n    resource: Reservation,\n    context: {\n      complex: ComplexType,\n      location: String,\n      other: Long,\n    }\n  };"
+    );
+
+    goto_def_test!(
+        go_to_resource_in_condition,
+        r#"permit(principal, action, resource) when { resour|caret|ce.name.required };"#,
+        get_schema_info(),
+        "entity Hotel in [Hotel] {\n  hotelName: String,\n  complex: ComplexType,\n  name: ComplexType\n};",
+        "entity Property in [Hotel] {\n  propertyName: String,\n  name: String\n};",
+        "entity Reservation in [Property] {\n  reservationName: String,\n  name: String\n};"
     );
 
     fn get_schema_info() -> SchemaInfo {
