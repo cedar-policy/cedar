@@ -143,11 +143,7 @@ impl From<&models::TemplateBody> for ast::TemplateBody {
                     .as_ref()
                     .expect("resource_constraint field should exist"),
             ),
-            ast::Expr::from(
-                v.non_scope_constraints
-                    .as_ref()
-                    .expect("non_scope_constraints field should exist"),
-            ),
+            v.non_scope_constraints.as_ref().map(|e| ast::Expr::from(e)),
         )
     }
 }
@@ -170,7 +166,7 @@ impl From<&ast::TemplateBody> for models::TemplateBody {
             resource_constraint: Some(models::PrincipalOrResourceConstraint::from(
                 v.resource_constraint(),
             )),
-            non_scope_constraints: Some(models::Expr::from(v.non_scope_constraints())),
+            non_scope_constraints: v.non_scope_constraints().map(|e| models::Expr::from(e)),
         }
     }
 }
@@ -638,7 +634,7 @@ mod test {
             pc.clone(),
             ac1.clone(),
             rc.clone(),
-            ast::Expr::val(true),
+            None,
         );
         assert_eq!(
             tb,
@@ -666,7 +662,7 @@ mod test {
             pc,
             ac1,
             rc,
-            ast::Expr::val(true),
+            None,
         );
         assert_eq!(
             tb,
@@ -709,7 +705,7 @@ mod test {
             ast::ResourceConstraint::is_entity_type(
                 ast::EntityType::from(ast::Name::from_normalized_str("photo").unwrap()).into(),
             ),
-            ast::Expr::val(true),
+            None,
         );
 
         let policy1 = ast::Policy::from_when_clause(
@@ -779,7 +775,7 @@ mod test {
             ast::ResourceConstraint::is_entity_type(
                 ast::EntityType::from(ast::Name::from_normalized_str("photo").unwrap()).into(),
             ),
-            ast::Expr::val(true),
+            None,
         );
 
         let policy1 = ast::Policy::from_when_clause(

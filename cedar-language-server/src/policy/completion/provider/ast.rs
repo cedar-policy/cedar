@@ -56,7 +56,9 @@ impl<'a> ConditionCompletionVisitor<'a> {
     pub(crate) fn get_completion_context(
         document_context: &DocumentContext<'_>,
     ) -> CompletionContextKind {
-        let expr = document_context.policy.non_scope_constraints();
+        let Some(expr) = document_context.policy.non_scope_constraints() else {
+            return CompletionContextKind::None;
+        };
         if !is_cursor_in_condition_braces(
             document_context.cursor_position,
             document_context.policy_text,

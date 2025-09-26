@@ -82,7 +82,7 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
             return visitor.get_scope_ranges();
         }
 
-        let ranges = visitor.visit_expr(cx.policy.non_scope_constraints())?;
+        let ranges = visitor.visit_expr(cx.policy.non_scope_constraints()?)?;
         if ranges.is_empty() {
             None
         } else {

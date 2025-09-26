@@ -53,7 +53,12 @@ pub(super) fn policy_entity_uids(template: &Template) -> impl Iterator<Item = &E
                 .into_iter()
                 .map(|euid| euid.as_ref()),
         )
-        .chain(expr_entity_uids(template.non_scope_constraints()))
+        .chain(
+            template
+                .non_scope_constraints()
+                .into_iter()
+                .flat_map(expr_entity_uids),
+        )
 }
 
 /// Returns an iterator over all entity type names in the policy. This iterates
@@ -70,7 +75,12 @@ pub(super) fn policy_entity_type_names(template: &Template) -> impl Iterator<Ite
                 .as_inner()
                 .iter_entity_type_names(),
         )
-        .chain(expr_entity_type_names(template.non_scope_constraints()))
+        .chain(
+            template
+                .non_scope_constraints()
+                .into_iter()
+                .flat_map(expr_entity_type_names),
+        )
 }
 
 /// The 3 different "classes" of text in an expression.

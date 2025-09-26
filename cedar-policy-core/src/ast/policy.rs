@@ -125,7 +125,7 @@ impl Template {
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
         resource_constraint: ResourceConstraint,
-        non_scope_constraint: Expr,
+        non_scope_constraint: Option<Expr>,
     ) -> Self {
         let body = TemplateBody::new(
             id,
@@ -159,7 +159,7 @@ impl Template {
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
         resource_constraint: ResourceConstraint,
-        non_scope_constraint: Arc<Expr>,
+        non_scope_constraint: Option<Arc<Expr>>,
     ) -> Self {
         let body = TemplateBody::new_shared(
             id,
@@ -192,12 +192,12 @@ impl Template {
     }
 
     /// Get the non-scope constraint on the body
-    pub fn non_scope_constraints(&self) -> &Expr {
+    pub fn non_scope_constraints(&self) -> Option<&Expr> {
         self.body.non_scope_constraints()
     }
 
     /// Get Arc to non-scope constraint on the body
-    pub fn non_scope_constraints_arc(&self) -> &Arc<Expr> {
+    pub fn non_scope_constraints_arc(&self) -> Option<&Arc<Expr>> {
         self.body.non_scope_constraints_arc()
     }
 
@@ -469,7 +469,7 @@ impl Policy {
             PrincipalConstraint::any(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            when,
+            Some(when),
         );
         Self::new(Arc::new(t), None, SlotEnv::new())
     }
@@ -536,12 +536,12 @@ impl Policy {
     }
 
     /// Get the non-scope constraints for the policy
-    pub fn non_scope_constraints(&self) -> &Expr {
+    pub fn non_scope_constraints(&self) -> Option<&Expr> {
         self.template.non_scope_constraints()
     }
 
     /// Get the [`Arc`] owning non-scope constraints for the policy
-    pub fn non_scope_constraints_arc(&self) -> &Arc<Expr> {
+    pub fn non_scope_constraints_arc(&self) -> Option<&Arc<Expr>> {
         self.template.non_scope_constraints_arc()
     }
 
@@ -886,7 +886,7 @@ impl StaticPolicy {
     ///
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
-    pub fn non_scope_constraints(&self) -> &Expr {
+    pub fn non_scope_constraints(&self) -> Option<&Expr> {
         self.0.non_scope_constraints()
     }
 
@@ -909,7 +909,7 @@ impl StaticPolicy {
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
         resource_constraint: ResourceConstraint,
-        non_scope_constraints: Expr,
+        non_scope_constraints: Option<Expr>,
     ) -> Result<Self, UnexpectedSlotError> {
         let body = TemplateBody::new(
             id,
@@ -990,7 +990,7 @@ pub struct TemplateBodyImpl {
     ///
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
-    non_scope_constraints: Arc<Expr>,
+    non_scope_constraints: Option<Arc<Expr>>,
 }
 
 /// Policy datatype. This is used for both templates (in which case it contains
@@ -1164,26 +1164,26 @@ impl TemplateBody {
     ///
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
-    pub fn non_scope_constraints(&self) -> &Expr {
+    pub fn non_scope_constraints(&self) -> Option<&Expr> {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl {
                 non_scope_constraints,
                 ..
-            }) => non_scope_constraints,
+            }) => non_scope_constraints.as_ref().map(|e| e.as_ref()),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_, _) => &DEFAULT_ERROR_EXPR,
+            TemplateBody::TemplateBodyError(_, _) => Some(&DEFAULT_ERROR_EXPR),
         }
     }
 
     /// Get the Arc owning the non scope constraints
-    pub fn non_scope_constraints_arc(&self) -> &Arc<Expr> {
+    pub fn non_scope_constraints_arc(&self) -> Option<&Arc<Expr>> {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl {
                 non_scope_constraints,
                 ..
-            }) => non_scope_constraints,
+            }) => non_scope_constraints.as_ref(),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_, _) => &DEFAULT_ERROR_EXPR,
+            TemplateBody::TemplateBodyError(_, _) => Some(&DEFAULT_ERROR_EXPR),
         }
     }
 
@@ -1202,7 +1202,9 @@ impl TemplateBody {
                         self.action_constraint_expr(),
                         Expr::and(
                             self.resource_constraint_expr(),
-                            self.non_scope_constraints().clone(),
+                            self.non_scope_constraints()
+                                .cloned()
+                                .unwrap_or_else(|| Expr::val(true)),
                         )
                         .with_maybe_source_loc(loc.clone()),
                     )
@@ -1225,7 +1227,7 @@ impl TemplateBody {
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
         resource_constraint: ResourceConstraint,
-        non_scope_constraints: Arc<Expr>,
+        non_scope_constraints: Option<Arc<Expr>>,
     ) -> Self {
         Self::TemplateBody(TemplateBodyImpl {
             id,
@@ -1249,7 +1251,7 @@ impl TemplateBody {
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
         resource_constraint: ResourceConstraint,
-        non_scope_constraints: Expr,
+        non_scope_constraints: Option<Expr>,
     ) -> Self {
         Self::TemplateBody(TemplateBodyImpl {
             id,
@@ -1259,7 +1261,7 @@ impl TemplateBody {
             principal_constraint,
             action_constraint,
             resource_constraint,
-            non_scope_constraints: Arc::new(non_scope_constraints),
+            non_scope_constraints: non_scope_constraints.map(Arc::new),
         })
     }
 }
@@ -1277,13 +1279,17 @@ impl std::fmt::Display for TemplateBody {
                 template_body_impl.annotations.fmt(f)?;
                 write!(
                     f,
-                    "{}(\n  {},\n  {},\n  {}\n) when {{\n  {}\n}};",
+                    "{}(\n  {},\n  {},\n  {}\n)",
                     self.effect(),
                     self.principal_constraint(),
                     self.action_constraint(),
                     self.resource_constraint(),
-                    self.non_scope_constraints()
-                )
+                )?;
+                if let Some(non_scope_constraints) = self.non_scope_constraints() {
+                    write!(f, " when {{\n  {non_scope_constraints}\n}};")
+                } else {
+                    write!(f, ";")
+                }
             }
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(policy_id, _) => {
@@ -1881,13 +1887,17 @@ impl std::fmt::Display for StaticPolicy {
                 }
                 write!(
                     f,
-                    "{}(\n  {},\n  {},\n  {}\n) when {{\n  {}\n}};",
+                    "{}(\n  {},\n  {},\n  {}\n)",
                     self.effect(),
                     self.principal_constraint(),
                     self.action_constraint(),
                     self.resource_constraint(),
-                    self.non_scope_constraints()
-                )
+                )?;
+                if let Some(non_scope_constraints) = self.non_scope_constraints() {
+                    write!(f, " when {{\n  {non_scope_constraints}\n}};")
+                } else {
+                    write!(f, ";")
+                }
             }
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(policy_id, _) => {
@@ -2035,7 +2045,7 @@ pub(crate) mod test_generators {
                         principal.clone(),
                         action.clone(),
                         resource.clone(),
-                        Expr::val(true),
+                        None,
                     );
                     let forbid = Template::new(
                         forbid.clone(),
@@ -2045,7 +2055,7 @@ pub(crate) mod test_generators {
                         principal.clone(),
                         action.clone(),
                         resource.clone(),
-                        Expr::val(true),
+                        None,
                     );
                     buf.push(permit);
                     buf.push(forbid);
@@ -2095,7 +2105,7 @@ mod test {
             let p = template.principal_constraint().clone();
             let a = template.action_constraint().clone();
             let r = template.resource_constraint().clone();
-            let non_scope = template.non_scope_constraints().clone();
+            let non_scope = template.non_scope_constraints().cloned();
             let t2 = Template::new(id, None, Annotations::new(), effect, p, a, r, non_scope);
             assert_eq!(template, t2);
         }
@@ -2115,7 +2125,7 @@ mod test {
                 let a = ip.action_constraint().clone();
                 let r = ip.resource_constraint().clone();
                 let non_scope = ip.non_scope_constraints().clone();
-                let ip2 = StaticPolicy::new(id, None, anno, e, p, a, r, non_scope)
+                let ip2 = StaticPolicy::new(id, None, anno, e, p, a, r, non_scope.cloned())
                     .expect("Policy Creation Failed");
                 assert_eq!(ip, ip2);
                 let (t2, inst) = Template::link_static_policy(ip2);
@@ -2137,7 +2147,7 @@ mod test {
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::Any,
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         ));
         let mut m = HashMap::new();
         m.insert(SlotId::resource(), EntityUID::with_eid("eid"));
@@ -2159,7 +2169,7 @@ mod test {
             PrincipalConstraint::is_eq_slot(),
             ActionConstraint::Any,
             ResourceConstraint::is_in_slot(),
-            Expr::val(true),
+            None,
         ));
         assert_matches!(Template::link(t.clone(), iid.clone(), HashMap::new()), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
             assert_eq!(unbound_values, vec![SlotId::resource(), SlotId::principal()]);
@@ -2185,7 +2195,7 @@ mod test {
             PrincipalConstraint::is_in_slot(),
             ActionConstraint::any(),
             ResourceConstraint::is_eq_slot(),
-            Expr::val(true),
+            None,
         ));
 
         let mut m = HashMap::new();
@@ -2459,7 +2469,7 @@ mod test {
         assert_eq!(*error_body.resource_constraint(), ResourceConstraint::any());
 
         // Test non_scope_constraints() method
-        assert_eq!(*error_body.non_scope_constraints(), expected_error);
+        assert_eq!(error_body.non_scope_constraints(), Some(&expected_error));
 
         // Test condition() method
         assert_eq!(error_body.condition(), expected_error);

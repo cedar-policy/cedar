@@ -82,14 +82,26 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
         if !(f_p.effect() == p.effect()
             && f_p.principal_constraint() == p.principal_constraint()
             && f_p.action_constraint() == p.action_constraint()
-            && f_p.resource_constraint() == p.resource_constraint()
-            && f_p
-                .non_scope_constraints()
-                .eq_shape(p.non_scope_constraints()))
+            && f_p.resource_constraint() == p.resource_constraint())
         {
             return Err(miette!(
-                "formatter changed the policy structure:\noriginal:\n{p}\nformatted:\n{f_p}"
+                "formatter changed the policy scope:\noriginal:\n{p}\nformatted:\n{f_p}"
             ));
+        }
+        match (f_p.non_scope_constraints(), p.non_scope_constraints()) {
+            (Some(f_p_constraints), Some(p_constraints))
+                if !f_p_constraints.eq_shape(p_constraints) =>
+            {
+                return Err(miette!(
+                    "formatter changed the policy condition:\noriginal:\n{p}\nformatted:\n{f_p}"
+                ));
+            }
+            (None, Some(_)) | (Some(_), None) => {
+                return Err(miette!(
+                    "formatter changed the policy condition:\noriginal:\n{p}\nformatted:\n{f_p}"
+                ));
+            }
+            _ => (),
         }
     }
     Ok(())

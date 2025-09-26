@@ -379,14 +379,26 @@ mod tests {
             );
             assert_eq!(parsed.action_constraint(), template.action_constraint());
             assert_eq!(parsed.resource_constraint(), template.resource_constraint());
-            assert!(
-                parsed
-                    .non_scope_constraints()
-                    .eq_shape(template.non_scope_constraints()),
-                "{:?} and {:?} should have the same shape.",
+            match (
                 parsed.non_scope_constraints(),
-                template.non_scope_constraints()
-            );
+                template.non_scope_constraints(),
+            ) {
+                (Some(parsed), Some(template)) => {
+                    assert!(
+                        parsed.eq_shape(template),
+                        "{:?} and {:?} should have the same shape.",
+                        parsed,
+                        template
+                    );
+                }
+                (Some(_), None) | (None, Some(_)) => {
+                    panic!(
+                        "{:?} and {:?} should have the same shape.",
+                        parsed, template
+                    )
+                }
+                (None, None) => (),
+            }
         }
     }
 
