@@ -16,26 +16,9 @@
 
 use std::fmt::Write;
 
-use cedar_policy_core::parser::Loc;
-use miette::SourceSpan;
-use smol_str::SmolStr;
 use tower_lsp_server::lsp_types::{self, Position, Range};
 
-pub(crate) trait ToRange {
-    fn to_range(&self) -> Range;
-}
-
-impl ToRange for Loc {
-    fn to_range(&self) -> Range {
-        to_range(&self.span, &self.src)
-    }
-}
-
-impl ToRange for Box<Loc> {
-    fn to_range(&self) -> Range {
-        to_range(&self.span, &self.src)
-    }
-}
+use crate::position::{get_text_in_range, to_range};
 
 /// Defines the length-zero source range occurring at the start of the file.
 /// Used as the source range we don't have anything better available.
@@ -82,7 +65,10 @@ pub(crate) fn to_lsp_diagnostics<'a>(
     if let Some(labels) = diagnostic.labels() {
         diagnostics.extend(labels.map(move |l| lsp_types::Diagnostic {
             severity,
-            ..lsp_types::Diagnostic::new_simple(to_range(l.inner(), src), message.clone())
+            ..lsp_types::Diagnostic::new_simple(
+                to_range(l.inner(), src).unwrap_or(START_RANGE),
+                message.clone(),
+            )
         }));
     } else {
         diagnostics.push(lsp_types::Diagnostic {
@@ -94,50 +80,6 @@ pub(crate) fn to_lsp_diagnostics<'a>(
         diagnostics.extend(related.flat_map(|d| to_lsp_diagnostics(d, src)));
     }
     diagnostics
-}
-
-pub(crate) fn to_range(source_span: &SourceSpan, src: &str) -> Range {
-    let text = &src[..source_span.offset()];
-    let start_line = text.chars().filter(|&c| c == '\n').count();
-    let start_col = text.chars().rev().take_while(|&c| c != '\n').count();
-
-    let end = source_span.offset() + source_span.len();
-    let text = &src[..end];
-    let end_line = text.chars().filter(|&c| c == '\n').count();
-    let end_col = text.chars().rev().take_while(|&c| c != '\n').count();
-
-    Range {
-        start: Position {
-            line: start_line as u32,
-            character: start_col as u32,
-        },
-        end: Position {
-            line: end_line as u32,
-            character: end_col as u32,
-        },
-    }
-}
-
-pub(crate) fn get_char_at_position(position: Position, src: &str) -> Option<char> {
-    src.lines()
-        .nth(position.line as usize)?
-        .chars()
-        .nth(position.character as usize)
-}
-
-pub(crate) fn position_within_loc<'a, R, I>(position: Position, range: I) -> bool
-where
-    R: ToRange + 'a,
-    I: Into<Option<&'a R>>,
-{
-    let Some(range) = range.into() else {
-        return false;
-    };
-    let range = range.to_range();
-    position.line >= range.start.line
-        && position.line <= range.end.line
-        && (position.line != range.start.line || position.character >= range.start.character)
-        && (position.line != range.end.line || position.character <= range.end.character)
 }
 
 pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<&str> {
@@ -310,16 +252,59 @@ pub(crate) enum PolicyScopeVariable {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct ScopeVariableInfo {
+pub(crate) struct ScopeVariableInfo<'a> {
     pub(crate) variable_type: PolicyScopeVariable,
-    pub(crate) text: SmolStr,
+    text: &'a str,
+}
+
+// PANIC SAFETY: These regex are valid and would panic immediately in test if not.
+#[allow(clippy::unwrap_used)]
+mod scope_regex {
+    use regex::Regex;
+    use std::sync::LazyLock;
+
+    pub(super) static PRINCIPAL_IS: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"principal\s+is\s*").unwrap());
+
+    pub(super) static RESOURCE_IS: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"resource\s+is\s*").unwrap());
+
+    pub(super) static ACTION_IN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"action\s+in\s*").unwrap());
+    pub(super) static ACTION_EQ: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"action\s+==\s*").unwrap());
+    pub(super) static ACTION_IN_ARRAY: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"action\s+in\s+\[(?:\s*(?:[A-Za-z]+::)?Action::"[\w]+?"\s*,?)*\s*"#).unwrap()
+    });
+}
+
+impl ScopeVariableInfo<'_> {
+    pub(crate) fn is_principal_is(&self) -> bool {
+        scope_regex::PRINCIPAL_IS.is_match(&self.text)
+    }
+
+    pub(crate) fn is_resource_is(&self) -> bool {
+        scope_regex::RESOURCE_IS.is_match(&self.text)
+    }
+
+    pub(crate) fn is_action_in(&self) -> bool {
+        scope_regex::ACTION_IN.is_match(&self.text)
+    }
+
+    pub(crate) fn is_action_eq(&self) -> bool {
+        scope_regex::ACTION_EQ.is_match(&self.text)
+    }
+
+    pub(crate) fn is_action_in_array(&self) -> bool {
+        scope_regex::ACTION_IN_ARRAY.is_match(&self.text)
+    }
 }
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn get_policy_scope_variable(
     policy_text: &str,
     cursor_position: Position,
-) -> ScopeVariableInfo {
+) -> ScopeVariableInfo<'_> {
     // Find the policy that contains the cursor
     let Some(policy_range) = policy_scope_range_containing_cursor(policy_text, cursor_position)
     else {
@@ -395,33 +380,15 @@ pub(crate) fn get_policy_scope_variable(
     let text = if let Some(((start_line, start_pos), (end_line, end_pos))) =
         param_sections.get(param_index)
     {
-        if start_line == end_line {
-            // PANIC SAFETY: Line numbers in `param_sections` are always indexes from enumerating `lines()`.
-            #[allow(clippy::unwrap_used)]
-            let line = policy_text.lines().nth(*start_line).unwrap();
-            line[*start_pos..*end_pos].trim().into()
-        } else {
-            // Handle multi-line parameters
-            let mut text = String::new();
-            for (line_num, item) in policy_text
-                .lines()
-                .enumerate()
-                .take(end_line + 1)
-                .skip(*start_line)
-            {
-                if line_num == *start_line {
-                    text.push_str(&item[*start_pos..]);
-                } else if line_num == *end_line {
-                    text.push_str(&item[..*end_pos]);
-                } else {
-                    text.push_str(item);
-                }
-                text.push('\n');
-            }
-            text.trim().into()
-        }
+        let param_range = Range::new(
+            Position::new(*start_line as u32, *start_pos as u32),
+            Position::new(*end_line as u32, *end_pos as u32),
+        );
+        // PANIC SAFETY: Positions in `param_section` as valid offsets into `policy_text`
+        #[allow(clippy::unwrap_used)]
+        get_text_in_range(policy_text, param_range).unwrap().trim()
     } else {
-        "".into()
+        ""
     };
 
     let variable_type = match param_index {
@@ -437,7 +404,7 @@ pub(crate) fn get_policy_scope_variable(
     }
 }
 
-pub(crate) fn extract_common_type_name(type_dec_snippet: &str) -> Option<String> {
+pub(crate) fn extract_common_type_name(type_dec_snippet: &str) -> Option<&str> {
     // Find the type keyword at the beginning of the line
     if !type_dec_snippet.trim_start().starts_with("type ") {
         return None;
@@ -457,11 +424,7 @@ pub(crate) fn extract_common_type_name(type_dec_snippet: &str) -> Option<String>
         return None;
     }
 
-    Some(type_name.to_string())
-}
-
-pub(crate) fn ranges_intersect(a: &Range, b: &Range) -> bool {
-    a.start <= b.end && b.start <= a.end
+    Some(type_name)
 }
 
 pub(crate) fn is_cursor_in_condition_braces(position: Position, source_text: &str) -> bool {
@@ -545,108 +508,12 @@ pub(crate) fn is_cursor_in_condition_braces(position: Position, source_text: &st
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::{fs::read_to_string, str::FromStr};
-
-    use cedar_policy_core::ast::PolicyID;
-    use cedar_policy_core::validator::ValidatorSchema;
     use tracing_test::traced_test;
 
-    use crate::{
-        policy::{DocumentContext, PolicyLanguageFeatures},
-        schema::SchemaInfo,
-    };
+    use crate::test_utils::{insert_caret, remove_all_caret_markers, remove_caret_marker};
     use similar_asserts::assert_eq;
 
     use super::*;
-
-    pub(crate) fn remove_caret_marker(policy: impl AsRef<str>) -> (String, Position) {
-        let marker = "|caret|";
-        let (before, after) = policy
-            .as_ref()
-            .split_once(marker)
-            .expect("Caret marker not found");
-        let position = if before.is_empty() {
-            Position {
-                line: 0,
-                character: 0,
-            }
-        } else {
-            Position {
-                line: (before.lines().count() - 1).try_into().unwrap(),
-                character: before.lines().last().unwrap().len().try_into().unwrap(),
-            }
-        };
-
-        (format!("{before}{after}"), position)
-    }
-
-    pub(crate) fn remove_all_caret_markers(src: impl AsRef<str>) -> (String, Vec<Position>) {
-        let mut src = src.as_ref().to_owned();
-        let mut caret_positions = Vec::new();
-        while src.contains("|caret|") {
-            let (new_src, pos) = remove_caret_marker(src);
-            src = new_src;
-            caret_positions.push(pos);
-        }
-        (src, caret_positions)
-    }
-
-    /// Get the byte offset of a position (line and column) in a string,
-    /// accounting for the actual position of newlines in the string.
-    pub(crate) fn position_byte_offset(src: &str, pos: Position) -> usize {
-        let line_offset = if pos.line == 0 {
-            0
-        } else {
-            1 + src
-                .char_indices()
-                .filter(|(_, c)| c == &'\n')
-                .nth((pos.line - 1).try_into().unwrap())
-                .unwrap()
-                .0
-        };
-
-        line_offset + TryInto::<usize>::try_into(pos.character).unwrap()
-    }
-
-    pub(crate) fn insert_caret(src: &str, pos: Position) -> String {
-        let offset = position_byte_offset(src, pos);
-        format!("{}|caret|{}", &src[..offset], &src[offset..])
-    }
-
-    /// Given a range - a pair of (line, column) positions - extract the slice
-    /// for this range from a string slice.
-    pub(crate) fn slice_range(src: &str, range: Range) -> &str {
-        let start_offset = position_byte_offset(src, range.start);
-        let end_offset = position_byte_offset(src, range.end);
-        &src[start_offset..end_offset]
-    }
-
-    pub(crate) fn schema() -> ValidatorSchema {
-        let schema_str = read_to_string("test-data/policies.cedarschema").unwrap();
-
-        ValidatorSchema::from_str(&schema_str).unwrap()
-    }
-
-    pub(crate) fn schema_info(schema_name: &str) -> SchemaInfo {
-        let schema_str = read_to_string(format!("test-data/{schema_name}")).unwrap();
-
-        SchemaInfo::cedar_schema(schema_str)
-    }
-
-    pub(crate) fn schema_document_context(policy: &str, position: Position) -> DocumentContext<'_> {
-        let template =
-            cedar_policy_core::parser::text_to_cst::parse_policy_tolerant(policy).unwrap();
-        let ast = template
-            .to_policy_template_tolerant(PolicyID::from_string("0"))
-            .unwrap();
-        DocumentContext::new(
-            Some(schema()),
-            ast,
-            policy,
-            position,
-            PolicyLanguageFeatures::default(),
-        )
-    }
 
     #[test]
     fn test_get_operator() {
@@ -865,244 +732,381 @@ permit(
 
     #[test]
     fn get_policy_scope_single_line() {
-        let policy = "permit(principal, action, resource) when { true };";
-
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 0,
-                character: 10,
-            },
+        let (policy, carets) = remove_all_caret_markers(
+            "permit(princ|caret|ipal, act|caret|ion, reso|caret|urce) when { true };|caret|",
         );
+
+        let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");
+        assert!(!result.is_principal_is());
+        assert!(!result.is_resource_is());
 
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 0,
-                character: 20,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
+        assert!(!result.is_action_eq());
+        assert!(!result.is_action_in());
+        assert!(!result.is_action_in_array());
 
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 0,
-                character: 30,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource");
+        assert!(!result.is_principal_is());
+        assert!(!result.is_resource_is());
 
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 0,
-                character: 0,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[3]);
         assert_eq!(result.variable_type, PolicyScopeVariable::None);
         assert_eq!(result.text, "");
+        assert!(!result.is_principal_is());
+        assert!(!result.is_resource_is());
     }
 
     #[test]
     fn get_policy_scope_multi_line() {
-        let policy = "permit(
-            principal,
-            action,
-            resource
-        );";
+        let (policy, carets) = remove_all_caret_markers(
+            "permit(
+            princ|caret|ipal,
+            act|caret|ion,
+            reso|caret|urce
+        );",
+        );
 
         // Test cursor in principal section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 1,
-                character: 4,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");
 
         // Test cursor in action section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 2,
-                character: 4,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
 
         // Test cursor in resource section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 3,
-                character: 4,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource");
     }
 
     #[test]
     fn get_policy_scope_in_operator() {
-        let policy = r#"
+        let (policy, carets) = remove_all_caret_markers(
+            r#"
         permit(
-            principal in User:"alice",
-            action in [Action::"act"],
-            resource in Resource::"data"
-        );"#;
+            princ|caret|ipal in User:"alice",
+            act|caret|ion in Action::"act",
+            reso|caret|urce in Resource::"data"
+        );"#,
+        );
 
         // Test cursor in complex principal section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 2,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal in User:\"alice\"");
 
         // Test cursor in action section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 3,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
-        assert_eq!(result.text, "action in [Action::\"act\"]");
+        assert_eq!(result.text, "action in Action::\"act\"");
+        assert!(result.is_action_in());
+        assert!(!result.is_action_in_array());
+        assert!(!result.is_action_eq());
 
         // Test cursor in complex resource section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 4,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource in Resource::\"data\"");
     }
 
     #[test]
     fn get_policy_scope_eq_operator() {
-        let policy = r#"
+        let (policy, carets) = remove_all_caret_markers(
+            r#"
         permit(
-            principal == User:"alice",
-            action == Action::"act",
-            resource == Resource::"data"
-        );"#;
+            princ|caret|ipal == User:"alice",
+            act|caret|ion == Action::"act",
+            reso|caret|urce == Resource::"data"
+        );"#,
+        );
 
         // Test cursor in complex principal section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 2,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal == User:\"alice\"");
 
         // Test cursor in action section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 3,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action == Action::\"act\"");
+        assert!(result.is_action_eq());
+        assert!(!result.is_action_in());
+        assert!(!result.is_action_in_array());
 
         // Test cursor in complex resource section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 4,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource == Resource::\"data\"");
     }
 
     #[test]
     fn get_policy_scope_is_operator() {
-        let policy = r"
+        let (policy, carets) = remove_all_caret_markers(
+            r"
         permit(
-            principal is User,
-            action,
-            resource is Resource
-        );";
+            pri|caret|ncipal is User,
+            act|caret|ion,
+            reso|caret|urce is Resource
+        );",
+        );
 
         // Test cursor in complex principal section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 2,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal is User");
+        assert!(result.is_principal_is());
 
         // Test cursor in action section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 3,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
 
         // Test cursor in complex resource section
-        let result = get_policy_scope_variable(
-            policy,
-            Position {
-                line: 4,
-                character: 15,
-            },
-        );
+        let result = get_policy_scope_variable(&policy, carets[2]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource is Resource");
+        assert!(result.is_resource_is());
+    }
+
+    #[test]
+    fn get_policy_scope_multi_line_var() {
+        let (policy, carets) = remove_all_caret_markers(
+            r#"
+        permit(
+            principal
+                is
+                    |caret|User,
+            action in [
+            |caret|
+            ],
+            reso|caret|urce ==
+            Photo::""
+        );"#,
+        );
+
+        // Test cursor in complex principal section
+        let result = get_policy_scope_variable(&policy, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(
+            result.text,
+            "principal\n                is\n                    User"
+        );
+        assert!(result.is_principal_is());
+
+        // Test cursor in action section
+        let result = get_policy_scope_variable(&policy, carets[1]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action in [\n            \n            ]");
+        assert!(result.is_action_in_array());
+
+        // Test cursor in complex resource section
+        let result = get_policy_scope_variable(&policy, carets[2]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, "resource ==\n            Photo::\"\"");
     }
 
     #[test]
     fn test_multiple_policies() {
-        let policies = "permit(principal, action, resource);\nforbid(principal, action, resource);";
+        let (policies, carets) = remove_all_caret_markers("permit(princ|caret|ipal, action, resource);\nforbid(principal, actio|caret|n, resource);");
 
         // Test cursor in first policy
-        let result = get_policy_scope_variable(
-            policies,
-            Position {
-                line: 0,
-                character: 10,
-            },
-        );
+        let result = get_policy_scope_variable(&policies, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");
 
         // Test cursor in second policy
-        let result = get_policy_scope_variable(
-            policies,
-            Position {
-                line: 1,
-                character: 20,
-            },
-        );
+        let result = get_policy_scope_variable(&policies, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
+    }
+
+    #[test]
+    fn test_parens_in_policy_scope() {
+        let (policies, carets) = remove_all_caret_markers(
+            r#"permit(princ|caret|ipal == (User::"alice"), ac|caret|tion in [(Action::"bar")], res|caret|ource in ((Album::"foo")));"#,
+        );
+
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, r#"principal == (User::"alice")"#);
+
+        let result = get_policy_scope_variable(&policies, carets[1]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, r#"action in [(Action::"bar")]"#);
+        assert!(result.is_action_in_array());
+
+        let result = get_policy_scope_variable(&policies, carets[2]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, r#"resource in ((Album::"foo"))"#);
+    }
+
+    #[test]
+    fn test_incomplete_policy_scope() {
+        let (policies, carets) = remove_all_caret_markers(r#"permit(|caret|);"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "");
+
+        let (policies, carets) = remove_all_caret_markers(r#"permit(princi|caret|pal);"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+
+        let (policies, carets) = remove_all_caret_markers(r#"permit(princi|caret|pal, );"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+
+        let (policies, carets) =
+            remove_all_caret_markers(r#"permit(princi|caret|pal, a|caret|ction, );"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+        let result = get_policy_scope_variable(&policies, carets[1]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action");
+    }
+
+    #[test]
+    fn test_extract_common_type_name() {
+        assert_eq!(
+            extract_common_type_name("type SimpleType = String;"),
+            Some("SimpleType")
+        );
+        assert_eq!(
+            extract_common_type_name("type MyRecord = { name: String };"),
+            Some("MyRecord")
+        );
+        assert_eq!(
+            extract_common_type_name("type MySet = Set<String>;"),
+            Some("MySet")
+        );
+        assert_eq!(
+            extract_common_type_name("  type  SpacedType  =  Long;  "),
+            Some("SpacedType")
+        );
+
+        // Multi-line type declarations
+        let (multiline_type, _) = remove_all_caret_markers(
+            "type \n NewLines \n = {\n  field1: String,\n  field2: Long\n};",
+        );
+        assert_eq!(extract_common_type_name(&multiline_type), Some("NewLines"));
+
+        // Type with namespace
+        assert_eq!(
+            extract_common_type_name("type Namespace::TypeName = String;"),
+            Some("Namespace::TypeName")
+        );
+
+        assert_eq!(extract_common_type_name("entity foo;"), None);
+        assert_eq!(extract_common_type_name("entity foo;"), None);
+    }
+
+    #[test]
+    fn test_get_word_at_position_basic() {
+        let (text, position) = remove_caret_marker("he|caret|llo");
+        assert_eq!(get_word_at_position(position, &text), Some("hello"));
+
+        let (text, position) = remove_caret_marker("hello |caret|world");
+        assert_eq!(get_word_at_position(position, &text), Some("world"));
+
+        let (text, position) = remove_caret_marker("|caret|hello world");
+        assert_eq!(get_word_at_position(position, &text), Some("hello"));
+
+        let (text, position) = remove_caret_marker("hello wor|caret|ld");
+        assert_eq!(get_word_at_position(position, &text), Some("world"));
+
+        let (text, position) = remove_caret_marker("hello world|caret|");
+        assert_eq!(get_word_at_position(position, &text), Some("world"));
+    }
+
+    #[test]
+    fn test_get_word_at_position_word_characters() {
+        let (text, position) = remove_caret_marker("test|caret|123");
+        assert_eq!(get_word_at_position(position, &text), Some("test123"));
+
+        let (text, position) = remove_caret_marker("my_|caret|variable");
+        assert_eq!(get_word_at_position(position, &text), Some("my_variable"));
+
+        let (text, position) = remove_caret_marker("User:|caret|:alice");
+        assert_eq!(get_word_at_position(position, &text), Some("User::alice"));
+
+        let (text, position) = remove_caret_marker("x |caret|== y");
+        assert_eq!(get_word_at_position(position, &text), Some("=="));
+    }
+
+    #[test]
+    fn test_get_word_at_position_none() {
+        let (text, position) = remove_caret_marker("hello |caret| world");
+        assert_eq!(get_word_at_position(position, &text), None);
+
+        let (text, position) = remove_caret_marker("|caret|");
+        assert_eq!(get_word_at_position(position, &text), None);
+
+        let (text, position) = remove_caret_marker("   |caret|   ");
+        assert_eq!(get_word_at_position(position, &text), None);
+
+        let (text, position) = remove_caret_marker("line1\n\n|caret|\nline3");
+        assert_eq!(get_word_at_position(position, &text), None);
+
+        assert_eq!(
+            get_word_at_position(
+                Position {
+                    line: 0,
+                    character: 20
+                },
+                "hello world"
+            ),
+            None
+        );
+        assert_eq!(
+            get_word_at_position(
+                Position {
+                    line: 2,
+                    character: 0
+                },
+                "hello world"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_get_word_at_position_multiline() {
+        let (text, position) = remove_caret_marker("line1|caret|\nline2");
+        assert_eq!(get_word_at_position(position, &text), Some("line1"));
+
+        let (text, position) = remove_caret_marker("line1\nli|caret|ne2");
+        assert_eq!(get_word_at_position(position, &text), Some("line2"));
+    }
+
+    #[test]
+    fn test_get_word_at_position_cedar_syntax() {
+        let (text, position) = remove_caret_marker("permit(|caret|principal, action, resource)");
+        assert_eq!(get_word_at_position(position, &text), Some("principal"));
+
+        let (text, position) = remove_caret_marker("User::|caret|\"alice\"");
+        assert_eq!(get_word_at_position(position, &text), Some("User::"));
+
+        let (text, position) = remove_caret_marker("principal |caret|== User::\"alice\"");
+        assert_eq!(get_word_at_position(position, &text), Some("=="));
+
+        let (text, position) = remove_caret_marker("resource in Photo::|caret|\"vacation.jpg\"");
+        assert_eq!(get_word_at_position(position, &text), Some("Photo::"));
+
+        let (text, position) = remove_caret_marker("principal.|caret|department");
+        assert_eq!(get_word_at_position(position, &text), Some("department"));
+
+        let (text, position) = remove_caret_marker("principal has |caret|department");
+        assert_eq!(get_word_at_position(position, &text), Some("department"));
     }
 }

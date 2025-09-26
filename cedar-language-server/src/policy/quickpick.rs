@@ -19,7 +19,7 @@ use std::str::FromStr;
 use cedar_policy_core::{ast::AnyId, parser::text_to_cst::parse_policies_tolerant};
 use tower_lsp_server::lsp_types::Range;
 
-use crate::utils::{ranges_intersect, ToRange};
+use crate::position::{ranges_intersect, ToRange};
 
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct QuickPickItem {

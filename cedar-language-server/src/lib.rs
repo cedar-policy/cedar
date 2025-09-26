@@ -30,7 +30,10 @@ mod entities;
 mod lsp;
 mod markdown;
 pub mod policy;
+mod position;
 pub mod schema;
 #[cfg(feature = "bin")]
 pub mod server;
+#[cfg(test)]
+mod test_utils;
 mod utils;

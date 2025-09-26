@@ -18,7 +18,7 @@ use cedar_policy_core::validator::ValidatorSchema;
 use itertools::Itertools;
 use tower_lsp_server::lsp_types::{self, FoldingRange};
 
-use crate::utils::ToRange;
+use crate::position::ToRange;
 
 use super::SchemaInfo;
 
@@ -106,12 +106,12 @@ pub(crate) fn fold_schema(schema_info: &SchemaInfo) -> Option<Vec<FoldingRange>>
 mod test {
     use itertools::Itertools;
 
-    use crate::schema::{fold_schema, SchemaInfo, SchemaType};
+    use crate::schema::{fold_schema, SchemaInfo};
     use tracing_test::traced_test;
 
     #[track_caller]
     fn assert_schema_folding_ranges(schema: &str, mut expected: Vec<(u32, u32)>) {
-        let schema_info = SchemaInfo::new(SchemaType::CedarSchema, schema.to_string());
+        let schema_info = SchemaInfo::cedar_schema(schema.to_string());
         let ranges = fold_schema(&schema_info).unwrap();
         let actual = ranges
             .iter()
@@ -187,7 +187,7 @@ mod test {
     #[test]
     #[traced_test]
     fn json_schema_returns_none() {
-        let schema_info = SchemaInfo::new(SchemaType::Json, r#"{"entityTypes": {}}"#.to_string());
+        let schema_info = SchemaInfo::json_schema(r#"{"entityTypes": {}}"#.to_string());
         let ranges = fold_schema(&schema_info);
         assert!(
             ranges.is_none(),

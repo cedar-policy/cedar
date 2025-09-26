@@ -19,7 +19,8 @@ use tower_lsp_server::lsp_types::{DocumentSymbol, SymbolKind};
 
 use crate::{
     lsp::new_symbol,
-    utils::{extract_common_type_name, ranges_intersect, ToRange},
+    position::{ranges_intersect, ToRange},
+    utils::extract_common_type_name,
 };
 
 use super::SchemaInfo;
@@ -134,7 +135,7 @@ pub(crate) fn schema_symbols(schema_info: &SchemaInfo) -> Option<Vec<DocumentSym
                 .zip(ct.type_loc.as_ref())
                 .map(|(name_snip, type_loc)| {
                     let src_range = type_loc.to_range();
-                    new_symbol(name_snip, src_range, SymbolKind::CLASS)
+                    new_symbol(name_snip.to_string(), src_range, SymbolKind::CLASS)
                 })
         })
         .collect();
@@ -181,8 +182,8 @@ mod test {
     use itertools::Itertools;
 
     use crate::{
+        position::get_text_in_range,
         schema::{schema_symbols, SchemaInfo},
-        utils::tests::slice_range,
     };
     use tracing_test::traced_test;
 
@@ -191,12 +192,19 @@ mod test {
         let syms = schema_symbols(&SchemaInfo::cedar_schema(schema.to_owned())).unwrap();
         let mut actual = syms
             .iter()
-            .map(|sym| (sym.name.as_str(), slice_range(schema, sym.range)))
+            .map(|sym| {
+                (
+                    sym.name.as_str(),
+                    get_text_in_range(schema, sym.range).unwrap(),
+                )
+            })
             .chain(syms.iter().flat_map(|sym| {
-                sym.children
-                    .iter()
-                    .flatten()
-                    .map(|sym| (sym.name.as_str(), slice_range(schema, sym.range)))
+                sym.children.iter().flatten().map(|sym| {
+                    (
+                        sym.name.as_str(),
+                        get_text_in_range(schema, sym.range).unwrap(),
+                    )
+                })
             }))
             .collect_vec();
 

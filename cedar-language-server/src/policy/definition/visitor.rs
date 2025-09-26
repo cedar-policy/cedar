@@ -22,8 +22,8 @@ use cedar_policy_core::validator::{
 };
 use cedar_policy_core::{
     ast::{
-        ActionConstraint, EntityReference, EntityType, Expr, ExprVisitor, Literal,
-        PrincipalOrResourceConstraint, Var,
+        ActionConstraint, EntityType, Expr, ExprVisitor, Literal, PrincipalOrResourceConstraint,
+        Var,
     },
     parser::Loc,
 };
@@ -40,7 +40,8 @@ use crate::{
         },
         SchemaActionLoc,
     },
-    utils::{PolicyScopeVariable, ToRange},
+    position::ToRange,
+    utils::PolicyScopeVariable,
 };
 
 /// Provides "go to definition" functionality for schema elements in Cedar policies.
@@ -220,14 +221,6 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
                 if self.doc_context.is_cursor_over_loc(et.loc()) =>
             {
                 let vet = self.schema.get_entity_type(et)?;
-                let loc = vet.loc.as_ref()?;
-                Some(vec![loc.to_range()])
-            }
-            PrincipalOrResourceConstraint::In(EntityReference::EUID(et))
-            | PrincipalOrResourceConstraint::Eq(EntityReference::EUID(et))
-                if self.doc_context.is_cursor_over_loc(et.loc()) =>
-            {
-                let vet = self.schema.get_entity_type(et.entity_type())?;
                 let loc = vet.loc.as_ref()?;
                 Some(vec![loc.to_range()])
             }

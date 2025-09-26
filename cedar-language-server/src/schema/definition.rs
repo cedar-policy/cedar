@@ -24,7 +24,11 @@ use cedar_policy_core::validator::{
 use itertools::Itertools;
 use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 
-use crate::utils::{get_word_at_position, position_within_loc, ToRange};
+use crate::position::offset_to_position;
+use crate::{
+    position::{position_within_loc, ToRange},
+    utils::get_word_at_position,
+};
 
 use super::SchemaInfo;
 
@@ -144,7 +148,7 @@ impl FindDefinition for ValidatorActionId {
                     .filter(|a| a.descendants().contains(self.name()))
                     .find(|a| a.name().eid().escaped() == cx.cursor_word)
                     .and_then(|v| v.loc())
-                    .map(super::super::utils::ToRange::to_range)
+                    .map(ToRange::to_range)
             })
     }
 }
@@ -165,7 +169,7 @@ impl FindDefinition for ValidatorEntityType {
                     .filter(|et| et.has_descendant_entity_type(self.name()))
                     .filter(|et| et.name().to_string() == cx.cursor_word)
                     .filter_map(|et| et.loc.as_ref())
-                    .map(super::super::utils::ToRange::to_range)
+                    .map(ToRange::to_range)
                     .next()
             })
     }
@@ -218,7 +222,7 @@ pub(crate) fn find_common_type_definition(type_name: &str, schema_text: &str) ->
         let start_offset = mat.start();
 
         // Convert character offset to Position (line, character)
-        let start = offset_to_position(schema_text, start_offset);
+        let start = offset_to_position(schema_text, start_offset)?;
 
         // Find the end of the type definition (looking for semicolon or next type definition)
         let mut end_offset = schema_text[start_offset..]
@@ -235,32 +239,12 @@ pub(crate) fn find_common_type_definition(type_name: &str, schema_text: &str) ->
         end_offset = end_offset.min(schema_text.len());
 
         // Convert end offset to Position
-        let end = offset_to_position(schema_text, end_offset);
+        let end = offset_to_position(schema_text, end_offset)?;
 
         return Some(Range { start, end });
     }
 
     None
-}
-
-fn offset_to_position(text: &str, offset: usize) -> Position {
-    let mut line = 0;
-    let mut char = 0;
-
-    for (i, c) in text.char_indices() {
-        if i >= offset {
-            break;
-        }
-
-        if c == '\n' {
-            line += 1;
-            char = 0;
-        } else {
-            char += 1;
-        }
-    }
-
-    Position::new(line, char)
 }
 
 #[cfg(test)]
@@ -269,10 +253,7 @@ mod test {
 
     use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Uri};
 
-    use crate::{
-        schema::SchemaInfo,
-        utils::tests::{remove_caret_marker, slice_range},
-    };
+    use crate::{position::get_text_in_range, schema::SchemaInfo, test_utils::remove_caret_marker};
 
     use tracing_test::traced_test;
 
@@ -291,7 +272,7 @@ mod test {
             panic!("Expected exactly one definition");
         };
 
-        let actual_str = slice_range(&schema, actual.range);
+        let actual_str = get_text_in_range(&schema, actual.range).unwrap();
         similar_asserts::assert_eq!(expected, actual_str);
     }
 

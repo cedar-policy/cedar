@@ -25,7 +25,7 @@ use crate::{
         },
         items::{HasCompletionItem, IfCompletionItem, InCompletionItem, LikeCompletionItem},
     },
-    utils::position_within_loc,
+    position::{get_text_before_position, position_within_loc},
 };
 
 use crate::policy::DocumentContext;
@@ -36,10 +36,7 @@ pub(crate) fn should_show_policy_snippets(text: &str, cursor_position: Position)
     }
 
     // Get the current line text up to the cursor
-    let lines: Vec<&str> = text.split('\n').collect();
-
-    // Guard against out of bounds
-    let Some(current_line) = lines.get(cursor_position.line as usize) else {
+    let Some(current_line) = text.lines().nth(cursor_position.line as usize) else {
         return false;
     };
 
@@ -64,11 +61,13 @@ pub(crate) fn should_show_policy_snippets(text: &str, cursor_position: Position)
 
     // Check surrounding context for partial policies
     // Look at all text before cursor to check for unclosed parentheses
-    let text_before_cursor = get_text_before_cursor(text, cursor_position);
+    let Some(text_before_cursor) = get_text_before_position(text, cursor_position) else {
+        return false;
+    };
 
     // If we have unclosed parentheses or any policy keyword with unclosed elements,
     // we're likely in the middle of typing a policy
-    if has_unclosed_policy_elements(&text_before_cursor) {
+    if has_unclosed_policy_elements(text_before_cursor) {
         return false;
     }
 
@@ -101,32 +100,6 @@ pub(crate) fn should_show_policy_snippets(text: &str, cursor_position: Position)
             is_blank_or_just_effect
         }
     }
-}
-
-/// Gets all text before the cursor position
-fn get_text_before_cursor(text: &str, cursor_position: Position) -> String {
-    let mut result = String::new();
-    for (i, line) in text.lines().enumerate() {
-        match i.cmp(&(cursor_position.line as usize)) {
-            std::cmp::Ordering::Less => {
-                result.push_str(line);
-                result.push('\n');
-            }
-            std::cmp::Ordering::Equal => {
-                if cursor_position.character as usize <= line.len() {
-                    result.push_str(&line[..cursor_position.character as usize]);
-                } else {
-                    result.push_str(line);
-                }
-                break;
-            }
-            std::cmp::Ordering::Greater => {
-                break;
-            }
-        }
-    }
-
-    result
 }
 
 /// Checks if there are unclosed policy elements in the text
