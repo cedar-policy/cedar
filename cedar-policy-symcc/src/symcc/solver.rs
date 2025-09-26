@@ -249,8 +249,7 @@ impl LocalSolver {
         }
     }
 
-    /// Forces this solver's child process to exit.
-    /// Waits for the child to exit completely.
+    /// Kills this solver's child process and waits for the child process to exit completely.
     pub async fn clean_up(mut self) -> Result<()> {
         self.child.kill().await.map_err(|e| e.into())
     }
