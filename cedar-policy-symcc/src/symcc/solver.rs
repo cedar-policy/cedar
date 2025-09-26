@@ -248,6 +248,12 @@ impl LocalSolver {
             _ => SolverError::UnrecognizedSolverOutput(s.to_string()),
         }
     }
+
+    /// Forces this solver's child process to exit.
+    /// Waits for the child to exit completely.
+    pub async fn clean_up(mut self) -> Result<()> {
+        self.child.kill().await.map_err(|e| e.into())
+    }
 }
 
 /// Implements `Solver` by writing all issued commands to the given
@@ -370,5 +376,11 @@ mod test {
         // Attempt to reset the solver.
         my_solver.smtlib_input().reset().await.unwrap();
         assert_matches!(my_solver.check_sat().await, Err(SolverError::Solver(x)) => { assert_eq!(x, "Encountered EOF while reading from solver output"); });
+    }
+
+    #[tokio::test]
+    async fn clean_up_succeeds() {
+        let my_solver = LocalSolver::cvc5().unwrap();
+        my_solver.clean_up().await.unwrap();
     }
 }
