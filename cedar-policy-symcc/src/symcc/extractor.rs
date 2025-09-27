@@ -71,7 +71,7 @@ impl Uuf {
             table: Arc::new(new_table),
             default: udf.default.clone(),
             arg: udf.arg.clone(),
-            out: udf.out.clone(),
+            out: udf.out,
         })
     }
 }
