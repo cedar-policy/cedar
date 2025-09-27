@@ -215,7 +215,7 @@ pub fn app(f: UnaryFunction, t: Term) -> Term {
         UnaryFunction::Uuf(f) => {
             let ret_ty = f.out.clone();
             Term::App {
-                op: Op::Uuf(Arc::new(f)),
+                op: Op::Uuf(f),
                 args: Arc::new(vec![t]),
                 ret_ty,
             }
@@ -224,10 +224,10 @@ pub fn app(f: UnaryFunction, t: Term) -> Term {
             if t.is_literal() {
                 match f.table.get(&t) {
                     Some(v) => v.clone(),
-                    None => f.default,
+                    None => f.default.clone(),
                 }
             } else {
-                f.table.iter().rfold(f.default, |acc, (t1, t2)| {
+                f.table.iter().rfold(f.default.clone(), |acc, (t1, t2)| {
                     ite(eq(t.clone(), t1.clone()), t2.clone(), acc)
                 })
             }

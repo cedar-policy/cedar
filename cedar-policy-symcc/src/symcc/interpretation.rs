@@ -109,7 +109,7 @@ impl Term {
                 ),
 
                 (Op::Uuf(uuf), [arg]) => factory::app(
-                    UnaryFunction::Udf(interp.interpret_fun(uuf)),
+                    UnaryFunction::Udf(Arc::new(interp.interpret_fun(uuf))),
                     arg.interpret(interp),
                 ),
 
@@ -252,7 +252,7 @@ impl UnaryFunction {
     pub fn interpret(&self, interp: &Interpretation<'_>) -> UnaryFunction {
         match self {
             UnaryFunction::Udf(..) => self.clone(),
-            UnaryFunction::Uuf(uuf) => UnaryFunction::Udf(interp.interpret_fun(uuf)),
+            UnaryFunction::Uuf(uuf) => UnaryFunction::Udf(Arc::new(interp.interpret_fun(uuf))),
         }
     }
 }
