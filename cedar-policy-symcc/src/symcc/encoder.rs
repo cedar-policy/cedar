@@ -329,11 +329,13 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         ty_enc: &str,
         t_encs: impl IntoIterator<Item = &'s str>,
     ) -> Result<String> {
-        self.define_term(
-            ty_enc,
-            &format!("({ty_enc} {})", t_encs.into_iter().join(" ")),
-        )
-        .await
+        let t_encs = t_encs.into_iter().join(" ");
+        let t_enc = if t_encs.is_empty() {
+            format!("{ty_enc}")
+        } else {
+            format!("({ty_enc} {})", t_encs)
+        };
+        self.define_term(ty_enc, &t_enc).await
     }
 
     pub async fn encode_uuf(&mut self, uuf: &Uuf) -> Result<String> {
