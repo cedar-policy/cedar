@@ -185,7 +185,7 @@ impl Solver for LocalSolver {
             "sat\n" => Ok(Decision::Sat),
             "unsat\n" => Ok(Decision::Unsat),
             "unknown\n" => Ok(Decision::Unknown),
-            s => Err(Self::process_error_output(s).await),
+            s => Err(Self::process_error_output(self, s).await),
         }
     }
 
@@ -212,7 +212,7 @@ impl Solver for LocalSolver {
                 }
                 Ok(Some(output))
             }
-            s => Err(Self::process_error_output(s).await),
+            s => Err(Self::process_error_output(self, s).await),
         }
     }
 }
@@ -239,12 +239,19 @@ impl LocalSolver {
         Ok(len)
     }
 
-    async fn process_error_output(s: &str) -> SolverError {
+    async fn process_error_output(&mut self, s: &str) -> SolverError {
         match s
             .strip_prefix("(error \"")
             .and_then(|s| s.strip_suffix("\")\n"))
         {
-            Some(e) => SolverError::Solver(e.to_string()),
+            Some(e) => {
+                if e.starts_with("Parse Error: ") {
+                    // Parse errors cause CVC5 to quit and need to be handled specially.
+                    // Kill the child process and clean up its resources
+                    let _ = self.clean_up().await;
+                }
+                SolverError::Solver(e.to_string())
+            }
             _ => SolverError::UnrecognizedSolverOutput(s.to_string()),
         }
     }
