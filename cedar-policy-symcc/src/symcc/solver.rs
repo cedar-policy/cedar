@@ -185,7 +185,7 @@ impl Solver for LocalSolver {
             "sat\n" => Ok(Decision::Sat),
             "unsat\n" => Ok(Decision::Unsat),
             "unknown\n" => Ok(Decision::Unknown),
-            s => Err(Self::process_error_output(self, s).await),
+            s => Err(self.process_error_output(s).await),
         }
     }
 
@@ -212,7 +212,7 @@ impl Solver for LocalSolver {
                 }
                 Ok(Some(output))
             }
-            s => Err(Self::process_error_output(self, s).await),
+            s => Err(self.process_error_output(s).await),
         }
     }
 }
@@ -231,9 +231,12 @@ impl LocalSolver {
     async fn read_line(&mut self, buffer: &mut String) -> Result<usize> {
         let len = self.solver_stdout.read_line(buffer).await?;
         if len == 0 {
-            // An unexpected EOF was encountered while reading from solver output
-            // Kill the child process and clean up its resources
+            // An unexpected EOF was encountered while reading from solver output.
+            // Kill the child process and clean up its resources.
             self.clean_up().await?;
+            // If `clean_up` succeeded, then the child process has exited completely and its
+            // status will be returned by the call to `try_wait`, causing `check_child_process_status`
+            // to return an `Err`.
             self.check_child_process_status().await?;
         }
         Ok(len)
