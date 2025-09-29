@@ -32,7 +32,7 @@ use crate::{
 };
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 
 use super::{internal_name_to_entity_type, AllDefs, LocatedType, ValidatorApplySpec};
 use crate::validator::{
@@ -248,7 +248,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             // The `name` in an entity type declaration cannot be qualified
             // with a namespace (it always implicitly takes the schema
             // namespace), so we do this comparison directly.
-            .any(|(name, _)| name.to_smolstr() == crate::ast::ACTION_ENTITY_TYPE)
+            .any(|(name, _)| name.0 == crate::ast::ACTION_ENTITY_TYPE)
         {
             return Err(ActionEntityTypeDeclaredError {}.into());
         }

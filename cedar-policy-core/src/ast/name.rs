@@ -25,9 +25,9 @@ use smol_str::ToSmolStr;
 use std::collections::HashSet;
 use std::fmt::Display;
 use std::str::FromStr;
-use std::sync::Arc;
 use thiserror::Error;
 
+use crate::ast::Path;
 use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::Loc;
 use crate::FromNormalizedStr;
@@ -44,7 +44,7 @@ pub struct InternalName {
     /// Basename
     pub(crate) id: Id,
     /// Namespaces
-    pub(crate) path: Arc<Vec<Id>>,
+    pub(crate) path: Path,
     /// Location of the name in source
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
@@ -76,26 +76,27 @@ impl TryFrom<InternalName> for Id {
 impl InternalName {
     /// A full constructor for [`InternalName`]
     pub fn new(basename: Id, path: impl IntoIterator<Item = Id>, loc: Option<Loc>) -> Self {
+        Self::new_from_path(basename, path.into_iter().collect(), loc)
+    }
+
+    /// A full constructor for [`InternalName`] from a [`Path`]
+    pub const fn new_from_path(basename: Id, path: Path, loc: Option<Loc>) -> Self {
         Self {
             id: basename,
-            path: Arc::new(path.into_iter().collect()),
+            path,
             loc,
         }
     }
 
     /// Create an [`InternalName`] with no path (no namespaces).
     pub fn unqualified_name(id: Id, loc: Option<Loc>) -> Self {
-        Self {
-            id,
-            path: Arc::new(vec![]),
-            loc,
-        }
+        Self::new_from_path(id, Path::empty(), loc)
     }
 
     /// Get the [`InternalName`] representing the reserved `__cedar` namespace
     pub fn __cedar() -> Self {
-        // using `Id::new_unchecked()` for performance reasons -- this function is called many times by validator code
-        Self::unqualified_name(Id::new_unchecked("__cedar"), None)
+        // using `Id::new_unchecked_from_static()` for performance reasons -- this function is called many times by validator code
+        Self::unqualified_name(Id::new_unchecked_from_static("__cedar"), None)
     }
 
     /// Create an [`InternalName`] with no path (no namespaces).
@@ -103,7 +104,7 @@ impl InternalName {
     pub fn parse_unqualified_name(s: &str) -> Result<Self, ParseErrors> {
         Ok(Self {
             id: s.parse()?,
-            path: Arc::new(vec![]),
+            path: Path::empty(),
             loc: None,
         })
     }
@@ -115,7 +116,7 @@ impl InternalName {
         namespace: InternalName,
         loc: Option<Loc>,
     ) -> InternalName {
-        let mut path = Arc::unwrap_or_clone(namespace.path);
+        let mut path = namespace.path.to_vec();
         path.push(namespace.id);
         InternalName::new(basename, path, loc)
     }
@@ -244,11 +245,10 @@ impl<'a> arbitrary::Arbitrary<'a> for InternalName {
         let path_size = u.int_in_range(0..=8)?;
         Ok(Self {
             id: u.arbitrary()?,
-            path: Arc::new(
-                (0..path_size)
-                    .map(|_| u.arbitrary())
-                    .collect::<Result<Vec<Id>, _>>()?,
-            ),
+            path: (0..path_size)
+                .map(|_| u.arbitrary())
+                .collect::<Result<Vec<Id>, _>>()?
+                .into(),
             loc: None,
         })
     }

@@ -34,6 +34,8 @@ mod name;
 pub use name::*;
 mod ops;
 pub use ops::*;
+mod path;
+pub use path::*;
 mod pattern;
 pub use pattern::*;
 mod partial_value;
