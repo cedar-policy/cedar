@@ -341,7 +341,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             Some(enc) => Ok(enc.clone()),
             None => {
                 let id = uuf_id(self.uufs.len());
-                self.script.comment(&uuf.id.clone()).await?;
+                self.script.comment(&uuf.id).await?;
                 let encoded_arg_type = self.encode_type(&uuf.arg).await?;
                 let encoded_out_type = self.encode_type(&uuf.out).await?;
                 self.script

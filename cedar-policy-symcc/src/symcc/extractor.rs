@@ -46,7 +46,7 @@ impl Uuf {
         arg_ety: &EntityType,
         footprints: &BTreeSet<EntityUID>,
         interp: &Interpretation<'_>,
-    ) -> Arc<Udf> {
+    ) -> Udf {
         // Get the current, potentially incorrect interpretation
         let udf = interp.interpret_fun(self);
 
@@ -67,12 +67,12 @@ impl Uuf {
             })
             .collect();
 
-        Arc::new(Udf {
+        Udf {
             table: Arc::new(new_table),
             default: udf.default.clone(),
             arg: udf.arg.clone(),
             out: udf.out,
-        })
+        }
     }
 }
 
@@ -102,12 +102,8 @@ impl Interpretation<'_> {
             for fun in ent_data.ancestors.values() {
                 if let UnaryFunction::Uuf(uuf) = fun {
                     funs.insert(
-                        (**uuf).clone(),
-                        Arc::unwrap_or_clone(uuf.repair_as_counterexample(
-                            ety,
-                            &footprint_uids,
-                            self,
-                        )),
+                        uuf.as_ref().clone(),
+                        uuf.repair_as_counterexample(ety, &footprint_uids, self),
                     );
                 }
             }

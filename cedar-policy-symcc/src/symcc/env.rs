@@ -35,7 +35,7 @@ use cedar_policy_core::validator::{
     ValidatorActionId,
 };
 use cedar_policy_core::validator::{ValidatorEntityType, ValidatorEntityTypeKind};
-use smol_str::SmolStr;
+use smol_str::{format_smolstr, SmolStr};
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
 use std::sync::Arc;
@@ -184,13 +184,13 @@ impl SymEntityData {
             // Corresponds to `SymEntityData.ofStandardEntityType` in Lean
             EntitySchemaEntry::Standard(sch) => {
                 let attrs_uuf = Uuf(Arc::new(op::Uuf {
-                    id: format!("attrs[{ety}]").into(),
+                    id: format_smolstr!("attrs[{ety}]"),
                     arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
                     out: TermType::of_type(&record(sch.attrs))?,
                 }));
                 let ancs_uuf = |anc_ty: &EntityType| {
                     Uuf(Arc::new(op::Uuf {
-                        id: format!("ancs[{ety}, {anc_ty}]").into(),
+                        id: format_smolstr!("ancs[{ety}, {anc_ty}]"),
                         arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
                         out: TermType::set_of(entity(anc_ty.clone())), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
                     }))
@@ -198,12 +198,12 @@ impl SymEntityData {
                 let sym_tags = |tag_ty: Type| -> Result<SymTags, CompileError> {
                     Ok(SymTags {
                         keys: Uuf(Arc::new(op::Uuf {
-                            id: format!("tagKeys[{ety}]").into(),
+                            id: format_smolstr!("tagKeys[{ety}]"),
                             arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
                             out: TermType::set_of(TermType::String),
                         })),
                         vals: Uuf(Arc::new(op::Uuf {
-                            id: format!("tagVals[{ety}]").into(),
+                            id: format_smolstr!("tagVals[{ety}]"),
                             arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
                             out: TermType::of_type(&tag_ty)?,
                         })),
