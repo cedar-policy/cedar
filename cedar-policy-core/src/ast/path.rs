@@ -59,13 +59,13 @@ impl Path {
     }
 
     /// Create a new [`Path`] from a static slice
-    pub const fn new_from_static(iter: &'static [Id]) -> Self {
-        Self::Static(iter)
+    pub const fn new_from_static(slice: &'static [Id]) -> Self {
+        Self::Static(slice)
     }
 
     /// Create a new [`Path`] from an arc
-    pub const fn new_from_arc(iter: Arc<[Id]>) -> Self {
-        Self::Arc(iter)
+    pub const fn new_from_arc(ptr: Arc<[Id]>) -> Self {
+        Self::Arc(ptr)
     }
 
     /// Create a new [`Path`] with no elements
@@ -91,6 +91,11 @@ impl Path {
     /// Convert a [`Path`] to a slice
     pub fn as_slice(&self) -> &[Id] {
         self.as_ref()
+    }
+
+    /// Check if the [`Path`] is static
+    pub const fn is_static(&self) -> bool {
+        matches!(self, Self::Static(_))
     }
 }
 

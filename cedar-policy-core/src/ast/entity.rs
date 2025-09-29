@@ -143,11 +143,16 @@ impl EntityType {
     pub fn from_normalized_str(src: &str) -> Result<Self, ParseErrors> {
         Name::from_normalized_str(src).map(Into::into)
     }
+
+    /// Convert a [`Name`] to an [`EntityType`]
+    pub const fn from_name(name: Name) -> Self {
+        Self::EntityType(name)
+    }
 }
 
 impl From<Name> for EntityType {
     fn from(n: Name) -> Self {
-        Self::EntityType(n)
+        Self::from_name(n)
     }
 }
 

@@ -67,6 +67,11 @@ impl Id {
     pub fn is_reserved(&self) -> bool {
         self.as_ref() == RESERVED_ID
     }
+
+    /// Check if the `Id` is static
+    pub const fn is_static(&self) -> bool {
+        !self.0.is_heap_allocated()
+    }
 }
 
 impl AsRef<str> for Id {

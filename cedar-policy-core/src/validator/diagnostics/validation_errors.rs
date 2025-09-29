@@ -718,7 +718,7 @@ mod test_attr_access {
     ) {
         let env = RequestEnv::DeclaredAction {
             principal: &"Principal".parse().unwrap(),
-            action: &EntityUID::with_eid_and_type(crate::ast::ACTION_ENTITY_TYPE, "action")
+            action: &EntityUID::with_eid_and_type(crate::ast::ACTION_ENTITY_TYPE.as_ref(), "action")
                 .unwrap(),
             resource: &"Resource".parse().unwrap(),
             context: &Type::record_with_attributes(None, OpenTag::ClosedAttributes),

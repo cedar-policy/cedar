@@ -201,6 +201,11 @@ impl InternalName {
             .chain(std::iter::once(&self.id))
             .any(|id| id.is_reserved())
     }
+
+    /// Check if the [`InternalName`] is static
+    pub const fn is_static(&self) -> bool {
+        self.id.is_static() && self.path.is_static()
+    }
 }
 
 impl std::fmt::Display for InternalName {
@@ -413,6 +418,173 @@ impl FromStr for Name {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let n: InternalName = s.parse()?;
         n.try_into().map_err(ParseErrors::singleton)
+    }
+}
+
+#[derive(Debug)]
+/// The error type for [`Name`] validation
+pub enum NameValidationError {
+    /// A reserved keyword was used
+    ReservedKeyword(&'static str),
+    /// An empty name was used
+    Empty,
+    /// A part of the name started with a non-alphanumeric character
+    PartStart(char),
+    /// A part of the name contains a non-alphanumeric character
+    PartContains(char),
+}
+
+impl std::fmt::Display for NameValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NameValidationError::ReservedKeyword(s) => write!(f, "part is a reserved keyword: {s}"),
+            NameValidationError::Empty => write!(f, "part is empty"),
+            NameValidationError::PartStart(c) => write!(f, "part starts with invalid char: {c}"),
+            NameValidationError::PartContains(c) => write!(f, "part contains invalid char: {c}"),
+        }
+    }
+}
+
+impl std::error::Error for NameValidationError {}
+
+impl NameValidationError {
+    /// Panics with the error message
+    pub const fn into_panic(&self, msg: &str) -> ! {
+        match self {
+            NameValidationError::ReservedKeyword(s) => const_panic::concat_panic!(msg, ": part is a reserved keyword: ", s),
+            NameValidationError::Empty => const_panic::concat_panic!(msg, ": part is empty"),
+            NameValidationError::PartStart(c) => const_panic::concat_panic!(msg, ": part starts with invalid char: ", c),
+            NameValidationError::PartContains(c) => const_panic::concat_panic!(msg, ": part contains invalid char: ", c),
+        }
+    }
+}
+
+const fn validate_part(part: &str) -> Option<NameValidationError> {
+    let invalid_parts = &["true", "false", "if", "then", "else", "in", "is", "like", "has", "__cedar"];
+    konst::for_range! {idx in 0..invalid_parts.len() =>
+        if konst::string::eq_str(invalid_parts[idx], part) {
+            return Some(NameValidationError::ReservedKeyword(invalid_parts[idx]));
+        }
+    }
+
+    let mut chars = konst::string::chars(part);
+
+    let Some(c) = chars.next() else {
+        return Some(NameValidationError::Empty);
+    };
+
+    if c != '_' && !c.is_ascii_alphabetic() {
+        return Some(NameValidationError::PartStart(c));
+    }
+
+    konst::iter::for_each!{c in chars =>
+        if c != '_' && !c.is_ascii_alphanumeric() {
+            return Some(NameValidationError::PartContains(c));
+        }
+    }
+
+    None
+}
+
+const fn validate(parts: &[&str]) -> Option<NameValidationError> {
+    if parts.is_empty() {
+        return Some(NameValidationError::Empty);
+    }
+
+    konst::iter::for_each! {part in parts =>
+        if let Some(result) = validate_part(part) {
+            return Some(result);
+        }
+    }
+    None
+}
+
+/// A name that has been constructed at compile time
+#[derive(Debug)]
+pub enum CompileTimeName {
+    /// A valid name
+    Name(Name),
+    /// An invalid name
+    ValidationError(NameValidationError),
+}
+
+impl CompileTimeName {
+    const EMPTY_NAME: Name = Name(InternalName::new_from_path(Id::new_unchecked_from_static(""), Path::empty(), None));
+
+    /// Unwrap the name
+    pub const fn unwrap(mut self) -> Name {
+        let r = match &mut self {
+            CompileTimeName::Name(name) => std::mem::replace(name, Self::EMPTY_NAME),
+            CompileTimeName::ValidationError(r) => r.into_panic("unwrap on invalid name"),
+        };
+
+        self.forget();
+        r
+    }
+
+    /// Unwrap the error
+    pub const fn unwrap_err(mut self) -> NameValidationError {
+        let r = match &mut self {
+            CompileTimeName::Name(_) => panic!("unwrap_err on valid name"),
+            CompileTimeName::ValidationError(r) => std::mem::replace(r, NameValidationError::Empty),
+        };
+
+        self.forget();
+        r
+    }
+
+    /// Expect the name
+    pub const fn expect(mut self, err: &str) -> Name {
+        let r = match &mut self {
+            CompileTimeName::Name(name) => std::mem::replace(name, Self::EMPTY_NAME),
+            CompileTimeName::ValidationError(r) => r.into_panic(err),
+        };
+
+        self.forget();
+        r
+    }
+
+    /// Expect the name
+    pub const fn expect_err(mut self, err: &str) -> NameValidationError {
+        let r = match &mut self {
+            CompileTimeName::Name(_) => const_panic::concat_panic!(err),
+            CompileTimeName::ValidationError(r) => std::mem::replace(r, NameValidationError::Empty),
+        };
+
+        self.forget();
+        r
+    }
+
+    const fn forget(self) {
+        if let CompileTimeName::Name(name) = &self {
+            assert!(name.0.is_static(), "name should be static when forgetting");
+        }
+        std::mem::forget(self);
+    }
+}
+
+/// This is how we can create a `Name` at compile time
+#[macro_export]
+macro_rules! make_name {
+    ($input:expr) => {
+        const {
+            const EXPR: &str = $input;
+            const PARTS_STR: &[&str] = &konst::iter::collect_const!(&str =>
+                konst::string::split(EXPR, "::"),
+            );
+            const PARTS_ID: &[Id] = &konst::iter::collect_const!(Id =>
+                konst::slice::iter(konst::slice::slice_up_to(PARTS_STR, PARTS_STR.len() - 1)),
+                map(|part| {
+                    Id::new_unchecked_from_static(part)
+                }),
+            );
+            
+            if let Some(err) = validate(PARTS_STR) {
+                CompileTimeName::ValidationError(err)
+            } else {
+                CompileTimeName::Name(Name(InternalName::new_from_path(Id::new_unchecked_from_static(PARTS_STR[PARTS_STR.len() - 1]), Path::new_from_static(&PARTS_ID), None)))
+            }
+        }
     }
 }
 
@@ -637,6 +809,17 @@ impl<'a> arbitrary::Arbitrary<'a> for Name {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn compile_time_name() {
+        const _: Name = make_name!("foo").expect("should be OK");
+        const _: Name = make_name!("foo::bar").expect("should be OK");
+        const _: NameValidationError = make_name!(r#"foo::"bar""#).expect_err("shouldn't be OK");
+        const _: NameValidationError = make_name!(" foo").expect_err("shouldn't be OK");
+        const _: NameValidationError = make_name!("foo ").expect_err("shouldn't be OK");
+        const _: NameValidationError = make_name!("foo\n").expect_err("shouldn't be OK");
+        const _: NameValidationError = make_name!("foo//comment").expect_err("shouldn't be OK");
+    }
 
     #[test]
     fn normalized_name() {

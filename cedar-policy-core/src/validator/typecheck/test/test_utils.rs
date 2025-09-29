@@ -99,7 +99,7 @@ impl Typechecker<'_> {
             principal: &"Principal"
                 .parse()
                 .expect("Placeholder type \"Principal\" failed to parse as valid type name."),
-            action: &EntityUID::with_eid_and_type(ACTION_ENTITY_TYPE, "action")
+            action: &EntityUID::with_eid_and_type(ACTION_ENTITY_TYPE.as_ref(), "action")
                 .expect("ACTION_ENTITY_TYPE failed to parse as type name."),
             resource: &"Resource"
                 .parse()
