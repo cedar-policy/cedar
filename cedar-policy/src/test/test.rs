@@ -9580,4 +9580,23 @@ mod has_non_scope_constraint {
         .unwrap();
         assert!(!p.has_non_scope_constraint());
     }
+
+    #[cfg(feature = "protobufs")]
+    #[test]
+    fn proto() {
+        fn roundtrip_via_policy_set(p: Policy) -> Policy {
+            let policy_set = crate::PolicySet::from_policies([p]).unwrap();
+            let proto = crate::proto::models::PolicySet::from(&policy_set);
+            let policy_set_from_proto: crate::PolicySet = (&proto).try_into().unwrap();
+            let roundtripped = policy_set_from_proto.policies().next().unwrap();
+            roundtripped.clone()
+        }
+        let p: Policy = "permit(principal, action, resource);".parse().unwrap();
+        assert!(!roundtrip_via_policy_set(p).has_non_scope_constraint());
+
+        let p: Policy = "permit(principal, action, resource) unless { false };"
+            .parse()
+            .unwrap();
+        assert!(roundtrip_via_policy_set(p).has_non_scope_constraint());
+    }
 }
