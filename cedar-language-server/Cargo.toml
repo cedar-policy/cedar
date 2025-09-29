@@ -43,6 +43,7 @@ tracing-test = "0.2.5"
 cool_asserts = "2.0.3"
 similar-asserts = "1.7.0"
 insta = "1.43.2"
+tempfile = "3.23.0"
 
 [features]
 default = ["bin"]

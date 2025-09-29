@@ -437,7 +437,7 @@ pub(crate) fn get_policy_scope_variable(
     }
 }
 
-pub(crate) fn extract_common_type_name(type_dec_snippet: &str) -> Option<String> {
+pub(crate) fn extract_common_type_name(type_dec_snippet: &str) -> Option<&str> {
     // Find the type keyword at the beginning of the line
     if !type_dec_snippet.trim_start().starts_with("type ") {
         return None;
@@ -457,7 +457,7 @@ pub(crate) fn extract_common_type_name(type_dec_snippet: &str) -> Option<String>
         return None;
     }
 
-    Some(type_name.to_string())
+    Some(type_name)
 }
 
 pub(crate) fn ranges_intersect(a: &Range, b: &Range) -> bool {
@@ -1104,5 +1104,139 @@ permit(
         );
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
+    }
+
+    #[test]
+    fn get_policy_scope_multi_line_var() {
+        let (policy, carets) = remove_all_caret_markers(
+            r#"
+        permit(
+            principal
+                is
+                    |caret|User,
+            action in [
+            |caret|
+            ],
+            reso|caret|urce ==
+            Photo::""
+        );"#,
+        );
+
+        // Test cursor in complex principal section
+        let result = get_policy_scope_variable(&policy, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(
+            result.text,
+            "principal\n                is\n                    User"
+        );
+
+        // Test cursor in action section
+        let result = get_policy_scope_variable(&policy, carets[1]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action in [\n            \n            ]");
+
+        // Test cursor in complex resource section
+        let result = get_policy_scope_variable(&policy, carets[2]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, "resource ==\n            Photo::\"\"");
+    }
+
+    #[test]
+    fn test_parens_in_policy_scope() {
+        let (policies, carets) = remove_all_caret_markers(
+            r#"permit(princ|caret|ipal == (User::"alice"), ac|caret|tion in [(Action::"bar")], res|caret|ource in ((Album::"foo")));"#,
+        );
+
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, r#"principal == (User::"alice")"#);
+
+        let result = get_policy_scope_variable(&policies, carets[1]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, r#"action in [(Action::"bar")]"#);
+
+        let result = get_policy_scope_variable(&policies, carets[2]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, r#"resource in ((Album::"foo"))"#);
+    }
+
+    #[test]
+    fn test_incomplete_policy_scope() {
+        let (policies, carets) = remove_all_caret_markers(r#"permit(|caret|);"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "");
+
+        let (policies, carets) = remove_all_caret_markers(r#"permit(princi|caret|pal);"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+
+        let (policies, carets) = remove_all_caret_markers(r#"permit(princi|caret|pal, );"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+
+        let (policies, carets) =
+            remove_all_caret_markers(r#"permit(princi|caret|pal, a|caret|ction, );"#);
+        let result = get_policy_scope_variable(&policies, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+        let result = get_policy_scope_variable(&policies, carets[1]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action");
+    }
+
+    #[test]
+    fn test_extract_common_type_name() {
+        assert_eq!(
+            extract_common_type_name("type SimpleType = String;"),
+            Some("SimpleType")
+        );
+        assert_eq!(
+            extract_common_type_name("type MyRecord = { name: String };"),
+            Some("MyRecord")
+        );
+        assert_eq!(
+            extract_common_type_name("type MySet = Set<String>;"),
+            Some("MySet")
+        );
+        assert_eq!(
+            extract_common_type_name("  type  SpacedType  =  Long;  "),
+            Some("SpacedType")
+        );
+
+        // Multi-line type declarations
+        let (multiline_type, _) = remove_all_caret_markers(
+            "type \n NewLines \n = {\n  field1: String,\n  field2: Long\n};",
+        );
+        assert_eq!(extract_common_type_name(&multiline_type), Some("NewLines"));
+
+        // Type with namespace
+        assert_eq!(
+            extract_common_type_name("type Namespace::TypeName = String;"),
+            Some("Namespace::TypeName")
+        );
+
+        assert_eq!(extract_common_type_name("entity foo;"), None);
+        assert_eq!(extract_common_type_name("entity foo;"), None);
+    }
+
+    #[test]
+    fn test_get_word_at_position() {
+        let (text, position) = remove_caret_marker("he|caret|llo");
+        assert_eq!(get_word_at_position(position, &text), Some("hello"));
+
+        let (text, position) = remove_caret_marker("hello |caret|world");
+        assert_eq!(get_word_at_position(position, &text), Some("world"));
+
+        let (text, position) = remove_caret_marker("|caret|hello world");
+        assert_eq!(get_word_at_position(position, &text), Some("hello"));
+
+        let (text, position) = remove_caret_marker("hello wor|caret|ld");
+        assert_eq!(get_word_at_position(position, &text), Some("world"));
+
+        let (text, position) = remove_caret_marker("hello world|caret|");
+        assert_eq!(get_word_at_position(position, &text), Some("world"));
     }
 }

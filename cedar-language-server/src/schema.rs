@@ -88,7 +88,7 @@ impl SchemaInfo {
                 let fragment = SchemaFragment::from_cedarschema_str(&self.text)?;
                 let json = fragment.0.to_json_value()?;
                 let schema = serde_json::to_string_pretty(&json)?;
-                Ok(Self::new(SchemaType::Json, schema))
+                Ok(Self::json_schema(schema))
             }
             SchemaType::Json => Ok(self),
         }
@@ -99,10 +99,7 @@ impl SchemaInfo {
             SchemaType::CedarSchema => Ok(self),
             SchemaType::Json => {
                 let fragment = SchemaFragment::from_json_str(&self.text)?;
-                Ok(Self::new(
-                    SchemaType::CedarSchema,
-                    fragment.to_cedarschema()?,
-                ))
+                Ok(Self::cedar_schema(fragment.to_cedarschema()?))
             }
         }
     }
