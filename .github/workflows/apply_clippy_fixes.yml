@@ -22,7 +22,10 @@ jobs:
       - name: Get Date
         id: date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-          
+
+      - name: Install toolchain components
+        run: rustup component add clippy rustfmt
+
       - name: Run Clippy fixes
         run: |
           cargo clippy --fix --allow-dirty --allow-staged
