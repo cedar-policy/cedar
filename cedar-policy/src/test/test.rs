@@ -8197,9 +8197,7 @@ permit(
   principal == ?principal,
   action,
   resource
-) when {
-  true
-};"#;
+);"#;
         assert_eq!(pset.to_cedar().unwrap(), expected);
     }
 
@@ -9494,5 +9492,111 @@ mod deep_eq {
         .unwrap();
         assert_not_deep_eq!(es, &other);
         assert_not_deep_eq!(other, &es);
+    }
+}
+
+mod has_non_scope_constraint {
+    use crate::{Policy, Template};
+
+    #[test]
+    fn trivial_policies() {
+        let p: Policy = "permit(principal, action, resource);".parse().unwrap();
+        assert!(!p.has_non_scope_constraint());
+        let p: Policy = "forbid(principal, action, resource);".parse().unwrap();
+        assert!(!p.has_non_scope_constraint());
+    }
+
+    #[test]
+    fn scope_constraints() {
+        let p: Policy =
+            r#"permit(principal == User::"alice", action in [Action::"view"], resource is Book);"#
+                .parse()
+                .unwrap();
+        assert!(!p.has_non_scope_constraint());
+    }
+
+    #[test]
+    fn non_scope_constraints() {
+        let p: Policy = r#"permit(principal, action, resource) when { true };"#
+            .parse()
+            .unwrap();
+        assert!(p.has_non_scope_constraint());
+        let p: Policy = r#"forbid(principal, action, resource) unless { principal.is_foo };"#
+            .parse()
+            .unwrap();
+        assert!(p.has_non_scope_constraint());
+    }
+
+    #[test]
+    fn templates() {
+        let t: Template = r#"permit(principal == ?principal, action, resource);"#
+            .parse()
+            .unwrap();
+        assert!(!t.has_non_scope_constraint());
+        let t: Template =
+            r#"permit(principal == ?principal, action, resource) when { principal.is_foo };"#
+                .parse()
+                .unwrap();
+        assert!(t.has_non_scope_constraint());
+    }
+
+    #[test]
+    fn from_json() {
+        let p = Policy::from_json(
+            None,
+            serde_json::json!({
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            ".": {
+                                "left": {
+                                    "Var": "context"
+                                },
+                                "attr": "is_frobnicated"
+                            }
+                        }
+                    }
+                ]
+            }),
+        )
+        .unwrap();
+        assert!(p.has_non_scope_constraint());
+
+        let p = Policy::from_json(
+            None,
+            serde_json::json!({
+                "effect": "permit",
+                "principal": { "op": "All" },
+                "action": { "op": "All" },
+                "resource": { "op": "All" },
+                "conditions": [ ]
+            }),
+        )
+        .unwrap();
+        assert!(!p.has_non_scope_constraint());
+    }
+
+    #[cfg(feature = "protobufs")]
+    #[test]
+    fn proto() {
+        fn roundtrip_via_policy_set(p: Policy) -> Policy {
+            let policy_set = crate::PolicySet::from_policies([p]).unwrap();
+            let proto = crate::proto::models::PolicySet::from(&policy_set);
+            let policy_set_from_proto: crate::PolicySet = (&proto).try_into().unwrap();
+            let roundtripped = policy_set_from_proto.policies().next().unwrap();
+            roundtripped.clone()
+        }
+        let p: Policy = "permit(principal, action, resource);".parse().unwrap();
+        assert!(!roundtrip_via_policy_set(p).has_non_scope_constraint());
+
+        let p: Policy = "permit(principal, action, resource) unless { false };"
+            .parse()
+            .unwrap();
+        assert!(roundtrip_via_policy_set(p).has_non_scope_constraint());
     }
 }

@@ -432,7 +432,7 @@ mod test {
     use std::collections::{HashMap, HashSet};
 
     use crate::{
-        ast::{Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint, ResourceConstraint},
+        ast::{Effect, Eid, EntityUID, PolicyID, PrincipalConstraint, ResourceConstraint},
         est::Annotations,
         parser::{parse_policy, parse_policy_or_template},
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
@@ -539,7 +539,7 @@ mod test {
                 EntityUID::with_eid_and_type(foo_type, "foo_name")
                     .expect("should be a valid identifier"),
             )),
-            Expr::val(true),
+            None,
         );
 
         let validate = Validator::new(singleton_schema);
@@ -633,7 +633,7 @@ mod test {
             PrincipalConstraint::any(),
             ActionConstraint::is_eq(entity),
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         );
 
         let validate = Validator::new(singleton_schema);
@@ -875,7 +875,7 @@ mod test {
             PrincipalConstraint::any(),
             ActionConstraint::is_eq(entity),
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         );
 
         let validate = Validator::new(schema);
@@ -942,7 +942,7 @@ mod test {
             ))),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         );
 
         let validate = Validator::new(schema);
@@ -1224,7 +1224,7 @@ mod test {
             PrincipalConstraint::is_eq(Arc::new(principal)),
             ActionConstraint::is_eq(action),
             ResourceConstraint::is_eq(Arc::new(resource)),
-            Expr::val(true),
+            None,
         );
 
         let validator = Validator::new(schema);
@@ -1613,7 +1613,7 @@ mod test {
             PrincipalConstraint::any(),
             ActionConstraint::is_in([action_grandparent_euid]),
             ResourceConstraint::is_in(Arc::new(resource_grandparent_euid)),
-            Expr::val(true),
+            None,
         );
 
         let validator = Validator::new(schema);

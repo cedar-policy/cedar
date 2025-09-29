@@ -291,9 +291,9 @@ impl Policy {
             .into_iter();
         let conditions = if let Some(last_expr) = conds_rev_iter.next() {
             let builder = ast::ExprBuilder::with_data(());
-            conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc))
+            Some(conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc)))
         } else {
-            ast::Expr::val(true)
+            None
         };
         Ok(ast::Template::new(
             id,
@@ -349,7 +349,11 @@ impl From<ast::Policy> for Policy {
             principal: ast.principal_constraint().into(),
             action: ast.action_constraint().clone().into(),
             resource: ast.resource_constraint().into(),
-            conditions: vec![ast.non_scope_constraints().clone().into()],
+            conditions: ast
+                .non_scope_constraints()
+                .map(|e| e.clone().into())
+                .as_slice()
+                .to_vec(),
             annotations: Annotations(
                 ast.annotations()
                     // When converting from AST to EST, we will always interpret an
@@ -370,7 +374,11 @@ impl From<ast::Template> for Policy {
             principal: ast.principal_constraint().clone().into(),
             action: ast.action_constraint().clone().into(),
             resource: ast.resource_constraint().clone().into(),
-            conditions: vec![ast.non_scope_constraints().clone().into()],
+            conditions: ast
+                .non_scope_constraints()
+                .map(|e| e.clone().into())
+                .as_slice()
+                .to_vec(),
             annotations: Annotations(
                 ast.annotations()
                     // When converting from AST to EST, we will always interpret an
@@ -542,8 +550,6 @@ mod test {
         let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
-        // during the lossy transform to AST, the only difference for this policy is that
-        // a `when { true }` is added
         let expected_json_after_roundtrip = json!(
             {
                 "effect": "permit",
@@ -556,14 +562,7 @@ mod test {
                 "resource": {
                     "op": "All",
                 },
-                "conditions": [
-                    {
-                        "kind": "when",
-                        "body": {
-                            "Value": true
-                        }
-                    }
-                ],
+                "conditions": [ ],
             }
         );
         let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
@@ -628,8 +627,6 @@ mod test {
         let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
-        // during the lossy transform to AST, the only difference for this policy is that
-        // a `when { true }` is added
         let expected_json_after_roundtrip = json!(
             {
                 "effect": "permit",
@@ -642,14 +639,7 @@ mod test {
                 "resource": {
                     "op": "All",
                 },
-                "conditions": [
-                    {
-                        "kind": "when",
-                        "body": {
-                            "Value": true
-                        }
-                    }
-                ],
+                "conditions": [ ],
                 "annotations": {
                     "foo": "bar",
                     "this1is2a3valid_identifier": "any arbitrary ! string \" is @ allowed in 🦀 here_",
@@ -724,14 +714,7 @@ mod test {
                 "resource": {
                     "op": "All",
                 },
-                "conditions": [
-                    {
-                        "kind": "when",
-                        "body": {
-                            "Value": true
-                        }
-                    }
-                ],
+                "conditions": [ ],
                 "annotations": { "foo": "", }
             }
         );
@@ -953,8 +936,6 @@ mod test {
         let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
-        // during the lossy transform to AST, the only difference for this policy is that
-        // a `when { true }` is added
         let expected_json_after_roundtrip = json!(
             {
                 "effect": "permit",
@@ -970,14 +951,7 @@ mod test {
                     "op": "in",
                     "entity": { "type": "Folder", "id": "abc" },
                 },
-                "conditions": [
-                    {
-                        "kind": "when",
-                        "body": {
-                            "Value": true
-                        }
-                    }
-                ]
+                "conditions": [ ]
             }
         );
         let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
@@ -1043,8 +1017,6 @@ mod test {
         let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
-        // during the lossy transform to AST, the only difference for this policy is that
-        // a `when { true }` is added
         let expected_json_after_roundtrip = json!(
             {
                 "effect": "permit",
@@ -1060,14 +1032,7 @@ mod test {
                     "op": "in",
                     "slot": "?resource",
                 },
-                "conditions": [
-                    {
-                        "kind": "when",
-                        "body": {
-                            "Value": true
-                        }
-                    }
-                ]
+                "conditions": [ ]
             }
         );
         let roundtripped = serde_json::to_value(ast_roundtrip_template(est.clone())).unwrap();
@@ -1203,8 +1168,6 @@ mod test {
         let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
-        // during the lossy transform to AST, the only difference for this policy is that
-        // a `when { true }` is added
         let expected_json_after_roundtrip = json!(
             {
                 "effect": "permit",
@@ -1222,14 +1185,7 @@ mod test {
                 "resource": {
                     "op": "All",
                 },
-                "conditions": [
-                    {
-                        "kind": "when",
-                        "body": {
-                            "Value": true
-                        }
-                    }
-                ]
+                "conditions": [ ]
             }
         );
         let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
@@ -3452,14 +3408,7 @@ mod test {
                     "entity_type": "Doc",
                     "in": { "entity": { "type": "Doc", "id": "abc" } }
                 },
-                "conditions": [
-                    {
-                        "kind": "when",
-                        "body": {
-                            "Value": true
-                        }
-                    }
-                ],
+                "conditions": [ ],
             }
         );
         let linked_json = serde_json::to_value(est).unwrap();
@@ -3522,8 +3471,6 @@ mod test {
         let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
-        // during the lossy transform to AST, the only difference for this policy is that
-        // a `when { true }` is added
         let expected_json_after_roundtrip = json!(
             {
                 "effect": "permit",
@@ -3544,14 +3491,7 @@ mod test {
                 "resource": {
                     "op": "All"
                 },
-                "conditions": [
-                    {
-                        "kind": "when",
-                        "body": {
-                            "Value": true
-                        }
-                    }
-                ]
+                "conditions": [ ]
             }
         );
         let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
@@ -3884,14 +3824,7 @@ mod test {
                     "resource": {
                         "op": "All",
                     },
-                    "conditions": [
-                        {
-                            "kind": "when",
-                            "body": {
-                                "Value": true
-                            }
-                        }
-                    ],
+                    "conditions": [ ],
                 }
             );
             let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
@@ -3962,14 +3895,7 @@ mod test {
                         "op": "is",
                         "entity_type": "Log"
                     },
-                    "conditions": [
-                        {
-                            "kind": "when",
-                            "body": {
-                                "Value": true
-                            }
-                        }
-                    ],
+                    "conditions": [ ],
                 }
             );
             let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
@@ -4042,14 +3968,7 @@ mod test {
                     "resource": {
                         "op": "All",
                     },
-                    "conditions": [
-                        {
-                            "kind": "when",
-                            "body": {
-                                "Value": true
-                            }
-                        }
-                    ],
+                    "conditions": [ ],
                 }
             );
             let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
@@ -4122,14 +4041,7 @@ mod test {
                     "resource": {
                         "op": "All",
                     },
-                    "conditions": [
-                        {
-                            "kind": "when",
-                            "body": {
-                                "Value": true
-                            }
-                        }
-                    ],
+                    "conditions": [ ],
                 }
             );
             let roundtripped = serde_json::to_value(ast_roundtrip_template(est.clone())).unwrap();
@@ -4893,7 +4805,7 @@ mod test {
             .try_into_ast_policy_or_template(Some(ast::PolicyID::from_string("id")))
             .expect("Expected EST -> AST conversion to succeed");
         assert_eq!(
-            ToString::to_string(&ast.non_scope_constraints()),
+            ToString::to_string(&ast.non_scope_constraints().unwrap()),
             "(1 == 2) && ((3 == 4) && (5 == 6))"
         );
     }
@@ -5213,6 +5125,7 @@ mod issue_1061 {
 
         assert!(ast_from_est
             .non_scope_constraints()
-            .eq_shape(ast_from_cedar.non_scope_constraints()));
+            .unwrap()
+            .eq_shape(ast_from_cedar.non_scope_constraints().unwrap()));
     }
 }

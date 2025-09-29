@@ -281,7 +281,7 @@ mod test {
             PrincipalConstraint::any(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            Expr::val(true),
+            None,
         )
         .expect("Policy Creation Failed")
     }
@@ -297,7 +297,7 @@ mod test {
             PrincipalConstraint::any(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            Expr::get_attr(Expr::var(Var::Context), "test".into()),
+            Some(Expr::get_attr(Expr::var(Var::Context), "test".into())),
         )
         .expect("Policy Creation Failed")
     }

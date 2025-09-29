@@ -3147,6 +3147,11 @@ impl Template {
         self.ast.effect()
     }
 
+    /// Returns `true` if this template has a `when` or `unless` clause.
+    pub fn has_non_scope_constraint(&self) -> bool {
+        self.ast.non_scope_constraints().is_some()
+    }
+
     /// Get an annotation value of this `Template`.
     /// If the annotation is present without an explicit value (e.g., `@annotation`),
     /// then this function returns `Some("")`. Returns `None` when the
@@ -3500,6 +3505,11 @@ impl Policy {
     /// Get the `Effect` (`Permit` or `Forbid`) for this instance
     pub fn effect(&self) -> Effect {
         self.ast.effect()
+    }
+
+    /// Returns `true` if this policy has a `when` or `unless` clause.
+    pub fn has_non_scope_constraint(&self) -> bool {
+        self.ast.non_scope_constraints().is_some()
     }
 
     /// Get an annotation value of this template-linked or static policy.
@@ -6055,7 +6065,7 @@ mod test_lossless_empty {
         assert_eq!(
             lossy_policy0.to_cedar(),
             Some(String::from(
-                "permit(\n  principal,\n  action,\n  resource\n) when {\n  true\n};"
+                "permit(\n  principal,\n  action,\n  resource\n);"
             ))
         );
         // The EST representation is obtained from the AST
@@ -6078,9 +6088,7 @@ mod test_lossless_empty {
         // The `to_cedar` representation becomes lossy since we didn't provide text
         assert_eq!(
             lossy_template0.to_cedar(),
-            String::from(
-                "permit(\n  principal == ?principal,\n  action,\n  resource\n) when {\n  true\n};"
-            )
+            String::from("permit(\n  principal == ?principal,\n  action,\n  resource\n);")
         );
         // The EST representation is obtained from the AST
         let lossy_template0_est = lossy_template0
