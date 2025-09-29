@@ -176,12 +176,7 @@ impl Solver for LocalSolver {
     }
 
     async fn check_sat(&mut self) -> Result<Decision> {
-        if let Some(status) = self.child.try_wait()? {
-            Err(SolverError::Solver(format!(
-                "Solver process terminated unexpectedly with status: {:?}",
-                status.code()
-            )))?
-        }
+        self.check_child_process_status().await?;
         self.smtlib_input().check_sat().await?;
         self.solver_stdin.flush().await?;
         let mut output = String::new();
@@ -195,12 +190,7 @@ impl Solver for LocalSolver {
     }
 
     async fn get_model(&mut self) -> Result<Option<String>> {
-        if let Some(status) = self.child.try_wait()? {
-            Err(SolverError::Solver(format!(
-                "Solver process terminated unexpectedly with status: {:?}",
-                status.code()
-            )))?
-        }
+        self.check_child_process_status().await?;
         self.smtlib_input().get_model().await?;
         self.solver_stdin.flush().await?;
         let mut output = String::new();
@@ -228,15 +218,25 @@ impl Solver for LocalSolver {
 }
 
 impl LocalSolver {
+    async fn check_child_process_status(&mut self) -> Result<()> {
+        if let Some(status) = self.child.try_wait()? {
+            Err(SolverError::Solver(format!(
+                "Solver process terminated unexpectedly with status: {:?}",
+                status.code()
+            )))?
+        }
+        Ok(())
+    }
+
     async fn read_line(&mut self, buffer: &mut String) -> Result<usize> {
         let len = self.solver_stdout.read_line(buffer).await?;
         if len == 0 {
-            Err(SolverError::Solver(
-                "Encountered EOF while reading from solver output".to_string(),
-            ))
-        } else {
-            Ok(len)
+            // An unexpected EOF was encountered while reading from solver output
+            // Kill the child process and clean up its resources
+            self.clean_up().await?;
+            self.check_child_process_status().await?;
         }
+        Ok(len)
     }
 
     async fn process_error_output(s: &str) -> SolverError {
@@ -374,7 +374,7 @@ mod test {
         assert_matches!(my_solver.check_sat().await, Err(SolverError::Solver(_)));
         // Attempt to reset the solver.
         my_solver.smtlib_input().reset().await.unwrap();
-        assert_matches!(my_solver.check_sat().await, Err(SolverError::Solver(x)) => { assert_eq!(x, "Encountered EOF while reading from solver output"); });
+        assert_matches!(my_solver.check_sat().await, Err(SolverError::Solver(x)) => assert!(x.starts_with("Solver process terminated unexpectedly with status: ")));
     }
 
     #[tokio::test]
