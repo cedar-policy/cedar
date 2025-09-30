@@ -38,11 +38,6 @@ fn ip_extension_typechecks() {
     let expr = Expr::from_str("ip(\"127.0.0.1\").isInRange(ip(\"1:2:3:4::/48\"))")
         .expect("parsing should succeed");
     assert_typechecks_empty_schema(&expr, &Type::primitive_boolean());
-    let expr = Expr::from_str(
-        "ip(\"127.0.0.1\").isInRange(ip(\"192.168.0.1/24\"), ip(\"192.167.0.1/24\"), ip(\"192.167.0.3/24\"))",
-    )
-    .expect("parsing should succeed");
-    assert_typechecks_empty_schema(&expr, &Type::primitive_boolean());
 }
 
 #[test]
@@ -101,6 +96,27 @@ fn ip_extension_typecheck_fails() {
             None,
         )
     );
+}
+
+#[cfg(not(feature = "variadic-is-in-range"))]
+#[test]
+fn ip_extension_not_variadic() {
+    let src = "ip(\"127.0.0.1\").isInRange(ip(\"192.168.0.1/24\"), ip(\"192.167.0.1/24\"), ip(\"192.167.0.3/24\"))";
+    let expr = Expr::from_str(src).expect("parsing should succeed");
+    let errors = assert_typecheck_fails_empty_schema(&expr, &Type::primitive_boolean());
+    let type_error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::wrong_number_args(get_loc(src, src), expr_id_placeholder(), 2, 4,)
+    );
+}
+
+#[cfg(feature = "variadic-is-in-range")]
+#[test]
+fn ip_extension_variadic() {
+    use crate::ast::Name;
+    let ipaddr_name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
+
     let src = "ip(\"192.168.0.1\").isInRange(ip(\"192.168.0.1/24\"), 3)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
     let errors = assert_typecheck_fails_empty_schema(&expr, &Type::primitive_boolean());
@@ -115,6 +131,9 @@ fn ip_extension_typecheck_fails() {
             None,
         )
     );
+
+    let expr = Expr::from_str( "ip(\"127.0.0.1\").isInRange(ip(\"192.168.0.1/24\"), ip(\"192.167.0.1/24\"), ip(\"192.167.0.3/24\"))").expect("parsing should succeed");
+    assert_typechecks_empty_schema(&expr, &Type::primitive_boolean());
 }
 
 #[test]

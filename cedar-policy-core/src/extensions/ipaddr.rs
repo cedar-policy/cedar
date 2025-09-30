@@ -1022,6 +1022,41 @@ mod tests {
             )),
             Ok(Value::from(false))
         );
+    }
+
+    #[test]
+    #[cfg(not(feature = "variadic-is-in-range"))]
+    fn not_variadic_ip_is_in_range() {
+        let ext_array = [extension()];
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
+        let request = basic_request();
+        let entities = basic_entities();
+        let eval = Evaluator::new(request, &entities, &exts);
+
+        // Requires at least one argument.
+        assert_ipaddr_wrong_num_args_err(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![
+                    ip("192.168.1.100"),
+                    ip("10.0.0.0/8"),
+                    ip("192.168.0.0/16"),
+                    ip("172.16.0.0/12"),
+                ],
+            )),
+            "isInRange",
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "variadic-is-in-range")]
+    fn variadic_ip_is_in_range() {
+        let ext_array = [extension()];
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
+        let request = basic_request();
+        let entities = basic_entities();
+        let eval = Evaluator::new(request, &entities, &exts);
+
         // test for variadic isInRange extension function
         // Multiple ranges - first address matches one of them
         assert_eq!(

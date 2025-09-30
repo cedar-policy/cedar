@@ -50,7 +50,7 @@ corpus-timing = []
 
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
-experimental = ["partial-eval", "permissive-validate", "partial-validate", "entity-manifest", "protobufs", "tolerant-ast", "extended-schema", "deprecated-schema-compat", "tpe"]
+experimental = ["partial-eval", "permissive-validate", "partial-validate", "entity-manifest", "protobufs", "tolerant-ast", "extended-schema", "deprecated-schema-compat", "tpe", "variadic-is-in-range"]
 entity-manifest = ["cedar-policy-core/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval"]
 permissive-validate = []
@@ -64,6 +64,7 @@ extended-schema = ["cedar-policy-core/extended-schema"]
 # release.
 deprecated-schema-compat = []
 tpe = ["cedar-policy-core/tpe"]
+variadic-is-in-range = ["cedar-policy-core/variadic-is-in-range"]
 
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }
