@@ -61,9 +61,10 @@ partial-eval = []
 tolerant-ast = []
 entity-manifest = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
-experimental = ["tpe", "tolerant-ast", "extended-schema", "entity-manifest", "partial-validate", "partial-eval"]
+experimental = ["tpe", "tolerant-ast", "extended-schema", "entity-manifest", "partial-validate", "partial-eval", "variadic-is-in-range"]
 extended-schema = []
 tpe = []
+variadic-is-in-range = []
 
 [build-dependencies]
 lalrpop = "0.22.2"

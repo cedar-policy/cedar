@@ -1093,6 +1093,36 @@ mod test {
              }
             },
             "policies": {
+                "staticPolicies": "permit(principal == User::\"alice\", action, resource) when { context.is_authenticated && context.source_ip.isInRange(ip(\"222.222.222.0/24\")) };"
+            },
+            "entities": []
+        });
+        assert_is_authorized_json(call);
+    }
+
+    #[test]
+    #[cfg(feature = "variadic-is-in-range")]
+    fn test_authorized_on_simple_slice_with_context_variadic() {
+        let call = json!({
+            "principal": {
+             "type": "User",
+             "id": "alice"
+            },
+            "action": {
+             "type": "Photo",
+             "id": "view"
+            },
+            "resource": {
+             "type": "Photo",
+             "id": "door"
+            },
+            "context": {
+             "is_authenticated": true,
+             "source_ip": {
+                "__extn" : { "fn" : "ip", "arg" : "222.222.222.222" }
+             }
+            },
+            "policies": {
                 "staticPolicies": "permit(principal == User::\"alice\", action, resource) when { context.is_authenticated && context.source_ip.isInRange(ip(\"192.167.0.1/24\"), ip(\"222.222.222.0/24\")) };"
             },
             "entities": []

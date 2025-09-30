@@ -951,6 +951,7 @@ mod levels_validation_tests {
             [r#"principal.ip"#],
             1,
         );
+        #[cfg(feature = "variadic-is-in-range")]
         assert_requires_level(
             r#"permit(principal, action, resource) when { ip("192.168.0.0").isInRange(ip("192.168.0.2/12"), principal.ip) };"#,
             [r#"principal.ip"#],
