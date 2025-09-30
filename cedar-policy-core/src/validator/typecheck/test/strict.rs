@@ -663,16 +663,6 @@ fn test_extension() {
             LubHelp::None,
             LubContext::Equality,
         );
-        assert_types_must_match(
-            s.clone(),
-            &q,
-            &Expr::from_str(r#"ip("192.168.1.0/8").isInRange(ip("127.0.0.3"), if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
-            r#"1 == false"#,
-            Type::primitive_boolean(),
-            [Type::primitive_long(), Type::singleton_boolean(false)],
-            LubHelp::None,
-            LubContext::Equality,
-        );
         let src = r#"ip("192.168.1.0/8").isInRange()"#;
         assert_strict_type_error(
             s,
@@ -685,6 +675,23 @@ fn test_extension() {
                 2,
                 1,
             ),
+        );
+    })
+}
+
+#[test]
+#[cfg(feature = "variadic-is-in-range")]
+fn test_extension_variadic() {
+    with_simple_schema_and_request(|s, q| {
+        assert_types_must_match(
+      s,
+      &q,
+      &Expr::from_str(r#"ip("192.168.1.0/8").isInRange(ip("127.0.0.3"), if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
+      r#"1 == false"#,
+      Type::primitive_boolean(),
+      [Type::primitive_long(), Type::singleton_boolean(false)],
+      LubHelp::None,
+      LubContext::Equality,
         );
     })
 }
