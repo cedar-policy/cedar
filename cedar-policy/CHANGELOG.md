@@ -14,6 +14,8 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## [4.6.0] - Coming Soon
 
+Cedar Language Version: 4.4
+
 ### Added
 
 - Added `deep_eq` to the `Entity` and `Entities` structs to allow comparing these objects for structural equality. (#1723)
