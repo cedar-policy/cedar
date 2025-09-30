@@ -25,7 +25,7 @@
 //! and transitive (assuming the suitable acyclicity and transitivity
 //! constraints are satisfied for the footprint).
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use cedar_policy_core::ast::Expr;
 
@@ -57,7 +57,10 @@ impl Uuf {
                 if uid.type_name() == arg_ety {
                     let t = Term::Prim(TermPrim::Entity(uid.clone()));
                     // In the domain of this ancestor function
-                    Some((t.clone(), factory::app(UnaryFunction::Udf(udf.clone()), t)))
+                    Some((
+                        t.clone(),
+                        factory::app(UnaryFunction::Udf(Arc::new(udf.clone())), t),
+                    ))
                 } else {
                     None
                 }
@@ -65,9 +68,10 @@ impl Uuf {
             .collect();
 
         Udf {
-            table: new_table,
-            default: udf.out.default_literal(interp.env), // i.e., empty set
-            ..udf
+            table: Arc::new(new_table),
+            default: udf.default.clone(),
+            arg: udf.arg.clone(),
+            out: udf.out,
         }
     }
 }
@@ -98,7 +102,7 @@ impl Interpretation<'_> {
             for fun in ent_data.ancestors.values() {
                 if let UnaryFunction::Uuf(uuf) = fun {
                     funs.insert(
-                        uuf.clone(),
+                        uuf.as_ref().clone(),
                         uuf.repair_as_counterexample(ety, &footprint_uids, self),
                     );
                 }

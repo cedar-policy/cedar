@@ -18,6 +18,8 @@
 
 use std::sync::Arc;
 
+use smol_str::SmolStr;
+
 use super::term_type::TermType;
 use super::type_abbrevs::*;
 
@@ -25,7 +27,7 @@ use super::type_abbrevs::*;
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct Uuf {
     /// A unique identifier of the unary function.
-    pub id: String,
+    pub id: SmolStr,
     /// Argument type.
     pub arg: TermType,
     /// Output type.
