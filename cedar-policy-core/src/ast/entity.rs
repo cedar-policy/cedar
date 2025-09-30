@@ -33,12 +33,10 @@ use std::sync::Arc;
 use thiserror::Error;
 
 #[cfg(feature = "tolerant-ast")]
-static ERROR_NAME: std::sync::LazyLock<Name> =
-    std::sync::LazyLock::new(|| Name(InternalName::from(Id::new_unchecked("EntityTypeError"))));
+static ERROR_NAME: Name = Name(InternalName::new_from_path(Id::new_unchecked_from_static("EntityTypeError"), Path::empty(), None));
 
 #[cfg(feature = "tolerant-ast")]
-static ERROR_EID_SMOL_STR: std::sync::LazyLock<SmolStr> =
-    std::sync::LazyLock::new(|| SmolStr::from("Eid::ErrorEid"));
+static ERROR_EID_SMOL_STR: SmolStr = SmolStr::new_static("Eid::ErrorEid");
 
 #[cfg(feature = "tolerant-ast")]
 static EID_ERROR_STR: &str = "Eid::Error";
@@ -50,7 +48,7 @@ static ENTITY_TYPE_ERROR_STR: &str = "EntityType::Error";
 static ENTITY_UID_ERROR_STR: &str = "EntityUID::Error";
 
 /// The entity type that Actions must have
-pub static ACTION_ENTITY_TYPE: &str = "Action";
+pub static ACTION_ENTITY_TYPE: Id = Id::new_unchecked_from_static("Action");
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -94,7 +92,7 @@ impl EntityType {
     pub fn is_action(&self) -> bool {
         match self {
             EntityType::EntityType(name) => {
-                name.as_ref().basename() == &Id::new_unchecked(ACTION_ENTITY_TYPE)
+                name.as_ref().basename() == &ACTION_ENTITY_TYPE
             }
             #[cfg(feature = "tolerant-ast")]
             EntityType::ErrorEntityType => false,
@@ -145,11 +143,16 @@ impl EntityType {
     pub fn from_normalized_str(src: &str) -> Result<Self, ParseErrors> {
         Name::from_normalized_str(src).map(Into::into)
     }
+
+    /// Convert a [`Name`] to an [`EntityType`]
+    pub const fn from_name(name: Name) -> Self {
+        Self::EntityType(name)
+    }
 }
 
 impl From<Name> for EntityType {
     fn from(n: Name) -> Self {
-        Self::EntityType(n)
+        Self::from_name(n)
     }
 }
 
@@ -905,7 +908,7 @@ mod test {
 
     #[test]
     fn action_type_is_valid_id() {
-        assert!(Id::from_normalized_str(ACTION_ENTITY_TYPE).is_ok());
+        assert!(Id::from_normalized_str(ACTION_ENTITY_TYPE.as_ref()).is_ok());
     }
 
     #[cfg(feature = "tolerant-ast")]

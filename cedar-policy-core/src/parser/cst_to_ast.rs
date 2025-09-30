@@ -2338,7 +2338,7 @@ fn construct_string_from_var(v: ast::Var) -> SmolStr {
 fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Option<Loc>) -> ast::InternalName {
     ast::InternalName {
         id,
-        path: Arc::new(path),
+        path: path.into(),
         loc,
     }
 }

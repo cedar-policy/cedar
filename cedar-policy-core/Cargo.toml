@@ -32,6 +32,8 @@ unicode-security = "0.1.0"
 regex = { version = "1.11", features = ["unicode"]}
 linked-hash-map = { version = "0.5.6", features = ["serde_impl"] }
 linked_hash_set = "0.1.5"
+konst = "0.4"
+const_panic = "0.2"
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }

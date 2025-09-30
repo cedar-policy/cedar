@@ -50,6 +50,12 @@ impl Id {
         Id(s.into())
     }
 
+    /// Similar to `new_unchecked`, but for static strings which can be `const`
+    /// constructed
+    pub(crate) const fn new_unchecked_from_static(s: &'static str) -> Id {
+        Id(SmolStr::new_static(s))
+    }
+
     /// Get the underlying string
     pub fn into_smolstr(self) -> SmolStr {
         self.0
@@ -60,6 +66,11 @@ impl Id {
     /// as the parser already ensures that it is not
     pub fn is_reserved(&self) -> bool {
         self.as_ref() == RESERVED_ID
+    }
+
+    /// Check if the `Id` is static
+    pub const fn is_static(&self) -> bool {
+        !self.0.is_heap_allocated()
     }
 }
 
