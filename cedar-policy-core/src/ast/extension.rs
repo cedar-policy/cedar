@@ -328,7 +328,10 @@ impl ExtensionFunction {
             name.clone(),
             style,
             Box::new(move |args: &[Value]| match &args {
+                #[cfg(feature = "variadic-is-in-range")]
                 &[first, rest @ ..] => func(first, rest),
+                #[cfg(not(feature = "variadic-is-in-range"))]
+                &[first, second] => func(first, std::slice::from_ref(second)),
                 _ => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     2,
@@ -338,7 +341,10 @@ impl ExtensionFunction {
             }),
             Some(return_type),
             vec![arg_types.0, arg_types.1],
+            #[cfg(feature = "variadic-is-in-range")]
             true,
+            #[cfg(not(feature = "variadic-is-in-range"))]
+            false,
         )
     }
 
