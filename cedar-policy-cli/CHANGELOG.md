@@ -5,6 +5,14 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+## 4.6.0 - Coming Soon
+
+### Added
+
+- New `run-tests` command to run policy tests in JSON format (#1641)
+
+## 4.5.1
+
 ## 4.5.0
 
 ## 4.4.1

@@ -12,16 +12,19 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## Unreleased
 
+## [4.6.0] - Coming Soon
+
+Cedar Language Version: 4.4
+
 ### Added
 
 - Added `deep_eq` to the `Entity` and `Entities` structs to allow comparing these objects for structural equality. (#1723)
-- Implemented type-aware partial evaluation [RFC 95](https://github.com/cedar-policy/rfcs/pull/95), under the
+- Added `stateful_is_authorized`, `preparse_policy_set` and `preparse_schema` to support stateful evaluation using a cached policy set and schema, in the `ffi` module. (#1831, fixing #1829)
+- Added `has_non_scope_constraint` for `Policy` and `Template`, returning `true` if the policy or template has a `when` or `unless` condition. (#1852)
+- Implemented variadic `ipaddr.isInRange` that returns `true` if the target `ipaddr` is in range for any of the arguments as described in [RFC 99](https://github.com/cedar-policy/rfcs/blob/main/text/0099-ip-is-in-range-list.md), under the experimental flag `variadic-is-in-range`. (#1775)
+- Implemented type-aware partial evaluation as described in [RFC 95](https://github.com/cedar-policy/rfcs/blob/main/text/0095-type-aware-partial-evaluation.md), under the
   experimental flag `tpe`. (#1575)
-- Implemented variadic `ipaddr.isInRange` that returns true if the child `ipaddr` is in range for any of the arguments [RFC 99](github.com/cedar-policy/rfcs/pull/99)
-- Implemented batched evaluation under the experimental flag `tpe`. Batched evaluation allows for permission queries against large databases of entities. (#1812) 
-- Added `calculate_minimum_level` which computes the minimum level at which policies validate. (#1812)
-- Added `stateful_is_authorized`, `preparse_policy_set` and `preparse_schema` to support stateful evaluation using a cached policy set and schema, in the `ffi` module. (#1829)
-- Added `has_non_scope_constraint` for `Policy` and `Template`, returning `true` if the policy or template has a `when` or `unless` condition.
+- Implemented batched evaluation, also under the experimental flag `tpe`. Batched evaluation allows for permission queries against large databases of entities. (#1812)
 
 ### Changed
 
@@ -939,7 +942,9 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.5.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.6.0...main
+[4.6.0]: https://github.com/cedar-policy/cedar/compare/v4.5.1...v4.6.0
+[4.5.1]: https://github.com/cedar-policy/cedar/compare/v4.5.0...v4.5.1
 [4.5.0]: https://github.com/cedar-policy/cedar/compare/v4.4.1...v4.5.0
 [4.4.1]: https://github.com/cedar-policy/cedar/compare/v4.4.0...v4.4.1
 [4.4.0]: https://github.com/cedar-policy/cedar/compare/v4.3.3...v4.4.0
