@@ -1193,7 +1193,7 @@ impl From<EntityUID> for ActionEntityUID<Name> {
         let (ty, id) = euid.components();
         ActionEntityUID {
             ty: Some(ty.into()),
-            id: <Eid as AsRef<SmolStr>>::as_ref(&id).clone(),
+            id: id.into_smolstr(),
             #[cfg(feature = "extended-schema")]
             loc: None,
         }
