@@ -1049,9 +1049,7 @@ mod tests {
         assert_ipaddr_wrong_num_args_err(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
-                vec![
-                    ip("192.168.1.100"),
-                ],
+                vec![ip("192.168.1.100")],
             )),
             "isInRange",
         );

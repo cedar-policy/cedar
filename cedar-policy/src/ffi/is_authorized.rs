@@ -1100,8 +1100,8 @@ mod test {
         assert_is_authorized_json(call);
     }
 
-    #[cfg(feature = "variadic-is-in-range")]
     #[test]
+    #[cfg(feature = "variadic-is-in-range")]
     fn test_authorized_on_simple_slice_with_context_variadic() {
         let call = json!({
             "principal": {
