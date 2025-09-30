@@ -282,7 +282,7 @@ impl Term {
 impl Udf {
     fn get_all_entity_uids(&self, uids: &mut BTreeSet<EntityUid>) {
         self.default.get_all_entity_uids(uids);
-        for (k, v) in &self.table {
+        for (k, v) in self.table.iter() {
             k.get_all_entity_uids(uids);
             v.get_all_entity_uids(uids);
         }

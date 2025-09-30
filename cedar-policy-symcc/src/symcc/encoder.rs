@@ -829,7 +829,7 @@ mod unit_tests {
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         let my_uuf = crate::symcc::op::Uuf {
-            id: "my_fun".to_string(),
+            id: "my_fun".into(),
             arg: TermType::Bool,
             out: TermType::Bool,
         };
