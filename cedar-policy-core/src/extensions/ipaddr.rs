@@ -1033,7 +1033,7 @@ mod tests {
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, &exts);
 
-        // Requires at least one argument.
+        // Requires exactly two arguments
         assert_ipaddr_wrong_num_args_err(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
@@ -1042,6 +1042,15 @@ mod tests {
                     ip("10.0.0.0/8"),
                     ip("192.168.0.0/16"),
                     ip("172.16.0.0/12"),
+                ],
+            )),
+            "isInRange",
+        );
+        assert_ipaddr_wrong_num_args_err(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![
+                    ip("192.168.1.100"),
                 ],
             )),
             "isInRange",

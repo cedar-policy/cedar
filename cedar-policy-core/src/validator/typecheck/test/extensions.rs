@@ -98,8 +98,8 @@ fn ip_extension_typecheck_fails() {
     );
 }
 
-#[cfg(not(feature = "variadic-is-in-range"))]
 #[test]
+#[cfg(not(feature = "variadic-is-in-range"))]
 fn ip_extension_not_variadic() {
     let src = "ip(\"127.0.0.1\").isInRange(ip(\"192.168.0.1/24\"), ip(\"192.167.0.1/24\"), ip(\"192.167.0.3/24\"))";
     let expr = Expr::from_str(src).expect("parsing should succeed");
@@ -111,8 +111,8 @@ fn ip_extension_not_variadic() {
     );
 }
 
-#[cfg(feature = "variadic-is-in-range")]
 #[test]
+#[cfg(feature = "variadic-is-in-range")]
 fn ip_extension_variadic() {
     use crate::ast::Name;
     let ipaddr_name = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
