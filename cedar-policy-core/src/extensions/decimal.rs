@@ -166,7 +166,7 @@ impl std::fmt::Display for Decimal {
         if self.value.is_negative() {
             write!(f, "-")?;
         }
-        let pow = i128::pow(10, 4);
+        let pow = i128::pow(10, NUM_DIGITS);
         write!(f, "{}.{:04}", abs / pow, abs % pow)
     }
 }
