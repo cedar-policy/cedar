@@ -55,15 +55,15 @@ impl SymRequest {
     pub fn empty_sym_req() -> Self {
         SymRequest {
             principal: Term::Var(TermVar {
-                id: "principal".to_string(),
+                id: "principal".into(),
                 ty: TermType::Bool,
             }),
             action: Term::Var(TermVar {
-                id: "action".to_string(),
+                id: "action".into(),
                 ty: TermType::Bool,
             }),
             resource: Term::Var(TermVar {
-                id: "resource".to_string(),
+                id: "resource".into(),
                 ty: TermType::Bool,
             }),
             context: Term::Record(Arc::new(BTreeMap::new())),
@@ -373,20 +373,20 @@ impl SymRequest {
     fn of_request_type(req_ty: &RequestType<'_>) -> Result<Self, CompileError> {
         Ok(Self {
             principal: Term::Var(TermVar {
-                id: "principal".to_string(),
+                id: "principal".into(),
                 ty: TermType::Entity {
                     ety: req_ty.principal.clone(),
                 },
             }),
             action: Term::Prim(TermPrim::Entity(req_ty.action.clone())),
             resource: Term::Var(TermVar {
-                id: "resource".to_string(),
+                id: "resource".into(),
                 ty: TermType::Entity {
                     ety: req_ty.resource.clone(),
                 },
             }),
             context: Term::Var(TermVar {
-                id: "context".to_string(),
+                id: "context".into(),
                 ty: TermType::of_type(&record(req_ty.context.clone()))?,
             }),
         })

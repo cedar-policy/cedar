@@ -43,7 +43,7 @@ use std::{
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct TermVar {
     /// A unique identifier of the variable.
-    pub id: String,
+    pub id: SmolStr,
     /// Type of the variable.
     pub ty: TermType,
 }

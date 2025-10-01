@@ -60,12 +60,12 @@ async fn term_basic_arith_unsat() {
                 &envs.symenv,
                 Arc::new(vec![term_factory::not(term_factory::eq(
                     TermVar {
-                        id: "x".to_string(),
+                        id: "x".into(),
                         ty: TermType::Bitvec { n: 64 }
                     }
                     .into(),
                     TermVar {
-                        id: "x".to_string(),
+                        id: "x".into(),
                         ty: TermType::Bitvec { n: 64 }
                     }
                     .into(),
@@ -82,12 +82,12 @@ async fn term_basic_arith_unsat() {
                 &envs.symenv,
                 Arc::new(vec![term_factory::not(term_factory::eq(
                     TermVar {
-                        id: "x".to_string(),
+                        id: "x".into(),
                         ty: TermType::Bitvec { n: 64 }
                     }
                     .into(),
                     TermVar {
-                        id: "y".to_string(),
+                        id: "y".into(),
                         ty: TermType::Bitvec { n: 64 }
                     }
                     .into(),
@@ -106,24 +106,24 @@ async fn term_basic_arith_unsat() {
                     term_factory::and(
                         term_factory::bvsle(
                             TermVar {
-                                id: "x".to_string(),
+                                id: "x".into(),
                                 ty: TermType::Bitvec { n: 64 }
                             }
                             .into(),
                             TermVar {
-                                id: "y".to_string(),
+                                id: "y".into(),
                                 ty: TermType::Bitvec { n: 64 }
                             }
                             .into(),
                         ),
                         term_factory::bvsle(
                             TermVar {
-                                id: "y".to_string(),
+                                id: "y".into(),
                                 ty: TermType::Bitvec { n: 64 }
                             }
                             .into(),
                             TermVar {
-                                id: "z".to_string(),
+                                id: "z".into(),
                                 ty: TermType::Bitvec { n: 64 }
                             }
                             .into(),
@@ -131,12 +131,12 @@ async fn term_basic_arith_unsat() {
                     ),
                     term_factory::bvsle(
                         TermVar {
-                            id: "x".to_string(),
+                            id: "x".into(),
                             ty: TermType::Bitvec { n: 64 }
                         }
                         .into(),
                         TermVar {
-                            id: "z".to_string(),
+                            id: "z".into(),
                             ty: TermType::Bitvec { n: 64 }
                         }
                         .into(),
