@@ -107,12 +107,12 @@ impl FromStr for Decimal {
 
 impl std::fmt::Display for Decimal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}.{}",
-            self.0 / i64::pow(10, DECIMAL_DIGITS),
-            (self.0 % i64::pow(10, DECIMAL_DIGITS)).abs()
-        )
+        let abs = i128::from(self.0).abs();
+        if self.0.is_negative() {
+            write!(f, "-")?;
+        }
+        let pow = i128::pow(10, DECIMAL_DIGITS);
+        write!(f, "{}.{:04}", abs / pow, abs % pow)
     }
 }
 
