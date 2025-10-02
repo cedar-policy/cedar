@@ -162,12 +162,12 @@ impl Decimal {
 
 impl std::fmt::Display for Decimal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}.{}",
-            self.value / i64::pow(10, NUM_DIGITS),
-            (self.value % i64::pow(10, NUM_DIGITS)).abs()
-        )
+        let abs = i128::from(self.value).abs();
+        if self.value.is_negative() {
+            write!(f, "-")?;
+        }
+        let pow = i128::pow(10, NUM_DIGITS);
+        write!(f, "{}.{:04}", abs / pow, abs % pow)
     }
 }
 
@@ -664,7 +664,7 @@ mod tests {
 
     fn check_round_trip(s: &str) {
         let d = Decimal::from_str(s).expect("should be a valid decimal");
-        assert_eq!(s, d.to_string());
+        assert_eq!(d, Decimal::from_str(d.to_string()).unwrap());
     }
 
     #[test]
