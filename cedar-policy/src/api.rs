@@ -5036,7 +5036,7 @@ pub use tpe::*;
 mod tpe {
     use std::collections::{HashMap, HashSet};
 
-    use cedar_policy_core::ast;
+    use cedar_policy_core::ast::{self, PartialValueToValueError};
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::batched_evaluator::is_authorized_batched;
     use cedar_policy_core::batched_evaluator::{
@@ -5058,7 +5058,7 @@ mod tpe {
         RequestValidationError, RestrictedExpression, Schema, TPEReauthorizationError,
     };
 
-    /// A partial [`EntityUid`]
+    /// A partial [`EntityUid`].
     /// That is, its [`EntityId`] could be unknown
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
@@ -5071,6 +5071,12 @@ mod tpe {
                 ty: ty.0,
                 eid: id.map(|id| <EntityId as AsRef<ast::Eid>>::as_ref(&id).clone()),
             })
+        }
+
+        /// Construct a [`PartialEntityUid`] from a concrete [`EntityUid`].
+        pub fn from_concrete(euid: EntityUid) -> Self {
+            let (ty, eid) = euid.0.components();
+            Self(tpe::request::PartialEntityUID { ty, eid: Some(eid) })
         }
     }
 
@@ -5224,6 +5230,11 @@ mod tpe {
             schema: &Schema,
         ) -> Result<Self, tpe_err::EntitiesError> {
             tpe::entities::PartialEntities::from_json_value(value, &schema.0).map(Self)
+        }
+
+        /// Construct `[PartialEntities]` given a fully concrete `[Entities]`
+        pub fn from_concrete(entities: Entities) -> Result<Self, PartialValueToValueError> {
+            tpe::entities::PartialEntities::try_from(entities.0).map(Self)
         }
     }
 
@@ -5447,7 +5458,7 @@ mod tpe {
                 Some(Decision::Allow) => Ok(entities
                     .iter()
                     .filter(|entity| {
-                        entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
+                        entity.0.uid().entity_type() == &request.0 .0.get_principal_type()
                     })
                     .map(super::Entity::uid)
                     .collect_vec()
