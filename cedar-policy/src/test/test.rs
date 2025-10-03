@@ -8561,10 +8561,7 @@ unless
         fn run_tpe() {
             let schema = schema();
             let request = PartialRequest::new(
-                PartialEntityUid::new(
-                    r#"Subscriber"#.parse().unwrap(),
-                    Some(EntityId::new("Alice")),
-                ),
+                PartialEntityUid::from_concrete(r#"Subscriber::"Alice""#.parse().unwrap()),
                 r#"Action::"watch""#.parse().unwrap(),
                 PartialEntityUid::new(r#"Movie"#.parse().unwrap(), None),
                 Some(
@@ -8589,8 +8586,7 @@ unless
             )
             .unwrap();
             let policies = policy_set();
-            let partial_entities: PartialEntities =
-                PartialEntities(entities().0.try_into().unwrap());
+            let partial_entities = PartialEntities::from_concrete(entities()).unwrap();
 
             let response = policies
                 .tpe(&request, &partial_entities, &schema)
@@ -8664,79 +8660,88 @@ unless
         }
 
         #[test]
-        fn run_pq() {
+        fn query_resource() {
             let schema = schema();
-            let request = PartialRequest::new(
-                PartialEntityUid::new(
-                    r#"Subscriber"#.parse().unwrap(),
-                    Some(EntityId::new("Alice")),
-                ),
+            let policies = policy_set();
+            let request = ResourceQueryRequest::new(
+                r#"Subscriber::"Alice""#.parse().unwrap(),
                 r#"Action::"watch""#.parse().unwrap(),
-                PartialEntityUid::new(r#"Movie"#.parse().unwrap(), None),
-                Some(
-                    Context::from_pairs([(
-                        "now".into(),
-                        RestrictedExpression::new_record([
-                            (
-                                "datetime".into(),
-                                RestrictedExpression::from_str(r#"datetime("2025-07-22")"#)
-                                    .unwrap(),
-                            ),
-                            (
-                                "localTimeOffset".into(),
-                                RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                            ),
-                        ])
-                        .unwrap(),
-                    )])
+                r#"Movie"#.parse().unwrap(),
+                Context::from_pairs([(
+                    "now".into(),
+                    RestrictedExpression::new_record([
+                        (
+                            "datetime".into(),
+                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
+                        ),
+                        (
+                            "localTimeOffset".into(),
+                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                        ),
+                    ])
                     .unwrap(),
-                ),
+                )])
+                .unwrap(),
                 &schema,
             )
             .unwrap();
-            let policies = policy_set();
 
             // The two movies do not need rent or buy and hence satisfy the
             // residual policy
-            assert_matches!(&policies.query_resource(&ResourceQueryRequest(request), &entities(), &schema).expect("resource query should succeed").collect_vec(), movies => {
-                assert_eq!(movies.len(), 2);
-                assert!(movies.contains(&r#"Movie::"The Godparent""#.parse().unwrap()));
-                assert!(movies.contains(&r#"Movie::"The Gleaming""#.parse().unwrap()));
-            });
+            let movies = policies
+                .query_resource(&request, &entities(), &schema)
+                .unwrap()
+                .sorted()
+                .collect_vec();
+            assert_eq!(
+                movies,
+                &[
+                    EntityUid::from_str(r#"Movie::"The Gleaming""#).unwrap(),
+                    EntityUid::from_str(r#"Movie::"The Godparent""#).unwrap(),
+                ]
+            );
+        }
 
-            let request = PartialRequest::new(
-                PartialEntityUid::new(r#"Subscriber"#.parse().unwrap(), None),
+        #[test]
+        fn query_principal() {
+            let schema = schema();
+            let policies = policy_set();
+
+            let request = PrincipalQueryRequest::new(
+                r#"Subscriber"#.parse().unwrap(),
                 r#"Action::"watch""#.parse().unwrap(),
-                PartialEntityUid::new(
-                    r#"Movie"#.parse().unwrap(),
-                    Some(EntityId::new("The Godparent")),
-                ),
-                Some(
-                    Context::from_pairs([(
-                        "now".into(),
-                        RestrictedExpression::new_record([
-                            (
-                                "datetime".into(),
-                                RestrictedExpression::from_str(r#"datetime("2025-07-22")"#)
-                                    .unwrap(),
-                            ),
-                            (
-                                "localTimeOffset".into(),
-                                RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                            ),
-                        ])
-                        .unwrap(),
-                    )])
+                r#"Movie::"The Godparent""#.parse().unwrap(),
+                Context::from_pairs([(
+                    "now".into(),
+                    RestrictedExpression::new_record([
+                        (
+                            "datetime".into(),
+                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
+                        ),
+                        (
+                            "localTimeOffset".into(),
+                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                        ),
+                    ])
                     .unwrap(),
-                ),
+                )])
+                .unwrap(),
                 &schema,
             )
             .unwrap();
-            assert_matches!(&policies.query_principal(&PrincipalQueryRequest(request), &entities(), &schema).expect("resource query should succeed").collect_vec(), uids => {
-                assert_eq!(uids.len(), 2);
-                assert!(uids.contains(&r#"Subscriber::"Alice""#.parse().unwrap()));
-                assert!(uids.contains(&r#"Subscriber::"Charlie""#.parse().unwrap()));
-            });
+
+            let subscribers = policies
+                .query_principal(&request, &entities(), &schema)
+                .unwrap()
+                .sorted()
+                .collect_vec();
+            assert_eq!(
+                subscribers,
+                &[
+                    EntityUid::from_str(r#"Subscriber::"Alice""#).unwrap(),
+                    EntityUid::from_str(r#"Subscriber::"Charlie""#).unwrap(),
+                ]
+            );
         }
     }
 
@@ -9320,6 +9325,286 @@ when { principal in resource.admins };
             let result = policies.is_authorized_batched(&request, &schema, &mut loader, 0);
 
             assert_matches!(result, Err(BatchedEvalError::InsufficientIterations(_)));
+        }
+    }
+
+    mod trivial {
+        use cedar_policy_core::authorizer::Decision;
+        use itertools::Itertools;
+
+        use crate::{
+            Context, Entities, PartialEntities, PartialEntityUid, PartialRequest, PolicySet,
+            PrincipalQueryRequest, ResourceQueryRequest, Schema,
+        };
+        use std::{i64, str::FromStr};
+
+        fn schema() -> Schema {
+            Schema::from_str("entity P, R; action A appliesTo { principal: P, resource: R };")
+                .unwrap()
+        }
+
+        fn entities() -> Entities {
+            Entities::from_json_value(
+                serde_json::json!([
+                    { "uid": { "__entity": { "type": "P", "id": ""} }, "attrs": {}, "parents": [] },
+                    { "uid": { "__entity": { "type": "R", "id": ""} }, "attrs": {}, "parents": [] },
+                ]),
+                None,
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn trivial_permit_tpe() {
+            let schema = schema();
+            let partial_entities = PartialEntities::from_concrete(entities()).unwrap();
+            let req = PartialRequest::new(
+                PartialEntityUid::new("P".parse().unwrap(), None),
+                r#"Action::"A""#.parse().unwrap(),
+                PartialEntityUid::new("R".parse().unwrap(), None),
+                None,
+                &schema,
+            )
+            .unwrap();
+            let response = PolicySet::from_str(r#"permit(principal, action, resource);"#)
+                .unwrap()
+                .tpe(&req, &partial_entities, &schema)
+                .unwrap();
+            assert_eq!(response.decision(), Some(Decision::Allow));
+        }
+
+        #[test]
+        fn trivial_permit_query_principal() {
+            let schema = schema();
+            let entities = entities();
+            let req = PrincipalQueryRequest::new(
+                "P".parse().unwrap(),
+                r#"Action::"A""#.parse().unwrap(),
+                r#"R::"""#.parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+
+            let principals = PolicySet::from_str(r#"permit(principal, action, resource);"#)
+                .unwrap()
+                .query_principal(&req, &entities, &schema)
+                .unwrap()
+                .collect_vec();
+            assert_eq!(&principals, &[r#"P::"""#.parse().unwrap()]);
+        }
+
+        #[test]
+        fn trivial_permit_query_resource() {
+            let schema = schema();
+            let entities = entities();
+            let req = ResourceQueryRequest::new(
+                r#"P::"""#.parse().unwrap(),
+                r#"Action::"A""#.parse().unwrap(),
+                "R".parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+
+            let resources = PolicySet::from_str(r#"permit(principal, action, resource);"#)
+                .unwrap()
+                .query_resource(&req, &entities, &schema)
+                .unwrap()
+                .collect_vec();
+            assert_eq!(&resources, &[r#"R::"""#.parse().unwrap()]);
+        }
+
+        #[test]
+        fn trivial_forbid_tpe() {
+            let schema = schema();
+            let partial_entities = PartialEntities::from_concrete(entities()).unwrap();
+            let req = PartialRequest::new(
+                PartialEntityUid::new("P".parse().unwrap(), None),
+                r#"Action::"A""#.parse().unwrap(),
+                PartialEntityUid::new("R".parse().unwrap(), None),
+                None,
+                &schema,
+            )
+            .unwrap();
+            let response = PolicySet::from_str(r#"forbid(principal, action, resource);"#)
+                .unwrap()
+                .tpe(&req, &partial_entities, &schema)
+                .unwrap();
+            assert_eq!(response.decision(), Some(Decision::Deny));
+        }
+
+        #[test]
+        fn trivial_forbid_query_principal() {
+            let schema = schema();
+            let entities = entities();
+            let req = PrincipalQueryRequest::new(
+                "P".parse().unwrap(),
+                r#"Action::"A""#.parse().unwrap(),
+                r#"R::"""#.parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+
+            let principals = PolicySet::from_str(r#"forbid(principal, action, resource);"#)
+                .unwrap()
+                .query_principal(&req, &entities, &schema)
+                .unwrap()
+                .collect_vec();
+            assert_eq!(&principals, &[]);
+        }
+
+        #[test]
+        fn trivial_forbid_query_resource() {
+            let schema = schema();
+            let entities = entities();
+            let req = ResourceQueryRequest::new(
+                r#"P::"""#.parse().unwrap(),
+                r#"Action::"A""#.parse().unwrap(),
+                "R".parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+
+            let resources = PolicySet::from_str(r#"forbid(principal, action, resource);"#)
+                .unwrap()
+                .query_resource(&req, &entities, &schema)
+                .unwrap()
+                .collect_vec();
+            assert_eq!(&resources, &[]);
+        }
+
+        #[test]
+        fn error_tpe() {
+            let schema = schema();
+            let partial_entities = PartialEntities::from_concrete(entities()).unwrap();
+            let req = PartialRequest::new(
+                PartialEntityUid::new("P".parse().unwrap(), None),
+                r#"Action::"A""#.parse().unwrap(),
+                PartialEntityUid::new("R".parse().unwrap(), None),
+                None,
+                &schema,
+            )
+            .unwrap();
+            let response = PolicySet::from_str(&format!(
+                r#"permit(principal, action, resource) when {{ ({} + 1) == 0 || true }};"#,
+                i64::MAX
+            ))
+            .unwrap()
+            .tpe(&req, &partial_entities, &schema)
+            .unwrap();
+            assert_eq!(response.decision(), Some(Decision::Deny));
+        }
+
+        #[test]
+        fn error_query_principal() {
+            let schema = schema();
+            let entities = entities();
+            let req = PrincipalQueryRequest::new(
+                "P".parse().unwrap(),
+                r#"Action::"A""#.parse().unwrap(),
+                r#"R::"""#.parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+
+            let principals = PolicySet::from_str(&format!(
+                r#"permit(principal, action, resource) when {{ ({} + 1) == 0 || true }};"#,
+                i64::MAX
+            ))
+            .unwrap()
+            .query_principal(&req, &entities, &schema)
+            .unwrap()
+            .collect_vec();
+            assert_eq!(&principals, &[]);
+        }
+
+        #[test]
+        fn error_query_resource() {
+            let schema = schema();
+            let entities = entities();
+            let req = ResourceQueryRequest::new(
+                r#"P::"""#.parse().unwrap(),
+                r#"Action::"A""#.parse().unwrap(),
+                "R".parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+
+            let resources = PolicySet::from_str(&format!(
+                r#"permit(principal, action, resource) when {{ ({} + 1) == 0 || true }};"#,
+                i64::MAX
+            ))
+            .unwrap()
+            .query_resource(&req, &entities, &schema)
+            .unwrap()
+            .collect_vec();
+            assert_eq!(&resources, &[]);
+        }
+
+        #[test]
+        fn empty_tpe() {
+            let schema = schema();
+            let partial_entities = PartialEntities::from_concrete(entities()).unwrap();
+            let req = PartialRequest::new(
+                PartialEntityUid::new("P".parse().unwrap(), None),
+                r#"Action::"A""#.parse().unwrap(),
+                PartialEntityUid::new("R".parse().unwrap(), None),
+                None,
+                &schema,
+            )
+            .unwrap();
+            let response = PolicySet::from_str(r#""#)
+                .unwrap()
+                .tpe(&req, &partial_entities, &schema)
+                .unwrap();
+            assert_eq!(response.decision(), Some(Decision::Deny));
+        }
+
+        #[test]
+        fn empty_query_principal() {
+            let schema = schema();
+            let entities = entities();
+            let req = PrincipalQueryRequest::new(
+                "P".parse().unwrap(),
+                r#"Action::"A""#.parse().unwrap(),
+                r#"R::"""#.parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+
+            let principals = PolicySet::from_str(r#""#)
+                .unwrap()
+                .query_principal(&req, &entities, &schema)
+                .unwrap()
+                .collect_vec();
+            assert_eq!(&principals, &[]);
+        }
+
+        #[test]
+        fn empty_query_resource() {
+            let schema = schema();
+            let entities = entities();
+            let req = ResourceQueryRequest::new(
+                r#"P::"""#.parse().unwrap(),
+                r#"Action::"A""#.parse().unwrap(),
+                "R".parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+
+            let resources = PolicySet::from_str(r#""#)
+                .unwrap()
+                .query_resource(&req, &entities, &schema)
+                .unwrap()
+                .collect_vec();
+            assert_eq!(&resources, &[]);
         }
     }
 }
