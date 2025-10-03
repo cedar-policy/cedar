@@ -17,7 +17,7 @@
 #![allow(clippy::use_self, reason = "readability")]
 
 use super::models;
-use cedar_policy_core::ast;
+use cedar_policy_core::ast::{self, Eid};
 use cedar_policy_core::validator::types;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
@@ -137,7 +137,10 @@ impl From<&cedar_policy_core::validator::ValidatorEntityType> for models::Entity
                 descendants,
                 attributes,
                 tags,
-                enum_choices: enum_choices.into_iter().map(ToString::to_string).collect(),
+                enum_choices: enum_choices
+                    .into_iter()
+                    .map(|eid| eid.as_ref().to_string())
+                    .collect(),
             },
         }
     }
@@ -163,7 +166,7 @@ impl From<models::EntityDecl> for cedar_policy_core::validator::ValidatorEntityT
                 // enumerated entity types must have no attributes or tags.
                 assert_eq!(v.attributes, HashMap::new());
                 assert_eq!(v.tags, None);
-                Self::new_enum(name, descendants, enum_choices, None)
+                Self::new_enum(name, descendants, enum_choices.map(Eid::new), None)
             }
         }
     }

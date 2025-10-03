@@ -21,6 +21,7 @@ use crate::parser::{Node, Loc, unescape::to_unescaped_string, cst::Ref};
 use crate::ast::{Id, AnyId, Annotations};
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
+use crate::ast::Eid;
 use crate::validator::cedar_schema::ast::{
     Path,
     EntityDecl,
@@ -137,7 +138,7 @@ Entity: Node<Declaration> = {
             attrs: Node::with_source_loc(ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))),
             tags: ts,
             })), Loc::new(l1..r1, Arc::clone(src))),
-    <l:@L> ENTITY <ets: Idents> ENUM "[" <choices: STRs> "]" ";" <r:@R> => Node::with_source_loc(Declaration::Entity(EntityDecl::Enum(EnumEntityDecl {
+    <l:@L> ENTITY <ets: Idents> ENUM "[" <choices: Eids> "]" ";" <r:@R> => Node::with_source_loc(Declaration::Entity(EntityDecl::Enum(EnumEntityDecl {
         names: ets,
         choices,
     })), Loc::new(l..r, Arc::clone(src))),
@@ -280,6 +281,10 @@ STR: Node<SmolStr> = {
     },
 }
 
+Eid: Node<Eid> = {
+    <s: STR> => s.map(Eid::new)
+}
+
 // Name := IDENT | STR
 Name: Node<SmolStr> = {
    <id: Ident> => id.map(|id| id.to_smolstr()),
@@ -319,8 +324,8 @@ Names: NonEmpty<Node<SmolStr>> = NonEmptyComma<Name>;
 // Qualnames := Qualname {',' Qualname }
 QualNames : NonEmpty<Node<QualName>> = NonEmptyComma<QualName>;
 
-// STRs := STR {',' STR}
-STRs: NonEmpty<Node<SmolStr>> = NonEmptyComma<STR>;
+// Eids := Eid {',' Eid}
+Eids: NonEmpty<Node<Eid>> = NonEmptyComma<Eid>;
 
 PrincipalOrResource: Node<PR> = {
     <l:@L> PRINCIPAL <r:@R> => Node::with_source_loc(PR::Principal, Loc::new(l..r, Arc::clone(src))),

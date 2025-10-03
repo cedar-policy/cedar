@@ -19,6 +19,7 @@
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
+use crate::ast::Eid;
 use crate::parser::Loc;
 use crate::{
     ast::{EntityType, EntityUID, InternalName, Name, UnreservedId},
@@ -476,7 +477,7 @@ pub enum EntityTypeFragment<N> {
         /// fragment).
         tags: Option<json_schema::Type<N>>,
     },
-    Enum(NonEmpty<SmolStr>),
+    Enum(NonEmpty<Eid>),
 }
 
 impl<N> EntityTypeFragment<N> {
