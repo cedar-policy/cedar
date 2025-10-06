@@ -14,7 +14,7 @@ repository.workspace = true
 
 [dependencies]
 serde = { version = "1.0", features = ["derive", "rc"] }
-serde_with = { version = "3.14", features = ["json"] }
+serde_with = { version = "3.15", features = ["json"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 lalrpop-util = { version = "0.22.2", features = ["lexer"] }
 either = "1.15"
@@ -23,7 +23,7 @@ ref-cast = "1.0"
 rustc_lexer = "0.1"
 thiserror = "2.0"
 smol_str = { version = "0.3", features = ["serde"] }
-stacker = "0.1.21"
+stacker = "0.1.22"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 miette = { version = "7.6.0", features = ["serde"] }
 nonempty = { version = "0.12.0", features = ["serialize"] }
