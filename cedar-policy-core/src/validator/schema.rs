@@ -414,6 +414,22 @@ impl ValidatorSchema {
             .map(ValidatorActionId::resources)
     }
 
+    /// Returns an iterator over the actions that apply to this principal and
+    /// resource type, as specified by the `appliesTo` block for the action in
+    /// this schema.
+    pub fn actions_for_principal_and_resource<'a: 'b, 'b>(
+        &'a self,
+        principal_type: &'b EntityType,
+        resource_type: &'b EntityType,
+    ) -> impl Iterator<Item = &'a EntityUID> + 'b {
+        self.action_ids()
+            .filter(|action| {
+                action.is_applicable_principal_type(principal_type)
+                    && action.is_applicable_resource_type(resource_type)
+            })
+            .map(|action| action.name())
+    }
+
     /// Returns an iterator over every valid `RequestEnv` in the schema
     pub fn unlinked_request_envs(
         &self,
@@ -5657,6 +5673,50 @@ action CreateList in Create appliesTo {
             .collect::<HashSet<EntityType>>();
         assert_eq!(entities, expected);
     }
+
+    #[test]
+    fn actions_for_principal_and_resource() {
+        let schema = schema();
+        let pty: EntityType = "User".parse().unwrap();
+        let rty: EntityType = "Application".parse().unwrap();
+        let actions = schema
+            .actions_for_principal_and_resource(&pty, &rty)
+            .cloned()
+            .collect::<HashSet<EntityUID>>();
+        let expected = ["GetLists", "CreateList"]
+            .into_iter()
+            .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
+            .collect::<HashSet<EntityUID>>();
+        assert_eq!(actions, expected);
+    }
+
+    #[test]
+    fn actions_for_principal_and_resource_applies_to_multiple() {
+        let schema = schema();
+        let pty: EntityType = "User".parse().unwrap();
+        let rty: EntityType = "CoolList".parse().unwrap();
+        let actions = schema
+            .actions_for_principal_and_resource(&pty, &rty)
+            .cloned()
+            .collect::<HashSet<EntityUID>>();
+        let expected = ["GetList"]
+            .into_iter()
+            .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
+            .collect::<HashSet<EntityUID>>();
+        assert_eq!(actions, expected);
+    }
+
+    #[test]
+    fn actions_for_principal_and_resource_empty() {
+        let schema = schema();
+        let pty: EntityType = "User".parse().unwrap();
+        let rty: EntityType = "Team".parse().unwrap();
+        let actions = schema
+            .actions_for_principal_and_resource(&pty, &rty)
+            .cloned()
+            .collect::<HashSet<EntityUID>>();
+        assert_eq!(actions, HashSet::new());
+    }
 }
 
 #[cfg(test)]
@@ -5882,5 +5942,21 @@ action CreateList in Create appliesTo {
         .map(|ty| ty.parse().unwrap())
         .collect::<HashSet<EntityType>>();
         assert_eq!(entities, expected);
+    }
+
+    #[test]
+    fn actions_for_principal_and_resource() {
+        let schema = schema();
+        let pty: EntityType = "Foo::User".parse().unwrap();
+        let rty: EntityType = "Foo::Application".parse().unwrap();
+        let actions = schema
+            .actions_for_principal_and_resource(&pty, &rty)
+            .cloned()
+            .collect::<HashSet<EntityUID>>();
+        let expected = ["GetLists", "CreateList"]
+            .into_iter()
+            .map(|ty| format!("Foo::Action::\"{ty}\"").parse().unwrap())
+            .collect::<HashSet<EntityUID>>();
+        assert_eq!(actions, expected);
     }
 }

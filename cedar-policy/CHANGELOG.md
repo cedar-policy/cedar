@@ -12,6 +12,12 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## Unreleased
 
+### Added
+
+- Added `Schema::actions_for_principal_and_resource` to list actions which apply to a particular principal and resource type.
+- For the `tpe` experimental feature, added `PolicySet::query_actions` to list the actions which might be authorized given partial request with an unknown action.
+- For the `tpe` experimental feature, added `PartialEntities::empty` to conveniently construct an empty partial entity set.
+
 ## [4.6.1] - TBD
 
 Cedar Language Version: 4.4

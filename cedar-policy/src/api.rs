@@ -2077,6 +2077,19 @@ impl Schema {
     pub fn actions(&self) -> impl Iterator<Item = &EntityUid> {
         self.0.actions().map(RefCast::ref_cast)
     }
+
+    /// Returns an iterator over the actions that apply to this principal and
+    /// resource type, as specified by the `appliesTo` block for the action in
+    /// this schema.
+    pub fn actions_for_principal_and_resource<'a: 'b, 'b>(
+        &'a self,
+        principal_type: &'b EntityTypeName,
+        resource_type: &'b EntityTypeName,
+    ) -> impl Iterator<Item = &'a EntityUid> + 'b {
+        self.0
+            .actions_for_principal_and_resource(&principal_type.0, &resource_type.0)
+            .map(RefCast::ref_cast)
+    }
 }
 
 /// Contains the result of policy validation.
@@ -5034,9 +5047,10 @@ pub use tpe::*;
 
 #[cfg(feature = "tpe")]
 mod tpe {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::{BTreeMap, HashMap, HashSet};
+    use std::sync::Arc;
 
-    use cedar_policy_core::ast::{self, PartialValueToValueError};
+    use cedar_policy_core::ast::{self, PartialValueToValueError, Value};
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::batched_evaluator::is_authorized_batched;
     use cedar_policy_core::batched_evaluator::{
@@ -5049,6 +5063,7 @@ mod tpe {
     };
     use itertools::Itertools;
     use ref_cast::RefCast;
+    use smol_str::SmolStr;
 
     use crate::Entity;
     #[cfg(feature = "partial-eval")]
@@ -5216,6 +5231,57 @@ mod tpe {
         }
     }
 
+    /// Defines a [`PartialRequest`] which additionally leaves the action
+    /// undefined, enabling queries listing what actions might be authorized.
+    /// 
+    /// See [`PolicySet::query_action`] for documentation and example usage.
+    #[derive(Debug, Clone)]
+    pub struct ActionQueryRequest {
+        principal: PartialEntityUid,
+        resource: PartialEntityUid,
+        context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+        schema: Schema,
+    }
+
+    impl ActionQueryRequest {
+        /// Construct a valid [`ActionQueryRequest`] according to a [`Schema`]
+        pub fn new(
+            principal: PartialEntityUid,
+            resource: PartialEntityUid,
+            context: Option<Context>,
+            schema: Schema,
+        ) -> Result<Self, PartialRequestCreationError> {
+            let context = context
+                .map(|c| match c.0 {
+                    ast::Context::RestrictedResidual(_) => {
+                        Err(PartialRequestCreationError::ContextContainsUnknowns)
+                    }
+                    ast::Context::Value(m) => Ok(m),
+                })
+                .transpose()?;
+            Ok(Self {
+                principal,
+                resource,
+                context,
+                schema,
+            })
+        }
+
+        fn partial_request(
+            &self,
+            action: EntityUid,
+        ) -> Result<PartialRequest, cedar_policy_core::validator::RequestValidationError> {
+            tpe::request::PartialRequest::new(
+                self.principal.0.clone(),
+                action.0,
+                self.resource.0.clone(),
+                self.context.clone(),
+                &self.schema.0,
+            )
+            .map(PartialRequest)
+        }
+    }
+
     /// Partial [`Entities`]
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
@@ -5235,6 +5301,11 @@ mod tpe {
         /// Construct `[PartialEntities]` given a fully concrete `[Entities]`
         pub fn from_concrete(entities: Entities) -> Result<Self, PartialValueToValueError> {
             tpe::entities::PartialEntities::try_from(entities.0).map(Self)
+        }
+
+        /// Create a `PartialEntities` with no entities
+        pub fn empty() -> Self {
+            Self(tpe::entities::PartialEntities::new())
         }
     }
 
@@ -5484,6 +5555,107 @@ mod tpe {
                     .collect_vec()
                     .into_iter()),
             }
+        }
+
+        /// Given a [`ActionQueryRequest`] (a partial request without a concrete
+        /// action) enumerate actions in the schema which might be authorized
+        /// for that request.
+        ///
+        /// Each action is returned with a partial authorization decision.  If
+        /// the action is definitely authorized, then it is `Some(Decision::Allow)`.
+        /// If we did not reach a concrete authorization decision, then it is
+        /// `None`. Actions which are definitely not authorized (i.e., the
+        /// decision is `Some(Decision::Deny)`) are not returned by this
+        /// function. It is also possible that some actions without a concrete
+        /// authorization decision are never authorized if the residual
+        /// expressions after partial evaluation are not satisfiable.
+        ///
+        /// If the partial request for a particular action is invalid (e.g., the
+        /// action does not apply to the type of principal and resource), then
+        /// that action is not included in the result regardless of whether a
+        /// request with that action would be authorized.
+        ///
+        /// ```
+        /// # use cedar_policy::{PolicySet, Schema, ActionQueryRequest, PartialEntities, PartialEntityUid, Decision, EntityUid, Entities};
+        /// # use std::str::FromStr;
+        /// # let policies = PolicySet::from_str(r#"
+        /// #     permit(principal, action == Action::"edit", resource) when { context.should_allow };
+        /// #     permit(principal, action == Action::"view", resource);
+        /// # "#).unwrap();
+        /// # let schema = Schema::from_str("
+        /// #     entity User, Photo;
+        /// #     action view, edit appliesTo {
+        /// #       principal: User,
+        /// #       resource: Photo,
+        /// #       context: { should_allow: Bool, }
+        /// #     };
+        /// # ").unwrap();
+        /// # let entities = PartialEntities::empty();
+        ///
+        /// // Construct a request for a concrete principal and resource, but leaving the context unknown so
+        /// // that we can see all actions that might be authorized for some context.
+        /// let request = ActionQueryRequest::new(
+        ///     PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
+        ///     PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
+        ///     None,
+        ///     schema,
+        /// ).unwrap();
+        ///
+        /// // All actions which might be allowed for this principal and resource.
+        /// // The exact authorization result may depend on currently unknown
+        /// // context and entity data.
+        /// let possibly_allowed_actions: Vec<&EntityUid> =
+        ///     policies.query_action(&request, &entities)
+        ///             .unwrap()
+        ///             .map(|(a, _)| a)
+        ///             .collect();
+        /// # let mut possibly_allowed_actions = possibly_allowed_actions;
+        /// # possibly_allowed_actions.sort();
+        /// # assert_eq!(&possibly_allowed_actions, &[&r#"Action::"edit""#.parse().unwrap(), &r#"Action::"view""#.parse().unwrap()]);
+        ///
+        /// // These actions are definitely allowed for this principal and resource.
+        /// // These will be allowed for _any_ context.
+        /// let allowed_actions: Vec<&EntityUid> =
+        ///     policies.query_action(&request, &entities).unwrap()
+        ///             .filter(|(_, resp)| resp == &Some(Decision::Allow))
+        ///             .map(|(a, _)| a)
+        ///             .collect();
+        /// # assert_eq!(&allowed_actions, &[&r#"Action::"view""#.parse().unwrap()]);
+        /// ```
+        pub fn query_action<'a>(
+            &self,
+            request: &'a ActionQueryRequest,
+            entities: &PartialEntities,
+        ) -> Result<impl Iterator<Item = (&'a EntityUid, Option<Decision>)>, PermissionQueryError>
+        {
+            let mut authorized_actions = Vec::new();
+            // We only consider actions that apply to the type of the requested
+            // principal and resource. Any requests for different actions would
+            // be invalid, so they should never be authorized. Not however that
+            // an authorization request for _could_ return `Allow` if the caller
+            // ignores the request validation error.
+            for action in request
+                .schema
+                .0
+                .actions_for_principal_and_resource(&request.principal.0.ty, &request.resource.0.ty)
+            {
+                match request.partial_request(action.clone().into()) {
+                    Ok(partial_request) => {
+                        let decision = self
+                            .tpe(&partial_request, entities, &request.schema)?
+                            .decision();
+                        if decision != Some(Decision::Deny) {
+                            authorized_actions.push((RefCast::ref_cast(action), decision));
+                        }
+                    }
+                    // This case occurs if the partial context is not valid for
+                    // the context type declared for this action. This action
+                    // should never be authorized, but with the same caveats
+                    // about invalid requests.
+                    Err(_) => {}
+                }
+            }
+            Ok(authorized_actions.into_iter())
         }
     }
 }
@@ -5767,6 +5939,22 @@ action CreateList in Create appliesTo {
         assert_eq!(actions, expected);
         #[cfg(feature = "extended-schema")]
         assert!(actions.iter().all(|ety| ety.0.loc().is_some()));
+    }
+
+    #[test]
+    fn actions_for_principal_and_resource() {
+        let schema = schema();
+        let pty: EntityTypeName = "User".parse().unwrap();
+        let rty: EntityTypeName = "Application".parse().unwrap();
+        let actions = schema
+            .actions_for_principal_and_resource(&pty, &rty)
+            .cloned()
+            .collect::<HashSet<EntityUid>>();
+        let expected = ["GetLists", "CreateList"]
+            .into_iter()
+            .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
+            .collect::<HashSet<EntityUid>>();
+        assert_eq!(actions, expected);
     }
 
     #[test]

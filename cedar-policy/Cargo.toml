@@ -69,6 +69,7 @@ variadic-is-in-range = ["cedar-policy-core/variadic-is-in-range"]
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }
 cool_asserts = "2.0"
+similar-asserts = "1.7.0"
 criterion = "0.7"
 globset = "0.4"
 cedar-policy-core = { version = "=4.6.0", features = [
