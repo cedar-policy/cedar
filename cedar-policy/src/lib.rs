@@ -34,7 +34,7 @@
     clippy::too_long_first_doc_paragraph
 )]
 #![allow(clippy::must_use_candidate)]
-// enable doc_auto_cfg feature if docsrs cfg is present
+// enable doc_cfg feature if docsrs cfg is present
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
