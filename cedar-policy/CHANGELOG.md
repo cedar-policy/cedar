@@ -12,6 +12,14 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## Unreleased
 
+## [4.6.1] - TBD
+
+Cedar Language Version: 4.4
+
+### Fixed
+
+- Fixed doc.rs build
+
 ## [4.6.0] - 2025-10-06
 
 Cedar Language Version: 4.4
