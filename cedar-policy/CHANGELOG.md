@@ -18,7 +18,7 @@ Cedar Language Version: 4.4
 
 ### Fixed
 
-- Fixed doc.rs build
+- Fixed doc.rs build (#1878)
 
 ## [4.6.0] - 2025-10-06
 
