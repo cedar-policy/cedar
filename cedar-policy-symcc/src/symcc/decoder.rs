@@ -676,7 +676,7 @@ impl Uuf {
         Udf {
             arg: self.arg.clone(),
             out: self.out.clone(),
-            table: BTreeMap::new(),
+            table: Arc::new(BTreeMap::new()),
             default: self.out.default_literal(env),
         }
     }
@@ -1139,7 +1139,7 @@ impl SExpr {
                 Udf {
                     arg: uuf.arg.clone(),
                     out: uuf.out.clone(),
-                    table,
+                    table: Arc::new(table),
                     default,
                 },
             ));

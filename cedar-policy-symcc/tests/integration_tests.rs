@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 /*
  * Copyright Cedar Contributors
  *
@@ -2283,6 +2285,43 @@ async fn cex_bug_1800() {
         ) when {
             true && (a::"" has "ZB")
         };
+    "#,
+        &validator,
+    );
+    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+}
+
+/// A cex generation bug
+#[tokio::test]
+async fn empty_record() {
+    let validator = Validator::new(
+        Schema::from_str(
+            r#"
+            entity V;
+entity N;
+entity V3 = {
+  "x": {}
+};
+action "" appliesTo {
+  principal: [N],
+  resource: [V],
+  context: {}
+};
+            "#,
+        )
+        .unwrap(),
+    );
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "N", "Action::\"\"", "V");
+    let pset = utils::pset_from_text(
+        r#"
+        permit(
+  principal,
+  action in [Action::""],
+  resource
+) when {
+  {} == (V3::"".x)
+};
     "#,
         &validator,
     );

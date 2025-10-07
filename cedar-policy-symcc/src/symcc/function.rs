@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use super::{op::Uuf, term::Term, term_type::TermType};
 
@@ -23,7 +23,7 @@ use super::{op::Uuf, term::Term, term_type::TermType};
 pub struct Udf {
     pub arg: TermType,
     pub out: TermType,
-    pub table: BTreeMap<Term, Term>,
+    pub table: Arc<BTreeMap<Term, Term>>,
     pub default: Term,
 }
 
@@ -50,22 +50,22 @@ impl Udf {
 /// solver (CVC5) always returns interpretations of this form.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub enum UnaryFunction {
-    Uuf(Uuf),
-    Udf(Udf),
+    Uuf(Arc<Uuf>),
+    Udf(Arc<Udf>),
 }
 
 impl UnaryFunction {
-    pub fn arg_type(self) -> TermType {
+    pub fn arg_type(&self) -> &TermType {
         match self {
-            UnaryFunction::Uuf(f) => f.arg,
-            UnaryFunction::Udf(f) => f.arg,
+            UnaryFunction::Uuf(f) => &f.arg,
+            UnaryFunction::Udf(f) => &f.arg,
         }
     }
 
-    pub fn out_type(self) -> TermType {
+    pub fn out_type(&self) -> &TermType {
         match self {
-            UnaryFunction::Uuf(f) => f.out,
-            UnaryFunction::Udf(f) => f.out,
+            UnaryFunction::Uuf(f) => &f.out,
+            UnaryFunction::Udf(f) => &f.out,
         }
     }
 
