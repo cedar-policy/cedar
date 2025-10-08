@@ -50,6 +50,13 @@ impl Id {
         Id(s.into())
     }
 
+    /// Create a new `Id` from a static string
+    /// 
+    /// This never allocates.
+    pub(crate) const fn new_unchecked_const(s: &'static str) -> Self {
+        Id(SmolStr::new_static(s))
+    }
+
     /// Get the underlying string
     pub fn into_smolstr(self) -> SmolStr {
         self.0
@@ -60,6 +67,11 @@ impl Id {
     /// as the parser already ensures that it is not
     pub fn is_reserved(&self) -> bool {
         self.as_ref() == RESERVED_ID
+    }
+
+    /// Return if the `Id` is heap-allocated
+    pub const fn is_heap_allocated(&self) -> bool {
+        self.0.is_heap_allocated()
     }
 }
 

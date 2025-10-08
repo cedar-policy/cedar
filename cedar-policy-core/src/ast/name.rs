@@ -95,7 +95,7 @@ impl InternalName {
     /// Get the [`InternalName`] representing the reserved `__cedar` namespace
     pub fn __cedar() -> Self {
         // using `Id::new_unchecked()` for performance reasons -- this function is called many times by validator code
-        Self::unqualified_name(Id::new_unchecked("__cedar"), None)
+        Self::unqualified_name(Id::new_unchecked_const("__cedar"), None)
     }
 
     /// Create an [`InternalName`] with no path (no namespaces).
