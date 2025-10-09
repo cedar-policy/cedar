@@ -7549,7 +7549,7 @@ mod version_tests {
 
     #[test]
     fn test_sdk_version() {
-        assert_eq!(get_sdk_version().to_string(), "4.6.0");
+        assert_eq!(get_sdk_version().to_string(), "4.6.1");
     }
 
     #[test]
