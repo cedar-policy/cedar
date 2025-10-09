@@ -9954,6 +9954,88 @@ when { principal in resource.admins };
                 .collect();
             assert_eq!(actions, Vec::new());
         }
+
+        #[test]
+        fn permitted_action_error_permit() {
+            let policies = PolicySet::from_str(&format!("permit(principal, action, resource);permit(principal, action, resource) when {{ {} + 1 == 0 || true }};", i64::MAX)).unwrap();
+            let schema = Schema::from_str(
+                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
+            )
+            .unwrap();
+            let entities = PartialEntities::empty();
+
+            let request = ActionQueryRequest::new(
+                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
+                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
+                None,
+                schema.clone(),
+            )
+            .unwrap();
+
+            let actions: Vec<_> = policies
+                .query_action(&request, &entities)
+                .unwrap()
+                .collect();
+            assert_eq!(
+                actions,
+                vec![(&r#"Action::"view""#.parse().unwrap(), Some(Decision::Allow))]
+            );
+        }
+
+        #[test]
+        fn permitted_action_error_forbid() {
+            let policies = PolicySet::from_str(&format!("permit(principal, action, resource);forbid(principal, action, resource) when {{ {} + 1 == 0 || true }};", i64::MAX)).unwrap();
+            let schema = Schema::from_str(
+                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
+            )
+            .unwrap();
+            let entities = PartialEntities::empty();
+
+            let request = ActionQueryRequest::new(
+                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
+                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
+                None,
+                schema.clone(),
+            )
+            .unwrap();
+
+            let actions: Vec<_> = policies
+                .query_action(&request, &entities)
+                .unwrap()
+                .collect();
+            assert_eq!(
+                actions,
+                vec![(&r#"Action::"view""#.parse().unwrap(), Some(Decision::Allow))]
+            );
+        }
+
+        #[test]
+        fn forbidden_action_error_permit() {
+            let policies = PolicySet::from_str(&format!(
+                "permit(principal, action, resource) when {{ {} + 1 == 0 || true }};",
+                i64::MAX
+            ))
+            .unwrap();
+            let schema = Schema::from_str(
+                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
+            )
+            .unwrap();
+            let entities = PartialEntities::empty();
+
+            let request = ActionQueryRequest::new(
+                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
+                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
+                None,
+                schema.clone(),
+            )
+            .unwrap();
+
+            let actions: Vec<_> = policies
+                .query_action(&request, &entities)
+                .unwrap()
+                .collect();
+            assert_eq!(actions, Vec::new(),);
+        }
     }
 }
 
