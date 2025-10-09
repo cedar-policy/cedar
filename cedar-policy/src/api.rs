@@ -5233,7 +5233,7 @@ mod tpe {
 
     /// Defines a [`PartialRequest`] which additionally leaves the action
     /// undefined, enabling queries listing what actions might be authorized.
-    /// 
+    ///
     /// See [`PolicySet::query_action`] for documentation and example usage.
     #[derive(Debug, Clone)]
     pub struct ActionQueryRequest {
