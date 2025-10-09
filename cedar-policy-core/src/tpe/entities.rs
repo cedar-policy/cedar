@@ -487,6 +487,11 @@ impl TryFrom<Entities> for PartialEntities {
 }
 
 impl PartialEntities {
+    /// Get an empty partial entities
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Get an iterator of entities
     pub fn entities(&self) -> impl Iterator<Item = &PartialEntity> {
         self.entities.values()
