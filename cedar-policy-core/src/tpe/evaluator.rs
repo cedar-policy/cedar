@@ -997,6 +997,33 @@ mod tests {
                 assert_matches!(else_expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::Long(2)), .. }, .. });
             }
         );
+        assert_matches!(
+            eval.interpret_expr(&builder().ite(
+                builder().val(false),
+                builder().var(Var::Principal),
+                builder().val(2)
+            ))
+            .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Long(2)),
+                    ..
+                },
+                ..
+            }
+        );
+        assert_matches!(
+            eval.interpret_expr(&builder().ite(
+                builder().is_eq(
+                    builder().mul(builder().val(i64::MAX), builder().val(2)),
+                    builder().val(0)
+                ),
+                builder().var(Var::Principal),
+                builder().val(2)
+            ))
+            .unwrap(),
+            Residual::Error(_),
+        );
     }
 
     #[test]
@@ -1042,6 +1069,20 @@ mod tests {
                     ..
                 },
                 ..
+            }
+        );
+        assert_matches!(
+            eval.interpret_expr(&builder().is_entity_type(
+                builder().get_attr(builder().var(Var::Resource), "baz".parse().unwrap()),
+                dummy_uid().entity_type().clone()
+            ))
+            .unwrap(),
+            Residual::Partial {
+                kind: ResidualKind::Is { expr, entity_type } ,
+                ..
+            } => {
+                assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::GetAttr { .. }, .. });
+                assert_eq!(&entity_type, dummy_uid().entity_type());
             }
         );
     }
@@ -1304,6 +1345,35 @@ mod tests {
                 assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
             }
         );
+
+        assert_matches!(
+            eval.interpret_expr(&builder().has_attr(
+                builder().record([("s".into(), builder().val(0))]).unwrap(),
+                "s".parse().unwrap()
+            ))
+            .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+        assert_matches!(
+            eval.interpret_expr(&builder().has_attr(
+                builder().record([("s".into(), builder().val(0))]).unwrap(),
+                "t".parse().unwrap()
+            ))
+            .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(false)),
+                    ..
+                },
+                ..
+            }
+        );
     }
 
     #[test]
@@ -1560,6 +1630,22 @@ mod tests {
 
         assert_matches!(
             eval.interpret_expr(&builder().binary_app(
+                BinaryOp::Add,
+                builder().val(1),
+                builder().val(1)
+            ))
+            .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Long(2)),
+                    ..
+                },
+                ..
+            }
+        );
+
+        assert_matches!(
+            eval.interpret_expr(&builder().binary_app(
                 BinaryOp::Contains,
                 builder().set([builder().val(dummy_uid())]),
                 builder().var(Var::Resource)
@@ -1595,6 +1681,26 @@ mod tests {
             Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(false)),
+                    ..
+                },
+                ..
+            }
+        );
+
+        assert_matches!(
+            eval.interpret_expr(
+                &builder().binary_app(
+                    BinaryOp::In,
+                    builder().val(EntityUID::from_normalized_str(r#"E::"""#).unwrap()),
+                    builder().set([
+                        builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
+                    ])
+                )
+            )
+            .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
                     ..
                 },
                 ..
