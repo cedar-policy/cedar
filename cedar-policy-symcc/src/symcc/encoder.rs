@@ -331,7 +331,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     ) -> Result<String> {
         let t_encs = t_encs.into_iter().join(" ");
         let t_enc = if t_encs.is_empty() {
-            format!("{ty_enc}")
+            ty_enc.to_string()
         } else {
             format!("({ty_enc} {})", t_encs)
         };
