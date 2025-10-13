@@ -33,8 +33,11 @@ use std::sync::Arc;
 use thiserror::Error;
 
 #[cfg(feature = "tolerant-ast")]
-static ERROR_NAME: std::sync::LazyLock<Name> =
-    std::sync::LazyLock::new(|| Name(InternalName::from(Id::new_unchecked_const("EntityTypeError"))));
+static ERROR_NAME: std::sync::LazyLock<Name> = std::sync::LazyLock::new(|| {
+    Name(InternalName::from(Id::new_unchecked_const(
+        "EntityTypeError",
+    )))
+});
 
 #[cfg(feature = "tolerant-ast")]
 static EID_ERROR_STR: &str = "Eid::Error";
@@ -929,7 +932,9 @@ mod test {
 
         assert_eq!(
             error_type.name(),
-            &Name(InternalName::from(Id::new_unchecked_const("EntityTypeError")))
+            &Name(InternalName::from(Id::new_unchecked_const(
+                "EntityTypeError"
+            )))
         );
         assert_eq!(error_type.loc(), None)
     }
@@ -946,9 +951,9 @@ mod test {
 
     #[test]
     fn entity_type_serialization() {
-        let entity_type = EntityType::EntityType(Name(InternalName::from(Id::new_unchecked_const(
-            "some_entity_type",
-        ))));
+        let entity_type = EntityType::EntityType(Name(InternalName::from(
+            Id::new_unchecked_const("some_entity_type"),
+        )));
         let serialized = serde_json::to_string(&entity_type).unwrap();
 
         assert_eq!(serialized, r#""some_entity_type""#);

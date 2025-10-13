@@ -51,7 +51,7 @@ impl Id {
     }
 
     /// Create a new `Id` from a static string
-    /// 
+    ///
     /// This never allocates.
     pub(crate) const fn new_unchecked_const(s: &'static str) -> Self {
         Id(SmolStr::new_static(s))
