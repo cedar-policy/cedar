@@ -450,3 +450,124 @@ impl From<Residual> for Expr {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::extensions::Extensions;
+    use crate::parser::parse_expr;
+    use crate::validator::typecheck::{TypecheckAnswer, Typechecker};
+    use crate::validator::{ValidationMode, Validator, ValidatorSchema};
+    use similar_asserts::assert_eq;
+
+    #[track_caller]
+    fn parse_residual(expr_str: &str) -> Residual {
+        let expr = parse_expr(expr_str).unwrap();
+
+        let schema = ValidatorSchema::from_cedarschema_str(
+            "entity User { foo: Bool };",
+            &Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+        let validator = Validator::new(schema);
+
+        let typechecker = Typechecker::new(validator.schema(), ValidationMode::Strict);
+        let mut type_errors = std::collections::HashSet::new();
+        let policy_id = crate::ast::PolicyID::from_string("test");
+
+        let typecheck_result = typechecker.typecheck_expr(&expr, &policy_id, &mut type_errors);
+
+        match typecheck_result {
+            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
+                Residual::try_from(&expr_type).unwrap()
+            }
+            _ => {
+                println!("got {} type errors", type_errors.len());
+                for e in type_errors {
+                    println!("{:?}", miette::Report::new(e));
+                }
+                panic!("unexpected type error in expression");
+            }
+        }
+    }
+
+    mod literal_uids {
+        use similar_asserts::assert_eq;
+        use std::collections::HashSet;
+
+        use super::parse_residual;
+
+        #[test]
+        fn var() {
+            assert_eq!(
+                parse_residual("principal").all_literal_uids(),
+                HashSet::new()
+            );
+        }
+
+        #[test]
+        fn r#if() {
+            assert_eq!(
+                parse_residual(r#"if User::"alice".foo then User::"bob" else User::"jane""#)
+                    .all_literal_uids(),
+                HashSet::from([
+                    r#"User::"alice""#.parse().unwrap(),
+                    r#"User::"bob""#.parse().unwrap(),
+                    r#"User::"jane""#.parse().unwrap(),
+                ])
+            );
+        }
+
+        #[test]
+        fn and() {
+            assert_eq!(
+                parse_residual(r#"User::"alice".foo && User::"jane".foo"#).all_literal_uids(),
+                HashSet::from([
+                    r#"User::"alice""#.parse().unwrap(),
+                    r#"User::"jane""#.parse().unwrap(),
+                ])
+            );
+        }
+
+        #[test]
+        fn set() {
+            assert_eq!(
+                parse_residual(r#"[User::"alice", User::"jane"]"#).all_literal_uids(),
+                HashSet::from([
+                    r#"User::"alice""#.parse().unwrap(),
+                    r#"User::"jane""#.parse().unwrap(),
+                ])
+            );
+        }
+
+        #[test]
+        fn record() {
+            assert_eq!(
+                parse_residual(r#"{a: User::"alice", b: User::"jane"}"#).all_literal_uids(),
+                HashSet::from([
+                    r#"User::"alice""#.parse().unwrap(),
+                    r#"User::"jane""#.parse().unwrap(),
+                ])
+            );
+        }
+    }
+
+    fn assert_eq_expr(expr_str: &str) {
+        let e: Expr = expr_str.parse().unwrap();
+        let residual = parse_residual(expr_str);
+        assert_eq!(Expr::from(residual), e);
+    }
+
+    #[test]
+    fn to_expr() {
+        assert_eq_expr(r#"User::"alice".foo && User::"jane".foo"#);
+        assert_eq_expr(r#"User::"alice".foo || User::"jane".foo"#);
+        assert_eq_expr(r#"[User::"jane".foo].contains(User::"jane".foo)"#);
+        assert_eq_expr(r#"User::"alice" has foo"#);
+        assert_eq_expr(r#"if User::"alice".foo then User::"bob" else User::"jane""#);
+        assert_eq_expr(r#""foo" like "bar""#);
+        assert_eq_expr(r#"[User::"alice", User::"jane"]"#);
+        assert_eq_expr(r#"{a: User::"alice", b: User::"jane"}"#);
+    }
+}

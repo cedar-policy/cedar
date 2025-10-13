@@ -657,6 +657,7 @@ impl PartialEntities {
 mod tests {
     use std::collections::{BTreeMap, HashMap, HashSet};
 
+    use crate::tpe::err::AncestorValidationError;
     use crate::validator::ValidatorSchema;
     use crate::{
         ast::{EntityUID, Value},
@@ -764,27 +765,29 @@ mod tests {
     fn invalid_hierarchy() {
         let uid_a: EntityUID = r#"A::"a""#.parse().unwrap();
         let uid_b: EntityUID = r#"A::"b""#.parse().unwrap();
-        assert!(validate_ancestors(&HashMap::from_iter([
-            (
-                uid_a.clone(),
-                PartialEntity {
-                    uid: uid_a,
-                    ancestors: Some(HashSet::from_iter([uid_b.clone()])),
-                    attrs: None,
-                    tags: None
-                }
-            ),
-            (
-                uid_b.clone(),
-                PartialEntity {
-                    uid: uid_b,
-                    ancestors: None,
-                    attrs: None,
-                    tags: None
-                }
-            )
-        ]))
-        .is_err())
+        assert_matches!(
+            validate_ancestors(&HashMap::from_iter([
+                (
+                    uid_a.clone(),
+                    PartialEntity {
+                        uid: uid_a,
+                        ancestors: Some(HashSet::from_iter([uid_b.clone()])),
+                        attrs: None,
+                        tags: None
+                    }
+                ),
+                (
+                    uid_b.clone(),
+                    PartialEntity {
+                        uid: uid_b,
+                        ancestors: None,
+                        attrs: None,
+                        tags: None
+                    }
+                )
+            ])),
+            Err(AncestorValidationError { .. })
+        )
     }
 
     #[test]
@@ -888,5 +891,498 @@ mod tests {
                 .ancestors,
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod test_validate {
+    use super::*;
+    use crate::entities::conformance::err::EntitySchemaConformanceError;
+    use crate::tpe::err::{
+        EntityValidationError, MismatchedActionAncestorsError, UnknownActionComponentError,
+    };
+    use cool_asserts::assert_matches;
+
+    fn test_schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            r#"
+            entity User {
+                name: String,
+            } tags String;
+
+            entity Resource;
+
+            action view appliesTo {
+                principal: User,
+                resource: Resource
+            };
+            "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    #[test]
+    fn valid_entity() {
+        let schema = test_schema();
+        let entity = PartialEntity {
+            uid: "User::\"alice\"".parse().unwrap(),
+            attrs: Some(BTreeMap::from_iter([("name".into(), Value::from("Alice"))])),
+            ancestors: Some(HashSet::new()),
+            tags: Some(BTreeMap::from_iter([(
+                "department".into(),
+                Value::from("Engineering"),
+            )])),
+        };
+
+        assert_matches!(entity.validate(&schema), Ok(()));
+    }
+
+    #[test]
+    fn valid_action() {
+        let schema = test_schema();
+        let action = PartialEntity {
+            uid: "Action::\"view\"".parse().unwrap(),
+            attrs: Some(BTreeMap::new()),
+            ancestors: Some(HashSet::new()),
+            tags: Some(BTreeMap::new()),
+        };
+
+        assert_matches!(action.validate(&schema), Ok(()));
+    }
+
+    #[test]
+    fn invalid_action_with_unknown_ancestors() {
+        let schema = test_schema();
+        let action = PartialEntity {
+            uid: "Action::\"view\"".parse().unwrap(),
+            attrs: Some(BTreeMap::new()),
+            ancestors: None,
+            tags: Some(BTreeMap::new()),
+        };
+
+        assert_matches!(
+            action.validate(&schema),
+            Err(EntityValidationError::UnknownActionComponent(
+                UnknownActionComponentError { .. }
+            ))
+        );
+    }
+
+    #[test]
+    fn invalid_action_with_unknown_tags() {
+        let schema = test_schema();
+        let action = PartialEntity {
+            uid: "Action::\"view\"".parse().unwrap(),
+            attrs: Some(BTreeMap::new()),
+            ancestors: Some(HashSet::new()),
+            tags: None,
+        };
+
+        assert_matches!(
+            action.validate(&schema),
+            Err(EntityValidationError::UnknownActionComponent(
+                UnknownActionComponentError { .. }
+            ))
+        );
+    }
+
+    #[test]
+    fn invalid_action_with_unknown_attrs() {
+        let schema = test_schema();
+        let action = PartialEntity {
+            uid: "Action::\"view\"".parse().unwrap(),
+            attrs: None,
+            ancestors: Some(HashSet::new()),
+            tags: Some(BTreeMap::new()),
+        };
+
+        assert_matches!(
+            action.validate(&schema),
+            Err(EntityValidationError::UnknownActionComponent(
+                UnknownActionComponentError { .. }
+            ))
+        );
+    }
+
+    #[test]
+    fn invalid_action_with_unexpected_attr() {
+        let schema = test_schema();
+        let action = PartialEntity {
+            uid: "Action::\"view\"".parse().unwrap(),
+            attrs: Some(BTreeMap::from_iter([(
+                "unexpected_attr".into(),
+                Value::from("value"),
+            )])),
+            ancestors: Some(HashSet::new()),
+            tags: Some(BTreeMap::new()),
+        };
+
+        assert_matches!(
+            action.validate(&schema),
+            Err(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::UnexpectedEntityAttr(_)
+            ))
+        );
+    }
+
+    #[test]
+    fn invalid_action_with_unexpected_tag() {
+        let schema = test_schema();
+        let action = PartialEntity {
+            uid: "Action::\"view\"".parse().unwrap(),
+            attrs: Some(BTreeMap::new()),
+            ancestors: Some(HashSet::new()),
+            tags: Some(BTreeMap::from_iter([(
+                "unexpected_tag".into(),
+                Value::from("value"),
+            )])),
+        };
+
+        assert_matches!(
+            action.validate(&schema),
+            Err(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::UnexpectedEntityTag(_)
+            ))
+        );
+    }
+
+    #[test]
+    fn invalid_action_with_incorrect_ancestors() {
+        let schema = test_schema();
+        let action = PartialEntity {
+            uid: "Action::\"view\"".parse().unwrap(),
+            attrs: Some(BTreeMap::new()),
+            ancestors: Some(HashSet::from_iter(["Action::\"other\"".parse().unwrap()])),
+            tags: Some(BTreeMap::new()),
+        };
+
+        assert_matches!(
+            action.validate(&schema),
+            Err(EntityValidationError::MismatchedActionAncestors(
+                MismatchedActionAncestorsError { .. }
+            ))
+        );
+    }
+
+    #[test]
+    fn invalid_unexpected_action() {
+        let schema = test_schema();
+        let action = PartialEntity {
+            uid: "Action::\"other\"".parse().unwrap(),
+            attrs: Some(BTreeMap::new()),
+            ancestors: Some(HashSet::new()),
+            tags: Some(BTreeMap::new()),
+        };
+
+        assert_matches!(
+            action.validate(&schema),
+            Err(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::UndeclaredAction(_)
+            ))
+        );
+    }
+
+    #[test]
+    fn invalid_unexpected_entity_type() {
+        let schema = test_schema();
+        let entity = PartialEntity {
+            uid: "UnknownType::\"test\"".parse().unwrap(),
+            attrs: None,
+            ancestors: None,
+            tags: None,
+        };
+
+        assert_matches!(
+            entity.validate(&schema),
+            Err(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::UnexpectedEntityType(_)
+            ))
+        );
+    }
+
+    #[test]
+    fn invalid_entity_invalid_ancestor() {
+        let schema = test_schema();
+        let entity = PartialEntity {
+            uid: "User::\"alice\"".parse().unwrap(),
+            attrs: None,
+            ancestors: Some(HashSet::from_iter(["Resource::\"doc1\"".parse().unwrap()])),
+            tags: None,
+        };
+
+        assert_matches!(
+            entity.validate(&schema),
+            Err(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::InvalidAncestorType(_)
+            ))
+        );
+    }
+
+    #[test]
+    fn invalid_entity_invalid_attr() {
+        let schema = test_schema();
+        let entity = PartialEntity {
+            uid: "User::\"alice\"".parse().unwrap(),
+            attrs: Some(BTreeMap::from_iter([("name".into(), Value::from(42))])),
+            ancestors: None,
+            tags: None,
+        };
+
+        assert_matches!(
+            entity.validate(&schema),
+            Err(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::TypeMismatch(_)
+            ))
+        );
+    }
+
+    #[test]
+    fn invalid_entity_invalid_tag() {
+        let schema = test_schema();
+        let entity = PartialEntity {
+            uid: "User::\"alice\"".parse().unwrap(),
+            attrs: None,
+            ancestors: None,
+            tags: Some(BTreeMap::from_iter([(
+                "department".into(),
+                Value::from(42),
+            )])),
+        };
+
+        assert_matches!(
+            entity.validate(&schema),
+            Err(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::TypeMismatch(_)
+            ))
+        );
+    }
+}
+
+#[cfg(test)]
+mod test_consistency {
+    use cool_asserts::assert_matches;
+
+    use crate::{
+        ast::Entity,
+        entities::{Entities, EntityJsonParser, TCComputation},
+        extensions::Extensions,
+        tpe::{self, entities::PartialEntities},
+        validator::ValidatorSchema,
+    };
+
+    fn schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            "entity A { a: Bool } tags Long;",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    #[track_caller]
+    fn parse_concrete_json(entity_json: serde_json::Value) -> Entity {
+        let eparser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        eparser.single_from_json_value(entity_json).unwrap()
+    }
+
+    #[test]
+    fn consistent_eq_entity() {
+        let entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "attrs": { "a": false },
+                "tags" : { "t": 0 },
+                "parents" : [ {"type": "A", "id": "bar"} ],
+            }
+        );
+        let partial_entity = tpe::entities::parse_ejson(
+            serde_json::from_value(entity_json.clone()).unwrap(),
+            &schema(),
+        )
+        .unwrap();
+        let entity = parse_concrete_json(entity_json);
+        assert_matches!(partial_entity.check_consistency(&entity), Ok(()))
+    }
+
+    #[test]
+    fn consistent_missing_attrs() {
+        let partial_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "tags" : { "t": 0 },
+                "parents" : [ {"type": "A", "id": "bar"} ],
+            }
+        );
+        let concrete_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "attrs": { "a": false },
+                "tags" : { "t": 0 },
+                "parents" : [ {"type": "A", "id": "bar"} ],
+            }
+        );
+        let partial_entity = tpe::entities::parse_ejson(
+            serde_json::from_value(partial_entity_json).unwrap(),
+            &schema(),
+        )
+        .unwrap();
+        let entity = parse_concrete_json(concrete_entity_json);
+        assert_matches!(partial_entity.check_consistency(&entity), Ok(()))
+    }
+
+    #[test]
+    fn consistent_missing_tags() {
+        let partial_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "attrs": { "a": false },
+                "parents" : [ {"type": "A", "id": "bar"} ],
+            }
+        );
+        let concrete_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "attrs": { "a": false },
+                "tags" : { "t": 0 },
+                "parents" : [ {"type": "A", "id": "bar"} ],
+            }
+        );
+        let partial_entity = tpe::entities::parse_ejson(
+            serde_json::from_value(partial_entity_json).unwrap(),
+            &schema(),
+        )
+        .unwrap();
+        let entity = parse_concrete_json(concrete_entity_json);
+        assert_matches!(partial_entity.check_consistency(&entity), Ok(()))
+    }
+
+    #[test]
+    fn consistent_missing_parents() {
+        let partial_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "attrs": { "a": false },
+                "tags" : { "t": 0 },
+            }
+        );
+        let concrete_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "attrs": { "a": false },
+                "tags" : { "t": 0 },
+                "parents" : [ {"type": "A", "id": "bar"} ],
+            }
+        );
+        let partial_entity = tpe::entities::parse_ejson(
+            serde_json::from_value(partial_entity_json).unwrap(),
+            &schema(),
+        )
+        .unwrap();
+        let entity = parse_concrete_json(concrete_entity_json);
+        assert_matches!(partial_entity.check_consistency(&entity), Ok(()))
+    }
+
+    #[test]
+    fn not_consistent_different_attrs() {
+        let partial_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "attrs": { "a": true },
+            }
+        );
+        let concrete_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "attrs": { "a": false },
+                "tags" : { "t": 0 },
+                "parents" : [ {"type": "A", "id": "bar"} ],
+            }
+        );
+        let partial_entity = tpe::entities::parse_ejson(
+            serde_json::from_value(partial_entity_json).unwrap(),
+            &schema(),
+        )
+        .unwrap();
+        let entity = parse_concrete_json(concrete_entity_json);
+        assert_matches!(
+            partial_entity.check_consistency(&entity),
+            Err(tpe::err::EntityConsistencyError::MismatchedAttribute(_))
+        )
+    }
+
+    #[test]
+    fn not_consistent_different_tags() {
+        let partial_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "tags" : { "t": 1 },
+            }
+        );
+        let concrete_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "attrs": { "a": false },
+                "tags" : { "t": 0 },
+                "parents" : [ {"type": "A", "id": "bar"} ],
+            }
+        );
+        let partial_entity = tpe::entities::parse_ejson(
+            serde_json::from_value(partial_entity_json).unwrap(),
+            &schema(),
+        )
+        .unwrap();
+        let entity = parse_concrete_json(concrete_entity_json);
+        assert_matches!(
+            partial_entity.check_consistency(&entity),
+            Err(tpe::err::EntityConsistencyError::MismatchedTag(_))
+        )
+    }
+
+    #[test]
+    fn not_consistent_different_parents() {
+        let partial_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "parents" : [ {"type": "A", "id": "baz"} ],  // Different parent
+            }
+        );
+        let concrete_entity_json = serde_json::json!(
+            {
+                "uid" : { "type" : "A", "id" : "foo", },
+                "attrs": { "a": false },
+                "tags" : { "t": 0 },
+                "parents" : [ {"type": "A", "id": "bar"} ],  // Different parent
+            }
+        );
+        let partial_entity = tpe::entities::parse_ejson(
+            serde_json::from_value(partial_entity_json).unwrap(),
+            &schema(),
+        )
+        .unwrap();
+        let entity = parse_concrete_json(concrete_entity_json);
+        assert_matches!(
+            partial_entity.check_consistency(&entity),
+            Err(tpe::err::EntityConsistencyError::MismatchedAncestor(_))
+        )
+    }
+
+    #[test]
+    fn not_consistent_missing_entity() {
+        let partial_entity_json = serde_json::json!(
+            [{ "uid" : { "type" : "A", "id" : "foo", }, }]
+        );
+        let partial_entities = PartialEntities::from_json_value(
+            serde_json::from_value(partial_entity_json).unwrap(),
+            &schema(),
+        )
+        .unwrap();
+        let concrete_entities = Entities::new();
+        assert_matches!(
+            partial_entities.check_consistency(&concrete_entities),
+            Err(tpe::err::EntitiesConsistencyError::MissingEntity(_))
+        )
     }
 }
