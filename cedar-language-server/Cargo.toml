@@ -22,7 +22,7 @@ smol_str = "0.3"
 tracing = "0.1.41"
 serde = "1"
 serde_json = "1.0.145"
-regex = "1.11.3"
+regex = "1.12.1"
 tower-lsp-server = "0.22.1"
 
 # Dependencies needed only for the language server binary
