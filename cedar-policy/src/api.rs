@@ -5079,6 +5079,13 @@ mod tpe {
     #[derive(Debug, Clone, RefCast)]
     pub struct PartialEntityUid(pub(crate) tpe::request::PartialEntityUID);
 
+    #[doc(hidden)]
+    impl AsRef<tpe::request::PartialEntityUID> for PartialEntityUid {
+        fn as_ref(&self) -> &tpe::request::PartialEntityUID {
+            &self.0
+        }
+    }
+
     impl PartialEntityUid {
         /// Construct a [`PartialEntityUid`]
         pub fn new(ty: EntityTypeName, id: Option<EntityId>) -> Self {
@@ -5101,6 +5108,13 @@ mod tpe {
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
     pub struct PartialRequest(pub(crate) tpe::request::PartialRequest);
+
+    #[doc(hidden)]
+    impl AsRef<tpe::request::PartialRequest> for PartialRequest {
+        fn as_ref(&self) -> &tpe::request::PartialRequest {
+            &self.0
+        }
+    }
 
     impl PartialRequest {
         /// Construct a valid [`PartialRequest`] according to a [`Schema`]
@@ -5287,6 +5301,13 @@ mod tpe {
     #[derive(Debug, Clone, RefCast)]
     pub struct PartialEntities(pub(crate) tpe::entities::PartialEntities);
 
+    #[doc(hidden)]
+    impl AsRef<tpe::entities::PartialEntities> for PartialEntities {
+        fn as_ref(&self) -> &tpe::entities::PartialEntities {
+            &self.0
+        }
+    }
+
     impl PartialEntities {
         /// Construct [`PartialEntities`] from a JSON value
         /// The `parent`, `attrs`, `tags` field must be either fully known or
@@ -5313,6 +5334,13 @@ mod tpe {
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
     pub struct TPEResponse<'a>(pub(crate) tpe::response::Response<'a>);
+
+    #[doc(hidden)]
+    impl<'a> AsRef<tpe::response::Response<'a>> for TPEResponse<'a> {
+        fn as_ref(&self) -> &tpe::response::Response<'a> {
+            &self.0
+        }
+    }
 
     impl TPEResponse<'_> {
         /// Attempt to get the authorization decision
