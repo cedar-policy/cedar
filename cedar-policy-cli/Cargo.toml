@@ -23,7 +23,7 @@ owo-colors = { version = "4.2.3", features = ["supports-colors"] }
 
 [features]
 default = []
-experimental = ["permissive-validate", "partial-validate", "partial-eval"]
+experimental = ["permissive-validate", "partial-validate", "partial-eval", "tpe"]
 permissive-validate = ["cedar-policy/permissive-validate"]
 partial-validate = ["cedar-policy/partial-validate"]
 partial-eval = ["cedar-policy/partial-eval"]
