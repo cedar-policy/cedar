@@ -19,7 +19,7 @@
 use thiserror::Error;
 
 use crate::ast::PartialValueToValueError;
-use crate::tpe::err::{EntitiesError, MissingEntitiesError, PartialRequestError, TPEError};
+use crate::tpe::err::{EntitiesError, MissingEntitiesError, PartialRequestError, TpeError};
 use crate::validator::RequestValidationError;
 
 /// Errors for Batched Evaluation
@@ -28,7 +28,7 @@ use crate::validator::RequestValidationError;
 pub enum BatchedEvalError {
     /// Error thrown by TPE
     #[error(transparent)]
-    TPE(#[from] TPEError),
+    TPE(#[from] TpeError),
     /// Error when the request is not valid
     #[error(transparent)]
     RequestValidation(#[from] RequestValidationError),

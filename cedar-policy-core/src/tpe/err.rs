@@ -93,7 +93,7 @@ pub struct AncestorValidationError {
 
 /// Errors for TPE
 #[derive(Debug, Error)]
-pub enum TPEError {
+pub enum TpeError {
     /// Error thrown when there is no matching request environment according to
     /// a schema
     #[error(transparent)]
