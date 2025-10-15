@@ -740,7 +740,7 @@ pub struct PartiallyAuthorizeArgs {
     pub timing: bool,
 }
 
-#[cfg(not(feature = "partial-eval"))]
+#[cfg(not(feature = "tpe"))]
 #[derive(Debug, Args)]
 pub struct TpeArgs;
 
