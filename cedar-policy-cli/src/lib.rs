@@ -246,19 +246,19 @@ pub struct RequestArgs {
 #[derive(Args, Debug)]
 pub struct TpeRequestArgs {
     /// Principal type of the request, e.g., User
-    #[arg(short = 'l', long)]
+    #[arg(long)]
     pub principal_type: String,
     /// Optional principal eid
-    #[arg(short, long)]
+    #[arg(long)]
     pub principal_eid: Option<String>,
     /// Action for the request, e.g., Action::"view"
     #[arg(short, long)]
     pub action: String,
     /// Resource type of the request, e.g., File
-    #[arg(short, long)]
+    #[arg(long)]
     pub resource_type: String,
     /// Optional resource eid
-    #[arg(short, long)]
+    #[arg(long)]
     pub resource_eid: Option<String>,
     /// File containing a JSON object representing the context for the request.
     /// Should be a (possibly empty) map from keys to values.
@@ -267,8 +267,8 @@ pub struct TpeRequestArgs {
     /// File containing a JSON object representing the entire request. Must have
     /// fields "principal", "action", "resource", and "context", where "context"
     /// is a (possibly empty) map from keys to values. This option replaces
-    /// --principal, --action, etc.
-    #[arg(long = "request-json", value_name = "FILE", conflicts_with_all = &["principal", "action", "resource", "context_json_file"])]
+    /// --principal*, --action, etc.
+    #[arg(long = "request-json", value_name = "FILE", conflicts_with_all = &["principal_type", "principal_eid", "action", "resource_type", "resource_eid", "context_json_file"])]
     pub request_json_file: Option<String>,
 }
 
