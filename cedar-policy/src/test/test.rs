@@ -8835,7 +8835,7 @@ unless
             str::FromStr,
         };
 
-        use cedar_policy_core::tpe::err::TPEError;
+        use cedar_policy_core::tpe::err::TpeError;
         use cedar_policy_core::{authorizer::Decision, batched_evaluator::err::BatchedEvalError};
         use cool_asserts::assert_matches;
         use itertools::Itertools;
@@ -9279,7 +9279,7 @@ when { principal in resource.admins };
 
             assert!(matches!(
                 result,
-                Err(BatchedEvalError::TPE(TPEError::Validation(_)))
+                Err(BatchedEvalError::TPE(TpeError::Validation(_)))
             ));
         }
 

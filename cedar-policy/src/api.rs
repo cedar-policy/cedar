@@ -5065,13 +5065,13 @@ mod tpe {
     use ref_cast::RefCast;
     use smol_str::SmolStr;
 
-    use crate::Entity;
     #[cfg(feature = "partial-eval")]
     use crate::{
         api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
         PartialRequestCreationError, PermissionQueryError, Policy, PolicySet, Request,
-        RequestValidationError, RestrictedExpression, Schema, TPEReauthorizationError,
+        RequestValidationError, RestrictedExpression, Schema,
     };
+    use crate::{Entity, TpeReauthorizationError};
 
     /// A partial [`EntityUid`].
     /// That is, its [`EntityId`] could be unknown
@@ -5333,16 +5333,16 @@ mod tpe {
     /// A partial version of [`crate::Response`].
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
-    pub struct TPEResponse<'a>(pub(crate) tpe::response::Response<'a>);
+    pub struct TpeResponse<'a>(pub(crate) tpe::response::Response<'a>);
 
     #[doc(hidden)]
-    impl<'a> AsRef<tpe::response::Response<'a>> for TPEResponse<'a> {
+    impl<'a> AsRef<tpe::response::Response<'a>> for TpeResponse<'a> {
         fn as_ref(&self) -> &tpe::response::Response<'a> {
             &self.0
         }
     }
 
-    impl TPEResponse<'_> {
+    impl TpeResponse<'_> {
         /// Attempt to get the authorization decision
         pub fn decision(&self) -> Option<Decision> {
             self.0.decision()
@@ -5353,7 +5353,7 @@ mod tpe {
             &self,
             request: &Request,
             entities: &Entities,
-        ) -> Result<api::Response, TPEReauthorizationError> {
+        ) -> Result<api::Response, TpeReauthorizationError> {
             self.0
                 .reauthorize(&request.0, &entities.0)
                 .map(Into::into)
@@ -5434,11 +5434,11 @@ mod tpe {
             request: &'a PartialRequest,
             entities: &'a PartialEntities,
             schema: &'a Schema,
-        ) -> Result<TPEResponse<'a>, tpe_err::TPEError> {
+        ) -> Result<TpeResponse<'a>, tpe_err::TpeError> {
             use cedar_policy_core::tpe::is_authorized;
             let ps = &self.ast;
             let res = is_authorized(ps, &request.0, &entities.0, &schema.0)?;
-            Ok(TPEResponse(res))
+            Ok(TpeResponse(res))
         }
 
         /// Like [`Authorizer::is_authorized`] but uses an [`EntityLoader`] to load
