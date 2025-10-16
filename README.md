@@ -103,7 +103,7 @@ CLI output:
 ALLOW
 ```
 
-This request is allowed because `VacationPhoto94.jpg` belongs to `Album::"jane_secrets"`, and `alice` can view photos in `Album::"jane_vacation"`.
+This request is allowed because `VacationPhoto94.jpg` belongs to `Album::"jane_vacation"`, and `alice` can view photos in `Album::"jane_vacation"`.
 
 Let's test out policy again with a photo that `alice` shouldn't have access:
 
@@ -122,7 +122,7 @@ CLI output:
 DENY
 ```
 
-This request is denied because `SecretPhoto94.jpg` belongs to `Album::"jane_vacation"`, and `alice` doesn't have explicit permission to view photos there. 
+This request is denied because `SecretPhoto94.jpg` belongs to `Album::"jane_secrets"`, and `alice` doesn't have explicit permission to view photos from this Album. 
 
 If you'd like to see more details on what can be expressed as Cedar policies, see the [documentation](https://docs.cedarpolicy.com).
 
