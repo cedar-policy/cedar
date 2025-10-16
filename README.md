@@ -90,8 +90,8 @@ Now, let's test our policy with the CLI:
 
 ```sh
  cargo run authorize \
-    --policies examples/policy.cedar \
-    --entities examples/entities.json \
+    --policies policy.cedar \
+    --entities entities.json \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"'
