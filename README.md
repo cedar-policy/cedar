@@ -74,6 +74,11 @@ This policy specifies that `alice` is allowed to view the photos in the `"jane_v
         "uid": { "type": "Photo", "id": "VacationPhoto94.jpg"},
         "attrs": {},
         "parents": [{ "type": "Album", "id": "jane_vacation" }]
+    },
+    {
+        "uid": { "type": "Photo", "id": "SecretPhoto94.jpg"},
+        "attrs": {},
+        "parents": [{ "type": "Album", "id": "jane_secrets" }]
     }
 ]
 
@@ -84,9 +89,9 @@ Cedar represents principals, resources, and actions as entities. An entity has a
 Now, let's test our policy with the CLI:
 
 ```sh
- cargo run --bin cedar authorize \
-    --policies policy.cedar \
-    --entities entities.json \
+ cargo run authorize \
+    --policies examples/policy.cedar \
+    --entities examples/entities.json \
     --principal 'User::"alice"' \
     --action 'Action::"view"' \
     --resource 'Photo::"VacationPhoto94.jpg"'
@@ -98,7 +103,26 @@ CLI output:
 ALLOW
 ```
 
-This request is allowed because `VacationPhoto94.jpg` belongs to `Album::"jane_vacation"`, and `alice` can view photos in `Album::"jane_vacation"`.
+This request is allowed because `VacationPhoto94.jpg` belongs to `Album::"jane_secrets"`, and `alice` can view photos in `Album::"jane_vacation"`.
+
+Let's test out policy again with a photo that `alice` shouldn't have access:
+
+```sh
+ cargo run --bin cedar authorize \
+    --policies policy.cedar \
+    --entities entities.json \
+    --principal 'User::"alice"' \
+    --action 'Action::"view"' \
+    --resource 'Photo::"SecretPhoto94.jpg"'
+```
+
+CLI output:
+
+```
+DENY
+```
+
+This request is denied because `SecretPhoto94.jpg` belongs to `Album::"jane_vacation"`, and `alice` doesn't have explicit permission to view photos there. 
 
 If you'd like to see more details on what can be expressed as Cedar policies, see the [documentation](https://docs.cedarpolicy.com).
 
