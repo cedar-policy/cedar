@@ -5066,7 +5066,6 @@ mod tpe {
     use smol_str::SmolStr;
 
     use crate::Entity;
-    #[cfg(feature = "partial-eval")]
     use crate::{
         api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
         PartialRequestCreationError, PermissionQueryError, Policy, PolicySet, Request,
