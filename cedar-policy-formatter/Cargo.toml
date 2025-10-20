@@ -16,7 +16,7 @@ pretty = "0.12.5"
 logos = "0.15.1"
 itertools = "0.14"
 smol_str = { version = "0.3", features = ["serde"] }
-regex = { version= "1.12.1", features = ["unicode"] }
+regex = { version= "1.12.2", features = ["unicode"] }
 miette = { version = "7.6.0" }
 
 [dev-dependencies]
