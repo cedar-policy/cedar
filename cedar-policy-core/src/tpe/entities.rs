@@ -484,12 +484,12 @@ impl PartialEntities {
     }
 
     /// Compute transitive closure
-    fn compute_tc(&mut self) -> std::result::Result<(), TcError<EntityUID>> {
+    pub fn compute_tc(&mut self) -> std::result::Result<(), TcError<EntityUID>> {
         compute_tc(&mut self.entities, true)
     }
 
     /// Check that the tc is computed and forms a dag
-    fn enforce_tc_and_dag(&self) -> std::result::Result<(), TcError<EntityUID>> {
+    pub fn enforce_tc_and_dag(&self) -> std::result::Result<(), TcError<EntityUID>> {
         enforce_tc_and_dag(&self.entities)
     }
 
