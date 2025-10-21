@@ -50,6 +50,7 @@ use crate::{
     },
     transitive_closure::{compute_tc, TCNode},
 };
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -468,22 +469,7 @@ pub(crate) fn validate_ancestors(
 pub struct PartialEntities {
     /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
-    pub(crate) entities: HashMap<EntityUID, PartialEntity>,
-}
-
-// `Entities` without unknowns are `PartialEntities`
-impl TryFrom<Entities> for PartialEntities {
-    type Error = PartialValueToValueError;
-    fn try_from(entities: Entities) -> Result<Self, Self::Error> {
-        let mut partial_entities = PartialEntities::default();
-        for e in entities.into_iter() {
-            let partial_entity: PartialEntity = e.try_into()?;
-            partial_entities
-                .entities
-                .insert(partial_entity.uid.clone(), partial_entity);
-        }
-        Ok(partial_entities)
-    }
+    entities: HashMap<EntityUID, PartialEntity>,
 }
 
 impl PartialEntities {
@@ -498,13 +484,47 @@ impl PartialEntities {
     }
 
     /// Compute transitive closure
-    pub fn compute_tc(&mut self) -> std::result::Result<(), TcError<EntityUID>> {
+    fn compute_tc(&mut self) -> std::result::Result<(), TcError<EntityUID>> {
         compute_tc(&mut self.entities, true)
     }
 
     /// Check that the tc is computed and forms a dag
-    pub fn enforce_tc_and_dag(&self) -> std::result::Result<(), TcError<EntityUID>> {
+    fn enforce_tc_and_dag(&self) -> std::result::Result<(), TcError<EntityUID>> {
         enforce_tc_and_dag(&self.entities)
+    }
+
+    /// Get the `PartialEntity` with this identifier
+    pub fn get(&self, euid: &EntityUID) -> Option<&PartialEntity> {
+        self.entities.get(euid)
+    }
+
+    /// Check if there is a `PartialEntity` with identifier
+    pub fn contains_entity(&self, euid: &EntityUID) -> bool {
+        self.entities.contains_key(euid)
+    }
+
+    fn from_entities_map(
+        entities: HashMap<EntityUID, PartialEntity>,
+        schema: &ValidatorSchema,
+    ) -> std::result::Result<Self, EntitiesError> {
+        entities.values().try_for_each(|e| e.validate(schema))?;
+        validate_ancestors(&entities)?;
+        let mut entities = Self { entities };
+        entities.compute_tc()?;
+        entities.insert_actions(schema);
+        Ok(entities)
+    }
+
+    /// Construct `PartialEntities` from `Entities`, ensuring that the entities are valid.
+    pub fn from_concrete(
+        entities: Entities,
+        schema: &ValidatorSchema,
+    ) -> std::result::Result<Self, EntitiesError> {
+        let entities_map = entities
+            .into_iter()
+            .map(|e| e.try_into().map(|e: PartialEntity| (e.uid.clone(), e)))
+            .try_collect()?;
+        Self::from_entities_map(entities_map, schema)
     }
 
     /// Construct `PartialEntities` from an iterator
@@ -527,14 +547,7 @@ impl PartialEntities {
                 }
             }
         }
-        for e in entities.values() {
-            e.validate(schema)?;
-        }
-        validate_ancestors(&entities)?;
-        let mut entities = Self { entities };
-        entities.compute_tc()?;
-        entities.insert_actions(schema);
-        Ok(entities)
+        Self::from_entities_map(entities, schema)
     }
 
     /// Add a partial entity without checking if it conforms to the schema,
@@ -587,7 +600,8 @@ impl PartialEntities {
         Ok(())
     }
 
-    /// Like `from_entities` but do not perform any validation and tc computation
+    /// Like `from_entities` but do not perform any validation and tc
+    /// computation. Callers must ensure these invariants are maintained.
     pub fn from_entities_unchecked(
         entities: impl Iterator<Item = (EntityUID, PartialEntity)>,
     ) -> Self {

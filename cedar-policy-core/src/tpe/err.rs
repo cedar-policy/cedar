@@ -23,7 +23,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::{
-    ast::{Eid, EntityType, EntityUID},
+    ast::{Eid, EntityType, EntityUID, PartialValueToValueError},
     entities::{
         conformance::err::{EntitySchemaConformanceError, InvalidEnumEntityError},
         err::Duplicate,
@@ -254,6 +254,9 @@ pub enum EntitiesError {
     /// different entities with the same Entity UID
     #[error(transparent)]
     Duplicate(#[from] Duplicate),
+    /// Errors encountered when converting `PartialValue` to `Value`
+    #[error(transparent)]
+    PartialValueToValue(#[from] PartialValueToValueError),
 }
 
 /// Error thrown when checking the consistency between [`PartialEntities`] and
