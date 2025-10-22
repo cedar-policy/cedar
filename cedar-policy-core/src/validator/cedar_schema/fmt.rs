@@ -328,7 +328,11 @@ impl<N: Display> IndentedDisplay for json_schema::ActionType<N> {
                     if spec.context.0.is_empty_record() {
                         write!(f, ",\n{member_indent}context: {{}}")?;
                     } else {
-                        write!(f, ",\n{member_indent}context: {}", Indented(&spec.context.0, &member_indent))?;
+                        write!(
+                            f,
+                            ",\n{member_indent}context: {}",
+                            Indented(&spec.context.0, &member_indent)
+                        )?;
                     }
 
                     write!(f, "\n{base_indentation}}}")?;
