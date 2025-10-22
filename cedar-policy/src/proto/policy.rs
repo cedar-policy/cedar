@@ -143,7 +143,7 @@ impl From<&models::TemplateBody> for ast::TemplateBody {
                     .as_ref()
                     .expect("resource_constraint field should exist"),
             ),
-            v.non_scope_constraints.as_ref().map(|e| ast::Expr::from(e)),
+            v.non_scope_constraints.as_ref().map(ast::Expr::from),
         )
     }
 }
@@ -166,7 +166,7 @@ impl From<&ast::TemplateBody> for models::TemplateBody {
             resource_constraint: Some(models::PrincipalOrResourceConstraint::from(
                 v.resource_constraint(),
             )),
-            non_scope_constraints: v.non_scope_constraints().map(|e| models::Expr::from(e)),
+            non_scope_constraints: v.non_scope_constraints().map(models::Expr::from),
         }
     }
 }
