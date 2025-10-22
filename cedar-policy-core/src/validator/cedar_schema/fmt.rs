@@ -325,7 +325,15 @@ impl<N: Display> IndentedDisplay for json_schema::ActionType<N> {
                     fmt_non_empty_slice(f, ps)?;
                     write!(f, ",\n{member_indent}resource: ")?;
                     fmt_non_empty_slice(f, rs)?;
-                    write!(f, ",\n{member_indent}context: {}", &spec.context.0)?;
+                    if spec.context.0.is_empty_record() {
+                        write!(f, ",\n{member_indent}context: {{}}")?;
+                    } else {
+                        write!(
+                            f,
+                            ",\n{member_indent}context: {}",
+                            Indented(&spec.context.0, &member_indent)
+                        )?;
+                    }
 
                     write!(f, "\n{base_indentation}}}")?;
                 }
@@ -475,6 +483,30 @@ namespace TinyTodo {
         principal: [User],
         resource: [List]
     };
+}"#;
+        test_round_trip(src);
+    }
+
+    #[test]
+    fn action_with_context() {
+        let src = r#"namespace example {
+  entity User {
+    "name": String,
+  };
+
+  entity Server {
+    "allowlist": Set<ipaddr>
+  };
+
+  action Connect appliesTo {
+    principal: [User],
+    resource: [Server],
+    context: {
+      "session": {
+        "origin": ipaddr,
+      }
+    }
+  };
 }"#;
         test_round_trip(src);
     }
