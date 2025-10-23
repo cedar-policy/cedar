@@ -670,6 +670,7 @@ mod test {
         parser,
     };
 
+    use similar_asserts::assert_eq;
     use std::collections::HashMap;
 
     #[test]
@@ -874,7 +875,7 @@ mod test {
                     assert_eq!(Policy::from(p2), new_p2.clone());
                 }
                 if let Some(new_p3) = pset1.get(new_pid1) {
-                    assert_eq!(Policy::from(p3), new_p3.clone());
+                    assert_eq!(Policy::from(p3).new_id(new_pid1.clone()), new_p3.clone());
                 }
                 if let Some(new_p4) = pset1.get(&pid2) {
                     assert_eq!(Policy::from(p4), new_p4.clone());
