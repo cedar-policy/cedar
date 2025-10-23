@@ -182,6 +182,8 @@ impl<'a> Response<'a> {
 
     /// Get policy ids of satisified permit residual policies
     pub fn satisfied_permits(&self) -> impl Iterator<Item = &Policy> {
+        // PANIC SAFETY: we know that the policy ids are in the residuals map
+        #[allow(clippy::unwrap_used)]
         self.satisfied_permits
             .iter()
             .map(|id| self.residuals.get(id).unwrap().policy.as_ref())
@@ -189,6 +191,8 @@ impl<'a> Response<'a> {
 
     /// Get policy ids of satisified forbid residual policies
     pub fn satisfied_forbids(&self) -> impl Iterator<Item = &Policy> {
+        // PANIC SAFETY: we know that the policy ids are in the residuals map
+        #[allow(clippy::unwrap_used)]
         self.satisfied_forbids
             .iter()
             .map(|id| self.residuals.get(id).unwrap().policy.as_ref())
@@ -196,6 +200,8 @@ impl<'a> Response<'a> {
 
     /// Get policy ids of trivially false permit residual policies
     pub fn false_permits(&self) -> impl Iterator<Item = &Policy> {
+        // PANIC SAFETY: we know that the policy ids are in the residuals map
+        #[allow(clippy::unwrap_used)]
         self.false_permits
             .iter()
             .map(|id| self.residuals.get(id).unwrap().policy.as_ref())
@@ -203,6 +209,8 @@ impl<'a> Response<'a> {
 
     /// Get policy ids of trivially false forbid residual policies
     pub fn false_forbids(&self) -> impl Iterator<Item = &Policy> {
+        // PANIC SAFETY: we know that the policy ids are in the residuals map
+        #[allow(clippy::unwrap_used)]
         self.false_forbids
             .iter()
             .map(|id| self.residuals.get(id).unwrap().policy.as_ref())
@@ -210,6 +218,8 @@ impl<'a> Response<'a> {
 
     /// Get policy ids of non-trivial permit residual policies
     pub fn residual_permits(&self) -> impl Iterator<Item = &Policy> {
+        // PANIC SAFETY: we know that the policy ids are in the residuals map
+        #[allow(clippy::unwrap_used)]
         self.residual_permits
             .iter()
             .map(|id| self.residuals.get(id).unwrap().policy.as_ref())
@@ -217,6 +227,8 @@ impl<'a> Response<'a> {
 
     /// Get policy ids of non-trivial forbid residual policies
     pub fn residual_forbids(&self) -> impl Iterator<Item = &Policy> {
+        // PANIC SAFETY: we know that the policy ids are in the residuals map
+        #[allow(clippy::unwrap_used)]
         self.residual_forbids
             .iter()
             .map(|id| self.residuals.get(id).unwrap().policy.as_ref())
