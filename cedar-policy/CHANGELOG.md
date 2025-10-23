@@ -17,6 +17,9 @@ Cedar Language Version: TBD
 ### Fixed
 
 - Removed incorrect dependency of feature `partial-eval` of feature `tpe`. (#1898)
+- Fixed incomplete policy ID renaming by `PolicySet::merge`. Updated policy IDs were correctly reflected when getting a
+  policy with `PolicySet::policy` and `PolicySet::template`, but `Policy::id`, `Template::id`, and `Policy::template_id`
+  continued to return the original id.
 
 ## [4.7.0] - 2025-10-13
 

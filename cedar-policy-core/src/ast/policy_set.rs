@@ -343,12 +343,34 @@ impl PolicySet {
         // either there are no conflicting policy ids
         // or we should rename conflicting policy ids (using renaming) to avoid conflicting policy ids
         for (pid, other_template) in &other.templates {
-            let pid = renaming.get(pid).unwrap_or(pid);
-            self.templates.insert(pid.clone(), other_template.clone());
+            if let Some(new_pid) = renaming.get(pid) {
+                self.templates.insert(
+                    new_pid.clone(),
+                    Arc::new(other_template.new_id(new_pid.clone())),
+                );
+            } else {
+                self.templates.insert(pid.clone(), other_template.clone());
+            }
         }
         for (pid, other_policy) in &other.links {
-            let pid = renaming.get(pid).unwrap_or(pid);
-            self.links.insert(pid.clone(), other_policy.clone());
+            // First update this policy's id. We need to do this for static and linked policies.
+            let (new_pid, other_policy) = if let Some(new_pid) = renaming.get(pid) {
+                (new_pid.clone(), other_policy.new_id(new_pid.clone()))
+            } else {
+                (pid.clone(), other_policy.clone())
+            };
+            // Now update the id of the referenced template if this is a link.
+            // If it's static, then we updated this already by updating the
+            // policy's own id.
+            let other_policy = match renaming.get(other_policy.template().id()) {
+                // PANIC SAFETY: `if` confirms that `other_policy` is a template link
+                #[allow(clippy::unwrap_used)]
+                Some(new_tid) if !other_policy.is_static() => {
+                    other_policy.new_template_id(new_tid.clone()).unwrap()
+                }
+                _ => other_policy,
+            };
+            self.links.insert(new_pid, other_policy);
         }
         for (tid, other_template_link_set) in &other.template_to_links_map {
             let tid = renaming.get(tid).unwrap_or(tid);
