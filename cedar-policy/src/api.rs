@@ -5358,6 +5358,22 @@ mod tpe {
                 .map(Into::into)
                 .map_err(Into::into)
         }
+
+        /// Return an iterator of residual policies
+        pub fn residual_policies(&self) -> impl Iterator<Item = Policy> + '_ {
+            self.0
+                .residual_policies()
+                .into_iter()
+                .map(|p| p.clone().into())
+        }
+
+        /// Returns an iterator of non-trivial (meaning more than just `true` or `false`) residual policies
+        pub fn nontrivial_residual_policies(&'_ self) -> impl Iterator<Item = Policy> + '_ {
+            self.0
+                .residual_permits()
+                .chain(self.0.residual_forbids())
+                .map(|p| p.clone().into())
+        }
     }
 
     /// Entity loader trait for batched evaluation.
@@ -5487,7 +5503,7 @@ mod tpe {
                     .0
                     .residual_policies()
                     .into_iter()
-                    .map(Policy::from_ast),
+                    .map(|p| p.clone().into()),
             )
             .unwrap();
             // PANIC SAFETY: request construction should succeed because each entity passes validation
@@ -5547,7 +5563,7 @@ mod tpe {
                     .0
                     .residual_policies()
                     .into_iter()
-                    .map(Policy::from_ast),
+                    .map(|p| p.clone().into()),
             )
             .unwrap();
             // PANIC SAFETY: request construction should succeed because each entity passes validation

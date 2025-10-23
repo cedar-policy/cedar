@@ -8593,6 +8593,20 @@ unless
                 .tpe(&request, &partial_entities, &schema)
                 .expect("tpe should succeed");
 
+            assert_eq!(
+                response.residual_policies().count(),
+                policies.num_of_policies()
+            );
+            assert_eq!(
+                response
+                    .nontrivial_residual_policies()
+                    .next()
+                    .unwrap()
+                    .annotation("id")
+                    .unwrap(),
+                "subscriber-content-access/movie"
+            );
+
             assert_eq!(response.decision(), None);
 
             let request = Request::new(
@@ -9284,6 +9298,7 @@ when { principal in resource.admins };
         }
 
         #[test]
+        #[cfg(feature = "partial-eval")]
         fn test_batched_evaluation_error_partial_request() {
             let context_with_unknown = Context::from_pairs([(
                 "key".to_string(),
@@ -9366,6 +9381,7 @@ when { principal in resource.admins };
         }
 
         #[test]
+        #[cfg(feature = "partial-eval")]
         fn test_batched_evaluation_error_partial_entity() {
             // Create an entity loader that returns a partial entity (contains unknowns)
             struct PartialEntityLoader;
