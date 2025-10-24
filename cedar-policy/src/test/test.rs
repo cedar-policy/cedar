@@ -8276,9 +8276,10 @@ mod tpe_tests {
         use similar_asserts::assert_eq;
 
         use crate::{
-            ActionQueryRequest, Context, Entities, EntityId, EntityUid, PartialEntities,
-            PartialEntityUid, PartialRequest, PolicySet, PrincipalQueryRequest, Request,
-            ResourceQueryRequest, RestrictedExpression, Schema,
+            ActionConstraint, ActionQueryRequest, Context, Entities, EntityId, EntityUid,
+            PartialEntities, PartialEntityUid, PartialRequest, PolicySet, PrincipalConstraint,
+            PrincipalQueryRequest, Request, ResourceConstraint, ResourceQueryRequest,
+            RestrictedExpression, Schema,
         };
 
         #[track_caller]
@@ -8597,6 +8598,11 @@ unless
                 response.residual_policies().count(),
                 policies.num_of_policies()
             );
+            for p in response.residual_policies() {
+                assert_matches!(p.action_constraint(), ActionConstraint::Any);
+                assert_matches!(p.principal_constraint(), PrincipalConstraint::Any);
+                assert_matches!(p.resource_constraint(), ResourceConstraint::Any);
+            }
             assert_eq!(
                 response
                     .nontrivial_residual_policies()
