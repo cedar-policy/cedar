@@ -14,6 +14,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Fixed
+
+- Removed incorrect dependency of feature `partial-eval` of feature `tpe`. (#1898)
+
 ## [4.7.0] - 2025-10-13
 
 Cedar Language Version: 4.4
