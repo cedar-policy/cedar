@@ -18,8 +18,8 @@ use super::super::*;
 use itertools::Itertools;
 use proptest::prelude::*;
 use similar_asserts::assert_eq;
-use std::collections::hash_map::Entry;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// Production `PolicySet` along with simplified model of policy set
 /// for Proptesting
@@ -41,10 +41,10 @@ struct PolicySetModel {
     template_names: BTreeSet<String>,
 
     //Every existent template has a (possibly empty) vector of the links to that template
-    template_to_link_map: HashMap<String, Vec<String>>,
+    template_to_link_map: BTreeMap<String, Vec<String>>,
 
     //Every link points to its template
-    link_to_template_map: HashMap<String, String>,
+    link_to_template_map: BTreeMap<String, String>,
 }
 
 /// Model of a `PolicySet` where ops that shouldn't be allowed have no effect
@@ -56,8 +56,8 @@ impl PolicySetModel {
             static_policy_names: BTreeSet::new(),
             link_names: BTreeSet::new(),
             template_names: BTreeSet::new(),
-            template_to_link_map: HashMap::new(),
-            link_to_template_map: HashMap::new(),
+            template_to_link_map: BTreeMap::new(),
+            link_to_template_map: BTreeMap::new(),
         }
     }
 
@@ -271,32 +271,38 @@ impl PolicySetModel {
     /// Panics if `policy_set.policies`() or `policy_set.templates`() doesn't match the model's
     /// static policies, links or templates
     fn check_equiv(&self) {
-        let real_policy_set_links: Vec<_> = self
+        let real_static: BTreeSet<_> = self
             .policy_set
             .policies()
+            .filter(|p| p.is_static())
             .map(|p| p.id().to_string())
-            .sorted()
             .collect();
-        // A static policy (in the model) should be in the `PolicySet`'s ast.links and ast.templates,
-        // but is only returned by policy_set.policies().
-        let model_policy_set_links: Vec<_> = self
-            .static_policy_names
-            .iter()
-            .chain(&self.link_names)
-            .cloned()
-            .sorted()
-            .collect();
-        assert_eq!(real: real_policy_set_links, model: model_policy_set_links);
+        assert_eq!(real: real_static, model: self.static_policy_names);
 
-        let real_policy_set_templates: Vec<_> = self
+        let real_links: BTreeSet<_> = self
+            .policy_set
+            .policies()
+            .filter(|p| !p.is_static())
+            .map(|p| p.id().to_string())
+            .collect();
+        assert_eq!(real: real_links, model: self.link_names);
+
+        let real_link_to_template: BTreeMap<_, _> = self
+            .policy_set
+            .policies()
+            .filter_map(|p| {
+                p.template_id()
+                    .map(|tid| (p.id().to_string(), tid.to_string()))
+            })
+            .collect();
+        assert_eq!(real: real_link_to_template, model: self.link_to_template_map);
+
+        let real_policy_set_templates: BTreeSet<_> = self
             .policy_set
             .templates()
             .map(|p| p.id().to_string())
-            .sorted()
             .collect();
-        let model_policy_set_templates: Vec<_> =
-            self.template_names.iter().cloned().sorted().collect();
-        assert_eq!(real: real_policy_set_templates, model: model_policy_set_templates);
+        assert_eq!(real: real_policy_set_templates, model: self.template_names);
     }
 }
 
