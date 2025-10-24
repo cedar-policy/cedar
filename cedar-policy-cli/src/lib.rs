@@ -247,16 +247,16 @@ pub struct RequestArgs {
 pub struct TpeRequestArgs {
     /// Principal type of the request, e.g., User
     #[arg(long)]
-    pub principal_type: String,
+    pub principal_type: Option<String>,
     /// Optional principal eid
     #[arg(long)]
     pub principal_eid: Option<String>,
     /// Action for the request, e.g., Action::"view"
     #[arg(short, long)]
-    pub action: String,
+    pub action: Option<String>,
     /// Resource type of the request, e.g., File
     #[arg(long)]
-    pub resource_type: String,
+    pub resource_type: Option<String>,
     /// Optional resource eid
     #[arg(long)]
     pub resource_eid: Option<String>,
@@ -401,7 +401,7 @@ impl RequestArgs {
 #[cfg(feature = "tpe")]
 impl TpeRequestArgs {
     fn get_request(&self, schema: &Schema) -> Result<PartialRequest> {
-        let qjson: TpeRequestJSON = match self.context_json_file.as_ref() {
+        let qjson: TpeRequestJSON = match self.request_json_file.as_ref() {
             Some(jsonfile) => {
                 let jsonstring = std::fs::read_to_string(jsonfile)
                     .into_diagnostic()
@@ -411,10 +411,19 @@ impl TpeRequestArgs {
                     .wrap_err_with(|| format!("failed to parse context-json file {jsonfile}"))?
             }
             None => TpeRequestJSON {
-                principal_type: self.principal_type.clone(),
+                principal_type: self
+                    .principal_type
+                    .clone()
+                    .ok_or(miette!("principal type must be specified"))?,
                 principal_eid: self.principal_eid.clone(),
-                action: self.action.clone(),
-                resource_type: self.resource_type.clone(),
+                action: self
+                    .action
+                    .clone()
+                    .ok_or(miette!("action must be specified"))?,
+                resource_type: self
+                    .resource_type
+                    .clone()
+                    .ok_or(miette!("resource type must be specified"))?,
                 resource_eid: self.resource_eid.clone(),
                 context: self
                     .context_json_file
