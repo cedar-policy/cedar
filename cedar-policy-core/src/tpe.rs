@@ -128,7 +128,7 @@ mod tests {
         parser::parse_policyset,
     };
     use std::{
-        collections::{BTreeMap, HashMap, HashSet},
+        collections::{BTreeMap, HashSet},
         sync::Arc,
     };
 
@@ -233,8 +233,8 @@ action Delete appliesTo {
 
     fn rfc_entities() -> PartialEntities {
         let uid = EntityUID::from_components("User".parse().unwrap(), Eid::new("Alice"), None);
-        PartialEntities {
-            entities: HashMap::from_iter([(
+        PartialEntities::from_entities_unchecked(
+            [(
                 uid.clone(),
                 PartialEntity {
                     uid,
@@ -242,8 +242,9 @@ action Delete appliesTo {
                     ancestors: Some(HashSet::new()),
                     tags: None,
                 },
-            )]),
-        }
+            )]
+            .into_iter(),
+        )
     }
     #[test]
     fn rfc_example() {
