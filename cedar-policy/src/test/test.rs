@@ -8587,11 +8587,25 @@ unless
             )
             .unwrap();
             let policies = policy_set();
-            let partial_entities = PartialEntities::from_concrete(entities()).unwrap();
+            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
 
             let response = policies
                 .tpe(&request, &partial_entities, &schema)
                 .expect("tpe should succeed");
+
+            assert_eq!(
+                response.residual_policies().count(),
+                policies.num_of_policies()
+            );
+            assert_eq!(
+                response
+                    .nontrivial_residual_policies()
+                    .next()
+                    .unwrap()
+                    .annotation("id")
+                    .unwrap(),
+                "subscriber-content-access/movie"
+            );
 
             assert_eq!(response.decision(), None);
 
@@ -8760,7 +8774,7 @@ unless
             let mut actions: Vec<_> = policies
                 .query_action(
                     &request,
-                    &PartialEntities::from_concrete(entities()).unwrap(),
+                    &PartialEntities::from_concrete(entities(), &schema).unwrap(),
                 )
                 .unwrap()
                 .collect();
@@ -8793,7 +8807,7 @@ unless
             let actions: Vec<_> = policies
                 .query_action(
                     &request,
-                    &PartialEntities::from_concrete(entities()).unwrap(),
+                    &PartialEntities::from_concrete(entities(), &schema).unwrap(),
                 )
                 .unwrap()
                 .collect();
@@ -8821,7 +8835,7 @@ unless
             let actions: Vec<_> = policies
                 .query_action(
                     &request,
-                    &PartialEntities::from_concrete(entities()).unwrap(),
+                    &PartialEntities::from_concrete(entities(), &schema).unwrap(),
                 )
                 .unwrap()
                 .collect();
@@ -9169,7 +9183,7 @@ when { principal in resource.admins };
             let mut actions: Vec<_> = policies
                 .query_action(
                     &request,
-                    &PartialEntities::from_concrete(entities()).unwrap(),
+                    &PartialEntities::from_concrete(entities(), &schema).unwrap(),
                 )
                 .unwrap()
                 .collect();
@@ -9284,6 +9298,7 @@ when { principal in resource.admins };
         }
 
         #[test]
+        #[cfg(feature = "partial-eval")]
         fn test_batched_evaluation_error_partial_request() {
             let context_with_unknown = Context::from_pairs([(
                 "key".to_string(),
@@ -9366,6 +9381,7 @@ when { principal in resource.admins };
         }
 
         #[test]
+        #[cfg(feature = "partial-eval")]
         fn test_batched_evaluation_error_partial_entity() {
             // Create an entity loader that returns a partial entity (contains unknowns)
             struct PartialEntityLoader;
@@ -9472,7 +9488,7 @@ when { principal in resource.admins };
         #[test]
         fn trivial_permit_tpe() {
             let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities()).unwrap();
+            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
             let req = PartialRequest::new(
                 PartialEntityUid::new("P".parse().unwrap(), None),
                 r#"Action::"A""#.parse().unwrap(),
@@ -9533,7 +9549,7 @@ when { principal in resource.admins };
         #[test]
         fn trivial_forbid_tpe() {
             let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities()).unwrap();
+            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
             let req = PartialRequest::new(
                 PartialEntityUid::new("P".parse().unwrap(), None),
                 r#"Action::"A""#.parse().unwrap(),
@@ -9594,7 +9610,7 @@ when { principal in resource.admins };
         #[test]
         fn error_tpe() {
             let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities()).unwrap();
+            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
             let req = PartialRequest::new(
                 PartialEntityUid::new("P".parse().unwrap(), None),
                 r#"Action::"A""#.parse().unwrap(),
@@ -9664,7 +9680,7 @@ when { principal in resource.admins };
         #[test]
         fn empty_tpe() {
             let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities()).unwrap();
+            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
             let req = PartialRequest::new(
                 PartialEntityUid::new("P".parse().unwrap(), None),
                 r#"Action::"A""#.parse().unwrap(),

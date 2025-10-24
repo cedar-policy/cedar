@@ -128,7 +128,7 @@ mod tests {
         parser::parse_policyset,
     };
     use std::{
-        collections::{BTreeMap, HashMap, HashSet},
+        collections::{BTreeMap, HashSet},
         sync::Arc,
     };
 
@@ -233,8 +233,8 @@ action Delete appliesTo {
 
     fn rfc_entities() -> PartialEntities {
         let uid = EntityUID::from_components("User".parse().unwrap(), Eid::new("Alice"), None);
-        PartialEntities {
-            entities: HashMap::from_iter([(
+        PartialEntities::from_entities_unchecked(
+            [(
                 uid.clone(),
                 PartialEntity {
                     uid,
@@ -242,8 +242,9 @@ action Delete appliesTo {
                     ancestors: Some(HashSet::new()),
                     tags: None,
                 },
-            )]),
-        }
+            )]
+            .into_iter(),
+        )
     }
     #[test]
     fn rfc_example() {
@@ -469,21 +470,25 @@ when { principal in resource.editors };
             .static_policies()
             .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "3"))
             .unwrap();
-        let false_permits: HashSet<&PolicyID> = residuals.false_permits().collect();
+        let false_permits: HashSet<&PolicyID> = residuals.false_permits().map(|p| p.id()).collect();
         assert!(false_permits.len() == 2);
         assert!(false_permits.contains(policy0.id()));
         assert!(false_permits.contains(policy3.id()));
-        let false_forbids: HashSet<&PolicyID> = residuals.false_forbids().collect();
+        let false_forbids: HashSet<&PolicyID> = residuals.false_forbids().map(|p| p.id()).collect();
         assert!(false_forbids.is_empty());
-        let true_permits: HashSet<&PolicyID> = residuals.satisfied_permits().collect();
+        let true_permits: HashSet<&PolicyID> =
+            residuals.satisfied_permits().map(|p| p.id()).collect();
         assert!(true_permits.is_empty());
-        let true_forbids: HashSet<&PolicyID> = residuals.satisfied_forbids().collect();
+        let true_forbids: HashSet<&PolicyID> =
+            residuals.satisfied_forbids().map(|p| p.id()).collect();
         assert!(true_forbids.is_empty());
-        let non_trivial_permits: HashSet<&PolicyID> = residuals.residual_permits().collect();
+        let non_trivial_permits: HashSet<&PolicyID> =
+            residuals.residual_permits().map(|p| p.id()).collect();
         assert!(non_trivial_permits.len() == 2);
         assert!(non_trivial_permits.contains(policy1.id()));
         assert!(non_trivial_permits.contains(policy2.id()));
-        let non_trivial_forbids: HashSet<&PolicyID> = residuals.residual_forbids().collect();
+        let non_trivial_forbids: HashSet<&PolicyID> =
+            residuals.residual_forbids().map(|p| p.id()).collect();
         assert!(non_trivial_forbids.is_empty());
         assert_matches!(residuals.decision(), None);
         // (resource["owner"]) == User::"aaron"

@@ -122,7 +122,7 @@ pub fn is_authorized_batched(
         let mut to_load = HashSet::new();
         // filter to_load for already loaded entities
         for uid in ids {
-            if !entities.entities.contains_key(&uid) {
+            if !entities.contains_entity(&uid) {
                 to_load.insert(uid);
             }
         }
