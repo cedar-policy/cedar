@@ -1425,6 +1425,7 @@ fn test_tpe() {
     let entities: &str = "sample-data/tpe_rfc/entities.json";
     let schema: &str = "sample-data/tpe_rfc/schema.cedarschema";
     let request_json_file: &str = "sample-data/tpe_rfc/request.json";
+    let context_file: &str = "sample-data/tpe_rfc/context.json";
 
     assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
@@ -1445,6 +1446,28 @@ fn test_tpe() {
         .arg(schema)
         .assert()
         .code(0);
+
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"Delete""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(policies)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .arg("--context")
+        .arg(context_file)
+        .assert()
+        .code(2);
 
     assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
