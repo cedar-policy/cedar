@@ -40,7 +40,7 @@ pub struct UnexpectedActionError {
     pub(super) action: EntityUID,
 }
 
-/// Error thrown when deserializing a [`PartialEntity`]
+/// Error thrown when deserializing a [`crate::tpe::entities::PartialEntity`]
 #[derive(Debug, Error)]
 pub enum JsonDeserializationError {
     /// Error thrown when deserializing concrete components
@@ -55,7 +55,7 @@ pub enum JsonDeserializationError {
     RestrictedExprEvaluation(#[from] EvaluationError),
 }
 
-/// Error thrown when validating a [`PartialEntity`]
+/// Error thrown when validating a [`crate::tpe::entities::PartialEntity`]
 #[derive(Debug, Error)]
 pub enum EntityValidationError {
     /// Error thrown when validating concrete components
@@ -164,7 +164,7 @@ pub struct NoMatchingReqEnvError;
 #[error("Found a non-static policy")]
 pub struct NonstaticPolicyError;
 
-/// Error thrown when using a [`RequestBuilder`]
+/// Error thrown when using a [`crate::tpe::request::RequestBuilder`]
 #[derive(Debug, Error)]
 pub enum RequestBuilderError {
     /// Error thrown when the request cannot be validated
@@ -235,16 +235,16 @@ pub struct IncorrectResourceEntityTypeError {
     pub(super) expected: EntityType,
 }
 
-/// Error thrown when constructing [`PartialEntities`]
+/// Error thrown when constructing [`crate::tpe::entities::PartialEntities`]
 #[derive(Debug, Error)]
 pub enum EntitiesError {
     /// Error thrown when validating concrete components
     #[error(transparent)]
     Deserialization(#[from] JsonDeserializationError),
-    /// Error thrown when validating a [`PartialEntity`]
+    /// Error thrown when validating a [`crate::tpe::entities::PartialEntity`]
     #[error(transparent)]
     Validation(#[from] EntityValidationError),
-    /// Error thrown when validating the ancestors of a [`PartialEntity`]
+    /// Error thrown when validating the ancestors of a [`crate::tpe::entities::PartialEntity`]
     #[error(transparent)]
     AncestorValidation(#[from] AncestorValidationError),
     /// Error thrown when computing TC
@@ -259,8 +259,8 @@ pub enum EntitiesError {
     PartialValueToValue(#[from] PartialValueToValueError),
 }
 
-/// Error thrown when checking the consistency between [`PartialEntities`] and
-/// [`Entities`]
+/// Error thrown when checking the consistency between [`crate::tpe::entities::PartialEntities`] and
+/// [`crate::entities::Entities`]
 #[derive(Debug, Error)]
 pub enum EntitiesConsistencyError {
     /// Error thrown when there is an entity missing in the concrete entities
@@ -275,8 +275,8 @@ pub enum EntitiesConsistencyError {
     InconsistentEntity(#[from] EntityConsistencyError),
 }
 
-/// Error thrown when checking the consistency between [`PartialEntity`] and
-/// [`Entity`]
+/// Error thrown when checking the consistency between [`crate::tpe::entities::PartialEntity`] and
+/// [`crate::ast::Entity`]
 #[derive(Debug, Error)]
 pub enum EntityConsistencyError {
     /// Error thrown when the concrete entity contains unknown attribute
@@ -374,7 +374,7 @@ impl Display for MissingEntitiesError {
     }
 }
 
-/// Error thrown when a [`PartialRequest`] is consistent with a [`Request`]
+/// Error thrown when a [`crate::tpe::request::PartialRequest`] is consistent with a [`crate::ast::Request`]
 #[derive(Debug, Error)]
 pub enum RequestConsistencyError {
     /// Error thrown when the concrete principal is unknown

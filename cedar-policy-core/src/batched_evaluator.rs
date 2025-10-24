@@ -83,7 +83,7 @@ fn concrete_request_to_partial(
 }
 
 /// Perform authorization using loader function instead
-/// of an [`Entities`] store.
+/// of an [`crate::entities::Entities`] store.
 pub fn is_authorized_batched(
     request: &Request,
     ps: &PolicySet,
