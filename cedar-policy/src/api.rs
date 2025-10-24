@@ -5358,18 +5358,29 @@ mod tpe {
                 .map_err(Into::into)
         }
 
-        /// Return residual policies for each policy in the input policy set
+        /// Return residuals as [`Policy`]s
+        /// A [`Policy`] returned inherits [`crate::PolicyId`] and annotations from
+        /// the corresponding input policy
+        /// Its scope is unconstrained and its condition is in the form of a
+        /// single `when` clause with the residual as the expression
         /// Use [`TpeResponse::nontrivial_residual_policies`] to get non-trivial residual policies
         pub fn residual_policies(&self) -> impl Iterator<Item = Policy> + '_ {
-            self.0.residual_policies().map(|p| p.clone().into())
+            self.0
+                .residual_policies()
+                .map(|p| Policy::from_ast(p.clone().into()))
         }
 
-        /// Returns an iterator of non-trivial (meaning more than just `true` or `false`) residual policies
+        /// Returns an iterator of non-trivial (meaning more than just `true`
+        /// or `false`) residuals as [`Policy`]s
+        /// A [`Policy`] returned inherits [`crate::PolicyId`] and annotations from
+        /// the corresponding input policy
+        /// Its scope is unconstrained and its condition is in the form of a
+        /// single `when` clause with the residual as the expression
         pub fn nontrivial_residual_policies(&'_ self) -> impl Iterator<Item = Policy> + '_ {
             self.0
                 .residual_permits()
                 .chain(self.0.residual_forbids())
-                .map(|p| p.clone().into())
+                .map(|p| Policy::from_ast(p.clone().into()))
         }
     }
 
@@ -5493,7 +5504,7 @@ mod tpe {
                     .0
                     .residual_policies()
                     .into_iter()
-                    .map(|p| p.clone().into()),
+                    .map(|p| Policy::from_ast(p.clone().into())),
             )
             .unwrap();
             // PANIC SAFETY: request construction should succeed because each entity passes validation
@@ -5546,7 +5557,7 @@ mod tpe {
                     .0
                     .residual_policies()
                     .into_iter()
-                    .map(|p| p.clone().into()),
+                    .map(|p| Policy::from_ast(p.clone().into())),
             )
             .unwrap();
             // PANIC SAFETY: request construction should succeed because each entity passes validation
