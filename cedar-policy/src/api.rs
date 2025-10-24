@@ -399,6 +399,7 @@ impl Entities {
     /// ```
     /// # use cedar_policy::Entities;
     /// let entities = Entities::empty();
+    /// # assert!(entities.is_empty());
     /// ```
     pub fn empty() -> Self {
         Self(cedar_policy_core::entities::Entities::new())
@@ -2569,36 +2570,6 @@ impl PolicySet {
         Ok(set)
     }
 
-    /// Helper function for `merge_policyset`
-    /// Merges two sets and avoids name clashes by using the provided
-    /// renaming. The type parameter `T` allows this code to be used for
-    /// both Templates and Policies.
-    fn merge_sets<T>(
-        this: &mut LinkedHashMap<PolicyId, T>,
-        other: &LinkedHashMap<PolicyId, T>,
-        renaming: &HashMap<PolicyId, PolicyId>,
-    ) where
-        T: PartialEq + Clone,
-    {
-        for (pid, ot) in other {
-            match renaming.get(pid) {
-                Some(new_pid) => {
-                    this.insert(new_pid.clone(), ot.clone());
-                }
-                None => {
-                    if this.get(pid).is_none() {
-                        this.insert(pid.clone(), ot.clone());
-                    }
-                    // If pid is not in the renaming but is in both
-                    // this and other, then by assumption
-                    // the element at pid in this and other are equal
-                    // i.e., the renaming is expected to track all
-                    // conflicting pids.
-                }
-            }
-        }
-    }
-
     /// Merges this `PolicySet` with another `PolicySet`.
     /// This `PolicySet` is modified while the other `PolicySet`
     /// remains unchanged.
@@ -2624,8 +2595,34 @@ impl PolicySet {
                     .into_iter()
                     .map(|(old_pid, new_pid)| (PolicyId::new(old_pid), PolicyId::new(new_pid)))
                     .collect();
-                Self::merge_sets(&mut self.templates, &other.templates, &renaming);
-                Self::merge_sets(&mut self.policies, &other.policies, &renaming);
+
+                for (pid, op) in &other.policies {
+                    let pid = renaming.get(pid).unwrap_or(pid);
+                    if !self.policies.contains_key(pid) {
+                        // PANIC SAFETY: `pid` is the new id of a policy from `other`, so it will be in `self` after merging.
+                        #[allow(clippy::unwrap_used)]
+                        let new_p = Policy {
+                            // Use the representation from `self.ast` so that we get a version with internal references to
+                            // policy ids updated to account for the renaming.
+                            ast: self.ast.get(pid.as_ref()).unwrap().clone(),
+                            lossless: op.lossless.clone(),
+                        };
+                        self.policies.insert(pid.clone(), new_p);
+                    }
+                }
+                for (pid, ot) in &other.templates {
+                    let pid = renaming.get(pid).unwrap_or(pid);
+                    if !self.templates.contains_key(pid) {
+                        // PANIC SAFETY: `pid` is the new id of a template from `other`, so it will be in `self` after merging.
+                        #[allow(clippy::unwrap_used)]
+                        let new_t = Template {
+                            ast: self.ast.get_template(pid.as_ref()).unwrap().clone(),
+                            lossless: ot.lossless.clone(),
+                        };
+                        self.templates.insert(pid.clone(), new_t);
+                    }
+                }
+
                 Ok(renaming)
             }
             Err(ast::PolicySetError::Occupied { id }) => Err(PolicySetError::AlreadyDefined(
@@ -4552,6 +4549,7 @@ impl Context {
     /// ```
     /// # use cedar_policy::Context;
     /// let context = Context::empty();
+    /// # assert_eq!(context.into_iter().next(), None);
     /// ```
     pub fn empty() -> Self {
         Self(ast::Context::empty())
