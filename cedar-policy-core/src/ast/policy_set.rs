@@ -274,6 +274,17 @@ impl PolicySet {
         self.templates.contains_key(pid) || self.links.contains_key(pid)
     }
 
+    /// Get a `PolicyId` that is unoccupied in `self` and `other`.
+    fn get_fresh_id(&self, other: &Self, start_ind: &mut u32) -> PolicyID {
+        let mut new_pid = PolicyID::from_smolstr(format_smolstr!("policy{}", start_ind));
+        *start_ind += 1;
+        while self.policy_id_is_bound(&new_pid) || other.policy_id_is_bound(&new_pid) {
+            new_pid = PolicyID::from_smolstr(format_smolstr!("policy{}", start_ind));
+            *start_ind += 1;
+        }
+        new_pid
+    }
+
     /// Helper function for `merge_policyset` to construct a renaming
     /// that would resolve any conflicting `PolicyID`s. We use the type parameter `T`
     /// to allow this code to be applied to both Templates and Policies.
@@ -289,14 +300,8 @@ impl PolicySet {
     {
         for (pid, ot) in other_contents {
             if let Some(tt) = this_contents.get(pid) {
-                if tt != ot {
-                    let mut new_pid =
-                        PolicyID::from_smolstr(format_smolstr!("policy{}", start_ind));
-                    *start_ind += 1;
-                    while self.policy_id_is_bound(&new_pid) || other.policy_id_is_bound(&new_pid) {
-                        new_pid = PolicyID::from_smolstr(format_smolstr!("policy{}", start_ind));
-                        *start_ind += 1;
-                    }
+                if tt != ot && !renaming.contains_key(pid) {
+                    let new_pid = self.get_fresh_id(other, start_ind);
                     renaming.insert(pid.clone(), new_pid);
                 }
             }
@@ -334,7 +339,24 @@ impl PolicySet {
             &mut min_id,
         );
         self.update_renaming(&self.links, other, &other.links, &mut renaming, &mut min_id);
-        // If `rename_dupilicates` is false, then throw an error if any renaming should happen
+        // We also need to check for any non-static template that collide with a link.
+        // A static template is expected to collide with the single link for that static policy.
+        for (pid, template) in &other.templates {
+            if !template.is_static() && self.get(pid).is_some() && !renaming.contains_key(pid) {
+                let new_pid = self.get_fresh_id(other, &mut min_id);
+                renaming.insert(pid.clone(), new_pid);
+            }
+        }
+        // Similarly for non-static links colliding with templates
+        for (pid, link) in &other.links {
+            if !link.is_static() && self.get_template(pid).is_some() && !renaming.contains_key(pid)
+            {
+                let new_pid = self.get_fresh_id(other, &mut min_id);
+                renaming.insert(pid.clone(), new_pid);
+            }
+        }
+
+        // If `rename_duplicates` is false, then throw an error if any renaming should happen
         if !rename_duplicates {
             if let Some(pid) = renaming.keys().next() {
                 return Err(PolicySetError::Occupied { id: pid.clone() });

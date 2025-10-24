@@ -15,9 +15,11 @@
  */
 
 use super::super::*;
+use itertools::Itertools;
 use proptest::prelude::*;
+use similar_asserts::assert_eq;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 /// Production `PolicySet` along with simplified model of policy set
 /// for Proptesting
@@ -34,9 +36,9 @@ struct PolicySetModel {
     policy_set: PolicySet,
 
     // The model
-    static_policy_names: Vec<String>,
-    link_names: Vec<String>,
-    template_names: Vec<String>,
+    static_policy_names: BTreeSet<String>,
+    link_names: BTreeSet<String>,
+    template_names: BTreeSet<String>,
 
     //Every existent template has a (possibly empty) vector of the links to that template
     template_to_link_map: HashMap<String, Vec<String>>,
@@ -51,9 +53,9 @@ impl PolicySetModel {
     fn new() -> Self {
         Self {
             policy_set: PolicySet::new(),
-            static_policy_names: Vec::new(),
-            link_names: Vec::new(),
-            template_names: Vec::new(),
+            static_policy_names: BTreeSet::new(),
+            link_names: BTreeSet::new(),
+            template_names: BTreeSet::new(),
             template_to_link_map: HashMap::new(),
             link_to_template_map: HashMap::new(),
         }
@@ -61,34 +63,56 @@ impl PolicySetModel {
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_name_unique(&self, policy_id: &str) {
-        assert!(!self.static_policy_names.iter().any(|p| p == policy_id));
-        assert!(!self.link_names.iter().any(|p| p == policy_id));
-        assert!(!self.template_names.iter().any(|p| p == policy_id));
+        assert!(
+            self.is_name_unique(policy_id),
+            "expected that {policy_id} would be unique\nstatic: {:?}\nlinks: {:?}\ntemplate: {:?}",
+            self.static_policy_names,
+            self.link_names,
+            self.template_names
+        );
     }
 
-    fn add_static(&mut self, policy_name: &str) {
-        let policy_str = "permit(principal, action, resource);";
+    fn is_name_unique(&self, policy_id: &str) -> bool {
+        !self.static_policy_names.iter().any(|p| p == policy_id)
+            && !self.link_names.iter().any(|p| p == policy_id)
+            && !self.template_names.iter().any(|p| p == policy_id)
+    }
+
+    fn add_static(&mut self, policy_name: &str, variant: bool) {
+        let policy_str = if variant {
+            "permit(principal, action, resource);"
+        } else {
+            "forbid(principal, action, resource);"
+        };
         let p = Policy::parse(Some(PolicyId::new(policy_name)), policy_str).unwrap();
         if self.policy_set.add(p).is_ok() {
             self.assert_name_unique(policy_name);
-            self.static_policy_names.push(policy_name.to_owned());
+            self.static_policy_names.insert(policy_name.to_owned());
         }
     }
 
-    fn add_template(&mut self, template_name: &str) {
-        let template_str = "permit(principal == ?principal, action, resource);";
+    fn add_template(&mut self, template_name: &str, variant: bool) {
+        let template_str = if variant {
+            "permit(principal == ?principal, action, resource);"
+        } else {
+            "forbid(principal == ?principal, action, resource);"
+        };
         let template = Template::parse(Some(PolicyId::new(template_name)), template_str).unwrap();
         if self.policy_set.add_template(template).is_ok() {
             self.assert_name_unique(template_name);
-            self.template_names.push(template_name.to_owned());
+            self.template_names.insert(template_name.to_owned());
             self.template_to_link_map
                 .insert(template_name.to_owned(), Vec::new());
         }
     }
 
-    fn link(&mut self, policy_name: &str) {
+    fn link(&mut self, policy_name: &str, variant: bool) {
         if !self.template_names.is_empty() {
-            let euid = EntityUid::from_strs("User", "alice");
+            let euid = if variant {
+                EntityUid::from_strs("User", "alice")
+            } else {
+                EntityUid::from_strs("User", "bob")
+            };
             let template_name = self.template_names.last().unwrap();
             let vals = HashMap::from([(SlotId::principal(), euid)]);
             if self
@@ -101,7 +125,7 @@ impl PolicySetModel {
                 .is_ok()
             {
                 self.assert_name_unique(policy_name);
-                self.link_names.push(policy_name.to_owned());
+                self.link_names.insert(policy_name.to_owned());
                 match self.template_to_link_map.entry(template_name.clone()) {
                     Entry::Occupied(v) => v.into_mut().push(policy_name.to_owned()),
                     Entry::Vacant(_) => {
@@ -115,12 +139,10 @@ impl PolicySetModel {
         }
     }
 
-    fn remove_policy_name(names: &mut Vec<String>, policy_name: &str) {
-        let idx = names
-            .iter()
-            .position(|r| r == policy_name)
-            .unwrap_or_else(|| panic!("Should find policy_name {policy_name}"));
-        names.remove(idx);
+    #[track_caller]
+    fn remove_policy_name(names: &mut BTreeSet<String>, policy_name: &str) {
+        let removed = names.remove(policy_name);
+        assert!(removed, "Should find policy_name {policy_name}");
     }
 
     fn remove_static(&mut self, policy_id: &str) {
@@ -181,97 +203,167 @@ impl PolicySetModel {
         }
     }
 
+    #[track_caller]
+    fn get_renaming(
+        &self,
+        renaming: &HashMap<PolicyId, PolicyId>,
+        id: &str,
+        assert_unique: bool,
+    ) -> String {
+        if self.is_name_unique(id) {
+            assert!(
+                !renaming.contains_key(&PolicyId::new(id)),
+                "id shouldn't need to be renamed"
+            );
+            id.to_string()
+        } else {
+            if let Some(id) = renaming.get(&PolicyId::new(id)) {
+                if assert_unique {
+                    self.assert_name_unique(&id.to_string());
+                }
+                id.to_string()
+            } else {
+                // Policies aren't renamed if they're identical. The model
+                // doesn't track policy contents, so we have to assume that
+                // is fine.
+                id.to_string()
+            }
+        }
+    }
+
+    fn merge(&mut self, other: &Self) {
+        let renaming = self.policy_set.merge(&other.policy_set, true).unwrap();
+
+        for static_policy in &other.static_policy_names {
+            let static_policy = self.get_renaming(&renaming, static_policy, true);
+            self.static_policy_names.insert(static_policy);
+        }
+
+        for link in &other.link_names {
+            let link = self.get_renaming(&renaming, link, true);
+            self.link_names.insert(link);
+        }
+
+        for template in &other.template_names {
+            let template = self.get_renaming(&renaming, template, true);
+            self.template_names.insert(template);
+        }
+
+        for (template, links) in &other.template_to_link_map {
+            let links = links
+                .iter()
+                .map(|id| self.get_renaming(&renaming, id, false))
+                .collect_vec();
+            let template = self.get_renaming(&renaming, template, false);
+            self.template_to_link_map
+                .entry(template)
+                .or_default()
+                .extend_from_slice(&links)
+        }
+
+        for (link, template) in &other.link_to_template_map {
+            let link = self.get_renaming(&renaming, link, false);
+            let template = self.get_renaming(&renaming, template, false);
+            self.link_to_template_map.insert(link, template);
+        }
+    }
+
     /// Panics if `policy_set.policies`() or `policy_set.templates`() doesn't match the model's
     /// static policies, links or templates
     fn check_equiv(&self) {
-        let real_policy_set_links: Vec<_> = self.policy_set.policies().collect();
-        let real_policy_set_templates: Vec<_> = self.policy_set.templates().collect();
+        let real_policy_set_links: Vec<_> = self
+            .policy_set
+            .policies()
+            .map(|p| p.id().to_string())
+            .sorted()
+            .collect();
         // A static policy (in the model) should be in the `PolicySet`'s ast.links and ast.templates,
         // but is only returned by policy_set.policies().
-        for policy_name in &self.static_policy_names {
-            assert!(real_policy_set_links
-                .iter()
-                .any(|p| p.id() == &PolicyId::new(policy_name)));
-        }
-        for policy_name in &self.link_names {
-            assert!(real_policy_set_links
-                .iter()
-                .any(|p| p.id() == &PolicyId::new(policy_name)));
-        }
+        let model_policy_set_links: Vec<_> = self
+            .static_policy_names
+            .iter()
+            .chain(&self.link_names)
+            .cloned()
+            .sorted()
+            .collect();
+        assert_eq!(real: real_policy_set_links, model: model_policy_set_links);
 
-        for link_name in real_policy_set_links {
-            assert!(
-                self.static_policy_names
-                    .iter()
-                    .any(|p| link_name.id() == &PolicyId::new(p))
-                    || self
-                        .link_names
-                        .iter()
-                        .any(|p| link_name.id() == &PolicyId::new(p))
-            );
-        }
-
-        for template_name in &self.template_names {
-            assert!(real_policy_set_templates
-                .iter()
-                .any(|p| p.id() == &PolicyId::new(template_name)));
-        }
-        for template_name in real_policy_set_templates {
-            assert!(self
-                .template_names
-                .iter()
-                .any(|p| template_name.id() == &PolicyId::new(p)));
-        }
+        let real_policy_set_templates: Vec<_> = self
+            .policy_set
+            .templates()
+            .map(|p| p.id().to_string())
+            .sorted()
+            .collect();
+        let model_policy_set_templates: Vec<_> =
+            self.template_names.iter().cloned().sorted().collect();
+        assert_eq!(real: real_policy_set_templates, model: model_policy_set_templates);
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 enum PolicySetOp {
-    Add,
+    Add(bool),
     RemoveStatic,
-    AddTemplate,
+    AddTemplate(bool),
     RemoveTemplate,
-    Link,
+    Link(bool),
     Unlink,
+    Merge,
 }
+
+// String format is (op, policy_id, policy_set_id) where each
+// of op, policy_id, variant_selector, and policy_set_id is exactly one character.
+// * op must be in [0-9]. This defines the operation to perform
+// * policy_id must a base-10 digit ([0-9]).  This defines the policy id to create/delete/etc.
+// * policy_set_id is either 0 or 1. This decides which policy set to modify.
 fn string_to_policy_set_ops(s: &str) {
-    let mut my_policy_set = PolicySetModel::new();
     let n_to_op_map: HashMap<u32, PolicySetOp> = HashMap::from([
-        (0, PolicySetOp::Add),
-        (1, PolicySetOp::RemoveStatic),
-        (2, PolicySetOp::AddTemplate),
-        (3, PolicySetOp::RemoveTemplate),
-        (4, PolicySetOp::Link),
-        (5, PolicySetOp::Unlink),
+        (0, PolicySetOp::Add(true)),
+        (1, PolicySetOp::Add(false)),
+        (2, PolicySetOp::RemoveStatic),
+        (3, PolicySetOp::AddTemplate(true)),
+        (4, PolicySetOp::AddTemplate(false)),
+        (5, PolicySetOp::RemoveTemplate),
+        (6, PolicySetOp::Link(true)),
+        (7, PolicySetOp::Link(false)),
+        (8, PolicySetOp::Unlink),
+        (9, PolicySetOp::Merge),
     ]);
 
-    let mut ints: Vec<(u32, u32)> = Vec::new();
-    let mut last_int: Option<u32> = None;
-    for c in s.chars() {
-        c.to_digit(10).map_or_else(
-            || panic!("Should be able to convert to ints"),
-            |n| match last_int {
-                Some(i) => {
-                    ints.push((i, n));
-                    last_int = None;
-                }
-                None => last_int = Some(n),
-            },
-        );
-    }
+    let ops = s
+        .chars()
+        .map(|c| c.to_digit(10).expect("Should be able to convert to ints"))
+        .tuples()
+        .map(|(op_n, policy_n, policy_set_n)| {
+            let op = n_to_op_map
+                .get(&op_n)
+                .expect("Should be able to convert to op");
+            (*op, policy_n, policy_set_n)
+        });
 
-    for (op_n, policy_n) in ints {
-        assert!(op_n <= 5, "Testing harness sending numbers greater than 5");
-        let op = n_to_op_map.get(&op_n).unwrap();
+    let mut ps0 = PolicySetModel::new();
+    let mut ps1 = PolicySetModel::new();
+
+    for (op, policy_n, policy_set_n) in ops {
+        let (my_policy_set, other_policy_set) = match policy_set_n {
+            0 => (&mut ps0, &ps1),
+            1 => (&mut ps1, &ps0),
+            _ => panic!("policy set index out of range"),
+        };
         match op {
-            PolicySetOp::Add => my_policy_set.add_static(&format!("policy{policy_n}")),
+            PolicySetOp::Add(variant) => {
+                my_policy_set.add_static(&format!("policy{policy_n}"), variant)
+            }
             PolicySetOp::RemoveStatic => my_policy_set.remove_static(&format!("policy{policy_n}")),
-            PolicySetOp::AddTemplate => my_policy_set.add_template(&format!("policy{policy_n}")),
+            PolicySetOp::AddTemplate(variant) => {
+                my_policy_set.add_template(&format!("policy{policy_n}"), variant)
+            }
             PolicySetOp::RemoveTemplate => {
                 my_policy_set.remove_template(&format!("policy{policy_n}"));
             }
-            PolicySetOp::Link => my_policy_set.link(&format!("policy{policy_n}")),
+            PolicySetOp::Link(variant) => my_policy_set.link(&format!("policy{policy_n}"), variant),
             PolicySetOp::Unlink => my_policy_set.unlink(&format!("policy{policy_n}")),
+            PolicySetOp::Merge => my_policy_set.merge(other_policy_set),
         }
 
         my_policy_set.check_equiv();
@@ -280,7 +372,7 @@ fn string_to_policy_set_ops(s: &str) {
 
 proptest! {
     #[test]
-    fn doesnt_crash(s in "[0-5]{20}") {
+    fn doesnt_crash(s in "([0-9][0-9][01]){20}") {
         string_to_policy_set_ops(&s);
     }
 }
