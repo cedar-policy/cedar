@@ -1,0 +1,23 @@
+entity User;
+
+entity Document  = {
+  "isPublic": Bool,
+  "owner": User
+};
+
+action View appliesTo {
+  principal: [User],
+  resource: [Document],
+  context: {
+    "hasMFA": Bool,
+  }
+};
+
+action Delete appliesTo {
+  principal: [User],
+  resource: [Document],
+  context: {
+    "hasMFA": Bool,
+    "srcIP": ipaddr
+  }
+};

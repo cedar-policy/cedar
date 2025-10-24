@@ -1,0 +1,6 @@
+{
+    "principal_type": "User",
+    "principal_eid": "Alice",
+    "action": "Action::\"View\"",
+    "resource_type": "Document"
+}

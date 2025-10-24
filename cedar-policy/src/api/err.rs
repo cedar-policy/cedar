@@ -1327,7 +1327,7 @@ pub enum PartialRequestCreationError {
 #[cfg(feature = "tpe")]
 /// Errors that can be encountered when re-evaluating a partial response
 #[derive(Debug, Error)]
-pub enum TPEReauthorizationError {
+pub enum TpeReauthorizationError {
     /// `Request` cannot be validated
     #[error(transparent)]
     RequestValidation(#[from] RequestValidationError),
@@ -1343,7 +1343,7 @@ pub enum TPEReauthorizationError {
 }
 
 #[cfg(feature = "tpe")]
-impl From<tpe_err::ReauthorizationError> for TPEReauthorizationError {
+impl From<tpe_err::ReauthorizationError> for TpeReauthorizationError {
     fn from(value: tpe_err::ReauthorizationError) -> Self {
         match value {
             tpe_err::ReauthorizationError::EntitiesConsistentcy(e) => Self::InconsistentEntities(e),
@@ -1365,5 +1365,5 @@ pub enum PermissionQueryError {
     Entities(#[from] tpe_err::EntitiesError),
     /// When TPE fails
     #[error(transparent)]
-    TPE(#[from] tpe_err::TPEError),
+    TPE(#[from] tpe_err::TpeError),
 }

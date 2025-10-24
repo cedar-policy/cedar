@@ -27,7 +27,7 @@ use crate::authorizer::Decision;
 use crate::batched_evaluator::err::{BatchedEvalError, InsufficientIterationsError};
 use crate::entities::TCComputation;
 use crate::tpe::entities::PartialEntity;
-use crate::tpe::err::{PartialRequestError, TPEError};
+use crate::tpe::err::{PartialRequestError, TpeError};
 use crate::tpe::policy_expr_map;
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
 use crate::tpe::residual::Residual;
@@ -104,7 +104,7 @@ pub fn is_authorized_batched(
         .map(|(id, expr)| {
             let residual = initial_evaluator
                 .interpret_expr(&expr)
-                .map_err(TPEError::from)?;
+                .map_err(TpeError::from)?;
             // PANIC SAFETY: exprs and policy set contain the same policy ids
             #[allow(clippy::unwrap_used)]
             Ok(ResidualPolicy::new(
