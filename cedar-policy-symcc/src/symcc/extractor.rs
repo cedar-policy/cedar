@@ -118,7 +118,7 @@ impl Interpretation<'_> {
 }
 
 impl SymEnv {
-    /// Similar to [`SymEnv::concretize`], but it in addition
+    /// Similar to `SymEnv::concretize`, but it in addition
     /// repairs the interpretation to ensure that the entity hierarchy
     /// to remove entities outside the given footprint.
     ///

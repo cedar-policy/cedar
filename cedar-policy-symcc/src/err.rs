@@ -58,5 +58,5 @@ pub enum Error {
     ConcretizeError(#[from] ConcretizeError),
 }
 
-/// A result type that potentially returns a SymCC [`Error`].
+/// A result type that potentially returns a SymCC [`enum@Error`].
 pub type Result<T> = std::result::Result<T, Error>;

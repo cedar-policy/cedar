@@ -533,10 +533,6 @@ impl Entity {
     ///
     /// Unlike in `Entity::new()`, in this constructor, attributes and tags are
     /// expressed as `PartialValue`.
-    ///
-    /// Callers should consider directly using [`Entity::new_with_attr_partial_value_serialized_as_expr`]
-    /// if they would call this method by first building a map, as it will
-    /// deconstruct and re-build the map perhaps unnecessarily.
     pub fn new_with_attr_partial_value(
         uid: EntityUID,
         attrs: impl IntoIterator<Item = (SmolStr, PartialValue)>,
