@@ -5050,17 +5050,13 @@ mod tpe {
     use std::collections::{BTreeMap, HashMap, HashSet};
     use std::sync::Arc;
 
-    use cedar_policy_core::ast::{self, PartialValueToValueError, Value};
+    use cedar_policy_core::ast::{self, Value};
     use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::batched_evaluator::is_authorized_batched;
     use cedar_policy_core::batched_evaluator::{
         err::BatchedEvalError, EntityLoader as EntityLoaderInternal,
     };
     use cedar_policy_core::tpe;
-    use cedar_policy_core::{
-        entities::conformance::EntitySchemaConformanceChecker, extensions::Extensions,
-        validator::CoreSchema,
-    };
     use itertools::Itertools;
     use ref_cast::RefCast;
     use smol_str::SmolStr;
@@ -5318,9 +5314,12 @@ mod tpe {
             tpe::entities::PartialEntities::from_json_value(value, &schema.0).map(Self)
         }
 
-        /// Construct `[PartialEntities]` given a fully concrete `[Entities]`
-        pub fn from_concrete(entities: Entities) -> Result<Self, PartialValueToValueError> {
-            tpe::entities::PartialEntities::try_from(entities.0).map(Self)
+        /// Construct [`PartialEntities`] given a fully concrete [`Entities`]
+        pub fn from_concrete(
+            entities: Entities,
+            schema: &Schema,
+        ) -> Result<Self, tpe_err::EntitiesError> {
+            tpe::entities::PartialEntities::from_concrete(entities.0, &schema.0).map(Self)
         }
 
         /// Create a `PartialEntities` with no entities
@@ -5485,14 +5484,7 @@ mod tpe {
             entities: &Entities,
             schema: &Schema,
         ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
-            let partial_entities = PartialEntities(entities.clone().0.try_into()?);
-            let core_schema = CoreSchema::new(&schema.0);
-            let validator =
-                EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
-            // We need to type-check the entities
-            for entity in entities.0.iter() {
-                validator.validate_entity(entity)?;
-            }
+            let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
             // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
             #[allow(clippy::unwrap_used)]
@@ -5545,14 +5537,7 @@ mod tpe {
             entities: &Entities,
             schema: &Schema,
         ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
-            let partial_entities = PartialEntities(entities.clone().0.try_into()?);
-            let core_schema = CoreSchema::new(&schema.0);
-            let validator =
-                EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
-            // We need to type-check the entities
-            for entity in entities.0.iter() {
-                validator.validate_entity(entity)?;
-            }
+            let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
             // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
             #[allow(clippy::unwrap_used)]

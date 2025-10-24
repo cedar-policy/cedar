@@ -18,6 +18,11 @@ Cedar Language Version: TBD
 
 - Added `TpeResponse::residual_policies` and `TpeResponse::nontrivial_residual_policies` to get residual policies under experimental feature `tpe`. (#1906)
 
+### Changed
+
+- For the `tpe` experimental feature, `PartialEntities::from_concrete` now requires a `Schema` and will validate the entities,
+  ensuring that a `PartialEntities` object always meets the preconditions required for type aware partial evaluation.
+
 ### Fixed
 
 - Removed incorrect dependency of feature `partial-eval` of feature `tpe`. (#1898)

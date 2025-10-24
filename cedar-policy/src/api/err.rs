@@ -1360,13 +1360,10 @@ impl From<tpe_err::ReauthorizationError> for TPEReauthorizationError {
 /// Errors that can be encountered when performing a permission query
 #[derive(Debug, Error)]
 pub enum PermissionQueryError {
-    /// When entities contain unknowns
+    /// When concrete entities fail to validate or contain unknowns
     #[error(transparent)]
-    EntitiesContainUnknown(#[from] PartialValueToValueError),
+    Entities(#[from] tpe_err::EntitiesError),
     /// When TPE fails
     #[error(transparent)]
     TPE(#[from] tpe_err::TPEError),
-    /// When concrete entities fail validation
-    #[error(transparent)]
-    EntityValidation(#[from] EntitySchemaConformanceError),
 }

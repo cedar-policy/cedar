@@ -329,7 +329,7 @@ impl Evaluator<'_> {
                                             value: true.into(),
                                             ty,
                                         };
-                                    } else if let Some(entity) = self.entities.entities.get(uid1) {
+                                    } else if let Some(entity) = self.entities.get(uid1) {
                                         if let Some(ancestors) = &entity.ancestors {
                                             return Residual::Concrete {
                                                 value: ancestors.contains(uid2).into(),
@@ -350,9 +350,7 @@ impl Evaluator<'_> {
                                                     value: true.into(),
                                                     ty,
                                                 };
-                                            } else if let Some(entity) =
-                                                self.entities.entities.get(uid1)
-                                            {
+                                            } else if let Some(entity) = self.entities.get(uid1) {
                                                 if let Some(ancestors) = &entity.ancestors {
                                                     if ancestors.contains(uid2) {
                                                         return Residual::Concrete {
@@ -384,7 +382,7 @@ impl Evaluator<'_> {
                         BinaryOp::GetTag => {
                             if let Ok(uid) = v1.get_as_entity() {
                                 if let Ok(tag) = v2.get_as_string() {
-                                    if let Some(entity) = self.entities.entities.get(uid) {
+                                    if let Some(entity) = self.entities.get(uid) {
                                         if let Some(tags) = &entity.tags {
                                             if let Some(v) = tags.get(tag) {
                                                 Residual::Concrete {
@@ -410,7 +408,7 @@ impl Evaluator<'_> {
                         BinaryOp::HasTag => {
                             if let Ok(uid) = v1.get_as_entity() {
                                 if let Ok(tag) = v2.get_as_string() {
-                                    if let Some(entity) = self.entities.entities.get(uid) {
+                                    if let Some(entity) = self.entities.get(uid) {
                                         if let Some(tags) = &entity.tags {
                                             Residual::Concrete {
                                                 value: tags.contains_key(tag).into(),
@@ -514,7 +512,7 @@ impl Evaluator<'_> {
                             },
                         ..
                     } => {
-                        if let Some(entity) = self.entities.entities.get(uid.as_ref()) {
+                        if let Some(entity) = self.entities.get(uid.as_ref()) {
                             if let Some(attrs) = &entity.attrs {
                                 if let Some(val) = attrs.get(attr) {
                                     return Residual::Concrete {
@@ -567,7 +565,7 @@ impl Evaluator<'_> {
                             },
                         ..
                     } => {
-                        if let Some(entity) = self.entities.entities.get(uid.as_ref()) {
+                        if let Some(entity) = self.entities.get(uid.as_ref()) {
                             if let Some(attrs) = &entity.attrs {
                                 return Residual::Concrete {
                                     value: attrs.contains_key(attr).into(),
@@ -675,9 +673,9 @@ impl Evaluator<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashMap, HashSet};
+    use std::collections::{BTreeMap, HashSet};
 
-    use crate::validator::{types::Type, ValidatorSchema};
+    use crate::validator::types::Type;
     use crate::{
         ast::{
             BinaryOp, EntityUID, ExprBuilder, Literal, Pattern, PatternElem, UnaryOp, Value,
@@ -698,21 +696,6 @@ mod tests {
 
     use super::Evaluator;
 
-    #[allow(unused)]
-    #[track_caller]
-    fn simple_schema() -> ValidatorSchema {
-        let src = r#"
-            entity E { s? : String, l? : Long };
-            action a {
-              principal: E,
-              resource: E,
-            };
-        "#;
-        ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())
-            .unwrap()
-            .0
-    }
-
     #[track_caller]
     fn action() -> EntityUID {
         r#"Action::"a""#.parse().unwrap()
@@ -721,24 +704,6 @@ mod tests {
     #[track_caller]
     fn dummy_uid() -> EntityUID {
         r#"E::"""#.parse().unwrap()
-    }
-
-    #[allow(unused)]
-    #[track_caller]
-    fn dummy_entity() -> PartialEntity {
-        PartialEntity {
-            uid: dummy_uid(),
-            attrs: None,
-            ancestors: None,
-            tags: None,
-        }
-    }
-
-    #[track_caller]
-    fn dummy_entities() -> PartialEntities {
-        PartialEntities {
-            entities: HashMap::new(),
-        }
     }
 
     #[test]
@@ -754,7 +719,7 @@ mod tests {
         );
         let eval = Evaluator {
             request: &req,
-            entities: &dummy_entities(),
+            entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
         // principal -> principal because its eid is unknown
@@ -819,7 +784,7 @@ mod tests {
         );
         let eval = Evaluator {
             request: &req,
-            entities: &dummy_entities(),
+            entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
         assert_matches!(
@@ -893,7 +858,7 @@ mod tests {
         );
         let eval = Evaluator {
             request: &req,
-            entities: &dummy_entities(),
+            entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
         assert_matches!(
@@ -967,7 +932,7 @@ mod tests {
         );
         let eval = Evaluator {
             request: &req,
-            entities: &dummy_entities(),
+            entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
         assert_matches!(
@@ -1039,7 +1004,7 @@ mod tests {
         );
         let eval = Evaluator {
             request: &req,
-            entities: &dummy_entities(),
+            entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
         assert_matches!(
@@ -1100,7 +1065,7 @@ mod tests {
         );
         let eval = Evaluator {
             request: &req,
-            entities: &dummy_entities(),
+            entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
         assert_matches!(
@@ -1139,7 +1104,7 @@ mod tests {
         );
         let eval = Evaluator {
             request: &req,
-            entities: &dummy_entities(),
+            entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
         assert_matches!(
@@ -1178,8 +1143,8 @@ mod tests {
             action(),
             None,
         );
-        let entities = PartialEntities {
-            entities: HashMap::from_iter([
+        let entities = PartialEntities::from_entities_unchecked(
+            [
                 (
                     dummy_uid(),
                     PartialEntity {
@@ -1201,8 +1166,9 @@ mod tests {
                         tags: None,
                     },
                 ),
-            ]),
-        };
+            ]
+            .into_iter(),
+        );
         let eval = Evaluator {
             request: &req,
             entities: &entities,
@@ -1272,8 +1238,8 @@ mod tests {
             action(),
             None,
         );
-        let entities = PartialEntities {
-            entities: HashMap::from_iter([
+        let entities = PartialEntities::from_entities_unchecked(
+            [
                 (
                     dummy_uid(),
                     PartialEntity {
@@ -1295,8 +1261,9 @@ mod tests {
                         tags: None,
                     },
                 ),
-            ]),
-        };
+            ]
+            .into_iter(),
+        );
         let eval = Evaluator {
             request: &req,
             entities: &entities,
@@ -1389,7 +1356,7 @@ mod tests {
         );
         let eval = Evaluator {
             request: &req,
-            entities: &dummy_entities(),
+            entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
         assert_matches!(
@@ -1443,7 +1410,7 @@ mod tests {
         );
         let eval = Evaluator {
             request: &req,
-            entities: &dummy_entities(),
+            entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
         assert_matches!(
@@ -1506,7 +1473,7 @@ mod tests {
         );
         let eval = Evaluator {
             request: &req,
-            entities: &dummy_entities(),
+            entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
         assert_matches!(
@@ -1560,8 +1527,8 @@ mod tests {
             None,
         );
         // not valid entities
-        let entities = PartialEntities {
-            entities: HashMap::from_iter([
+        let entities = PartialEntities::from_entities_unchecked(
+            [
                 (
                     dummy_uid(),
                     PartialEntity {
@@ -1583,8 +1550,9 @@ mod tests {
                         tags: None,
                     },
                 ),
-            ]),
-        };
+            ]
+            .into_iter(),
+        );
         let eval = Evaluator {
             request: &req,
             entities: &entities,
@@ -1805,7 +1773,7 @@ mod tests {
         );
         let eval = Evaluator {
             request: &req,
-            entities: &dummy_entities(),
+            entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
 
