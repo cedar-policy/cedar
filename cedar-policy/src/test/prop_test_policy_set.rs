@@ -255,16 +255,23 @@ impl PolicySetModel {
                 .map(|id| self.get_renaming(&renaming, id, false))
                 .collect_vec();
             let template = self.get_renaming(&renaming, template, false);
+            // `template` might already be in this map if it's the same in
+            // `self` and `other`. They might be linked differently, so keep
+            // both sets.
             self.template_to_link_map
                 .entry(template)
                 .or_default()
-                .extend_from_slice(&links)
+                .extend(links)
         }
 
         for (link, template) in &other.link_to_template_map {
             let link = self.get_renaming(&renaming, link, false);
             let template = self.get_renaming(&renaming, template, false);
-            self.link_to_template_map.insert(link, template);
+            // `link` might already be in this map if it's the same in `self`
+            // and other. Assert that both point to the same template.
+            if let Some(old_template) = self.link_to_template_map.insert(link, template.clone()) {
+                assert_eq!(old_template, template);
+            }
         }
     }
 
