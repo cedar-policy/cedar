@@ -5332,16 +5332,16 @@ mod tpe {
     /// A partial version of [`crate::Response`].
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
-    pub struct TPEResponse<'a>(pub(crate) tpe::response::Response<'a>);
+    pub struct TpeResponse<'a>(pub(crate) tpe::response::Response<'a>);
 
     #[doc(hidden)]
-    impl<'a> AsRef<tpe::response::Response<'a>> for TPEResponse<'a> {
+    impl<'a> AsRef<tpe::response::Response<'a>> for TpeResponse<'a> {
         fn as_ref(&self) -> &tpe::response::Response<'a> {
             &self.0
         }
     }
 
-    impl TPEResponse<'_> {
+    impl TpeResponse<'_> {
         /// Attempt to get the authorization decision
         pub fn decision(&self) -> Option<Decision> {
             self.0.decision()
@@ -5359,12 +5359,10 @@ mod tpe {
                 .map_err(Into::into)
         }
 
-        /// Return an iterator of residual policies
+        /// Return residual policies for each policy in the input policy set
+        /// Use [`TpeResponse::nontrivial_residual_policies`] to get non-trivial residual policies
         pub fn residual_policies(&self) -> impl Iterator<Item = Policy> + '_ {
-            self.0
-                .residual_policies()
-                .into_iter()
-                .map(|p| p.clone().into())
+            self.0.residual_policies().map(|p| p.clone().into())
         }
 
         /// Returns an iterator of non-trivial (meaning more than just `true` or `false`) residual policies
@@ -5449,11 +5447,11 @@ mod tpe {
             request: &'a PartialRequest,
             entities: &'a PartialEntities,
             schema: &'a Schema,
-        ) -> Result<TPEResponse<'a>, tpe_err::TPEError> {
+        ) -> Result<TpeResponse<'a>, tpe_err::TPEError> {
             use cedar_policy_core::tpe::is_authorized;
             let ps = &self.ast;
             let res = is_authorized(ps, &request.0, &entities.0, &schema.0)?;
-            Ok(TPEResponse(res))
+            Ok(TpeResponse(res))
         }
 
         /// Like [`Authorizer::is_authorized`] but uses an [`EntityLoader`] to load

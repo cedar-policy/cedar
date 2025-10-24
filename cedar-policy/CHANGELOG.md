@@ -14,6 +14,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Added
+
+- Added `TpeResponse::residual_policies` and `TpeResponse::nontrivial_residual_policies` to get residual policies under experimental feature `tpe`. (#1906)
+
 ### Fixed
 
 - Removed incorrect dependency of feature `partial-eval` of feature `tpe`. (#1898)
