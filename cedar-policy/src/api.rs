@@ -5488,14 +5488,9 @@ mod tpe {
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
             // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
             #[allow(clippy::unwrap_used)]
-            let policies = &Self::from_policies(
-                residuals
-                    .0
-                    .residual_policies()
-                    .into_iter()
-                    .map(|p| p.clone().into()),
-            )
-            .unwrap();
+            let policies =
+                &Self::from_policies(residuals.0.residual_policies().map(|p| p.clone().into()))
+                    .unwrap();
             // PANIC SAFETY: request construction should succeed because each entity passes validation
             #[allow(clippy::unwrap_used)]
             match residuals.decision() {
@@ -5541,14 +5536,9 @@ mod tpe {
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
             // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
             #[allow(clippy::unwrap_used)]
-            let policies = &Self::from_policies(
-                residuals
-                    .0
-                    .residual_policies()
-                    .into_iter()
-                    .map(|p| p.clone().into()),
-            )
-            .unwrap();
+            let policies =
+                &Self::from_policies(residuals.0.residual_policies().map(|p| p.clone().into()))
+                    .unwrap();
             // PANIC SAFETY: request construction should succeed because each entity passes validation
             #[allow(clippy::unwrap_used)]
             match residuals.decision() {
