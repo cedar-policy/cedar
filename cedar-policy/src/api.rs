@@ -5063,12 +5063,12 @@ mod tpe {
     use ref_cast::RefCast;
     use smol_str::SmolStr;
 
-    use crate::Entity;
     use crate::{
         api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
         PartialEntityError, PartialRequestCreationError, PermissionQueryError, Policy, PolicySet,
-        Request, RequestValidationError, RestrictedExpression, Schema, TPEReauthorizationError,
+        Request, RequestValidationError, RestrictedExpression, Schema,
     };
+    use crate::{Entity, TpeReauthorizationError};
 
     /// A partial [`EntityUid`].
     /// That is, its [`EntityId`] could be unknown
@@ -5400,25 +5400,36 @@ mod tpe {
             &self,
             request: &Request,
             entities: &Entities,
-        ) -> Result<api::Response, TPEReauthorizationError> {
+        ) -> Result<api::Response, TpeReauthorizationError> {
             self.0
                 .reauthorize(&request.0, &entities.0)
                 .map(Into::into)
                 .map_err(Into::into)
         }
 
-        /// Return residual policies for each policy in the input policy set
+        /// Return residuals as [`Policy`]s
+        /// A [`Policy`] returned inherits [`crate::PolicyId`] and annotations from
+        /// the corresponding input policy
+        /// Its scope is unconstrained and its condition is in the form of a
+        /// single `when` clause with the residual as the expression
         /// Use [`TpeResponse::nontrivial_residual_policies`] to get non-trivial residual policies
         pub fn residual_policies(&self) -> impl Iterator<Item = Policy> + '_ {
-            self.0.residual_policies().map(|p| p.clone().into())
+            self.0
+                .residual_policies()
+                .map(|p| Policy::from_ast(p.clone().into()))
         }
 
-        /// Returns an iterator of non-trivial (meaning more than just `true` or `false`) residual policies
+        /// Returns an iterator of non-trivial (meaning more than just `true`
+        /// or `false`) residuals as [`Policy`]s
+        /// A [`Policy`] returned inherits [`crate::PolicyId`] and annotations from
+        /// the corresponding input policy
+        /// Its scope is unconstrained and its condition is in the form of a
+        /// single `when` clause with the residual as the expression
         pub fn nontrivial_residual_policies(&'_ self) -> impl Iterator<Item = Policy> + '_ {
             self.0
                 .residual_permits()
                 .chain(self.0.residual_forbids())
-                .map(|p| p.clone().into())
+                .map(|p| Policy::from_ast(p.clone().into()))
         }
     }
 
@@ -5495,7 +5506,7 @@ mod tpe {
             request: &'a PartialRequest,
             entities: &'a PartialEntities,
             schema: &'a Schema,
-        ) -> Result<TpeResponse<'a>, tpe_err::TPEError> {
+        ) -> Result<TpeResponse<'a>, tpe_err::TpeError> {
             use cedar_policy_core::tpe::is_authorized;
             let ps = &self.ast;
             let res = is_authorized(ps, &request.0, &entities.0, &schema.0)?;
@@ -5542,7 +5553,7 @@ mod tpe {
                     .0
                     .residual_policies()
                     .into_iter()
-                    .map(|p| p.clone().into()),
+                    .map(|p| Policy::from_ast(p.clone().into())),
             )
             .unwrap();
             // PANIC SAFETY: request construction should succeed because each entity passes validation
@@ -5595,7 +5606,7 @@ mod tpe {
                     .0
                     .residual_policies()
                     .into_iter()
-                    .map(|p| p.clone().into()),
+                    .map(|p| Policy::from_ast(p.clone().into())),
             )
             .unwrap();
             // PANIC SAFETY: request construction should succeed because each entity passes validation
@@ -5714,20 +5725,16 @@ mod tpe {
                 .0
                 .actions_for_principal_and_resource(&request.principal.0.ty, &request.resource.0.ty)
             {
-                match request.partial_request(action.clone().into()) {
-                    Ok(partial_request) => {
-                        let decision = self
-                            .tpe(&partial_request, entities, &request.schema)?
-                            .decision();
-                        if decision != Some(Decision::Deny) {
-                            authorized_actions.push((RefCast::ref_cast(action), decision));
-                        }
+                // If we fail to construct a partial request, then the partial context is not valid for
+                // the context type declared for this action. This action should never be authorized,
+                // but with the same caveats about invalid requests.
+                if let Ok(partial_request) = request.partial_request(action.clone().into()) {
+                    let decision = self
+                        .tpe(&partial_request, entities, &request.schema)?
+                        .decision();
+                    if decision != Some(Decision::Deny) {
+                        authorized_actions.push((RefCast::ref_cast(action), decision));
                     }
-                    // This case occurs if the partial context is not valid for
-                    // the context type declared for this action. This action
-                    // should never be authorized, but with the same caveats
-                    // about invalid requests.
-                    Err(_) => {}
                 }
             }
             Ok(authorized_actions.into_iter())

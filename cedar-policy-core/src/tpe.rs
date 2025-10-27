@@ -26,7 +26,7 @@ pub mod response;
 use std::{collections::HashMap, sync::Arc};
 
 use crate::ast::{Expr, PolicyID};
-use crate::tpe::err::{NonstaticPolicyError, TPEError};
+use crate::tpe::err::{NonstaticPolicyError, TpeError};
 use crate::tpe::response::{ResidualPolicy, Response};
 use crate::validator::types::Type;
 use crate::validator::{typecheck::PolicyCheck, typecheck::Typechecker, ValidatorSchema};
@@ -38,7 +38,7 @@ pub(crate) fn policy_expr_map<'a>(
     request: &'a PartialRequest,
     ps: &'a PolicySet,
     schema: &ValidatorSchema,
-) -> std::result::Result<HashMap<&'a PolicyID, Expr<Option<Type>>>, TPEError> {
+) -> std::result::Result<HashMap<&'a PolicyID, Expr<Option<Type>>>, TpeError> {
     let mut exprs = HashMap::new();
     let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
     let env = request.find_request_env(schema)?;
@@ -54,7 +54,7 @@ pub(crate) fn policy_expr_map<'a>(
             .chain(crate::validator::Validator::validate_action_ids(schema, t))
             .collect();
         if !errs.is_empty() {
-            return Err(TPEError::Validation(errs));
+            return Err(TpeError::Validation(errs));
         }
 
         match tc.typecheck_by_single_request_env(t, &env) {
@@ -62,13 +62,13 @@ pub(crate) fn policy_expr_map<'a>(
                 exprs.insert(p.id(), expr);
             }
             PolicyCheck::Fail(errs) => {
-                return Err(TPEError::Validation(errs));
+                return Err(TpeError::Validation(errs));
             }
             PolicyCheck::Irrelevant(errs, expr) => {
                 if errs.is_empty() {
                     exprs.insert(p.id(), expr);
                 } else {
-                    return Err(TPEError::Validation(errs));
+                    return Err(TpeError::Validation(errs));
                 }
             }
         }
@@ -85,14 +85,14 @@ pub fn is_authorized<'a>(
     request: &'a PartialRequest,
     entities: &'a PartialEntities,
     schema: &'a ValidatorSchema,
-) -> std::result::Result<Response<'a>, TPEError> {
+) -> std::result::Result<Response<'a>, TpeError> {
     let exprs = policy_expr_map(request, ps, schema)?;
     let evaluator = Evaluator {
         request,
         entities,
         extensions: Extensions::all_available(),
     };
-    let residuals: Result<Vec<_>, TPEError> = exprs
+    let residuals: Result<Vec<_>, TpeError> = exprs
         .into_iter()
         .map(|(id, expr)| {
             let residual = evaluator.interpret_expr(&expr)?;
@@ -470,25 +470,39 @@ when { principal in resource.editors };
             .static_policies()
             .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "3"))
             .unwrap();
-        let false_permits: HashSet<&PolicyID> = residuals.false_permits().map(|p| p.id()).collect();
+        let false_permits: HashSet<PolicyID> = residuals
+            .false_permits()
+            .map(|p| p.get_policy_id())
+            .collect();
         assert!(false_permits.len() == 2);
         assert!(false_permits.contains(policy0.id()));
         assert!(false_permits.contains(policy3.id()));
-        let false_forbids: HashSet<&PolicyID> = residuals.false_forbids().map(|p| p.id()).collect();
+        let false_forbids: HashSet<PolicyID> = residuals
+            .false_forbids()
+            .map(|p| p.get_policy_id())
+            .collect();
         assert!(false_forbids.is_empty());
-        let true_permits: HashSet<&PolicyID> =
-            residuals.satisfied_permits().map(|p| p.id()).collect();
+        let true_permits: HashSet<PolicyID> = residuals
+            .satisfied_permits()
+            .map(|p| p.get_policy_id())
+            .collect();
         assert!(true_permits.is_empty());
-        let true_forbids: HashSet<&PolicyID> =
-            residuals.satisfied_forbids().map(|p| p.id()).collect();
+        let true_forbids: HashSet<PolicyID> = residuals
+            .satisfied_forbids()
+            .map(|p| p.get_policy_id())
+            .collect();
         assert!(true_forbids.is_empty());
-        let non_trivial_permits: HashSet<&PolicyID> =
-            residuals.residual_permits().map(|p| p.id()).collect();
+        let non_trivial_permits: HashSet<PolicyID> = residuals
+            .residual_permits()
+            .map(|p| p.get_policy_id())
+            .collect();
         assert!(non_trivial_permits.len() == 2);
         assert!(non_trivial_permits.contains(policy1.id()));
         assert!(non_trivial_permits.contains(policy2.id()));
-        let non_trivial_forbids: HashSet<&PolicyID> =
-            residuals.residual_forbids().map(|p| p.id()).collect();
+        let non_trivial_forbids: HashSet<PolicyID> = residuals
+            .residual_forbids()
+            .map(|p| p.get_policy_id().clone())
+            .collect();
         assert!(non_trivial_forbids.is_empty());
         assert_matches!(residuals.decision(), None);
         // (resource["owner"]) == User::"aaron"
