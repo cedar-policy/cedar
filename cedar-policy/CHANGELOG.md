@@ -17,6 +17,7 @@ Cedar Language Version: TBD
 ### Added
 
 - Added `TpeResponse::residual_policies` and `TpeResponse::nontrivial_residual_policies` to get residual policies under experimental feature `tpe`. (#1906)
+- Handle residual records in has_attr partial evaluation. (#1912)
 
 ### Changed
 

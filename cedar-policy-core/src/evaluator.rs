@@ -703,7 +703,15 @@ impl<'e> Evaluator<'e> {
                     ],
                     &val,
                 )),
-                PartialValue::Residual(r) => Ok(Expr::has_attr(r, attr.clone()).into()),
+                PartialValue::Residual(r) => match r.expr_kind() {
+                    // If the residual is a known record and is projectable (it’s guaranteed to never error on evaluation),
+                    // then check for the attribute existency.
+                    ExprKind::Record(rec) if r.is_projectable() => {
+                        Ok(rec.contains_key(attr).into())
+                    }
+                    // Otherwise, leave the expression as is.
+                    _ => Ok(Expr::has_attr(r, attr.clone()).into()),
+                },
             },
             ExprKind::Like { expr, pattern } => {
                 let v = self.partial_interpret(expr, slots)?;
@@ -6107,12 +6115,41 @@ pub(crate) mod test {
     #[test]
     fn partial_hasattr() {
         let es = Entities::new();
+
+        // Case 1: unknown("a") has test --> unknown("a") has test
         let eval = Evaluator::new(empty_request(), &es, Extensions::none());
-
         let e = Expr::has_attr(Expr::unknown(Unknown::new_untyped("a")), "test".into());
-
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Residual(e));
 
+        // Case 2: 12 has key --> error
+        let e = Expr::has_attr(Expr::val(12), "key".into());
+        let r = eval.partial_interpret(&e, &HashMap::new());
+        assert_matches!(r, Err(_));
+
+        // Case 3: record({"key": unknown("value")}) has key --> true
+        let e = Expr::has_attr(
+            Expr::record([("key".into(), Expr::unknown(Unknown::new_untyped("value")))]).unwrap(),
+            "key".into(),
+        );
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, true.into());
+
+        // Case 4: record({}) has key --> false
+        let e = Expr::has_attr(Expr::record([]).unwrap(), "key".into());
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, false.into());
+
+        // Case 5: record({"key": unknown("x") + 1}) has key -> record({"key": unknown("x") + 1}) has key (non projectable)
+        let e = Expr::has_attr(
+            Expr::record([(
+                "key".into(),
+                Expr::add(Expr::unknown(Unknown::new_untyped("x")), Expr::val(1)),
+            )])
+            .unwrap(),
+            "key".into(),
+        );
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
     }
 
