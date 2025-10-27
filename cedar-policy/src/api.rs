@@ -5665,20 +5665,16 @@ mod tpe {
                 .0
                 .actions_for_principal_and_resource(&request.principal.0.ty, &request.resource.0.ty)
             {
-                match request.partial_request(action.clone().into()) {
-                    Ok(partial_request) => {
-                        let decision = self
-                            .tpe(&partial_request, entities, &request.schema)?
-                            .decision();
-                        if decision != Some(Decision::Deny) {
-                            authorized_actions.push((RefCast::ref_cast(action), decision));
-                        }
+                // If we fail to construct a partial request, then the partial context is not valid for
+                // the context type declared for this action. This action should never be authorized,
+                // but with the same caveats about invalid requests.
+                if let Ok(partial_request) = request.partial_request(action.clone().into()) {
+                    let decision = self
+                        .tpe(&partial_request, entities, &request.schema)?
+                        .decision();
+                    if decision != Some(Decision::Deny) {
+                        authorized_actions.push((RefCast::ref_cast(action), decision));
                     }
-                    // This case occurs if the partial context is not valid for
-                    // the context type declared for this action. This action
-                    // should never be authorized, but with the same caveats
-                    // about invalid requests.
-                    Err(_) => {}
                 }
             }
             Ok(authorized_actions.into_iter())
