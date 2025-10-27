@@ -5378,7 +5378,6 @@ mod tpe {
 
         /// Construct [`PartialEntities`] from an iterator of [`PartialEntity`]
         pub fn from_partial_entities(
-            &self,
             entities: impl Iterator<Item = PartialEntity>,
             schema: &Schema,
         ) -> Result<Self, tpe_err::EntitiesError> {
