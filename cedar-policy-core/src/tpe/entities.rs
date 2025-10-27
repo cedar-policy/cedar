@@ -93,14 +93,14 @@ pub struct EntityJson {
 /// The partial entity
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PartialEntity {
-    /// The uid of the partial entity
-    pub uid: EntityUID,
-    /// Optional attributes
-    pub attrs: Option<BTreeMap<SmolStr, Value>>,
-    /// Optional ancestors
-    pub ancestors: Option<HashSet<EntityUID>>,
-    /// Optional tags
-    pub tags: Option<BTreeMap<SmolStr, Value>>,
+    // The uid of the partial entity
+    pub(crate) uid: EntityUID,
+    // Optional attributes
+    pub(crate) attrs: Option<BTreeMap<SmolStr, Value>>,
+    // Optional ancestors
+    pub(crate) ancestors: Option<HashSet<EntityUID>>,
+    // Optional tags
+    pub(crate) tags: Option<BTreeMap<SmolStr, Value>>,
 }
 
 // An `Entity` without unknowns is a `PartialEntity`
@@ -127,6 +127,23 @@ impl TryFrom<Entity> for PartialEntity {
 }
 
 impl PartialEntity {
+    /// Construct a new [`PartialEntity`]
+    pub fn new(
+        uid: EntityUID,
+        attrs: Option<BTreeMap<SmolStr, Value>>,
+        ancestors: Option<HashSet<EntityUID>>,
+        tags: Option<BTreeMap<SmolStr, Value>>,
+        schema: &ValidatorSchema,
+    ) -> std::result::Result<Self, EntitiesError> {
+        let e = Self {
+            uid,
+            attrs,
+            ancestors,
+            tags,
+        };
+        e.validate(schema)?;
+        Ok(e)
+    }
     /// Check if an [`Entity`] is consistent with a [`PartialEntity`]
     pub(crate) fn check_consistency(
         &self,

@@ -1367,3 +1367,15 @@ pub enum PermissionQueryError {
     #[error(transparent)]
     TPE(#[from] tpe_err::TPEError),
 }
+
+#[cfg(feature = "tpe")]
+/// Error when constructing [`crate::PartialEntity`]
+#[derive(Debug, Error)]
+pub enum PartialEntityError {
+    /// An evaluation error was encountered
+    #[error(transparent)]
+    Evaluation(#[from] EvaluationError),
+    /// Fail to construct a [`crate::PartialEntity`]
+    #[error(transparent)]
+    Entities(#[from] tpe_err::EntitiesError),
+}

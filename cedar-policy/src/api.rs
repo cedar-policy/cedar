@@ -5056,6 +5056,8 @@ mod tpe {
     use cedar_policy_core::batched_evaluator::{
         err::BatchedEvalError, EntityLoader as EntityLoaderInternal,
     };
+    use cedar_policy_core::evaluator::{EvaluationError, RestrictedEvaluator};
+    use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::tpe;
     use itertools::Itertools;
     use ref_cast::RefCast;
@@ -5064,8 +5066,8 @@ mod tpe {
     use crate::Entity;
     use crate::{
         api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
-        PartialRequestCreationError, PermissionQueryError, Policy, PolicySet, Request,
-        RequestValidationError, RestrictedExpression, Schema, TPEReauthorizationError,
+        PartialEntityError, PartialRequestCreationError, PermissionQueryError, Policy, PolicySet,
+        Request, RequestValidationError, RestrictedExpression, Schema, TPEReauthorizationError,
     };
 
     /// A partial [`EntityUid`].
@@ -5288,6 +5290,53 @@ mod tpe {
                 &self.schema.0,
             )
             .map(PartialRequest)
+        }
+    }
+
+    /// Partial [`Entity`]
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct PartialEntity(pub(crate) tpe::entities::PartialEntity);
+
+    impl PartialEntity {
+        /// Construct a [`PartialEntity`]
+        pub fn new(
+            uid: EntityUid,
+            attrs: Option<BTreeMap<SmolStr, RestrictedExpression>>,
+            ancestors: Option<HashSet<EntityUid>>,
+            tags: Option<BTreeMap<SmolStr, RestrictedExpression>>,
+            schema: &Schema,
+        ) -> Result<Self, PartialEntityError> {
+            Ok(Self(tpe::entities::PartialEntity::new(
+                uid.0,
+                attrs
+                    .map(|ps| {
+                        ps.into_iter()
+                            .map(|(k, v)| {
+                                Ok((
+                                    k,
+                                    RestrictedEvaluator::new(Extensions::all_available())
+                                        .interpret(v.0.as_borrowed())?,
+                                ))
+                            })
+                            .collect::<Result<BTreeMap<_, _>, EvaluationError>>()
+                    })
+                    .transpose()?,
+                ancestors.map(|s| s.into_iter().map(|e| e.0).collect()),
+                tags.map(|ps| {
+                    ps.into_iter()
+                        .map(|(k, v)| {
+                            Ok((
+                                k,
+                                RestrictedEvaluator::new(Extensions::all_available())
+                                    .interpret(v.0.as_borrowed())?,
+                            ))
+                        })
+                        .collect::<Result<BTreeMap<_, _>, EvaluationError>>()
+                })
+                .transpose()?,
+                &schema.0,
+            )?))
         }
     }
 
