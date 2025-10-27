@@ -546,13 +546,13 @@ impl PartialEntities {
 
     /// Construct `PartialEntities` from an iterator
     pub fn from_entities(
-        entity_mappings: impl Iterator<Item = (EntityUID, PartialEntity)>,
+        entity_mappings: impl Iterator<Item = PartialEntity>,
         schema: &ValidatorSchema,
     ) -> std::result::Result<Self, EntitiesError> {
         let mut entities: HashMap<EntityUID, PartialEntity> = HashMap::new();
-        for (uid, entity) in entity_mappings {
+        for entity in entity_mappings {
             use std::collections::hash_map::Entry;
-            match entities.entry(uid) {
+            match entities.entry(entity.uid.clone()) {
                 Entry::Vacant(e) => {
                     e.insert(entity);
                 }

@@ -5375,6 +5375,18 @@ mod tpe {
         pub fn empty() -> Self {
             Self(tpe::entities::PartialEntities::new())
         }
+
+        /// Construct [`PartialEntities`] from an iterator of [`PartialEntity`]
+        pub fn from_partial_entities(
+            &self,
+            entities: impl Iterator<Item = PartialEntity>,
+            schema: &Schema,
+        ) -> Result<Self, tpe_err::EntitiesError> {
+            Ok(Self(tpe::entities::PartialEntities::from_entities(
+                entities.map(|entity| entity.0),
+                &schema.0,
+            )?))
+        }
     }
 
     /// A partial version of [`crate::Response`].
