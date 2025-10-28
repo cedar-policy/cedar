@@ -8267,6 +8267,65 @@ mod test_entities_api {
 
 #[cfg(feature = "tpe")]
 mod tpe_tests {
+    use std::{
+        collections::{BTreeMap, HashSet},
+        str::FromStr,
+    };
+
+    use cedar_policy_core::tpe::err::EntitiesError;
+    use cool_asserts::assert_matches;
+
+    use crate::{PartialEntity, PartialEntityError, RestrictedExpression, Schema};
+
+    #[test]
+    fn entity_construction() {
+        let schema = Schema::from_str(
+            r#"
+            entity A in B tags Long;
+            entity B;
+        "#,
+        )
+        .unwrap();
+        assert!(PartialEntity::new(
+            r#"A::"foo""#.parse().unwrap(),
+            None,
+            Some(HashSet::from_iter([r#"B::"b""#.parse().unwrap()])),
+            Some(BTreeMap::from_iter([(
+                "".into(),
+                RestrictedExpression::new_long(1)
+            )])),
+            &schema
+        )
+        .is_ok());
+        assert_matches!(
+            PartialEntity::new(
+                r#"A::"foo""#.parse().unwrap(),
+                None,
+                Some(HashSet::from_iter([r#"C::"c""#.parse().unwrap()])),
+                Some(BTreeMap::from_iter([(
+                    "".into(),
+                    RestrictedExpression::new_long(1)
+                )])),
+                &schema
+            ),
+            Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
+        );
+
+        assert_matches!(
+            PartialEntity::new(
+                r#"A::"foo""#.parse().unwrap(),
+                None,
+                Some(HashSet::from_iter([r#"B::"b""#.parse().unwrap()])),
+                Some(BTreeMap::from_iter([(
+                    "".into(),
+                    RestrictedExpression::new_bool(true)
+                )])),
+                &schema
+            ),
+            Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
+        );
+    }
+
     mod streaming_service {
         use std::{collections::BTreeMap, str::FromStr};
 
