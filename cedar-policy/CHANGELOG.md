@@ -17,6 +17,7 @@ Cedar Language Version: TBD
 ### Added
 
 - Added `TpeResponse::residual_policies` and `TpeResponse::nontrivial_residual_policies` to get residual policies under experimental feature `tpe`. (#1906)
+- Added `PartialEntity::new` and `PartialEntities::from_partial_entities` to programmatically construct `PartialEntity` and `PartialEntities` under feature `tpe`. (#1916)
 
 ### Changed
 
