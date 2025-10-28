@@ -535,6 +535,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                         .await?
                     }
                     _ => {
+                        debug_assert!(false, "`Bvnego` should only be applied to `Bitvec`");
                         // we could put anything here and be sound, because `Bvnego` should only be
                         // applied to Terms of type `Bitvec`
                         String::from("false")
