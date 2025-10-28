@@ -8268,19 +8268,116 @@ mod test_entities_api {
 #[cfg(feature = "tpe")]
 mod tpe_tests {
     mod streaming_service {
-        use std::str::FromStr;
+        use std::{collections::BTreeMap, str::FromStr};
 
-        use cedar_policy_core::authorizer::Decision;
+        use cedar_policy_core::{authorizer::Decision, tpe::err::EntitiesError};
         use cool_asserts::assert_matches;
         use itertools::Itertools;
         use similar_asserts::assert_eq;
 
         use crate::{
             ActionConstraint, ActionQueryRequest, Context, Entities, EntityId, EntityUid,
-            PartialEntities, PartialEntityUid, PartialRequest, PolicySet, PrincipalConstraint,
-            PrincipalQueryRequest, Request, ResourceConstraint, ResourceQueryRequest,
-            RestrictedExpression, Schema,
+            PartialEntities, PartialEntity, PartialEntityError, PartialEntityUid, PartialRequest,
+            PolicySet, PrincipalConstraint, PrincipalQueryRequest, Request, ResourceConstraint,
+            ResourceQueryRequest, RestrictedExpression, Schema,
         };
+
+        #[test]
+        fn entities_construction() {
+            let schema = schema();
+            assert!(PartialEntity::new(
+                r#"Movie::"foo""#.parse().unwrap(),
+                None,
+                None,
+                None,
+                &schema
+            )
+            .is_ok());
+            assert!(PartialEntity::new(
+                r#"Show::"foo""#.parse().unwrap(),
+                Some(BTreeMap::from_iter([
+                    ("isFree".into(), RestrictedExpression::new_bool(true)),
+                    (
+                        "releaseDate".into(),
+                        RestrictedExpression::new_datetime("2025-01-01")
+                    ),
+                    (
+                        "isEarlyAccess".into(),
+                        RestrictedExpression::new_bool(false)
+                    ),
+                ])),
+                None,
+                None,
+                &schema
+            )
+            .is_ok());
+
+            assert_matches!(
+                PartialEntity::new(
+                    r#"Show::"foo""#.parse().unwrap(),
+                    Some(BTreeMap::from_iter([
+                        ("isFree".into(), RestrictedExpression::new_bool(true)),
+                        (
+                            "isEarlyAccess".into(),
+                            RestrictedExpression::new_bool(false)
+                        ),
+                    ])),
+                    None,
+                    None,
+                    &schema
+                ),
+                Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
+            );
+
+            let e1 = PartialEntity::new(
+                r#"Show::"foo""#.parse().unwrap(),
+                Some(BTreeMap::from_iter([
+                    ("isFree".into(), RestrictedExpression::new_bool(true)),
+                    (
+                        "releaseDate".into(),
+                        RestrictedExpression::new_datetime("2025-01-01"),
+                    ),
+                    (
+                        "isEarlyAccess".into(),
+                        RestrictedExpression::new_bool(false),
+                    ),
+                ])),
+                None,
+                None,
+                &schema,
+            )
+            .unwrap();
+            let e2 = PartialEntity::new(
+                r#"Subscriber::"a""#.parse().unwrap(),
+                None,
+                None,
+                None,
+                &schema,
+            )
+            .unwrap();
+            assert!(
+                PartialEntities::from_partial_entities([e1.clone(), e2.clone()], &schema).is_ok()
+            );
+            let e3 = PartialEntity::new(
+                r#"Show::"foo""#.parse().unwrap(),
+                Some(BTreeMap::from_iter([
+                    ("isFree".into(), RestrictedExpression::new_bool(true)),
+                    (
+                        "releaseDate".into(),
+                        RestrictedExpression::new_datetime("2025-01-01"),
+                    ),
+                    ("isEarlyAccess".into(), RestrictedExpression::new_bool(true)),
+                ])),
+                None,
+                None,
+                &schema,
+            )
+            .unwrap();
+            assert_matches!(
+                PartialEntities::from_partial_entities([e1, e2, e3], &schema),
+                Err(EntitiesError::Duplicate(_)),
+            );
+        }
 
         #[track_caller]
         fn schema() -> Schema {

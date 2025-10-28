@@ -5385,11 +5385,11 @@ mod tpe {
 
         /// Construct [`PartialEntities`] from an iterator of [`PartialEntity`]
         pub fn from_partial_entities(
-            entities: impl Iterator<Item = PartialEntity>,
+            entities: impl IntoIterator<Item = PartialEntity>,
             schema: &Schema,
         ) -> Result<Self, tpe_err::EntitiesError> {
             Ok(Self(tpe::entities::PartialEntities::from_entities(
-                entities.map(|entity| entity.0),
+                entities.into_iter().map(|entity| entity.0),
                 &schema.0,
             )?))
         }
