@@ -4159,6 +4159,13 @@ impl AsRef<ast::RestrictedExpr> for RestrictedExpression {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::RestrictedExpr> for RestrictedExpression {
+    fn from(expr: ast::RestrictedExpr) -> Self {
+        Self(expr)
+    }
+}
+
 impl RestrictedExpression {
     /// Create an expression representing a literal string.
     pub fn new_string(value: String) -> Self {
