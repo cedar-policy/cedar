@@ -8,7 +8,7 @@ on:
 # Declare default permissions as read only.
 # Since we use the GitHub App token to create the tags/references, 
 # we do not need additional permissions for the "create_related_repo_tags" job.
-# Apparently, actions/upload-artifacts does not need write permissions.
+# Apparently, actions/upload-artifact does not need write permissions.
 # See: https://github.com/actions/upload-artifact/issues/197
 permissions: read-all
 

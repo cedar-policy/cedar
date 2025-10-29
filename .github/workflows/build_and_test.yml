@@ -15,7 +15,7 @@ on:
         type: string
 
 # Declare default permissions as read only.
-# Apparently, actions/upload-artifacts does not need write permissions.
+# Apparently, actions/upload-artifact does not need write permissions.
 # See: https://github.com/actions/upload-artifact/issues/197
 permissions: read-all
 
