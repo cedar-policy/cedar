@@ -1,12 +1,62 @@
 name: Cargo audit
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'
+    # Run on a nightly schedule.
+    - cron: "0 0 * * *"
+
+# Declare default permissions as read only.
+permissions: read-all
+
 jobs:
   audit:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # Allow repository contents to be read.
+      issues: write # Allow issues to be created.
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
-      - uses: actions-rs/audit-check@35b7b53b1e25b55642157ac01b4adceb5b9ebef3 # v1.2.0
+      - uses: EmbarkStudios/cargo-deny-action@f2ba7abc2abebaf185c833c3961145a3c275caad # v2.0.13
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          command: check advisories
+        id: cargo_deny
+        # Continue the job if this step fails.
+        continue-on-error: true
+      - name: Open an issue on failure
+        # Run only if the cargo deny step failed.
+        if: steps.cargo_deny.outcome == 'failure'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const issueLabel = 'advisories-check-failure';
+            const issueTitle = 'Security Advisories Check Failed';
+
+            // Search for open issues with the specific label
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: issueLabel,
+              per_page: 100
+            });
+
+            // If no open issues with the label exist, create a new one
+            if (issues.data.length === 0) {
+              const newIssue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: issueTitle,
+                labels: [issueLabel],
+                body: `The cargo-deny security advisories check failed in the latest run.
+                
+              Workflow: ${context.workflow}
+              Run ID: ${context.runId}
+              Run Number: ${context.runNumber}
+                
+              Please review the run log for more details: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+              });
+              console.log('Created new issue:', newIssue.data.html_url);
+            } else {
+              console.log('Found existing open issue with label, skipping creation');
+            }
