@@ -577,6 +577,16 @@ impl Policy {
         }
     }
 
+    /// Clone this template instance with a new ID for the template.
+    /// Returns `None` if this is a static policy.
+    pub(crate) fn new_template_id(self, id: PolicyID) -> Option<Self> {
+        self.link.map(|link| Policy {
+            template: Arc::new(self.template.new_id(id)),
+            link: Some(link),
+            values: self.values,
+        })
+    }
+
     /// Get the location of this policy
     pub fn loc(&self) -> Option<&Loc> {
         self.template.loc()
