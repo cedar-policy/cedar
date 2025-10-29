@@ -17,12 +17,13 @@ Cedar Language Version: TBD
 ### Added
 
 - Added `TpeResponse::residual_policies` and `TpeResponse::nontrivial_residual_policies` to get residual policies under experimental feature `tpe`. (#1906)
-- Handle residual records in has_attr partial evaluation. (#1912)
+- Added `PartialEntity::new` and `PartialEntities::from_partial_entities` to programmatically construct `PartialEntity` and `PartialEntities` under feature `tpe`. (#1916)
 
 ### Changed
 
 - For the `tpe` experimental feature, `PartialEntities::from_concrete` now requires a `Schema` and will validate the entities,
   ensuring that a `PartialEntities` object always meets the preconditions required for type aware partial evaluation.
+- Evaluate `has` operation when the LHS record is projectable during partial evaluation. (#1912)
 
 ### Fixed
 

@@ -4156,6 +4156,13 @@ impl AsRef<ast::RestrictedExpr> for RestrictedExpression {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::RestrictedExpr> for RestrictedExpression {
+    fn from(expr: ast::RestrictedExpr) -> Self {
+        Self(expr)
+    }
+}
+
 impl RestrictedExpression {
     /// Create an expression representing a literal string.
     pub fn new_string(value: String) -> Self {
@@ -5054,6 +5061,8 @@ mod tpe {
     use cedar_policy_core::batched_evaluator::{
         err::BatchedEvalError, EntityLoader as EntityLoaderInternal,
     };
+    use cedar_policy_core::evaluator::{EvaluationError, RestrictedEvaluator};
+    use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::tpe;
     use itertools::Itertools;
     use ref_cast::RefCast;
@@ -5061,8 +5070,8 @@ mod tpe {
 
     use crate::{
         api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
-        PartialRequestCreationError, PermissionQueryError, Policy, PolicySet, Request,
-        RequestValidationError, RestrictedExpression, Schema,
+        PartialEntityError, PartialRequestCreationError, PermissionQueryError, Policy, PolicySet,
+        Request, RequestValidationError, RestrictedExpression, Schema,
     };
     use crate::{Entity, TpeReauthorizationError};
 
@@ -5289,6 +5298,53 @@ mod tpe {
         }
     }
 
+    /// Partial [`Entity`]
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct PartialEntity(pub(crate) tpe::entities::PartialEntity);
+
+    impl PartialEntity {
+        /// Construct a [`PartialEntity`]
+        pub fn new(
+            uid: EntityUid,
+            attrs: Option<BTreeMap<SmolStr, RestrictedExpression>>,
+            ancestors: Option<HashSet<EntityUid>>,
+            tags: Option<BTreeMap<SmolStr, RestrictedExpression>>,
+            schema: &Schema,
+        ) -> Result<Self, PartialEntityError> {
+            Ok(Self(tpe::entities::PartialEntity::new(
+                uid.0,
+                attrs
+                    .map(|ps| {
+                        ps.into_iter()
+                            .map(|(k, v)| {
+                                Ok((
+                                    k,
+                                    RestrictedEvaluator::new(Extensions::all_available())
+                                        .interpret(v.0.as_borrowed())?,
+                                ))
+                            })
+                            .collect::<Result<BTreeMap<_, _>, EvaluationError>>()
+                    })
+                    .transpose()?,
+                ancestors.map(|s| s.into_iter().map(|e| e.0).collect()),
+                tags.map(|ps| {
+                    ps.into_iter()
+                        .map(|(k, v)| {
+                            Ok((
+                                k,
+                                RestrictedEvaluator::new(Extensions::all_available())
+                                    .interpret(v.0.as_borrowed())?,
+                            ))
+                        })
+                        .collect::<Result<BTreeMap<_, _>, EvaluationError>>()
+                })
+                .transpose()?,
+                &schema.0,
+            )?))
+        }
+    }
+
     /// Partial [`Entities`]
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
@@ -5323,6 +5379,17 @@ mod tpe {
         /// Create a `PartialEntities` with no entities
         pub fn empty() -> Self {
             Self(tpe::entities::PartialEntities::new())
+        }
+
+        /// Construct [`PartialEntities`] from an iterator of [`PartialEntity`]
+        pub fn from_partial_entities(
+            entities: impl IntoIterator<Item = PartialEntity>,
+            schema: &Schema,
+        ) -> Result<Self, tpe_err::EntitiesError> {
+            Ok(Self(tpe::entities::PartialEntities::from_entities(
+                entities.into_iter().map(|entity| entity.0),
+                &schema.0,
+            )?))
         }
     }
 
