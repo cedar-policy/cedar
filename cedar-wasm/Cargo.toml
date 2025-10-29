@@ -19,8 +19,7 @@ serde_json = "1.0"
 # wasm support
 wasm-bindgen = { version = "0.2.97" }
 console_error_panic_hook = { version = "0.1.6", optional = true }
-# Intentionally not updated to 0.5.5, see issue #1744
-tsify = "0.4.5"
+tsify = "0.5.6"
 
 [features]
 default = ["console_error_panic_hook"]

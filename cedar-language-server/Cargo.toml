@@ -34,8 +34,7 @@ dashmap = { version = "6.1.0", optional = true}
 
 # Dependencies needed only for WASM integration
 serde-wasm-bindgen = { version = "0.6", optional = true }
-# Intentionally not updated to 0.5.5, see issue #1744
-tsify = { version = "0.4.5", optional = true }
+tsify = { version = "0.5.6", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
 
 [dev-dependencies]

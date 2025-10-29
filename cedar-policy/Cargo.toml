@@ -27,8 +27,7 @@ prost = { version = "0.14", optional = true }
 linked-hash-map = { version = "0.5.6", features = ["serde_impl"] }
 
 # wasm dependencies
-# Intentionally not updated to 0.5.5, see issue #1744
-tsify = { version = "0.4.5", optional = true }
+tsify = { version = "0.5.6", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
 semver = "1.0.27"
 
