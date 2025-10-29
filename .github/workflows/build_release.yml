@@ -71,7 +71,7 @@ jobs:
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
       - name: Install Rust toolchain
         run: rustup update stable && rustup default stable
       - name: Install protobuf (Ubuntu)
@@ -82,7 +82,7 @@ jobs:
         run: brew install protobuf
       - name: Build release binaries
         run: cargo build --release --all-features
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cedar-${{matrix.target}}
           path: ./target/release/cedar
