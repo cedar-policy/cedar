@@ -414,16 +414,16 @@ impl TpeRequestArgs {
                 principal_type: self
                     .principal_type
                     .clone()
-                    .ok_or(miette!("principal type must be specified"))?,
+                    .ok_or_else(|| miette!("principal type must be specified"))?,
                 principal_eid: self.principal_eid.clone(),
                 action: self
                     .action
                     .clone()
-                    .ok_or(miette!("action must be specified"))?,
+                    .ok_or_else(|| miette!("action must be specified"))?,
                 resource_type: self
                     .resource_type
                     .clone()
-                    .ok_or(miette!("resource type must be specified"))?,
+                    .ok_or_else(|| miette!("resource type must be specified"))?,
                 resource_eid: self.resource_eid.clone(),
                 context: self
                     .context_json_file
