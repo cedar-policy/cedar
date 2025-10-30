@@ -5568,7 +5568,6 @@ mod tpe {
                 residuals
                     .0
                     .residual_policies()
-                    .into_iter()
                     .map(|p| Policy::from_ast(p.clone().into())),
             )
             .unwrap();
@@ -5621,7 +5620,6 @@ mod tpe {
                 residuals
                     .0
                     .residual_policies()
-                    .into_iter()
                     .map(|p| Policy::from_ast(p.clone().into())),
             )
             .unwrap();
