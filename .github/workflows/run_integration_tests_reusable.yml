@@ -12,6 +12,9 @@ on:
         default: "main"
         type: string
 
+# Declare default permissions as read only.
+permissions: read-all
+
 jobs:
   run_integration_tests:
     name: Run integration tests
