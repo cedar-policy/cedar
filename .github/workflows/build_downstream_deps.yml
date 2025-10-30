@@ -3,6 +3,9 @@ name: Build Downstream Dependencies
 on:
   pull_request:
 
+# Declare default permissions as read only.
+permissions: read-all
+
 env:
   CARGO_TERM_COLOR: always
 jobs:

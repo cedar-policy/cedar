@@ -5,6 +5,9 @@ on:
     - cron: '0 0 * * 0'  # Runs weekly Sunday midnight
   workflow_dispatch:
 
+# Declare default permissions as read only.
+permissions: read-all
+
 jobs:
   clippy-fix:
     runs-on: ubuntu-latest
