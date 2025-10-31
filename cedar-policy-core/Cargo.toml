@@ -73,6 +73,7 @@ lalrpop = "0.22.2"
 similar-asserts = "1.7.0"
 cool_asserts = "2.0"
 miette = { version = "7.6.0", features = ["fancy"] }
+insta = { version = "1.34", features = ["glob"] }
 
 [lints]
 workspace = true

@@ -1,0 +1,20 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+input_file: cedar-policy-core/src/validator/schema/test_schemas/action_hierarchy.cedarschema
+---
+entity User;
+
+action "read" in [Action::"readWrite"] appliesTo {
+  principal: [User],
+  resource: [User],
+  context: {}
+};
+
+action "readWrite";
+
+action "write" in [Action::"readWrite"] appliesTo {
+  principal: [User],
+  resource: [User],
+  context: {}
+};

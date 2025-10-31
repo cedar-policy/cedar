@@ -1,0 +1,15 @@
+entity User = {
+    "profile": {
+        "personal": {
+            "name": __cedar::String,
+            "contacts": {
+                "email": __cedar::String,
+                "phone"?: __cedar::String
+            }
+        },
+        "preferences": {
+            "theme": __cedar::String,
+            "notifications": Set<__cedar::String>
+        }
+    }
+};

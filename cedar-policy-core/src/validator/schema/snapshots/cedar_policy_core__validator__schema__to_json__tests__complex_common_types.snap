@@ -1,0 +1,26 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+---
+entity User = {
+  "active": __cedar::Bool,
+  "contact": {
+    "address": {
+      "city": __cedar::String,
+      "street": __cedar::String,
+      "zipcode": __cedar::String
+    },
+    "email": __cedar::String,
+    "phone"?: __cedar::String
+  },
+  "permissions": Set<__cedar::String>
+};
+
+action "updateContact" appliesTo {
+  principal: [User],
+  resource: [User],
+  context: {
+    "reason": __cedar::String,
+    "timestamp": __cedar::Long
+  }
+};

@@ -1,0 +1,19 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+---
+entity User = {
+  "profile": {
+    "personal": {
+      "contacts": {
+        "email": __cedar::String,
+        "phone"?: __cedar::String
+      },
+      "name": __cedar::String
+    },
+    "preferences": {
+      "notifications": Set<__cedar::String>,
+      "theme": __cedar::String
+    }
+  }
+};

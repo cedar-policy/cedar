@@ -1,0 +1,24 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+input_file: cedar-policy-core/src/validator/schema/test_schemas/multiple_namespaces.cedarschema
+---
+namespace App1 {
+  entity User;
+
+  action "view" appliesTo {
+    principal: [App1::User],
+    resource: [App1::User],
+    context: {}
+  };
+}
+
+namespace App2 {
+  entity Document;
+
+  action "edit" appliesTo {
+    principal: [App1::User],
+    resource: [App2::Document],
+    context: {}
+  };
+}

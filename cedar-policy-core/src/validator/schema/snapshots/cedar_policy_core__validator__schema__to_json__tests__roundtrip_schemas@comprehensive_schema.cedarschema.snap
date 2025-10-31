@@ -1,0 +1,91 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+input_file: cedar-policy-core/src/validator/schema/test_schemas/comprehensive_schema.cedarschema
+---
+namespace Documents {
+  entity Document in [Documents::Document] = {
+    "author": Organization::Employee,
+    "reviewers": Set<Organization::Manager>,
+    "title": __cedar::String
+  } tags {
+  "classification": __cedar::String
+};
+
+  entity Memo in [Documents::Document] = {
+    "author": Organization::Employee,
+    "reviewers": Set<Organization::Manager>,
+    "title": __cedar::String
+  } tags {
+  "classification": __cedar::String
+};
+
+  entity Report in [Documents::Document] = {
+    "author": Organization::Employee,
+    "reviewers": Set<Organization::Manager>,
+    "title": __cedar::String
+  } tags {
+  "classification": __cedar::String
+};
+
+  action "approve" in [Action::"review"] appliesTo {
+    principal: [Organization::Executive],
+    resource: [Documents::Report],
+    context: {}
+  };
+
+  action "read" appliesTo {
+    principal: [Organization::Employee, Organization::Manager],
+    resource: [Documents::Document, Documents::Memo, Documents::Report],
+    context: {
+      "ip_address": __cedar::String,
+      "timestamp": __cedar::Long
+    }
+  };
+
+  action "review" appliesTo {
+    principal: [Organization::Employee, Organization::Manager],
+    resource: [Documents::Document, Documents::Memo, Documents::Report],
+    context: {
+      "ip_address": __cedar::String,
+      "timestamp": __cedar::Long
+    }
+  };
+
+  action "write" appliesTo {
+    principal: [Organization::Employee, Organization::Manager],
+    resource: [Documents::Document, Documents::Memo, Documents::Report],
+    context: {
+      "ip_address": __cedar::String,
+      "timestamp": __cedar::Long
+    }
+  };
+}
+
+namespace Organization {
+  entity Department = {
+    "budget": __cedar::Long,
+    "id": __cedar::String,
+    "name": __cedar::String
+  };
+
+  entity Employee in [Organization::Employee] = {
+    "department": Organization::Department,
+    "email": __cedar::String,
+    "phone"?: __cedar::String
+  };
+
+  entity Executive in [Organization::Employee] = {
+    "department": Organization::Department,
+    "email": __cedar::String,
+    "phone"?: __cedar::String
+  };
+
+  entity Manager in [Organization::Employee] = {
+    "department": Organization::Department,
+    "email": __cedar::String,
+    "phone"?: __cedar::String
+  };
+
+  entity Status enum ["active", "inactive", "on_leave"];
+}

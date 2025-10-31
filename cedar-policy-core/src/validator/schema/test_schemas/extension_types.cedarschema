@@ -1,0 +1,4 @@
+entity User = {
+    "ip": ipaddr,
+    "balance": decimal
+};

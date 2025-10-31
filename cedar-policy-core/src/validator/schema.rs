@@ -61,6 +61,7 @@ mod raw_name;
 pub use raw_name::{ConditionalName, RawName, ReferenceType};
 pub(crate) mod err;
 use err::{schema_errors::*, *};
+pub mod to_json;
 
 /// Configurable validator behaviors regarding actions
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]

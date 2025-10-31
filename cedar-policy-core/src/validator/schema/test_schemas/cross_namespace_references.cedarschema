@@ -1,0 +1,21 @@
+namespace Core {
+    type UserId = __cedar::String;
+    
+    entity User = {
+        "id": UserId,
+        "name": __cedar::String
+    };
+}
+
+namespace App {
+    entity Document = {
+        "owner": Core::User,
+        "editors": Set<Core::User>
+    };
+    
+    action edit appliesTo {
+        principal: [Core::User],
+        resource: [Document],
+        context: {}
+    };
+}

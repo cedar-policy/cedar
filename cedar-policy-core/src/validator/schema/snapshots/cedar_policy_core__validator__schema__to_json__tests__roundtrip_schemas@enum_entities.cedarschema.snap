@@ -1,0 +1,14 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+input_file: cedar-policy-core/src/validator/schema/test_schemas/enum_entities.cedarschema
+---
+entity Priority enum ["low", "medium", "high"];
+
+entity Status enum ["active", "inactive", "pending"];
+
+entity Task = {
+  "priority": Priority,
+  "status": Status,
+  "title": __cedar::String
+};

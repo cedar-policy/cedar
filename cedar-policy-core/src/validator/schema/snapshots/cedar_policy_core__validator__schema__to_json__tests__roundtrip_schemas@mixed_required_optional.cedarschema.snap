@@ -1,0 +1,13 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+input_file: cedar-policy-core/src/validator/schema/test_schemas/mixed_required_optional.cedarschema
+---
+entity User = {
+  "active": __cedar::Bool,
+  "age"?: __cedar::Long,
+  "email"?: __cedar::String,
+  "id": __cedar::String,
+  "name": __cedar::String,
+  "tags"?: Set<__cedar::String>
+};

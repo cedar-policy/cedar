@@ -1,0 +1,10 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+input_file: cedar-policy-core/src/validator/schema/test_schemas/entity_hierarchy.cedarschema
+---
+entity Admin in [User];
+
+entity SuperAdmin in [Admin];
+
+entity User;

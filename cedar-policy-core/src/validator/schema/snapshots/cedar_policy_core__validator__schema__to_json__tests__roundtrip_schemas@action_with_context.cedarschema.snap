@@ -1,0 +1,15 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+input_file: cedar-policy-core/src/validator/schema/test_schemas/action_with_context.cedarschema
+---
+entity User;
+
+action "view" appliesTo {
+  principal: [User],
+  resource: [User],
+  context: {
+    "ip": __cedar::String,
+    "timestamp": __cedar::Long
+  }
+};

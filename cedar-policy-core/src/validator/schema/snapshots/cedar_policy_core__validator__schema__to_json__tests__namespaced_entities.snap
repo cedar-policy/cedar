@@ -1,0 +1,15 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+---
+namespace MyApp {
+  entity User = {
+    "name": __cedar::String
+  };
+
+  action "view" appliesTo {
+    principal: [MyApp::User],
+    resource: [MyApp::User],
+    context: {}
+  };
+}

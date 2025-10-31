@@ -1,0 +1,13 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+---
+entity Document = {
+  "editors": Set<User>,
+  "group": Group,
+  "owner": User
+};
+
+entity Group;
+
+entity User;

@@ -1,0 +1,34 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+---
+entity Admin = {
+  "id": __cedar::String,
+  "name": __cedar::String
+};
+
+entity Group = {
+  "id": __cedar::String,
+  "members": Set<User>
+};
+
+entity Status enum ["active", "inactive"];
+
+entity User = {
+  "id": __cedar::String,
+  "name": __cedar::String
+};
+
+action "manage" in [Action::"read", Action::"write"];
+
+action "read" appliesTo {
+  principal: [Admin, User],
+  resource: [Group],
+  context: {}
+};
+
+action "write" appliesTo {
+  principal: [Admin, User],
+  resource: [Group],
+  context: {}
+};

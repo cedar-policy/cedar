@@ -1,0 +1,11 @@
+entity User, Admin, Guest;
+
+entity Document = {
+    "title": __cedar::String
+};
+
+action read, write, delete appliesTo {
+    principal: [User, Admin],
+    resource: [Document],
+    context: {}
+};

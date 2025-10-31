@@ -1,0 +1,45 @@
+type Email = __cedar::String;
+type PhoneNumber = __cedar::String;
+
+namespace Organization {
+    type DepartmentId = __cedar::String;
+    
+    entity Department = {
+        "id": DepartmentId,
+        "name": __cedar::String,
+        "budget": __cedar::Long
+    };
+    
+    entity Employee, Manager, Executive in [Employee] = {
+        "email": Email,
+        "phone"?: PhoneNumber,
+        "department": Department
+    };
+    
+    entity Status enum ["active", "inactive", "on_leave"];
+}
+
+namespace Documents {
+    entity Document, Report, Memo in [Document] = {
+        "title": __cedar::String,
+        "author": Organization::Employee,
+        "reviewers": Set<Organization::Manager>
+    } tags {
+        "classification": __cedar::String
+    };
+    
+    action read, write, review appliesTo {
+        principal: [Organization::Employee, Organization::Manager],
+        resource: [Document, Report, Memo],
+        context: {
+            "timestamp": __cedar::Long,
+            "ip_address": __cedar::String
+        }
+    };
+    
+    action approve in [review] appliesTo {
+        principal: [Organization::Executive],
+        resource: [Report],
+        context: {}
+    };
+}

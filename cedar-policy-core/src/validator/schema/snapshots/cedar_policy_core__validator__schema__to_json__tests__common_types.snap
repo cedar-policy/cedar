@@ -1,0 +1,17 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+---
+entity User = {
+  "id": __cedar::String,
+  "profile": {
+    "age": __cedar::Long,
+    "name": __cedar::String
+  }
+};
+
+action "view" appliesTo {
+  principal: [User],
+  resource: [User],
+  context: {}
+};

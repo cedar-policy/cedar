@@ -1,0 +1,9 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+input_file: cedar-policy-core/src/validator/schema/test_schemas/extension_types.cedarschema
+---
+entity User = {
+  "balance": __cedar::decimal,
+  "ip": __cedar::ipaddr
+};

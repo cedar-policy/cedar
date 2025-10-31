@@ -1,0 +1,14 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+---
+entity Document = {
+  "title": __cedar::String
+} tags {
+  "classification": __cedar::String,
+  "department": __cedar::String
+};
+
+entity User = {
+  "name": __cedar::String
+} tags __cedar::String;

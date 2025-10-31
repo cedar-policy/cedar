@@ -1,0 +1,11 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+---
+entity User = {
+  "permissions": Set<__cedar::String>,
+  "profile": {
+    "name": __cedar::String,
+    "settings": Set<__cedar::String>
+  }
+};

@@ -1,0 +1,32 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+input_file: cedar-policy-core/src/validator/schema/test_schemas/multiple_actions_declared_together.cedarschema
+---
+entity Document;
+
+entity User;
+
+action "admin_read" in [Action::"read", Action::"write"] appliesTo {
+  principal: [User],
+  resource: [Document],
+  context: {}
+};
+
+action "admin_write" in [Action::"read", Action::"write"] appliesTo {
+  principal: [User],
+  resource: [Document],
+  context: {}
+};
+
+action "read" appliesTo {
+  principal: [User],
+  resource: [Document],
+  context: {}
+};
+
+action "write" appliesTo {
+  principal: [User],
+  resource: [Document],
+  context: {}
+};

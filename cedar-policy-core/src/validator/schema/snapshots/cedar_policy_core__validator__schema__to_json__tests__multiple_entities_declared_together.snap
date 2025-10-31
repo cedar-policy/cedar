@@ -1,0 +1,31 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+---
+entity Admin;
+
+entity Document = {
+  "title": __cedar::String
+};
+
+entity Guest;
+
+entity User;
+
+action "delete" appliesTo {
+  principal: [Admin, User],
+  resource: [Document],
+  context: {}
+};
+
+action "read" appliesTo {
+  principal: [Admin, User],
+  resource: [Document],
+  context: {}
+};
+
+action "write" appliesTo {
+  principal: [Admin, User],
+  resource: [Document],
+  context: {}
+};
