@@ -769,6 +769,7 @@ mod tests {
             &errs,
             &ExpectedErrorMessageBuilder::error("invalid token")
                 .exactly_one_underline("")
+                .help("try checking that all strings are closed properly")
                 .build(),
         );
     }
