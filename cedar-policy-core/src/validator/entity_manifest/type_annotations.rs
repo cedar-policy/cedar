@@ -147,7 +147,6 @@ impl AccessTrie {
                             .ok_or(MismatchedNotStrictSchemaError {})?;
                         entity_ty.attributes()
                     }
-                    EntityRecordKind::ActionEntity { name: _, attrs } => attrs,
                 };
 
                 let mut new_children = HashMap::new();

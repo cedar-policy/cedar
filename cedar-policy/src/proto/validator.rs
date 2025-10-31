@@ -21,7 +21,7 @@ use cedar_policy_core::ast;
 use cedar_policy_core::validator::types;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
     fn from(v: &cedar_policy_core::validator::ValidatorSchema) -> Self {
@@ -89,16 +89,6 @@ impl From<&cedar_policy_core::validator::ValidatorActionId> for models::ActionDe
     // PANIC SAFETY: experimental feature
     #[allow(clippy::panic)]
     fn from(v: &cedar_policy_core::validator::ValidatorActionId) -> Self {
-        debug_assert_eq!(
-            v.attribute_types().keys().collect::<Vec<&SmolStr>>(),
-            Vec::<&SmolStr>::new(),
-            "action attributes are not currently supported in protobuf"
-        );
-        debug_assert_eq!(
-            v.attributes().collect::<Vec<_>>(),
-            vec![],
-            "action attributes are not currently supported in protobuf"
-        );
         let ctx_attrs = match v.context() {
             types::Type::EntityOrRecord(types::EntityRecordKind::Record {
                 attrs,
@@ -129,10 +119,6 @@ impl From<&models::ActionDecl> for cedar_policy_core::validator::ValidatorAction
                 attrs: model_to_attributes(&v.context),
                 open_attributes: types::OpenTag::default(),
             }),
-            // protobuf formats do not include action attributes, so we
-            // translate into a `ValidatorActionId` with no action attributes
-            types::Attributes::with_attributes([]),
-            BTreeMap::new(),
             None,
         )
     }
@@ -259,12 +245,6 @@ impl From<&types::Type> for models::Type {
                 assert_eq!(open_attributes, &types::OpenTag::ClosedAttributes, "can't encode open record in protobuf");
                 Self {
                     data: Some(models::r#type::Data::Record(models::r#type::Record { attrs: attributes_to_model(attrs) })),
-                }
-            }
-            types::Type::EntityOrRecord(types::EntityRecordKind::ActionEntity { name, attrs }) => {
-                debug_assert_eq!(attrs.keys().collect::<Vec<&SmolStr>>(), Vec::<&SmolStr>::new(), "can't encode action attributes in protobuf");
-                Self {
-                    data: Some(models::r#type::Data::Entity(models::Name::from(name.as_ref()))),
                 }
             }
             types::Type::EntityOrRecord(types::EntityRecordKind::AnyEntity) => panic!("can't encode AnyEntity type in protobuf; AnyEntity should never appear in a Schema"),

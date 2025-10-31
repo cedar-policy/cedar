@@ -17,16 +17,11 @@
 //! This module contains the definition of `ValidatorNamespaceDef` and of types
 //! it relies on
 
-use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use crate::parser::Loc;
 use crate::{
-    ast::{
-        EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name, PartialValue,
-        UnreservedId,
-    },
-    entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
-    evaluator::RestrictedEvaluator,
+    ast::{EntityType, EntityUID, InternalName, Name, UnreservedId},
     extensions::Extensions,
     fuzzy_match::fuzzy_search,
 };
@@ -40,7 +35,7 @@ use crate::validator::{
     json_schema::{self, CommonTypeId, EntityTypeKind},
     partition_nonempty::PartitionNonEmpty,
     types::{AttributeType, Attributes, OpenTag, Type},
-    ActionBehavior, ConditionalName, RawName, ReferenceType,
+    ConditionalName, RawName, ReferenceType,
 };
 
 /// A single namespace definition from the schema JSON or Cedar syntax,
@@ -127,20 +122,17 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
     pub fn from_namespace_definition(
         namespace: Option<InternalName>,
         namespace_def: json_schema::NamespaceDefinition<RawName>,
-        action_behavior: ActionBehavior,
-        extensions: &Extensions<'_>,
     ) -> crate::validator::err::Result<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
     {
         // Return early with an error if actions cannot be in groups or have
         // attributes, but the schema contains action groups or attributes.
-        Self::check_action_behavior(&namespace_def, action_behavior)?;
+        Self::check_action_restrictions(&namespace_def)?;
 
         // Convert the common types, actions and entity types from the schema
         // file into the representation used by the validator.
         let common_types =
             CommonTypeDefs::from_raw_common_types(namespace_def.common_types, namespace.as_ref())?;
-        let actions =
-            ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref(), extensions)?;
+        let actions = ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref())?;
         let entity_types =
             EntityTypesDef::from_raw_entity_types(namespace_def.entity_types, namespace.as_ref())?;
 
@@ -233,14 +225,10 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
         }
     }
 
-    /// Check that `schema_nsdef` uses actions in a way consistent with the
-    /// specified `action_behavior`. When the behavior specifies that actions
-    /// should not be used in groups and should not have attributes, then this
-    /// function will return `Err` if it sees any action groups or attributes
-    /// declared in the schema.
-    fn check_action_behavior<N>(
+    /// Check that `schema_nsdef` does not declare an `Action` entity type or
+    /// declare `attributes` for any actions.
+    fn check_action_restrictions<N>(
         schema_nsdef: &json_schema::NamespaceDefinition<N>,
-        action_behavior: ActionBehavior,
     ) -> crate::validator::err::Result<()> {
         if schema_nsdef
             .entity_types
@@ -252,22 +240,20 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
         {
             return Err(ActionEntityTypeDeclaredError {}.into());
         }
-        if action_behavior == ActionBehavior::ProhibitAttributes {
-            let mut actions_with_attributes: Vec<String> = Vec::new();
-            for (name, a) in &schema_nsdef.actions {
-                if a.attributes.is_some() {
-                    actions_with_attributes.push(name.to_string());
-                }
+        let mut actions_with_attributes: Vec<String> = Vec::new();
+        for (name, a) in &schema_nsdef.actions {
+            if a.attributes.is_some() {
+                actions_with_attributes.push(name.to_string());
             }
-            if !actions_with_attributes.is_empty() {
-                actions_with_attributes.sort(); // TODO(#833): sort required for deterministic error messages
-                return Err(
-                    UnsupportedFeatureError(UnsupportedFeature::ActionAttributes(
-                        actions_with_attributes,
-                    ))
-                    .into(),
-                );
-            }
+        }
+        if !actions_with_attributes.is_empty() {
+            actions_with_attributes.sort(); // TODO(#833): sort required for deterministic error messages
+            return Err(
+                UnsupportedFeatureError(UnsupportedFeature::ActionAttributes(
+                    actions_with_attributes,
+                ))
+                .into(),
+            );
         }
 
         Ok(())
@@ -657,7 +643,6 @@ impl ActionsDef<ConditionalName, ConditionalName> {
     pub(crate) fn from_raw_actions(
         schema_file_actions: impl IntoIterator<Item = (SmolStr, json_schema::ActionType<RawName>)>,
         schema_namespace: Option<&InternalName>,
-        extensions: &Extensions<'_>,
     ) -> crate::validator::err::Result<Self> {
         let mut actions = HashMap::new();
         for (action_name, action_type) in schema_file_actions {
@@ -665,12 +650,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
                 create_action_entity_uid_default_type(&action_name, &action_type, schema_namespace);
             match actions.entry(action_uid.clone().try_into()?) {
                 Entry::Vacant(ventry) => {
-                    let frag = ActionFragment::from_raw_action(
-                        ventry.key(),
-                        action_type,
-                        schema_namespace,
-                        extensions,
-                    )?;
+                    let frag = ActionFragment::from_raw_action(action_type, schema_namespace)?;
                     ventry.insert(frag);
                 }
                 Entry::Occupied(_) => {
@@ -725,23 +705,14 @@ pub struct ActionFragment<N, A> {
     /// We will check for undeclared parents when combining fragments into a
     /// [`crate::validator::ValidatorSchema`].
     pub(super) parents: HashSet<json_schema::ActionEntityUID<N>>,
-    /// The types for the attributes defined for this actions entity.
-    /// Here, common types have been fully resolved/inlined.
-    pub(super) attribute_types: Attributes,
-    /// The values for the attributes defined for this actions entity, stored
-    /// separately so that we can later extract these values to construct the
-    /// actual `Entity` objects defined by the schema.
-    pub(super) attributes: BTreeMap<SmolStr, PartialValue>,
     /// Source location - if available
     pub(super) loc: Option<Loc>,
 }
 
 impl ActionFragment<ConditionalName, ConditionalName> {
     pub(crate) fn from_raw_action(
-        action_uid: &EntityUID,
         action_type: json_schema::ActionType<RawName>,
         schema_namespace: Option<&InternalName>,
-        extensions: &Extensions<'_>,
     ) -> crate::validator::err::Result<Self> {
         let (principal_types, resource_types, context) = action_type
             .applies_to
@@ -753,11 +724,6 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                 )
             })
             .unwrap_or_default();
-        let (attribute_types, attributes) = Self::convert_attr_jsonval_map_to_attributes(
-            action_type.attributes.unwrap_or_default(),
-            action_uid,
-            extensions,
-        )?;
         Ok(Self {
             context: context
                 .into_inner()
@@ -782,8 +748,6 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                 .into_iter()
                 .map(|parent| parent.conditionally_qualify_type_references(schema_namespace))
                 .collect(),
-            attribute_types,
-            attributes,
             loc: action_type.loc,
         })
     }
@@ -806,121 +770,8 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                 .into_iter()
                 .map(|parent| parent.fully_qualify_type_references(all_defs))
                 .partition_nonempty()?,
-            attribute_types: self.attribute_types,
-            attributes: self.attributes,
             loc: self.loc,
         })
-    }
-
-    fn convert_attr_jsonval_map_to_attributes(
-        m: HashMap<SmolStr, CedarValueJson>,
-        action_id: &EntityUID,
-        extensions: &Extensions<'_>,
-    ) -> crate::validator::err::Result<(Attributes, BTreeMap<SmolStr, PartialValue>)> {
-        let mut attr_types: HashMap<SmolStr, Type> = HashMap::with_capacity(m.len());
-        let mut attr_values: BTreeMap<SmolStr, PartialValue> = BTreeMap::new();
-        let evaluator = RestrictedEvaluator::new(extensions);
-
-        for (k, v) in m {
-            let t = Self::jsonval_to_type_helper(&v, action_id);
-            match t {
-                Ok(ty) => attr_types.insert(k.clone(), ty),
-                Err(e) => return Err(e),
-            };
-
-            // As an artifact of the limited `CedarValueJson` variants accepted by
-            // `Self::jsonval_to_type_helper`, we know that this function will
-            // never error. Also note that this is only ever executed when
-            // action attributes are enabled, but they cannot be enabled when
-            // using Cedar through the public API. This is fortunate because
-            // handling an error here would mean adding a new error variant to
-            // `SchemaError` in the public API, but we didn't make that enum
-            // `non_exhaustive`, so any new variants are a breaking change.
-            // PANIC SAFETY: see above
-            #[allow(clippy::expect_used)]
-            let e = v.into_expr(|| JsonDeserializationErrorContext::EntityAttribute { uid: action_id.clone(), attr: k.clone() }).expect("`Self::jsonval_to_type_helper` will always return `Err` for a `CedarValueJson` that might make `into_expr` return `Err`");
-            let pv = evaluator
-                .partial_interpret(e.as_borrowed())
-                .map_err(|err| {
-                    ActionAttrEvalError(EntityAttrEvaluationError {
-                        uid: action_id.clone(),
-                        attr_or_tag: k.clone(),
-                        was_attr: true,
-                        err,
-                    })
-                })?;
-            attr_values.insert(k, pv);
-        }
-        Ok((
-            Attributes::with_required_attributes(attr_types),
-            attr_values,
-        ))
-    }
-
-    /// Helper to get types from `CedarValueJson`s. Currently doesn't support all
-    /// `CedarValueJson` types. Note: If this function is extended to cover move
-    /// `CedarValueJson`s, we must update `convert_attr_jsonval_map_to_attributes` to
-    /// handle errors that may occur when parsing these values. This will require
-    /// a breaking change in the `SchemaError` type in the public API.
-    fn jsonval_to_type_helper(
-        v: &CedarValueJson,
-        action_id: &EntityUID,
-    ) -> crate::validator::err::Result<Type> {
-        match v {
-            CedarValueJson::Bool(_) => Ok(Type::primitive_boolean()),
-            CedarValueJson::Long(_) => Ok(Type::primitive_long()),
-            CedarValueJson::String(_) => Ok(Type::primitive_string()),
-            CedarValueJson::Record(r) => {
-                let mut required_attrs: HashMap<SmolStr, Type> = HashMap::with_capacity(r.len());
-                for (k, v_prime) in r {
-                    let t = Self::jsonval_to_type_helper(v_prime, action_id);
-                    match t {
-                        Ok(ty) => required_attrs.insert(k.clone(), ty),
-                        Err(e) => return Err(e),
-                    };
-                }
-                Ok(Type::record_with_required_attributes(
-                    required_attrs,
-                    OpenTag::ClosedAttributes,
-                ))
-            }
-            CedarValueJson::Set(v) => match v.first() {
-                //sets with elements of different types will be rejected elsewhere
-                None => Err(ActionAttributesContainEmptySetError {
-                    uid: action_id.clone(),
-                }
-                .into()),
-                Some(element) => {
-                    let element_type = Self::jsonval_to_type_helper(element, action_id);
-                    match element_type {
-                        Ok(t) => Ok(Type::Set {
-                            element_type: Some(Box::new(t)),
-                        }),
-                        Err(_) => element_type,
-                    }
-                }
-            },
-            CedarValueJson::EntityEscape { __entity: _ } => Err(UnsupportedActionAttributeError {
-                uid: action_id.clone(),
-                attr: "entity escape (`__entity`)".into(),
-            }
-            .into()),
-            CedarValueJson::ExprEscape { __expr: _ } => Err(UnsupportedActionAttributeError {
-                uid: action_id.clone(),
-                attr: "expression escape (`__expr`)".into(),
-            }
-            .into()),
-            CedarValueJson::ExtnEscape { __extn: _ } => Err(UnsupportedActionAttributeError {
-                uid: action_id.clone(),
-                attr: "extension function escape (`__extn`)".into(),
-            }
-            .into()),
-            CedarValueJson::Null => Err(UnsupportedActionAttributeError {
-                uid: action_id.clone(),
-                attr: "null".into(),
-            }
-            .into()),
-        }
     }
 }
 
@@ -1020,12 +871,7 @@ impl TryInto<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
         self,
     ) -> crate::validator::err::Result<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
     {
-        ValidatorNamespaceDef::from_namespace_definition(
-            None,
-            self,
-            ActionBehavior::default(),
-            Extensions::all_available(),
-        )
+        ValidatorNamespaceDef::from_namespace_definition(None, self)
     }
 }
 

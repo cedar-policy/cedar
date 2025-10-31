@@ -239,7 +239,6 @@ impl From<Type> for CedarTypeKind {
                     let e = entity_lub.into_single_entity().unwrap();
                     Self::EntityType(EntityTypeKind::Concrete(Arc::new(e)))
                 }
-                EntityRecordKind::ActionEntity { .. } => Self::Action,
             },
             Type::ExtensionType { name } => Self::Extension(name),
         }

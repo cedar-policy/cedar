@@ -215,25 +215,29 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ContextOrShapeNotRecord(#[from] schema_errors::ContextOrShapeNotRecordError),
-    /// An action entity (transitively) has an attribute that is an empty set.
-    /// The validator cannot assign a type to an empty set.
-    /// This error variant should only be used when `PermitAttributes` is enabled.
+    /// This error variant is deprecated and will never be returned.
     #[error(transparent)]
     #[diagnostic(transparent)]
+    #[allow(deprecated)]
+    #[deprecated = "this error is deprecated and should never be returned"]
     ActionAttributesContainEmptySet(#[from] schema_errors::ActionAttributesContainEmptySetError),
-    /// An action entity (transitively) has an attribute of unsupported type (`ExprEscape`, `EntityEscape` or `ExtnEscape`).
-    /// This error variant should only be used when `PermitAttributes` is enabled.
+    /// This error variant is deprecated and will never be returned.
     #[error(transparent)]
     #[diagnostic(transparent)]
+    #[allow(deprecated)]
+    #[deprecated = "this error is deprecated and should never be returned"]
     UnsupportedActionAttribute(#[from] schema_errors::UnsupportedActionAttributeError),
-    /// Error when evaluating an action attribute
+    /// This error variant is deprecated and will never be returned.
     #[error(transparent)]
     #[diagnostic(transparent)]
+    #[allow(deprecated)]
+    #[deprecated = "this error is deprecated and should never be returned"]
     ActionAttrEval(#[from] schema_errors::ActionAttrEvalError),
-    /// Error thrown when the schema contains the `__expr` escape.
-    /// Support for this escape form has been dropped.
+    /// This error variant is deprecated and will never be returned.
     #[error(transparent)]
     #[diagnostic(transparent)]
+    #[allow(deprecated)]
+    #[deprecated = "this error is deprecated and should never be returned"]
     ExprEscapeUsed(#[from] schema_errors::ExprEscapeUsedError),
     /// The schema used an extension type that the validator doesn't know about.
     #[error(transparent)]
@@ -333,9 +337,15 @@ pub type Result<T> = std::result::Result<T, SchemaError>;
 
 /// Error subtypes for [`SchemaError`]
 pub mod schema_errors {
+
+    // If I don't allow this at the module level I get warnings about using a
+    // deprecated type when I try to _define_ the deprecated type, and it still
+    // doesn't work if I try to allow each type individually.
+    #![allow(deprecated)]
+
     use std::fmt::Display;
 
-    use crate::ast::{EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name};
+    use crate::ast::{EntityType, EntityUID, InternalName, Name};
     use crate::parser::{join_with_conjunction, Loc};
     use crate::{
         impl_diagnostic_from_method_on_field, impl_diagnostic_from_method_on_nonempty_field,
@@ -664,62 +674,45 @@ pub mod schema_errors {
         impl_diagnostic_from_method_on_field!(ctx_or_shape, loc);
     }
 
-    /// Action attributes contain empty set error
+    /// This error variant is deprecated and will never be returned.
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Error)]
-    #[error("action `{uid}` has an attribute that is an empty set")]
-    pub struct ActionAttributesContainEmptySetError {
-        pub(crate) uid: EntityUID,
-    }
+    #[derive(Diagnostic, Debug, Error)]
+    #[error("internal invariant violated: this error is deprecated and should never be returned")]
+    #[deprecated = "this error is deprecated and should never be returned"]
+    pub struct ActionAttributesContainEmptySetError {}
 
-    impl Diagnostic for ActionAttributesContainEmptySetError {
-        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-            Some(Box::new(
-                "actions are not currently allowed to have attributes whose value is an empty set",
-            ))
-        }
-
-        impl_diagnostic_from_method_on_field!(uid, loc);
-    }
-
-    /// Unsupported action attribute error
+    /// This error variant is deprecated and will never be returned.
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Error)]
-    #[error("action `{uid}` has an attribute with unsupported JSON representation: {attr}")]
-    pub struct UnsupportedActionAttributeError {
-        pub(crate) uid: EntityUID,
-        pub(crate) attr: SmolStr,
-    }
+    #[derive(Diagnostic, Debug, Error)]
+    #[error("internal invariant violated: this error is deprecated and should never be returned")]
+    #[deprecated = "this error is deprecated and should never be returned"]
+    pub struct UnsupportedActionAttributeError {}
 
-    impl Diagnostic for UnsupportedActionAttributeError {
-        impl_diagnostic_from_method_on_field!(uid, loc);
-    }
-
-    /// Unsupported `__expr` escape error
+    /// This error variant is deprecated and will never be returned.
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Clone, Diagnostic, Error)]
-    #[error("the `__expr` escape is no longer supported")]
-    #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]
+    #[derive(Diagnostic, Debug, Error)]
+    #[error("internal invariant violated: this error is deprecated and should never be returned")]
+    #[deprecated = "this error is deprecated and should never be returned"]
     pub struct ExprEscapeUsedError {}
 
-    /// Action attribute evaluation error
+    /// This error variant is deprecated and will never be returned.
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    pub struct ActionAttrEvalError(#[from] pub(crate) EntityAttrEvaluationError);
+    #[derive(Diagnostic, Debug, Error)]
+    #[error("internal invariant violated: this error is deprecated and should never be returned")]
+    #[deprecated = "this error is deprecated and should never be returned"]
+    pub struct ActionAttrEvalError();
 
     /// Unsupported feature error
     //

@@ -965,9 +965,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     type_errors,
                     |actual| match actual {
                         Type::EntityOrRecord(
-                            EntityRecordKind::AnyEntity
-                            | EntityRecordKind::Entity(_)
-                            | EntityRecordKind::ActionEntity { .. },
+                            EntityRecordKind::AnyEntity | EntityRecordKind::Entity(_),
                         ) => Some(UnexpectedTypeHelp::TryUsingIs),
                         _ => None,
                     },
@@ -1004,25 +1002,6 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // The actual EntityLUB contains the entity type, so
                                 // the `is` could be `true`, but it may also be `false`
                                 Type::primitive_boolean()
-                            };
-
-                            TypecheckAnswer::success(
-                                ExprBuilder::with_data(Some(type_of_is))
-                                    .with_same_source_loc(e)
-                                    .is_entity_type(expr_ty, entity_type.clone()),
-                            )
-                        }
-                        Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
-                            name, ..
-                        })) => {
-                            let type_of_is = if name == entity_type {
-                                // The actual action entity type is exactly the entity type we're
-                                // testing for with `is`, so the expression is always `true`
-                                Type::singleton_boolean(true)
-                            } else {
-                                // The actual action entity type is not the entity type
-                                // we're testing for, so the `is` will always be `false`
-                                Type::singleton_boolean(false)
                             };
 
                             TypecheckAnswer::success(
@@ -1399,9 +1378,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     type_errors,
                     |actual| match actual {
                         Type::EntityOrRecord(
-                            EntityRecordKind::AnyEntity
-                            | EntityRecordKind::Entity(_)
-                            | EntityRecordKind::ActionEntity { .. },
+                            EntityRecordKind::AnyEntity | EntityRecordKind::Entity(_),
                         ) => Some(UnexpectedTypeHelp::TryUsingIn),
                         Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
                             Some(UnexpectedTypeHelp::TryUsingHas)
@@ -1458,9 +1435,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     type_errors,
                     |actual| match actual {
                         Type::EntityOrRecord(
-                            EntityRecordKind::AnyEntity
-                            | EntityRecordKind::Entity(_)
-                            | EntityRecordKind::ActionEntity { .. },
+                            EntityRecordKind::AnyEntity | EntityRecordKind::Entity(_),
                         ) => Some(UnexpectedTypeHelp::TryUsingIn),
                         Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
                             Some(UnexpectedTypeHelp::TryUsingHas)
@@ -1643,7 +1618,6 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 let entity_ty = match kind {
                                     EntityRecordKind::Entity(lub) => lub.get_single_entity(),
                                     EntityRecordKind::AnyEntity => None,
-                                    EntityRecordKind::ActionEntity { name, .. } => Some(name),
                                     EntityRecordKind::Record { .. } => None,
                                 };
                                 type_errors.push(ValidationError::no_tags_allowed(
@@ -1814,7 +1788,6 @@ impl<'a> SingleEnvTypechecker<'a> {
                 .entity_types()
                 .filter_map(ValidatorEntityType::tag_type)
                 .collect()),
-            EntityRecordKind::ActionEntity { .. } => Ok(HashSet::new()), // currently, action entities cannot be declared with tags in the schema
             EntityRecordKind::Record { .. } => Err(()),
         }
     }
@@ -1849,12 +1822,6 @@ impl<'a> SingleEnvTypechecker<'a> {
             // check if any of the actions of type `rhs_ety` have descendant
             // action entities with type `lhs_ety`. If there is none, we
             // can soundly type it as false.
-            Type::EntityOrRecord(EntityRecordKind::ActionEntity { name: rhs_ety, .. }) => {
-                self.check_action_in_entity_type(lhs_ety, rhs_ety)
-            }
-
-            // Similar to the case above, but checks the case when the RHS
-            // could be a collection of entity types.
             Type::EntityOrRecord(EntityRecordKind::Entity(rhs_etys)) => rhs_etys
                 .iter()
                 .any(|rhs_ety| self.check_action_in_entity_type(lhs_ety, rhs_ety)),
@@ -1863,10 +1830,6 @@ impl<'a> SingleEnvTypechecker<'a> {
             Type::Set {
                 element_type: Some(rhs_elem_ty),
             } => match rhs_elem_ty.as_ref() {
-                Type::EntityOrRecord(EntityRecordKind::ActionEntity { name: rhs_ety, .. }) => {
-                    self.check_action_in_entity_type(lhs_ety, rhs_ety)
-                }
-
                 Type::EntityOrRecord(EntityRecordKind::Entity(rhs_etys)) => rhs_etys
                     .iter()
                     .any(|rhs_ety| self.check_action_in_entity_type(lhs_ety, rhs_ety)),
@@ -1992,22 +1955,6 @@ impl<'a> SingleEnvTypechecker<'a> {
 
                     _ => {
                         match (lhs_expr.data(), rhs_expr.data()) {
-                            // If the LHS is an action entity type, we conservatively
-                            // check if it can be the descendant of values of the RHS type.
-                            (
-                                Some(Type::EntityOrRecord(EntityRecordKind::ActionEntity {
-                                    name: lhs_ety,
-                                    ..
-                                })),
-                                Some(rhs_ty),
-                            ) if !self.check_action_in_type(lhs_ety, rhs_ty) => {
-                                TypecheckAnswer::success(
-                                    ExprBuilder::with_data(Some(Type::False))
-                                        .with_same_source_loc(in_expr)
-                                        .is_in(lhs_expr, rhs_expr),
-                                )
-                            }
-
                             // Similar to the case above, but for `EntityRecordKind::Entity`
                             (
                                 Some(Type::EntityOrRecord(EntityRecordKind::Entity(lhs_etys))),

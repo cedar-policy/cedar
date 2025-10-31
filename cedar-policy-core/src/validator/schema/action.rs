@@ -17,18 +17,17 @@
 //! This module contains the definition of `ValidatorActionId` and the types it relies on
 
 use crate::{
-    ast::{self, EntityType, EntityUID, PartialValue},
+    ast::{self, EntityType, EntityUID},
     parser::Loc,
     transitive_closure::TCNode,
 };
-use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 
 use super::internal_name_to_entity_type;
 use crate::validator::{
     partition_nonempty::PartitionNonEmpty,
     schema::{AllDefs, SchemaError},
-    types::{Attributes, Type},
+    types::Type,
     ConditionalName,
 };
 
@@ -52,13 +51,6 @@ pub struct ValidatorActionId {
     /// The type of the context record associated with this action.
     pub(crate) context: Type,
 
-    /// The attribute types for this action, used for typechecking.
-    pub(crate) attribute_types: Attributes,
-
-    /// The actual attribute value for this action, used to construct an
-    /// `Entity` for this action. Could also be used for more precise
-    /// typechecking by partial evaluation.
-    pub(crate) attributes: BTreeMap<SmolStr, PartialValue>,
     /// Source location - if available
     pub(crate) loc: Option<Loc>,
 }
@@ -75,8 +67,6 @@ impl ValidatorActionId {
         resource_entity_types: impl IntoIterator<Item = ast::EntityType>,
         descendants: impl IntoIterator<Item = EntityUID>,
         context: Type,
-        attribute_types: Attributes,
-        attributes: BTreeMap<SmolStr, PartialValue>,
         loc: Option<Loc>,
     ) -> Self {
         Self {
@@ -87,8 +77,6 @@ impl ValidatorActionId {
             ),
             descendants: descendants.into_iter().collect(),
             context,
-            attribute_types,
-            attributes,
             loc,
         }
     }
@@ -148,16 +136,6 @@ impl ValidatorActionId {
     /// Is the given resource type applicable for this spec?
     pub fn is_applicable_resource_type(&self, ty: &ast::EntityType) -> bool {
         self.applies_to.is_applicable_resource_type(ty)
-    }
-
-    /// Attribute types for this action
-    pub fn attribute_types(&self) -> &Attributes {
-        &self.attribute_types
-    }
-
-    /// Attribute values for this action
-    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
-        self.attributes.iter()
     }
 }
 
@@ -299,8 +277,6 @@ mod test {
             },
             descendants: HashSet::new(),
             context: Type::any_record(),
-            attribute_types: Attributes::default(),
-            attributes: BTreeMap::default(),
             loc: None,
         }
     }

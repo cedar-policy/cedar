@@ -30,7 +30,6 @@ use crate::{
 use educe::Educe;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
-use serde::Deserialize;
 #[cfg(feature = "extended-schema")]
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
@@ -62,20 +61,6 @@ pub use raw_name::{ConditionalName, RawName, ReferenceType};
 pub(crate) mod err;
 use err::{schema_errors::*, *};
 
-/// Configurable validator behaviors regarding actions
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
-pub enum ActionBehavior {
-    /// Action entities cannot have attributes. Attempting to declare attributes
-    /// will result in a error when constructing the schema.
-    ///
-    /// Since we do not have a formal model for action attributes, this behavior
-    /// (disabling/prohibiting them) is the default.
-    #[default]
-    ProhibitAttributes,
-    /// Action entities may have attributes.
-    PermitAttributes,
-}
-
 /// A `ValidatorSchemaFragment` consists of any number (even 0) of
 /// `ValidatorNamespaceDef`s.
 #[derive(Debug, Clone)]
@@ -87,11 +72,7 @@ impl TryInto<ValidatorSchemaFragment<ConditionalName, ConditionalName>>
     type Error = SchemaError;
 
     fn try_into(self) -> Result<ValidatorSchemaFragment<ConditionalName, ConditionalName>> {
-        ValidatorSchemaFragment::from_schema_fragment(
-            self,
-            ActionBehavior::default(),
-            Extensions::all_available(),
-        )
+        ValidatorSchemaFragment::from_schema_fragment(self)
     }
 }
 
@@ -113,11 +94,7 @@ impl<N, A> ValidatorSchemaFragment<N, A> {
 
 impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     /// Construct a [`ValidatorSchemaFragment`] from a [`json_schema::Fragment`]
-    pub fn from_schema_fragment(
-        fragment: json_schema::Fragment<RawName>,
-        action_behavior: ActionBehavior,
-        extensions: &Extensions<'_>,
-    ) -> Result<Self> {
+    pub fn from_schema_fragment(fragment: json_schema::Fragment<RawName>) -> Result<Self> {
         Ok(Self(
             fragment
                 .0
@@ -126,8 +103,6 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
                     ValidatorNamespaceDef::from_namespace_definition(
                         fragment_ns.map(Into::into),
                         ns_def,
-                        action_behavior,
-                        extensions,
                     )
                 })
                 .partition_nonempty()?,
@@ -520,7 +495,6 @@ impl ValidatorSchema {
     pub fn from_json_value(json: serde_json::Value, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
             json_schema::Fragment::<RawName>::from_json_value(json)?,
-            ActionBehavior::default(),
             extensions,
         )
     }
@@ -530,7 +504,6 @@ impl ValidatorSchema {
     pub fn from_json_str(json: &str, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
             json_schema::Fragment::<RawName>::from_json_str(json)?,
-            ActionBehavior::default(),
             extensions,
         )
     }
@@ -540,7 +513,6 @@ impl ValidatorSchema {
     pub fn from_json_file(file: impl std::io::Read, extensions: &Extensions<'_>) -> Result<Self> {
         Self::from_schema_frag(
             json_schema::Fragment::<RawName>::from_json_file(file)?,
-            ActionBehavior::default(),
             extensions,
         )
     }
@@ -554,8 +526,7 @@ impl ValidatorSchema {
     {
         let (fragment, warnings) = json_schema::Fragment::from_cedarschema_file(r, extensions)?;
         let schema_and_warnings =
-            Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
-                .map(|schema| (schema, warnings))?;
+            Self::from_schema_frag(fragment, extensions).map(|schema| (schema, warnings))?;
         Ok(schema_and_warnings)
     }
 
@@ -568,23 +539,17 @@ impl ValidatorSchema {
     {
         let (fragment, warnings) = json_schema::Fragment::from_cedarschema_str(src, extensions)?;
         let schema_and_warnings =
-            Self::from_schema_frag(fragment, ActionBehavior::default(), extensions)
-                .map(|schema| (schema, warnings))?;
+            Self::from_schema_frag(fragment, extensions).map(|schema| (schema, warnings))?;
         Ok(schema_and_warnings)
     }
 
     /// Helper function to construct a [`ValidatorSchema`] from a single [`json_schema::Fragment`].
     pub(crate) fn from_schema_frag(
         schema_file: json_schema::Fragment<RawName>,
-        action_behavior: ActionBehavior,
         extensions: &Extensions<'_>,
     ) -> Result<ValidatorSchema> {
         Self::from_schema_fragments(
-            [ValidatorSchemaFragment::from_schema_fragment(
-                schema_file,
-                action_behavior,
-                extensions,
-            )?],
+            [ValidatorSchemaFragment::from_schema_fragment(schema_file)?],
             extensions,
         )
     }
@@ -844,8 +809,6 @@ impl ValidatorSchema {
                         applies_to: action.applies_to,
                         descendants,
                         context: Type::record_with_attributes(context, open_context_attributes),
-                        attribute_types: action.attribute_types,
-                        attributes: action.attributes,
                         loc: action.loc,
                     },
                 ))
@@ -1122,10 +1085,10 @@ impl ValidatorSchema {
                     .insert(action_euid.clone());
             }
         }
-        action_ids.iter().map(move |(action_id, action)| {
+        action_ids.keys().map(move |action_id| {
             Entity::new_with_attr_partial_value(
                 action_id.clone(),
-                action.attributes.clone(),
+                [],
                 HashSet::new(),
                 action_ancestors.remove(action_id).unwrap_or_default(),
                 [], // actions cannot have entity tags
@@ -1141,37 +1104,6 @@ impl ValidatorSchema {
             None::<&crate::entities::NoEntitiesSchema>, // we don't want to tell `Entities::from_entities()` to add the schema's action entities, that would infinitely recurse
             TCComputation::AssumeAlreadyComputed,
             extensions,
-        )
-    }
-}
-
-/// Used to write a schema implicitly overriding the default handling of action
-/// groups.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-#[serde(transparent)]
-#[allow(
-    dead_code,
-    reason = "Not actually dead, but linter mistakenly thinks this code is dead"
-)]
-pub(crate) struct NamespaceDefinitionWithActionAttributes<N>(
-    pub(crate) json_schema::NamespaceDefinition<N>,
-);
-
-impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawName> {
-    type Error = SchemaError;
-
-    fn try_into(self) -> Result<ValidatorSchema> {
-        ValidatorSchema::from_schema_fragments(
-            [ValidatorSchemaFragment::from_namespaces([
-                ValidatorNamespaceDef::from_namespace_definition(
-                    None,
-                    self.0,
-                    crate::validator::ActionBehavior::PermitAttributes,
-                    Extensions::all_available(),
-                )?,
-            ])],
-            Extensions::all_available(),
         )
     }
 }
@@ -1670,7 +1602,6 @@ pub(crate) mod test {
     use crate::validator::json_schema;
     use crate::validator::types::Type;
 
-    use crate::ast::RestrictedExpr;
     use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
 
@@ -2310,11 +2241,7 @@ pub(crate) mod test {
         )
         .unwrap();
 
-        let schema = ValidatorSchemaFragment::from_schema_fragment(
-            schema_json,
-            ActionBehavior::ProhibitAttributes,
-            Extensions::all_available(),
-        );
+        let schema = ValidatorSchemaFragment::from_schema_fragment(schema_json);
         match schema {
             Err(e) => {
                 expect_err(
@@ -2972,39 +2899,6 @@ pub(crate) mod test {
         assert_eq!(
             read_entity.unwrap(),
             &Entity::new_with_attr_partial_value(read_uid, [], HashSet::new(), HashSet::new(), [])
-        );
-    }
-
-    #[test]
-    fn action_entity_attribute() {
-        let src = json!(
-        {
-            "entityTypes": { },
-            "actions": {
-                "view_photo": {
-                    "attributes": { "attr": "foo" }
-                },
-            }
-        });
-
-        let schema_file: NamespaceDefinitionWithActionAttributes<RawName> =
-            serde_json::from_value(src).unwrap();
-        let schema: ValidatorSchema = schema_file.try_into().unwrap();
-        let actions = schema.action_entities().expect("Entity Construct Error");
-
-        let action_uid = EntityUID::from_str("Action::\"view_photo\"").unwrap();
-        let view_photo = actions.entity(&action_uid);
-        assert_eq!(
-            view_photo.unwrap(),
-            &Entity::new(
-                action_uid,
-                [("attr".into(), RestrictedExpr::val("foo"))],
-                HashSet::new(),
-                HashSet::new(),
-                [],
-                Extensions::none(),
-            )
-            .unwrap(),
         );
     }
 
@@ -3937,6 +3831,72 @@ pub(crate) mod test {
             entity E { tags: Set<{key: String, value: Set<String>}> };
         "#;
         assert_valid_cedar_schema(src);
+    }
+
+    #[test]
+    fn action_attributes_error() {
+        let fragment = json_schema::Fragment::from_json_value(json!({
+            "": {
+                "entityTypes": { },
+                "actions": {
+                    "view": {
+                        "attributes": {
+                            "foo": 0
+                        }
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        assert_matches!(
+            TryInto::<ValidatorSchema>::try_into(fragment),
+            Err(SchemaError::UnsupportedFeature(UnsupportedFeatureError(
+                UnsupportedFeature::ActionAttributes(_)
+            )))
+        );
+    }
+
+    #[test]
+    fn action_attributes_empty_error() {
+        let fragment = json_schema::Fragment::from_json_value(json!({
+            "": {
+                "entityTypes": { },
+                "actions": {
+                    "view": {
+                        "attributes": { }
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        assert_matches!(
+            TryInto::<ValidatorSchema>::try_into(fragment),
+            Err(SchemaError::UnsupportedFeature(UnsupportedFeatureError(
+                UnsupportedFeature::ActionAttributes(_)
+            )))
+        );
+    }
+
+    #[test]
+    fn action_attributes_null_ok() {
+        let fragment = json_schema::Fragment::from_json_value(json!({
+            "": {
+                "entityTypes": { },
+                "actions": {
+                    "view": {
+                        // Ideally this would also be an error, but we accept it
+                        // maintain for backwards compatibility.
+                        "attributes": null
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        let schema = TryInto::<ValidatorSchema>::try_into(fragment).unwrap();
+        assert_eq!(
+            schema.actions().next(),
+            Some(&"Action::\"view\"".parse().unwrap())
+        );
     }
 }
 

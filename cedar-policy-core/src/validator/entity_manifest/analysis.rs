@@ -268,7 +268,7 @@ fn type_to_access_trie(ty: &Type) -> AccessTrie {
 /// Compute the full [`AccessTrie`] for the given entity or record type.
 fn entity_or_record_to_access_trie(ty: &EntityRecordKind) -> AccessTrie {
     match ty {
-        EntityRecordKind::ActionEntity { attrs, .. } | EntityRecordKind::Record { attrs, .. } => {
+        EntityRecordKind::Record { attrs, .. } => {
             let mut fields = HashMap::new();
             for (attr_name, attr_type) in attrs.iter() {
                 fields.insert(
