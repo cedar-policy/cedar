@@ -684,6 +684,22 @@ impl Diagnostic for ToCSTError {
         };
         Some(Box::new(iter::once(labeled_span)))
     }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        match self.err {
+            OwnedRawParseError::InvalidToken { location } => {
+                let tok_last_char = self.src.get(location..)?.chars().next()?;
+                if tok_last_char == '"' {
+                    Some(Box::new(
+                        "try checking that all strings are closed properly",
+                    ))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Defines configurable rules for how tokens in an `UnrecognizedToken` or

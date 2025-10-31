@@ -1452,6 +1452,59 @@ mod tests {
     }
 
     #[test]
+    fn invalid_token() {
+        let src = "permit(principal, action, resource) when { ~ };";
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid token")
+                .exactly_one_underline("")
+                .build(),
+        );
+        let src = "permit(principal, action, resource) when { 🚀 };";
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid token")
+                .exactly_one_underline("")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn unclosed_strings() {
+        #[track_caller]
+        fn assert_invalid_quote_token(src: &str) {
+            let errs = assert_parse_fails(parse_policies, src);
+            expect_exactly_one_error(
+                src,
+                &errs,
+                &ExpectedErrorMessageBuilder::error("invalid token")
+                    .exactly_one_underline("")
+                    .help("try checking that all strings are closed properly")
+                    .build(),
+            );
+        }
+        assert_invalid_quote_token(
+            r#"
+            permit(principal, action, resource) when {
+                principal.foo = "bar
+            };"#,
+        );
+        assert_invalid_quote_token(r#"permit(principal, action, resource == Photo::"mine.jpg);"#);
+        assert_invalid_quote_token(r#"@id("0)permit(principal, action, resource);"#);
+        assert_invalid_quote_token(
+            r#"
+            @id("0)
+            permit(principal, action, resource) when {
+                principal.foo = "bar"
+            };"#,
+        );
+    }
+
+    #[test]
     #[cfg(feature = "tolerant-ast")]
     fn policies_tolerant_success() {
         let src = r#"
