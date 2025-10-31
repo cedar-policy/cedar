@@ -234,10 +234,10 @@ fn eq_strict_types_mismatch() {
         assert_types_must_match(
             s,
             &q,
-            &Expr::from_str(r#"1 == "foo""#).unwrap(),
-            r#"1 == "foo""#,
+            &Expr::from_str(r#"principal == "foo""#).unwrap(),
+            r#"principal == "foo""#,
             Type::primitive_boolean(),
-            [Type::primitive_string(), Type::primitive_long()],
+            [Type::named_entity_reference_from_str("User"), Type::primitive_string()],
             LubHelp::None,
             LubContext::Equality,
         )
@@ -530,10 +530,10 @@ fn test_unary() {
         assert_types_must_match(
             s,
             &q,
-            &Expr::from_str(r#"!(1 == "foo")"#).unwrap(),
-            r#"1 == "foo""#,
+            &Expr::from_str(r#"!(principal == "foo")"#).unwrap(),
+            r#"principal == "foo""#,
             Type::primitive_boolean(),
-            [Type::primitive_long(), Type::primitive_string()],
+            [Type::named_entity_reference_from_str("User"), Type::primitive_string()],
             LubHelp::None,
             LubContext::Equality,
         );
@@ -552,10 +552,10 @@ fn test_mul() {
         assert_types_must_match(
             s,
             &q,
-            &Expr::from_str(r#"2*(if 1 == false then 3 else 4)"#).unwrap(),
-            "1 == false",
+            &Expr::from_str(r#"2*(if principal == false then 3 else 4)"#).unwrap(),
+            "principal == false",
             Type::primitive_long(),
-            [Type::primitive_long(), Type::singleton_boolean(false)],
+            [Type::named_entity_reference_from_str("User"), Type::singleton_boolean(false)],
             LubHelp::None,
             LubContext::Equality,
         );
@@ -574,10 +574,10 @@ fn test_like() {
         assert_types_must_match(
             s,
             &q,
-            &Expr::from_str(r#"(if 1 == false then "foo" else "bar") like "bar""#).unwrap(),
-            r#"1 == false"#,
+            &Expr::from_str(r#"(if principal == false then "foo" else "bar") like "bar""#).unwrap(),
+            r#"principal == false"#,
             Type::primitive_boolean(),
-            [Type::primitive_long(), Type::singleton_boolean(false)],
+            [Type::named_entity_reference_from_str("User"), Type::singleton_boolean(false)],
             LubHelp::None,
             LubContext::Equality,
         );
@@ -596,10 +596,10 @@ fn test_get_attr() {
         assert_types_must_match(
             s,
             &q,
-            &Expr::from_str(r#"{name: 1 == "foo"}.name"#).unwrap(),
-            r#"1 == "foo""#,
+            &Expr::from_str(r#"{name: principal == "foo"}.name"#).unwrap(),
+            r#"principal == "foo""#,
             Type::primitive_boolean(),
-            [Type::primitive_long(), Type::primitive_string()],
+            [Type::named_entity_reference_from_str("User"), Type::primitive_string()],
             LubHelp::None,
             LubContext::Equality,
         );
@@ -624,8 +624,8 @@ fn test_has_attr() {
         assert_types_must_match(
             s,
             &q,
-            &Expr::from_str(r#"(if 1 == 2 then {name: 1} else {bar: 2}) has bar"#).unwrap(),
-            "if 1 == 2 then {name: 1} else {bar: 2}",
+            &Expr::from_str(r#"(if principal == principal then {name: 1} else {bar: 2}) has bar"#).unwrap(),
+            "if principal == principal then {name: 1} else {bar: 2}",
             Type::primitive_boolean(),
             [
                 Type::closed_record_with_required_attributes([(
@@ -656,10 +656,10 @@ fn test_extension() {
         assert_types_must_match(
             s.clone(),
             &q,
-            &Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
-            r#"1 == false"#,
+            &Expr::from_str(r#"ip("192.168.1.0/8").isInRange(if principal == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
+            r#"principal == false"#,
             Type::primitive_boolean(),
-            [Type::primitive_long(), Type::singleton_boolean(false)],
+            [Type::named_entity_reference_from_str("User"), Type::singleton_boolean(false)],
             LubHelp::None,
             LubContext::Equality,
         );
@@ -686,10 +686,10 @@ fn test_extension_variadic() {
         assert_types_must_match(
       s,
       &q,
-      &Expr::from_str(r#"ip("192.168.1.0/8").isInRange(ip("127.0.0.3"), if 1 == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
-      r#"1 == false"#,
+      &Expr::from_str(r#"ip("192.168.1.0/8").isInRange(ip("127.0.0.3"), if principal == false then ip("127.0.0.1") else ip("192.168.1.1"))"#).unwrap(),
+      r#"principal == false"#,
       Type::primitive_boolean(),
-      [Type::primitive_long(), Type::singleton_boolean(false)],
+      [Type::named_entity_reference_from_str("User"), Type::singleton_boolean(false)],
       LubHelp::None,
       LubContext::Equality,
         );

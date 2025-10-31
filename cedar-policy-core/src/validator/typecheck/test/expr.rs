@@ -403,8 +403,28 @@ fn or_typecheck_fails() {
 #[test]
 fn eq_typechecks() {
     assert_typechecks_empty_schema(
+        &Expr::is_eq(Expr::var(Var::Principal), Expr::var(Var::Principal)),
+        &Type::primitive_boolean()
+    );
+}
+
+#[test]
+fn lit_eq_true() {
+    assert_typechecks_empty_schema(
+        &Expr::is_eq(Expr::val(2), Expr::val(2)),
+        &Type::singleton_boolean(true),
+    );
+}
+
+#[test]
+fn lit_eq_false() {
+    assert_typechecks_empty_schema(
         &Expr::is_eq(Expr::val(2), Expr::val(1)),
-        &Type::primitive_boolean(),
+        &Type::singleton_boolean(false),
+    );
+    assert_typechecks_empty_schema(
+        &Expr::is_eq(Expr::val("foo"), Expr::val(false)),
+        &Type::singleton_boolean(false),
     );
 }
 
@@ -838,17 +858,48 @@ fn action_literal_in_action_typechecks_true() {
     "#
     .parse()
     .expect("Expected that schema would parse");
+    let src = r#"Action::"action" in action"#;
     assert_typechecks(
         schema,
-        &Expr::is_in(
-            Expr::val(
-                EntityUID::with_eid_and_type("Action", "action")
-                    .expect("Expected EntityUID parse."),
-            ),
-            Expr::var(Var::Action),
-        ),
-        // Lean types it as `Type::True`
-        &Type::primitive_boolean(),
+        &src.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+}
+
+#[test]
+fn entity_in_same_type_bool() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        entity e;
+        action "action" appliesTo { principal: e, resource: e, };
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+    assert_typechecks(
+        schema.clone(),
+        &r#"e::"foo" in e::"bar""#.parse().unwrap(),
+        &Type::primitive_boolean()
+    );
+    // Could specialize on Lit case to make this `true`, but not implemented
+    assert_typechecks(
+        schema,
+        &r#"e::"foo" in e::"foo""#.parse().unwrap(),
+        &Type::primitive_boolean()
+    );
+}
+
+#[test]
+fn entity_in_ancestor_bool() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        entity e;
+        entity f in e;
+        action "action" appliesTo { principal: e, resource: e, };
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+    assert_typechecks(
+        schema,
+        &r#"f::"foo" in e::"bar""#.parse().unwrap(),
+        &Type::primitive_boolean()
     );
 }
 
