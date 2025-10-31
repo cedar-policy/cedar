@@ -24,6 +24,7 @@ Cedar Language Version: TBD
 - For the `tpe` experimental feature, `PartialEntities::from_concrete` now requires a `Schema` and will validate the entities,
   ensuring that a `PartialEntities` object always meets the preconditions required for type aware partial evaluation.
 - Evaluate `has` operation when the LHS record is projectable during partial evaluation. (#1912)
+- Made policy validation for `in` and `==` slightly more permissive to match the formally verified Lean model.
 
 ### Fixed
 

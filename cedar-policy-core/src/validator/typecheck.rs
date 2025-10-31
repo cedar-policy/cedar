@@ -1754,6 +1754,14 @@ impl<'a> SingleEnvTypechecker<'a> {
         rhs_expr: &'b Expr,
         rhs_ty: Option<&Type>,
     ) -> Type {
+        // Evaluate an equality between literals and return that as a singleton boolean.
+        if let (ExprKind::Lit(lhs_lit), ExprKind::Lit(rhs_lit)) = (
+            self.replace_action_var_with_euid(lhs_expr).expr_kind(),
+            self.replace_action_var_with_euid(rhs_expr).expr_kind(),
+        ) {
+            return Type::singleton_boolean(lhs_lit == rhs_lit);
+        }
+
         // If we know the types are disjoint, then we can return give the
         // expression type False. See `are_types_disjoint` definition for
         // explanation of why fewer types are disjoint than may be expected.
@@ -2104,7 +2112,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                         .all(|e| self.schema.euid_has_known_entity_type(e));
                     if self.schema.is_known_entity_type(var_name) && all_rhs_known {
                         let descendants = self.schema.get_entity_types_in_set(rhs.iter());
-                        Self::entity_in_descendants(
+                        Self::entity_type_in_descendants(
                             var_name,
                             descendants,
                             in_expr,
@@ -2213,7 +2221,7 @@ impl<'a> SingleEnvTypechecker<'a> {
     ) -> TypecheckAnswer<'b> {
         let rhs_descendants = self.schema.get_actions_in_set(rhs);
         if let Some(rhs_descendants) = rhs_descendants {
-            Self::entity_in_descendants(lhs, rhs_descendants, in_expr, lhs_expr, rhs_expr)
+            Self::action_in_descendants(lhs, rhs_descendants, in_expr, lhs_expr, rhs_expr)
         } else {
             let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                 .with_same_source_loc(in_expr)
@@ -2224,6 +2232,27 @@ impl<'a> SingleEnvTypechecker<'a> {
                 TypecheckAnswer::fail(annotated_expr)
             }
         }
+    }
+
+    /// Check if the action is in the list of descendant action. Return the singleton
+    /// type false if it is not, and true otherwise.
+    fn action_in_descendants<'b, 'c>(
+        lhs_entity: &EntityUID,
+        rhs_descendants: impl IntoIterator<Item = &'c EntityUID>,
+        in_expr: &Expr,
+        lhs_expr: Expr<Option<Type>>,
+        rhs_expr: Expr<Option<Type>>,
+    ) -> TypecheckAnswer<'b> {
+        let is_action_in_descendants = rhs_descendants.into_iter().any(|e| e == lhs_entity);
+        TypecheckAnswer::success(
+            ExprBuilder::with_data(Some(if is_action_in_descendants {
+                Type::singleton_boolean(true)
+            } else {
+                Type::singleton_boolean(false)
+            }))
+            .with_same_source_loc(in_expr)
+            .is_in(lhs_expr, rhs_expr),
+        )
     }
 
     // Get the type for `in` when it is applied to an non-action EUID literal
@@ -2245,7 +2274,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             .all(|e| self.schema.euid_has_known_entity_type(e));
         if self.schema.is_known_entity_type(lhs_ety) && all_rhs_known {
             let rhs_descendants = self.schema.get_entity_types_in_set(rhs.iter());
-            Self::entity_in_descendants(lhs_ety, rhs_descendants, in_expr, lhs_expr, rhs_expr)
+            Self::entity_type_in_descendants(lhs_ety, rhs_descendants, in_expr, lhs_expr, rhs_expr)
         } else {
             let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                 .with_same_source_loc(in_expr)
@@ -2258,21 +2287,18 @@ impl<'a> SingleEnvTypechecker<'a> {
         }
     }
 
-    /// Check if the entity is in the list of descendants. Return the singleton
+    /// Check if the entity type is in the list of descendant types. Return the singleton
     /// type false if it is not, and boolean otherwise.
-    fn entity_in_descendants<'b, 'c, K>(
-        lhs_entity: &K,
-        rhs_descendants: impl IntoIterator<Item = &'c K>,
+    fn entity_type_in_descendants<'b, 'c>(
+        lhs_entity: &EntityType,
+        rhs_descendants: impl IntoIterator<Item = &'c EntityType>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
-    ) -> TypecheckAnswer<'b>
-    where
-        K: PartialEq + 'c,
-    {
-        let is_var_in_descendants = rhs_descendants.into_iter().any(|e| e == lhs_entity);
+    ) -> TypecheckAnswer<'b> {
+        let is_ety_in_descendants = rhs_descendants.into_iter().any(|e| e == lhs_entity);
         TypecheckAnswer::success(
-            ExprBuilder::with_data(Some(if is_var_in_descendants {
+            ExprBuilder::with_data(Some(if is_ety_in_descendants {
                 Type::primitive_boolean()
             } else {
                 Type::singleton_boolean(false)
