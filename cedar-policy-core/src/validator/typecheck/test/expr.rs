@@ -404,7 +404,7 @@ fn or_typecheck_fails() {
 fn eq_typechecks() {
     assert_typechecks_empty_schema(
         &Expr::is_eq(Expr::var(Var::Principal), Expr::var(Var::Principal)),
-        &Type::primitive_boolean()
+        &Type::primitive_boolean(),
     );
 }
 
@@ -895,13 +895,13 @@ fn entity_in_same_type_bool() {
     assert_typechecks(
         schema.clone(),
         &r#"e::"foo" in e::"bar""#.parse().unwrap(),
-        &Type::primitive_boolean()
+        &Type::primitive_boolean(),
     );
     // Could specialize on Lit case to make this `true`, but not implemented
     assert_typechecks(
         schema,
         &r#"e::"foo" in e::"foo""#.parse().unwrap(),
-        &Type::primitive_boolean()
+        &Type::primitive_boolean(),
     );
 }
 
@@ -917,7 +917,7 @@ fn entity_in_ancestor_bool() {
     assert_typechecks(
         schema,
         &r#"f::"foo" in e::"bar""#.parse().unwrap(),
-        &Type::primitive_boolean()
+        &Type::primitive_boolean(),
     );
 }
 
