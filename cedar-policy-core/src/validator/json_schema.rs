@@ -797,9 +797,8 @@ impl AttributesOrContext<ConditionalName> {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionType<N> {
-    /// This maps attribute names to
-    /// `crate::entities::CedarValueJson` which is the
-    /// canonical representation of a cedar value as JSON.
+    /// Vestigial attributes left in place to avoid any possibly breaking change
+    /// to schema parsing. Providing anything other than `None` will result in an error.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<HashMap<SmolStr, CedarValueJson>>,

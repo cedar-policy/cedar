@@ -31,8 +31,8 @@ use crate::validator::{
     typecheck::{SingleEnvTypechecker, TypecheckAnswer, Typechecker},
     types::{CapabilitySet, OpenTag, RequestEnv, Type},
     validation_errors::UnexpectedTypeHelp,
-    CoreSchema, NamespaceDefinitionWithActionAttributes, RawName, RequestValidationError,
-    ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
+    CoreSchema, RawName, RequestValidationError, ValidationError, ValidationMode,
+    ValidationWarning, ValidatorSchema,
 };
 
 use similar_asserts::assert_eq;
@@ -168,14 +168,6 @@ impl SchemaProvider for json_schema::Fragment<RawName> {
 }
 
 impl SchemaProvider for json_schema::NamespaceDefinition<RawName> {
-    #[track_caller]
-    fn schema(self) -> ValidatorSchema {
-        self.try_into()
-            .unwrap_or_else(|e| panic!("failed to construct schema: {:?}", miette::Report::new(e)))
-    }
-}
-
-impl SchemaProvider for NamespaceDefinitionWithActionAttributes<RawName> {
     #[track_caller]
     fn schema(self) -> ValidatorSchema {
         self.try_into()
