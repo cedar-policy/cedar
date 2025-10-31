@@ -439,6 +439,7 @@ dependencies = [
  "assert_cmd",
  "cedar-policy",
  "miette",
+ "rstest",
  "serde",
  "serde_json",
  "smol_str",

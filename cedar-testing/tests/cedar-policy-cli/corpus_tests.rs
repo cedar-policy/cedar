@@ -18,6 +18,7 @@
 
 use super::perform_integration_test_from_json;
 use super::resolve_integration_test_path;
+use rstest::rstest;
 use std::path::Path;
 
 /// Path of the folder containing the corpus tests
@@ -28,13 +29,21 @@ fn folder() -> &'static Path {
 // for now we have a single #[test] that runs all the corpus tests.
 // The disadvantage of this is that only one error message will be displayed,
 // even if many of the corpus tests fail.
-// TODO(#438): figure out if we can procedurally generate one #[test]
-// per corpus test.
-#[test]
+#[rstest]
 // Don't run the corpus tests by default because they can take a minute to
 // complete, slowing things down substantially.
 #[ignore]
-fn corpus_tests() {
+// PANIC SAFETY: Corpus Tests
+#[allow(clippy::panic)]
+fn corpus_tests(
+    // TODO(#438): rstest can use a glob to have one test for each matching
+    // file, but we're dynamically resolving the corpus test folder, so this
+    // doesn't work.
+    #[values(
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"
+    )]
+    prefix: &str,
+) {
     let corpus_tests_folder = resolve_integration_test_path(folder());
     let test_jsons = std::fs::read_dir(&corpus_tests_folder)
         .unwrap_or_else(|e| {
@@ -50,21 +59,9 @@ fn corpus_tests() {
                 .expect("didn't expect subdirectories in corpus-tests")
                 .to_str()
                 .expect("expected filenames to be valid UTF-8");
-            filename.ends_with(".json") && !filename.ends_with(".entities.json")
-        })
-        // As of this writing, runtime to run all of the corpus tests is
-        // excessively long.
-        // Until/unless we optimize this somehow, we just run a subset of the
-        // corpus tests.
-        // Specifically, we choose all the tests whose hash begins with 0; this
-        // should function as a random, but deterministically stable, sample (we
-        // still get the same behavior when running `cargo test` twice)
-        .filter(|p| {
-            p.file_name()
-                .expect("didn't expect subdirectories in corpus-tests")
-                .to_str()
-                .expect("expected filenames to be valid UTF-8")
-                .starts_with('0')
+            filename.starts_with(prefix)
+                && filename.ends_with(".json")
+                && !filename.ends_with(".entities.json")
         });
     for test_json in test_jsons {
         println!("testing {}", test_json.display());
