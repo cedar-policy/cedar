@@ -237,7 +237,10 @@ fn eq_strict_types_mismatch() {
             &Expr::from_str(r#"principal == "foo""#).unwrap(),
             r#"principal == "foo""#,
             Type::primitive_boolean(),
-            [Type::named_entity_reference_from_str("User"), Type::primitive_string()],
+            [
+                Type::named_entity_reference_from_str("User"),
+                Type::primitive_string(),
+            ],
             LubHelp::None,
             LubContext::Equality,
         )
@@ -533,7 +536,10 @@ fn test_unary() {
             &Expr::from_str(r#"!(principal == "foo")"#).unwrap(),
             r#"principal == "foo""#,
             Type::primitive_boolean(),
-            [Type::named_entity_reference_from_str("User"), Type::primitive_string()],
+            [
+                Type::named_entity_reference_from_str("User"),
+                Type::primitive_string(),
+            ],
             LubHelp::None,
             LubContext::Equality,
         );
@@ -555,7 +561,10 @@ fn test_mul() {
             &Expr::from_str(r#"2*(if principal == false then 3 else 4)"#).unwrap(),
             "principal == false",
             Type::primitive_long(),
-            [Type::named_entity_reference_from_str("User"), Type::singleton_boolean(false)],
+            [
+                Type::named_entity_reference_from_str("User"),
+                Type::singleton_boolean(false),
+            ],
             LubHelp::None,
             LubContext::Equality,
         );
@@ -577,7 +586,10 @@ fn test_like() {
             &Expr::from_str(r#"(if principal == false then "foo" else "bar") like "bar""#).unwrap(),
             r#"principal == false"#,
             Type::primitive_boolean(),
-            [Type::named_entity_reference_from_str("User"), Type::singleton_boolean(false)],
+            [
+                Type::named_entity_reference_from_str("User"),
+                Type::singleton_boolean(false),
+            ],
             LubHelp::None,
             LubContext::Equality,
         );
@@ -599,7 +611,10 @@ fn test_get_attr() {
             &Expr::from_str(r#"{name: principal == "foo"}.name"#).unwrap(),
             r#"principal == "foo""#,
             Type::primitive_boolean(),
-            [Type::named_entity_reference_from_str("User"), Type::primitive_string()],
+            [
+                Type::named_entity_reference_from_str("User"),
+                Type::primitive_string(),
+            ],
             LubHelp::None,
             LubContext::Equality,
         );
@@ -624,7 +639,8 @@ fn test_has_attr() {
         assert_types_must_match(
             s,
             &q,
-            &Expr::from_str(r#"(if principal == principal then {name: 1} else {bar: 2}) has bar"#).unwrap(),
+            &Expr::from_str(r#"(if principal == principal then {name: 1} else {bar: 2}) has bar"#)
+                .unwrap(),
             "if principal == principal then {name: 1} else {bar: 2}",
             Type::primitive_boolean(),
             [
