@@ -2010,6 +2010,36 @@ mod schema_tests {
                 )
         );
     }
+
+    #[test]
+    fn unconvertible_json_schema_fails_conversion() {
+        let json_string = json!(
+            {
+                "": {
+                    "commonTypes": {
+                        "Task": {
+                            "type": "Record",
+                            "attributes": {}
+                        }
+                    },
+                    "entityTypes": {
+                        "User": {
+                            "shape": {
+                                "type": "Task"
+                            }
+                        }
+                    },
+                    "actions": {}
+                }
+            }
+        );
+        let schema = SchemaFragment::from_json_value(json_string).expect("schema should be valid");
+        let result = schema.to_cedarschema();
+        assert_matches!(
+            result,
+            Err(ToCedarSchemaError::UnconvertibleEntityTypeShape(..))
+        );
+    }
 }
 
 mod ancestors_tests {

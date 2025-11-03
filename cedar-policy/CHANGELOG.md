@@ -31,7 +31,7 @@ Cedar Language Version: TBD
 - Fixed incomplete policy ID renaming by `PolicySet::merge`. Updated policy IDs were correctly reflected when getting a
   policy with `PolicySet::policy` and `PolicySet::template`, but `Policy::id`, `Template::id`, and `Policy::template_id`
   continued to return the original id.
-- Fixed issue where `json_schema::Fragment::to_cedarschema` could return a string that is not a valid Cedar schema.
+- Fixed issue where `SchemaFragment::to_cedarschema` could return a string that is not a valid Cedar schema.
 
 ## [4.7.0] - 2025-10-13
 
