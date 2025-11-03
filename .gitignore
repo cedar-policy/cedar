@@ -25,5 +25,5 @@ Cargo.lock
 # and then commit `.snap` file
 *.snap.new
 
-# Auto-generated integration tests can be placed here but but should not be committed
+# Auto-generated integration tests can be placed here but should not be committed
 cedar-integration-tests
