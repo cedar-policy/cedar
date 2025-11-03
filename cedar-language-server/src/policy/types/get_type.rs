@@ -316,10 +316,7 @@ impl<'a> AttributeCollection<'a> {
                         }
                     }
                 }
-                Type::EntityOrRecord(
-                    EntityRecordKind::Record { attrs, .. }
-                    | EntityRecordKind::ActionEntity { attrs, .. },
-                ) => {
+                Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                     for (attr_name, attr_type) in attrs.iter() {
                         next_attributes.push(AttributeInfo {
                             name: attr_name.as_str(),

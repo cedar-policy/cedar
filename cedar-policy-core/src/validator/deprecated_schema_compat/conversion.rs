@@ -24,8 +24,8 @@ use crate::validator::json_schema::{
     EntityTypeKind, Fragment, NamespaceDefinition, RecordType, StandardEntityType, Type,
     TypeOfAttribute, TypeVariant,
 };
+use crate::validator::ValidatorSchema;
 use crate::validator::{schema_errors::JsonDeserializationError, RawName, SchemaError};
-use crate::validator::{ActionBehavior, ValidatorSchema};
 
 use super::json_schema as compat;
 use crate::extensions::Extensions;
@@ -45,7 +45,6 @@ impl ValidatorSchema {
     ) -> Result<Self, SchemaError> {
         Self::from_schema_frag(
             json_schema::Fragment::<RawName>::from_deprecated_json_value(json)?,
-            ActionBehavior::default(),
             extensions,
         )
     }
@@ -58,7 +57,6 @@ impl ValidatorSchema {
     ) -> Result<Self, SchemaError> {
         Self::from_schema_frag(
             json_schema::Fragment::<RawName>::from_deprecated_json_str(json)?,
-            ActionBehavior::default(),
             extensions,
         )
     }
@@ -71,7 +69,6 @@ impl ValidatorSchema {
     ) -> Result<Self, SchemaError> {
         Self::from_schema_frag(
             json_schema::Fragment::<RawName>::from_deprecated_json_file(file)?,
-            ActionBehavior::default(),
             extensions,
         )
     }

@@ -24,6 +24,8 @@ Cedar Language Version: TBD
 - For the `tpe` experimental feature, `PartialEntities::from_concrete` now requires a `Schema` and will validate the entities,
   ensuring that a `PartialEntities` object always meets the preconditions required for type aware partial evaluation.
 - Evaluate `has` operation when the LHS record is projectable during partial evaluation. (#1912)
+- Deprecated schema parsing errors `ActionAttributesContainEmptySet`, `UnsupportedActionAttribute`, `ActionAttrEval`, and `ExprEscapeUsed`.
+  These errors are never returned, so it is safe to delete any associated error handling code.
 
 ### Fixed
 

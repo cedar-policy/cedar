@@ -194,7 +194,7 @@ impl FindDefinition for Type {
                     let loc = vet.loc.as_ref()?;
                     Some(loc.to_range())
                 }
-                EntityRecordKind::AnyEntity | EntityRecordKind::ActionEntity { .. } => None,
+                EntityRecordKind::AnyEntity => None,
             },
             Self::Set { element_type } => {
                 element_type.as_ref().and_then(|el| el.find_definition(cx))

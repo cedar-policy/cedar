@@ -570,6 +570,24 @@ fn entity_has_typechecks() {
 }
 
 #[test]
+fn action_has_false() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        entity a;
+        action "action" appliesTo {
+            principal: a,
+            resource: a,
+        };
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+    assert_typechecks(
+        schema,
+        &"action has attr".parse().unwrap(),
+        &Type::singleton_boolean(false),
+    );
+}
+
+#[test]
 fn record_has_typechecks() {
     assert_typechecks_empty_schema(
         &Expr::has_attr(Expr::var(Var::Context), "attr".into()),
