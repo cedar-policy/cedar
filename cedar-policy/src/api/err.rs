@@ -43,6 +43,7 @@ use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 use to_cedar_syntax_errors::NameCollisionsError;
+use to_cedar_syntax_errors::UnconvertibleEntityTypeShapeError;
 
 #[cfg(feature = "entity-manifest")]
 use super::ValidationResult;
@@ -183,6 +184,10 @@ pub enum ToCedarSchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     NameCollisions(#[from] to_cedar_syntax_errors::NameCollisionsError),
+    /// Entity type definitions with shapes not supported in Cedar schema syntax were found in the schema
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    UnconvertibleEntityTypeShape(#[from] to_cedar_syntax_errors::UnconvertibleEntityTypeShapeError),
 }
 
 /// Error subtypes for [`ToCedarSchemaError`]
@@ -202,6 +207,26 @@ pub mod to_cedar_syntax_errors {
 
     impl NameCollisionsError {
         /// Get the names that had collisions
+        pub fn names(&self) -> impl Iterator<Item = &str> {
+            self.names_as_strings
+                .iter()
+                .map(std::string::String::as_str)
+        }
+    }
+
+    /// Entity type definitions with shapes not supported in Cedar schema syntax were found in the schema
+    #[derive(Debug, Error, Diagnostic)]
+    #[error("{err}")]
+    pub struct UnconvertibleEntityTypeShapeError {
+        #[diagnostic(transparent)]
+        pub(super) err:
+            cedar_policy_core::validator::cedar_schema::fmt::UnconvertibleEntityTypeShapeError,
+        // because `.names()` needs to return borrowed `&str`, we need somewhere to borrow from, hence here
+        pub(super) names_as_strings: Vec<String>,
+    }
+
+    impl UnconvertibleEntityTypeShapeError {
+        /// Get the names of the type definitions with shapes not supported in Cedar schema syntax.
         pub fn names(&self) -> impl Iterator<Item = &str> {
             self.names_as_strings
                 .iter()
@@ -228,6 +253,13 @@ impl From<cedar_policy_core::validator::cedar_schema::fmt::ToCedarSchemaSyntaxEr
                 err: name_collision_err,
             }
             .into(),
+            cedar_policy_core::validator::cedar_schema::fmt::ToCedarSchemaSyntaxError::UnconvertibleEntityTypeShape(err) => UnconvertibleEntityTypeShapeError {
+                names_as_strings: err
+                    .names()
+                    .map(ToString::to_string)
+                    .collect(),
+                err,
+            }.into(),
         }
     }
 }

@@ -351,6 +351,10 @@ pub enum ToCedarSchemaSyntaxError {
     #[diagnostic(transparent)]
     #[error(transparent)]
     NameCollisions(#[from] NameCollisionsError),
+    /// Entity type definitions with shapes not supported in Cedar schema syntax prevented the conversion
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    UnconvertibleEntityTypeShape(#[from] UnconvertibleEntityTypeShapeError),
 }
 
 /// Duplicate names were found in the schema
@@ -369,6 +373,27 @@ impl Diagnostic for NameCollisionsError {
 
 impl NameCollisionsError {
     /// Get the names that had collisions
+    pub fn names(&self) -> impl Iterator<Item = &InternalName> {
+        self.names.iter()
+    }
+}
+
+/// Entity type definitions with shapes not supported in Cedar schema syntax were found in the schema.
+//
+// This is NOT a publicly exported error type.
+#[derive(Debug, Error)]
+#[error("The following entities have shapes that cannot be converted to Cedar schema syntax: [{}]", .names.iter().join(", "))]
+pub struct UnconvertibleEntityTypeShapeError {
+    /// Names of type definitions with shapes not supported in Cedar schema syntax.
+    names: NonEmpty<InternalName>,
+}
+
+impl Diagnostic for UnconvertibleEntityTypeShapeError {
+    impl_diagnostic_from_method_on_nonempty_field!(names, loc);
+}
+
+impl UnconvertibleEntityTypeShapeError {
+    /// Get the names of the type definitions with shapes not supported in Cedar schema syntax.
     pub fn names(&self) -> impl Iterator<Item = &InternalName> {
         self.names.iter()
     }
@@ -417,17 +442,53 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
         }
         .into());
     }
+    // Check for standard entity types where the shape is a common type.
+    // Until https://github.com/cedar-policy/cedar/issues/1702 is resolved these schemas cannot
+    // be expressed in Cedar schema syntax.
+    let mut unsupported_shapes = vec![];
+    for (name, ns) in json_schema.0.iter() {
+        let unsupported = ns
+            .entity_types
+            .iter()
+            .filter(|(_, entity_type)| match &entity_type.kind {
+                json_schema::EntityTypeKind::Standard(json_schema::StandardEntityType {
+                    shape:
+                        json_schema::AttributesOrContext(json_schema::Type::Type {
+                            ty: json_schema::TypeVariant::Record(..),
+                            ..
+                        }),
+                    ..
+                }) => false,
+                json_schema::EntityTypeKind::Standard(..) => true,
+                json_schema::EntityTypeKind::Enum { .. } => false,
+            })
+            .map(|(ty_name, _)| {
+                RawName::new_from_unreserved(ty_name.clone(), None).qualify_with_name(name.as_ref())
+            });
+        unsupported_shapes.extend(unsupported);
+    }
+    if let Some(non_empty_unsupported_shapes) = NonEmpty::from_vec(unsupported_shapes) {
+        return Err(UnconvertibleEntityTypeShapeError {
+            names: non_empty_unsupported_shapes,
+        }
+        .into());
+    }
+
     Ok(json_schema.to_string())
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::InternalName;
     use crate::extensions::Extensions;
 
+    use crate::validator::cedar_schema::fmt::UnconvertibleEntityTypeShapeError;
     use crate::validator::{
         cedar_schema::parser::parse_cedar_schema_fragment, json_schema, RawName,
     };
 
+    use cool_asserts::assert_matches;
+    use nonempty::NonEmpty;
     use similar_asserts::assert_eq;
 
     #[track_caller]
@@ -741,5 +802,35 @@ namespace TinyTodo {
             f.to_cedarschema().expect("test schema can be displayed"),
             test_schema_str,
         )
+    }
+
+    #[test]
+    fn entity_type_with_common_type_shape_fails_conversion() {
+        let schema_json = serde_json::json!(
+            {
+                "": {
+                    "commonTypes": {
+                        "Task": {
+                            "type": "Record",
+                            "attributes": {}
+                        }
+                    },
+                    "entityTypes": {
+                        "User": {
+                            "shape": {
+                                "type": "Task"
+                            }
+                        }
+                    },
+                    "actions": {}
+                }
+            }
+        );
+        let expected_names = NonEmpty::new("User".parse::<InternalName>().unwrap());
+        let fragment: json_schema::Fragment<RawName> = serde_json::from_value(schema_json).unwrap();
+        let result = fragment.to_cedarschema();
+        assert_matches!(result, Err(crate::validator::cedar_schema::fmt::ToCedarSchemaSyntaxError::UnconvertibleEntityTypeShape(UnconvertibleEntityTypeShapeError{names})) => {
+            assert_eq!(names, expected_names)
+        });
     }
 }
