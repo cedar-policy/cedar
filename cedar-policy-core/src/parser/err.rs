@@ -689,12 +689,14 @@ impl Diagnostic for ToCSTError {
         match self.err {
             OwnedRawParseError::InvalidToken { location } => {
                 let tok_last_char = self.src.get(location..)?.chars().next()?;
-                if tok_last_char == '"' {
-                    Some(Box::new(
+                match tok_last_char {
+                    '"' => Some(Box::new(
                         "try checking that all strings are closed properly",
-                    ))
-                } else {
-                    None
+                    )),
+                    '\'' => Some(Box::new(
+                        "strings must use double quotes, not single quotes",
+                    )),
+                    _ => None,
                 }
             }
             _ => None,

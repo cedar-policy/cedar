@@ -171,6 +171,7 @@ permit(principal ==  A :: B
             &Report::new(error),
             &ExpectedErrorMessageBuilder::error("invalid token")
                 .exactly_one_underline("")
+                .help("strings must use double quotes, not single quotes")
                 .build(),
         );
     }

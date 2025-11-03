@@ -1505,6 +1505,32 @@ mod tests {
     }
 
     #[test]
+    fn single_quote_string() {
+        #[track_caller]
+        fn assert_invalid_single_quote_token(src: &str) {
+            let errs = assert_parse_fails(parse_policies, src);
+            expect_exactly_one_error(
+                src,
+                &errs,
+                &ExpectedErrorMessageBuilder::error("invalid token")
+                    .exactly_one_underline("")
+                    .help("strings must use double quotes, not single quotes")
+                    .build(),
+            );
+        }
+        assert_invalid_single_quote_token(
+            r#"
+            permit(principal, action, resource) when {
+                principal.foo = 'bar'
+            };"#,
+        );
+        assert_invalid_single_quote_token(
+            r#"permit(principal, action, resource == Photo::'mine.jpg');"#,
+        );
+        assert_invalid_single_quote_token(r#"@id('0')permit(principal, action, resource);"#);
+    }
+
+    #[test]
     #[cfg(feature = "tolerant-ast")]
     fn policies_tolerant_success() {
         let src = r#"
