@@ -39,8 +39,14 @@ fn corpus_tests(
     // TODO(#438): rstest can use a glob to have one test for each matching
     // file, but we're dynamically resolving the corpus test folder, so this
     // doesn't work.
+    // As of this writing, runtime to run all of the corpus tests is excessively
+    // long.  Until/unless we optimize this somehow, we just run a subset of the
+    // corpus tests.  Specifically, we choose all the tests whose hash begins
+    // with 0; this should function as a random, but deterministically stable,
+    // sample (we still get the same behavior when running `cargo test` twice)
     #[values(
-        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f"
+        "00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "0a", "0b", "0c", "0d", "0e",
+        "0f"
     )]
     prefix: &str,
 ) {
