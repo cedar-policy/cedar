@@ -7,6 +7,7 @@
 ![nightly](https://github.com/cedar-policy/cedar/actions/workflows/nightly_build.yml/badge.svg)
 ![nightly-deps](https://github.com/cedar-policy/cedar/actions/workflows/nightly_build_downstream.yml/badge.svg)
 ![audit](https://github.com/cedar-policy/cedar/actions/workflows/cargo_audit.yml/badge.svg)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/11398/badge)](https://www.bestpractices.dev/projects/11398)
 
 This repository contains source code of the Rust crates that implement the [Cedar](https://www.cedarpolicy.com/) policy language.
 
