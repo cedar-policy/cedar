@@ -993,30 +993,30 @@ fn action_not_in_typecheck_false() {
 #[test]
 fn entity_in_same_type_bool() {
     let schema: crate::validator::ValidatorSchema = r#"
-        entity e;
-        action "action" appliesTo { principal: e, resource: e, };
+        entity Principal, Resource;
+        action "action" appliesTo { principal: Principal, resource: Resource, };
     "#
     .parse()
     .expect("Expected that schema would parse");
     assert_typechecks(
         schema.clone(),
-        &r#"e::"foo" in e::"bar""#.parse().unwrap(),
+        &r#"Principal::"foo" in Principal::"bar""#.parse().unwrap(),
         &Type::primitive_boolean(),
     );
     assert_typechecks(
         schema.clone(),
-        &r#"e::"foo" in principal"#.parse().unwrap(),
+        &r#"Principal::"foo" in principal"#.parse().unwrap(),
         &Type::primitive_boolean(),
     );
     assert_typechecks(
         schema.clone(),
-        &r#"principal in e::"bar""#.parse().unwrap(),
+        &r#"principal in Principal::"bar""#.parse().unwrap(),
         &Type::primitive_boolean(),
     );
     // Could specialize on Lit and Var cases to make these `true`, but not implemented
     assert_typechecks(
         schema.clone(),
-        &r#"e::"foo" in e::"foo""#.parse().unwrap(),
+        &r#"Principal::"foo" in Principal::"foo""#.parse().unwrap(),
         &Type::primitive_boolean(),
     );
     assert_typechecks(
@@ -1050,10 +1050,10 @@ fn entity_in_ancestor_bool() {
 #[test]
 fn entity_in_other_false() {
     let schema: crate::validator::ValidatorSchema = r#"
-        entity e;
-        entity f in e;
+        entity Principal, Resource;
+        entity f in Principal;
         entity g;
-        action "action" appliesTo { principal: e, resource: e, };
+        action "action" appliesTo { principal: Principal, resource: Resource, };
     "#
     .parse()
     .expect("Expected that schema would parse");
@@ -1064,7 +1064,7 @@ fn entity_in_other_false() {
     );
     assert_typechecks(
         schema.clone(),
-        &r#"e::"foo" in f::"bar""#.parse().unwrap(),
+        &r#"Principal::"foo" in f::"bar""#.parse().unwrap(),
         &Type::singleton_boolean(false),
     );
     assert_typechecks(
