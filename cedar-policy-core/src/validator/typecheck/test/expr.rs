@@ -866,21 +866,127 @@ fn action_in_non_action_typechecks_false() {
 }
 
 #[test]
-fn action_literal_in_action_typechecks_true() {
+fn action_in_self_typecheck_true() {
     let schema: crate::validator::ValidatorSchema = r#"
         entity a;
         action "action" appliesTo {
             principal: a,
             resource: a,
         };
+        action "other";
     "#
     .parse()
     .expect("Expected that schema would parse");
-    let src = r#"Action::"action" in action"#;
+
+    assert_typechecks(
+        schema.clone(),
+        &r#"Action::"action" in Action::"action""#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"Action::"action" in action"#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"Action::"action" in action"#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"Action::"action" in [action]"#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"action in action"#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"action in Action::"action""#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"action in [Action::"action"]"#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"action in [Action::"other", Action::"action"]"#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+}
+
+#[test]
+fn action_in_ancestor_typecheck_true() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        entity a;
+        action "action" in ["parent"] appliesTo {
+            principal: a,
+            resource: a,
+        };
+        action "parent", "other";
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+
+    assert_typechecks(
+        schema.clone(),
+        &r#"action in Action::"parent""#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"Action::"action" in Action::"parent""#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"action in [Action::"parent", Action::"other"]"#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+}
+
+#[test]
+fn action_not_in_typecheck_false() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        entity a;
+        action "action" in ["parent"] appliesTo {
+            principal: a,
+            resource: a,
+        };
+        action "parent", "other";
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+
+    assert_typechecks(
+        schema.clone(),
+        &r#"action in Action::"other""#.parse().unwrap(),
+        &Type::singleton_boolean(false),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"Action::"action" in Action::"other""#.parse().unwrap(),
+        &Type::singleton_boolean(false),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"action in [Action::"other"]"#.parse().unwrap(),
+        &Type::singleton_boolean(false),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"Action::"parent" in Action::"action""#.parse().unwrap(),
+        &Type::singleton_boolean(false),
+    );
     assert_typechecks(
         schema,
-        &src.parse().unwrap(),
-        &Type::singleton_boolean(true),
+        &r#"Action::"parent" in action"#.parse().unwrap(),
+        &Type::singleton_boolean(false),
     );
 }
 
@@ -897,10 +1003,25 @@ fn entity_in_same_type_bool() {
         &r#"e::"foo" in e::"bar""#.parse().unwrap(),
         &Type::primitive_boolean(),
     );
-    // Could specialize on Lit case to make this `true`, but not implemented
+    assert_typechecks(
+        schema.clone(),
+        &r#"e::"foo" in principal"#.parse().unwrap(),
+        &Type::primitive_boolean(),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"principal in e::"bar""#.parse().unwrap(),
+        &Type::primitive_boolean(),
+    );
+    // Could specialize on Lit and Var cases to make these `true`, but not implemented
+    assert_typechecks(
+        schema.clone(),
+        &r#"e::"foo" in e::"foo""#.parse().unwrap(),
+        &Type::primitive_boolean(),
+    );
     assert_typechecks(
         schema,
-        &r#"e::"foo" in e::"foo""#.parse().unwrap(),
+        &r#"principal in principal"#.parse().unwrap(),
         &Type::primitive_boolean(),
     );
 }
@@ -915,9 +1036,41 @@ fn entity_in_ancestor_bool() {
     .parse()
     .expect("Expected that schema would parse");
     assert_typechecks(
-        schema,
+        schema.clone(),
         &r#"f::"foo" in e::"bar""#.parse().unwrap(),
         &Type::primitive_boolean(),
+    );
+    assert_typechecks(
+        schema,
+        &r#"f::"foo" in principal"#.parse().unwrap(),
+        &Type::primitive_boolean(),
+    );
+}
+
+#[test]
+fn entity_in_other_false() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        entity e;
+        entity f in e;
+        entity g;
+        action "action" appliesTo { principal: e, resource: e, };
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+    assert_typechecks(
+        schema.clone(),
+        &r#"f::"foo" in g::"bar""#.parse().unwrap(),
+        &Type::singleton_boolean(false),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"e::"foo" in f::"bar""#.parse().unwrap(),
+        &Type::singleton_boolean(false),
+    );
+    assert_typechecks(
+        schema,
+        &r#"principal in f::"bar""#.parse().unwrap(),
+        &Type::singleton_boolean(false),
     );
 }
 
