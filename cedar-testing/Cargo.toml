@@ -20,6 +20,7 @@ integration-testing = []
 entity-manifest = ["cedar-policy/entity-manifest"]
 
 [dev-dependencies]
+rstest = "0.26.1"
 assert_cmd = "2.0"
 tempfile = "3"
 
