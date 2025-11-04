@@ -16,10 +16,7 @@
 
 use std::{sync::Arc, vec};
 
-use cedar_policy_core::validator::{
-    types::{EntityRecordKind, Type},
-    ValidatorSchema,
-};
+use cedar_policy_core::validator::{types::Type, ValidatorSchema};
 use cedar_policy_core::{
     ast::{
         ActionConstraint, EntityReference, EntityType, Expr, ExprVisitor, Literal,
@@ -156,9 +153,7 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
             ContextKind::AnyContext => schema
                 .action_ids()
                 .filter_map(|vat| {
-                    if let Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) =
-                        vat.context_type()
-                    {
+                    if let Type::Record { attrs, .. } = vat.context_type() {
                         attrs.keys().peekable().peek()?;
                     }
                     vat.loc()
@@ -179,9 +174,7 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
                 .iter()
                 .filter_map(|entity_uid| {
                     let vat = schema.get_action_id(entity_uid)?;
-                    if let Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) =
-                        vat.context_type()
-                    {
+                    if let Type::Record { attrs, .. } = vat.context_type() {
                         attrs.keys().peekable().peek()?;
                     }
                     vat.loc()

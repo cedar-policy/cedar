@@ -44,7 +44,7 @@ use crate::validator::{
     cedar_schema::SchemaWarning,
     json_schema,
     partition_nonempty::PartitionNonEmpty,
-    types::{Attributes, EntityRecordKind, OpenTag, RequestEnv, Type},
+    types::{Attributes, EntityKind, OpenTag, RequestEnv, Type},
     ValidationMode,
 };
 
@@ -928,10 +928,10 @@ impl ValidatorSchema {
 
     fn record_attributes_or_none(ty: LocatedType) -> Option<(Attributes, OpenTag)> {
         match ty.ty {
-            Type::EntityOrRecord(EntityRecordKind::Record {
+            Type::Record {
                 attrs,
                 open_attributes,
-            }) => Some((attrs, open_attributes)),
+            } => Some((attrs, open_attributes)),
             _ => None,
         }
     }
@@ -945,7 +945,7 @@ impl ValidatorSchema {
         undeclared_types: &mut BTreeSet<EntityType>,
     ) {
         match ty {
-            Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
+            Type::Entity(EntityKind::Entity(lub)) => {
                 for name in lub.iter() {
                     if !all_defs.is_defined_as_entity(name.as_ref().as_ref()) {
                         undeclared_types.insert(name.clone());
@@ -953,7 +953,7 @@ impl ValidatorSchema {
                 }
             }
 
-            Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
+            Type::Record { attrs, .. } => {
                 for (_, attr_ty) in attrs.iter() {
                     Self::check_undeclared_in_type(&attr_ty.attr_type, all_defs, undeclared_types);
                 }
@@ -5016,19 +5016,19 @@ mod entity_tags {
             let foo1 = assert_entity_type_exists(&schema, "Foo1");
             assert_matches!(foo1.tag_type(), Some(Type::Primitive { primitive_type: Primitive::Bool }));
             let foo2 = assert_entity_type_exists(&schema, "Foo2");
-            assert_matches!(foo2.tag_type(), Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })));
+            assert_matches!(foo2.tag_type(), Some(Type::Record{ .. }));
             let foo3 = assert_entity_type_exists(&schema, "Foo3");
-            assert_matches!(foo3.tag_type(), Some(Type::EntityOrRecord(EntityRecordKind::Entity(_))));
+            assert_matches!(foo3.tag_type(), Some(Type::Entity(EntityKind::Entity(_))));
             let foo4 = assert_entity_type_exists(&schema, "Foo4");
-            assert_matches!(foo4.tag_type(), Some(Type::Set { element_type }) => assert_matches!(element_type.as_deref(), Some(Type::EntityOrRecord(EntityRecordKind::Entity(_)))));
+            assert_matches!(foo4.tag_type(), Some(Type::Set { element_type }) => assert_matches!(element_type.as_deref(), Some(Type::Entity(EntityKind::Entity(_)))));
             let foo5 = assert_entity_type_exists(&schema, "Foo5");
-            assert_matches!(foo5.tag_type(), Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })));
+            assert_matches!(foo5.tag_type(), Some(Type::Record{ .. }));
             let foo6 = assert_entity_type_exists(&schema, "Foo6");
-            assert_matches!(foo6.tag_type(), Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })));
+            assert_matches!(foo6.tag_type(), Some(Type::Record{ .. }));
             let foo7 = assert_entity_type_exists(&schema, "Foo7");
-            assert_matches!(foo7.tag_type(), Some(Type::Set { element_type }) => assert_matches!(element_type.as_deref(), Some(Type::Set { element_type }) => assert_matches!(element_type.as_deref(), Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })))));
+            assert_matches!(foo7.tag_type(), Some(Type::Set { element_type }) => assert_matches!(element_type.as_deref(), Some(Type::Set { element_type }) => assert_matches!(element_type.as_deref(), Some(Type::Record { .. }))));
             let foo8 = assert_entity_type_exists(&schema, "Foo8");
-            assert_matches!(foo8.tag_type(), Some(Type::EntityOrRecord(EntityRecordKind::Entity(_))));
+            assert_matches!(foo8.tag_type(), Some(Type::Entity(EntityKind::Entity(_))));
         });
     }
 

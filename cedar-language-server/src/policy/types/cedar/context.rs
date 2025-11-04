@@ -20,10 +20,7 @@ use std::{collections::BTreeSet, fmt::Display, hash::Hash, sync::Arc};
 use cedar_policy_core::ast::EntityUID;
 use cedar_policy_core::validator::types::{AttributeType, Attributes};
 use cedar_policy_core::validator::ValidatorActionId;
-use cedar_policy_core::validator::{
-    types::{EntityRecordKind, Type},
-    ValidatorSchema,
-};
+use cedar_policy_core::validator::{types::Type, ValidatorSchema};
 use itertools::Itertools;
 use smol_str::SmolStr;
 
@@ -135,7 +132,7 @@ impl ContextKind {
         self.actions_iter(schema)
             .map(ValidatorActionId::context_type)
             .filter_map(|c| match c {
-                Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => Some(attrs),
+                Type::Record { attrs, .. } => Some(attrs),
                 _ => None,
             })
             .flat_map(Attributes::iter)

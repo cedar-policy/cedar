@@ -1255,7 +1255,7 @@ mod translator_tests {
         },
         json_schema,
         schema::test::utils::collect_warnings,
-        types::{EntityLUB, EntityRecordKind, Primitive, Type},
+        types::{EntityKind, EntityLUB, Primitive, Type},
         ValidatorSchema,
     };
 
@@ -1420,10 +1420,7 @@ mod translator_tests {
                 "Demo::Host" => {
                     for (attr_name, attr) in ety.attributes().iter() {
                         match attr_name.as_ref() {
-                            "ip" => assert_matches!(
-                                &attr.attr_type,
-                                Type::EntityOrRecord(EntityRecordKind::Record { .. })
-                            ),
+                            "ip" => assert_matches!(&attr.attr_type, Type::Record { .. }),
                             "bandwidth" => assert_matches!(
                                 &attr.attr_type,
                                 Type::ExtensionType { name } => {
@@ -1588,7 +1585,7 @@ mod translator_tests {
                 .attr("foo")
                 .unwrap()
                 .attr_type,
-            Type::EntityOrRecord(EntityRecordKind::Entity(EntityLUB::single_entity(
+            Type::Entity(EntityKind::Entity(EntityLUB::single_entity(
                 "X::Z".parse().unwrap()
             )))
         );
@@ -2391,7 +2388,7 @@ mod common_type_references {
     use crate::extensions::Extensions;
     use crate::validator::{
         json_schema,
-        types::{AttributeType, EntityRecordKind, Type},
+        types::{AttributeType, Type},
         SchemaError, ValidatorSchema,
     };
 
@@ -2559,7 +2556,7 @@ mod common_type_references {
                 .attr("a")
                 .unwrap(),
             AttributeType {
-                attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
+                attr_type: Type::Record{ attrs, open_attributes: _ },
                 is_required: true,
                 ..
             } => {
@@ -2587,7 +2584,7 @@ mod common_type_references {
                 .attr("a")
                 .unwrap(),
             AttributeType {
-                attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
+                attr_type: Type::Record{ attrs, open_attributes: _ },
                 is_required: true,
                 ..
             } => {
@@ -2619,7 +2616,7 @@ mod common_type_references {
                 .attr("a")
                 .unwrap(),
             AttributeType {
-                attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
+                attr_type: Type::Record{ attrs, open_attributes: _ },
                 is_required: true,
                 ..
             } => {

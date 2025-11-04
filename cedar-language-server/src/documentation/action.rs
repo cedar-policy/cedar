@@ -23,10 +23,7 @@ use crate::{
     markdown::MarkdownBuilder,
     policy::{format_attributes, DocumentContext},
 };
-use cedar_policy_core::validator::{
-    types::{EntityRecordKind, Type},
-    ValidatorSchema,
-};
+use cedar_policy_core::validator::{types::Type, ValidatorSchema};
 use itertools::Itertools;
 
 pub(crate) struct ActionDocumentation<'a> {
@@ -86,9 +83,7 @@ impl ToDocumentationString for ActionDocumentation<'_> {
                 // Add context details from schema if available
                 if let Some(schema) = schema {
                     if let Some(action) = schema.get_action_id(entity_uid) {
-                        if let Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) =
-                            action.context()
-                        {
+                        if let Type::Record { attrs, .. } = action.context() {
                             builder
                                 .header("Context Attributes")
                                 .code_block("cedarschema", &format_attributes(attrs.iter()));

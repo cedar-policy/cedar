@@ -18,7 +18,7 @@ use std::collections::HashMap;
 
 use cedar_policy_core::ast::EntityType;
 use cedar_policy_core::validator::{
-    types::{AttributeType, Attributes, EntityRecordKind, Type},
+    types::{AttributeType, Attributes, EntityKind, Type},
     ValidatorEntityType, ValidatorSchema,
 };
 use itertools::Itertools;
@@ -118,7 +118,7 @@ impl<'a> TypeInferenceContext<'a> {
                     .action_ids()
                     .map(cedar_policy_core::validator::ValidatorActionId::context_type)
                     .filter_map(|ty| match ty {
-                        Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => Some(attrs),
+                        Type::Record { attrs, .. } => Some(attrs),
                         _ => None,
                     })
                     .flat_map(cedar_policy_core::validator::types::Attributes::iter)
@@ -130,9 +130,7 @@ impl<'a> TypeInferenceContext<'a> {
                 .get_action_id(entity_uid)
                 .map(cedar_policy_core::validator::ValidatorActionId::context_type)
                 .and_then(|ty| match ty {
-                    Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
-                        Some(AttributeCollection::from_attributes(attrs))
-                    }
+                    Type::Record { attrs, .. } => Some(AttributeCollection::from_attributes(attrs)),
                     _ => None,
                 }),
             CedarTypeKind::Context(ContextKind::ActionSet(set)) => {
@@ -141,7 +139,7 @@ impl<'a> TypeInferenceContext<'a> {
                     .filter_map(|action| schema.get_action_id(action))
                     .map(cedar_policy_core::validator::ValidatorActionId::context_type)
                     .filter_map(|ty| match ty {
-                        Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => Some(attrs),
+                        Type::Record { attrs, .. } => Some(attrs),
                         _ => None,
                     })
                     .flat_map(cedar_policy_core::validator::types::Attributes::iter)
@@ -304,7 +302,7 @@ impl<'a> AttributeCollection<'a> {
 
         for attr_info in matching_attrs {
             match &attr_info.attr_type.attr_type {
-                Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
+                Type::Entity(EntityKind::Entity(lub)) => {
                     if let Some(et) = lub.get_single_entity() {
                         if let Some(vet) = schema.get_entity_type(et) {
                             for (attr_name, attr_type) in vet.attributes().iter() {
@@ -316,7 +314,7 @@ impl<'a> AttributeCollection<'a> {
                         }
                     }
                 }
-                Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
+                Type::Record { attrs, .. } => {
                     for (attr_name, attr_type) in attrs.iter() {
                         next_attributes.push(AttributeInfo {
                             name: attr_name.as_str(),

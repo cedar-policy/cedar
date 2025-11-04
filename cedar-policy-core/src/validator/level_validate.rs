@@ -18,7 +18,7 @@
 
 use super::*;
 use crate::ast::{BinaryOp, Expr, ExprKind, Literal, PolicyID};
-use crate::validator::types::{EntityRecordKind, RequestEnv, Type};
+use crate::validator::types::{EntityKind, RequestEnv, Type};
 use smol_str::SmolStr;
 use thiserror::Error;
 use typecheck::PolicyCheck;
@@ -168,10 +168,10 @@ impl LevelChecker<'_> {
             }
             // We don't need to handle `HasAttr` here because it has type Boolean.
             ExprKind::GetAttr { expr, attr } => match expr.data() {
-                Some(Type::EntityOrRecord(EntityRecordKind::Entity { .. })) => self
+                Some(Type::Entity(EntityKind::Entity { .. })) => self
                     .check_entity_deref_target_level(expr, access_path, env)
                     .increment(),
-                Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })) => {
+                Some(Type::Record { .. }) => {
                     // We push `attr` onto the access path so that, if the
                     // target of the `getAttr` is a literal, we can avoid
                     // reporting false positives for the unaccessed branches.
@@ -291,7 +291,7 @@ impl LevelChecker<'_> {
                 }
             }
             ExprKind::HasAttr { expr, .. } | ExprKind::GetAttr { expr, .. } => match expr.data() {
-                Some(Type::EntityOrRecord(EntityRecordKind::Entity { .. })) => {
+                Some(Type::Entity(EntityKind::Entity { .. })) => {
                     let deref_target_lvl =
                         self.check_entity_deref_target_level(expr, Vec::new(), env);
                     if deref_target_lvl >= self.max_level {
@@ -304,7 +304,7 @@ impl LevelChecker<'_> {
                             ));
                     }
                 }
-                Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })) => {
+                Some(Type::Record { .. }) => {
                     self.check_expr_level(expr, env);
                 }
                 // The typechecker ensures `GetAttr` only applies to entities and records. This also

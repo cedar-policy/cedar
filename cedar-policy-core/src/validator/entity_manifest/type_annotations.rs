@@ -22,10 +22,10 @@ use crate::ast::{RequestType, Var};
 
 use crate::validator::{
     entity_manifest::{
-        AccessTrie, EntityManifest, EntityRoot, Fields, MismatchedEntityManifestError,
+        AccessTrie, EntityManifest, EntityRoot, MismatchedEntityManifestError,
         MismatchedMissingEntityError, MismatchedNotStrictSchemaError, RootAccessTrie,
     },
-    types::{Attributes, EntityRecordKind, Type},
+    types::{Attributes, EntityKind, Type},
     ValidatorSchema,
 };
 
@@ -118,7 +118,19 @@ impl AccessTrie {
         ty: &Type,
         schema: &ValidatorSchema,
     ) -> Result<AccessTrie, MismatchedEntityManifestError> {
-        let children: Fields = match ty {
+        let attributes: &Attributes = match ty {
+            Type::Entity(EntityKind::AnyEntity) => Err(MismatchedNotStrictSchemaError {})?,
+            Type::Entity(EntityKind::Entity(entitylub)) => {
+                let entity_ty = schema
+                    .get_entity_type(
+                        entitylub
+                            .get_single_entity()
+                            .ok_or(MismatchedNotStrictSchemaError {})?,
+                    )
+                    .ok_or(MismatchedNotStrictSchemaError {})?;
+                entity_ty.attributes()
+            }
+            Type::Record { attrs, .. } => attrs,
             Type::Never
             | Type::True
             | Type::False
@@ -126,48 +138,30 @@ impl AccessTrie {
             | Type::Set { .. }
             | Type::ExtensionType { .. } => {
                 assert!(self.children.is_empty());
-                HashMap::default()
-            }
-            Type::EntityOrRecord(entity_or_record_ty) => {
-                let attributes: &Attributes = match entity_or_record_ty {
-                    EntityRecordKind::Record {
-                        attrs,
-                        open_attributes: _,
-                    } => attrs,
-                    EntityRecordKind::AnyEntity => Err(MismatchedNotStrictSchemaError {})?,
-                    // PANIC SAFETY: entity LUB should succeed after strict validation, and so should looking up the resulting type
-                    #[allow(clippy::unwrap_used)]
-                    EntityRecordKind::Entity(entitylub) => {
-                        let entity_ty = schema
-                            .get_entity_type(
-                                entitylub
-                                    .get_single_entity()
-                                    .ok_or(MismatchedNotStrictSchemaError {})?,
-                            )
-                            .ok_or(MismatchedNotStrictSchemaError {})?;
-                        entity_ty.attributes()
-                    }
-                };
-
-                let mut new_children = HashMap::new();
-                for (field, child) in self.children.iter() {
-                    // if the schema doesn't mention an attribute,
-                    // it's safe to drop it.
-                    // this can come up with the `has` operator
-                    // on a type that doesn't have the attribute
-                    if let Some(ty) = attributes.get_attr(field) {
-                        new_children.insert(
-                            field.clone(),
-                            Box::new(child.to_typed(request_type, &ty.attr_type, schema)?),
-                        );
-                    }
-                }
-                new_children
+                return Ok(AccessTrie {
+                    children: HashMap::new(),
+                    node_type: Some(ty.clone()),
+                    ancestors_trie: self.ancestors_trie.to_typed(request_type, schema)?,
+                    is_ancestor: self.is_ancestor,
+                });
             }
         };
+        let mut new_children = HashMap::new();
+        for (field, child) in self.children.iter() {
+            // if the schema doesn't mention an attribute,
+            // it's safe to drop it.
+            // this can come up with the `has` operator
+            // on a type that doesn't have the attribute
+            if let Some(ty) = attributes.get_attr(field) {
+                new_children.insert(
+                    field.clone(),
+                    Box::new(child.to_typed(request_type, &ty.attr_type, schema)?),
+                );
+            }
+        }
 
         Ok(AccessTrie {
-            children,
+            children: new_children,
             node_type: Some(ty.clone()),
             ancestors_trie: self.ancestors_trie.to_typed(request_type, schema)?,
             is_ancestor: self.is_ancestor,
