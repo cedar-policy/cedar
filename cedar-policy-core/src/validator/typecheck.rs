@@ -1728,14 +1728,6 @@ impl<'a> SingleEnvTypechecker<'a> {
         rhs_expr: &'b Expr,
         rhs_ty: Option<&Type>,
     ) -> Type {
-        // Evaluate an equality between literals and return that as a singleton boolean.
-        if let (ExprKind::Lit(lhs_lit), ExprKind::Lit(rhs_lit)) = (
-            self.replace_action_var_with_euid(lhs_expr).expr_kind(),
-            self.replace_action_var_with_euid(rhs_expr).expr_kind(),
-        ) {
-            return Type::singleton_boolean(lhs_lit == rhs_lit);
-        }
-
         // If we know the types are disjoint, then we can return give the
         // expression type False. See `are_types_disjoint` definition for
         // explanation of why fewer types are disjoint than may be expected.
@@ -1746,22 +1738,15 @@ impl<'a> SingleEnvTypechecker<'a> {
         if disjoint_types {
             Type::False
         } else {
-            // The types are not disjoint. Look at the actual
-            // expressions to see if they are matching or disjoint entity
-            // literals.  If both the lhs and rhs expression are literal euid or
-            // the action variable (which is converted into a literal euid
-            // according to the binding in the request environment), then we
-            // compare the euids on either side.
-            let lhs_euid = self.euid_from_euid_literal_or_action(lhs_expr);
-            let rhs_euid = self.euid_from_euid_literal_or_action(rhs_expr);
-            if let (Some(lhs_euid), Some(rhs_euid)) = (lhs_euid, rhs_euid) {
-                if lhs_euid == rhs_euid {
-                    // If lhs and rhs euid are the same, the equality has type `True`.
-                    Type::singleton_boolean(true)
-                } else {
-                    // If lhs and rhs euid are different, the type is `False`.
-                    Type::singleton_boolean(false)
-                }
+            // The types are not disjoint. Check if we can decide the equality
+            // from the actual expressions. If both expressions are literals,
+            // then we evaluate the equality between literals and return that as
+            // a singleton boolean.
+            if let (ExprKind::Lit(lhs_lit), ExprKind::Lit(rhs_lit)) = (
+                self.replace_action_var_with_euid(lhs_expr).expr_kind(),
+                self.replace_action_var_with_euid(rhs_expr).expr_kind(),
+            ) {
+                Type::singleton_boolean(lhs_lit == rhs_lit)
             } else {
                 // When the left and right expressions are not both literal
                 // euids, the validator does not attempt to give a more specific

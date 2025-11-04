@@ -417,6 +417,24 @@ fn lit_eq_true() {
 }
 
 #[test]
+fn entity_lit_eq_true() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        entity Principal, Resource;
+        action "action" appliesTo { principal: Principal, resource: Resource, };
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+    assert_typechecks(
+        schema,
+        &Expr::is_eq(
+            Expr::val(EntityUID::from_str(r#"Principal::"foo""#).unwrap()),
+            Expr::val(EntityUID::from_str(r#"Principal::"foo""#).unwrap()),
+        ),
+        &Type::singleton_boolean(true),
+    );
+}
+
+#[test]
 fn lit_eq_false() {
     assert_typechecks_empty_schema(
         &Expr::is_eq(Expr::val(2), Expr::val(1)),
@@ -424,6 +442,32 @@ fn lit_eq_false() {
     );
     assert_typechecks_empty_schema(
         &Expr::is_eq(Expr::val("foo"), Expr::val(false)),
+        &Type::singleton_boolean(false),
+    );
+}
+
+#[test]
+fn entity_lit_eq_false() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        entity Principal, Resource;
+        action "action" appliesTo { principal: Principal, resource: Resource, };
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+    assert_typechecks(
+        schema.clone(),
+        &Expr::is_eq(
+            Expr::val(EntityUID::from_str(r#"Principal::"foo""#).unwrap()),
+            Expr::val(EntityUID::from_str(r#"Principal::"bar""#).unwrap()),
+        ),
+        &Type::singleton_boolean(false),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &Expr::is_eq(
+            Expr::val(EntityUID::from_str(r#"Principal::"foo""#).unwrap()),
+            Expr::val(EntityUID::from_str(r#"Resource::"bar""#).unwrap()),
+        ),
         &Type::singleton_boolean(false),
     );
 }
