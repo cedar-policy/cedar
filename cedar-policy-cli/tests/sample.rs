@@ -30,6 +30,7 @@ use cedar_policy_cli::{
     SchemaFormat, ValidateArgs,
 };
 
+use assert_cmd::cargo;
 use predicates::prelude::*;
 use rstest::rstest;
 
@@ -998,8 +999,7 @@ fn test_link_samples() {
 fn test_format_samples(#[files("sample-data/**/polic*.cedar")] path: PathBuf) {
     let policies_file = path.to_str().unwrap();
     let original = std::fs::read_to_string(policies_file).unwrap();
-    let format_cmd = assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    let format_cmd = cargo::cargo_bin_cmd!("cedar")
         .arg("format")
         .arg("-p")
         .arg(policies_file)
@@ -1022,8 +1022,7 @@ fn test_format_write() {
     std::fs::copy(POLICY_SOURCE, &unformatted_file).unwrap();
     let original = std::fs::read_to_string(&unformatted_file).unwrap();
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("format")
         .arg("-p")
         .arg(&unformatted_file)
@@ -1035,8 +1034,7 @@ fn test_format_write() {
         "original and formatted should be the same without -w\noriginal:{original}\n\nformatted:{formatted}"
     );
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("format")
         .arg("-p")
         .arg(&unformatted_file)
@@ -1055,8 +1053,7 @@ fn test_format_check() {
     const POLICY_REQUIRING_FORMAT: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
     const POLICY_ALREADY_FORMATTED: &str = "sample-data/tiny_sandboxes/format/formatted.cedar";
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("format")
         .arg("-p")
         .arg(POLICY_REQUIRING_FORMAT)
@@ -1064,8 +1061,7 @@ fn test_format_check() {
         .assert()
         .code(1);
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("format")
         .arg("-p")
         .arg(POLICY_ALREADY_FORMATTED)
@@ -1077,8 +1073,7 @@ fn test_format_check() {
 #[test]
 fn test_write_check_are_mutually_exclusive() {
     const POLICY_SOURCE: &str = "sample-data/tiny_sandboxes/format/unformatted.cedar";
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("format")
         .arg("-p")
         .arg(POLICY_SOURCE)
@@ -1093,8 +1088,7 @@ fn test_write_check_are_mutually_exclusive() {
 
 #[test]
 fn test_require_policies_for_write() {
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("format")
         .arg("-w")
         .write_stdin("permit (principal, action, resource);")
@@ -1109,8 +1103,7 @@ fn test_require_policies_for_write() {
 fn test_check_parse_json_static_policy() {
     let json_policy: &str = "sample-data/tiny_sandboxes/json-check-parse/static_policy.cedar.json";
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("check-parse")
         .arg("--policy-format")
         .arg("json")
@@ -1125,8 +1118,7 @@ fn test_check_parse_json_policy_template() {
     let json_policy: &str =
         "sample-data/tiny_sandboxes/json-check-parse/policy_template.cedar.json";
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("check-parse")
         .arg("--policy-format")
         .arg("json")
@@ -1140,8 +1132,7 @@ fn test_check_parse_json_policy_template() {
 fn test_check_parse_json_policy_set() {
     let json_policy: &str = "sample-data/tiny_sandboxes/json-check-parse/policy_set.cedar.json";
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("check-parse")
         .arg("--policy-format")
         .arg("json")
@@ -1156,8 +1147,7 @@ fn test_check_parse_json_policy_mixed_properties() {
     let json_policy: &str =
         "sample-data/tiny_sandboxes/json-check-parse/policy_mixed_properties.cedar.json";
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("check-parse")
         .arg("--policy-format")
         .arg("json")
@@ -1175,8 +1165,7 @@ fn test_check_parse_json_policy_no_matching_properties() {
     let json_policy: &str =
         "sample-data/tiny_sandboxes/json-check-parse/policy_no_matching_properties.cedar.json";
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("check-parse")
         .arg("--policy-format")
         .arg("json")
@@ -1192,8 +1181,7 @@ fn test_authorize_json_policy() {
     let json_policy: &str = "sample-data/tiny_sandboxes/json-authorize/policy.cedar.json";
     let entities: &str = "sample-data/tiny_sandboxes/json-authorize/entity.json";
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("authorize")
         .arg("--policy-format")
         .arg("json")
@@ -1217,8 +1205,7 @@ fn test_translate_policy() {
     let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar.json";
     let cedar = std::fs::read_to_string(cedar_filename).unwrap();
     let json = std::fs::read_to_string(json_filename).unwrap();
-    let to_json_command = assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    let to_json_command = cargo::cargo_bin_cmd!("cedar")
         .arg("translate-policy")
         .arg("--direction")
         .arg("cedar-to-json")
@@ -1234,8 +1221,7 @@ fn test_translate_policy() {
         "\noriginal:\n{cedar}\n\ttranslated:\n{translated_json}",
     );
 
-    let translate_to_cedar = assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    let translate_to_cedar = cargo::cargo_bin_cmd!("cedar")
         .arg("translate-policy")
         .arg("--direction")
         .arg("json-to-cedar")
@@ -1265,8 +1251,7 @@ fn test_translate_schema() {
     let json_filename = "sample-data/tiny_sandboxes/translate-schema/tinytodo.cedarschema.json";
 
     // json -> cedar
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("translate-schema")
         .arg("--direction")
         .arg("cedar-to-json")
@@ -1276,8 +1261,7 @@ fn test_translate_schema() {
         .code(0);
 
     // cedar -> json
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("translate-schema")
         .arg("--direction")
         .arg("json-to-cedar")
@@ -1293,8 +1277,7 @@ fn visualize_entities_parses_as_dot(
     #[files("sample-data/**/entity.json")]
     path: PathBuf,
 ) {
-    let visualize = assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    let visualize = cargo::cargo_bin_cmd!("cedar")
         .arg("visualize")
         .arg("--entities")
         .arg(path)
@@ -1427,8 +1410,7 @@ fn test_tpe() {
     let request_json_file: &str = "sample-data/tpe_rfc/request.json";
     let context_file: &str = "sample-data/tpe_rfc/context.json";
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("tpe")
         .arg("--principal-type")
         .arg("User")
@@ -1447,8 +1429,7 @@ fn test_tpe() {
         .assert()
         .code(0);
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("tpe")
         .arg("--principal-type")
         .arg("User")
@@ -1469,8 +1450,7 @@ fn test_tpe() {
         .assert()
         .code(2);
 
-    assert_cmd::Command::cargo_bin("cedar")
-        .expect("bin exists")
+    cargo::cargo_bin_cmd!("cedar")
         .arg("tpe")
         .arg("--request-json")
         .arg(request_json_file)
