@@ -129,6 +129,8 @@ pub enum Commands {
     ///   - num_errors: expected number of erroring policies
     #[clap(verbatim_doc_comment)] // stops clap from dropping newlines in bulleted list
     RunTests(RunTestsArgs),
+    /// Symbolic analysis of Cedar policies
+    Analyze(AnalyzeArgs),
     /// Print Cedar language version
     LanguageVersion,
 }
@@ -852,6 +854,118 @@ pub struct NewArgs {
     pub name: String,
 }
 
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct AnalyzeArgs {
+    #[command(subcommand)]
+    pub command: AnalyzeCommands,
+    /// Path to CVC5 solver executable
+    #[arg(long, env = "CVC5")]
+    pub cvc5_path: Option<PathBuf>,
+    /// Generate counterexamples when verification fails
+    #[arg(long, default_value_t = true)]
+    pub counterexample: bool,
+    /// Verbose output showing verification details
+    #[arg(short, long)]
+    pub verbose: bool,
+}
+
+#[cfg(not(feature = "analyze"))]
+#[derive(Debug, Args)]
+pub struct AnalyzeArgs;
+
+#[cfg(feature = "analyze")]
+#[derive(Subcommand, Debug)]
+pub enum AnalyzeCommands {
+    /// Verify that policies never produce runtime errors
+    NeverErrors(NeverErrorsArgs),
+    /// Verify that policy set always allows all well-formed requests
+    AlwaysAllows(AlwaysAllowsArgs),
+    /// Verify that policy set always denies all well-formed requests
+    AlwaysDenies(AlwaysDeniesArgs),
+    /// Verify that two policy sets are logically equivalent
+    Equivalent(EquivalentArgs),
+    /// Verify that one policy set implies another (subsumption)
+    Implies(ImpliesArgs),
+    /// Verify that two policy sets are disjoint (no overlapping permissions)
+    Disjoint(DisjointArgs),
+}
+
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct NeverErrorsArgs {
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
+    /// Schema args (incorporated by reference)  
+    #[command(flatten)]
+    pub schema: SchemaArgs,
+}
+
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct AlwaysAllowsArgs {
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
+    /// Schema args (incorporated by reference)
+    #[command(flatten)]
+    pub schema: SchemaArgs,
+}
+
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct AlwaysDeniesArgs {
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
+    /// Schema args (incorporated by reference)
+    #[command(flatten)]
+    pub schema: SchemaArgs,
+}
+
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct EquivalentArgs {
+    /// First policy set for comparison
+    #[arg(long = "policies1", value_name = "FILE")]
+    pub policies1_file: String,
+    /// Second policy set for comparison
+    #[arg(long = "policies2", value_name = "FILE")]
+    pub policies2_file: String,
+    /// Schema args (incorporated by reference)
+    #[command(flatten)]
+    pub schema: SchemaArgs,
+}
+
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct ImpliesArgs {
+    /// First policy set (should be subsumed by second)
+    #[arg(long = "policies1", value_name = "FILE")]
+    pub policies1_file: String,
+    /// Second policy set (should subsume first)
+    #[arg(long = "policies2", value_name = "FILE")]
+    pub policies2_file: String,
+    /// Schema args (incorporated by reference)
+    #[command(flatten)]
+    pub schema: SchemaArgs,
+}
+
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct DisjointArgs {
+    /// First policy set for disjointness check
+    #[arg(long = "policies1", value_name = "FILE")]
+    pub policies1_file: String,
+    /// Second policy set for disjointness check
+    #[arg(long = "policies2", value_name = "FILE")]
+    pub policies2_file: String,
+    /// Schema args (incorporated by reference)
+    #[command(flatten)]
+    pub schema: SchemaArgs,
+}
+
 /// Wrapper struct
 #[derive(Clone, Debug, Deserialize)]
 #[serde(try_from = "HashMap<String,String>")]
@@ -1416,6 +1530,73 @@ pub fn language_version() -> CedarExitCode {
         version.major, version.minor
     );
     CedarExitCode::Success
+}
+
+#[cfg(not(feature = "analyze"))]
+pub fn analyze(_: &AnalyzeArgs) -> CedarExitCode {
+    eprintln!("Error: analyze command requires the 'analyze' feature to be enabled");
+    CedarExitCode::Failure
+}
+
+#[cfg(feature = "analyze")]
+pub fn analyze(args: &AnalyzeArgs) -> CedarExitCode {
+    // Initialize async runtime
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("Failed to initialize async runtime: {e}");
+            return CedarExitCode::Failure;
+        }
+    };
+    
+    rt.block_on(async {
+        match analyze_async(args).await {
+            Ok(()) => CedarExitCode::Success,
+            Err(e) => {
+                eprintln!("Analysis failed: {e:?}");
+                CedarExitCode::Failure
+            }
+        }
+    })
+}
+
+#[cfg(feature = "analyze")]
+async fn analyze_async(args: &AnalyzeArgs) -> Result<()> {
+    // TODO: Initialize CVC5 solver and create CedarSymCompiler
+    // This will be implemented in later tasks
+    
+    match &args.command {
+        AnalyzeCommands::NeverErrors(_cmd_args) => {
+            // TODO: Implement never-errors analysis
+            println!("Never-errors analysis not yet implemented");
+            Ok(())
+        }
+        AnalyzeCommands::AlwaysAllows(_cmd_args) => {
+            // TODO: Implement always-allows analysis
+            println!("Always-allows analysis not yet implemented");
+            Ok(())
+        }
+        AnalyzeCommands::AlwaysDenies(_cmd_args) => {
+            // TODO: Implement always-denies analysis
+            println!("Always-denies analysis not yet implemented");
+            Ok(())
+        }
+        AnalyzeCommands::Equivalent(_cmd_args) => {
+            // TODO: Implement equivalence analysis
+            println!("Equivalence analysis not yet implemented");
+            Ok(())
+        }
+        AnalyzeCommands::Implies(_cmd_args) => {
+            // TODO: Implement implies analysis
+            println!("Implies analysis not yet implemented");
+            Ok(())
+        }
+        AnalyzeCommands::Disjoint(_cmd_args) => {
+            // TODO: Implement disjoint analysis
+            println!("Disjoint analysis not yet implemented");
+            Ok(())
+        }
+    }
 }
 
 fn create_slot_env(data: &HashMap<SlotId, String>) -> Result<HashMap<SlotId, EntityUid>> {
