@@ -1683,6 +1683,11 @@ mod test {
             .into_expr::<Builder>();
         assert_eq!(format!("{expr}"), r#"context["foo-baz"]"#);
 
+        let expr = parse_expr(r#"context["true"]"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context["true"]"#);
+
         // Similarly for Expr::HasAttr
         let expr = parse_expr(r#"context has foo"#)
             .unwrap()
@@ -1698,5 +1703,26 @@ mod test {
             .unwrap()
             .into_expr::<Builder>();
         assert_eq!(format!("{expr}"), r#"context has "foo-baz""#);
+
+        let expr = parse_expr(r#"if context has "if" then false else true"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(
+            format!("{expr}"),
+            r#"if (context has "if") then false else true"#
+        );
+
+        let expr = parse_expr(r#"context has "has""#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context has "has""#);
+
+        let expr = parse_expr(r#"if context has "foo-baz" then false else true"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(
+            format!("{expr}"),
+            r#"if (context has "foo-baz") then false else true"#
+        );
     }
 }

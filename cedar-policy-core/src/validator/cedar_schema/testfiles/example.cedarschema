@@ -1,7 +1,11 @@
 entity TopLevel = {
   obj: {
+    String: String,
+    entity: String,
+    namespace: String,
     "nested-With-Dash": String,
-    nestedStr: String
+    nestedStr: String,
+    type: String
   }
 };
 
