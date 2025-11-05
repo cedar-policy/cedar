@@ -684,6 +684,7 @@ fn entity_manifest_from_expr(
 #[cfg(test)]
 mod entity_slice_tests {
     use crate::{ast::PolicyID, extensions::Extensions, parser::parse_policy};
+    use similar_asserts::assert_eq;
 
     use super::*;
 
@@ -1647,5 +1648,70 @@ when {
         let expected_manifest =
             EntityManifest::from_json_value(expected, validator.schema()).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
+    }
+
+    #[test]
+    fn test_entity_manifest_action_in() {
+        let mut pset = PolicySet::new();
+        let policy = parse_policy(
+            None,
+            r#"permit(principal, action in Action::"parent", resource);"#,
+        )
+        .unwrap();
+        pset.add(policy.into()).unwrap();
+
+        let schema = ValidatorSchema::from_cedarschema_str(
+            "entity e; action action in parent appliesTo { principal: e, resource: e}; action parent;",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+        let validator = Validator::new(schema);
+
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
+        let expected = EntityManifest::from_json_value(
+            serde_json::json!({
+              "perAction": [
+                [
+                  {
+                    "principal": "e",
+                    "action": {
+                      "ty": "Action",
+                      "eid": "action"
+                    },
+                    "resource": "e"
+                  },
+                  {
+                    "trie": [
+                      [
+                        {
+                          "var": "action"
+                        },
+                        {
+                          "children": [ ],
+                          "ancestorsTrie": {
+                              "trie": [
+                                [
+                                  { "literal": {"ty": "Action", "eid": "parent"} },
+                                  {
+                                    "children": [],
+                                    "isAncestor": true,
+                                    "ancestorsTrie": { "trie": [] }
+                                  }
+                                ]
+                              ]
+                          },
+                          "isAncestor": false
+                        }
+                      ],
+                    ]
+                  }
+                ]
+              ]
+            }),
+            validator.schema(),
+        )
+        .unwrap();
+        assert_eq!(entity_manifest, expected);
     }
 }
