@@ -138,14 +138,18 @@ impl AccessTrie {
                     // PANIC SAFETY: entity LUB should succeed after strict validation, and so should looking up the resulting type
                     #[allow(clippy::unwrap_used)]
                     EntityRecordKind::Entity(entitylub) => {
-                        let entity_ty = schema
-                            .get_entity_type(
-                                entitylub
-                                    .get_single_entity()
-                                    .ok_or(MismatchedNotStrictSchemaError {})?,
-                            )
+                        let entity_ty = entitylub
+                            .get_single_entity()
                             .ok_or(MismatchedNotStrictSchemaError {})?;
-                        entity_ty.attributes()
+                        if entity_ty.is_action() {
+                            // Actions can never have attributes
+                            &Attributes::with_attributes(None)
+                        } else {
+                            schema
+                                .get_entity_type(entity_ty)
+                                .ok_or(MismatchedNotStrictSchemaError {})?
+                                .attributes()
+                        }
                     }
                 };
 
