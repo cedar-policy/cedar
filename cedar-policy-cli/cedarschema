@@ -1,0 +1,4 @@
+action Read appliesTo {
+  principal: [],
+  resource: [],
+};
