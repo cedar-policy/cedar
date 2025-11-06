@@ -82,7 +82,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
 
     for json_request in test.requests.into_iter() {
         let validation_cmd = escargot::CargoBuild::new()
-            .bin("bin")
+            .bin("cedar")
             .manifest_path("../cedar-policy-cli/Cargo.toml")
             .run()
             .expect("should build")
@@ -128,7 +128,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
         }
 
         let authorize_cmd = escargot::CargoBuild::new()
-            .bin("bin")
+            .bin("cedar")
             .manifest_path("../cedar-policy-cli/Cargo.toml")
             .run()
             .expect("should build")
