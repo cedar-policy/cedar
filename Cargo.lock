@@ -437,7 +437,6 @@ version = "4.7.0"
 dependencies = [
  "assert_cmd",
  "cedar-policy",
- "cedar-policy-cli",
  "miette",
  "rstest",
  "serde",

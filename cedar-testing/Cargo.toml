@@ -23,7 +23,6 @@ entity-manifest = ["cedar-policy/entity-manifest"]
 rstest = "0.26.1"
 assert_cmd = "2.1"
 tempfile = "3"
-cedar-policy-cli = { path = "../cedar-policy-cli" }
 
 [lints]
 workspace = true
