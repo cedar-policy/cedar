@@ -553,7 +553,7 @@ mod test {
             assert_eq!(
                 &text,
                 r#"entity User = {
-  "name": __cedar::String
+  name: __cedar::String
 };
 
 action "sendMessage" appliesTo {

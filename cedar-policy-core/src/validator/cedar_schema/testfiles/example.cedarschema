@@ -1,6 +1,11 @@
 entity TopLevel = {
-  "obj": {
-    "nestedStr": String
+  obj: {
+    String: String,
+    entity: String,
+    namespace: String,
+    "nested-With-Dash": String,
+    nestedStr: String,
+    type: String
   }
 };
 
@@ -9,20 +14,20 @@ namespace EmptyNs {
 
 namespace Ns {
   type Bar = {
-    "obj": {
-      "nestedLong": Long,
-      "nestedObj": {
-        "nestedStr": String
+    obj: {
+      nestedLong: Long,
+      nestedObj: {
+        nestedStr: String
       }
     },
-    "setWithAnonymousType": Set<{
-      "key": String,
-      "val": String
+    setWithAnonymousType: Set<{
+      key: String,
+      val: String
     }>
   };
 
   entity Resource = {
-    "bar": Bar
+    bar: Bar
   };
 
   entity User;

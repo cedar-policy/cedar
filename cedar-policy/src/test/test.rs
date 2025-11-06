@@ -7968,12 +7968,12 @@ mod policy_manipulation_functions_tests {
         );
         assert_entity_sub(
             r#"permit(principal, action, resource) when { User::"Alice".attr };"#,
-            r#"permit(principal, action, resource) when { User::"Bob"["attr"] };"#,
+            r#"permit(principal, action, resource) when { User::"Bob".attr };"#,
             mapping.clone(),
         );
         assert_entity_sub(
             r#"permit(principal, action, resource) when { User::"Alice" has attr };"#,
-            r#"permit(principal, action, resource) when { User::"Bob" has "attr" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" has attr };"#,
             mapping.clone(),
         );
         assert_entity_sub(
@@ -8761,7 +8761,7 @@ mod to_cedar {
   action,
   resource
 ) when {
-  context["is_frobnicated"]
+  context.is_frobnicated
 };"#;
 
         assert_eq!(policy_cedar, expected_policy_cedar);
@@ -8813,7 +8813,7 @@ mod to_cedar {
   action,
   resource
 ) when {
-  context["is_frobnicated"]
+  context.is_frobnicated
 };
 
 permit(

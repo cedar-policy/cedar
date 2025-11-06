@@ -27,10 +27,9 @@ use crate::entities::json::{
 use crate::expr_builder::ExprBuilder;
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
-use crate::parser::cst_to_ast;
 use crate::parser::err::ParseErrors;
-use crate::parser::Node;
 use crate::parser::{cst, Loc};
+use crate::parser::{cst_to_ast, parse_ident, Node};
 use crate::FromNormalizedStr;
 use itertools::Itertools;
 use serde::{de::Visitor, Deserialize, Serialize};
@@ -1371,11 +1370,17 @@ impl BoundedDisplay for ExprNoExt {
             }
             ExprNoExt::GetAttr { left, attr } => {
                 maybe_with_parens(f, left, n)?;
-                write!(f, "[\"{}\"]", attr.escape_debug())
+                match parse_ident(attr) {
+                    Ok(id) => write!(f, ".{}", id),
+                    Err(_) => write!(f, "[\"{}\"]", attr.escape_debug()),
+                }
             }
             ExprNoExt::HasAttr { left, attr } => {
                 maybe_with_parens(f, left, n)?;
-                write!(f, " has \"{}\"", attr.escape_debug())
+                match parse_ident(attr) {
+                    Ok(id) => write!(f, " has {}", id),
+                    Err(_) => write!(f, " has \"{}\"", attr.escape_debug()),
+                }
             }
             ExprNoExt::Like { left, pattern } => {
                 maybe_with_parens(f, left, n)?;
@@ -1660,5 +1665,64 @@ mod test {
             r#"{"a": 12, ..}"#
         );
         assert_eq!(BoundedToString::to_string(&expr, Some(0)), r#"{..}"#);
+    }
+
+    #[test]
+    fn display_get_attr() {
+        // Ensuring we prefer printing Expr::GetAttr in . notation if the attribute contains valid identifiers.
+        let expr = parse_expr(r#"context.foo"#).unwrap().into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context.foo"#);
+
+        let expr = parse_expr(r#"context["foo"]"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context.foo"#);
+
+        let expr = parse_expr(r#"context["foo-baz"]"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context["foo-baz"]"#);
+
+        let expr = parse_expr(r#"context["true"]"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context["true"]"#);
+
+        // Similarly for Expr::HasAttr
+        let expr = parse_expr(r#"context has foo"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context has foo"#);
+
+        let expr = parse_expr(r#"context has "foo""#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context has foo"#);
+
+        let expr = parse_expr(r#"context has "foo-baz""#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context has "foo-baz""#);
+
+        let expr = parse_expr(r#"if context has "if" then false else true"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(
+            format!("{expr}"),
+            r#"if (context has "if") then false else true"#
+        );
+
+        let expr = parse_expr(r#"context has "has""#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context has "has""#);
+
+        let expr = parse_expr(r#"if context has "foo-baz" then false else true"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(
+            format!("{expr}"),
+            r#"if (context has "foo-baz") then false else true"#
+        );
     }
 }

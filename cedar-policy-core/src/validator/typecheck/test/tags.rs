@@ -118,8 +118,8 @@ fn tag_access_missing_has_check() {
     expect_err(
         src,
         &miette::Report::new(error),
-        &ExpectedErrorMessageBuilder::error(r#"for policy `0`, unable to guarantee safety of access to tag `resource["foo"]` on entity type `E`"#)
-            .help(r#"try testing for the tag's presence with `.hasTag(resource["foo"]) && ..`"#)
+        &ExpectedErrorMessageBuilder::error(r#"for policy `0`, unable to guarantee safety of access to tag `resource.foo` on entity type `E`"#)
+            .help(r#"try testing for the tag's presence with `.hasTag(resource.foo) && ..`"#)
             .exactly_one_underline(r#"principal.getTag(resource.foo)"#)
             .build(),
     );
