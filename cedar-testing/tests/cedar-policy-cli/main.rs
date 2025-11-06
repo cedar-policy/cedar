@@ -80,6 +80,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let schema_file = resolve_integration_test_path(&test.schema);
 
     for json_request in test.requests.into_iter() {
+        #[allow(deprecated)]
         let validation_cmd = assert_cmd::Command::cargo_bin("cedar")
             .expect("bin exists")
             .arg("validate")
@@ -115,7 +116,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
         if !json_request.validate_request {
             entity_args.push("--request-validation=false".to_string());
         }
-
+        #[allow(deprecated)]
         let authorize_cmd = assert_cmd::Command::cargo_bin("cedar")
             .expect("bin exists")
             .arg("authorize")
