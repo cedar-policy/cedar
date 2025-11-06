@@ -21,7 +21,8 @@ entity-manifest = ["cedar-policy/entity-manifest"]
 
 [dev-dependencies]
 rstest = "0.26.1"
-assert_cmd = "2.1"
+cedar-policy-cli = { path = "../cedar-policy-cli"}
+escargot = "0.5.15"
 tempfile = "3"
 
 [lints]
