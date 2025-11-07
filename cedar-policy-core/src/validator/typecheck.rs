@@ -1878,12 +1878,10 @@ impl<'a> SingleEnvTypechecker<'a> {
                 let lhs_as_euid_lit = self.euid_from_euid_literal_or_action(lhs);
                 let rhs_as_euid_lits = self.euids_from_euid_literals_or_actions(rhs);
                 match (lhs_as_euid_lit, rhs_as_euid_lits) {
-                    // EntityLiteral in EntityLiteral. Follows similar logic to the
-                    // first case, but with the added complication that this case
-                    // handles Action entities (including the action variable due to the
-                    // action-var -> action-entity-literal substitution applied), whose
-                    // hierarchy is based on EntityUids (type name + id) rather than
-                    // entity type names.
+                    // Syntactic special case for an action literal or variable
+                    // `in` an entity literal or set of entity literal. By
+                    // examining the action hierarchy in the schema, we'll be
+                    // able to give this a singleton boolean type.
                     (Some(lhs_euid), Some(rhs_euids)) if lhs_euid.is_action() => self
                         .type_of_action_in_entity_literals(
                             &lhs_euid,
@@ -1944,7 +1942,7 @@ impl<'a> SingleEnvTypechecker<'a> {
     }
 
     // Given an expression, if that expression is a literal or the `action`
-    // variable, return it as an `EntityUID``. Return `None` otherwise.
+    // variable, return it as an `EntityUID`. Return `None` otherwise.
     fn euid_from_euid_literal_or_action(&self, e: &Expr) -> Option<Arc<EntityUID>> {
         match self.replace_action_var_with_euid(e).expr_kind() {
             ExprKind::Lit(Literal::EntityUID(e)) => Some(e.clone()),
