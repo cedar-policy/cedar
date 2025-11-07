@@ -25,8 +25,10 @@ use itertools::EitherOrBoth::{Both, Left, Right};
 use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
+use std::sync::Arc;
 use std::{borrow::Cow, collections::HashSet};
 
+use crate::validator::types::EntityLUB;
 use crate::validator::{
     extension_schema::ExtensionFunctionType,
     extensions::ExtensionSchemas,
@@ -1798,40 +1800,17 @@ impl<'a> SingleEnvTypechecker<'a> {
             })
     }
 
-    /// Checks if `x in y` may be true if `x` has the action entity type `lhs_ety`
-    /// and `y` has the type `rhs_ty`.
-    fn check_action_in_type(&self, lhs_ety: &EntityType, rhs_ty: &Type) -> bool {
-        // Only consider the case when `lhs_ety` is an action entity type.
-        if !self
-            .schema
-            .actions()
-            .any(|action| action.entity_type() == lhs_ety)
-        {
-            return true;
-        }
-
-        match rhs_ty {
-            // If both sides have action entity types, we conservatively
-            // check if any of the actions of type `rhs_ety` have descendant
-            // action entities with type `lhs_ety`. If there is none, we
-            // can soundly type it as false.
-            Type::EntityOrRecord(EntityRecordKind::Entity(rhs_etys)) => rhs_etys
-                .iter()
-                .any(|rhs_ety| self.check_action_in_entity_type(lhs_ety, rhs_ety)),
-
-            // Similar to the cases above, but for when the RHS is a set
-            Type::Set {
-                element_type: Some(rhs_elem_ty),
-            } => match rhs_elem_ty.as_ref() {
-                Type::EntityOrRecord(EntityRecordKind::Entity(rhs_etys)) => rhs_etys
-                    .iter()
-                    .any(|rhs_ety| self.check_action_in_entity_type(lhs_ety, rhs_ety)),
-
-                _ => true,
-            },
-
-            _ => true,
-        }
+    /// Check if an entity type in `lhs` may be a descendant of some entity type
+    /// in rhs, either in the entity or action hierarchy. If this function
+    /// returns `false`, then `lhs in rhs` cannot possibly evaluate to `true`,
+    /// meaning that the expression can have type `False`.
+    fn any_entity_type_decedent_of(&self, lhs: &EntityLUB, rhs: &EntityLUB) -> bool {
+        lhs.iter().any(|lhs| {
+            rhs.iter().any(|rhs| {
+                self.schema.get_entity_types_in(rhs).contains(&lhs)
+                    || self.check_action_in_entity_type(lhs, rhs)
+            })
+        })
     }
 
     /// Handles typechecking of `in` expressions. This is complicated because it
@@ -1887,74 +1866,47 @@ impl<'a> SingleEnvTypechecker<'a> {
                             .is_in(lhs_expr, rhs_expr),
                     );
                 }
-                let lhs_as_euid_lit = self.replace_action_var_with_euid(lhs);
-                let rhs_as_euid_lit = self.replace_action_var_with_euid(rhs);
-                match (lhs_as_euid_lit.expr_kind(), rhs_as_euid_lit.expr_kind()) {
-                    // var in EntityLiteral. Lookup the descendant types of the entity
-                    // literals.  If the principal/resource type is not one of the
-                    // descendants, than it can never be `in` the literals (return false).
-                    // Otherwise, it could be (return boolean).
-                    (
-                        ExprKind::Var(var @ (Var::Principal | Var::Resource)),
-                        ExprKind::Lit(Literal::EntityUID(_)),
-                    ) => self.type_of_var_in_entity_literals(
-                        *var,
-                        [rhs_as_euid_lit.as_ref()],
-                        in_expr,
-                        lhs_expr,
-                        rhs_expr,
-                    ),
-
-                    // var in [EntityLiteral, ...]. As above, but now the
-                    // principal/resource just needs to be in the descendants sets for
-                    // any member of the set.
-                    (
-                        ExprKind::Var(var @ (Var::Principal | Var::Resource)),
-                        ExprKind::Set(elems),
-                    ) => self.type_of_var_in_entity_literals(
-                        *var,
-                        elems.as_ref(),
-                        in_expr,
-                        lhs_expr,
-                        rhs_expr,
-                    ),
-
+                let lhs_as_euid_lit = self.euid_from_euid_literal_or_action(lhs);
+                let rhs_as_euid_lits = self.euids_from_euid_literals_or_actions(rhs);
+                match (lhs_as_euid_lit, rhs_as_euid_lits) {
                     // EntityLiteral in EntityLiteral. Follows similar logic to the
                     // first case, but with the added complication that this case
                     // handles Action entities (including the action variable due to the
                     // action-var -> action-entity-literal substitution applied), whose
                     // hierarchy is based on EntityUids (type name + id) rather than
                     // entity type names.
-                    (
-                        ExprKind::Lit(Literal::EntityUID(euid0)),
-                        ExprKind::Lit(Literal::EntityUID(_)),
-                    ) => self.type_of_entity_literal_in_entity_literals(
-                        euid0,
-                        [rhs_as_euid_lit.as_ref()],
-                        in_expr,
-                        lhs_expr,
-                        rhs_expr,
-                    ),
-
-                    // As above, with the same complication, but applied to set of entities.
-                    (ExprKind::Lit(Literal::EntityUID(euid)), ExprKind::Set(elems)) => self
-                        .type_of_entity_literal_in_entity_literals(
-                            euid,
-                            elems.as_ref(),
+                    (Some(lhs_euid), Some(rhs_euids)) if lhs_euid.is_action() => self
+                        .type_of_action_in_entity_literals(
+                            &lhs_euid,
+                            rhs_euids.iter().map(AsRef::as_ref),
                             in_expr,
                             lhs_expr,
                             rhs_expr,
                         ),
-
                     _ => {
-                        match (lhs_expr.data(), rhs_expr.data()) {
-                            // Similar to the case above, but for `EntityRecordKind::Entity`
-                            (
-                                Some(Type::EntityOrRecord(EntityRecordKind::Entity(lhs_etys))),
-                                Some(rhs_ty),
-                            ) if lhs_etys
-                                .iter()
-                                .all(|lhs_ety| !self.check_action_in_type(lhs_ety, rhs_ty)) =>
+                        let lhs_etys = match lhs_expr.data() {
+                            Some(Type::EntityOrRecord(EntityRecordKind::Entity(lhs_etys))) => {
+                                Some(lhs_etys)
+                            }
+                            _ => None,
+                        };
+                        let rhs_etys = match rhs_expr.data() {
+                            Some(Type::EntityOrRecord(EntityRecordKind::Entity(rhs_etys))) => {
+                                Some(rhs_etys)
+                            }
+                            Some(Type::Set {
+                                element_type: Some(element_type),
+                            }) => match element_type.as_ref() {
+                                Type::EntityOrRecord(EntityRecordKind::Entity(rhs_etys)) => {
+                                    Some(rhs_etys)
+                                }
+                                _ => None,
+                            },
+                            _ => None,
+                        };
+                        match (lhs_etys, rhs_etys) {
+                            (Some(lhs_etys), Some(rhs_etys))
+                                if !self.any_entity_type_decedent_of(lhs_etys, rhs_etys) =>
                             {
                                 TypecheckAnswer::success(
                                     ExprBuilder::with_data(Some(Type::False))
@@ -1983,142 +1935,79 @@ impl<'a> SingleEnvTypechecker<'a> {
     }
 
     // Given an expression, if that expression is a literal or the `action`
-    // variable, return it as an EntityUID. Return `None` otherwise.
-    fn euid_from_euid_literal_or_action(&self, e: &Expr) -> Option<EntityUID> {
+    // variable, return it as an `EntityUID``. Return `None` otherwise.
+    fn euid_from_euid_literal_or_action(&self, e: &Expr) -> Option<Arc<EntityUID>> {
         match self.replace_action_var_with_euid(e).expr_kind() {
-            ExprKind::Lit(Literal::EntityUID(e)) => Some((**e).clone()),
+            ExprKind::Lit(Literal::EntityUID(e)) => Some(e.clone()),
             _ => None,
         }
     }
 
-    // Convert all expressions in the input to EntityUIDs if an EntityUID can be
-    // extracted by `euid_from_uid_literal_or_action`. Return `None` if any
-    // cannot be converted.
-    fn euids_from_euid_literals_or_action<'b>(
-        &self,
-        exprs: impl IntoIterator<Item = &'b Expr>,
-    ) -> Option<Vec<EntityUID>> {
-        exprs
-            .into_iter()
-            .map(|e| self.euid_from_euid_literal_or_action(e))
-            .collect::<Option<Vec<_>>>()
-    }
-
-    /// Handles `in` expression where the `principal` or `resource` is `in` an
-    /// entity literal or set of entity literals.
-    fn type_of_var_in_entity_literals<'b, 'c>(
-        &self,
-        lhs_var: Var,
-        rhs_elems: impl IntoIterator<Item = &'b Expr>,
-        in_expr: &Expr,
-        lhs_expr: Expr<Option<Type>>,
-        rhs_expr: Expr<Option<Type>>,
-    ) -> TypecheckAnswer<'c> {
-        if let Some(rhs) = self.euids_from_euid_literals_or_action(rhs_elems) {
-            let var_etype = if matches!(lhs_var, Var::Principal) {
-                self.request_env.principal_entity_type()
-            } else {
-                self.request_env.resource_entity_type()
-            };
-            match var_etype {
-                None => {
-                    // We failed to get the principal/resource entity type because
-                    // we are typechecking a request for some action which isn't
-                    // declared in the schema.  We don't know if the euid would be
-                    // in the descendants or not, so give it type boolean.
-                    let in_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                        .with_same_source_loc(in_expr)
-                        .is_in(lhs_expr, rhs_expr);
-                    if self.mode.is_partial() {
-                        TypecheckAnswer::success(in_expr)
-                    } else {
-                        // This should only happen when doing partial validation
-                        // since we never construct the undeclared action
-                        // request environment otherwise.
-                        TypecheckAnswer::fail(in_expr)
-                    }
-                }
-                Some(var_name) => {
-                    self.entity_type_in_literals(var_name, &rhs, in_expr, lhs_expr, rhs_expr)
-                }
-            }
+    /// If the expression is a literal, the `action` variable, or a set of
+    /// exclusively literals/actions, then return all the `EntityUID`s. Return
+    /// `None` otherwise.
+    fn euids_from_euid_literals_or_actions(&self, e: &Expr) -> Option<Vec<Arc<EntityUID>>> {
+        if let Some(euid) = self.euid_from_euid_literal_or_action(e) {
+            Some(vec![euid])
+        } else if let ExprKind::Set(exprs) = e.expr_kind() {
+            exprs
+                .iter()
+                .map(|e| self.euid_from_euid_literal_or_action(e))
+                .collect::<Option<Vec<_>>>()
         } else {
-            // One or more of the elements on the right is not an entity
-            // literal, so this does not apply. The `in` is still valid, so
-            // typechecking succeeds with type Boolean.
-            // Note that we could still return `False` in the specific case
-            // where LHS is Unspecified and RHS cannot contain any Unspecified,
-            // but in that case, we return `False` before ever reaching this
-            // function, due to earlier checks.
-            TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                    .with_same_source_loc(in_expr)
-                    .is_in(lhs_expr, rhs_expr),
-            )
+            None
         }
     }
 
-    fn type_of_entity_literal_in_entity_literals<'b, 'c>(
+    // Get the type for `in` when it is applied to an action EUID literal on the
+    // left and one or more EUID literals on the right, which may or may not be
+    // actions.  If they're not actions, then we assume the LHS action can never
+    // be in a non-action entity. If there is at least on RHS action entity,
+    // then we can precisely evaluate the `in`, giving the expression a
+    // singleton boolean type.
+    fn type_of_action_in_entity_literals<'b, 'c>(
         &self,
         lhs_euid: &EntityUID,
-        rhs_elems: impl IntoIterator<Item = &'b Expr>,
+        rhs_elems: impl IntoIterator<Item = &'b EntityUID>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'c> {
-        if let Some(rhs) = self.euids_from_euid_literals_or_action(rhs_elems) {
-            let name = lhs_euid.entity_type();
-            // We don't want to apply the action hierarchy check to
-            // non-action entities, but now we have a set of entities.
-            // We can apply the check as long as any are actions. The
-            // non-actions are omitted from the check, but they can
-            // never be an ancestor of `Action`.
-            let lhs_is_action = name.is_action();
-            let (actions, non_actions): (Vec<_>, Vec<_>) =
-                rhs.into_iter().partition(|e| e.entity_type().is_action());
-            if lhs_is_action && !actions.is_empty() {
-                self.type_of_action_in_actions(
-                    lhs_euid,
-                    actions.iter(),
-                    in_expr,
-                    lhs_expr,
-                    rhs_expr,
-                )
-            } else if !lhs_is_action && !non_actions.is_empty() {
-                self.entity_type_in_literals(
-                    lhs_euid.entity_type(),
-                    &non_actions,
-                    in_expr,
-                    lhs_expr,
-                    rhs_expr,
-                )
-            } else {
-                // This hard codes the assumption that `Action` can
-                // never be a member of any other entity type, and no
-                // other entity type can ever be a member of `Action`,
-                // and by extension any particular action entity.
-                TypecheckAnswer::success(
-                    ExprBuilder::with_data(Some(Type::False))
-                        .with_same_source_loc(in_expr)
-                        .is_in(lhs_expr, rhs_expr),
-                )
-            }
+        debug_assert!(
+            lhs_euid.is_action(),
+            "We expect this function is called only when an action entity is on the LHS"
+        );
+        // If there's a at least on action on the right, check if that
+        // action is an ancestor of the LHS action. We can ignore any
+        // non-actions because we assume action cannot be `in` a non-action.
+        let rhs_actions: Vec<_> = rhs_elems
+            .into_iter()
+            .filter(|e| e.entity_type().is_action())
+            .collect();
+        if !rhs_actions.is_empty() {
+            self.type_of_action_in_actions(
+                lhs_euid,
+                rhs_actions.iter().copied(),
+                in_expr,
+                lhs_expr,
+                rhs_expr,
+            )
         } else {
-            // One or more of the elements on the right is not an entity
-            // literal, so this does not apply. The `in` is still valid, so
-            // typechecking succeeds with type Boolean.
+            // There are no actions on the right, so the LHS action cannot
+            // be `in` any of them.
             TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                ExprBuilder::with_data(Some(Type::False))
                     .with_same_source_loc(in_expr)
                     .is_in(lhs_expr, rhs_expr),
             )
         }
     }
 
-    // Get the type for `in` when it is applied to an action EUID literal and a
-    // set of EUID literals. We can look up all ancestors of the action in the
-    // schema, so the type will be `False` if the none of the rhs actions are an
-    // ancestor of the lhs.
+    // Get the type for `in` when it is applied to an action EUID literal on the
+    // left and one or more actions EUID literals on the right.  We can look up
+    // the exact set of ancestors for the action in the schema, allowing us to
+    // evalute the `in` to `true` or `false`, so the type will be `True` or
+    // `False`  respectively.
     fn type_of_action_in_actions<'b>(
         &self,
         lhs: &EntityUID,
@@ -2136,45 +2025,6 @@ impl<'a> SingleEnvTypechecker<'a> {
                 ExprBuilder::with_data(Some(Type::singleton_boolean(is_action_in_descendants)))
                     .with_same_source_loc(in_expr)
                     .is_in(lhs_expr, rhs_expr),
-            )
-        } else {
-            let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                .with_same_source_loc(in_expr)
-                .is_in(lhs_expr, rhs_expr);
-            if self.mode.is_partial() {
-                TypecheckAnswer::success(annotated_expr)
-            } else {
-                TypecheckAnswer::fail(annotated_expr)
-            }
-        }
-    }
-
-    // Get the type for `in` when it is applied to an non-action entity type
-    // expression and a set of EUID literals. The type will be `False` is none
-    // of the entities on the rhs have a type which may be an ancestor of the
-    // rhs entity type. Otherwise the type is `Bool`.
-    fn entity_type_in_literals<'b>(
-        &self,
-        lhs_entity: &EntityType,
-        rhs: &[EntityUID],
-        in_expr: &Expr,
-        lhs_expr: Expr<Option<Type>>,
-        rhs_expr: Expr<Option<Type>>,
-    ) -> TypecheckAnswer<'b> {
-        let all_rhs_known = rhs
-            .iter()
-            .all(|e| self.schema.euid_has_known_entity_type(e));
-        if self.schema.is_known_entity_type(lhs_entity) && all_rhs_known {
-            let mut rhs_descendants = self.schema.get_entity_types_in_set(rhs.iter());
-            let is_ety_in_descendants = rhs_descendants.any(|e| e == lhs_entity);
-            TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(if is_ety_in_descendants {
-                    Type::primitive_boolean()
-                } else {
-                    Type::singleton_boolean(false)
-                }))
-                .with_same_source_loc(in_expr)
-                .is_in(lhs_expr, rhs_expr),
             )
         } else {
             let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
