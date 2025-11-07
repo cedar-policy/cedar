@@ -33,6 +33,7 @@ mod multi;
 use cedar_policy::Decision;
 use cedar_policy::EntityUid;
 use cedar_testing::integration_testing::JsonTest;
+use std::assert_eq;
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -80,9 +81,12 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let schema_file = resolve_integration_test_path(&test.schema);
 
     for json_request in test.requests.into_iter() {
-        #[allow(deprecated)]
-        let validation_cmd = assert_cmd::Command::cargo_bin("cedar")
-            .expect("bin exists")
+        let validation_cmd = escargot::CargoBuild::new()
+            .bin("cedar")
+            .manifest_path("../cedar-policy-cli/Cargo.toml")
+            .run()
+            .expect("should build")
+            .command()
             .arg("validate")
             .arg("--schema")
             .arg(&schema_file)
@@ -90,13 +94,19 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .arg(&policy_file)
             .arg("--schema-format")
             .arg("cedar")
-            .assert()
-            .append_context("validation", json_request.description.clone());
+            .output()
+            .expect("should get output");
 
         if test.should_validate {
-            validation_cmd.success(); // assert it succeeded
+            assert!(validation_cmd.status.success()); // assert it succeeded
         } else {
-            validation_cmd.code(3); // assert that validation failed
+            assert_eq!(
+                validation_cmd
+                    .status
+                    .code()
+                    .expect("exit code should exist"),
+                3
+            ); // assert that validation failed
         }
 
         // Integration test format provides context JSON object
@@ -116,9 +126,13 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
         if !json_request.validate_request {
             entity_args.push("--request-validation=false".to_string());
         }
-        #[allow(deprecated)]
-        let authorize_cmd = assert_cmd::Command::cargo_bin("cedar")
-            .expect("bin exists")
+
+        let authorize_cmd = escargot::CargoBuild::new()
+            .bin("cedar")
+            .manifest_path("../cedar-policy-cli/Cargo.toml")
+            .run()
+            .expect("should build")
+            .command()
             .arg("authorize")
             .args(entity_args)
             .arg("--context")
@@ -132,16 +146,23 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
             .arg("--schema-format")
             .arg("cedar")
             .arg("--verbose") // so that reasons are displayed
-            .assert()
-            .append_context("authorization", json_request.description.clone());
+            .output()
+            .expect("should get output");
 
-        let authorize_cmd = match json_request.decision {
-            Decision::Deny => authorize_cmd.code(2),
-            Decision::Allow => authorize_cmd.success(),
+        match json_request.decision {
+            Decision::Deny => {
+                assert_eq!(
+                    authorize_cmd.status.code().expect("exit code should exist"),
+                    2
+                );
+            }
+            Decision::Allow => {
+                assert!(authorize_cmd.status.success());
+            }
         };
 
-        let output = String::from_utf8(authorize_cmd.get_output().stdout.clone())
-            .expect("output should be valid UTF-8");
+        let output =
+            String::from_utf8(authorize_cmd.stdout.clone()).expect("output should be valid UTF-8");
 
         for error in json_request.errors {
             assert!(
@@ -149,7 +170,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
                 "test {} failed for request \"{}\": output does not contain expected error {error:?}.\noutput was: {output}\nstderr was: {}",
                 jsonfile.display(),
                 &json_request.description,
-                String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
+                String::from_utf8(authorize_cmd.stderr.clone()).expect("stderr should be valid UTF-8"),
             );
         }
 
@@ -159,7 +180,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
                 "test {} failed for request \"{}\": output does not contain the string \"no policies applied to this request\", as expected.\noutput was: {output}\nstderr was: {}",
                 jsonfile.display(),
                 &json_request.description,
-                String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
+                String::from_utf8(authorize_cmd.stderr.clone()).expect("stderr should be valid UTF-8"),
             );
         } else {
             assert!(output.contains("this decision was due to the following policies"));
@@ -169,7 +190,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
                     "test {} failed for request \"{}\": output does not contain the reason string {reason:?}.\noutput was: {output}\nstderr was: {}",
                     jsonfile.display(),
                     &json_request.description,
-                    String::from_utf8(authorize_cmd.get_output().stderr.clone()).expect("stderr should be valid UTF-8"),
+                    String::from_utf8(authorize_cmd.stderr.clone()).expect("stderr should be valid UTF-8"),
                 );
             }
         };
