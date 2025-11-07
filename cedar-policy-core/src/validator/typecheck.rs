@@ -1537,7 +1537,16 @@ impl<'a> SingleEnvTypechecker<'a> {
                                         .has_tag(expr_ty_arg1, expr_ty_arg2),
                                 );
                             }
-                            _ => Type::primitive_boolean(),
+                            _ => {
+                                if prior_capability
+                                    .contains(&Capability::new_borrowed_tag(arg1, arg2))
+                                {
+                                    // Prior capability tells us that we already checked for the tag, so `hasTag` is `True`
+                                    Type::singleton_boolean(true)
+                                } else {
+                                    Type::primitive_boolean()
+                                }
+                            }
                         };
                         TypecheckAnswer::success_with_capability(
                             ExprBuilder::with_data(Some(type_of_has))

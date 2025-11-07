@@ -126,6 +126,36 @@ fn tag_access_missing_has_check() {
 }
 
 #[test]
+fn tag_access_check_twice() {
+    let policy = parse_policy(
+        Some(PolicyID::from_string("0")),
+        r#"
+        permit(principal, action == Action::"A1", resource) when {
+            principal.hasTag("foo") &&
+            principal.hasTag("foo") &&
+            principal.getTag("foo") == "foo"
+        };
+        "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema_with_tags(), policy);
+    let policy = parse_policy(
+        Some(PolicyID::from_string("0")),
+        r#"
+        permit(principal, action == Action::"A1", resource) when {
+            principal.hasTag("foo") && (
+                principal.hasTag("foo") ||
+                // error never reached because second `hasTag` is `True`
+                principal.getTag("bar") == "foo"
+            )
+        };
+        "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema_with_tags(), policy);
+}
+
+#[test]
 fn tag_access_type_error() {
     // constant-keys case
     let src = r#"
