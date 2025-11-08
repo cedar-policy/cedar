@@ -477,10 +477,13 @@ impl<'e> Evaluator<'e> {
             } => self.eval_if(test_expr, then_expr, else_expr, slots),
             ExprKind::And { left, right } => {
                 match self.partial_interpret(left, slots)? {
-                    // PE Case
-                    PartialValue::Residual(e) => {
-                        Ok(PartialValue::Residual(Expr::and(e, right.as_ref().clone())))
-                    }
+                    // PE Case: Try to partial interpret right expression in best-effort.
+                    // If it fails, fall back to original right expression.
+                    PartialValue::Residual(e) => Ok(PartialValue::Residual(Expr::and(
+                        e,
+                        self.partial_interpret(right, slots)
+                            .map_or_else(|_| right.as_ref().clone(), Into::into),
+                    ))),
                     // Full eval case
                     PartialValue::Value(v) => {
                         if v.get_as_bool()? {
@@ -503,10 +506,13 @@ impl<'e> Evaluator<'e> {
             }
             ExprKind::Or { left, right } => {
                 match self.partial_interpret(left, slots)? {
-                    // PE cases
-                    PartialValue::Residual(r) => {
-                        Ok(PartialValue::Residual(Expr::or(r, right.as_ref().clone())))
-                    }
+                    // PE Case: Try to partial interpret right expression in best-effort.
+                    // If it fails, fall back to original right expression.
+                    PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::or(
+                        r,
+                        self.partial_interpret(right, slots)
+                            .map_or_else(|_| right.as_ref().clone(), Into::into),
+                    ))),
                     // Full eval case
                     PartialValue::Value(lhs) => {
                         if lhs.get_as_bool()? {
@@ -861,7 +867,17 @@ impl<'e> Evaluator<'e> {
                 }
             }
             PartialValue::Residual(guard) => {
-                Ok(Expr::ite_arc(Arc::new(guard), consequent.clone(), alternative.clone()).into())
+                // Try to partial interpret both branches in best-effort:
+                // if a branch partial evaluation fails, then fallback to the original branch expression.
+                let consequent = self
+                    .partial_interpret(&consequent, slots)
+                    .map(|r| Arc::new(r.into()))
+                    .unwrap_or_else(|_| consequent.clone());
+                let alternative = self
+                    .partial_interpret(&alternative, slots)
+                    .map(|r| Arc::new(r.into()))
+                    .unwrap_or_else(|_| alternative.clone());
+                Ok(Expr::ite_arc(Arc::new(guard), consequent, alternative).into())
             }
         }
     }
@@ -5659,11 +5675,12 @@ pub(crate) mod test {
         assert_eq!(r, expected);
     }
 
+    // if $unknown then 1+1 else 2+2 -> if $unknown then 2 else 4
     #[test]
     fn partial_if_noerrors() {
         let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
-        let cons = Expr::val(1);
-        let alt = Expr::val(2);
+        let cons = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(1));
+        let alt = Expr::binary_app(BinaryOp::Add, Expr::val(2), Expr::val(2));
         let e = Expr::ite(guard.clone(), cons, alt);
 
         let es = Entities::new();
@@ -5671,16 +5688,17 @@ pub(crate) mod test {
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
-        let expected = Expr::ite(guard, Expr::val(1), Expr::val(2));
+        let expected = Expr::ite(guard, Expr::val(2), Expr::val(4));
 
         assert_eq!(r, PartialValue::Residual(expected));
     }
 
+    // if $unknown then 1+true else 2+2 -> if $unknown then 1+true else 4
     #[test]
     fn parital_if_cons_error() {
         let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
         let cons = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
-        let alt = Expr::val(2);
+        let alt = Expr::binary_app(BinaryOp::Add, Expr::val(2), Expr::val(2));
         let e = Expr::ite(guard.clone(), cons.clone(), alt);
 
         let es = Entities::new();
@@ -5688,15 +5706,16 @@ pub(crate) mod test {
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
-        let expected = Expr::ite(guard, cons, Expr::val(2));
+        let expected = Expr::ite(guard, cons, Expr::val(4));
 
         assert_eq!(r, PartialValue::Residual(expected));
     }
 
+    // if $unknown then 2+2 else 1+true -> if $unknown then 4 else 1+true
     #[test]
     fn parital_if_alt_error() {
         let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
-        let cons = Expr::val(2);
+        let cons = Expr::binary_app(BinaryOp::Add, Expr::val(2), Expr::val(2));
         let alt = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
         let e = Expr::ite(guard.clone(), cons, alt.clone());
 
@@ -5705,10 +5724,11 @@ pub(crate) mod test {
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 
-        let expected = Expr::ite(guard, Expr::val(2), alt);
+        let expected = Expr::ite(guard, Expr::val(4), alt);
         assert_eq!(r, PartialValue::Residual(expected));
     }
 
+    // if $unknown then 1+true else "hello" < "bye" -> if $unknown then 1+true else "hello" < "bye"
     #[test]
     fn parital_if_both_error() {
         let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
@@ -5790,7 +5810,7 @@ pub(crate) mod test {
         let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-        let expected = Expr::and(lhs, rhs);
+        let expected = Expr::and(lhs, Expr::val(true));
         assert_eq!(r, PartialValue::Residual(expected));
     }
 
@@ -5803,7 +5823,7 @@ pub(crate) mod test {
         let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-        let expected = Expr::and(lhs, rhs);
+        let expected = Expr::and(lhs, Expr::val(false));
         assert_eq!(r, PartialValue::Residual(expected));
     }
 
@@ -5883,10 +5903,11 @@ pub(crate) mod test {
         let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-        let expected = Expr::or(lhs, rhs);
+        let expected = Expr::or(lhs, Expr::val(true));
         assert_eq!(r, PartialValue::Residual(expected));
     }
 
+    // res || false -> res || false
     #[test]
     fn partial_or_res_false() {
         let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
@@ -5896,7 +5917,7 @@ pub(crate) mod test {
         let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
-        let expected = Expr::or(lhs, rhs);
+        let expected = Expr::or(lhs, Expr::val(false));
         assert_eq!(r, PartialValue::Residual(expected));
     }
 

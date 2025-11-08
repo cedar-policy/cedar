@@ -27,6 +27,7 @@ Cedar Language Version: TBD
 - Deprecated schema parsing errors `ActionAttributesContainEmptySet`, `UnsupportedActionAttribute`, `ActionAttrEval`, and `ExprEscapeUsed`.
   These errors are never returned, so it is safe to delete any associated error handling code.
 - Made policy validation for `in`, `==`, and `hasTag` slightly more permissive to match the formally verified Lean model.
+- Increase partial evaluation precision for `if-then-else`, `or`, `and` expressions (#1940)
 
 ### Fixed
 
