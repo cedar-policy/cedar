@@ -95,11 +95,11 @@ pub mod authorization_errors {
     /// An error occurred when evaluating a policy
     #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
     #[error("error while evaluating policy `{id}`: {error}")]
+    #[diagnostic(forward(error))]
     pub struct PolicyEvaluationError {
         /// Id of the policy with an error
         id: ast::PolicyID,
         /// Underlying evaluation error
-        #[diagnostic(transparent)]
         error: EvaluationError,
     }
 
@@ -198,8 +198,8 @@ pub mod to_cedar_syntax_errors {
     /// Duplicate names were found in the schema
     #[derive(Debug, Error, Diagnostic)]
     #[error("{err}")]
+    #[diagnostic(forward(err))]
     pub struct NameCollisionsError {
-        #[diagnostic(transparent)]
         pub(super) err: cedar_policy_core::validator::cedar_schema::fmt::NameCollisionsError,
         // because `.names()` needs to return borrowed `&str`, we need somewhere to borrow from, hence here
         pub(super) names_as_strings: Vec<String>,
@@ -217,8 +217,8 @@ pub mod to_cedar_syntax_errors {
     /// Entity type definitions with shapes not supported in Cedar schema syntax were found in the schema
     #[derive(Debug, Error, Diagnostic)]
     #[error("{err}")]
+    #[diagnostic(forward(err))]
     pub struct UnconvertibleEntityTypeShapeError {
-        #[diagnostic(transparent)]
         pub(super) err:
             cedar_policy_core::validator::cedar_schema::fmt::UnconvertibleEntityTypeShapeError,
         // because `.names()` needs to return borrowed `&str`, we need somewhere to borrow from, hence here
@@ -311,6 +311,7 @@ impl From<cedar_policy_core::validator::CedarSchemaError> for CedarSchemaError {
 /// Error when evaluating an entity attribute or tag
 #[derive(Debug, Diagnostic, Error)]
 #[error("in {} `{attr_or_tag}` of `{uid}`: {err}", if *.was_attr { "attribute" } else { "tag" })]
+#[diagnostic(forward(err))]
 pub struct EntityAttrEvaluationError {
     /// Action that had the attribute or tag with the error
     uid: EntityUid,
@@ -319,7 +320,6 @@ pub struct EntityAttrEvaluationError {
     /// Is `attr_or_tag` an attribute (`true`) or a tag (`false`)
     was_attr: bool,
     /// Underlying evaluation error
-    #[diagnostic(transparent)]
     err: EvaluationError,
 }
 
@@ -678,9 +678,9 @@ pub mod policy_set_errors {
     /// Error when linking a template
     #[derive(Debug, Diagnostic, Error)]
     #[error("unable to link template")]
+    #[diagnostic(transparent)]
     pub struct LinkingError {
         #[from]
-        #[diagnostic(transparent)]
         pub(crate) inner: ast::LinkingError,
     }
 

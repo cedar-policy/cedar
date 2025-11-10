@@ -249,6 +249,7 @@ impl JsonDeserializationError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("{ctx}, {err}")]
+#[diagnostic(forward(err))]
 /// General error for type mismatches
 pub struct TypeMismatch {
     /// Context of this error, which will be something other than `EntityAttribute`.
@@ -256,7 +257,6 @@ pub struct TypeMismatch {
     /// `Self::EntitySchemaConformance`.)
     ctx: Box<JsonDeserializationErrorContext>,
     /// Underlying error
-    #[diagnostic(transparent)]
     err: TypeMismatchError,
 }
 
@@ -326,10 +326,13 @@ pub struct ActionParentIsNotAction {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("failed to parse escape `{kind}`: {value}, errors: {errs}")]
-#[diagnostic(help("{}", match .kind {
+#[diagnostic(
+    help("{}", match .kind {
         EscapeKind::Entity => r#"an __entity escape should have a value like `{ "type": "SomeType", "id": "SomeId" }`"#,
         EscapeKind::Extension => r#"an __extn escape should have a value like `{ "fn": "SomeFn", "arg": "SomeArg" }`"#,
-    }))]
+    }),
+    forward(errs)
+)]
 /// Error type for incorrect escaping
 pub struct ParseEscape {
     /// Escape kind
@@ -337,7 +340,6 @@ pub struct ParseEscape {
     /// Escape value at fault
     value: String,
     /// Parse errors
-    #[diagnostic(transparent)]
     errs: ParseErrors,
 }
 
