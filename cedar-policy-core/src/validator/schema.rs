@@ -1022,9 +1022,9 @@ impl ValidatorSchema {
     /// Get all action entities in the schema where `action in euids` evaluates
     /// to `true`. This includes all actions which are descendants of some
     /// element of `euids`, and all elements of `euids`.
-    pub(crate) fn get_actions_in_set<'a, 'b, 'c>(
+    pub(crate) fn get_actions_in_set<'a, 'b>(
         &'a self,
-        euids: impl IntoIterator<Item = &'b EntityUID> + 'c,
+        euids: impl IntoIterator<Item = &'b EntityUID>,
     ) -> Option<Vec<&'a EntityUID>> {
         euids
             .into_iter()

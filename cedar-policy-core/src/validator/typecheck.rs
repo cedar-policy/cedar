@@ -2009,10 +2009,10 @@ impl<'a> SingleEnvTypechecker<'a> {
     // the exact set of ancestors for the action in the schema, allowing us to
     // evalute the `in` to `true` or `false`, so the type will be `True` or
     // `False`  respectively.
-    fn type_of_action_in_actions<'b, 'c>(
+    fn type_of_action_in_actions<'b>(
         &self,
         lhs: &EntityUID,
-        rhs: impl IntoIterator<Item = &'b EntityUID> + 'c,
+        rhs: impl IntoIterator<Item = &'b EntityUID>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
