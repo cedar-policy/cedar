@@ -19,7 +19,7 @@ use super::FromJsonError;
 use crate::ast::expr_allows_errors::AstExprErrorKind;
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::Infallible;
-use crate::ast::{self, BoundedDisplay, EntityUID, Name};
+use crate::ast::{self, is_normalized_ident, BoundedDisplay, EntityUID, Name};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
     CedarValueJson, FnAndArgs,
@@ -29,7 +29,7 @@ use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use crate::parser::err::ParseErrors;
 use crate::parser::{cst, Loc};
-use crate::parser::{cst_to_ast, parse_ident, Node};
+use crate::parser::{cst_to_ast, Node};
 use crate::FromNormalizedStr;
 use itertools::Itertools;
 use serde::{de::Visitor, Deserialize, Serialize};
@@ -1370,16 +1370,18 @@ impl BoundedDisplay for ExprNoExt {
             }
             ExprNoExt::GetAttr { left, attr } => {
                 maybe_with_parens(f, left, n)?;
-                match parse_ident(attr) {
-                    Ok(id) => write!(f, ".{}", id),
-                    Err(_) => write!(f, "[\"{}\"]", attr.escape_debug()),
+                if is_normalized_ident(attr) {
+                    write!(f, ".{}", attr)
+                } else {
+                    write!(f, "[\"{}\"]", attr.escape_debug())
                 }
             }
             ExprNoExt::HasAttr { left, attr } => {
                 maybe_with_parens(f, left, n)?;
-                match parse_ident(attr) {
-                    Ok(id) => write!(f, " has {}", id),
-                    Err(_) => write!(f, " has \"{}\"", attr.escape_debug()),
+                if is_normalized_ident(attr) {
+                    write!(f, " has {}", attr)
+                } else {
+                    write!(f, " has \"{}\"", attr.escape_debug())
                 }
             }
             ExprNoExt::Like { left, pattern } => {
@@ -1677,6 +1679,12 @@ mod test {
             .unwrap()
             .into_expr::<Builder>();
         assert_eq!(format!("{expr}"), r#"context.foo"#);
+
+        // Ensure we escape the identifier if it contains whitespaces.
+        let expr = parse_expr(r#"context["foo "]"#)
+            .unwrap()
+            .into_expr::<Builder>();
+        assert_eq!(format!("{expr}"), r#"context["foo "]"#);
 
         let expr = parse_expr(r#"context["foo-baz"]"#)
             .unwrap()

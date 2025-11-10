@@ -36,32 +36,43 @@ pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
     /// For the version that accepts whitespace and Cedar comments, use the
     /// actual `FromStr` implementations.
     fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
-        let parsed = Self::from_str(s)?;
-        let normalized_src = parsed.to_string();
-        if normalized_src == s {
-            // the normalized representation is indeed the one that was provided
-            Ok(parsed)
-        } else {
-            let diff_byte = s
-                .bytes()
-                .zip(normalized_src.bytes())
-                .enumerate()
-                .find(|(_, (b0, b1))| b0 != b1)
-                .map(|(idx, _)| idx)
-                .unwrap_or_else(|| s.len().min(normalized_src.len()));
-
-            Err(ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
-                ToASTErrorKind::NonNormalizedString {
-                    kind: Self::describe_self(),
-                    src: s.to_string(),
-                    normalized_src,
-                },
-                Some(Loc::new(diff_byte, s.into())),
-            ))))
-        }
+        default_from_normalized_str(s, Self::describe_self)
     }
 
     /// Short string description of the `Self` type, to be used in error messages.
     /// What are we trying to parse?
     fn describe_self() -> &'static str;
+}
+
+/// Default implementation of `from_normalized_str()`, which may be overridden
+/// for particular types if there is a more optimized implementation available.
+///
+/// See comments on [`FromNormalizedStr::from_normalized_str()`].
+pub fn default_from_normalized_str<T: FromStr<Err = ParseErrors> + Display>(
+    s: &str,
+    describe_self: impl FnOnce() -> &'static str,
+) -> Result<T, ParseErrors> {
+    let parsed = T::from_str(s)?;
+    let normalized_src = parsed.to_string();
+    if normalized_src == s {
+        // the normalized representation is indeed the one that was provided
+        Ok(parsed)
+    } else {
+        let diff_byte = s
+            .bytes()
+            .zip(normalized_src.bytes())
+            .enumerate()
+            .find(|(_, (b0, b1))| b0 != b1)
+            .map(|(idx, _)| idx)
+            .unwrap_or_else(|| s.len().min(normalized_src.len()));
+
+        Err(ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
+            ToASTErrorKind::NonNormalizedString {
+                kind: describe_self(),
+                src: s.to_string(),
+                normalized_src,
+            },
+            Some(Loc::new(diff_byte, s.into())),
+        ))))
+    }
 }

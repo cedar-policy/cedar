@@ -22,9 +22,10 @@ use std::{collections::HashSet, fmt::Display};
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
+use smol_str::{format_smolstr, SmolStr};
 use thiserror::Error;
 
-use crate::parser::parse_ident;
+use crate::ast::is_normalized_ident;
 use crate::validator::{json_schema, RawName};
 use crate::{ast::InternalName, impl_diagnostic_from_method_on_nonempty_field};
 
@@ -202,13 +203,14 @@ impl<N: Display> IndentedDisplay for json_schema::RecordType<N> {
                 writeln!(f)?;
             }
             ty.annotations.fmt_indented(f, member_indentation.len())?;
-            let n = match parse_ident(n) {
-                Ok(id) => id.into_smolstr(),
-                Err(_) => format!("\"{}\"", n.escape_debug()).into(),
-            };
             writeln!(
                 f,
-                "{member_indentation}{n}{}: {}{}",
+                "{member_indentation}{}{}: {}{}",
+                if is_normalized_ident(n) {
+                    SmolStr::clone(n)
+                } else {
+                    format_smolstr!("\"{}\"", n.escape_debug())
+                },
                 if ty.required { "" } else { "?" },
                 Indented(&ty.ty, &member_indentation),
                 // TODO: Always print trailing commas when

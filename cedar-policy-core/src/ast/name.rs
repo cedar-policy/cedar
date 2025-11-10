@@ -418,9 +418,15 @@ impl FromStr for Name {
 
 // PANIC SAFETY: this is a valid Regex pattern
 #[allow(clippy::unwrap_used)]
+static VALID_ANY_IDENT_REGEX: std::sync::LazyLock<Regex> =
+    std::sync::LazyLock::new(|| Regex::new("^[_a-zA-Z][_a-zA-Z0-9]*$").unwrap());
+
+// PANIC SAFETY: this is a valid Regex pattern
+#[allow(clippy::unwrap_used)]
 static VALID_NAME_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new("^[_a-zA-Z][_a-zA-Z0-9]*(?:::[_a-zA-Z][_a-zA-Z0-9]*)*$").unwrap()
 });
+
 // All of Cedar's reserved keywords for identifiers.
 // Notice this is only a subset of all reserved keywords.
 static RESERVED_IDS: std::sync::LazyLock<HashSet<&'static str>> = std::sync::LazyLock::new(|| {
@@ -432,6 +438,15 @@ static RESERVED_IDS: std::sync::LazyLock<HashSet<&'static str>> = std::sync::Laz
     .into_iter()
     .collect()
 });
+
+/**
+ * Return true if the given string is a valid normalized identifier
+ * ("normalized" in the sense of `FromNoramlizedStr`, i.e., no leading/trailing
+ * whitespace) that does not require quoting when used as an attribute.
+ */
+pub fn is_normalized_ident(s: &str) -> bool {
+    VALID_ANY_IDENT_REGEX.is_match(s) && !RESERVED_IDS.contains(s)
+}
 
 impl FromNormalizedStr for Name {
     fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {

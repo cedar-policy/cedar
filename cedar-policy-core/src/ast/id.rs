@@ -17,7 +17,10 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
-use crate::{parser::err::ParseErrors, FromNormalizedStr};
+use crate::{
+    ast::is_normalized_ident, default_from_normalized_str, parser::err::ParseErrors,
+    FromNormalizedStr,
+};
 
 use super::{InternalName, ReservedNameError};
 
@@ -87,6 +90,18 @@ impl std::str::FromStr for Id {
 impl FromNormalizedStr for Id {
     fn describe_self() -> &'static str {
         "Id"
+    }
+
+    // Specialized implementation of `from_normalized_str()` that
+    // uses the optimized implementation `is_normalized_ident()`
+    fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
+        if is_normalized_ident(s) {
+            Ok(Self::new_unchecked(s))
+        } else {
+            // Fall back on the default (unoptimized) implementation
+            // to get a nice error message
+            default_from_normalized_str(s, Self::describe_self)
+        }
     }
 }
 
