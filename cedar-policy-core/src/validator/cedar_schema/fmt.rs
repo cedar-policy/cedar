@@ -22,10 +22,9 @@ use std::{collections::HashSet, fmt::Display};
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
-use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::ast::is_valid_ident;
+use crate::ast::is_normalized_ident;
 use crate::validator::{json_schema, RawName};
 use crate::{ast::InternalName, impl_diagnostic_from_method_on_nonempty_field};
 
@@ -206,7 +205,7 @@ impl<N: Display> IndentedDisplay for json_schema::RecordType<N> {
             writeln!(
                 f,
                 "{member_indentation}{}{}: {}{}",
-                if is_valid_ident(n) {
+                if is_normalized_ident(n) {
                     n.as_str()
                 } else {
                     &format!("\"{}\"", n.escape_debug())

@@ -19,7 +19,7 @@ use super::FromJsonError;
 use crate::ast::expr_allows_errors::AstExprErrorKind;
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::Infallible;
-use crate::ast::{self, is_valid_ident, BoundedDisplay, EntityUID, Name};
+use crate::ast::{self, is_normalized_ident, BoundedDisplay, EntityUID, Name};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
     CedarValueJson, FnAndArgs,
@@ -1370,7 +1370,7 @@ impl BoundedDisplay for ExprNoExt {
             }
             ExprNoExt::GetAttr { left, attr } => {
                 maybe_with_parens(f, left, n)?;
-                if is_valid_ident(attr) {
+                if is_normalized_ident(attr) {
                     write!(f, ".{}", attr)
                 } else {
                     write!(f, "[\"{}\"]", attr.escape_debug())
@@ -1378,7 +1378,7 @@ impl BoundedDisplay for ExprNoExt {
             }
             ExprNoExt::HasAttr { left, attr } => {
                 maybe_with_parens(f, left, n)?;
-                if is_valid_ident(attr) {
+                if is_normalized_ident(attr) {
                     write!(f, " has {}", attr)
                 } else {
                     write!(f, " has \"{}\"", attr.escape_debug())
