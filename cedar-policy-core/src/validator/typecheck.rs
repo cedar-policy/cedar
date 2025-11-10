@@ -1972,33 +1972,27 @@ impl<'a> SingleEnvTypechecker<'a> {
     // be in a non-action entity. If there is at least on RHS action entity,
     // then we can precisely evaluate the `in`, giving the expression a
     // singleton boolean type.
-    fn type_of_action_in_entity_literals<'b, 'c>(
+    fn type_of_action_in_entity_literals<'b>(
         &self,
         lhs_euid: &EntityUID,
         rhs_elems: impl IntoIterator<Item = &'b EntityUID>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
-    ) -> TypecheckAnswer<'c> {
+    ) -> TypecheckAnswer<'static> {
         debug_assert!(
             lhs_euid.is_action(),
             "We expect this function is called only when an action entity is on the LHS"
         );
-        // If there's a at least on action on the right, check if that
+        // If there's at least one action on the right, check if that
         // action is an ancestor of the LHS action. We can ignore any
         // non-actions because we assume action cannot be `in` a non-action.
-        let rhs_actions: Vec<_> = rhs_elems
+        let mut rhs_actions = rhs_elems
             .into_iter()
             .filter(|e| e.entity_type().is_action())
-            .collect();
-        if !rhs_actions.is_empty() {
-            self.type_of_action_in_actions(
-                lhs_euid,
-                rhs_actions.iter().copied(),
-                in_expr,
-                lhs_expr,
-                rhs_expr,
-            )
+            .peekable();
+        if rhs_actions.peek().is_some() {
+            self.type_of_action_in_actions(lhs_euid, rhs_actions, in_expr, lhs_expr, rhs_expr)
         } else {
             // There are no actions on the right, so the LHS action cannot
             // be `in` any of them.
@@ -2015,14 +2009,14 @@ impl<'a> SingleEnvTypechecker<'a> {
     // the exact set of ancestors for the action in the schema, allowing us to
     // evalute the `in` to `true` or `false`, so the type will be `True` or
     // `False`  respectively.
-    fn type_of_action_in_actions<'b>(
+    fn type_of_action_in_actions<'b, 'c>(
         &self,
         lhs: &EntityUID,
-        rhs: impl IntoIterator<Item = &'a EntityUID> + 'a,
+        rhs: impl IntoIterator<Item = &'b EntityUID> + 'c,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
-    ) -> TypecheckAnswer<'b> {
+    ) -> TypecheckAnswer<'static> {
         if let Some(rhs_descendants) = self.schema.get_actions_in_set(rhs) {
             // We have literal actions on the LHS and RHS of the `in` so we can
             // precisely evaluate the expression by checking if the LHS action
