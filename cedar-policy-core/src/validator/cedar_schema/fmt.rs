@@ -22,6 +22,7 @@ use std::{collections::HashSet, fmt::Display};
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
+use smol_str::{format_smolstr, SmolStr};
 use thiserror::Error;
 
 use crate::ast::is_normalized_ident;
@@ -206,9 +207,9 @@ impl<N: Display> IndentedDisplay for json_schema::RecordType<N> {
                 f,
                 "{member_indentation}{}{}: {}{}",
                 if is_normalized_ident(n) {
-                    n.as_str()
+                    SmolStr::clone(n)
                 } else {
-                    &format!("\"{}\"", n.escape_debug())
+                    format_smolstr!("\"{}\"", n.escape_debug())
                 },
                 if ty.required { "" } else { "?" },
                 Indented(&ty.ty, &member_indentation),
