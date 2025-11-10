@@ -26,6 +26,7 @@ Cedar Language Version: TBD
 - Evaluate `has` operation when the LHS record is projectable during partial evaluation. (#1912)
 - Deprecated schema parsing errors `ActionAttributesContainEmptySet`, `UnsupportedActionAttribute`, `ActionAttrEval`, and `ExprEscapeUsed`.
   These errors are never returned, so it is safe to delete any associated error handling code.
+- Made policy validation for `in`, `==`, and `hasTag` slightly more permissive to match the formally verified Lean model.
 
 ### Fixed
 

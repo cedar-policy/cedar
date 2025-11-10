@@ -393,9 +393,11 @@ impl Validator {
                 Box::new(std::iter::once(euid.entity_type()))
             }
             // <var> in <literal euid>
-            PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => {
-                Box::new(self.schema.get_entity_types_in(euid.as_ref()).into_iter())
-            }
+            PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => Box::new(
+                self.schema
+                    .get_entity_types_in(euid.entity_type())
+                    .into_iter(),
+            ),
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_))
             | PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => {
                 Box::new(self.schema.entity_type_names())
@@ -414,7 +416,7 @@ impl Validator {
             PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::EUID(in_entity)) => {
                 Box::new(
                     self.schema
-                        .get_entity_types_in(in_entity.as_ref())
+                        .get_entity_types_in(in_entity.entity_type())
                         .into_iter()
                         .filter(move |k| &entity_type.as_ref() == k),
                 )

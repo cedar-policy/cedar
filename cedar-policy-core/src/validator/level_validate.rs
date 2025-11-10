@@ -56,8 +56,9 @@ impl EntityDerefLevel {
 impl Validator {
     /// Run `validate_policy` against a single static policy or template (note
     /// that Core `Template` includes static policies as well), gathering all
-    /// validation errors and warnings in the returned iterators.
-    /// If validation passes, we will also perform level validation (see RFC 76).
+    /// validation errors and warnings in the returned iterators.  For
+    /// environments where validation passes, we will also perform level
+    /// validation (see RFC 76).
     pub(crate) fn validate_policy_with_level<'a>(
         &'a self,
         p: &'a Template,
@@ -67,36 +68,29 @@ impl Validator {
         impl Iterator<Item = ValidationError> + 'a,
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
+        // Validate all policies first without using levels so that we report
+        // all type errors, but also continue to do level validation even if
+        // some policies have an error. This allows us to report more errors.
         let (errors, warnings) = self.validate_policy(p, mode);
 
-        let mut peekable_errors = errors.peekable();
-
-        // Only perform level validation if validation passed.
-        if peekable_errors.peek().is_none() {
-            let typechecker = Typechecker::new(&self.schema, mode);
-            let type_annotated_asts = typechecker.typecheck_by_request_env(p);
-            let mut level_checker = LevelChecker {
-                policy_id: p.id(),
-                max_level: max_deref_level.into(),
-                level_checking_errors: HashSet::new(),
-            };
-            for (req_env, policy_check) in type_annotated_asts {
-                match policy_check {
-                    PolicyCheck::Success(e) | PolicyCheck::Irrelevant(_, e) => {
-                        level_checker.check_expr_level(&e, &req_env);
-                    }
-                    // PANIC SAFETY: We only validate the level after validation passed
-                    #[allow(clippy::unreachable)]
-                    PolicyCheck::Fail(_) => unreachable!(),
+        let typechecker = Typechecker::new(&self.schema, mode);
+        let type_annotated_asts = typechecker.typecheck_by_request_env(p);
+        let mut level_checker = LevelChecker {
+            policy_id: p.id(),
+            max_level: max_deref_level.into(),
+            level_checking_errors: HashSet::new(),
+        };
+        for (req_env, policy_check) in type_annotated_asts {
+            match policy_check {
+                PolicyCheck::Success(e) | PolicyCheck::Irrelevant(_, e) => {
+                    level_checker.check_expr_level(&e, &req_env);
                 }
+                // We already have these errors from calling `validate_policy`
+                // and will return them at the end of the function.
+                PolicyCheck::Fail(_) => {}
             }
-            (
-                peekable_errors.chain(level_checker.level_checking_errors),
-                warnings,
-            )
-        } else {
-            (peekable_errors.chain(HashSet::new()), warnings)
         }
+        (errors.chain(level_checker.level_checking_errors), warnings)
     }
 }
 
