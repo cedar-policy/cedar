@@ -18,7 +18,7 @@
 //! can SymRequest/SymEntities be interpreted with
 //! an Interpretation.
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::env::{SymEntities, SymEntityData, SymRequest};
@@ -33,8 +33,8 @@ use super::{factory, SymEnv};
 /// - A map from UUF to UDFs
 #[derive(Debug)]
 pub struct Interpretation<'a> {
-    pub(super) vars: BTreeMap<TermVar, Term>,
-    pub(super) funs: BTreeMap<Uuf, Udf>,
+    pub(super) vars: HashMap<TermVar, Term>,
+    pub(super) funs: HashMap<Uuf, Udf>,
     pub(super) env: &'a SymEnv,
 }
 
@@ -42,8 +42,8 @@ impl<'a> Interpretation<'a> {
     /// Returns a literal symbolic environments with default terms.
     pub fn default(env: &'a SymEnv) -> Self {
         Self {
-            vars: BTreeMap::new(),
-            funs: BTreeMap::new(),
+            vars: HashMap::new(),
+            funs: HashMap::new(),
             env,
         }
     }

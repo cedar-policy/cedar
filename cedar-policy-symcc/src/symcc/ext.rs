@@ -32,7 +32,7 @@ use super::extension_types::decimal::Decimal;
 use super::extension_types::ipaddr::IPNet;
 
 /// Internal representation of extension values.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[allow(missing_docs)]
 pub enum Ext {
     Decimal { d: Decimal },

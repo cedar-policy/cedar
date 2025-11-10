@@ -18,7 +18,7 @@
 //! literal Term/SymRequest/SymEntities to their
 //! concrete versions
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request};
@@ -106,7 +106,7 @@ impl TryFrom<&Term> for EntityUid {
 
 /// Tries to extract a set of `EntityUid`'s from a `Term`.
 /// Corresponds `Term.setOfEntityUIDs?` in `Concretize.lean`
-impl TryFrom<&Term> for BTreeSet<EntityUid> {
+impl TryFrom<&Term> for HashSet<EntityUid> {
     type Error = ConcretizeError;
 
     fn try_from(term: &Term) -> Result<Self, Self::Error> {
@@ -135,7 +135,7 @@ impl TryFrom<&Term> for String {
 }
 
 /// Tries to extract a set of `Strings`'s from a `Term`.
-impl TryFrom<&Term> for BTreeSet<String> {
+impl TryFrom<&Term> for HashSet<String> {
     type Error = ConcretizeError;
 
     fn try_from(term: &Term) -> Result<Self, Self::Error> {
@@ -222,7 +222,7 @@ impl SymRequest {
         )?)
     }
 
-    fn get_all_entity_uids(&self, uids: &mut BTreeSet<EntityUid>) {
+    fn get_all_entity_uids(&self, uids: &mut HashSet<EntityUid>) {
         self.context.get_all_entity_uids(uids);
         self.principal.get_all_entity_uids(uids);
         self.action.get_all_entity_uids(uids);
@@ -246,7 +246,7 @@ impl Term {
     }
 
     /// Collect all entity UIDs occurring in the term
-    pub(crate) fn get_all_entity_uids(&self, uids: &mut BTreeSet<EntityUid>) {
+    pub(crate) fn get_all_entity_uids(&self, uids: &mut HashSet<EntityUid>) {
         match self {
             Term::Prim(TermPrim::Entity(uid)) => {
                 uids.insert(uid.clone());
@@ -280,7 +280,7 @@ impl Term {
 }
 
 impl Udf {
-    fn get_all_entity_uids(&self, uids: &mut BTreeSet<EntityUid>) {
+    fn get_all_entity_uids(&self, uids: &mut HashSet<EntityUid>) {
         self.default.get_all_entity_uids(uids);
         for (k, v) in self.table.iter() {
             k.get_all_entity_uids(uids);
@@ -291,7 +291,7 @@ impl Udf {
 
 impl UnaryFunction {
     /// Corresponds to `UnaryFunction.entityUIDs` in `Concretize.lean`
-    fn get_all_entity_uids(&self, uids: &mut BTreeSet<EntityUid>) {
+    fn get_all_entity_uids(&self, uids: &mut HashSet<EntityUid>) {
         match self {
             UnaryFunction::Udf(udf) => udf.get_all_entity_uids(uids),
             UnaryFunction::Uuf(_) => {}
@@ -312,7 +312,7 @@ impl SymEntityData {
             .ancestors
             .values()
             .map(|ancestor| {
-                let euids: BTreeSet<EntityUid> =
+                let euids: HashSet<EntityUid> =
                     (&factory::app(ancestor.clone(), tuid.clone())).try_into()?;
 
                 Ok(euids.into_iter().map(|euid| euid.as_ref().clone()))
@@ -325,7 +325,7 @@ impl SymEntityData {
         // Read tags from the model
         let tags = if let Some(tags) = &self.tags {
             // Get all valid tag keys first
-            let keys: BTreeSet<String> =
+            let keys: HashSet<String> =
                 (&factory::app(tags.keys.clone(), tuid.clone())).try_into()?;
 
             keys.into_iter()
@@ -357,7 +357,7 @@ impl SymEntityData {
     }
 
     /// Corresponds to `SymEntityData.entityUIDs` in `Concretize.lean`
-    fn get_all_entity_uids(&self, ety: &EntityTypeName, uids: &mut BTreeSet<EntityUid>) {
+    fn get_all_entity_uids(&self, ety: &EntityTypeName, uids: &mut HashSet<EntityUid>) {
         if let Some(members) = &self.members {
             for member in members {
                 uids.insert(EntityUid::from_type_name_and_id(
@@ -382,7 +382,7 @@ impl SymEntityData {
 
 impl SymEntities {
     /// Concretizes a literal SymEntities to Entities
-    pub fn concretize(&self, all_euids: &BTreeSet<EntityUid>) -> Result<Entities, ConcretizeError> {
+    pub fn concretize(&self, all_euids: &HashSet<EntityUid>) -> Result<Entities, ConcretizeError> {
         let mut entities = Vec::new();
 
         for euid in all_euids {
@@ -410,7 +410,7 @@ impl SymEntities {
     }
 
     /// Corresponds to `SymEntities.entityUIDs` in `Concretize.lean`
-    fn get_all_entity_uids(&self, uids: &mut BTreeSet<EntityUid>) {
+    fn get_all_entity_uids(&self, uids: &mut HashSet<EntityUid>) {
         for (ety, data) in self.0.iter() {
             data.get_all_entity_uids(ety, uids);
         }
@@ -420,7 +420,7 @@ impl SymEntities {
 /// An [`ExprVisitor`] to collect all entity UIDs occurring in an expression.
 ///
 /// Corresponds to `Expr.entityUIDs` in `Concretize.lean`.
-struct EntityUIDCollector<'a>(&'a mut BTreeSet<EntityUid>);
+struct EntityUIDCollector<'a>(&'a mut HashSet<EntityUid>);
 
 impl ExprVisitor for EntityUIDCollector<'_> {
     type Output = ();
@@ -442,7 +442,7 @@ impl SymEnv {
         &self,
         exprs: impl Iterator<Item = &'a Expr>,
     ) -> Result<Env, ConcretizeError> {
-        let mut uids = BTreeSet::new();
+        let mut uids = HashSet::new();
         self.request.get_all_entity_uids(&mut uids);
         self.entities.get_all_entity_uids(&mut uids);
 

@@ -25,7 +25,8 @@
 //! and transitive (assuming the suitable acyclicity and transitivity
 //! constraints are satisfied for the footprint).
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::collections::HashSet;
+use std::sync::Arc;
 
 use cedar_policy_core::ast::Expr;
 
@@ -44,7 +45,7 @@ impl Uuf {
     fn repair_as_counterexample(
         &self,
         arg_ety: &EntityType,
-        footprints: &BTreeSet<EntityUID>,
+        footprints: &HashSet<EntityUID>,
         interp: &Interpretation<'_>,
     ) -> Udf {
         // Get the current, potentially incorrect interpretation
@@ -86,7 +87,7 @@ impl Interpretation<'_> {
     ///
     /// Corresponds to `Interpretation.repair` in `Extractor.lean`
     pub fn repair_as_counterexample<'b>(&self, exprs: impl Iterator<Item = &'b Expr>) -> Self {
-        let mut footprint_uids = BTreeSet::new();
+        let mut footprint_uids = HashSet::new();
 
         // Interpret every term in the footprint to collect concrete EUIDs
         // occurring in them

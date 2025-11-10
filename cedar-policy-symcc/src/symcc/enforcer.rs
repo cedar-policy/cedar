@@ -25,7 +25,7 @@
 //! For more technical details, see comments in SymCC/Enforcer.lean.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, HashSet},
     sync::Arc,
 };
 
@@ -143,7 +143,7 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
 
 /// Returns the set of Terms corresponding to the footprints of `exprs`.
 /// Returning a `BTreeSet` ensures there are no duplicates.
-fn footprints<'a>(exprs: impl IntoIterator<Item = &'a Expr>, env: &SymEnv) -> BTreeSet<Term> {
+fn footprints<'a>(exprs: impl IntoIterator<Item = &'a Expr>, env: &SymEnv) -> HashSet<Term> {
     exprs.into_iter().flat_map(|x| footprint(x, env)).collect()
 }
 
@@ -232,7 +232,7 @@ fn transitivity(t1: &Term, t2: &Term, es: &SymEntities) -> Term {
 }
 
 /// Returns the ground acyclicity and transitivity assumptions for xs and env
-pub fn enforce<'a>(xs: impl IntoIterator<Item = &'a Expr>, env: &SymEnv) -> BTreeSet<Term> {
+pub fn enforce<'a>(xs: impl IntoIterator<Item = &'a Expr>, env: &SymEnv) -> HashSet<Term> {
     let ts = footprints(xs, env);
     let ac = ts.iter().map(|t| acyclicity(t, &env.entities));
     let tr = ts

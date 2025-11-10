@@ -17,7 +17,7 @@
 //! This module defines the Cedar decoder, which is the inverse of the encoder
 //! that parses a subset of SMT-LIB terms and commands required for (get-model)
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fmt::Display;
 use std::sync::Arc;
 
@@ -550,20 +550,20 @@ pub fn parse_sexpr(src: &[u8]) -> Result<SExpr, DecodeError> {
 /// (principal, action, resource) and entity types.
 #[derive(Debug)]
 pub struct IdMaps {
-    types: BTreeMap<String, TermType>,
-    vars: BTreeMap<String, TermVar>,
-    uufs: BTreeMap<String, Uuf>,
-    enums: BTreeMap<String, EntityUid>,
+    types: HashMap<String, TermType>,
+    vars: HashMap<String, TermVar>,
+    uufs: HashMap<String, Uuf>,
+    enums: HashMap<String, EntityUid>,
 }
 
 impl IdMaps {
     /// Extracts the reverse mapping from SMT symbols to
     /// Term-level names from the encoder state.
     pub fn from_encoder<S>(encoder: &Encoder<'_, S>) -> Self {
-        let mut types = BTreeMap::new();
-        let mut vars = BTreeMap::new();
-        let mut uufs = BTreeMap::new();
-        let mut enums = BTreeMap::new();
+        let mut types = HashMap::new();
+        let mut vars = HashMap::new();
+        let mut uufs = HashMap::new();
+        let mut enums = HashMap::new();
 
         for (term, enc) in &encoder.types {
             types.insert(enc.clone(), term.clone());
@@ -1156,8 +1156,8 @@ impl SExpr {
             return Err(DecodeError::UnexpectedModel);
         };
 
-        let mut vars = BTreeMap::new();
-        let mut funs = BTreeMap::new();
+        let mut vars = HashMap::new();
+        let mut funs = HashMap::new();
 
         // TODO: better error handling here
         for cmd in cmds {

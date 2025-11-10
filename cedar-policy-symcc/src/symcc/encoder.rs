@@ -60,7 +60,7 @@
 use async_recursion::async_recursion;
 use itertools::Itertools;
 use miette::Diagnostic;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use thiserror::Error;
 
@@ -117,10 +117,10 @@ type Result<T> = std::result::Result<T, EncodeError>;
 
 #[derive(Debug)]
 pub struct Encoder<'a, S> {
-    pub(super) terms: BTreeMap<Term, String>,
-    pub(super) types: BTreeMap<TermType, String>,
-    pub(super) uufs: BTreeMap<Uuf, String>,
-    pub(super) enums: BTreeMap<&'a EntityType, &'a BTreeSet<String>>,
+    pub(super) terms: HashMap<Term, String>,
+    pub(super) types: HashMap<TermType, String>,
+    pub(super) uufs: HashMap<Uuf, String>,
+    pub(super) enums: HashMap<&'a EntityType, &'a BTreeSet<String>>,
     script: S,
 }
 
@@ -157,9 +157,9 @@ impl<'a, S> Encoder<'a, S> {
     /// Corresponds to `EncoderState.init` in Lean
     pub fn new(env: &'a SymEnv, script: S) -> Result<Self> {
         Ok(Encoder {
-            terms: BTreeMap::new(),
-            types: BTreeMap::new(),
-            uufs: BTreeMap::new(),
+            terms: HashMap::new(),
+            types: HashMap::new(),
+            uufs: HashMap::new(),
             enums: env
                 .entities
                 .iter()

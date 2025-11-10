@@ -24,7 +24,7 @@ use super::term_type::TermType;
 use super::type_abbrevs::*;
 
 /// Uninterpreted unary function.
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct Uuf {
     /// A unique identifier of the unary function.
     pub id: SmolStr,
@@ -35,7 +35,7 @@ pub struct Uuf {
 }
 
 /// Extension ADT operators.
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 #[allow(missing_docs)]
 pub enum ExtOp {
     DecimalVal,
@@ -50,7 +50,7 @@ pub enum ExtOp {
     DurationOfBitVec,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 #[allow(missing_docs)]
 pub enum Op {
     //   ---------- SMTLib core theory of equality with uninterpreted functions (`UF`) ----------

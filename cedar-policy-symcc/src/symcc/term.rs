@@ -40,7 +40,7 @@ use std::{
 };
 
 /// A typed variable.
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct TermVar {
     /// A unique identifier of the variable.
     pub id: SmolStr,
@@ -49,7 +49,7 @@ pub struct TermVar {
 }
 
 /// Primitive terms.
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 #[allow(missing_docs)]
 pub enum TermPrim {
     Bool(bool),
@@ -60,7 +60,7 @@ pub enum TermPrim {
 }
 
 /// Intermediate representation of [`Term`]s.
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[allow(missing_docs)]
 pub enum Term {
     Prim(TermPrim),
