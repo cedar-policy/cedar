@@ -78,7 +78,7 @@ async fn main() {
 }
 ```
 
-To learn more about what you can do with SymCC, see the documentation of `CedarSymCompiler`.
+To learn more about what you can do with SymCC, see the documentation of the `CedarSymCompiler` type.
 
 ## Development
 
@@ -92,4 +92,4 @@ Structure of this crate:
 - `symcc` is the core library. It maps directly to the [Lean model](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-lean/Cedar/SymCC).
 - `lib.rs` is the frontend for `symcc`, and does not directly correspond to the Lean,
   but it provides an interface in terms of `cedar-policy` types rather than
-  `cedar-policy-core` and `cedar-policy-validator` types.
+  `cedar-policy-core` types.
