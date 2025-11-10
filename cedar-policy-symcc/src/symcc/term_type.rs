@@ -89,7 +89,9 @@ impl TermType {
     ///
     /// This doesn't match the Lean model because [`Type`] doesn't.
     pub fn of_type(ty: &Type) -> Result<Self, CompileError> {
+        use cedar_policy::EntityTypeName;
         use cedar_policy_core::validator::types::{EntityRecordKind, Primitive};
+        use std::str::FromStr;
         match ty {
             Type::Primitive { primitive_type } => match primitive_type {
                 Primitive::Bool => Ok(TermType::Bool),
@@ -159,6 +161,16 @@ impl TermType {
                             "EntityLUB has multiple elements".into(),
                         )),
                     },
+                    EntityRecordKind::ActionEntity { name, .. } => Ok(TermType::Entity {
+                        // todo: expose `From<core::Name> for api::EntityTypeName`?
+                        // PANIC SAFETY
+                        #[allow(
+                            clippy::expect_used,
+                            reason = "conversion from core -> str -> public type should not error"
+                        )]
+                        ety: EntityTypeName::from_str(name.to_string().as_str())
+                            .expect("Name should parse"),
+                    }),
                 }
             }
             Type::Set { element_type } => match element_type {
