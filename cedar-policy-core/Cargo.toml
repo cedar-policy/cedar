@@ -31,7 +31,7 @@ educe = "0.6.0"
 unicode-security = "0.1.0"
 regex = { version = "1.12", features = ["unicode"]}
 linked-hash-map = { version = "0.5.6", features = ["serde_impl"] }
-linked_hash_set = "0.1.5"
+linked_hash_set = "0.1.6"
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
