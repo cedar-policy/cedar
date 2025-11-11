@@ -1345,6 +1345,7 @@ impl From<entity_manifest::EntityManifestError> for EntityManifestError {
 
 #[cfg(feature = "tpe")]
 /// Error thrown when creating a `PartialRequest`
+#[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Error, Diagnostic)]
 pub enum PartialRequestCreationError {
     /// When the context contains unknowns
@@ -1358,6 +1359,7 @@ pub enum PartialRequestCreationError {
 
 #[cfg(feature = "tpe")]
 /// Errors that can be encountered when re-evaluating a partial response
+#[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Error)]
 pub enum TpeReauthorizationError {
     /// `Request` cannot be validated
@@ -1390,6 +1392,7 @@ impl From<tpe_err::ReauthorizationError> for TpeReauthorizationError {
 
 #[cfg(feature = "tpe")]
 /// Errors that can be encountered when performing a permission query
+#[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Error)]
 pub enum PermissionQueryError {
     /// When concrete entities fail to validate or contain unknowns
@@ -1401,6 +1404,7 @@ pub enum PermissionQueryError {
 }
 
 #[cfg(feature = "tpe")]
+#[doc = include_str!("../../experimental_warning.md")]
 /// Error when constructing [`crate::PartialEntity`]
 #[derive(Debug, Error)]
 pub enum PartialEntityError {

@@ -5077,6 +5077,7 @@ mod tpe {
 
     /// A partial [`EntityUid`].
     /// That is, its [`EntityId`] could be unknown
+    #[doc = include_str!("../experimental_warning.md")]
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
     pub struct PartialEntityUid(pub(crate) tpe::request::PartialEntityUID);
@@ -5107,6 +5108,7 @@ mod tpe {
     /// A partial [`Request`]
     /// Its principal/resource types and action must be known and its context
     /// must either be fully known or unknown
+    #[doc = include_str!("../experimental_warning.md")]
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
     pub struct PartialRequest(pub(crate) tpe::request::PartialRequest);
@@ -5142,6 +5144,7 @@ mod tpe {
     }
 
     /// Like [`PartialRequest`] but only `resource` can be unknown
+    #[doc = include_str!("../experimental_warning.md")]
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
     pub struct ResourceQueryRequest(pub(crate) PartialRequest);
@@ -5195,6 +5198,7 @@ mod tpe {
     }
 
     /// Like [`PartialRequest`] but only `principal` can be unknown
+    #[doc = include_str!("../experimental_warning.md")]
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
     pub struct PrincipalQueryRequest(pub(crate) PartialRequest);
@@ -5251,6 +5255,7 @@ mod tpe {
     /// undefined, enabling queries listing what actions might be authorized.
     ///
     /// See [`PolicySet::query_action`] for documentation and example usage.
+    #[doc = include_str!("../experimental_warning.md")]
     #[derive(Debug, Clone)]
     pub struct ActionQueryRequest {
         principal: PartialEntityUid,
@@ -5299,6 +5304,7 @@ mod tpe {
     }
 
     /// Partial [`Entity`]
+    #[doc = include_str!("../experimental_warning.md")]
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
     pub struct PartialEntity(pub(crate) tpe::entities::PartialEntity);
@@ -5346,6 +5352,7 @@ mod tpe {
     }
 
     /// Partial [`Entities`]
+    #[doc = include_str!("../experimental_warning.md")]
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
     pub struct PartialEntities(pub(crate) tpe::entities::PartialEntities);
@@ -5394,6 +5401,7 @@ mod tpe {
     }
 
     /// A partial version of [`crate::Response`].
+    #[doc = include_str!("../experimental_warning.md")]
     #[repr(transparent)]
     #[derive(Debug, Clone, RefCast)]
     pub struct TpeResponse<'a>(pub(crate) tpe::response::Response<'a>);
@@ -5455,6 +5463,7 @@ mod tpe {
     /// The `load_entities` function must load all requested entities,
     /// and must compute and include all ancestors of the requested entities.
     /// Loading more entities than requested is allowed.
+    #[doc = include_str!("../experimental_warning.md")]
     pub trait EntityLoader {
         /// Load all entities for the given set of entity UIDs.
         /// Returns a map from [`EntityUid`] to [`Option<Entity>`], where `None` indicates
@@ -5486,6 +5495,7 @@ mod tpe {
     }
 
     /// Simple entity loader implementation that loads from a pre-existing Entities store
+    #[doc = include_str!("../experimental_warning.md")]
     #[derive(Debug)]
 
     pub struct TestEntityLoader<'a> {
@@ -5517,6 +5527,7 @@ mod tpe {
         /// Perform type-aware partial evaluation on this [`PolicySet`]
         /// If successful, the result is a [`PolicySet`] containing residual
         /// policies ready for re-authorization
+        #[doc = include_str!("../experimental_warning.md")]
         pub fn tpe<'a>(
             &self,
             request: &'a PartialRequest,
@@ -5537,6 +5548,7 @@ mod tpe {
         /// Otherwise, it iterates `max_iters` times and returns
         /// a partial result.
         ///
+        #[doc = include_str!("../experimental_warning.md")]
         pub fn is_authorized_batched(
             &self,
             query: &Request,
@@ -5554,6 +5566,7 @@ mod tpe {
         }
 
         /// Perform a permission query on the resource
+        #[doc = include_str!("../experimental_warning.md")]
         pub fn query_resource(
             &self,
             request: &ResourceQueryRequest,
@@ -5606,6 +5619,7 @@ mod tpe {
         }
 
         /// Perform a permission query on the principal
+        #[doc = include_str!("../experimental_warning.md")]
         pub fn query_principal(
             &self,
             request: &PrincipalQueryRequest,
@@ -5722,6 +5736,7 @@ mod tpe {
         ///             .collect();
         /// # assert_eq!(&allowed_actions, &[&r#"Action::"view""#.parse().unwrap()]);
         /// ```
+        #[doc = include_str!("../experimental_warning.md")]
         pub fn query_action<'a>(
             &self,
             request: &'a ActionQueryRequest,
