@@ -2034,11 +2034,22 @@ mod schema_tests {
                 }
             }
         );
-        let schema = SchemaFragment::from_json_value(json_string).expect("schema should be valid");
+        let schema =
+            SchemaFragment::from_json_value(json_string.clone()).expect("schema should be valid");
         let result = schema.to_cedarschema();
         assert_matches!(
             result,
-            Err(ToCedarSchemaError::UnconvertibleEntityTypeShape(..))
+            Err(e @ ToCedarSchemaError::UnconvertibleEntityTypeShape(..)) => {
+                expect_err(
+                    &json_string,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(
+                        "The following entities have shapes that cannot be converted to Cedar schema syntax: [User]",
+                    )
+                    .help("Entity shapes may only be record types. In the Cedar schema syntax, they additionally may not reference common type definitions.")
+                    .build(),
+                );
+            }
         );
     }
 }
@@ -7253,6 +7264,8 @@ mod authorization_error_tests {
             "",
             &Report::new(errs[0].clone()),
             &ExpectedErrorMessageBuilder::error(r#"error while evaluating policy `id0`: `Principal::"p"` does not have the attribute `foo`"#)
+                .help(r#"`Principal::"p"` does not have any attributes"#)
+                .exactly_one_underline("principal.foo")
                 .build(),
         );
     }

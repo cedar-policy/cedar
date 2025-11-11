@@ -25,11 +25,11 @@ use thiserror::Error;
 pub enum AuthorizationError {
     /// An error occurred when evaluating a policy.
     #[error("while evaluating policy `{id}`: {error}")]
+    #[diagnostic(forward(error))]
     PolicyEvaluationError {
         /// Id of the policy with an error
         id: PolicyID,
         /// Underlying evaluation error
-        #[diagnostic(transparent)]
         error: EvaluationError,
     },
 }

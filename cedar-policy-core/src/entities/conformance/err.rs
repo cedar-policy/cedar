@@ -153,6 +153,7 @@ impl EntitySchemaConformanceError {
 // when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("in `{context}` `{attr_or_tag}` on `{uid}`, {err}")]
+#[diagnostic(forward(err))]
 pub struct ExtensionFunctionLookup {
     /// Entity where the error occurred
     uid: EntityUID,
@@ -161,7 +162,6 @@ pub struct ExtensionFunctionLookup {
     /// If it shows up as an attribute or a tag value
     context: AttrOrTag,
     /// Underlying error
-    #[diagnostic(transparent)]
     err: ExtensionFunctionLookupError,
 }
 
@@ -273,11 +273,11 @@ impl std::fmt::Display for AttrOrTag {
 // when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("in {context} `{attr_or_tag}` on `{uid}`, {err}")]
+#[diagnostic(forward(err))]
 pub struct TypeMismatch {
     uid: EntityUID,
     attr_or_tag: SmolStr,
     context: AttrOrTag,
-    #[diagnostic(transparent)]
     err: TypeMismatchError,
 }
 

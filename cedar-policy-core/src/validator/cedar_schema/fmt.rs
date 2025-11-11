@@ -396,6 +396,10 @@ pub struct UnconvertibleEntityTypeShapeError {
 
 impl Diagnostic for UnconvertibleEntityTypeShapeError {
     impl_diagnostic_from_method_on_nonempty_field!(names, loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new("Entity shapes may only be record types. In the Cedar schema syntax, they additionally may not reference common type definitions."))
+    }
 }
 
 impl UnconvertibleEntityTypeShapeError {
