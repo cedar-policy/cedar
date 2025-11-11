@@ -6401,6 +6401,8 @@ mod test_lossless_empty {
 /// The manifest describes the data required to answer requests
 /// for each action.
 #[doc = include_str!("../experimental_warning.md")]
+#[deprecated = "The `entity-manifest` experimental feature and all associated functions are deprecated. Migrate to `PolicySet::is_authorized_batch` for efficient authorization with on-demand entity loading."]
+#[allow(deprecated)]
 #[cfg(feature = "entity-manifest")]
 pub fn compute_entity_manifest(
     validator: &Validator,

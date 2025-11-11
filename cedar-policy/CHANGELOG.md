@@ -28,6 +28,7 @@ Cedar Language Version: TBD
   These errors are never returned, so it is safe to delete any associated error handling code.
 - Made policy validation for `in`, `==`, and `hasTag` slightly more permissive to match the formally verified Lean model.
 - Increase partial evaluation precision for `if-then-else`, `or`, `and` expressions (#1940)
+- Deprecated `entity-manifest` experimental feature. Consumers of these functions should migrate to the `tpe` feature and use `PolicySet::is_authorized_batch`.
 
 ### Fixed
 
