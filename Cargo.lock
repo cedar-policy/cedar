@@ -420,6 +420,7 @@ dependencies = [
  "cedar-policy-core",
  "chrono",
  "cool_asserts",
+ "hashconsing",
  "itertools 0.14.0",
  "miette",
  "num-bigint",
@@ -1123,6 +1124,15 @@ name = "hashbrown"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5419bdc4f6a9207fbeba6d11b604d481addf78ecd10c11ad51e76c2f6482748d"
+
+[[package]]
+name = "hashconsing"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5db5cf49adccdcbcf3ff805730e5c8cca5c8576db4436afc2775ee4c75648223"
+dependencies = [
+ "lazy_static",
+]
 
 [[package]]
 name = "heck"

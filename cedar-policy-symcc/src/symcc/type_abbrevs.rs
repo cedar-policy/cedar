@@ -52,7 +52,7 @@ pub fn core_uid_into_uid(uid: &cedar_policy_core::ast::EntityUID) -> &EntityUID 
 }
 
 /// Types of extensions.
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 #[allow(missing_docs)]
 pub enum ExtType {
     IpAddr,

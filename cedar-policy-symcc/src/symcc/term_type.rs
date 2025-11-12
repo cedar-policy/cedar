@@ -21,11 +21,12 @@ use cedar_policy_core::validator::types::{OpenTag, Type};
 use super::result::CompileError;
 
 use super::{entity_tag::EntityTag, type_abbrevs::*};
+use hashconsing::{HConsed, HConsign, HashConsign};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// Types of the intermediate [`super::term::Term`] representation.
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 #[allow(missing_docs)]
 pub enum TermType {
     Bool,
@@ -178,6 +179,64 @@ impl TermType {
             Type::False => Err(CompileError::UnsupportedFeature(
                 "singleton Bool type is not supported".into(),
             )),
+        }
+    }
+}
+
+// Hash consing version for future migration
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+pub enum TermTypeInner {
+    Bool,
+    Bitvec {
+        n: Width,
+    },
+    String,
+    Option {
+        ty: HConsedTermType,
+    },
+    Entity {
+        ety: EntityType,
+    },
+    Set {
+        ty: HConsedTermType,
+    },
+    Record {
+        rty: BTreeMap<Attr, HConsedTermType>,
+    },
+    Ext {
+        xty: ExtType,
+    },
+}
+
+pub type HConsedTermType = HConsed<TermTypeInner>;
+
+pub trait TermTypeHashConsing {
+    fn from_term_type(ty: &TermType, hc: &mut HConsign<TermTypeInner>) -> HConsedTermType;
+}
+
+impl TermTypeHashConsing for HConsedTermType {
+    fn from_term_type(ty: &TermType, hc: &mut HConsign<TermTypeInner>) -> Self {
+        match ty {
+            TermType::Bool => hc.mk(TermTypeInner::Bool),
+            TermType::Bitvec { n } => hc.mk(TermTypeInner::Bitvec { n: *n }),
+            TermType::String => hc.mk(TermTypeInner::String),
+            TermType::Option { ty } => {
+                let inner = Self::from_term_type(ty, hc);
+                hc.mk(TermTypeInner::Option { ty: inner })
+            }
+            TermType::Entity { ety } => hc.mk(TermTypeInner::Entity { ety: ety.clone() }),
+            TermType::Set { ty } => {
+                let inner = Self::from_term_type(ty, hc);
+                hc.mk(TermTypeInner::Set { ty: inner })
+            }
+            TermType::Record { rty } => {
+                let new_rty = rty
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Self::from_term_type(v, hc)))
+                    .collect();
+                hc.mk(TermTypeInner::Record { rty: new_rty })
+            }
+            TermType::Ext { xty } => hc.mk(TermTypeInner::Ext { xty: xty.clone() }),
         }
     }
 }
