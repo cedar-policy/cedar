@@ -18,7 +18,9 @@
 //! concrete Cedar values, requests, and entities to
 //! (literal) symbolic terms or environments.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::symcc::env::{EntitySchemaEntry, SymEntityData};
@@ -35,10 +37,11 @@ use super::env::{StandardEntitySchemaEntry, SymEntities, SymRequest};
 use super::ext::{Ext, ExtError};
 use super::tags::SymTags;
 use super::term::Term;
-use super::term_type::TermType;
+use super::term_type::{TermType, TermTypeInner};
 use super::type_abbrevs::{core_uid_into_uid, EntityType, EntityUID};
 use super::{factory, Env, Environment};
 use super::{CompileError, SymEnv};
+use hashconsing::{HConsign, HashConsign};
 
 /// Errors when converting concrete values to symbolic terms.
 #[derive(Debug, Diagnostic, Error)]
@@ -75,7 +78,11 @@ impl Term {
     /// The type of the value must be specified, in order to
     /// correctly encode records.
     /// Corresponds to `Value.symbolize?` in Lean.
-    pub fn from_value(v: &Value, ty: &Type) -> Result<Self, SymbolizeError> {
+    pub fn from_value(
+        v: &Value,
+        ty: &Type,
+        h: &mut HConsign<TermTypeInner>,
+    ) -> Result<Self, SymbolizeError> {
         match (v.value_kind(), ty) {
             (ValueKind::Lit(l), _) => Ok(Term::from_literal(l)),
             (
@@ -86,9 +93,12 @@ impl Term {
             ) => {
                 let elems = s
                     .iter()
-                    .map(|elem| Term::from_value(elem, elem_ty))
+                    .map(|elem| Term::from_value(elem, elem_ty, h))
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(factory::set_of(elems, TermType::of_type(elem_ty.as_ref())?))
+                Ok(factory::set_of(
+                    elems,
+                    TermType::of_type(elem_ty.as_ref(), h)?,
+                ))
             }
             (
                 ValueKind::Record(rec),
@@ -104,7 +114,7 @@ impl Term {
                             if attr_ty.is_required() {
                                 (
                                     attr.clone(),
-                                    Term::from_value(attr_val, &attr_ty.attr_type)?,
+                                    Term::from_value(attr_val, &attr_ty.attr_type, h)?,
                                 )
                             } else {
                                 (
@@ -112,13 +122,14 @@ impl Term {
                                     factory::some_of(Term::from_value(
                                         attr_val,
                                         &attr_ty.attr_type,
+                                        h,
                                     )?),
                                 )
                             }
                         } else {
                             (
                                 attr.clone(),
-                                factory::none_of(TermType::of_type(&attr_ty.attr_type)?),
+                                factory::none_of(TermType::of_type(&attr_ty.attr_type, h)?),
                             )
                         })
                     })
@@ -169,7 +180,7 @@ impl SymRequest {
                     .clone()
                     .into(),
             ),
-            context: Term::from_value(&context, &env.context_type())?,
+            context: Term::from_value(&context, &env.context_type(), &mut HConsign::empty())?,
         })
     }
 }
@@ -181,12 +192,13 @@ impl SymEntityData {
         ety: &EntityType,
         sch: &StandardEntitySchemaEntry,
         entities: &Entities,
+        h: &mut HConsign<TermTypeInner>,
     ) -> Result<UnaryFunction, SymbolizeError> {
         let attr_udf_out_ty = Type::EntityOrRecord(EntityRecordKind::Record {
             attrs: sch.attrs.clone(),
             open_attributes: OpenTag::ClosedAttributes,
         });
-        let attrs_udf_out = TermType::of_type(&attr_udf_out_ty)?;
+        let attrs_udf_out = TermType::of_type(&attr_udf_out_ty, h)?;
         let attrs_udf_default = attrs_udf_out.default_literal(sym_env);
 
         let mut attrs_udf_table = BTreeMap::new();
@@ -203,13 +215,20 @@ impl SymEntityData {
                     .collect::<Result<BTreeMap<_, _>, _>>()?;
                 attrs_udf_table.insert(
                     ent.uid().clone().into(),
-                    Term::from_value(&Value::record_arc(Arc::new(attrs), None), &attr_udf_out_ty)?,
+                    Term::from_value(
+                        &Value::record_arc(Arc::new(attrs), None),
+                        &attr_udf_out_ty,
+                        h,
+                    )?,
                 );
             }
         }
 
+        let arg_ty = TermType {
+            inner: h.mk(TermTypeInner::Entity { ety: ety.clone() }),
+        };
         Ok(UnaryFunction::Udf(Arc::new(function::Udf {
-            arg: TermType::Entity { ety: ety.clone() },
+            arg: arg_ty,
             out: attrs_udf_out,
             table: Arc::new(attrs_udf_table),
             default: attrs_udf_default,
@@ -222,9 +241,12 @@ impl SymEntityData {
         ety: &EntityType,
         anc_ty: &EntityType,
         entities: &Entities,
+        h: &mut HConsign<TermTypeInner>,
     ) -> Result<UnaryFunction, SymbolizeError> {
-        let anc_term_ty = TermType::Entity {
-            ety: anc_ty.clone(),
+        let anc_term_ty = TermType {
+            inner: h.mk(TermTypeInner::Entity {
+                ety: anc_ty.clone(),
+            }),
         };
         let mut ancs_udf_table = BTreeMap::new();
 
@@ -245,11 +267,14 @@ impl SymEntityData {
             }
         }
 
-        let ancs_udf_out = TermType::set_of(anc_term_ty);
+        let ancs_udf_out = TermType::set_of(anc_term_ty, h);
         let ancs_udf_default = ancs_udf_out.default_literal(sym_env);
 
+        let arg_ty = TermType {
+            inner: h.mk(TermTypeInner::Entity { ety: ety.clone() }),
+        };
         Ok(UnaryFunction::Udf(Arc::new(function::Udf {
-            arg: TermType::Entity { ety: ety.clone() },
+            arg: arg_ty,
             out: ancs_udf_out,
             table: Arc::new(ancs_udf_table),
             default: ancs_udf_default,
@@ -262,9 +287,13 @@ impl SymEntityData {
         ety: &EntityType,
         tag_ty: &Type,
         entities: &Entities,
+        h: &mut HConsign<TermTypeInner>,
     ) -> Result<SymTags, SymbolizeError> {
-        let keys_udf_out = TermType::set_of(TermType::String);
-        let vals_udf_out = TermType::of_type(tag_ty)?;
+        let string_ty = TermType {
+            inner: h.mk(TermTypeInner::String),
+        };
+        let keys_udf_out = TermType::set_of(string_ty.clone(), h);
+        let vals_udf_out = TermType::of_type(tag_ty, h)?;
 
         let keys_udf_default = keys_udf_out.default_literal(sym_env);
         let vals_udf_default = vals_udf_out.default_literal(sym_env);
@@ -279,7 +308,7 @@ impl SymEntityData {
                     ent.uid().clone().into(),
                     factory::set_of(
                         ent.as_ref().tag_keys().map(|s| s.clone().into()),
-                        TermType::String,
+                        string_ty.clone(),
                     ),
                 );
             }
@@ -294,22 +323,28 @@ impl SymEntityData {
                     };
                     vals_udf_table.insert(
                         factory::tag_of(ent.uid().clone().into(), key.clone().into()),
-                        Term::from_value(val, tag_ty)?,
+                        Term::from_value(val, tag_ty, h)?,
                     );
                 }
             }
         }
 
+        let entity_ty = TermType {
+            inner: h.mk(TermTypeInner::Entity { ety: ety.clone() }),
+        };
+        let tag_for_ty = TermType::tag_for(ety.clone(), h);
+        let keys_out_ty = TermType::set_of(string_ty, h);
+        let vals_out_ty = TermType::of_type(tag_ty, h)?;
         Ok(SymTags {
             keys: UnaryFunction::Udf(Arc::new(function::Udf {
-                arg: TermType::Entity { ety: ety.clone() }, // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
-                out: TermType::set_of(TermType::String),
+                arg: entity_ty,
+                out: keys_out_ty,
                 table: Arc::new(keys_udf_table),
                 default: keys_udf_default,
             })),
             vals: UnaryFunction::Udf(Arc::new(function::Udf {
-                arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
-                out: TermType::of_type(tag_ty)?,
+                arg: tag_for_ty,
+                out: vals_out_ty,
                 table: Arc::new(vals_udf_table),
                 default: vals_udf_default,
             })),
@@ -327,23 +362,24 @@ impl SymEntityData {
         ety: &EntityType,
         entry: &EntitySchemaEntry,
         entities: &Entities,
+        h: &mut HConsign<TermTypeInner>,
     ) -> Result<Self, SymbolizeError> {
         match entry {
             EntitySchemaEntry::Standard(sch) => Ok(SymEntityData {
-                attrs: Self::symbolize_attrs(sym_env, ety, sch, entities)?,
+                attrs: Self::symbolize_attrs(sym_env, ety, sch, entities, h)?,
                 ancestors: sch
                     .ancestors
                     .iter()
                     .map(|anc_ty| {
                         Ok::<_, SymbolizeError>((
                             anc_ty.clone(),
-                            Self::symbolize_ancs(sym_env, ety, anc_ty, entities)?,
+                            Self::symbolize_ancs(sym_env, ety, anc_ty, entities, h)?,
                         ))
                     })
                     .collect::<Result<_, _>>()?,
                 members: None,
                 tags: if let Some(tag_ty) = &sch.tags {
-                    Some(Self::symbolize_tags(sym_env, ety, tag_ty, entities)?)
+                    Some(Self::symbolize_tags(sym_env, ety, tag_ty, entities, h)?)
                 } else {
                     None
                 },
@@ -352,11 +388,17 @@ impl SymEntityData {
             EntitySchemaEntry::Enum(eids) => {
                 // Same as `SymEntityData::of_entity_type` since it does not
                 // contain `UUF`s or variables.
-                let attrs_udf = UnaryFunction::Udf(Arc::new(function::Udf {
-                    arg: TermType::Entity { ety: ety.clone() },
-                    out: TermType::Record {
+                let arg_ty = TermType {
+                    inner: h.mk(TermTypeInner::Entity { ety: ety.clone() }),
+                };
+                let out_ty = TermType {
+                    inner: h.mk(TermTypeInner::Record {
                         rty: Arc::new(BTreeMap::new()),
-                    },
+                    }),
+                };
+                let attrs_udf = UnaryFunction::Udf(Arc::new(function::Udf {
+                    arg: arg_ty,
+                    out: out_ty,
                     table: Arc::new(BTreeMap::new()),
                     default: Term::Record(Arc::new(BTreeMap::new())),
                 }));
@@ -376,18 +418,26 @@ impl SymEntities {
     ///
     /// Corresponds to `Entities.symbolize?` in Lean, but directly
     /// returning a `SymEntities` instead of an [`UUF`] interpretation.
-    fn from_entities(env: &Environment<'_>, entities: &Entities) -> Result<Self, SymbolizeError> {
+    fn from_entities(
+        env: &Environment<'_>,
+        entities: &Entities,
+        h: &mut HConsign<TermTypeInner>,
+    ) -> Result<Self, SymbolizeError> {
         let schema = env.schema();
 
         // Create a symbolic environment so that we can compute the default literals.
-        let sym_env = SymEnv::of_env(env)?;
+        let sym_env = SymEnv::of_env(env, h)?;
 
-        let entities = schema.entity_types().map(|ent| {
-            let ety = core_entity_type_into_entity_type(ent.name());
-            let entry = EntitySchemaEntry::of_schema(ety, ent, schema);
-            SymEntityData::from_entities(&sym_env, ety, &entry, entities)
-                .map(|sym_edata| (ety.clone(), sym_edata))
-        });
+        let entities_result: Result<Vec<_>, _> = schema
+            .entity_types()
+            .map(|ent| {
+                let ety = core_entity_type_into_entity_type(ent.name());
+                let entry = EntitySchemaEntry::of_schema(ety, ent, schema);
+                SymEntityData::from_entities(&sym_env, ety, &entry, entities, h)
+                    .map(|sym_edata| (ety.clone(), sym_edata))
+            })
+            .collect();
+        let entities_result = entities_result?;
 
         // Action entities are compiled the same way as `SymEntities::of_schema`,
         // since they do not contain `UUF`s or variables.
@@ -396,18 +446,19 @@ impl SymEntities {
             .iter()
             .map(|act| core_entity_type_into_entity_type(act.uid().entity_type()))
             .collect::<BTreeSet<_>>();
-        let actions = act_tys.iter().map(|&act_ty| {
-            Ok((
-                act_ty.clone(),
-                SymEntityData::of_action_type(act_ty, act_tys.clone(), schema),
-            ))
-        });
+        let actions: Result<Vec<_>, SymbolizeError> = act_tys
+            .iter()
+            .map(|&act_ty| {
+                Ok((
+                    act_ty.clone(),
+                    SymEntityData::of_action_type(act_ty, act_tys.clone(), schema, h),
+                ))
+            })
+            .collect();
+        let actions = actions?;
 
         Ok(SymEntities(
-            entities
-                .into_iter()
-                .chain(actions)
-                .collect::<Result<_, _>>()?,
+            entities_result.into_iter().chain(actions).collect(),
         ))
     }
 }
@@ -421,12 +472,16 @@ impl SymEnv {
         req_env: &RequestEnv,
         schema: &Schema,
         env: &Env,
+        h: Rc<RefCell<HConsign<TermTypeInner>>>,
     ) -> Result<Self, SymbolizeError> {
         let type_env = Environment::from_request_env(req_env, schema.as_ref())
             .ok_or(SymbolizeError::IllFormedTypeEnv)?;
+        let request = SymRequest::from_request(&type_env, &env.request)?;
+        let entities = SymEntities::from_entities(&type_env, &env.entities, &mut *h.borrow_mut())?;
         Ok(SymEnv {
-            request: SymRequest::from_request(&type_env, &env.request)?,
-            entities: SymEntities::from_entities(&type_env, &env.entities)?,
+            request,
+            entities,
+            h,
         })
     }
 }
@@ -475,8 +530,9 @@ mod test {
     fn assert_from_value_roundtrip_eq(v: &str, ty: &str) {
         let v = parse_value(v);
         let ty = parse_type(ty);
+        let mut h = HConsign::empty();
         assert_eq!(
-            Value::try_from(&Term::from_value(&v, &ty).unwrap()).unwrap(),
+            Value::try_from(&Term::from_value(&v, &ty, &mut h).unwrap()).unwrap(),
             v
         );
     }

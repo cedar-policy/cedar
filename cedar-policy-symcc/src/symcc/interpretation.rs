@@ -71,155 +71,165 @@ impl Interpretation<'_> {
 impl Term {
     /// Recursively interprets a term, substituting variables with
     /// their interpretations.
-    pub fn interpret(&self, interp: &Interpretation<'_>) -> Term {
+    pub fn interpret(
+        &self,
+        interp: &Interpretation<'_>,
+        h: &mut hashconsing::HConsign<super::term_type::TermTypeInner>,
+    ) -> Term {
         match self {
             Term::Prim(..) | Term::None(..) => self.clone(),
             Term::Var(var) => interp.interpret_var(var),
-            Term::Some(t) => Term::Some(Arc::new(t.interpret(interp))),
+            Term::Some(t) => Term::Some(Arc::new(t.interpret(interp, h))),
 
             Term::Set { elts, elts_ty } => Term::Set {
-                elts: Arc::new(elts.iter().map(|t| t.interpret(interp)).collect()),
+                elts: Arc::new(elts.iter().map(|t| t.interpret(interp, h)).collect()),
                 elts_ty: elts_ty.clone(),
             },
 
             Term::Record(rec) => Term::Record(Arc::new(
                 rec.iter()
-                    .map(|(k, v)| (k.clone(), v.interpret(interp)))
+                    .map(|(k, v)| (k.clone(), v.interpret(interp, h)))
                     .collect(),
             )),
 
             Term::App { op, args, ret_ty } => match (op, args.as_slice()) {
-                (Op::Not, [arg]) => factory::not(arg.interpret(interp)),
+                (Op::Not, [arg]) => factory::not(arg.interpret(interp, h), h),
                 (Op::And, [arg1, arg2]) => {
-                    factory::and(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::and(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Or, [arg1, arg2]) => {
-                    factory::or(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::or(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Eq, [arg1, arg2]) => {
-                    factory::eq(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::eq(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Ite, [arg1, arg2, arg3]) => factory::ite(
-                    arg1.interpret(interp),
-                    arg2.interpret(interp),
-                    arg3.interpret(interp),
+                    arg1.interpret(interp, h),
+                    arg2.interpret(interp, h),
+                    arg3.interpret(interp, h),
+                    h,
                 ),
 
                 (Op::Uuf(uuf), [arg]) => factory::app(
                     UnaryFunction::Udf(Arc::new(interp.interpret_fun(uuf))),
-                    arg.interpret(interp),
+                    arg.interpret(interp, h),
+                    h,
                 ),
 
-                (Op::Bvneg, [arg]) => factory::bvneg(arg.interpret(interp)),
+                (Op::Bvneg, [arg]) => factory::bvneg(arg.interpret(interp, h), h),
 
                 (Op::Bvadd, [arg1, arg2]) => {
-                    factory::bvadd(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvadd(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvsub, [arg1, arg2]) => {
-                    factory::bvsub(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvsub(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvmul, [arg1, arg2]) => {
-                    factory::bvmul(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvmul(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvsdiv, [arg1, arg2]) => {
-                    factory::bvsdiv(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvsdiv(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvudiv, [arg1, arg2]) => {
-                    factory::bvudiv(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvudiv(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvshl, [arg1, arg2]) => {
-                    factory::bvshl(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvshl(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvlshr, [arg1, arg2]) => {
-                    factory::bvlshr(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvlshr(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvslt, [arg1, arg2]) => {
-                    factory::bvslt(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvslt(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvsle, [arg1, arg2]) => {
-                    factory::bvsle(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvsle(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvult, [arg1, arg2]) => {
-                    factory::bvult(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvult(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvule, [arg1, arg2]) => {
-                    factory::bvule(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvule(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
-                (Op::Bvnego, [arg]) => factory::bvnego(arg.interpret(interp)),
+                (Op::Bvnego, [arg]) => factory::bvnego(arg.interpret(interp, h), h),
 
                 (Op::Bvsaddo, [arg1, arg2]) => {
-                    factory::bvsaddo(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvsaddo(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvsmulo, [arg1, arg2]) => {
-                    factory::bvsmulo(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvsmulo(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::Bvssubo, [arg1, arg2]) => {
-                    factory::bvssubo(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvssubo(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
-                (Op::ZeroExtend(n), [arg]) => factory::zero_extend(*n, arg.interpret(interp)),
+                (Op::ZeroExtend(n), [arg]) => factory::zero_extend(*n, arg.interpret(interp, h), h),
 
                 (Op::SetMember, [arg1, arg2]) => {
-                    factory::set_member(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::set_member(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::SetSubset, [arg1, arg2]) => {
-                    factory::set_subset(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::set_subset(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 (Op::SetInter, [arg1, arg2]) => {
-                    factory::set_inter(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::set_inter(arg1.interpret(interp, h), arg2.interpret(interp, h), h)
                 }
 
                 // Factory.option.get' in the Lean version
                 (Op::OptionGet, [arg]) => {
-                    let arg = arg.interpret(interp);
+                    let arg = arg.interpret(interp, h);
 
                     if let Term::None(ty) = arg {
                         ty.default_literal(interp.env)
                     } else {
-                        factory::option_get(arg)
+                        factory::option_get(arg, h)
                     }
                 }
 
                 (Op::RecordGet(smol_str), [arg]) => {
-                    factory::record_get(arg.interpret(interp), smol_str)
+                    factory::record_get(arg.interpret(interp, h), smol_str, h)
                 }
 
                 (Op::StringLike(ord_pattern), [arg]) => {
-                    factory::string_like(arg.interpret(interp), ord_pattern.clone())
+                    factory::string_like(arg.interpret(interp, h), ord_pattern.clone(), h)
                 }
 
                 (Op::Ext(ext_op), [arg]) => match ext_op {
-                    ExtOp::DecimalVal => factory::ext_decimal_val(arg.interpret(interp)),
-                    ExtOp::IpaddrIsV4 => factory::ext_ipaddr_is_v4(arg.interpret(interp)),
-                    ExtOp::IpaddrAddrV4 => factory::ext_ipaddr_addr_v4(arg.interpret(interp)),
-                    ExtOp::IpaddrPrefixV4 => factory::ext_ipaddr_prefix_v4(arg.interpret(interp)),
-                    ExtOp::IpaddrAddrV6 => factory::ext_ipaddr_addr_v6(arg.interpret(interp)),
-                    ExtOp::IpaddrPrefixV6 => factory::ext_ipaddr_prefix_v6(arg.interpret(interp)),
-                    ExtOp::DatetimeVal => factory::ext_datetime_val(arg.interpret(interp)),
-                    ExtOp::DatetimeOfBitVec => {
-                        factory::ext_datetime_of_bitvec(arg.interpret(interp))
+                    ExtOp::DecimalVal => factory::ext_decimal_val(arg.interpret(interp, h), h),
+                    ExtOp::IpaddrIsV4 => factory::ext_ipaddr_is_v4(arg.interpret(interp, h), h),
+                    ExtOp::IpaddrAddrV4 => factory::ext_ipaddr_addr_v4(arg.interpret(interp, h), h),
+                    ExtOp::IpaddrPrefixV4 => {
+                        factory::ext_ipaddr_prefix_v4(arg.interpret(interp, h), h)
                     }
-                    ExtOp::DurationVal => factory::ext_duration_val(arg.interpret(interp)),
+                    ExtOp::IpaddrAddrV6 => factory::ext_ipaddr_addr_v6(arg.interpret(interp, h), h),
+                    ExtOp::IpaddrPrefixV6 => {
+                        factory::ext_ipaddr_prefix_v6(arg.interpret(interp, h), h)
+                    }
+                    ExtOp::DatetimeVal => factory::ext_datetime_val(arg.interpret(interp, h), h),
+                    ExtOp::DatetimeOfBitVec => {
+                        factory::ext_datetime_of_bitvec(arg.interpret(interp, h), h)
+                    }
+                    ExtOp::DurationVal => factory::ext_duration_val(arg.interpret(interp, h), h),
                     ExtOp::DurationOfBitVec => {
-                        factory::ext_duration_of_bitvec(arg.interpret(interp))
+                        factory::ext_duration_of_bitvec(arg.interpret(interp, h), h)
                     }
                 },
 
@@ -227,7 +237,7 @@ impl Term {
                 // interpret the arguments
                 (op, args) => Term::App {
                     op: op.clone(),
-                    args: Arc::new(args.iter().map(|t| t.interpret(interp)).collect()),
+                    args: Arc::new(args.iter().map(|t| t.interpret(interp, h)).collect()),
                     ret_ty: ret_ty.clone(),
                 },
             },
@@ -237,12 +247,16 @@ impl Term {
 
 impl SymRequest {
     /// Interprets a [`SymRequest`] with the given interpretation.
-    pub fn interpret(&self, interp: &Interpretation<'_>) -> SymRequest {
+    pub fn interpret(
+        &self,
+        interp: &Interpretation<'_>,
+        h: &mut hashconsing::HConsign<super::term_type::TermTypeInner>,
+    ) -> SymRequest {
         SymRequest {
-            principal: self.principal.interpret(interp),
-            action: self.action.interpret(interp),
-            resource: self.resource.interpret(interp),
-            context: self.context.interpret(interp),
+            principal: self.principal.interpret(interp, h),
+            action: self.action.interpret(interp, h),
+            resource: self.resource.interpret(interp, h),
+            context: self.context.interpret(interp, h),
         }
     }
 }
@@ -269,7 +283,11 @@ impl SymTags {
 
 impl SymEntityData {
     /// Interpret a [`SymEntityData`] with the given interpretation.
-    pub fn interpret(&self, interp: &Interpretation<'_>) -> SymEntityData {
+    pub fn interpret(
+        &self,
+        interp: &Interpretation<'_>,
+        h: &mut hashconsing::HConsign<super::term_type::TermTypeInner>,
+    ) -> SymEntityData {
         SymEntityData {
             attrs: self.attrs.interpret(interp),
             ancestors: self
@@ -285,11 +303,15 @@ impl SymEntityData {
 
 impl SymEntities {
     /// Interpret a [`SymEntities`] with the given interpretation.
-    pub fn interpret(&self, interp: &Interpretation<'_>) -> SymEntities {
+    pub fn interpret(
+        &self,
+        interp: &Interpretation<'_>,
+        h: &mut hashconsing::HConsign<super::term_type::TermTypeInner>,
+    ) -> SymEntities {
         SymEntities(
             self.0
                 .iter()
-                .map(|(ent, data)| (ent.clone(), data.interpret(interp)))
+                .map(|(ent, data)| (ent.clone(), data.interpret(interp, h)))
                 .collect(),
         )
     }
@@ -297,10 +319,15 @@ impl SymEntities {
 
 impl SymEnv {
     /// Interpret a [`SymEnv`] with the given interpretation.
-    pub fn interpret(&self, interp: &Interpretation<'_>) -> SymEnv {
+    pub fn interpret(
+        &self,
+        interp: &Interpretation<'_>,
+        h: &mut hashconsing::HConsign<super::term_type::TermTypeInner>,
+    ) -> SymEnv {
         SymEnv {
-            entities: self.entities.interpret(interp),
-            request: self.request.interpret(interp),
+            entities: self.entities.interpret(interp, h),
+            request: self.request.interpret(interp, h),
+            h: self.h.clone(),
         }
     }
 }
@@ -369,16 +396,24 @@ mod interpret_test {
         Expr::from_str(str).expect(format!("Could not parse expression: {str}").as_str())
     }
 
-    fn test_valid_bool_interp_expr(str: &str, interp: &Interpretation<'_>, res: bool) {
-        let term = compile(&parse_expr(str), &sym_env()).unwrap();
-        let term_interp = term.interpret(interp);
+    fn test_valid_bool_interp_expr(
+        str: &str,
+        interp: &Interpretation<'_>,
+        res: bool,
+        symenv: &SymEnv,
+    ) {
+        let term = compile(&parse_expr(str), symenv, &mut symenv.h.borrow_mut()).unwrap();
+        let term_interp = term.interpret(interp, &mut symenv.h.borrow_mut());
         assert_eq!(
             term_interp,
             Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res)))),
             "{str}"
         );
         // Check idempotency
-        assert_eq!(term_interp, term_interp.interpret(interp));
+        assert_eq!(
+            term_interp,
+            term_interp.interpret(interp, &mut symenv.h.borrow_mut())
+        );
     }
 
     #[test]
@@ -389,35 +424,41 @@ mod interpret_test {
             "context.x + context.y == context.y + context.x",
             &interp,
             true,
+            &symenv,
         );
         test_valid_bool_interp_expr(
             "context.x + context.y == context.y + context.x",
             &interp,
             true,
+            &symenv,
         );
         test_valid_bool_interp_expr(
             "context.x < context.y || context.x == context.y || context.x > context.y",
             &interp,
             true,
+            &symenv,
         );
         test_valid_bool_interp_expr(
             "context.x * context.y == context.y * context.x",
             &interp,
             true,
+            &symenv,
         );
-        test_valid_bool_interp_expr("--context.x == context.x", &interp, true);
+        test_valid_bool_interp_expr("--context.x == context.x", &interp, true, &symenv);
         test_valid_bool_interp_expr(
             "(!context.a && !context.b) == !(context.a || context.b)",
             &interp,
             true,
+            &symenv,
         );
         test_valid_bool_interp_expr(
             "(if context.a then context.x else context.y) == (if !context.a then context.y else context.x)",
             &interp,
             true,
+            &symenv,
         );
-        test_valid_bool_interp_expr("context.x + 1 == context.x", &interp, false);
-        test_valid_bool_interp_expr(r#"context.str like "*""#, &interp, true);
+        test_valid_bool_interp_expr("context.x + 1 == context.x", &interp, false, &symenv);
+        test_valid_bool_interp_expr(r#"context.str like "*""#, &interp, true, &symenv);
     }
 
     #[test]
@@ -427,17 +468,17 @@ mod interpret_test {
         test_valid_bool_interp_expr(
             "!(context.s1.containsAll(context.s2) && context.s2.containsAll(context.s1)) || context.s1 == context.s2",
             &interp,
-            true,
+            true, &symenv,
         );
         test_valid_bool_interp_expr(
             "!(context.s1.containsAll(context.s2) && context.s2.contains(10)) || context.s1.contains(10)",
             &interp,
-            true,
+            true, &symenv,
         );
         test_valid_bool_interp_expr(
             "!(context.s1.contains(10) && context.s2.contains(10)) || context.s1.containsAny(context.s2)",
             &interp,
-            true,
+            true, &symenv,
         );
     }
 
@@ -448,7 +489,7 @@ mod interpret_test {
         test_valid_bool_interp_expr(
             "context.dc1.lessThan(context.dc2) || context.dc1 == context.dc2 || context.dc1.greaterThan(context.dc2)",
             &interp,
-            true,
+            true, &symenv,
         );
     }
 
@@ -459,7 +500,7 @@ mod interpret_test {
         test_valid_bool_interp_expr(
             "context.dt1.offset(context.d1).offset(context.d2) == context.dt1.offset(context.d2).offset(context.d1)",
             &interp,
-            true,
+            true, &symenv,
         );
         test_valid_bool_interp_expr(
             r#"
@@ -468,11 +509,13 @@ mod interpret_test {
             "#,
             &interp,
             true,
+            &symenv,
         );
         test_valid_bool_interp_expr(
             r#"!(context.d1 >= duration("0ms")) || context.d1.toDays() <= context.d1.toMilliseconds()"#,
             &interp,
             true,
+            &symenv,
         );
     }
 
@@ -484,16 +527,18 @@ mod interpret_test {
             "context.ip1.isIpv4() || context.ip1.isIpv6()",
             &interp,
             true,
+            &symenv,
         );
         test_valid_bool_interp_expr(
             "!(context.ip1.isIpv4() && context.ip1.isIpv6())",
             &interp,
             true,
+            &symenv,
         );
         test_valid_bool_interp_expr(
             "!(context.ip1.isInRange(context.ip2) && context.ip2.isInRange(context.ip3)) || context.ip1.isInRange(context.ip3)",
             &interp,
-            true,
+            true, &symenv,
         );
     }
 }

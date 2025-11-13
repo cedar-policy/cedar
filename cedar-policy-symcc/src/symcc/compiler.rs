@@ -42,8 +42,9 @@ use super::function::UnaryFunction;
 use super::result::CompileError;
 use super::tags::SymTags;
 use super::term::{Term, TermPrim};
-use super::term_type::TermType;
+use super::term_type::{TermType, TermTypeInner};
 use super::type_abbrevs::*;
+use hashconsing::{HConsign, HashConsign};
 
 type Result<T> = std::result::Result<T, CompileError>;
 
@@ -63,31 +64,31 @@ fn compile_prim(p: &Prim, es: &SymEntities) -> Result<Term> {
     }
 }
 
-fn compile_var(v: Var, req: &SymRequest) -> Result<Term> {
+fn compile_var(v: Var, req: &SymRequest, h: &mut HConsign<TermTypeInner>) -> Result<Term> {
     match v {
         Var::Principal => {
-            if req.principal.type_of().is_entity_type() {
+            if req.principal.type_of(h).is_entity_type() {
                 Ok(some_of(req.principal.clone()))
             } else {
                 Err(CompileError::TypeError)
             }
         }
         Var::Action => {
-            if req.action.type_of().is_entity_type() {
+            if req.action.type_of(h).is_entity_type() {
                 Ok(some_of(req.action.clone()))
             } else {
                 Err(CompileError::TypeError)
             }
         }
         Var::Resource => {
-            if req.resource.type_of().is_entity_type() {
+            if req.resource.type_of(h).is_entity_type() {
                 Ok(some_of(req.resource.clone()))
             } else {
                 Err(CompileError::TypeError)
             }
         }
         Var::Context => {
-            if req.context.type_of().is_record_type() {
+            if req.context.type_of(h).is_record_type() {
                 Ok(some_of(req.context.clone()))
             } else {
                 Err(CompileError::TypeError)
@@ -96,14 +97,15 @@ fn compile_var(v: Var, req: &SymRequest) -> Result<Term> {
     }
 }
 
-fn compile_app1(op1: UnaryOp, t: Term) -> Result<Term> {
-    match (op1, t.type_of()) {
-        (UnaryOp::Not, TermType::Bool) => Ok(some_of(factory::not(t))),
-        (UnaryOp::Neg, TermType::Bitvec { n: 64 }) => Ok(factory::if_false(
-            factory::bvnego(t.clone()),
-            factory::bvneg(t),
+fn compile_app1(op1: UnaryOp, t: Term, h: &mut HConsign<TermTypeInner>) -> Result<Term> {
+    match (op1, t.type_of(h).inner.get()) {
+        (UnaryOp::Not, TermTypeInner::Bool) => Ok(some_of(factory::not(t, h))),
+        (UnaryOp::Neg, TermTypeInner::Bitvec { n: 64 }) => Ok(factory::if_false(
+            factory::bvnego(t.clone(), h),
+            factory::bvneg(t, h),
+            h,
         )),
-        (UnaryOp::IsEmpty, TermType::Set { .. }) => Ok(some_of(factory::set_is_empty(t))),
+        (UnaryOp::IsEmpty, TermTypeInner::Set { .. }) => Ok(some_of(factory::set_is_empty(t, h))),
         // No `like` or `is` cases here, because in Rust those are not
         // `UnaryOp`s, so we can't fully match the Lean.
         // In Rust we handle those in `compile_like()` and `compile_is()`.
@@ -113,18 +115,18 @@ fn compile_app1(op1: UnaryOp, t: Term) -> Result<Term> {
 
 /// In Lean, `compileApp₁` handles this case, but in Rust, `Like` is a separate
 /// `Expr` variant and not part of `UnaryApp`.
-fn compile_like(t: Term, pat: OrdPattern) -> Result<Term> {
-    match t.type_of() {
-        TermType::String => Ok(some_of(factory::string_like(t, pat))),
+fn compile_like(t: Term, pat: OrdPattern, h: &mut HConsign<TermTypeInner>) -> Result<Term> {
+    match t.type_of(h).inner.get() {
+        TermTypeInner::String => Ok(some_of(factory::string_like(t, pat, h))),
         _ => Err(CompileError::TypeError),
     }
 }
 
 /// In Lean, `compileApp₁` handles this case, but in Rust, `Is` is a separate
 /// `Expr` variant and not part of `UnaryApp`.
-fn compile_is(t: &Term, ety1: &EntityType) -> Result<Term> {
-    match t.type_of() {
-        TermType::Entity { ety: ety2 } => Ok(some_of((ety1 == &ety2).into())),
+fn compile_is(t: &Term, ety1: &EntityType, h: &mut HConsign<TermTypeInner>) -> Result<Term> {
+    match t.type_of(h).inner.get() {
+        TermTypeInner::Entity { ety: ety2 } => Ok(some_of((ety1 == ety2).into())),
         _ => Err(CompileError::TypeError),
     }
 }
@@ -148,33 +150,45 @@ fn reducible_eq(ty1: &TermType, ty2: &TermType) -> Result<bool> {
     }
 }
 
-pub fn compile_in_ent(t1: Term, t2: Term, ancs: Option<UnaryFunction>) -> Term {
-    let is_eq = if t1.type_of() == t2.type_of() {
-        factory::eq(t1.clone(), t2.clone())
+pub fn compile_in_ent(
+    t1: Term,
+    t2: Term,
+    ancs: Option<UnaryFunction>,
+    h: &mut HConsign<TermTypeInner>,
+) -> Term {
+    let is_eq = if t1.type_of(h) == t2.type_of(h) {
+        factory::eq(t1.clone(), t2.clone(), h)
     } else {
         false.into()
     };
     let is_in = match ancs {
-        Some(ancs) => factory::set_member(t2, factory::app(ancs, t1)),
+        Some(ancs) => factory::set_member(t2, factory::app(ancs, t1, h), h),
         None => false.into(),
     };
-    factory::or(is_eq, is_in)
+    factory::or(is_eq, is_in, h)
 }
 
-pub fn compile_in_set(t: Term, ts: Term, ancs: Option<UnaryFunction>) -> Term {
-    let is_in1 = if (ts.type_of()
-        == TermType::Set {
-            ty: Arc::new(t.type_of()),
-        }) {
-        factory::set_member(t.clone(), ts.clone())
+pub fn compile_in_set(
+    t: Term,
+    ts: Term,
+    ancs: Option<UnaryFunction>,
+    h: &mut HConsign<TermTypeInner>,
+) -> Term {
+    let t_ty = t.type_of(h);
+    let ts_ty = ts.type_of(h);
+    let expected_ty = TermType {
+        inner: h.mk(TermTypeInner::Set { ty: Arc::new(t_ty) }),
+    };
+    let is_in1 = if ts_ty == expected_ty {
+        factory::set_member(t.clone(), ts.clone(), h)
     } else {
         false.into()
     };
     let is_in2 = match ancs {
-        Some(ancs) => factory::set_intersects(ts, factory::app(ancs, t)),
+        Some(ancs) => factory::set_intersects(ts, factory::app(ancs, t, h), h),
         None => false.into(),
     };
-    factory::or(is_in1, is_in2)
+    factory::or(is_in1, is_in2, h)
 }
 
 pub fn compile_has_tag(
@@ -182,11 +196,12 @@ pub fn compile_has_tag(
     tag: Term,
     tags: Option<&Option<SymTags>>,
     ety: &EntityType,
+    h: &mut HConsign<TermTypeInner>,
 ) -> Result<Term> {
     match tags {
         None => Err(CompileError::NoSuchEntityType(ety.clone())),
         Some(None) => Ok(some_of(false.into())),
-        Some(Some(tags)) => Ok(some_of(tags.has_tag(entity, tag))),
+        Some(Some(tags)) => Ok(some_of(tags.has_tag(entity, tag, h))),
     }
 }
 
@@ -195,73 +210,89 @@ pub fn compile_get_tag(
     tag: Term,
     tags: Option<&Option<SymTags>>,
     ety: &EntityType,
+    h: &mut HConsign<TermTypeInner>,
 ) -> Result<Term> {
     match tags {
         None => Err(CompileError::NoSuchEntityType(ety.clone())),
         Some(None) => Err(CompileError::TypeError), // no tags declared
-        Some(Some(tags)) => Ok(tags.get_tag(entity, tag)),
+        Some(Some(tags)) => Ok(tags.get_tag(entity, tag, h)),
     }
 }
 
-pub fn compile_app2(op2: BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Result<Term> {
+pub fn compile_app2(
+    op2: BinaryOp,
+    t1: Term,
+    t2: Term,
+    es: &SymEntities,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Term> {
     use BinaryOp::*;
     use ExtType::*;
-    use TermType::*;
-    match (op2, t1.type_of(), t2.type_of()) {
-        (Eq, ty1, ty2) => {
+    use TermTypeInner::*;
+    let ty1 = t1.type_of(h);
+    let ty2 = t2.type_of(h);
+    match (op2, ty1.inner.get(), ty2.inner.get()) {
+        (Eq, _, _) => {
             if reducible_eq(&ty1, &ty2)? {
-                Ok(some_of(factory::eq(t1, t2)))
+                Ok(some_of(factory::eq(t1, t2, h)))
             } else {
                 Ok(some_of(false.into()))
             }
         }
-        (Less, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(some_of(factory::bvslt(t1, t2))),
+        (Less, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(some_of(factory::bvslt(t1, t2, h))),
         (Less, Ext { xty: DateTime }, Ext { xty: DateTime }) => Ok(some_of(factory::bvslt(
-            factory::ext_datetime_val(t1),
-            factory::ext_datetime_val(t2),
+            factory::ext_datetime_val(t1, h),
+            factory::ext_datetime_val(t2, h),
+            h,
         ))),
         (Less, Ext { xty: Duration }, Ext { xty: Duration }) => Ok(some_of(factory::bvslt(
-            factory::ext_duration_val(t1),
-            factory::ext_duration_val(t2),
+            factory::ext_duration_val(t1, h),
+            factory::ext_duration_val(t2, h),
+            h,
         ))),
-        (LessEq, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(some_of(factory::bvsle(t1, t2))),
+        (LessEq, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(some_of(factory::bvsle(t1, t2, h))),
         (LessEq, Ext { xty: DateTime }, Ext { xty: DateTime }) => Ok(some_of(factory::bvsle(
-            factory::ext_datetime_val(t1),
-            factory::ext_datetime_val(t2),
+            factory::ext_datetime_val(t1, h),
+            factory::ext_datetime_val(t2, h),
+            h,
         ))),
         (LessEq, Ext { xty: Duration }, Ext { xty: Duration }) => Ok(some_of(factory::bvsle(
-            factory::ext_duration_val(t1),
-            factory::ext_duration_val(t2),
+            factory::ext_duration_val(t1, h),
+            factory::ext_duration_val(t2, h),
+            h,
         ))),
         (Add, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(factory::if_false(
-            factory::bvsaddo(t1.clone(), t2.clone()),
-            factory::bvadd(t1, t2),
+            factory::bvsaddo(t1.clone(), t2.clone(), h),
+            factory::bvadd(t1, t2, h),
+            h,
         )),
         (Sub, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(factory::if_false(
-            factory::bvssubo(t1.clone(), t2.clone()),
-            factory::bvsub(t1, t2),
+            factory::bvssubo(t1.clone(), t2.clone(), h),
+            factory::bvsub(t1, t2, h),
+            h,
         )),
         (Mul, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(factory::if_false(
-            factory::bvsmulo(t1.clone(), t2.clone()),
-            factory::bvmul(t1, t2),
+            factory::bvsmulo(t1.clone(), t2.clone(), h),
+            factory::bvmul(t1, t2, h),
+            h,
         )),
-        (Contains, Set { ty: ty1 }, ty2) => {
-            if *ty1 == ty2 {
-                Ok(some_of(factory::set_member(t2, t1)))
+        (Contains, Set { ty: ty1 }, _) => {
+            if **ty1 == ty2 {
+                Ok(some_of(factory::set_member(t2, t1, h)))
             } else {
                 Err(CompileError::TypeError)
             }
         }
         (ContainsAll, Set { ty: ty1 }, Set { ty: ty2 }) => {
-            if *ty1 == *ty2 {
-                Ok(some_of(factory::set_subset(t2, t1)))
+            if ty1 == ty2 {
+                Ok(some_of(factory::set_subset(t2, t1, h)))
             } else {
                 Err(CompileError::TypeError)
             }
         }
         (ContainsAny, Set { ty: ty1 }, Set { ty: ty2 }) => {
-            if *ty1 == *ty2 {
-                Ok(some_of(factory::set_intersects(t1, t2)))
+            if ty1 == ty2 {
+                Ok(some_of(factory::set_intersects(t1, t2, h)))
             } else {
                 Err(CompileError::TypeError)
             }
@@ -269,14 +300,18 @@ pub fn compile_app2(op2: BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Resu
         (In, Entity { ety: ety1 }, Entity { ety: ety2 }) => Ok(some_of(compile_in_ent(
             t1,
             t2,
-            es.ancestors_of_type(&ety1, &ety2).cloned(),
+            es.ancestors_of_type(ety1, ety2).cloned(),
+            h,
         ))),
-        (In, Entity { ety: ety1 }, Set { ty }) if matches!(*ty, Entity { .. }) => {
-            match Arc::unwrap_or_clone(ty) {
-                Entity { ety: ety2 } => Ok(some_of(compile_in_set(
+        (In, Entity { ety: ety1 }, Set { ty })
+            if matches!(ty.inner.get(), TermTypeInner::Entity { .. }) =>
+        {
+            match ty.inner.get() {
+                TermTypeInner::Entity { ety: ety2 } => Ok(some_of(compile_in_set(
                     t1,
                     t2,
-                    es.ancestors_of_type(&ety1, &ety2).cloned(),
+                    es.ancestors_of_type(ety1, ety2).cloned(),
+                    h,
                 ))),
                 // PANIC SAFETY
                 #[allow(
@@ -286,28 +321,37 @@ pub fn compile_app2(op2: BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Resu
                 _ => unreachable!("We just matched with entity type above"),
             }
         }
-        (HasTag, Entity { ety }, String) => compile_has_tag(t1, t2, es.tags(&ety), &ety),
-        (GetTag, Entity { ety }, String) => compile_get_tag(t1, t2, es.tags(&ety), &ety),
+        (HasTag, Entity { ety }, String) => compile_has_tag(t1, t2, es.tags(ety), ety, h),
+        (GetTag, Entity { ety }, String) => compile_get_tag(t1, t2, es.tags(ety), ety, h),
         (_, _, _) => Err(CompileError::TypeError),
     }
 }
 
-pub fn compile_attrs_of(t: Term, es: &SymEntities) -> Result<Term> {
-    match t.type_of() {
-        TermType::Entity { ety } => match es.attrs(&ety) {
-            Some(attrs) => Ok(factory::app(attrs.clone(), t)),
-            None => Err(CompileError::NoSuchEntityType(ety)),
+pub fn compile_attrs_of(
+    t: Term,
+    es: &SymEntities,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Term> {
+    match t.type_of(h).inner.get() {
+        TermTypeInner::Entity { ety } => match es.attrs(ety) {
+            Some(attrs) => Ok(factory::app(attrs.clone(), t, h)),
+            None => Err(CompileError::NoSuchEntityType(ety.clone())),
         },
-        TermType::Record { .. } => Ok(t),
+        TermTypeInner::Record { .. } => Ok(t),
         _ => Err(CompileError::TypeError),
     }
 }
 
-pub fn compile_has_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
-    let attrs = compile_attrs_of(t, es)?;
-    match attrs.type_of() {
-        TermType::Record { rty } => match rty.get(a) {
-            Some(ty) if ty.is_option_type() => Ok(some_of(is_some(record_get(attrs, a)))),
+pub fn compile_has_attr(
+    t: Term,
+    a: &Attr,
+    es: &SymEntities,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Term> {
+    let attrs = compile_attrs_of(t, es, h)?;
+    match attrs.type_of(h).inner.get() {
+        TermTypeInner::Record { rty } => match rty.get(a) {
+            Some(ty) if ty.is_option_type() => Ok(some_of(is_some(record_get(attrs, a, h), h))),
             Some(_) => Ok(true.into()),
             None => Ok(false.into()),
         },
@@ -315,29 +359,41 @@ pub fn compile_has_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
     }
 }
 
-pub fn compile_get_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
-    let attrs = compile_attrs_of(t, es)?;
-    match attrs.type_of() {
-        TermType::Record { rty } => match rty.get(a) {
-            Some(ty) if ty.is_option_type() => Ok(record_get(attrs, a)),
-            Some(_) => Ok(some_of(record_get(attrs, a))),
+pub fn compile_get_attr(
+    t: Term,
+    a: &Attr,
+    es: &SymEntities,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Term> {
+    let attrs = compile_attrs_of(t, es, h)?;
+    match attrs.type_of(h).inner.get() {
+        TermTypeInner::Record { rty } => match rty.get(a) {
+            Some(ty) if ty.is_option_type() => Ok(record_get(attrs, a, h)),
+            Some(_) => Ok(some_of(record_get(attrs, a, h))),
             None => Err(CompileError::NoSuchAttribute(a.to_string())),
         },
         _ => Err(CompileError::TypeError),
     }
 }
 
-pub fn compile_if(t1: Term, r2: Result<Term>, r3: Result<Term>) -> Result<Term> {
-    match (&t1, t1.type_of()) {
+pub fn compile_if(
+    t1: Term,
+    r2: Result<Term>,
+    r3: Result<Term>,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Term> {
+    let ty1 = t1.type_of(h);
+    match (&t1, ty1.inner.get()) {
         (Term::Some(it), _) if matches!(**it, Term::Prim(TermPrim::Bool(true))) => r2,
         (Term::Some(it), _) if matches!(**it, Term::Prim(TermPrim::Bool(false))) => r3,
-        (_, TermType::Option { ty }) if matches!(*ty, TermType::Bool) => {
+        (_, TermTypeInner::Option { ty }) if matches!(ty.inner.get(), TermTypeInner::Bool) => {
             let t2 = r2?;
             let t3 = r3?;
-            if t2.type_of() == t3.type_of() {
+            if t2.type_of(h) == t3.type_of(h) {
                 Ok(factory::if_some(
                     t1.clone(),
-                    factory::ite(factory::option_get(t1), t2, t3),
+                    factory::ite(factory::option_get(t1, h), t2, t3, h),
+                    h,
                 ))
             } else {
                 Err(CompileError::TypeError)
@@ -347,15 +403,21 @@ pub fn compile_if(t1: Term, r2: Result<Term>, r3: Result<Term>) -> Result<Term> 
     }
 }
 
-pub fn compile_and(t1: Term, r2: Result<Term>) -> Result<Term> {
-    match (&t1, t1.type_of()) {
+pub fn compile_and(t1: Term, r2: Result<Term>, h: &mut HConsign<TermTypeInner>) -> Result<Term> {
+    let ty1 = t1.type_of(h);
+    match (&t1, ty1.inner.get()) {
         (Term::Some(it), _) if matches!(**it, Term::Prim(TermPrim::Bool(false))) => Ok(t1),
-        (_, TermType::Option { ty: ity }) if matches!(*ity, TermType::Bool) => {
+        (_, TermTypeInner::Option { ty: ity })
+            if matches!(ity.inner.get(), TermTypeInner::Bool) =>
+        {
             let t2 = r2?;
-            if matches!(t2.type_of(), TermType::Option { ty } if matches!(*ty, TermType::Bool)) {
+            let ty2 = t2.type_of(h);
+            if matches!(ty2.inner.get(), TermTypeInner::Option { ty } if matches!(ty.inner.get(), TermTypeInner::Bool))
+            {
                 Ok(if_some(
                     t1.clone(),
-                    ite(option_get(t1), t2, some_of(false.into())),
+                    ite(option_get(t1, h), t2, some_of(false.into()), h),
+                    h,
                 ))
             } else {
                 Err(CompileError::TypeError)
@@ -365,15 +427,21 @@ pub fn compile_and(t1: Term, r2: Result<Term>) -> Result<Term> {
     }
 }
 
-pub fn compile_or(t1: Term, r2: Result<Term>) -> Result<Term> {
-    match (&t1, t1.type_of()) {
+pub fn compile_or(t1: Term, r2: Result<Term>, h: &mut HConsign<TermTypeInner>) -> Result<Term> {
+    let ty1 = t1.type_of(h);
+    match (&t1, ty1.inner.get()) {
         (Term::Some(it), _) if matches!(**it, Term::Prim(TermPrim::Bool(true))) => Ok(t1),
-        (_, TermType::Option { ty: ity }) if matches!(*ity, TermType::Bool) => {
+        (_, TermTypeInner::Option { ty: ity })
+            if matches!(ity.inner.get(), TermTypeInner::Bool) =>
+        {
             let t2 = r2?;
-            if matches!(t2.type_of(), TermType::Option { ty } if matches!(*ty, TermType::Bool)) {
+            let ty2 = t2.type_of(h);
+            if matches!(ty2.inner.get(), TermTypeInner::Option { ty } if matches!(ty.inner.get(), TermTypeInner::Bool))
+            {
                 Ok(if_some(
                     t1.clone(),
-                    ite(option_get(t1), some_of(true.into()), t2),
+                    ite(option_get(t1, h), some_of(true.into()), t2, h),
+                    h,
                 ))
             } else {
                 Err(CompileError::TypeError)
@@ -383,7 +451,7 @@ pub fn compile_or(t1: Term, r2: Result<Term>) -> Result<Term> {
     }
 }
 
-pub fn compile_set(ts: Vec<Term>) -> Result<Term> {
+pub fn compile_set(ts: Vec<Term>, h: &mut HConsign<TermTypeInner>) -> Result<Term> {
     if ts.is_empty() {
         Err(CompileError::UnsupportedFeature(
             "empty set literals are not supported".to_string(),
@@ -394,15 +462,17 @@ pub fn compile_set(ts: Vec<Term>) -> Result<Term> {
             clippy::indexing_slicing,
             reason = "ts must be non-empty and thus indexing by 0 should not panic"
         )]
-        match ts[0].type_of() {
-            ref ty @ TermType::Option { ty: ref ity } => {
-                if ts.iter().all(|it| &it.type_of() == ty) {
+        let ty0 = ts[0].type_of(h);
+        match ty0.inner.get() {
+            TermTypeInner::Option { ty: ity } => {
+                if ts.iter().all(|it| it.type_of(h) == ty0) {
                     Ok(if_all_some(
                         ts.clone(),
                         some_of(factory::set_of(
-                            ts.into_iter().map(option_get),
-                            TermType::clone(ity),
+                            ts.into_iter().map(|t| option_get(t, h)),
+                            (**ity).clone(),
                         )),
+                        h,
                     ))
                 } else {
                     Err(CompileError::TypeError)
@@ -413,14 +483,17 @@ pub fn compile_set(ts: Vec<Term>) -> Result<Term> {
     }
 }
 
-pub fn compile_record(ats: Vec<(Attr, Term)>) -> Result<Term> {
+pub fn compile_record(ats: Vec<(Attr, Term)>, h: &mut HConsign<TermTypeInner>) -> Result<Term> {
     #[allow(
         clippy::needless_collect,
         reason = "collect allows ats to be moved in the following line"
     )]
     Ok(if_all_some(
         ats.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
-        some_of(record_of(ats.into_iter().map(|(a, t)| (a, option_get(t))))),
+        some_of(record_of(
+            ats.into_iter().map(|(a, t)| (a, option_get(t, h))),
+        )),
+        h,
     ))
 }
 
@@ -441,42 +514,68 @@ pub fn compile_call0(
 }
 
 // Use directly for encoding calls that can error
-pub fn compile_call1_error(xty: ExtType, enc: impl Fn(Term) -> Term, t1: Term) -> Result<Term> {
-    let ty = TermType::Option {
-        ty: Arc::new(TermType::Ext { xty }),
+pub fn compile_call1_error(
+    xty: ExtType,
+    enc: impl Fn(Term, &mut HConsign<TermTypeInner>) -> Term,
+    t1: Term,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Term> {
+    let inner_ty = TermType {
+        inner: h.mk(TermTypeInner::Ext { xty }),
     };
-    if t1.type_of() == ty {
-        Ok(if_some(t1.clone(), enc(option_get(t1))))
+    let ty = TermType {
+        inner: h.mk(TermTypeInner::Option {
+            ty: Arc::new(inner_ty),
+        }),
+    };
+    if t1.type_of(h) == ty {
+        let t1_get = option_get(t1.clone(), h);
+        Ok(if_some(t1, enc(t1_get, h), h))
     } else {
         Err(CompileError::TypeError)
     }
 }
 
 // Use directly for encoding calls that cannot error
-pub fn compile_call1(xty: ExtType, enc: impl Fn(Term) -> Term, t1: Term) -> Result<Term> {
-    let enc = |t1: Term| -> Term { some_of(enc(t1)) };
-    compile_call1_error(xty, enc, t1)
+pub fn compile_call1(
+    xty: ExtType,
+    enc: impl Fn(Term, &mut HConsign<TermTypeInner>) -> Term,
+    t1: Term,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Term> {
+    let enc_wrapped = |t1: Term, h: &mut HConsign<TermTypeInner>| -> Term { some_of(enc(t1, h)) };
+    compile_call1_error(xty, enc_wrapped, t1, h)
 }
 
 // Use directly for encoding calls that can error
 pub fn compile_call2_error(
     xty1: ExtType,
     xty2: ExtType,
-    enc: impl Fn(Term, Term) -> Term,
+    enc: impl Fn(Term, Term, &mut HConsign<TermTypeInner>) -> Term,
     t1: Term,
     t2: Term,
+    h: &mut HConsign<TermTypeInner>,
 ) -> Result<Term> {
-    let ty1 = TermType::Option {
-        ty: Arc::new(TermType::Ext { xty: xty1 }),
+    let inner_ty1 = TermType {
+        inner: h.mk(TermTypeInner::Ext { xty: xty1 }),
     };
-    let ty2 = TermType::Option {
-        ty: Arc::new(TermType::Ext { xty: xty2 }),
+    let ty1 = TermType {
+        inner: h.mk(TermTypeInner::Option {
+            ty: Arc::new(inner_ty1),
+        }),
     };
-    if t1.type_of() == ty1 && t2.type_of() == ty2 {
-        Ok(if_some(
-            t1.clone(),
-            if_some(t2.clone(), enc(option_get(t1), option_get(t2))),
-        ))
+    let inner_ty2 = TermType {
+        inner: h.mk(TermTypeInner::Ext { xty: xty2 }),
+    };
+    let ty2 = TermType {
+        inner: h.mk(TermTypeInner::Option {
+            ty: Arc::new(inner_ty2),
+        }),
+    };
+    if t1.type_of(h) == ty1 && t2.type_of(h) == ty2 {
+        let t1_get = option_get(t1.clone(), h);
+        let t2_get = option_get(t2.clone(), h);
+        Ok(if_some(t1, if_some(t2, enc(t1_get, t2_get, h), h), h))
     } else {
         Err(CompileError::TypeError)
     }
@@ -485,12 +584,14 @@ pub fn compile_call2_error(
 // Use directly for encoding calls that cannot error
 pub fn compile_call2(
     xty: ExtType,
-    enc: impl Fn(Term, Term) -> Term,
+    enc: impl Fn(Term, Term, &mut HConsign<TermTypeInner>) -> Term,
     t1: Term,
     t2: Term,
+    h: &mut HConsign<TermTypeInner>,
 ) -> Result<Term> {
-    let enc = |t1: Term, t2: Term| -> Term { some_of(enc(t1, t2)) };
-    compile_call2_error(xty.clone(), xty, enc, t1, t2)
+    let enc_wrapped =
+        |t1: Term, t2: Term, h: &mut HConsign<TermTypeInner>| -> Term { some_of(enc(t1, t2, h)) };
+    compile_call2_error(xty.clone(), xty, enc_wrapped, t1, t2, h)
 }
 
 /// Extract the first item from a `Vec`, consuming the `Vec`.
@@ -516,7 +617,11 @@ fn extract_first2<T>(v: Vec<T>) -> (T, T) {
     (it.next().unwrap(), it.next().unwrap())
 }
 
-pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result<Term> {
+pub fn compile_call(
+    xfn: &cedar_policy_core::ast::Name,
+    ts: Vec<Term>,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Term> {
     match (xfn.to_string().as_str(), ts.len()) {
         ("decimal", 1) => {
             let t1 = extract_first(ts);
@@ -524,19 +629,19 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
         }
         ("lessThan", 2) => {
             let (t1, t2) = extract_first2(ts);
-            compile_call2(ExtType::Decimal, extfun::less_than, t1, t2)
+            compile_call2(ExtType::Decimal, extfun::less_than, t1, t2, h)
         }
         ("lessThanOrEqual", 2) => {
             let (t1, t2) = extract_first2(ts);
-            compile_call2(ExtType::Decimal, extfun::less_than_or_equal, t1, t2)
+            compile_call2(ExtType::Decimal, extfun::less_than_or_equal, t1, t2, h)
         }
         ("greaterThan", 2) => {
             let (t1, t2) = extract_first2(ts);
-            compile_call2(ExtType::Decimal, extfun::greater_than, t1, t2)
+            compile_call2(ExtType::Decimal, extfun::greater_than, t1, t2, h)
         }
         ("greaterThanOrEqual", 2) => {
             let (t1, t2) = extract_first2(ts);
-            compile_call2(ExtType::Decimal, extfun::greater_than_or_equal, t1, t2)
+            compile_call2(ExtType::Decimal, extfun::greater_than_or_equal, t1, t2, h)
         }
         ("ip", 1) => {
             let t1 = extract_first(ts);
@@ -544,23 +649,23 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
         }
         ("isIpv4", 1) => {
             let t1 = extract_first(ts);
-            compile_call1(ExtType::IpAddr, extfun::is_ipv4, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_ipv4, t1, h)
         }
         ("isIpv6", 1) => {
             let t1 = extract_first(ts);
-            compile_call1(ExtType::IpAddr, extfun::is_ipv6, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_ipv6, t1, h)
         }
         ("isLoopback", 1) => {
             let t1 = extract_first(ts);
-            compile_call1(ExtType::IpAddr, extfun::is_loopback, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_loopback, t1, h)
         }
         ("isMulticast", 1) => {
             let t1 = extract_first(ts);
-            compile_call1(ExtType::IpAddr, extfun::is_multicast, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_multicast, t1, h)
         }
         ("isInRange", 2) => {
             let (t1, t2) = extract_first2(ts);
-            compile_call2(ExtType::IpAddr, extfun::is_in_range, t1, t2)
+            compile_call2(ExtType::IpAddr, extfun::is_in_range, t1, t2, h)
         }
         ("datetime", 1) => {
             let t1 = extract_first(ts);
@@ -572,7 +677,14 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
         }
         ("offset", 2) => {
             let (t1, t2) = extract_first2(ts);
-            compile_call2_error(ExtType::DateTime, ExtType::Duration, extfun::offset, t1, t2)
+            compile_call2_error(
+                ExtType::DateTime,
+                ExtType::Duration,
+                extfun::offset,
+                t1,
+                t2,
+                h,
+            )
         }
         ("durationSince", 2) => {
             let (t1, t2) = extract_first2(ts);
@@ -582,35 +694,36 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
                 extfun::duration_since,
                 t1,
                 t2,
+                h,
             )
         }
         ("toDate", 1) => {
             let t1 = extract_first(ts);
-            compile_call1_error(ExtType::DateTime, extfun::to_date, t1)
+            compile_call1_error(ExtType::DateTime, extfun::to_date, t1, h)
         }
         ("toTime", 1) => {
             let t1 = extract_first(ts);
-            compile_call1(ExtType::DateTime, extfun::to_time, t1)
+            compile_call1(ExtType::DateTime, extfun::to_time, t1, h)
         }
         ("toMilliseconds", 1) => {
             let t1 = extract_first(ts);
-            compile_call1(ExtType::Duration, extfun::to_milliseconds, t1)
+            compile_call1(ExtType::Duration, extfun::to_milliseconds, t1, h)
         }
         ("toSeconds", 1) => {
             let t1 = extract_first(ts);
-            compile_call1(ExtType::Duration, extfun::to_seconds, t1)
+            compile_call1(ExtType::Duration, extfun::to_seconds, t1, h)
         }
         ("toMinutes", 1) => {
             let t1 = extract_first(ts);
-            compile_call1(ExtType::Duration, extfun::to_minutes, t1)
+            compile_call1(ExtType::Duration, extfun::to_minutes, t1, h)
         }
         ("toHours", 1) => {
             let t1 = extract_first(ts);
-            compile_call1(ExtType::Duration, extfun::to_hours, t1)
+            compile_call1(ExtType::Duration, extfun::to_hours, t1, h)
         }
         ("toDays", 1) => {
             let t1 = extract_first(ts);
-            compile_call1(ExtType::Duration, extfun::to_days, t1)
+            compile_call1(ExtType::Duration, extfun::to_days, t1, h)
         }
         (_, _) => Err(CompileError::TypeError),
     }
@@ -619,89 +732,105 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
 /// Given an expression `x` that has type `τ` with respect to a type environment
 /// `Γ`, and given a well-formed symbolic environment `env` that conforms to `Γ`,
 /// `compile x env` succeeds and produces a well-formed term of type `.option τ.toTermType`.
-pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
+pub fn compile(x: &Expr, env: &SymEnv, h: &mut HConsign<TermTypeInner>) -> Result<Term> {
     match x.expr_kind() {
         ExprKind::Lit(l) => compile_prim(l, &env.entities),
-        ExprKind::Var(v) => compile_var(*v, &env.request),
+        ExprKind::Var(v) => compile_var(*v, &env.request, h),
         ExprKind::If {
             test_expr: x1,
             then_expr: x2,
             else_expr: x3,
-        } => compile_if(compile(x1, env)?, compile(x2, env), compile(x3, env)),
+        } => compile_if(
+            compile(x1, env, h)?,
+            compile(x2, env, h),
+            compile(x3, env, h),
+            h,
+        ),
         ExprKind::And {
             left: x1,
             right: x2,
-        } => compile_and(compile(x1, env)?, compile(x2, env)),
+        } => compile_and(compile(x1, env, h)?, compile(x2, env, h), h),
         ExprKind::Or {
             left: x1,
             right: x2,
-        } => compile_or(compile(x1, env)?, compile(x2, env)),
+        } => compile_or(compile(x1, env, h)?, compile(x2, env, h), h),
         ExprKind::UnaryApp { op, arg } => {
-            let t1 = compile(arg, env)?;
-            Ok(if_some(t1.clone(), compile_app1(*op, option_get(t1))?))
+            let t1 = compile(arg, env, h)?;
+            Ok(if_some(
+                t1.clone(),
+                compile_app1(*op, option_get(t1, h), h)?,
+                h,
+            ))
         }
         ExprKind::BinaryApp { op, arg1, arg2 } => {
-            let t1 = compile(arg1, env)?;
-            let t2 = compile(arg2, env)?;
+            let t1 = compile(arg1, env, h)?;
+            let t2 = compile(arg2, env, h)?;
             Ok(if_some(
                 t1.clone(),
                 if_some(
                     t2.clone(),
-                    compile_app2(*op, option_get(t1), option_get(t2), &env.entities)?,
+                    compile_app2(*op, option_get(t1, h), option_get(t2, h), &env.entities, h)?,
+                    h,
                 ),
+                h,
             ))
         }
         ExprKind::HasAttr { expr, attr } => {
-            let t = compile(expr, env)?;
+            let t = compile(expr, env, h)?;
             Ok(if_some(
                 t.clone(),
-                compile_has_attr(option_get(t), attr, &env.entities)?,
+                compile_has_attr(option_get(t, h), attr, &env.entities, h)?,
+                h,
             ))
         }
         ExprKind::GetAttr { expr, attr } => {
-            let t = compile(expr, env)?;
+            let t = compile(expr, env, h)?;
             Ok(if_some(
                 t.clone(),
-                compile_get_attr(option_get(t), attr, &env.entities)?,
+                compile_get_attr(option_get(t, h), attr, &env.entities, h)?,
+                h,
             ))
         }
         ExprKind::Like { expr, pattern } => {
-            let t1 = compile(expr, env)?;
+            let t1 = compile(expr, env, h)?;
             Ok(if_some(
                 t1.clone(),
-                compile_like(option_get(t1), pattern.clone().into())?,
+                compile_like(option_get(t1, h), pattern.clone().into(), h)?,
+                h,
             ))
         }
         ExprKind::Is { expr, entity_type } => {
-            let t1 = compile(expr, env)?;
+            let t1 = compile(expr, env, h)?;
             Ok(if_some(
                 t1.clone(),
                 compile_is(
-                    &option_get(t1),
+                    &option_get(t1, h),
                     core_entity_type_into_entity_type(entity_type),
+                    h,
                 )?,
+                h,
             ))
         }
         ExprKind::Set(xs) => {
             let ts = xs
                 .iter()
-                .map(|x1| compile(x1, env))
+                .map(|x1| compile(x1, env, h))
                 .collect::<Result<Vec<_>>>()?;
-            compile_set(ts)
+            compile_set(ts, h)
         }
         ExprKind::Record(axs) => {
             let ats = axs
                 .iter()
-                .map(|(a1, x1)| Ok((a1.clone(), compile(x1, env)?)))
+                .map(|(a1, x1)| Ok((a1.clone(), compile(x1, env, h)?)))
                 .collect::<Result<Vec<_>>>()?;
-            compile_record(ats)
+            compile_record(ats, h)
         }
         ExprKind::ExtensionFunctionApp { fn_name, args } => {
             let ts = args
                 .iter()
-                .map(|x1| compile(x1, env))
+                .map(|x1| compile(x1, env, h))
                 .collect::<Result<Vec<_>>>()?;
-            compile_call(fn_name, ts)
+            compile_call(fn_name, ts, h)
         }
         ExprKind::Slot(_) => Err(CompileError::UnsupportedFeature(
             "templates/slots are not supported".to_string(),
@@ -782,8 +911,9 @@ mod decimal_tests {
 
     #[track_caller]
     fn test_valid(str: &str, rep: i64) {
+        let mut h = HConsign::empty();
         assert_eq!(
-            compile(&dec_lit(str), &sym_env()).unwrap(),
+            compile(&dec_lit(str), &sym_env(), &mut h).unwrap(),
             Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Decimal {
                 d: Decimal(rep)
             })))),
@@ -794,8 +924,9 @@ mod decimal_tests {
     #[track_caller]
     fn test_invalid(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&decimal_schema(), &request_env()).expect("Malformed sym env.");
+        let mut h = HConsign::empty();
         assert_matches!(
-            compile(&dec_lit(str), &sym_env),
+            compile(&dec_lit(str), &sym_env, &mut h),
             Err(CompileError::ExtError(_)),
             "{}",
             msg
@@ -807,8 +938,9 @@ mod decimal_tests {
     }
 
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
+        let mut h = HConsign::empty();
         assert_eq!(
-            compile(&parse_expr(str), &sym_env()).unwrap(),
+            compile(&parse_expr(str), &sym_env(), &mut h).unwrap(),
             Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res)))),
             "{str}"
         )
@@ -835,8 +967,9 @@ mod decimal_tests {
         test_invalid("922337203685477.5808", "overflow");
         test_invalid("-922337203685477.5809", "overflow");
         let s = Expr::get_attr(Expr::var(Var::Context), "s".into());
+        let mut h = HConsign::empty();
         assert_matches!(
-            compile(&dec_expr(s), &sym_env()),
+            compile(&dec_expr(s), &sym_env(), &mut h),
             Err(CompileError::TypeError),
             "{}",
             "Error: applying decimal constructor to a non-literal"
@@ -958,8 +1091,9 @@ mod datetime_tests {
 
     #[track_caller]
     fn test_valid_datetime_constructor(str: &str, rep: i64) {
+        let mut h = HConsign::empty();
         assert_eq!(
-            compile(&datetime_lit(str), &datetime_sym_env()).unwrap(),
+            compile(&datetime_lit(str), &datetime_sym_env(), &mut h).unwrap(),
             Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Datetime {
                 dt: Datetime::from(rep)
             })))),
@@ -970,8 +1104,9 @@ mod datetime_tests {
     #[track_caller]
     fn test_invalid_datetime_constructor(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&datetime_schema(), &request_env()).expect("Malformed sym env.");
+        let mut h = HConsign::empty();
         assert_matches!(
-            compile(&datetime_lit(str), &sym_env),
+            compile(&datetime_lit(str), &sym_env, &mut h),
             Err(CompileError::ExtError(_)),
             "{}",
             msg
@@ -980,8 +1115,9 @@ mod datetime_tests {
 
     #[track_caller]
     fn test_valid_duration_constructor(str: &str, rep: i64) {
+        let mut h = HConsign::empty();
         assert_eq!(
-            compile(&duration_lit(str), &duration_sym_env()).unwrap(),
+            compile(&duration_lit(str), &duration_sym_env(), &mut h).unwrap(),
             Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Duration {
                 d: Duration::from(rep)
             })))),
@@ -992,8 +1128,9 @@ mod datetime_tests {
     #[track_caller]
     fn test_invalid_duration_constructor(str: &str, msg: &str) {
         let sym_env = SymEnv::new(&duration_schema(), &request_env()).expect("Malformed sym env.");
+        let mut h = HConsign::empty();
         assert_matches!(
-            compile(&duration_lit(str), &sym_env),
+            compile(&duration_lit(str), &sym_env, &mut h),
             Err(CompileError::ExtError(_)),
             "{}",
             msg
@@ -1161,8 +1298,9 @@ mod datetime_tests {
 
     // Test that the str compiles and simplifies to a Datetime literal matching rep
     fn test_valid_datetime_simpl_expr(str: &str, rep: i64) {
+        let mut h = HConsign::empty();
         assert_eq!(
-            compile(&parse_expr(str), &datetime_sym_env()).unwrap(),
+            compile(&parse_expr(str), &datetime_sym_env(), &mut h).unwrap(),
             Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Datetime {
                 dt: Datetime::from(rep)
             })))),
@@ -1172,8 +1310,9 @@ mod datetime_tests {
 
     // Test that the str compiles and simplifies to a Duration literal matching rep
     fn test_valid_duration_simpl_expr(str: &str, rep: i64) {
+        let mut h = HConsign::empty();
         assert_eq!(
-            compile(&parse_expr(str), &duration_sym_env()).unwrap(),
+            compile(&parse_expr(str), &duration_sym_env(), &mut h).unwrap(),
             Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Duration {
                 d: Duration::from(rep)
             })))),
@@ -1182,8 +1321,9 @@ mod datetime_tests {
     }
 
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
+        let mut h = HConsign::empty();
         assert_eq!(
-            compile(&parse_expr(str), &datetime_sym_env()).unwrap(),
+            compile(&parse_expr(str), &datetime_sym_env(), &mut h).unwrap(),
             Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res)))),
             "{str}"
         )

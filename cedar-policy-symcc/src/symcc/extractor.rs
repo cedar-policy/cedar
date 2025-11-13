@@ -37,7 +37,9 @@ use super::function::{Udf, UnaryFunction};
 use super::interpretation::Interpretation;
 use super::op::Uuf;
 use super::term::{Term, TermPrim};
+use super::term_type::TermTypeInner;
 use super::type_abbrevs::{EntityType, EntityUID};
+use hashconsing::HConsign;
 
 impl Uuf {
     /// Corresponds to `UUF.repairAncestors` in `Extractor.lean`.
@@ -46,6 +48,7 @@ impl Uuf {
         arg_ety: &EntityType,
         footprints: &BTreeSet<EntityUID>,
         interp: &Interpretation<'_>,
+        h: &mut HConsign<TermTypeInner>,
     ) -> Udf {
         // Get the current, potentially incorrect interpretation
         let udf = interp.interpret_fun(self);
@@ -59,7 +62,7 @@ impl Uuf {
                     // In the domain of this ancestor function
                     Some((
                         t.clone(),
-                        factory::app(UnaryFunction::Udf(Arc::new(udf.clone())), t),
+                        factory::app(UnaryFunction::Udf(Arc::new(udf.clone())), t, h),
                     ))
                 } else {
                     None
@@ -86,13 +89,16 @@ impl Interpretation<'_> {
     ///
     /// Corresponds to `Interpretation.repair` in `Extractor.lean`
     pub fn repair_as_counterexample<'b>(&self, exprs: impl Iterator<Item = &'b Expr>) -> Self {
+        let mut h = HConsign::empty();
         let mut footprint_uids = BTreeSet::new();
 
         // Interpret every term in the footprint to collect concrete EUIDs
         // occurring in them
-        for term in exprs.flat_map(|e| footprint(e, self.env).collect::<Vec<_>>()) {
-            term.interpret(self)
-                .get_all_entity_uids(&mut footprint_uids);
+        for e in exprs {
+            for term in footprint(e, self.env, &mut h) {
+                term.interpret(self, &mut h)
+                    .get_all_entity_uids(&mut footprint_uids);
+            }
         }
 
         let mut funs = self.funs.clone();
@@ -103,7 +109,7 @@ impl Interpretation<'_> {
                 if let UnaryFunction::Uuf(uuf) = fun {
                     funs.insert(
                         uuf.as_ref().clone(),
-                        uuf.repair_as_counterexample(ety, &footprint_uids, self),
+                        uuf.repair_as_counterexample(ety, &footprint_uids, self, &mut h),
                     );
                 }
             }
@@ -128,8 +134,10 @@ impl SymEnv {
         exprs: impl Iterator<Item = &'a Expr>,
         interp: &Interpretation<'_>,
     ) -> Result<Env, ConcretizeError> {
+        let mut h = HConsign::empty();
         let exprs = exprs.collect::<Vec<_>>();
         let interp = interp.repair_as_counterexample(exprs.iter().copied());
-        self.interpret(&interp).concretize(exprs.into_iter())
+        self.interpret(&interp, &mut h)
+            .concretize(exprs.into_iter(), &mut h)
     }
 }

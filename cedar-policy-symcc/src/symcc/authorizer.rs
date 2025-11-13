@@ -22,40 +22,52 @@ use crate::symcc::{
     factory::{and, eq, not, or, some_of},
     result::CompileError,
     term::Term,
+    term_type::TermTypeInner,
 };
+use hashconsing::{HConsign, HashConsign};
 
 pub fn satisfied_with_effect(
     effect: Effect,
     policy: &Policy,
     env: &SymEnv,
+    h: &mut HConsign<TermTypeInner>,
 ) -> Result<Option<Term>, CompileError> {
     if policy.effect() == effect {
-        Ok(Some(compile(&policy.condition(), env)?))
+        Ok(Some(compile(&policy.condition(), env, h)?))
     } else {
         Ok(None)
     }
 }
 
-pub fn any_satisfied(terms: impl Iterator<Item = Term>) -> Term {
-    let satisfied = |t: Term| eq(t, some_of(Term::from(true)));
-    terms.fold(Term::from(false), |acc, t| or(acc, satisfied(t)))
+pub fn any_satisfied(terms: impl Iterator<Item = Term>, h: &mut HConsign<TermTypeInner>) -> Term {
+    let mut result = Term::from(false);
+    for t in terms {
+        let satisfied = eq(t, some_of(Term::from(true)), h);
+        result = or(result, satisfied, h);
+    }
+    result
 }
 
 pub fn satisfied_policies(
     effect: Effect,
     policies: &PolicySet,
     env: &SymEnv,
+    h: &mut HConsign<TermTypeInner>,
 ) -> Result<Term, CompileError> {
     let terms = policies
         .policies()
-        .filter_map(|p| satisfied_with_effect(effect, p, env).transpose())
+        .filter_map(|p| satisfied_with_effect(effect, p, env, h).transpose())
         .collect::<Result<Vec<Term>, CompileError>>()?
         .into_iter();
-    Ok(any_satisfied(terms))
+    Ok(any_satisfied(terms, h))
 }
 
-pub fn is_authorized(policies: &PolicySet, env: &SymEnv) -> Result<Term, CompileError> {
-    let forbids = satisfied_policies(Effect::Forbid, policies, env)?;
-    let permits = satisfied_policies(Effect::Permit, policies, env)?;
-    Ok(and(permits, not(forbids)))
+pub fn is_authorized(
+    policies: &PolicySet,
+    env: &SymEnv,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Term, CompileError> {
+    let forbids = satisfied_policies(Effect::Forbid, policies, env, h)?;
+    let permits = satisfied_policies(Effect::Permit, policies, env, h)?;
+    Ok(and(permits, not(forbids, h), h))
 }

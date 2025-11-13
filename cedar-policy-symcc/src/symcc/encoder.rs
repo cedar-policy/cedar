@@ -74,9 +74,10 @@ use super::{
     op::{ExtOp, Op, Uuf},
     smtlib_script::SmtLibScript,
     term::{Term, TermPrim, TermVar},
-    term_type::TermType,
+    term_type::{TermType, TermTypeInner},
     type_abbrevs::*,
 };
+use hashconsing::HConsign;
 
 use super::extension_types::ipaddr::{V4_WIDTH, V6_WIDTH};
 
@@ -266,25 +267,25 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         match self.types.get(ty) {
             Some(enc) => Ok(enc.clone()),
             None => {
-                let enc = match ty {
-                    TermType::Bool => {
+                let enc = match ty.inner.get() {
+                    TermTypeInner::Bool => {
                         return Ok("Bool".to_string());
                     }
-                    TermType::String => {
+                    TermTypeInner::String => {
                         return Ok("String".to_string());
                     }
-                    TermType::Bitvec { n } => {
+                    TermTypeInner::Bitvec { n } => {
                         return Ok(format!("(_ BitVec {n})"));
                     }
-                    TermType::Option { ref ty } => {
-                        return Ok(format!("(Option {})", self.encode_type(ty).await?));
+                    TermTypeInner::Option { ref ty } => {
+                        return Ok(format!("(Option {})", self.encode_type(ty.as_ref()).await?));
                     }
-                    TermType::Set { ty } => {
-                        return Ok(format!("(Set {})", self.encode_type(ty).await?));
+                    TermTypeInner::Set { ty } => {
+                        return Ok(format!("(Set {})", self.encode_type(ty.as_ref()).await?));
                     }
-                    TermType::Entity { ety } => self.declare_entity_type(ety).await?,
-                    TermType::Ext { xty } => self.declare_ext_type(xty).await?.into(),
-                    TermType::Record { rty } => {
+                    TermTypeInner::Entity { ref ety } => self.declare_entity_type(ety).await?,
+                    TermTypeInner::Ext { ref xty } => self.declare_ext_type(xty).await?.into(),
+                    TermTypeInner::Record { rty } => {
                         let mut record_type = vec![];
                         for (k, v) in rty.iter() {
                             record_type.push((k.clone(), self.encode_type(v).await?));
@@ -385,8 +386,8 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     fn index_of_attr(a: &Attr, t_ty: &TermType) -> Result<usize> {
         // Getting the index of a key in `BTreeMap` should be ok
         // (it wouldn't be for `HashMap`)
-        match t_ty {
-            TermType::Record { rty } => match rty.keys().position(|k| k == a) {
+        match t_ty.inner.get() {
+            TermTypeInner::Record { rty } => match rty.keys().position(|k| k == a) {
                 Some(ind) => Ok(ind),
                 None => Err(EncodeError::RecordMissingAttr(a.clone())),
             },
@@ -402,12 +403,15 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         ty: &TermType,
     ) -> Result<String> {
         let r_id = match self.types.get(ty) {
-            Some(t) => t,
+            Some(t) => t.clone(),
             None => return Err(EncodeError::MissingTypeEncoding(ty.clone())),
         };
         let a_id = Self::index_of_attr(a, ty)?;
-        self.define_term(ty_enc, &format!("({} {t_enc})", record_attr_id(r_id, a_id)))
-            .await
+        self.define_term(
+            ty_enc,
+            &format!("({} {t_enc})", record_attr_id(&r_id, a_id)),
+        )
+        .await
     }
 
     pub async fn define_app<'b>(
@@ -416,12 +420,13 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         op: &Op,
         t_encs: impl IntoIterator<Item = String>,
         ts: impl IntoIterator<Item = &'b Term>,
+        h: &mut HConsign<TermTypeInner>,
     ) -> Result<String> {
         let args = t_encs.into_iter().join(" ");
         match op {
             Op::RecordGet(a) => {
                 let ty = match ts.into_iter().next() {
-                    Some(t) => t.type_of(),
+                    Some(t) => t.type_of(h),
                     None => return Err(EncodeError::MalformedRecordGet),
                 };
                 self.define_record_get(ty_enc, a, &args, &ty).await
@@ -450,11 +455,16 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     }
 
     #[async_recursion]
-    pub async fn encode_term(&mut self, t: &Term) -> Result<String> {
+    pub async fn encode_term(
+        &mut self,
+        t: &Term,
+        h: &mut HConsign<TermTypeInner>,
+    ) -> Result<String> {
         if let Some(enc) = self.terms.get(t) {
             return Ok(enc.clone());
         }
-        let ty_enc = self.encode_type(&t.type_of()).await?;
+        let ty = t.type_of(h);
+        let ty_enc = self.encode_type(&ty).await?;
         let enc = match &t {
             Term::Var(v) => self.declare_var(v, &ty_enc).await?,
             Term::Prim(p) => match p {
@@ -485,14 +495,14 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     .await?
             }
             Term::Some(t1) => {
-                let encoded_term = self.encode_term(t1).await?;
+                let encoded_term = self.encode_term(t1, h).await?;
                 self.define_term(&ty_enc, &format!("(some {encoded_term})"))
                     .await?
             }
             Term::Set { elts, .. } => {
                 let mut encoded_terms = vec![];
                 for elt in elts.iter() {
-                    encoded_terms.push(self.encode_term(elt).await?);
+                    encoded_terms.push(self.encode_term(elt, h).await?);
                 }
                 self.define_set(&ty_enc, encoded_terms.iter().map(|s| s.as_str()))
                     .await?
@@ -500,7 +510,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             Term::Record(ats) => {
                 let mut encoded_terms = vec![];
                 for t in ats.values() {
-                    encoded_terms.push(self.encode_term(t).await?);
+                    encoded_terms.push(self.encode_term(t, h).await?);
                 }
                 self.define_record(&ty_enc, encoded_terms.iter().map(|s| s.as_str()))
                     .await?
@@ -508,8 +518,8 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             Term::App {
                 op: Op::Bvnego,
                 args,
-                ret_ty: TermType::Bool,
-            } if args.len() == 1 => {
+                ret_ty,
+            } if args.len() == 1 && matches!(ret_ty.inner.get(), TermTypeInner::Bool) => {
                 // PANIC SAFETY
                 #[allow(
                     clippy::indexing_slicing,
@@ -521,16 +531,18 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 // introduced in CVC5 1.1.2)
                 // this rewrite is done in the encoder and is thus trusted; see notes here in
                 // the Lean
-                match t.type_of() {
-                    TermType::Bitvec { n } => {
+                let t_ty = t.type_of(h);
+                match t_ty.inner.get() {
+                    TermTypeInner::Bitvec { n } => {
                         // more fancy and possibly more optimized, but hard to prove termination in Lean:
                         // self.encode_term(&factory::eq(t, &BitVec::int_min(n))).await?
-                        let t_enc = self.encode_term(t).await?;
+                        let t_enc = self.encode_term(t, h).await?;
                         self.define_app(
                             &ty_enc,
                             &Op::Eq,
-                            [t_enc, encode_bitvec(&BitVec::int_min(n)?)],
-                            [t, &BitVec::int_min(n)?.into()],
+                            [t_enc, encode_bitvec(&BitVec::int_min(*n)?)],
+                            [t, &BitVec::int_min(*n)?.into()],
+                            h,
                         )
                         .await?
                     }
@@ -545,9 +557,9 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             Term::App { op, args, .. } => {
                 let mut encoded_terms = vec![];
                 for arg in args.iter() {
-                    encoded_terms.push(self.encode_term(arg).await?);
+                    encoded_terms.push(self.encode_term(arg, h).await?);
                 }
-                self.define_app(&ty_enc, op, encoded_terms, args.iter())
+                self.define_app(&ty_enc, op, encoded_terms, args.iter(), h)
                     .await?
             }
         };
@@ -565,7 +577,11 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     /// construct an `Encoder` (`EncoderState` in Lean), and then does the encoding.
     /// Here in Rust, we have this as a method on `Encoder`, so the caller first
     /// constructs an `Encoder` themselves with the `SymEnv`, then calls this.
-    pub async fn encode(&mut self, ts: impl IntoIterator<Item = &Term>) -> Result<()> {
+    pub async fn encode(
+        &mut self,
+        ts: impl IntoIterator<Item = &Term>,
+        h: &mut HConsign<TermTypeInner>,
+    ) -> Result<()> {
         self.script
             .declare_datatype(
                 "Option",
@@ -575,7 +591,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             .await?;
         let mut ids: Vec<_> = Vec::new();
         for t in ts {
-            let id = self.encode_term(t).await?;
+            let id = self.encode_term(t, h).await?;
             ids.push(id);
         }
         for id in ids {
@@ -748,16 +764,20 @@ mod unit_tests {
 
     use crate::symcc::env::{SymEntities, SymEnv, SymRequest};
     use cedar_policy::EntityTypeName;
+    use hashconsing::{HConsign, HashConsign};
 
     use super::Encoder;
-    use crate::symcc::term_type::TermType;
+    use crate::symcc::term_type::{TermType, TermTypeInner};
     use std::collections::BTreeMap;
 
     #[tokio::test]
     async fn declare_type() {
+        let mut h = HConsign::empty();
+        let h_rc = std::rc::Rc::new(std::cell::RefCell::new(HConsign::<TermTypeInner>::empty()));
         let symenv = SymEnv {
-            request: SymRequest::empty_sym_req(),
+            request: SymRequest::empty_sym_req(&mut h),
             entities: SymEntities(BTreeMap::new()),
+            h: h_rc,
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         encoder
@@ -768,9 +788,12 @@ mod unit_tests {
 
     #[tokio::test]
     async fn declare_entity_type() {
+        let mut h = HConsign::empty();
+        let h_rc = std::rc::Rc::new(std::cell::RefCell::new(HConsign::<TermTypeInner>::empty()));
         let symenv = SymEnv {
-            request: SymRequest::empty_sym_req(),
+            request: SymRequest::empty_sym_req(&mut h),
             entities: SymEntities(BTreeMap::new()),
+            h: h_rc,
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         let ety = cedar_policy::EntityTypeName::from_str("User").unwrap();
@@ -781,9 +804,12 @@ mod unit_tests {
 
     #[tokio::test]
     async fn declare_empty_record_type() {
+        let mut h = HConsign::empty();
+        let h_rc = std::rc::Rc::new(std::cell::RefCell::new(HConsign::<TermTypeInner>::empty()));
         let symenv = SymEnv {
-            request: SymRequest::empty_sym_req(),
+            request: SymRequest::empty_sym_req(&mut h),
             entities: SymEntities(BTreeMap::new()),
+            h: h_rc,
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         encoder.declare_record_type(vec![]).await.unwrap();
@@ -791,9 +817,12 @@ mod unit_tests {
 
     #[tokio::test]
     async fn declare_record_type() {
+        let mut h = HConsign::empty();
+        let h_rc = std::rc::Rc::new(std::cell::RefCell::new(HConsign::<TermTypeInner>::empty()));
         let symenv = SymEnv {
-            request: SymRequest::empty_sym_req(),
+            request: SymRequest::empty_sym_req(&mut h),
             entities: SymEntities(BTreeMap::new()),
+            h: h_rc,
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         encoder
@@ -804,35 +833,53 @@ mod unit_tests {
 
     #[tokio::test]
     async fn encode_bool_type() {
+        let mut h = HConsign::empty();
+        let h_rc = std::rc::Rc::new(std::cell::RefCell::new(HConsign::<TermTypeInner>::empty()));
         let symenv = SymEnv {
-            request: SymRequest::empty_sym_req(),
+            request: SymRequest::empty_sym_req(&mut h),
             entities: SymEntities(BTreeMap::new()),
+            h: h_rc,
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
-        encoder.encode_type(&TermType::Bool).await.unwrap();
+        let bool_ty = TermType {
+            inner: HashConsign::mk(&mut h, TermTypeInner::Bool),
+        };
+        encoder.encode_type(&bool_ty).await.unwrap();
     }
 
     #[tokio::test]
     async fn encode_string_type() {
+        let mut h = HConsign::empty();
+        let h_rc = std::rc::Rc::new(std::cell::RefCell::new(HConsign::<TermTypeInner>::empty()));
         let symenv = SymEnv {
-            request: SymRequest::empty_sym_req(),
+            request: SymRequest::empty_sym_req(&mut h),
             entities: SymEntities(BTreeMap::new()),
+            h: h_rc,
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
-        encoder.encode_type(&TermType::String).await.unwrap();
+        let string_ty = TermType {
+            inner: HashConsign::mk(&mut h, TermTypeInner::String),
+        };
+        encoder.encode_type(&string_ty).await.unwrap();
     }
 
     #[tokio::test]
     async fn encode_uuf() {
+        let mut h = HConsign::empty();
+        let h_rc = std::rc::Rc::new(std::cell::RefCell::new(HConsign::<TermTypeInner>::empty()));
         let symenv = SymEnv {
-            request: SymRequest::empty_sym_req(),
+            request: SymRequest::empty_sym_req(&mut h),
             entities: SymEntities(BTreeMap::new()),
+            h: h_rc,
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
+        let bool_ty = TermType {
+            inner: HashConsign::mk(&mut h, TermTypeInner::Bool),
+        };
         let my_uuf = crate::symcc::op::Uuf {
             id: "my_fun".into(),
-            arg: TermType::Bool,
-            out: TermType::Bool,
+            arg: bool_ty.clone(),
+            out: bool_ty,
         };
         encoder.encode_uuf(&my_uuf).await.unwrap();
     }
@@ -840,9 +887,12 @@ mod unit_tests {
     #[tokio::test]
     async fn define_entity() {
         use cedar_policy::EntityUid;
+        let mut h = HConsign::empty();
+        let h_rc = std::rc::Rc::new(std::cell::RefCell::new(HConsign::<TermTypeInner>::empty()));
         let symenv = SymEnv {
-            request: SymRequest::empty_sym_req(),
+            request: SymRequest::empty_sym_req(&mut h),
             entities: SymEntities(BTreeMap::new()),
+            h: std::rc::Rc::new(std::cell::RefCell::new(hashconsing::HConsign::empty())),
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         let entity_type_name = EntityTypeName::from_str("User").unwrap();
@@ -850,12 +900,15 @@ mod unit_tests {
             entity_type_name.clone(),
             cedar_policy::EntityId::from_str("alice").unwrap(),
         );
-        let entity_ty_enc = encoder
-            .encode_type(&TermType::Entity {
-                ety: entity_type_name,
-            })
-            .await
-            .unwrap();
+        let entity_ty = TermType {
+            inner: HashConsign::mk(
+                &mut h,
+                TermTypeInner::Entity {
+                    ety: entity_type_name,
+                },
+            ),
+        };
+        let entity_ty_enc = encoder.encode_type(&entity_ty).await.unwrap();
         encoder
             .define_entity(&entity_ty_enc, &entity)
             .await

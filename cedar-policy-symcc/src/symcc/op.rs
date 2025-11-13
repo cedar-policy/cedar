@@ -20,8 +20,9 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use super::term_type::TermType;
+use super::term_type::{TermType, TermTypeInner};
 use super::type_abbrevs::*;
+use hashconsing::{HConsign, HashConsign};
 
 /// Uninterpreted unary function.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
@@ -124,69 +125,62 @@ impl ExtOp {
     /// Returns the output type of an extension operator when applied
     /// to terms of the given types.
     #[allow(clippy::needless_pass_by_value)]
-    pub fn type_of(self, l: Vec<TermType>) -> Option<TermType> {
+    pub fn type_of(self, l: Vec<TermType>, h: &mut HConsign<TermTypeInner>) -> Option<TermType> {
+        let ext_decimal = TermType {
+            inner: h.mk(TermTypeInner::Ext {
+                xty: ExtType::Decimal,
+            }),
+        };
+        let ext_ipaddr = TermType {
+            inner: h.mk(TermTypeInner::Ext {
+                xty: ExtType::IpAddr,
+            }),
+        };
+        let ext_datetime = TermType {
+            inner: h.mk(TermTypeInner::Ext {
+                xty: ExtType::DateTime,
+            }),
+        };
+        let ext_duration = TermType {
+            inner: h.mk(TermTypeInner::Ext {
+                xty: ExtType::Duration,
+            }),
+        };
+        let bv64 = TermType {
+            inner: h.mk(TermTypeInner::Bitvec { n: 64 }),
+        };
+
         match self {
-            ExtOp::DecimalVal
-                if l == vec![TermType::Ext {
-                    xty: ExtType::Decimal,
-                }] =>
-            {
-                Some(TermType::Bitvec { n: 64 })
-            }
-            ExtOp::IpaddrIsV4
-                if l == vec![TermType::Ext {
-                    xty: ExtType::IpAddr,
-                }] =>
-            {
-                Some(TermType::Bool)
-            }
-            ExtOp::IpaddrAddrV4
-                if l == vec![TermType::Ext {
-                    xty: ExtType::IpAddr,
-                }] =>
-            {
-                Some(TermType::Bitvec { n: 32 })
-            }
-            ExtOp::IpaddrPrefixV4
-                if l == vec![TermType::Ext {
-                    xty: ExtType::IpAddr,
-                }] =>
-            {
-                Some(TermType::Option {
-                    ty: Arc::new(TermType::Bitvec { n: 5 }),
+            ExtOp::DecimalVal if l == vec![ext_decimal] => Some(TermType {
+                inner: h.mk(TermTypeInner::Bitvec { n: 64 }),
+            }),
+            ExtOp::IpaddrIsV4 if l == vec![ext_ipaddr.clone()] => Some(TermType {
+                inner: h.mk(TermTypeInner::Bool),
+            }),
+            ExtOp::IpaddrAddrV4 if l == vec![ext_ipaddr.clone()] => Some(TermType {
+                inner: h.mk(TermTypeInner::Bitvec { n: 32 }),
+            }),
+            ExtOp::IpaddrPrefixV4 if l == vec![ext_ipaddr.clone()] => {
+                let inner_ty = TermType {
+                    inner: h.mk(TermTypeInner::Bitvec { n: 5 }),
+                };
+                Some(TermType {
+                    inner: h.mk(TermTypeInner::Option {
+                        ty: Arc::new(inner_ty),
+                    }),
                 })
             }
-            ExtOp::IpaddrAddrV6
-                if l == vec![TermType::Ext {
-                    xty: ExtType::IpAddr,
-                }] =>
-            {
-                Some(TermType::Bitvec { n: 128 })
-            }
-            ExtOp::DatetimeVal
-                if l == vec![TermType::Ext {
-                    xty: ExtType::DateTime,
-                }] =>
-            {
-                Some(TermType::Bitvec { n: 64 })
-            }
-            ExtOp::DatetimeOfBitVec if l == vec![TermType::Bitvec { n: 64 }] => {
-                Some(TermType::Ext {
-                    xty: ExtType::DateTime,
-                })
-            }
-            ExtOp::DurationVal
-                if l == vec![TermType::Ext {
-                    xty: ExtType::Duration,
-                }] =>
-            {
-                Some(TermType::Bitvec { n: 64 })
-            }
-            ExtOp::DurationOfBitVec if l == vec![TermType::Bitvec { n: 64 }] => {
-                Some(TermType::Ext {
-                    xty: ExtType::Duration,
-                })
-            }
+            ExtOp::IpaddrAddrV6 if l == vec![ext_ipaddr] => Some(TermType {
+                inner: h.mk(TermTypeInner::Bitvec { n: 128 }),
+            }),
+            ExtOp::DatetimeVal if l == vec![ext_datetime.clone()] => Some(TermType {
+                inner: h.mk(TermTypeInner::Bitvec { n: 64 }),
+            }),
+            ExtOp::DatetimeOfBitVec if l == vec![bv64.clone()] => Some(ext_datetime),
+            ExtOp::DurationVal if l == vec![ext_duration.clone()] => Some(TermType {
+                inner: h.mk(TermTypeInner::Bitvec { n: 64 }),
+            }),
+            ExtOp::DurationOfBitVec if l == vec![bv64] => Some(ext_duration),
             _ => None,
         }
     }
@@ -196,12 +190,15 @@ impl Op {
     /// Returns the output type of an operator when applied
     /// to terms of the given types.
     #[allow(clippy::cognitive_complexity)]
-    pub fn type_of(self, l: Vec<TermType>) -> Option<TermType> {
-        use TermType::{Bitvec, Bool};
+    pub fn type_of(self, l: Vec<TermType>, h: &mut HConsign<TermTypeInner>) -> Option<TermType> {
+        use super::term_type::TermTypeInner::{Bitvec, Bool};
+        let bool_ty = TermType {
+            inner: h.mk(TermTypeInner::Bool),
+        };
         match self {
-            Op::Not if l == vec![TermType::Bool] => Some(TermType::Bool),
-            Op::And if l == vec![TermType::Bool, TermType::Bool] => Some(TermType::Bool),
-            Op::Or if l == vec![TermType::Bool, TermType::Bool] => Some(TermType::Bool),
+            Op::Not if l == vec![bool_ty.clone()] => Some(bool_ty.clone()),
+            Op::And if l == vec![bool_ty.clone(), bool_ty.clone()] => Some(bool_ty.clone()),
+            Op::Or if l == vec![bool_ty.clone(), bool_ty.clone()] => Some(bool_ty.clone()),
             // PANIC SAFETY
             #[allow(
                 clippy::indexing_slicing,
@@ -209,7 +206,7 @@ impl Op {
             )]
             Op::Eq if l.len() == 2 => {
                 if l[0] == l[1] {
-                    Some(TermType::Bool)
+                    Some(bool_ty.clone())
                 } else {
                     None
                 }
@@ -219,7 +216,7 @@ impl Op {
                 clippy::indexing_slicing,
                 reason = "List of length 3 should not error when indexed by 0, 1, or 2"
             )]
-            Op::Ite if l.len() == 3 && l[0] == Bool => {
+            Op::Ite if l.len() == 3 && l[0].inner.get() == &Bool => {
                 if l[1] == l[2] {
                     Some(l[1].clone())
                 } else {
@@ -243,8 +240,10 @@ impl Op {
                 clippy::indexing_slicing,
                 reason = "List of length 1 should not error when indexed by 0"
             )]
-            Op::Bvneg if l.len() == 1 => match l[0] {
-                Bitvec { n } => Some(Bitvec { n }),
+            Op::Bvneg if l.len() == 1 => match l[0].inner.get() {
+                Bitvec { n } => Some(TermType {
+                    inner: h.mk(TermTypeInner::Bitvec { n: *n }),
+                }),
                 _ => None,
             },
             // PANIC SAFETY
@@ -264,8 +263,10 @@ impl Op {
             | Op::Bvumod
                 if l.len() == 2 =>
             {
-                match (l[0].clone(), l[1].clone()) {
-                    (Bitvec { n }, Bitvec { n: m }) if n == m => Some(Bitvec { n }),
+                match (l[0].inner.get(), l[1].inner.get()) {
+                    (Bitvec { n }, Bitvec { n: m }) if n == m => Some(TermType {
+                        inner: h.mk(TermTypeInner::Bitvec { n: *n }),
+                    }),
                     _ => None,
                 }
             }
@@ -274,7 +275,9 @@ impl Op {
                 clippy::indexing_slicing,
                 reason = "List of length 1 should not error when indexed by 0"
             )]
-            Op::Bvnego if l.len() == 1 && matches!(l[0].clone(), Bitvec { .. }) => Some(Bool),
+            Op::Bvnego if l.len() == 1 && matches!(l[0].inner.get(), Bitvec { .. }) => {
+                Some(bool_ty.clone())
+            }
             // PANIC SAFETY
             #[allow(
                 clippy::indexing_slicing,
@@ -289,8 +292,8 @@ impl Op {
             | Op::Bvule
                 if l.len() == 2 =>
             {
-                match (l[0].clone(), l[1].clone()) {
-                    (Bitvec { n }, Bitvec { n: m }) if n == m => Some(Bool),
+                match (l[0].inner.get(), l[1].inner.get()) {
+                    (Bitvec { n }, Bitvec { n: m }) if n == m => Some(bool_ty.clone()),
                     _ => None,
                 }
             }
@@ -299,8 +302,10 @@ impl Op {
                 clippy::indexing_slicing,
                 reason = "List of length 1 should not error when indexed by 0"
             )]
-            Op::ZeroExtend(m) if l.len() == 1 => match l[0].clone() {
-                Bitvec { n } => Some(Bitvec { n: (n + m) }),
+            Op::ZeroExtend(m) if l.len() == 1 => match l[0].inner.get() {
+                Bitvec { n } => Some(TermType {
+                    inner: h.mk(TermTypeInner::Bitvec { n: (n + m) }),
+                }),
                 _ => None,
             },
             // PANIC SAFETY
@@ -308,8 +313,8 @@ impl Op {
                 clippy::indexing_slicing,
                 reason = "List of length 2 should not error when indexed by 0 or 1"
             )]
-            Op::SetMember if l.len() == 2 => match (l[0].clone(), l[1].clone()) {
-                (ty1, TermType::Set { ty: ty2 }) if ty1 == *ty2 => Some(Bool),
+            Op::SetMember if l.len() == 2 => match (l[0].clone(), l[1].inner.get()) {
+                (ty1, TermTypeInner::Set { ty: ty2 }) if ty1 == **ty2 => Some(bool_ty.clone()),
                 (_, _) => None,
             },
             // PANIC SAFETY
@@ -317,19 +322,23 @@ impl Op {
                 clippy::indexing_slicing,
                 reason = "List of length 2 should not error when indexed by 0 or 1"
             )]
-            Op::SetSubset | Op::SetInter if l.len() == 2 => match (l[0].clone(), l[1].clone()) {
-                (TermType::Set { ty: ty1 }, TermType::Set { ty: ty2 }) if *ty1 == *ty2 => {
-                    Some(Bool)
+            Op::SetSubset | Op::SetInter if l.len() == 2 => {
+                match (l[0].inner.get(), l[1].inner.get()) {
+                    (TermTypeInner::Set { ty: ty1 }, TermTypeInner::Set { ty: ty2 })
+                        if ty1 == ty2 =>
+                    {
+                        Some(bool_ty.clone())
+                    }
+                    (_, _) => None,
                 }
-                (_, _) => None,
-            },
+            }
             // PANIC SAFETY
             #[allow(
                 clippy::unwrap_used,
                 reason = "List of length 1 should not error on first call to next()"
             )]
-            Op::OptionGet if l.len() == 1 => match l.into_iter().next().unwrap() {
-                TermType::Option { ty } => Some(Arc::unwrap_or_clone(ty)),
+            Op::OptionGet if l.len() == 1 => match l.into_iter().next().unwrap().inner.get() {
+                TermTypeInner::Option { ty } => Some((**ty).clone()),
                 _ => None,
             },
             // PANIC SAFETY
@@ -337,12 +346,18 @@ impl Op {
                 clippy::unwrap_used,
                 reason = "List of length 1 should not error on first call to next()"
             )]
-            Op::RecordGet(a) if l.len() == 1 => match l.into_iter().next().unwrap() {
-                TermType::Record { rty } => rty.get(&a).cloned(),
+            Op::RecordGet(a) if l.len() == 1 => match l.into_iter().next().unwrap().inner.get() {
+                TermTypeInner::Record { rty } => rty.get(&a).cloned(),
                 _ => None,
             },
-            Op::StringLike(_) if l == vec![TermType::String] => Some(Bool),
-            Op::Ext(xop) => xop.type_of(l),
+            Op::StringLike(_)
+                if l == vec![TermType {
+                    inner: h.mk(TermTypeInner::String),
+                }] =>
+            {
+                Some(bool_ty)
+            }
+            Op::Ext(xop) => xop.type_of(l, h),
             _ => None,
         }
     }

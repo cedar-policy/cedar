@@ -32,8 +32,9 @@ use smol_str::SmolStr;
 use super::bitvec::BitVec;
 use super::ext::Ext;
 use super::op::Op;
-use super::term_type::TermType;
+use super::term_type::{TermType, TermTypeInner};
 use super::type_abbrevs::*;
+use hashconsing::{HConsign, HashConsign};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -141,25 +142,41 @@ impl From<TermVar> for Term {
 
 impl TermPrim {
     /// Returns the type of the primitive term.
-    pub fn type_of(&self) -> TermType {
+    pub fn type_of(&self, h: &mut HConsign<TermTypeInner>) -> TermType {
         match self {
-            TermPrim::Bool(_) => TermType::Bool,
-            TermPrim::Bitvec(v) => TermType::Bitvec { n: v.width() },
-            TermPrim::String(_) => TermType::String,
-            TermPrim::Entity(e) => TermType::Entity {
-                ety: e.type_name().clone(),
+            TermPrim::Bool(_) => TermType {
+                inner: h.mk(TermTypeInner::Bool),
             },
-            TermPrim::Ext(Ext::Decimal { .. }) => TermType::Ext {
-                xty: ExtType::Decimal,
+            TermPrim::Bitvec(v) => TermType {
+                inner: h.mk(TermTypeInner::Bitvec { n: v.width() }),
             },
-            TermPrim::Ext(Ext::Ipaddr { .. }) => TermType::Ext {
-                xty: ExtType::IpAddr,
+            TermPrim::String(_) => TermType {
+                inner: h.mk(TermTypeInner::String),
             },
-            TermPrim::Ext(Ext::Duration { .. }) => TermType::Ext {
-                xty: ExtType::Duration,
+            TermPrim::Entity(e) => TermType {
+                inner: h.mk(TermTypeInner::Entity {
+                    ety: e.type_name().clone(),
+                }),
             },
-            TermPrim::Ext(Ext::Datetime { .. }) => TermType::Ext {
-                xty: ExtType::DateTime,
+            TermPrim::Ext(Ext::Decimal { .. }) => TermType {
+                inner: h.mk(TermTypeInner::Ext {
+                    xty: ExtType::Decimal,
+                }),
+            },
+            TermPrim::Ext(Ext::Ipaddr { .. }) => TermType {
+                inner: h.mk(TermTypeInner::Ext {
+                    xty: ExtType::IpAddr,
+                }),
+            },
+            TermPrim::Ext(Ext::Duration { .. }) => TermType {
+                inner: h.mk(TermTypeInner::Ext {
+                    xty: ExtType::Duration,
+                }),
+            },
+            TermPrim::Ext(Ext::Datetime { .. }) => TermType {
+                inner: h.mk(TermTypeInner::Ext {
+                    xty: ExtType::DateTime,
+                }),
             },
         }
     }
@@ -167,22 +184,33 @@ impl TermPrim {
 
 impl Term {
     /// Computes the type of a term.
-    pub fn type_of(&self) -> TermType {
+    pub fn type_of(&self, h: &mut HConsign<TermTypeInner>) -> TermType {
         match self {
-            Term::Prim(l) => l.type_of(),
+            Term::Prim(l) => l.type_of(h),
             Term::Var(v) => v.ty.clone(),
-            Term::None(ty) => TermType::Option {
-                ty: Arc::new(ty.clone()),
+            Term::None(ty) => TermType {
+                inner: h.mk(TermTypeInner::Option {
+                    ty: Arc::new(ty.clone()),
+                }),
             },
-            Term::Some(t) => TermType::Option {
-                ty: Arc::new(t.type_of()),
-            },
-            Term::Set { elts_ty, .. } => TermType::Set {
-                ty: Arc::new(elts_ty.clone()),
+            Term::Some(t) => {
+                let inner_ty = t.type_of(h);
+                TermType {
+                    inner: h.mk(TermTypeInner::Option {
+                        ty: Arc::new(inner_ty),
+                    }),
+                }
+            }
+            Term::Set { elts_ty, .. } => TermType {
+                inner: h.mk(TermTypeInner::Set {
+                    ty: Arc::new(elts_ty.clone()),
+                }),
             },
             Term::Record(m) => {
-                let rty = Arc::new(m.iter().map(|(k, v)| (k.clone(), v.type_of())).collect());
-                TermType::Record { rty }
+                let rty = m.iter().map(|(k, v)| (k.clone(), v.type_of(h))).collect();
+                TermType {
+                    inner: h.mk(TermTypeInner::Record { rty: Arc::new(rty) }),
+                }
             }
             Term::App { ret_ty, .. } => ret_ty.clone(),
         }

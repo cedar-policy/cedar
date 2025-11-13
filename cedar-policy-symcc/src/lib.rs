@@ -24,6 +24,7 @@ use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
 use std::fmt;
 
 use err::{Error, Result};
+use hashconsing::HConsign;
 use solver::Solver;
 use symcc::Environment;
 use symcc::SymCompiler;
@@ -40,17 +41,22 @@ pub use symcc::op;
 pub use symcc::solver;
 pub use symcc::term;
 pub use symcc::term_type;
+
 pub use symcc::type_abbrevs;
 pub use symcc::verifier::Asserts;
 pub use symcc::Interpretation;
 pub use symcc::{Env, SmtLibScript, SymEnv};
+use term_type::TermTypeInner;
 
 impl SymEnv {
     /// Constructs a new [`SymEnv`] from the given [`Schema`] and [`RequestEnv`].
     pub fn new(schema: &Schema, req_env: &RequestEnv) -> Result<Self> {
+        use hashconsing::HConsign;
+        use symcc::term_type::TermTypeInner;
         let env = Environment::from_request_env(req_env, schema.as_ref())
             .ok_or_else(|| Error::ActionNotInSchema(req_env.action().to_string()))?;
-        Ok(Self::of_env(&env)?)
+        let mut h = HConsign::empty();
+        Ok(Self::of_env(&env, &mut h)?)
     }
 }
 
@@ -401,7 +407,7 @@ pub fn compile_never_errors<'a>(
 ) -> Result<WellFormedAsserts<'a>> {
     Ok(WellFormedAsserts::from_asserts_unchecked(
         symenv,
-        verify_never_errors(policy.policy(), symenv)?,
+        verify_never_errors(policy.policy(), symenv, &mut symenv.h.borrow_mut())?,
         std::iter::once(policy.policy()),
     ))
 }
@@ -419,7 +425,12 @@ pub fn compile_implies<'a>(
 ) -> Result<WellFormedAsserts<'a>> {
     Ok(WellFormedAsserts::from_asserts_unchecked(
         symenv,
-        verify_implies(pset1.policy_set(), pset2.policy_set(), symenv)?,
+        verify_implies(
+            pset1.policy_set(),
+            pset2.policy_set(),
+            symenv,
+            &mut symenv.h.borrow_mut(),
+        )?,
         pset1
             .policy_set()
             .policies()
@@ -439,7 +450,7 @@ pub fn compile_always_allows<'a>(
 ) -> Result<WellFormedAsserts<'a>> {
     Ok(WellFormedAsserts::from_asserts_unchecked(
         symenv,
-        verify_always_allows(pset.policy_set(), symenv)?,
+        verify_always_allows(pset.policy_set(), symenv, &mut symenv.h.borrow_mut())?,
         pset.policy_set().policies(),
     ))
 }
@@ -456,7 +467,7 @@ pub fn compile_always_denies<'a>(
 ) -> Result<WellFormedAsserts<'a>> {
     Ok(WellFormedAsserts::from_asserts_unchecked(
         symenv,
-        verify_always_denies(pset.policy_set(), symenv)?,
+        verify_always_denies(pset.policy_set(), symenv, &mut symenv.h.borrow_mut())?,
         pset.policy_set().policies(),
     ))
 }
@@ -474,7 +485,12 @@ pub fn compile_equivalent<'a>(
 ) -> Result<WellFormedAsserts<'a>> {
     Ok(WellFormedAsserts::from_asserts_unchecked(
         symenv,
-        verify_equivalent(pset1.policy_set(), pset2.policy_set(), symenv)?,
+        verify_equivalent(
+            pset1.policy_set(),
+            pset2.policy_set(),
+            symenv,
+            &mut symenv.h.borrow_mut(),
+        )?,
         pset1
             .policy_set()
             .policies()
@@ -495,7 +511,12 @@ pub fn compile_disjoint<'a>(
 ) -> Result<WellFormedAsserts<'a>> {
     Ok(WellFormedAsserts::from_asserts_unchecked(
         symenv,
-        verify_disjoint(pset1.policy_set(), pset2.policy_set(), symenv)?,
+        verify_disjoint(
+            pset1.policy_set(),
+            pset2.policy_set(),
+            symenv,
+            &mut symenv.h.borrow_mut(),
+        )?,
         pset1
             .policy_set()
             .policies()

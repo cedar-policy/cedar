@@ -40,7 +40,9 @@ use super::env::{SymEntities, SymEntityData, SymRequest};
 use super::ext::ExtError;
 use super::function::{Udf, UnaryFunction};
 use super::term::{Term, TermPrim};
+use super::term_type::TermTypeInner;
 use super::SymEnv;
+use hashconsing::HConsign;
 
 /// Errors that happen during concretization, i.e., the process
 /// of converting literal [`Term`]s back to representatinos in
@@ -301,23 +303,24 @@ impl UnaryFunction {
 
 impl SymEntityData {
     /// Concretizes a particular entity.
-    pub fn concretize(&self, euid: &EntityUid) -> Result<Entity, ConcretizeError> {
+    pub fn concretize(
+        &self,
+        euid: &EntityUid,
+        h: &mut HConsign<TermTypeInner>,
+    ) -> Result<Entity, ConcretizeError> {
         let tuid = Term::Prim(TermPrim::Entity(euid.clone()));
 
-        let concrete_attrs = factory::app(self.attrs.clone(), tuid.clone()).try_into_record()?;
+        let concrete_attrs = factory::app(self.attrs.clone(), tuid.clone(), h).try_into_record()?;
 
         // For each ancestor entity type, apply the suitable ancestor function
         // to obtain a concrete set of ancestor EUIDs
-        let concrete_ancestors = self
-            .ancestors
-            .values()
-            .map(|ancestor| {
-                let euids: BTreeSet<EntityUid> =
-                    (&factory::app(ancestor.clone(), tuid.clone())).try_into()?;
-
-                Ok(euids.into_iter().map(|euid| euid.as_ref().clone()))
-            })
-            .collect::<Result<Vec<_>, ConcretizeError>>()?
+        let mut concrete_ancestors_vec = Vec::new();
+        for ancestor in self.ancestors.values() {
+            let euids: BTreeSet<EntityUid> =
+                (&factory::app(ancestor.clone(), tuid.clone(), h)).try_into()?;
+            concrete_ancestors_vec.push(euids.into_iter().map(|euid| euid.as_ref().clone()));
+        }
+        let concrete_ancestors = concrete_ancestors_vec
             .into_iter()
             .flatten()
             .collect::<HashSet<_>>();
@@ -326,18 +329,20 @@ impl SymEntityData {
         let tags = if let Some(tags) = &self.tags {
             // Get all valid tag keys first
             let keys: BTreeSet<String> =
-                (&factory::app(tags.keys.clone(), tuid.clone())).try_into()?;
+                (&factory::app(tags.keys.clone(), tuid.clone(), h)).try_into()?;
 
-            keys.into_iter()
-                .map(|k| {
-                    // Using get_tag_unchecked here since we know already that k is in the key set
-                    let val: Value = (&tags
-                        .get_tag_unchecked(tuid.clone(), Term::Prim(TermPrim::String(k.clone()))))
-                        .try_into()?;
-
-                    Ok((k.into(), val.into()))
-                })
-                .collect::<Result<_, ConcretizeError>>()?
+            let mut tag_map = BTreeMap::new();
+            for k in keys {
+                // Using get_tag_unchecked here since we know already that k is in the key set
+                let val: Value = (&tags.get_tag_unchecked(
+                    tuid.clone(),
+                    Term::Prim(TermPrim::String(k.clone())),
+                    h,
+                ))
+                    .try_into()?;
+                tag_map.insert(k.into(), val.into());
+            }
+            tag_map
         } else {
             BTreeMap::new()
         };
@@ -382,7 +387,11 @@ impl SymEntityData {
 
 impl SymEntities {
     /// Concretizes a literal SymEntities to Entities
-    pub fn concretize(&self, all_euids: &BTreeSet<EntityUid>) -> Result<Entities, ConcretizeError> {
+    pub fn concretize(
+        &self,
+        all_euids: &BTreeSet<EntityUid>,
+        h: &mut HConsign<TermTypeInner>,
+    ) -> Result<Entities, ConcretizeError> {
         let mut entities = Vec::new();
 
         for euid in all_euids {
@@ -393,7 +402,7 @@ impl SymEntities {
                         euid.type_name().clone(),
                     ))?;
 
-            entities.push(sym_entity_data.concretize(euid)?);
+            entities.push(sym_entity_data.concretize(euid, h)?);
         }
 
         // As the internal cedar_policy_core::entities::Entities
@@ -441,6 +450,7 @@ impl SymEnv {
     pub(crate) fn concretize<'a>(
         &self,
         exprs: impl Iterator<Item = &'a Expr>,
+        h: &mut HConsign<TermTypeInner>,
     ) -> Result<Env, ConcretizeError> {
         let mut uids = BTreeSet::new();
         self.request.get_all_entity_uids(&mut uids);
@@ -456,7 +466,7 @@ impl SymEnv {
 
         Ok(Env {
             request: self.request.concretize()?,
-            entities: self.entities.concretize(&uids)?,
+            entities: self.entities.concretize(&uids, h)?,
         })
     }
 }

@@ -35,7 +35,9 @@ use super::{
     factory::{app, if_true, set_member, tag_of},
     function::UnaryFunction,
     term::Term,
+    term_type::TermTypeInner,
 };
+use hashconsing::HConsign;
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct SymTags {
@@ -51,18 +53,24 @@ pub struct SymTags {
 }
 
 impl SymTags {
-    pub fn has_tag(&self, entity: Term, tag: Term) -> Term {
-        set_member(tag, app(self.keys.clone(), entity))
+    pub fn has_tag(&self, entity: Term, tag: Term, h: &mut HConsign<TermTypeInner>) -> Term {
+        set_member(tag, app(self.keys.clone(), entity, h), h)
     }
 
-    pub fn get_tag_unchecked(&self, entity: Term, tag: Term) -> Term {
-        app(self.vals.clone(), tag_of(entity, tag))
+    pub fn get_tag_unchecked(
+        &self,
+        entity: Term,
+        tag: Term,
+        h: &mut HConsign<TermTypeInner>,
+    ) -> Term {
+        app(self.vals.clone(), tag_of(entity, tag), h)
     }
 
-    pub fn get_tag(&self, entity: Term, tag: Term) -> Term {
+    pub fn get_tag(&self, entity: Term, tag: Term, h: &mut HConsign<TermTypeInner>) -> Term {
         if_true(
-            self.has_tag(entity.clone(), tag.clone()),
-            self.get_tag_unchecked(entity, tag),
+            self.has_tag(entity.clone(), tag.clone(), h),
+            self.get_tag_unchecked(entity, tag, h),
+            h,
         )
     }
 

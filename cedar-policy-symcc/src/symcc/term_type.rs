@@ -25,90 +25,100 @@ use hashconsing::{HConsed, HConsign, HashConsign};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-/// Types of the intermediate [`super::term::Term`] representation.
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
-#[allow(missing_docs)]
-pub enum TermType {
-    Bool,
-    Bitvec { n: Width },
-    String,
-    Option { ty: Arc<TermType> },
-    Entity { ety: EntityType },
-    Set { ty: Arc<TermType> },
-    Record { rty: Arc<BTreeMap<Attr, TermType>> },
-    Ext { xty: ExtType },
-}
-
 impl TermType {
     /// Constructs a set type with the given element type.
     ///
     /// No corresponding Lean function; convenience constructor used in Rust.
-    pub fn set_of(ty: TermType) -> Self {
-        Self::Set { ty: Arc::new(ty) }
+    pub fn set_of(ty: TermType, h: &mut HConsign<TermTypeInner>) -> Self {
+        TermType {
+            inner: h.mk(TermTypeInner::Set { ty: Arc::new(ty) }),
+        }
     }
 
     /// Returns the type of tag keys in the symbolic representation of tags.
-    pub fn tag_for(ety: EntityType) -> Self {
-        Self::Record {
-            rty: Arc::new(EntityTag::mk(TermType::Entity { ety }, TermType::String).0),
+    pub fn tag_for(ety: EntityType, h: &mut HConsign<TermTypeInner>) -> Self {
+        let entity_ty = TermType {
+            inner: h.mk(TermTypeInner::Entity { ety }),
+        };
+        let string_ty = TermType {
+            inner: h.mk(TermTypeInner::String),
+        };
+        TermType {
+            inner: h.mk(TermTypeInner::Record {
+                rty: Arc::new(EntityTag::mk(entity_ty, string_ty).0),
+            }),
         }
     }
 
     /// Checks if the term type is a primitive type (i.e., not set or record).
     pub fn is_prim_type(&self) -> bool {
         matches!(
-            self,
-            TermType::Bool
-                | TermType::Bitvec { .. }
-                | TermType::String
-                | TermType::Entity { .. }
-                | TermType::Ext { .. }
+            self.inner.get(),
+            TermTypeInner::Bool
+                | TermTypeInner::Bitvec { .. }
+                | TermTypeInner::String
+                | TermTypeInner::Entity { .. }
+                | TermTypeInner::Ext { .. }
         )
     }
 
     /// Checks if the term type is an entity type.
     pub fn is_entity_type(&self) -> bool {
-        matches!(self, TermType::Entity { .. })
+        matches!(self.inner.get(), TermTypeInner::Entity { .. })
     }
 
     /// Checks if the term type is a record type.
     pub fn is_record_type(&self) -> bool {
-        matches!(self, TermType::Record { .. })
+        matches!(self.inner.get(), TermTypeInner::Record { .. })
     }
 
     /// Checks if the term type is an option type.
     pub fn is_option_type(&self) -> bool {
-        matches!(self, TermType::Option { .. })
+        matches!(self.inner.get(), TermTypeInner::Option { .. })
     }
 
     /// Checks if the term type is an entity type wrapped in an option type.
     pub fn is_option_entity_type(&self) -> bool {
-        matches!(self, TermType::Option { ty, .. } if ty.is_entity_type())
+        matches!(self.inner.get(), TermTypeInner::Option { ty } if ty.is_entity_type())
     }
 
     /// Converts a Cedar [`Type`] into a [`TermType`].
     ///
     /// This doesn't match the Lean model because [`Type`] doesn't.
-    pub fn of_type(ty: &Type) -> Result<Self, CompileError> {
+    pub fn of_type(ty: &Type, h: &mut HConsign<TermTypeInner>) -> Result<Self, CompileError> {
         use cedar_policy_core::validator::types::{EntityRecordKind, Primitive};
         match ty {
             Type::Primitive { primitive_type } => match primitive_type {
-                Primitive::Bool => Ok(TermType::Bool),
-                Primitive::Long => Ok(TermType::Bitvec { n: 64 }),
-                Primitive::String => Ok(TermType::String),
+                Primitive::Bool => Ok(TermType {
+                    inner: h.mk(TermTypeInner::Bool),
+                }),
+                Primitive::Long => Ok(TermType {
+                    inner: h.mk(TermTypeInner::Bitvec { n: 64 }),
+                }),
+                Primitive::String => Ok(TermType {
+                    inner: h.mk(TermTypeInner::String),
+                }),
             },
             Type::ExtensionType { name } => match name.basename().to_string().as_str() {
-                "ipaddr" => Ok(TermType::Ext {
-                    xty: ExtType::IpAddr,
+                "ipaddr" => Ok(TermType {
+                    inner: h.mk(TermTypeInner::Ext {
+                        xty: ExtType::IpAddr,
+                    }),
                 }),
-                "decimal" => Ok(TermType::Ext {
-                    xty: ExtType::Decimal,
+                "decimal" => Ok(TermType {
+                    inner: h.mk(TermTypeInner::Ext {
+                        xty: ExtType::Decimal,
+                    }),
                 }),
-                "datetime" => Ok(TermType::Ext {
-                    xty: ExtType::DateTime,
+                "datetime" => Ok(TermType {
+                    inner: h.mk(TermTypeInner::Ext {
+                        xty: ExtType::DateTime,
+                    }),
                 }),
-                "duration" => Ok(TermType::Ext {
-                    xty: ExtType::Duration,
+                "duration" => Ok(TermType {
+                    inner: h.mk(TermTypeInner::Ext {
+                        xty: ExtType::Duration,
+                    }),
                 }),
                 name => Err(CompileError::UnsupportedFeature(format!(
                     "unsupported extension {name}"
@@ -121,26 +131,22 @@ impl TermType {
                         open_attributes,
                     } => {
                         if *open_attributes == OpenTag::ClosedAttributes {
-                            Ok(TermType::Record {
-                                rty: Arc::new(
-                                    attrs
-                                        .iter()
-                                        .map(|(k, v)| {
-                                            match Self::of_type(&v.attr_type) {
-                                                Ok(vt) => Ok((
-                                                    k.clone(),
-                                                    //Inlining ofRecordType and ofQualifiedType here
-                                                    if v.is_required {
-                                                        vt
-                                                    } else {
-                                                        TermType::Option { ty: Arc::new(vt) }
-                                                    },
-                                                )),
-                                                Err(e) => Err(e),
-                                            }
-                                        })
-                                        .collect::<Result<_, _>>()?,
-                                ),
+                            let rty = attrs
+                                .iter()
+                                .map(|(k, v)| {
+                                    let vt = Self::of_type(&v.attr_type, h)?;
+                                    let field_ty = if v.is_required {
+                                        vt
+                                    } else {
+                                        TermType {
+                                            inner: h.mk(TermTypeInner::Option { ty: Arc::new(vt) }),
+                                        }
+                                    };
+                                    Ok((k.clone(), field_ty))
+                                })
+                                .collect::<Result<BTreeMap<_, _>, CompileError>>()?;
+                            Ok(TermType {
+                                inner: h.mk(TermTypeInner::Record { rty: Arc::new(rty) }),
                             })
                         } else {
                             // Attributes should be closed
@@ -153,8 +159,10 @@ impl TermType {
                         "AnyEntity is not supported".into(),
                     )),
                     EntityRecordKind::Entity(entity_lub) => match entity_lub.get_single_entity() {
-                        Some(name) => Ok(TermType::Entity {
-                            ety: core_entity_type_into_entity_type(name).clone(),
+                        Some(name) => Ok(TermType {
+                            inner: h.mk(TermTypeInner::Entity {
+                                ety: core_entity_type_into_entity_type(name).clone(),
+                            }),
                         }),
                         None => Err(CompileError::UnsupportedFeature(
                             "EntityLUB has multiple elements".into(),
@@ -163,9 +171,14 @@ impl TermType {
                 }
             }
             Type::Set { element_type } => match element_type {
-                Some(element_type) => Ok(TermType::Set {
-                    ty: Arc::new(Self::of_type(element_type)?),
-                }),
+                Some(element_type) => {
+                    let elem_ty = Self::of_type(element_type, h)?;
+                    Ok(TermType {
+                        inner: h.mk(TermTypeInner::Set {
+                            ty: Arc::new(elem_ty),
+                        }),
+                    })
+                }
                 None => Err(CompileError::UnsupportedFeature(
                     "empty set type is unsupported".into(),
                 )),
@@ -187,56 +200,42 @@ impl TermType {
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum TermTypeInner {
     Bool,
-    Bitvec {
-        n: Width,
-    },
+    Bitvec { n: Width },
     String,
-    Option {
-        ty: HConsedTermType,
-    },
-    Entity {
-        ety: EntityType,
-    },
-    Set {
-        ty: HConsedTermType,
-    },
-    Record {
-        rty: BTreeMap<Attr, HConsedTermType>,
-    },
-    Ext {
-        xty: ExtType,
-    },
+    Option { ty: Arc<TermType> },
+    Entity { ety: EntityType },
+    Set { ty: Arc<TermType> },
+    Record { rty: Arc<BTreeMap<Attr, TermType>> },
+    Ext { xty: ExtType },
 }
 
-pub type HConsedTermType = HConsed<TermTypeInner>;
-
-pub trait TermTypeHashConsing {
-    fn from_term_type(ty: &TermType, hc: &mut HConsign<TermTypeInner>) -> HConsedTermType;
+#[derive(Clone, Debug)]
+pub struct TermType {
+    pub inner: HConsed<TermTypeInner>,
 }
 
-impl TermTypeHashConsing for HConsedTermType {
-    fn from_term_type(ty: &TermType, hc: &mut HConsign<TermTypeInner>) -> Self {
-        match ty {
-            TermType::Bool => hc.mk(TermTypeInner::Bool),
-            TermType::Bitvec { n } => hc.mk(TermTypeInner::Bitvec { n: *n }),
-            TermType::String => hc.mk(TermTypeInner::String),
-            TermType::Option { ty } => {
-                let inner = Self::from_term_type(ty, hc);
-                hc.mk(TermTypeInner::Option { ty: inner })
-            }
-            TermType::Entity { ety } => hc.mk(TermTypeInner::Entity { ety: ety.clone() }),
-            TermType::Set { ty } => {
-                let inner = Self::from_term_type(ty, hc);
-                hc.mk(TermTypeInner::Set { ty: inner })
-            }
-            TermType::Record { rty } => {
-                let new_rty = rty
-                    .iter()
-                    .map(|(k, v)| (k.clone(), Self::from_term_type(v, hc)))
-                    .collect();
-                hc.mk(TermTypeInner::Record { rty: new_rty })
-            }
-            TermType::Ext { xty } => hc.mk(TermTypeInner::Ext { xty: xty.clone() }),
-        }
+impl PartialEq for TermType {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner.get() == other.inner.get()
+    }
+}
+
+impl Eq for TermType {}
+
+impl PartialOrd for TermType {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TermType {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.inner.get().cmp(other.inner.get())
+    }
+}
+
+impl std::hash::Hash for TermType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.inner.get().hash(state);
     }
 }

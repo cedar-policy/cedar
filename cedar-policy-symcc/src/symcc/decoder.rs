@@ -48,7 +48,8 @@ use super::function::Udf;
 use super::interpretation::Interpretation;
 use super::op::Uuf;
 use super::term::{Term, TermPrim, TermVar};
-use super::term_type::TermType;
+use super::term_type::{TermType, TermTypeInner};
+use hashconsing::{HConsign, HashConsign};
 
 /// Errors during decoding, i.e., converting SMT terms
 /// to our internal [`Term`] representation.
@@ -584,10 +585,14 @@ impl IdMaps {
                 let uid =
                     EntityUid::from_type_name_and_id(entity_type.clone(), EntityId::new(enum_id));
 
-                if let Some(entity_type_id) = encoder.types.get(&TermType::Entity {
-                    ety: entity_type.clone(),
-                }) {
-                    enums.insert(super::encoder::enum_id(entity_type_id, i), uid);
+                // Find the entity type in encoder.types by matching the inner content
+                for (term_ty, entity_type_id) in &encoder.types {
+                    if let TermTypeInner::Entity { ety } = term_ty.inner.get() {
+                        if ety == entity_type {
+                            enums.insert(super::encoder::enum_id(entity_type_id, i), uid);
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -605,9 +610,9 @@ impl TermType {
     /// Default literal of a type.
     /// Used as placeholders for SMT partial applications.
     pub fn default_literal(&self, env: &SymEnv) -> Term {
-        match self {
-            TermType::Bool => Term::Prim(TermPrim::Bool(false)),
-            TermType::Bitvec { n } =>
+        match self.inner.get() {
+            TermTypeInner::Bool => Term::Prim(TermPrim::Bool(false)),
+            TermTypeInner::Bitvec { n } =>
             {
                 #[allow(
                     clippy::unwrap_used,
@@ -615,9 +620,9 @@ impl TermType {
                 )]
                 Term::Prim(TermPrim::Bitvec(BitVec::of_nat(*n, BigUint::ZERO).unwrap()))
             }
-            TermType::String => Term::Prim(TermPrim::String("".to_string())),
+            TermTypeInner::String => Term::Prim(TermPrim::String("".to_string())),
 
-            TermType::Entity { ety } => {
+            TermTypeInner::Entity { ety } => {
                 // If the entity is an enum type, we return the first enum
                 let eid = if let Some(SymEntityData {
                     members: Some(eids),
@@ -638,7 +643,7 @@ impl TermType {
                 )))
             }
 
-            TermType::Ext { xty } => match xty {
+            TermTypeInner::Ext { xty } => match xty {
                 ExtType::Decimal => Term::Prim(TermPrim::Ext(Ext::Decimal { d: Decimal(0) })),
 
                 ExtType::DateTime => Term::Prim(TermPrim::Ext(Ext::Datetime {
@@ -654,14 +659,14 @@ impl TermType {
                 })),
             },
 
-            TermType::Option { ty } => Term::None(ty.as_ref().clone()),
+            TermTypeInner::Option { ty } => Term::None((**ty).clone()),
 
-            TermType::Set { ty } => Term::Set {
+            TermTypeInner::Set { ty } => Term::Set {
                 elts: Arc::new(BTreeSet::new()),
-                elts_ty: ty.as_ref().clone(),
+                elts_ty: (**ty).clone(),
             },
 
-            TermType::Record { rty } => Term::Record(Arc::new(
+            TermTypeInner::Record { rty } => Term::Record(Arc::new(
                 rty.iter()
                     .map(|(k, v)| (k.clone(), v.default_literal(env)))
                     .collect(),
@@ -692,24 +697,40 @@ impl SExpr {
     }
 
     /// Decodes [`TermType`] from an [`SExpr`].
-    pub fn decode_type(&self, id_maps: &IdMaps) -> Result<TermType, DecodeError> {
+    pub fn decode_type(
+        &self,
+        id_maps: &IdMaps,
+        h: &mut HConsign<TermTypeInner>,
+    ) -> Result<TermType, DecodeError> {
         match self {
             // Atomic types
             SExpr::Symbol(s) => {
                 match s.as_str() {
-                    "Bool" => Ok(TermType::Bool),
-                    "String" => Ok(TermType::String),
-                    "Decimal" => Ok(TermType::Ext {
-                        xty: ExtType::Decimal,
+                    "Bool" => Ok(TermType {
+                        inner: h.mk(TermTypeInner::Bool),
                     }),
-                    "IPAddr" => Ok(TermType::Ext {
-                        xty: ExtType::IpAddr,
+                    "String" => Ok(TermType {
+                        inner: h.mk(TermTypeInner::String),
                     }),
-                    "Duration" => Ok(TermType::Ext {
-                        xty: ExtType::Duration,
+                    "Decimal" => Ok(TermType {
+                        inner: h.mk(TermTypeInner::Ext {
+                            xty: ExtType::Decimal,
+                        }),
                     }),
-                    "Datetime" => Ok(TermType::Ext {
-                        xty: ExtType::DateTime,
+                    "IPAddr" => Ok(TermType {
+                        inner: h.mk(TermTypeInner::Ext {
+                            xty: ExtType::IpAddr,
+                        }),
+                    }),
+                    "Duration" => Ok(TermType {
+                        inner: h.mk(TermTypeInner::Ext {
+                            xty: ExtType::Duration,
+                        }),
+                    }),
+                    "Datetime" => Ok(TermType {
+                        inner: h.mk(TermTypeInner::Ext {
+                            xty: ExtType::DateTime,
+                        }),
                     }),
 
                     // Entity or record type
@@ -729,19 +750,25 @@ impl SExpr {
                         if app == "_" && bit_vec == "BitVec" =>
                     {
                         let n = Width::try_from(*n).map_err(|_| DecodeError::IntegerOverflow)?;
-                        Ok(TermType::Bitvec { n })
+                        Ok(TermType {
+                            inner: h.mk(TermTypeInner::Bitvec { n }),
+                        })
                     }
 
                     // (Option x)
                     [SExpr::Symbol(option), param] if option == "Option" => {
-                        let ty = param.decode_type(id_maps)?;
-                        Ok(TermType::Option { ty: Arc::new(ty) })
+                        let ty = param.decode_type(id_maps, h)?;
+                        Ok(TermType {
+                            inner: h.mk(TermTypeInner::Option { ty: Arc::new(ty) }),
+                        })
                     }
 
                     // (Set x)
                     [SExpr::Symbol(set), param] if set == "Set" => {
-                        let ty = param.decode_type(id_maps)?;
-                        Ok(TermType::Set { ty: Arc::new(ty) })
+                        let ty = param.decode_type(id_maps, h)?;
+                        Ok(TermType {
+                            inner: h.mk(TermTypeInner::Set { ty: Arc::new(ty) }),
+                        })
                     }
 
                     _ => Err(DecodeError::UnknownType(self.clone())),
@@ -759,32 +786,27 @@ impl SExpr {
         id_maps: &IdMaps,
         name: &str,
         args: &[SExpr],
+        h: &mut HConsign<TermTypeInner>,
     ) -> Result<Term, DecodeError> {
-        match (id_maps.types.get(name), args) {
+        match (id_maps.types.get(name).map(|t| (t, t.inner.get())), args) {
             // Entity UID
-            (Some(TermType::Entity { ety }), [SExpr::String(e)]) => {
+            (Some((_, TermTypeInner::Entity { ety })), [SExpr::String(e)]) => {
                 let uid = EntityUid::from_type_name_and_id(ety.clone(), EntityId::new(e));
                 Ok(Term::Prim(TermPrim::Entity(uid)))
             }
 
             // Record
-            (Some(TermType::Record { rty }), fields) => {
-                // Decode each field
-                let decoded_fields = fields
-                    .iter()
-                    .map(|field| field.decode_literal(id_maps))
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                if decoded_fields.len() != rty.len() {
+            (Some((_, TermTypeInner::Record { rty })), fields) => {
+                if fields.len() != rty.len() {
                     return Err(DecodeError::UnmatchedRecordType);
                 }
 
                 let mut record = BTreeMap::new();
 
-                // Check the type of each field and collect them into `record`
-                for (decoded_field, (field_name, field_ty)) in decoded_fields.iter().zip(rty.iter())
-                {
-                    let decoded_field_ty = decoded_field.type_of();
+                // Decode and check the type of each field
+                for (field, (field_name, field_ty)) in fields.iter().zip(rty.iter()) {
+                    let decoded_field = field.decode_literal(id_maps, h)?;
+                    let decoded_field_ty = decoded_field.type_of(h);
 
                     if &decoded_field_ty != field_ty {
                         return Err(DecodeError::UnmatchedFieldType(
@@ -793,7 +815,7 @@ impl SExpr {
                         ));
                     }
 
-                    record.insert(field_name.clone(), decoded_field.clone());
+                    record.insert(field_name.clone(), decoded_field);
                 }
 
                 Ok(Term::Record(Arc::new(record)))
@@ -805,7 +827,12 @@ impl SExpr {
 
     /// Helper function to decode more complex applications as literals.
     /// Corresponds to `SExpr.decodeLit.construct` in Lean.
-    fn decode_literal_app(&self, id_maps: &IdMaps, args: &[SExpr]) -> Result<Term, DecodeError> {
+    fn decode_literal_app(
+        &self,
+        id_maps: &IdMaps,
+        args: &[SExpr],
+        h: &mut HConsign<TermTypeInner>,
+    ) -> Result<Term, DecodeError> {
         match args {
             // Sometimes cvc5 does not simplify the terms in the model,
             // and having these custom interpreters alleviates such issues
@@ -813,51 +840,63 @@ impl SExpr {
 
             // (not <v>)
             [SExpr::Symbol(not_tok), v] if not_tok == "not" => {
-                Ok(factory::not(v.decode_literal(id_maps)?))
+                Ok(factory::not(v.decode_literal(id_maps, h)?, h))
             }
 
             // (or <v1> <v2>)
             [SExpr::Symbol(or_tok), v1, v2] if or_tok == "or" => Ok(factory::or(
-                v1.decode_literal(id_maps)?,
-                v2.decode_literal(id_maps)?,
+                v1.decode_literal(id_maps, h)?,
+                v2.decode_literal(id_maps, h)?,
+                h,
             )),
 
             // (= <v1> <v2>)
             [SExpr::Symbol(eq_tok), v1, v2] if eq_tok == "=" => Ok(factory::eq(
-                v1.decode_literal(id_maps)?,
-                v2.decode_literal(id_maps)?,
+                v1.decode_literal(id_maps, h)?,
+                v2.decode_literal(id_maps, h)?,
+                h,
             )),
 
             // (ite <cond> <then> <else>)
             [SExpr::Symbol(ite_tok), cond, true_branch, false_branch] if ite_tok == "ite" => {
                 Ok(factory::ite(
-                    cond.decode_literal(id_maps)?,
-                    true_branch.decode_literal(id_maps)?,
-                    false_branch.decode_literal(id_maps)?,
+                    cond.decode_literal(id_maps, h)?,
+                    true_branch.decode_literal(id_maps, h)?,
+                    false_branch.decode_literal(id_maps, h)?,
+                    h,
                 ))
             }
 
             // (bvnego <v1>)
             [SExpr::Symbol(bvnego_tok), v] if bvnego_tok == "bvnego" => {
-                Ok(factory::bvnego(v.decode_literal(id_maps)?))
+                Ok(factory::bvnego(v.decode_literal(id_maps, h)?, h))
             }
 
             // (bvsaddo <v1> <v2>)
-            [SExpr::Symbol(bvsaddo_tok), v1, v2] if bvsaddo_tok == "bvsaddo" => Ok(
-                factory::bvsaddo(v1.decode_literal(id_maps)?, v2.decode_literal(id_maps)?),
-            ),
+            [SExpr::Symbol(bvsaddo_tok), v1, v2] if bvsaddo_tok == "bvsaddo" => {
+                Ok(factory::bvsaddo(
+                    v1.decode_literal(id_maps, h)?,
+                    v2.decode_literal(id_maps, h)?,
+                    h,
+                ))
+            }
 
             // (bvsmulo <v1> <v2>)
-            [SExpr::Symbol(bvsmulo_tok), v1, v2] if bvsmulo_tok == "bvsmulo" => Ok(
-                factory::bvsmulo(v1.decode_literal(id_maps)?, v2.decode_literal(id_maps)?),
-            ),
+            [SExpr::Symbol(bvsmulo_tok), v1, v2] if bvsmulo_tok == "bvsmulo" => {
+                Ok(factory::bvsmulo(
+                    v1.decode_literal(id_maps, h)?,
+                    v2.decode_literal(id_maps, h)?,
+                    h,
+                ))
+            }
 
             // (as none <typ>)
             [SExpr::Symbol(as_tok), SExpr::Symbol(none), typ]
                 if as_tok == "as" && none == "none" =>
             {
-                match typ.decode_type(id_maps)? {
-                    TermType::Option { ty } => Ok(Term::None(Arc::unwrap_or_clone(ty))),
+                let decoded_ty = typ.decode_type(id_maps, h)?;
+                match decoded_ty.inner.get() {
+                    TermTypeInner::Option { ty } => Ok(Term::None((**ty).clone())),
                     _ => Err(DecodeError::InvalidOptionType(typ.clone())),
                 }
             }
@@ -873,9 +912,9 @@ impl SExpr {
                     && as_some_typ[0].is_symbol("as")
                     && as_some_typ[1].is_symbol("some") =>
             {
-                let ty = as_some_typ[2].decode_type(id_maps)?;
-                let val = Term::Some(Arc::new(val.decode_literal(id_maps)?));
-                let val_ty = val.type_of();
+                let ty = as_some_typ[2].decode_type(id_maps, h)?;
+                let val = Term::Some(Arc::new(val.decode_literal(id_maps, h)?));
+                let val_ty = val.type_of(h);
 
                 if val_ty != ty {
                     return Err(DecodeError::UnmatchedType(val_ty, ty));
@@ -888,12 +927,12 @@ impl SExpr {
             [SExpr::Symbol(as_tok), SExpr::Symbol(set_empty), typ]
                 if as_tok == "as" && set_empty == "set.empty" =>
             {
-                let ty = typ.decode_type(id_maps)?;
+                let decoded_ty = typ.decode_type(id_maps, h)?;
 
-                match ty {
-                    TermType::Set { ty } => Ok(Term::Set {
+                match decoded_ty.inner.get() {
+                    TermTypeInner::Set { ty } => Ok(Term::Set {
                         elts: Arc::new(BTreeSet::new()),
-                        elts_ty: Arc::unwrap_or_clone(ty),
+                        elts_ty: (**ty).clone(),
                     }),
                     _ => Err(DecodeError::InvalidSetType(typ.clone())),
                 }
@@ -901,8 +940,8 @@ impl SExpr {
 
             // (set.singleton <val>)
             [SExpr::Symbol(set_singleton), val] if set_singleton == "set.singleton" => {
-                let val = val.decode_literal(id_maps)?;
-                let val_ty = val.type_of();
+                let val = val.decode_literal(id_maps, h)?;
+                let val_ty = val.type_of(h);
                 Ok(Term::Set {
                     elts: Arc::new(BTreeSet::from([val])),
                     elts_ty: val_ty,
@@ -911,10 +950,10 @@ impl SExpr {
 
             // (set.union <set1> <set2>)
             [SExpr::Symbol(set_union), set1, set2] if set_union == "set.union" => {
-                let set1 = set1.decode_literal(id_maps)?;
-                let set2 = set2.decode_literal(id_maps)?;
-                let set1_ty = set1.type_of();
-                let set2_ty = set2.type_of();
+                let set1 = set1.decode_literal(id_maps, h)?;
+                let set2 = set2.decode_literal(id_maps, h)?;
+                let set1_ty = set1.type_of(h);
+                let set2_ty = set2.type_of(h);
 
                 if set1_ty != set2_ty {
                     return Err(DecodeError::UnmatchedType(set1_ty, set2_ty));
@@ -974,11 +1013,11 @@ impl SExpr {
 
             // IPv4/IPv6
             [SExpr::Symbol(ip), addr, prefix] if (ip == "V4" || ip == "V6") => {
-                let addr = match addr.decode_literal(id_maps)? {
+                let addr = match addr.decode_literal(id_maps, h)? {
                     Term::Prim(TermPrim::Bitvec(bv)) => bv,
                     _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
                 };
-                let prefix = match prefix.decode_literal(id_maps)? {
+                let prefix = match prefix.decode_literal(id_maps, h)? {
                     Term::Some(t) => match Arc::unwrap_or_clone(t) {
                         Term::Prim(TermPrim::Bitvec(bv)) => Some(bv),
                         _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
@@ -1003,7 +1042,7 @@ impl SExpr {
 
             // Entity UID or record
             [SExpr::Symbol(name), rest_args @ ..] => {
-                self.decode_entity_or_record(id_maps, name, rest_args)
+                self.decode_entity_or_record(id_maps, name, rest_args, h)
             }
 
             _ => Err(DecodeError::UnknownLiteral(self.clone())),
@@ -1011,7 +1050,11 @@ impl SExpr {
     }
 
     /// Decodse a literal (with only SMT constants and no bound variables).
-    pub fn decode_literal(&self, id_maps: &IdMaps) -> Result<Term, DecodeError> {
+    pub fn decode_literal(
+        &self,
+        id_maps: &IdMaps,
+        h: &mut HConsign<TermTypeInner>,
+    ) -> Result<Term, DecodeError> {
         match self {
             SExpr::BitVec(bv) => Ok(Term::Prim(TermPrim::Bitvec(bv.clone()))),
             SExpr::String(s) => Ok(Term::Prim(TermPrim::String(s.clone()))),
@@ -1021,7 +1064,7 @@ impl SExpr {
 
             // Empty record type
             SExpr::Symbol(s) if id_maps.types.contains_key(s) => {
-                self.decode_entity_or_record(id_maps, s, &[])
+                self.decode_entity_or_record(id_maps, s, &[], h)
             }
 
             // Entity enum
@@ -1033,7 +1076,7 @@ impl SExpr {
                 .ok_or_else(|| DecodeError::UnknownLiteral(self.clone())),
 
             // More complex applications
-            SExpr::App(args) => self.decode_literal_app(id_maps, args),
+            SExpr::App(args) => self.decode_literal_app(id_maps, args, h),
 
             _ => Err(DecodeError::UnknownLiteral(self.clone())),
         }
@@ -1045,14 +1088,15 @@ impl SExpr {
         name: &str,
         typ: &SExpr,
         value: &SExpr,
+        h: &mut HConsign<TermTypeInner>,
     ) -> Result<(TermVar, Term), DecodeError> {
         let Some(term_var) = id_maps.vars.get(name) else {
             return Err(DecodeError::UnknownVariable(name.to_string()));
         };
 
-        let ty = typ.decode_type(id_maps)?;
-        let val = value.decode_literal(id_maps)?;
-        let val_ty = val.type_of();
+        let ty = typ.decode_type(id_maps, h)?;
+        let val = value.decode_literal(id_maps, h)?;
+        let val_ty = val.type_of(h);
 
         if val_ty != ty {
             return Err(DecodeError::UnmatchedType(val_ty, ty));
@@ -1076,6 +1120,7 @@ impl SExpr {
         arg_typ: &SExpr,
         ret_typ: &SExpr,
         body: &SExpr,
+        h: &mut HConsign<TermTypeInner>,
     ) -> Result<(Uuf, Udf), DecodeError> {
         // First check if the SMT name actually corresponds to a UUF
         let Some(uuf) = id_maps.uufs.get(name) else {
@@ -1083,8 +1128,8 @@ impl SExpr {
         };
 
         // Check that argument type and return type match those of the UUF
-        let arg_ty = arg_typ.decode_type(id_maps)?;
-        let ret_ty = ret_typ.decode_type(id_maps)?;
+        let arg_ty = arg_typ.decode_type(id_maps, h)?;
+        let ret_ty = ret_typ.decode_type(id_maps, h)?;
 
         if arg_ty != uuf.arg {
             return Err(DecodeError::UnmatchedType(arg_ty, uuf.arg.clone()));
@@ -1118,8 +1163,8 @@ impl SExpr {
                                     ));
                                 }
 
-                                let cond_term = args[1].decode_literal(id_maps)?;
-                                let then_term = exprs[2].decode_literal(id_maps)?;
+                                let cond_term = args[1].decode_literal(id_maps, h)?;
+                                let then_term = exprs[2].decode_literal(id_maps, h)?;
 
                                 table.insert(cond_term, then_term);
                                 cur_body = &exprs[3];
@@ -1132,7 +1177,7 @@ impl SExpr {
 
             // otherwise take as the default value
             // assuming it doesn't contain any bound variables
-            let default = cur_body.decode_literal(id_maps)?;
+            let default = cur_body.decode_literal(id_maps, h)?;
 
             return Ok((
                 uuf.clone(),
@@ -1158,6 +1203,7 @@ impl SExpr {
 
         let mut vars = BTreeMap::new();
         let mut funs = BTreeMap::new();
+        let mut h = env.h_mut();
 
         // TODO: better error handling here
         for cmd in cmds {
@@ -1176,7 +1222,7 @@ impl SExpr {
                         [SExpr::App(arg)] if arg.len() == 2 => match arg.as_slice() {
                             [SExpr::Symbol(arg_name), arg_ty] => {
                                 let (uuf, udf) = Self::decode_unary_function(
-                                    id_maps, name, arg_name, arg_ty, ret_ty, body,
+                                    id_maps, name, arg_name, arg_ty, ret_ty, body, &mut h,
                                 )?;
                                 funs.insert(uuf, udf);
                             }
@@ -1185,7 +1231,8 @@ impl SExpr {
 
                         // Decode SMT constant definition as interpretation to a Cedar variable
                         [] => {
-                            let (term_var, term) = Self::decode_var(id_maps, name, ret_ty, body)?;
+                            let (term_var, term) =
+                                Self::decode_var(id_maps, name, ret_ty, body, &mut h)?;
                             vars.insert(term_var, term);
                         }
 

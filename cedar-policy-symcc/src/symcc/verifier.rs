@@ -28,6 +28,8 @@ use super::env::SymEnv;
 use super::factory::{and, eq, implies, is_some, not};
 use super::result::CompileError;
 use super::term::Term;
+use super::term_type::TermTypeInner;
+use hashconsing::HConsign;
 
 use cedar_policy::Effect;
 use cedar_policy_core::ast::{Expr, Policy, PolicyID, PolicySet, Value};
@@ -41,16 +43,17 @@ type Result<T> = std::result::Result<T, CompileError>;
 /// a Term of type .option .bool, satisfies `phi` on all inputs drawn from `env`.  See also
 /// `verify_never_errors`.
 pub fn verify_evaluate(
-    phi: impl Fn(Term) -> Term,
+    phi: impl Fn(Term, &mut HConsign<TermTypeInner>) -> Term,
     policy: &Policy,
     env: &SymEnv,
+    h: &mut HConsign<TermTypeInner>,
 ) -> Result<Asserts> {
     let policy_expr = policy.condition();
-    let term = compile(&policy_expr, env)?;
+    let term = compile(&policy_expr, env, h)?;
     Ok(Arc::new(
-        enforce([&policy_expr], env)
+        enforce([&policy_expr], env, h)
             .into_iter()
-            .chain([not(phi(term))])
+            .chain([not(phi(term, h), h)])
             .collect(),
     ))
 }
@@ -60,22 +63,23 @@ pub fn verify_evaluate(
 /// inputs drawn from `env`. See also `verify_always_allows`, `verify_always_denies`,
 /// `verify_implies`, `verify_equivalent`, and `verify_disjoint`.
 pub fn verify_is_authorized(
-    phi: impl Fn(Term, Term) -> Term,
+    phi: impl Fn(Term, Term, &mut HConsign<TermTypeInner>) -> Term,
     policies1: &PolicySet,
     policies2: &PolicySet,
     env: &SymEnv,
+    h: &mut HConsign<TermTypeInner>,
 ) -> Result<Asserts> {
-    let term1 = is_authorized(policies1, env)?;
-    let term2 = is_authorized(policies2, env)?;
+    let term1 = is_authorized(policies1, env, h)?;
+    let term2 = is_authorized(policies2, env, h)?;
     let xs: Vec<Expr> = policies1
         .policies()
         .chain(policies2.policies())
         .map(|p| p.condition())
         .collect();
     Ok(Arc::new(
-        enforce(xs.iter(), env)
+        enforce(xs.iter(), env, h)
             .into_iter()
-            .chain([not(phi(term1, term2))])
+            .chain([not(phi(term1, term2, h), h)])
             .collect(),
     ))
 }
@@ -83,8 +87,12 @@ pub fn verify_is_authorized(
 /// Returns asserts that are unsatisfiable iff `policy` does not error on any input in
 /// `env`. If the asserts are satisfiable, then there is some input in `env` on
 /// which `policy` errors.
-pub fn verify_never_errors(policy: &Policy, env: &SymEnv) -> Result<Asserts> {
-    verify_evaluate(is_some, policy, env)
+pub fn verify_never_errors(
+    policy: &Policy,
+    env: &SymEnv,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Asserts> {
+    verify_evaluate(is_some, policy, env, h)
 }
 
 /// Returns asserts that are unsatisfiable iff the authorization decision of `policies1`
@@ -94,12 +102,17 @@ pub fn verify_implies(
     policies1: &PolicySet,
     policies2: &PolicySet,
     env: &SymEnv,
+    h: &mut HConsign<TermTypeInner>,
 ) -> Result<Asserts> {
-    verify_is_authorized(implies, policies1, policies2, env)
+    verify_is_authorized(implies, policies1, policies2, env, h)
 }
 
 /// Returns asserts that are unsatisfiable iff `policies` allows all inputs in `env`.
-pub fn verify_always_allows(policies: &PolicySet, env: &SymEnv) -> Result<Asserts> {
+pub fn verify_always_allows(
+    policies: &PolicySet,
+    env: &SymEnv,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Asserts> {
     let allow_all = Policy::from_when_clause(
         Effect::Permit,
         Expr::from(Value::from(true)),
@@ -115,12 +128,16 @@ pub fn verify_always_allows(policies: &PolicySet, env: &SymEnv) -> Result<Assert
     allow_all_ps
         .add(allow_all)
         .expect("Could not add policy to policy set.");
-    verify_implies(&allow_all_ps, policies, env)
+    verify_implies(&allow_all_ps, policies, env, h)
 }
 
 /// Returns asserts that are unsatisfiable iff `policies` denies all inputs in `env`.
-pub fn verify_always_denies(policies: &PolicySet, env: &SymEnv) -> Result<Asserts> {
-    verify_implies(policies, &PolicySet::new(), env)
+pub fn verify_always_denies(
+    policies: &PolicySet,
+    env: &SymEnv,
+    h: &mut HConsign<TermTypeInner>,
+) -> Result<Asserts> {
+    verify_implies(policies, &PolicySet::new(), env, h)
 }
 
 /// Returns asserts that are unsatisfiable iff `policies1` and `policies2` produce the same
@@ -129,8 +146,9 @@ pub fn verify_equivalent(
     policies1: &PolicySet,
     policies2: &PolicySet,
     env: &SymEnv,
+    h: &mut HConsign<TermTypeInner>,
 ) -> Result<Asserts> {
-    verify_is_authorized(eq, policies1, policies2, env)
+    verify_is_authorized(eq, policies1, policies2, env, h)
 }
 
 /// Returns asserts that are unsatisfiable iff there is no input in `env` that is
@@ -141,7 +159,8 @@ pub fn verify_disjoint(
     policies1: &PolicySet,
     policies2: &PolicySet,
     env: &SymEnv,
+    h: &mut HConsign<TermTypeInner>,
 ) -> Result<Asserts> {
-    let disjoint = |t1: Term, t2: Term| not(and(t1, t2));
-    verify_is_authorized(disjoint, policies1, policies2, env)
+    let disjoint = |t1: Term, t2: Term, h: &mut HConsign<TermTypeInner>| not(and(t1, t2, h), h);
+    verify_is_authorized(disjoint, policies1, policies2, env, h)
 }

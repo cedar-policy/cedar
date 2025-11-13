@@ -51,7 +51,9 @@ use env::to_validator_request_env;
 use cedar_policy_core::ast::{Expr, ExprBuilder, Policy, PolicySet};
 use cedar_policy_core::validator::{typecheck::Typechecker, types::RequestEnv, ValidationMode};
 use encoder::Encoder;
+use hashconsing::HConsign;
 use solver::{Decision, Solver};
+use term_type::TermTypeInner;
 use verifier::Asserts;
 
 use crate::err::{Error, Result};
@@ -123,8 +125,9 @@ impl<S: Solver> SymCompiler<S> {
                 .set_logic("ALL")
                 .await
                 .map_err(|err| Error::EncodeError(err.into()))?;
+            let mut h = symenv.h.borrow_mut();
             let mut encoder = Encoder::new(symenv, self.solver.smtlib_input())?;
-            encoder.encode(asserts.iter()).await?;
+            encoder.encode(asserts.iter(), &mut h).await?;
             match self.solver.check_sat().await? {
                 Decision::Unsat => Ok(true),
                 Decision::Sat => Ok(false),
@@ -147,8 +150,13 @@ impl<S: Solver> SymCompiler<S> {
             // skip encoding and calling the solver.
             Ok(None)
         } else if asserts.iter().all(|assert| *assert == true.into()) {
+            let mut h = symenv.h.borrow_mut();
             let interp = Interpretation::default(symenv);
-            Ok(Some(symenv.interpret(&interp).concretize(footprint)?))
+            Ok(Some(
+                symenv
+                    .interpret(&interp, &mut h)
+                    .concretize(footprint, &mut h)?,
+            ))
         } else {
             self.solver
                 .smtlib_input()
@@ -165,13 +173,16 @@ impl<S: Solver> SymCompiler<S> {
                 .set_logic("ALL")
                 .await
                 .map_err(|err| Error::EncodeError(err.into()))?;
-            let mut encoder =
-                Encoder::new(symenv, self.solver.smtlib_input()).map_err(Error::EncodeError)?;
-            encoder
-                .encode(asserts.iter())
-                .await
-                .map_err(Error::EncodeError)?;
-            let id_maps = IdMaps::from_encoder(&encoder);
+            let id_maps = {
+                let mut h = symenv.h.borrow_mut();
+                let mut encoder =
+                    Encoder::new(symenv, self.solver.smtlib_input()).map_err(Error::EncodeError)?;
+                encoder
+                    .encode(asserts.iter(), &mut h)
+                    .await
+                    .map_err(Error::EncodeError)?;
+                IdMaps::from_encoder(&encoder)
+            };
             match self.solver.check_sat().await? {
                 Decision::Unsat => Ok(None),
                 Decision::Sat => {
@@ -189,8 +200,14 @@ impl<S: Solver> SymCompiler<S> {
 
     /// Returns true iff `policy` does not error on any well-formed input in the `symenv`.
     pub async fn check_never_errors(&mut self, policy: &Policy, symenv: &SymEnv) -> Result<bool> {
-        self.check_unsat(|symenv| verify_never_errors(policy, symenv), symenv)
-            .await
+        self.check_unsat(
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_never_errors(policy, symenv, &mut h)
+            },
+            symenv,
+        )
+        .await
     }
 
     /// Returns some counterexample iff [`Self::check_never_errors`] is false.
@@ -200,7 +217,10 @@ impl<S: Solver> SymCompiler<S> {
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
         self.check_sat(
-            |symenv| verify_never_errors(policy, symenv),
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_never_errors(policy, symenv, &mut h)
+            },
             symenv,
             std::iter::once(&policy.condition()),
         )
@@ -218,7 +238,10 @@ impl<S: Solver> SymCompiler<S> {
         symenv: &SymEnv,
     ) -> Result<bool> {
         self.check_unsat(
-            |symenv| verify_implies(policies1, policies2, symenv),
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_implies(policies1, policies2, symenv, &mut h)
+            },
             symenv,
         )
         .await
@@ -237,7 +260,10 @@ impl<S: Solver> SymCompiler<S> {
             .map(|p| p.condition())
             .collect::<Vec<_>>();
         self.check_sat(
-            |symenv| verify_implies(policies1, policies2, symenv),
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_implies(policies1, policies2, symenv, &mut h)
+            },
             symenv,
             footprint.iter(),
         )
@@ -250,8 +276,14 @@ impl<S: Solver> SymCompiler<S> {
         policies: &PolicySet,
         symenv: &SymEnv,
     ) -> Result<bool> {
-        self.check_unsat(|symenv| verify_always_allows(policies, symenv), symenv)
-            .await
+        self.check_unsat(
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_always_allows(policies, symenv, &mut h)
+            },
+            symenv,
+        )
+        .await
     }
 
     /// Returns some counterexample iff [`Self::check_always_allows`] is false.
@@ -265,7 +297,10 @@ impl<S: Solver> SymCompiler<S> {
             .map(|p| p.condition())
             .collect::<Vec<_>>();
         self.check_sat(
-            |symenv| verify_always_allows(policies, symenv),
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_always_allows(policies, symenv, &mut h)
+            },
             symenv,
             footprint.iter(),
         )
@@ -278,8 +313,14 @@ impl<S: Solver> SymCompiler<S> {
         policies: &PolicySet,
         symenv: &SymEnv,
     ) -> Result<bool> {
-        self.check_unsat(|symenv| verify_always_denies(policies, symenv), symenv)
-            .await
+        self.check_unsat(
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_always_denies(policies, symenv, &mut h)
+            },
+            symenv,
+        )
+        .await
     }
 
     /// Returns some counterexample iff [`Self::check_always_denies`] is false.
@@ -293,7 +334,10 @@ impl<S: Solver> SymCompiler<S> {
             .map(|p| p.condition())
             .collect::<Vec<_>>();
         self.check_sat(
-            |symenv| verify_always_denies(policies, symenv),
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_always_denies(policies, symenv, &mut h)
+            },
             symenv,
             footprint.iter(),
         )
@@ -309,7 +353,10 @@ impl<S: Solver> SymCompiler<S> {
         symenv: &SymEnv,
     ) -> Result<bool> {
         self.check_unsat(
-            |symenv| verify_equivalent(policies1, policies2, symenv),
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_equivalent(policies1, policies2, symenv, &mut h)
+            },
             symenv,
         )
         .await
@@ -328,7 +375,10 @@ impl<S: Solver> SymCompiler<S> {
             .map(|p| p.condition())
             .collect::<Vec<_>>();
         self.check_sat(
-            |symenv| verify_equivalent(policies1, policies2, symenv),
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_equivalent(policies1, policies2, symenv, &mut h)
+            },
             symenv,
             footprint.iter(),
         )
@@ -345,7 +395,10 @@ impl<S: Solver> SymCompiler<S> {
         symenv: &SymEnv,
     ) -> Result<bool> {
         self.check_unsat(
-            |symenv| verify_disjoint(policies1, policies2, symenv),
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_disjoint(policies1, policies2, symenv, &mut h)
+            },
             symenv,
         )
         .await
@@ -364,7 +417,10 @@ impl<S: Solver> SymCompiler<S> {
             .map(|p| p.condition())
             .collect::<Vec<_>>();
         self.check_sat(
-            |symenv| verify_disjoint(policies1, policies2, symenv),
+            |symenv| {
+                let mut h = symenv.h.borrow_mut();
+                verify_disjoint(policies1, policies2, symenv, &mut h)
+            },
             symenv,
             footprint.iter(),
         )
