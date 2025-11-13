@@ -51,11 +51,11 @@ extern crate tsify;
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash)]
 pub struct Expr<T = ()> {
-    expr_kind: ExprKind<T>,
+    pub(crate) expr_kind: ExprKind<T>,
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
-    source_loc: Option<Loc>,
-    data: T,
+    pub(crate) source_loc: Option<Loc>,
+    pub(crate) data: T,
 }
 
 /// The possible expression variants. This enum should be matched on by code
@@ -1255,6 +1255,10 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         })
     }
 
+    fn get_attr_arc(self, expr: Arc<Expr<T>>, attr: SmolStr) -> Expr<T> {
+        self.with_expr_kind(ExprKind::GetAttr { expr: expr, attr })
+    }
+
     /// Create an `Expr` which tests for the existence of a given
     /// attribute on a given `Entity` or record.
     ///
@@ -1264,6 +1268,10 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
             expr: Arc::new(expr),
             attr,
         })
+    }
+
+    fn has_attr_arc(self, expr: Arc<Expr<T>>, attr: SmolStr) -> Expr<T> {
+        self.with_expr_kind(ExprKind::HasAttr { expr: expr, attr })
     }
 
     /// Create a 'like' expression.

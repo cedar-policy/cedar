@@ -330,6 +330,10 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         })
     }
 
+    fn get_attr_arc(self, expr: Arc<Expr<T>>, attr: SmolStr) -> Expr<T> {
+        self.with_expr_kind(ExprKind::GetAttr { expr: expr, attr })
+    }
+
     /// Create an `Expr` which tests for the existence of a given
     /// attribute on a given `Entity` or record.
     ///
@@ -339,6 +343,10 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
             expr: Arc::new(expr),
             attr,
         })
+    }
+
+    fn has_attr_arc(self, expr: Arc<Expr<T>>, attr: SmolStr) -> Expr<T> {
+        self.with_expr_kind(ExprKind::HasAttr { expr: expr, attr })
     }
 
     /// Create a 'like' expression.

@@ -1446,7 +1446,7 @@ impl Node<Option<cst::Relation>> {
                 Ok(ExprOrSpecial::Expr {
                     expr: Build::new()
                         .with_maybe_source_loc(self.loc.as_ref())
-                        .extended_has_attr(target, &field),
+                        .extended_has_attr_arc(Arc::new(target), &field),
                     loc: self.loc.clone(),
                 })
             }

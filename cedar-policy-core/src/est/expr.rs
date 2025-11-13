@@ -622,12 +622,20 @@ impl ExprBuilder for Builder {
         })
     }
 
+    fn get_attr_arc(self, expr: Arc<Expr>, attr: SmolStr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::GetAttr { left: expr, attr })
+    }
+
     /// `left has attr`
     fn has_attr(self, expr: Expr, attr: SmolStr) -> Expr {
         Expr::ExprNoExt(ExprNoExt::HasAttr {
             left: Arc::new(expr),
             attr,
         })
+    }
+
+    fn has_attr_arc(self, expr: Arc<Expr>, attr: SmolStr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::HasAttr { left: expr, attr })
     }
 
     /// `left like pattern`
