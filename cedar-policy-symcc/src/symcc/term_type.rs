@@ -209,33 +209,7 @@ pub enum TermTypeInner {
     Ext { xty: ExtType },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct TermType {
     pub inner: HConsed<TermTypeInner>,
-}
-
-impl PartialEq for TermType {
-    fn eq(&self, other: &Self) -> bool {
-        self.inner.get() == other.inner.get()
-    }
-}
-
-impl Eq for TermType {}
-
-impl PartialOrd for TermType {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for TermType {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.inner.get().cmp(other.inner.get())
-    }
-}
-
-impl std::hash::Hash for TermType {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.inner.get().hash(state);
-    }
 }
