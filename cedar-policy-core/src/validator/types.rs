@@ -916,7 +916,7 @@ impl EntityLUB {
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Default)]
 pub struct Attributes {
     /// Attributes map
-    attrs: BTreeMap<SmolStr, AttributeType>,
+    attrs: Arc<BTreeMap<SmolStr, AttributeType>>,
 }
 
 impl Attributes {
@@ -935,7 +935,7 @@ impl Attributes {
     /// optional.
     pub fn with_attributes(attrs: impl IntoIterator<Item = (SmolStr, AttributeType)>) -> Self {
         Self {
-            attrs: attrs.into_iter().collect(),
+            attrs: attrs.into_iter().collect::<BTreeMap<_, _>>().into(),
         }
     }
 
@@ -1047,7 +1047,7 @@ impl IntoIterator for Attributes {
     type IntoIter = <BTreeMap<SmolStr, AttributeType> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.attrs.into_iter()
+        self.attrs.as_ref().clone().into_iter()
     }
 }
 
@@ -1174,9 +1174,13 @@ impl EntityRecordKind {
         match self {
             EntityRecordKind::Record { attrs, .. } => attrs.attrs.keys().cloned().collect(),
             EntityRecordKind::AnyEntity => vec![],
-            EntityRecordKind::Entity(lub) => {
-                lub.get_attribute_types(schema).attrs.into_keys().collect()
-            }
+            EntityRecordKind::Entity(lub) => lub
+                .get_attribute_types(schema)
+                .attrs
+                .as_ref()
+                .clone()
+                .into_keys()
+                .collect(),
         }
     }
 
