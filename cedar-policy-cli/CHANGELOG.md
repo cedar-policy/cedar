@@ -5,6 +5,10 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+## 4.8.0
+
+### Added
+
 - Add `tpe` command to run type-aware partial evaluation under feature flag `tpe` (#1894)
 
 ## 4.7.0
