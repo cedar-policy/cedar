@@ -169,6 +169,32 @@ pub enum ExprKind<T = ()> {
     },
 }
 
+impl<T> ExprKind<T> {
+    /// Get the variant order (same as derive(Ord) for enums)
+    fn variant_order(&self) -> u8 {
+        match self {
+            ExprKind::Lit(_) => 0,
+            ExprKind::Var(_) => 1,
+            ExprKind::Slot(_) => 2,
+            ExprKind::Unknown(_) => 3,
+            ExprKind::If { .. } => 4,
+            ExprKind::And { .. } => 5,
+            ExprKind::Or { .. } => 6,
+            ExprKind::UnaryApp { .. } => 7,
+            ExprKind::BinaryApp { .. } => 8,
+            ExprKind::ExtensionFunctionApp { .. } => 9,
+            ExprKind::GetAttr { .. } => 10,
+            ExprKind::HasAttr { .. } => 11,
+            ExprKind::Like { .. } => 12,
+            ExprKind::Set(_) => 13,
+            ExprKind::Record(_) => 14,
+            ExprKind::Is { .. } => 15,
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => 16,
+        }
+    }
+}
+
 impl From<Value> for Expr {
     fn from(v: Value) -> Self {
         Expr::from(v.value).with_maybe_source_loc(v.loc)
@@ -1383,7 +1409,7 @@ pub mod expression_construction_errors {
 /// A new type wrapper around `Expr` that provides `Eq` and `Hash`
 /// implementations that ignore any source information or other generic data
 /// used to annotate the `Expr`.
-#[derive(Eq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct ExprShapeOnly<'a, T: Clone = ()>(Cow<'a, Expr<T>>);
 
 impl<'a, T: Clone> ExprShapeOnly<'a, T> {
@@ -1408,9 +1434,23 @@ impl<T: Clone> PartialEq for ExprShapeOnly<'_, T> {
     }
 }
 
+impl<T: Clone> Eq for ExprShapeOnly<'_, T> {}
+
 impl<T: Clone> Hash for ExprShapeOnly<'_, T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash_shape(state);
+    }
+}
+
+impl<T: Clone> PartialOrd for ExprShapeOnly<'_, T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T: Clone> Ord for ExprShapeOnly<'_, T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp_shape(&other.0)
     }
 }
 
@@ -1614,10 +1654,149 @@ impl<T> Expr<T> {
             ExprKind::Error { error_kind, .. } => error_kind.hash(state),
         }
     }
+
+    /// Implementation of ordering corresponding to equality as implemented by
+    /// `eq_shape`. Must satisfy the usual relationship between equality and
+    /// ordering.
+    pub fn cmp_shape<U>(&self, other: &Expr<U>) -> std::cmp::Ordering {
+        use ExprKind::*;
+        match (self.expr_kind(), other.expr_kind()) {
+            (Lit(lit), Lit(lit1)) => lit.cmp(lit1),
+            (Var(v), Var(v1)) => v.cmp(v1),
+            (Slot(s), Slot(s1)) => s.cmp(s1),
+            (
+                Unknown(self::Unknown {
+                    name: name1,
+                    type_annotation: ta_1,
+                }),
+                Unknown(self::Unknown {
+                    name: name2,
+                    type_annotation: ta_2,
+                }),
+            ) => name1.cmp(name2).then_with(|| ta_1.cmp(ta_2)),
+            (
+                If {
+                    test_expr,
+                    then_expr,
+                    else_expr,
+                },
+                If {
+                    test_expr: test_expr1,
+                    then_expr: then_expr1,
+                    else_expr: else_expr1,
+                },
+            ) => test_expr
+                .cmp_shape(test_expr1)
+                .then_with(|| then_expr.cmp_shape(then_expr1))
+                .then_with(|| else_expr.cmp_shape(else_expr1)),
+            (
+                And { left, right },
+                And {
+                    left: left1,
+                    right: right1,
+                },
+            ) => left.cmp_shape(left1).then_with(|| right.cmp_shape(right1)),
+            (
+                Or { left, right },
+                Or {
+                    left: left1,
+                    right: right1,
+                },
+            ) => left.cmp_shape(left1).then_with(|| right.cmp_shape(right1)),
+            (UnaryApp { op, arg }, UnaryApp { op: op1, arg: arg1 }) => {
+                op.cmp(op1).then_with(|| arg.cmp_shape(arg1))
+            }
+            (
+                BinaryApp { op, arg1, arg2 },
+                BinaryApp {
+                    op: op1,
+                    arg1: arg11,
+                    arg2: arg21,
+                },
+            ) => op
+                .cmp(op1)
+                .then_with(|| arg1.cmp_shape(arg11))
+                .then_with(|| arg2.cmp_shape(arg21)),
+            (
+                ExtensionFunctionApp { fn_name, args },
+                ExtensionFunctionApp {
+                    fn_name: fn_name1,
+                    args: args1,
+                },
+            ) => fn_name.cmp(fn_name1).then_with(|| {
+                args.len().cmp(&args1.len()).then_with(|| {
+                    for (a, a1) in args.iter().zip(args1.iter()) {
+                        match a.cmp_shape(a1) {
+                            std::cmp::Ordering::Equal => continue,
+                            other => return other,
+                        }
+                    }
+                    std::cmp::Ordering::Equal
+                })
+            }),
+            (
+                GetAttr { expr, attr },
+                GetAttr {
+                    expr: expr1,
+                    attr: attr1,
+                },
+            ) => attr.cmp(attr1).then_with(|| expr.cmp_shape(expr1)),
+            (
+                HasAttr { expr, attr },
+                HasAttr {
+                    expr: expr1,
+                    attr: attr1,
+                },
+            ) => attr.cmp(attr1).then_with(|| expr.cmp_shape(expr1)),
+            (
+                Like { expr, pattern },
+                Like {
+                    expr: expr1,
+                    pattern: pattern1,
+                },
+            ) => pattern.cmp(pattern1).then_with(|| expr.cmp_shape(expr1)),
+            (Set(elems), Set(elems1)) => elems.len().cmp(&elems1.len()).then_with(|| {
+                for (e, e1) in elems.iter().zip(elems1.iter()) {
+                    match e.cmp_shape(e1) {
+                        std::cmp::Ordering::Equal => continue,
+                        other => return other,
+                    }
+                }
+                std::cmp::Ordering::Equal
+            }),
+            (Record(map), Record(map1)) => map.len().cmp(&map1.len()).then_with(|| {
+                for ((a, e), (a1, e1)) in map.iter().zip(map1.iter()) {
+                    match a.cmp(a1).then_with(|| e.cmp_shape(e1)) {
+                        std::cmp::Ordering::Equal => continue,
+                        other => return other,
+                    }
+                }
+                std::cmp::Ordering::Equal
+            }),
+            (
+                Is { expr, entity_type },
+                Is {
+                    expr: expr1,
+                    entity_type: entity_type1,
+                },
+            ) => entity_type
+                .cmp(entity_type1)
+                .then_with(|| expr.cmp_shape(expr1)),
+            #[cfg(feature = "tolerant-ast")]
+            (
+                Error { error_kind },
+                Error {
+                    error_kind: error_kind1,
+                },
+            ) => error_kind.cmp(error_kind1),
+            // Different variants: compare by variant order (same as derive(Ord) for enums)
+            (a, b) => a.variant_order().cmp(&b.variant_order()),
+        }
+    }
 }
 
 /// AST variables
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
