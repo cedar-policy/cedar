@@ -1658,13 +1658,12 @@ impl<T> Expr<T> {
     /// Implementation of ordering corresponding to equality as implemented by
     /// `eq_shape`. Must satisfy the usual relationship between equality and
     /// ordering.
-    pub fn cmp_shape<U>(&self, other: &Expr<U>) -> std::cmp::Ordering {
-        // First compare variants for early short-circuiting
+    pub fn cmp_shape(&self, other: &Expr<T>) -> std::cmp::Ordering {
+        // First compare variants for early short-circuiting using discriminant
         let self_kind = self.expr_kind();
         let other_kind = other.expr_kind();
-        match self_kind.variant_order().cmp(&other_kind.variant_order()) {
-            std::cmp::Ordering::Equal => {}
-            other => return other,
+        if std::mem::discriminant(self_kind) != std::mem::discriminant(other_kind) {
+            return self_kind.variant_order().cmp(&other_kind.variant_order());
         }
         
         // Same variants, compare contents
