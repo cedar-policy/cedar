@@ -1659,8 +1659,17 @@ impl<T> Expr<T> {
     /// `eq_shape`. Must satisfy the usual relationship between equality and
     /// ordering.
     pub fn cmp_shape<U>(&self, other: &Expr<U>) -> std::cmp::Ordering {
+        // First compare variants for early short-circuiting
+        let self_kind = self.expr_kind();
+        let other_kind = other.expr_kind();
+        match self_kind.variant_order().cmp(&other_kind.variant_order()) {
+            std::cmp::Ordering::Equal => {}
+            other => return other,
+        }
+        
+        // Same variants, compare contents
         use ExprKind::*;
-        match (self.expr_kind(), other.expr_kind()) {
+        match (self_kind, other_kind) {
             (Lit(lit), Lit(lit1)) => lit.cmp(lit1),
             (Var(v), Var(v1)) => v.cmp(v1),
             (Slot(s), Slot(s1)) => s.cmp(s1),
@@ -1789,8 +1798,8 @@ impl<T> Expr<T> {
                     error_kind: error_kind1,
                 },
             ) => error_kind.cmp(error_kind1),
-            // Different variants: compare by variant order (same as derive(Ord) for enums)
-            (a, b) => a.variant_order().cmp(&b.variant_order()),
+            // This should never be reached since we compare variants first
+            _ => unreachable!("Different variants should have been handled by variant_order comparison"),
         }
     }
 }
