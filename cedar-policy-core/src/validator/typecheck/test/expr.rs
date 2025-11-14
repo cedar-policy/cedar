@@ -170,7 +170,10 @@ fn heterogeneous_set() {
 fn record_typechecks() {
     assert_typechecks_empty_schema(
         &Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
-        &Type::closed_record_with_required_attributes([("foo".into(), Type::primitive_long())]),
+        &Type::closed_record_with_required_attributes([(
+            "foo".into(),
+            Type::primitive_long().into(),
+        )]),
     )
 }
 
@@ -804,7 +807,7 @@ fn record_get_attr_lub_typecheck_fails() {
             [
                 Type::closed_record_with_required_attributes([(
                     "foo".into(),
-                    Type::singleton_boolean(true),
+                    Type::singleton_boolean(true).into(),
                 )]),
                 Type::primitive_long(),
             ],
@@ -1370,7 +1373,7 @@ fn contains_typecheck_fails() {
             Type::any_set(),
             Type::closed_record_with_attributes([(
                 "foo".into(),
-                AttributeType::new(Type::primitive_long(), true),
+                AttributeType::new(Type::primitive_long().into(), true),
             )]),
             Some(UnexpectedTypeHelp::TryUsingHas),
         )

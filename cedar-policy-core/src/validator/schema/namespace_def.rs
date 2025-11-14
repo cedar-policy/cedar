@@ -1077,9 +1077,10 @@ fn parse_record_attributes(
                         .resolve_common_type_refs(common_type_defs)
                         .map(|ty| {
                             #[cfg(feature = "extended-schema")]
-                            let ty_pair = (s, AttributeType::new_with_loc(ty.ty, is_req, loc));
+                            let ty_pair =
+                                (s, AttributeType::new_with_loc(ty.ty.into(), is_req, loc));
                             #[cfg(not(feature = "extended-schema"))]
-                            let ty_pair = (s, AttributeType::new(ty.ty, is_req));
+                            let ty_pair = (s, AttributeType::new(ty.ty.into(), is_req));
                             ty_pair
                         })
                 })

@@ -1665,7 +1665,7 @@ impl<T> Expr<T> {
         if std::mem::discriminant(self_kind) != std::mem::discriminant(other_kind) {
             return self_kind.variant_order().cmp(&other_kind.variant_order());
         }
-        
+
         // Same variants, compare contents
         use ExprKind::*;
         match (self_kind, other_kind) {
@@ -1798,7 +1798,9 @@ impl<T> Expr<T> {
                 },
             ) => error_kind.cmp(error_kind1),
             // This should never be reached since we compare variants first
-            _ => unreachable!("Different variants should have been handled by variant_order comparison"),
+            _ => unreachable!(
+                "Different variants should have been handled by variant_order comparison"
+            ),
         }
     }
 }

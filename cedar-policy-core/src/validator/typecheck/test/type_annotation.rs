@@ -155,8 +155,8 @@ fn expr_typechecks_with_correct_annotation() {
         ])
         .unwrap(),
         &ExprBuilder::with_data(Some(Type::closed_record_with_required_attributes([
-            ("foo".into(), Type::primitive_long()),
-            ("bar".into(), Type::singleton_boolean(false)),
+            ("foo".into(), Type::primitive_long().into()),
+            ("bar".into(), Type::singleton_boolean(false).into()),
         ])))
         .record([
             (

@@ -646,11 +646,11 @@ fn test_has_attr() {
             [
                 Type::closed_record_with_required_attributes([(
                     "name".into(),
-                    Type::primitive_long(),
+                    Type::primitive_long().into(),
                 )]),
                 Type::closed_record_with_required_attributes([(
                     "bar".into(),
-                    Type::primitive_long(),
+                    Type::primitive_long().into(),
                 )]),
             ],
             LubHelp::RecordWidth,
@@ -783,14 +783,14 @@ fn qualified_record_attr() {
                 Type::record_with_attributes(
                     [(
                         "num_of_things".into(),
-                        AttributeType::new(Type::primitive_long(), false),
+                        AttributeType::new(Type::primitive_long().into(), false),
                     )],
                     OpenTag::ClosedAttributes,
                 ),
                 Type::record_with_attributes(
                     [(
                         "num_of_things".into(),
-                        AttributeType::new(Type::primitive_long(), true),
+                        AttributeType::new(Type::primitive_long().into(), true),
                     )],
                     OpenTag::ClosedAttributes,
                 ),

@@ -28,6 +28,7 @@ use smol_str::SmolStr;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Display,
+    sync::Arc,
 };
 
 use crate::{
@@ -148,7 +149,7 @@ impl Type {
 
     /// Record type with given attribute types, all required
     pub fn record_with_required_attributes(
-        required_attrs: impl IntoIterator<Item = (SmolStr, Type)>,
+        required_attrs: impl IntoIterator<Item = (SmolStr, Arc<Type>)>,
         open_attributes: OpenTag,
     ) -> Type {
         Type::EntityOrRecord(EntityRecordKind::Record {
@@ -747,7 +748,7 @@ impl TryFrom<Type> for CoreSchemaType {
                     attrs
                         .into_iter()
                         .map(|(k, v)| {
-                            let schema_type = v.attr_type.try_into()?;
+                            let schema_type = v.attr_type.as_ref().clone().try_into()?;
                             Ok((
                                 k,
                                 match v.is_required {
@@ -921,7 +922,7 @@ pub struct Attributes {
 impl Attributes {
     /// Construct an [`Attributes`] with some required attributes.
     pub fn with_required_attributes(
-        required_attrs: impl IntoIterator<Item = (SmolStr, Type)>,
+        required_attrs: impl IntoIterator<Item = (SmolStr, Arc<Type>)>,
     ) -> Self {
         Self::with_attributes(
             required_attrs
@@ -1308,7 +1309,7 @@ impl EntityRecordKind {
 #[educe(Eq, PartialEq, Hash)]
 pub struct AttributeType {
     /// The type of the attribute.
-    pub attr_type: Type,
+    pub attr_type: Arc<Type>,
 
     /// True when the attribute must be present. False if it is optional, and so
     /// may not be present in a record or entity.
@@ -1322,7 +1323,7 @@ pub struct AttributeType {
 impl AttributeType {
     /// Construct an [`AttributeType`] with some type that may be required or
     /// optional as specified by the `is_required` parameter.
-    pub fn new(attr_type: Type, is_required: bool) -> Self {
+    pub fn new(attr_type: Arc<Type>, is_required: bool) -> Self {
         Self {
             attr_type,
             is_required,
@@ -1334,7 +1335,7 @@ impl AttributeType {
     #[cfg(feature = "extended-schema")]
     /// Construct an [`AttributeType`] with some type that may be required or
     /// optional as specified by the `is_required` parameter - includes source location
-    pub fn new_with_loc(attr_type: Type, is_required: bool, loc: Option<Loc>) -> Self {
+    pub fn new_with_loc(attr_type: Arc<Type>, is_required: bool, loc: Option<Loc>) -> Self {
         Self {
             attr_type,
             is_required,
@@ -1343,12 +1344,12 @@ impl AttributeType {
     }
 
     /// Construct an [`AttributeType`] for an attribute that is required.
-    pub fn required_attribute(attr_type: Type) -> Self {
+    pub fn required_attribute(attr_type: Arc<Type>) -> Self {
         Self::new(attr_type, true)
     }
 
     /// Construct an [`AttributeType`] for an attribute that is optional.
-    pub fn optional_attribute(attr_type: Type) -> Self {
+    pub fn optional_attribute(attr_type: Arc<Type>) -> Self {
         Self::new(attr_type, false)
     }
 
@@ -1375,7 +1376,7 @@ impl AttributeType {
             if mode.is_strict() && ty0.is_required() != ty1.is_required() {
                 Err(LubHelp::AttributeQualifier)
             } else {
-                Ok(AttributeType::new(lub, is_lub_required))
+                Ok(AttributeType::new(lub.into(), is_lub_required))
             }
         })
     }
@@ -1435,7 +1436,7 @@ mod test {
         }
 
         pub(crate) fn open_record_with_required_attributes(
-            required_attrs: impl IntoIterator<Item = (SmolStr, Type)>,
+            required_attrs: impl IntoIterator<Item = (SmolStr, Arc<Type>)>,
         ) -> Type {
             Type::EntityOrRecord(EntityRecordKind::Record {
                 attrs: Attributes::with_required_attributes(required_attrs),
@@ -1444,7 +1445,7 @@ mod test {
         }
 
         pub(crate) fn closed_record_with_required_attributes(
-            required_attrs: impl IntoIterator<Item = (SmolStr, Type)>,
+            required_attrs: impl IntoIterator<Item = (SmolStr, Arc<Type>)>,
         ) -> Type {
             Type::record_with_required_attributes(required_attrs, OpenTag::ClosedAttributes)
         }
@@ -1521,7 +1522,7 @@ mod test {
                         .iter()
                         .map(|(s, t)| (
                             AsRef::<str>::as_ref(s).into(),
-                            AttributeType::required_attribute(t.clone())
+                            AttributeType::required_attribute(t.clone().into())
                         ))
                 ),
                 entity_lub.get_attribute_types(&schema),
@@ -1850,28 +1851,28 @@ mod test {
             ValidatorSchema::empty(),
             ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::False),
-                ("bar".into(), Type::primitive_long()),
+                ("foo".into(), Type::False.into()),
+                ("bar".into(), Type::primitive_long().into()),
             ]),
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::primitive_string()),
-                ("bar".into(), Type::primitive_long()),
+                ("foo".into(), Type::primitive_string().into()),
+                ("bar".into(), Type::primitive_long().into()),
             ]),
             Ok(Type::open_record_with_required_attributes([(
                 "bar".into(),
-                Type::primitive_long(),
+                Type::primitive_long().into(),
             )])),
         );
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Strict,
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::False),
-                ("bar".into(), Type::primitive_long()),
+                ("foo".into(), Type::False.into()),
+                ("bar".into(), Type::primitive_long().into()),
             ]),
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::primitive_string()),
-                ("bar".into(), Type::primitive_long()),
+                ("foo".into(), Type::primitive_string().into()),
+                ("bar".into(), Type::primitive_long().into()),
             ]),
             Err(LubHelp::None),
         );
@@ -1879,23 +1880,29 @@ mod test {
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Permissive,
-            Type::closed_record_with_required_attributes([("bar".into(), Type::primitive_long())]),
+            Type::closed_record_with_required_attributes([(
+                "bar".into(),
+                Type::primitive_long().into(),
+            )]),
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::primitive_string()),
-                ("bar".into(), Type::primitive_long()),
+                ("foo".into(), Type::primitive_string().into()),
+                ("bar".into(), Type::primitive_long().into()),
             ]),
             Ok(Type::open_record_with_required_attributes([(
                 "bar".into(),
-                Type::primitive_long(),
+                Type::primitive_long().into(),
             )])),
         );
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Strict,
-            Type::closed_record_with_required_attributes([("bar".into(), Type::primitive_long())]),
+            Type::closed_record_with_required_attributes([(
+                "bar".into(),
+                Type::primitive_long().into(),
+            )]),
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::primitive_string()),
-                ("bar".into(), Type::primitive_long()),
+                ("foo".into(), Type::primitive_string().into()),
+                ("bar".into(), Type::primitive_long().into()),
             ]),
             Err(LubHelp::RecordWidth),
         );
@@ -1903,11 +1910,11 @@ mod test {
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Strict,
-            Type::closed_record_with_required_attributes([("a".into(), Type::True)]),
-            Type::closed_record_with_required_attributes([("a".into(), Type::False)]),
+            Type::closed_record_with_required_attributes([("a".into(), Type::True.into())]),
+            Type::closed_record_with_required_attributes([("a".into(), Type::False.into())]),
             Ok(Type::closed_record_with_required_attributes([(
                 "a".into(),
-                Type::primitive_boolean(),
+                Type::primitive_boolean().into(),
             )])),
         );
 
@@ -1915,28 +1922,28 @@ mod test {
             ValidatorSchema::empty(),
             ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::False),
-                ("bar".into(), Type::primitive_long()),
+                ("foo".into(), Type::False.into()),
+                ("bar".into(), Type::primitive_long().into()),
             ]),
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::True),
-                ("baz".into(), Type::primitive_long()),
+                ("foo".into(), Type::True.into()),
+                ("baz".into(), Type::primitive_long().into()),
             ]),
             Ok(Type::open_record_with_required_attributes([(
                 "foo".into(),
-                Type::primitive_boolean(),
+                Type::primitive_boolean().into(),
             )])),
         );
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Strict,
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::False),
-                ("bar".into(), Type::primitive_long()),
+                ("foo".into(), Type::False.into()),
+                ("bar".into(), Type::primitive_long().into()),
             ]),
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::True),
-                ("baz".into(), Type::primitive_long()),
+                ("foo".into(), Type::True.into()),
+                ("baz".into(), Type::primitive_long().into()),
             ]),
             Err(LubHelp::RecordWidth),
         );
@@ -1944,11 +1951,11 @@ mod test {
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Strict,
-            Type::closed_record_with_required_attributes([("foo".into(), Type::False)]),
-            Type::closed_record_with_required_attributes([("foo".into(), Type::True)]),
+            Type::closed_record_with_required_attributes([("foo".into(), Type::False.into())]),
+            Type::closed_record_with_required_attributes([("foo".into(), Type::True.into())]),
             Ok(Type::closed_record_with_required_attributes([(
                 "foo".into(),
-                Type::primitive_boolean(),
+                Type::primitive_boolean().into(),
             )])),
         );
 
@@ -1958,31 +1965,31 @@ mod test {
             Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
                 (
                     "bar".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
             ]),
             Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), true),
+                    AttributeType::new(Type::primitive_long().into(), true),
                 ),
                 (
                     "bar".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
             ]),
             Ok(Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
                 (
                     "bar".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
             ])),
         );
@@ -1992,21 +1999,21 @@ mod test {
             Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
                 (
                     "bar".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
             ]),
             Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), true),
+                    AttributeType::new(Type::primitive_long().into(), true),
                 ),
                 (
                     "bar".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
             ]),
             Err(LubHelp::AttributeQualifier),
@@ -2018,26 +2025,26 @@ mod test {
             Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
                 (
                     "bar".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
             ]),
             Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), true),
+                    AttributeType::new(Type::primitive_long().into(), true),
                 ),
                 (
                     "baz".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
             ]),
             Ok(Type::open_record_with_attributes([(
                 "foo".into(),
-                AttributeType::new(Type::primitive_long(), false),
+                AttributeType::new(Type::primitive_long().into(), false),
             )])),
         );
         assert_least_upper_bound(
@@ -2046,21 +2053,21 @@ mod test {
             Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
                 (
                     "bar".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
             ]),
             Type::closed_record_with_attributes([
                 (
                     "foo".into(),
-                    AttributeType::new(Type::primitive_long(), true),
+                    AttributeType::new(Type::primitive_long().into(), true),
                 ),
                 (
                     "baz".into(),
-                    AttributeType::new(Type::primitive_long(), false),
+                    AttributeType::new(Type::primitive_long().into(), false),
                 ),
             ]),
             Err(LubHelp::RecordWidth),
@@ -2071,29 +2078,35 @@ mod test {
             ValidationMode::Strict,
             Type::open_record_with_attributes([(
                 "foo".into(),
-                AttributeType::new(Type::False, true),
+                AttributeType::new(Type::False.into(), true),
             )]),
             Type::closed_record_with_attributes([(
                 "foo".into(),
-                AttributeType::new(Type::True, true),
+                AttributeType::new(Type::True.into(), true),
             )]),
             Ok(Type::open_record_with_attributes([(
                 "foo".into(),
-                AttributeType::new(Type::primitive_boolean(), true),
+                AttributeType::new(Type::primitive_boolean().into(), true),
             )])),
         );
 
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Permissive,
-            Type::closed_record_with_required_attributes([("a".into(), Type::primitive_long())]),
+            Type::closed_record_with_required_attributes([(
+                "a".into(),
+                Type::primitive_long().into(),
+            )]),
             Type::closed_record_with_attributes([]),
             Ok(Type::open_record_with_attributes([])),
         );
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Strict,
-            Type::closed_record_with_required_attributes([("a".into(), Type::primitive_long())]),
+            Type::closed_record_with_required_attributes([(
+                "a".into(),
+                Type::primitive_long().into(),
+            )]),
             Type::closed_record_with_attributes([]),
             Err(LubHelp::RecordWidth),
         );
@@ -2403,8 +2416,8 @@ mod test {
             ValidatorSchema::empty(),
             ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::False),
-                ("bar".into(), Type::primitive_long()),
+                ("foo".into(), Type::False.into()),
+                ("bar".into(), Type::primitive_long().into()),
             ]),
             Type::any_entity_reference(),
             Err(LubHelp::EntityRecord),
@@ -2428,9 +2441,12 @@ mod test {
             ValidationMode::Permissive,
             Type::named_entity_reference_from_str("buz"),
             Type::closed_record_with_required_attributes(vec![
-                ("a".into(), Type::primitive_long()),
-                ("b".into(), Type::primitive_long()),
-                ("c".into(), Type::named_entity_reference_from_str("bar")),
+                ("a".into(), Type::primitive_long().into()),
+                ("b".into(), Type::primitive_long().into()),
+                (
+                    "c".into(),
+                    Type::named_entity_reference_from_str("bar").into(),
+                ),
             ]),
             Err(LubHelp::EntityRecord),
         );
@@ -2473,7 +2489,7 @@ mod test {
             Type::named_entity_reference_from_str("U"),
             Type::closed_record_with_required_attributes([(
                 "foo".into(),
-                Type::named_entity_reference_from_str("U"),
+                Type::named_entity_reference_from_str("U").into(),
             )]),
             Err(LubHelp::EntityRecord),
         );
@@ -2553,12 +2569,13 @@ mod test {
         let (schema, _) =
             ValidatorSchema::from_cedarschema_str(&type_str, Extensions::all_available()).unwrap();
         assert_eq!(
-            &schema
+            schema
                 .get_entity_type(&EntityType::from_normalized_str("E").unwrap())
                 .unwrap()
                 .attr("foo")
                 .unwrap()
-                .attr_type,
+                .attr_type
+                .as_ref(),
             ty,
         );
     }
@@ -2574,16 +2591,16 @@ mod test {
         assert_type_display_roundtrip(&Type::closed_record_with_attributes(None));
         assert_type_display_roundtrip(&Type::closed_record_with_attributes([(
             "a".into(),
-            AttributeType::required_attribute(Type::primitive_boolean()),
+            AttributeType::required_attribute(Type::primitive_boolean().into()),
         )]));
         assert_type_display_roundtrip(&Type::closed_record_with_attributes([
             (
                 "a".into(),
-                AttributeType::required_attribute(Type::primitive_boolean()),
+                AttributeType::required_attribute(Type::primitive_boolean().into()),
             ),
             (
                 "b".into(),
-                AttributeType::new(Type::primitive_long(), false),
+                AttributeType::new(Type::primitive_long().into(), false),
             ),
         ]));
     }
