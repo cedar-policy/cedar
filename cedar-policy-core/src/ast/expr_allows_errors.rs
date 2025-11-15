@@ -9,11 +9,12 @@ use crate::{
 use smol_str::SmolStr;
 use std::{
     collections::{btree_map, BTreeMap},
+    convert::Infallible,
     sync::Arc,
 };
 use thiserror::Error;
 
-#[derive(Error, Debug, Hash, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Hash, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "tolerant-ast", derive(serde::Serialize, serde::Deserialize))]
 pub enum AstExprErrorKind {
     #[error("Invalid expression node: {0}")]

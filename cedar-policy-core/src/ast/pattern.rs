@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 /// Represent an element in a pattern literal (the RHS of the like operation)
-#[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PatternElem {
     /// A character literal
@@ -28,7 +28,7 @@ pub enum PatternElem {
 
 /// Represent a pattern literal (the RHS of the like operator)
 /// Also provides an implementation of the Display trait as well as a wildcard matching method.
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Pattern {
     /// A vector of pattern elements
     elems: Arc<Vec<PatternElem>>,

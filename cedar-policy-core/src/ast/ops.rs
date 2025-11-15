@@ -15,7 +15,7 @@
  */
 
 /// Built-in operators with exactly one argument
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum UnaryOp {
     /// Logical negation
@@ -43,7 +43,7 @@ impl std::fmt::Display for UnaryOp {
 }
 
 /// Built-in operators with exactly two arguments
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum BinaryOp {
     /// Equality

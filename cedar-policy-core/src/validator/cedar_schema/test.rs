@@ -1421,11 +1421,11 @@ mod translator_tests {
                     for (attr_name, attr) in ety.attributes().iter() {
                         match attr_name.as_ref() {
                             "ip" => assert_matches!(
-                                &attr.attr_type,
+                                attr.attr_type.as_ref(),
                                 Type::EntityOrRecord(EntityRecordKind::Record { .. })
                             ),
                             "bandwidth" => assert_matches!(
-                                &attr.attr_type,
+                                attr.attr_type.as_ref(),
                                 Type::ExtensionType { name } => {
                                     assert_eq!(name, &crate::ast::Name::from_normalized_str("decimal").unwrap());
                                 }
@@ -1438,7 +1438,7 @@ mod translator_tests {
                     for (attr_name, attr) in ety.attributes().iter() {
                         match attr_name.as_ref() {
                             "groups" => assert_matches!(
-                                &attr.attr_type,
+                                attr.attr_type.as_ref(),
                                 Type::Set { element_type: Some(t) } => {
                                     assert_eq!(**t, Type::Primitive { primitive_type: Primitive::String });
                                 }
@@ -1559,7 +1559,7 @@ mod translator_tests {
             .unwrap();
         let attr = et.attr("foo").unwrap();
         assert_matches!(
-            &attr.attr_type,
+            attr.attr_type.as_ref(),
             Type::Primitive {
                 primitive_type: Primitive::Bool
             },
@@ -1587,8 +1587,9 @@ mod translator_tests {
                 .unwrap()
                 .attr("foo")
                 .unwrap()
-                .attr_type,
-            Type::EntityOrRecord(EntityRecordKind::Entity(EntityLUB::single_entity(
+                .attr_type
+                .as_ref(),
+            &Type::EntityOrRecord(EntityRecordKind::Entity(EntityLUB::single_entity(
                 "X::Z".parse().unwrap()
             )))
         );
@@ -2415,7 +2416,7 @@ mod common_type_references {
                 .unwrap()
                 .attr("a")
                 .unwrap(),
-            &AttributeType::new(Type::primitive_long(), true)
+            &AttributeType::new(Type::primitive_long().into(), true)
         );
 
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
@@ -2437,7 +2438,7 @@ mod common_type_references {
                 .unwrap()
                 .attr("a")
                 .unwrap(),
-            &AttributeType::new(Type::primitive_long(), true)
+            &AttributeType::new(Type::primitive_long().into(), true)
         );
 
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
@@ -2463,7 +2464,7 @@ mod common_type_references {
                 .unwrap()
                 .attr("a")
                 .unwrap(),
-            &AttributeType::new(Type::primitive_long(), true)
+            &AttributeType::new(Type::primitive_long().into(), true)
         );
     }
 
@@ -2487,7 +2488,7 @@ mod common_type_references {
                 .unwrap()
                 .attr("a")
                 .unwrap(),
-            &AttributeType::new(Type::set(Type::primitive_long()), true)
+            &AttributeType::new(Type::set(Type::primitive_long()).into(), true)
         );
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
             r#"
@@ -2508,7 +2509,7 @@ mod common_type_references {
                 .unwrap()
                 .attr("a")
                 .unwrap(),
-            &AttributeType::new(Type::set(Type::primitive_long()), true)
+            &AttributeType::new(Type::set(Type::primitive_long()).into(), true)
         );
 
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
@@ -2534,7 +2535,7 @@ mod common_type_references {
                 .unwrap()
                 .attr("a")
                 .unwrap(),
-            &AttributeType::new(Type::set(Type::set(Type::primitive_long())), true)
+            &AttributeType::new(Type::set(Type::set(Type::primitive_long())).into(), true)
         );
     }
 
@@ -2559,11 +2560,12 @@ mod common_type_references {
                 .attr("a")
                 .unwrap(),
             AttributeType {
-                attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
+                attr_type,
                 is_required: true,
                 ..
             } => {
-                assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::primitive_long());
+                assert_matches!(attr_type.as_ref(), Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }) =>
+                {assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long()).into());});
             }
         );
 
@@ -2587,11 +2589,12 @@ mod common_type_references {
                 .attr("a")
                 .unwrap(),
             AttributeType {
-                attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
+                attr_type,
                 is_required: true,
                 ..
             } => {
-                assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::primitive_long());
+                assert_matches!(attr_type.as_ref(), Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }) =>
+                {assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long()).into());});
             }
         );
 
@@ -2619,11 +2622,12 @@ mod common_type_references {
                 .attr("a")
                 .unwrap(),
             AttributeType {
-                attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
+                attr_type,
                 is_required: true,
                 ..
             } => {
-                assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long()));
+                assert_matches!(attr_type.as_ref(), Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }) =>
+                {assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long()).into());});
             }
         );
     }

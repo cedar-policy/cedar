@@ -15,19 +15,19 @@
  */
 
 use smol_str::SmolStr;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use crate::ast::{Expr, ExprShapeOnly};
 
 /// A set of capabilities. Used to represent knowledge about attribute existence
 /// before and after evaluating an expression.
 #[derive(Eq, PartialEq, Debug, Clone, Default)]
-pub struct CapabilitySet<'a>(HashSet<Capability<'a>>);
+pub struct CapabilitySet<'a>(BTreeSet<Capability<'a>>);
 
 impl<'a> CapabilitySet<'a> {
     /// An empty capability set
     pub fn new() -> Self {
-        CapabilitySet(HashSet::new())
+        CapabilitySet(BTreeSet::new())
     }
 
     /// A capability set with a single [`Capability`]
@@ -55,7 +55,7 @@ impl<'a> CapabilitySet<'a> {
 
 /// Represent a single capability, which is an expression and some attribute that is
 /// known to exist for that expression.
-#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone, PartialOrd, Ord)]
 pub struct Capability<'a> {
     /// For this expression
     on_expr: ExprShapeOnly<'a, ()>,
@@ -68,7 +68,7 @@ pub struct Capability<'a> {
     kind: CapabilityKind,
 }
 
-#[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
+#[derive(Hash, Eq, PartialEq, Debug, Clone, Copy, PartialOrd, Ord)]
 enum CapabilityKind {
     /// This capability is for accessing attributes
     Attribute,

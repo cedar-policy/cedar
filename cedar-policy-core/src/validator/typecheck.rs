@@ -776,7 +776,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                         let all_attrs = typ_actual.all_attributes(self.schema);
                         let attr_ty = Type::lookup_attribute_type(self.schema, typ_actual, attr);
                         let annot_expr = ExprBuilder::with_data(
-                            attr_ty.clone().map(|attr_ty| attr_ty.attr_type),
+                            attr_ty
+                                .clone()
+                                .map(|attr_ty| attr_ty.attr_type.as_ref().clone()),
                         )
                         .with_same_source_loc(e)
                         .get_attr(typ_expr_actual.clone(), attr.clone());
@@ -1107,7 +1109,10 @@ impl<'a> SingleEnvTypechecker<'a> {
                             // exist, we pair them with the corresponding
                             // attribute names to get a record type.
                             let record_attrs = map.keys().cloned();
-                            let record_type_entries = std::iter::zip(record_attrs, record_attr_tys);
+                            let record_type_entries = std::iter::zip(
+                                record_attrs,
+                                record_attr_tys.into_iter().map(Into::into),
+                            );
                             Type::record_with_required_attributes(
                                 record_type_entries,
                                 OpenTag::ClosedAttributes,
