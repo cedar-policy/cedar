@@ -118,18 +118,18 @@ impl BitVec {
             // PANIC SAFETY
             #[allow(
                 clippy::unwrap_used,
-                reason = "The implementation of BigUint.to_bigint always returns Some"
+                reason = "The implementation of BigUint::to_bigint always returns Some"
             )]
-            let val_bigint = val.v.to_bigint().unwrap();
+            let val_bigint = BigUint::to_bigint(&val.v).unwrap();
             if !sign_bit {
                 val_bigint
             } else {
                 // PANIC SAFETY
                 #[allow(
                     clippy::unwrap_used,
-                    reason = "The implementation of BigUint.to_bigint always returns Some"
+                    reason = "The implementation of BigUint::to_bigint always returns Some"
                 )]
-                let res = -1 * TWO.pow(self.width - 1).to_bigint().unwrap() + val_bigint;
+                let res = -1 * BigUint::to_bigint(&TWO.pow(self.width - 1)).unwrap() + val_bigint;
                 res
             }
         }
@@ -195,9 +195,9 @@ impl BitVec {
             // PANIC SAFETY
             #[allow(
                 clippy::unwrap_used,
-                reason = "The implementation of BigUint.to_bigint always returns Some"
+                reason = "The implementation of BigUint::to_bigint always returns Some"
             )]
-            Ok(-(TWO.pow(n - 1).to_bigint().unwrap()))
+            Ok(-(BigUint::to_bigint(&TWO.pow(n - 1)).unwrap()))
         }
     }
 
@@ -209,9 +209,9 @@ impl BitVec {
             // PANIC SAFETY
             #[allow(
                 clippy::unwrap_used,
-                reason = "The implementation of BigUint.to_bigint always returns Some"
+                reason = "The implementation of BigUint::to_bigint always returns Some"
             )]
-            Ok(TWO.pow(n - 1).to_bigint().unwrap() - 1)
+            Ok(BigUint::to_bigint(&TWO.pow(n - 1)).unwrap() - 1)
         }
     }
 
