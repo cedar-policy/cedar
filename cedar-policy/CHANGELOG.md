@@ -14,6 +14,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+## [4.8.0] - 2025-11-17
+
+Cedar Language Version: 4.4
+
 ### Added
 
 - Added `TpeResponse::residual_policies` and `TpeResponse::nontrivial_residual_policies` to get residual policies under experimental feature `tpe`. (#1906)
@@ -22,11 +26,11 @@ Cedar Language Version: TBD
 ### Changed
 
 - For the `tpe` experimental feature, `PartialEntities::from_concrete` now requires a `Schema` and will validate the entities,
-  ensuring that a `PartialEntities` object always meets the preconditions required for type aware partial evaluation.
+  ensuring that a `PartialEntities` object always meets the preconditions required for type aware partial evaluation. (#1903)
 - Evaluate `has` operation when the LHS record is projectable during partial evaluation. (#1912)
 - Deprecated schema parsing errors `ActionAttributesContainEmptySet`, `UnsupportedActionAttribute`, `ActionAttrEval`, and `ExprEscapeUsed`.
-  These errors are never returned, so it is safe to delete any associated error handling code.
-- Made policy validation for `in`, `==`, and `hasTag` slightly more permissive to match the formally verified Lean model.
+  These errors are never returned, so it is safe to delete any associated error handling code. (#1929)
+- Made policy validation for `in`, `==`, and `hasTag` slightly more permissive to match the formally verified Lean model. (#1931)
 - Increase partial evaluation precision for `if-then-else`, `or`, `and` expressions (#1940)
 
 ### Fixed
@@ -985,7 +989,9 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.6.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.8.0...main
+[4.8.0]: https://github.com/cedar-policy/cedar/compare/v4.7.0...v4.8.0
+[4.7.0]: https://github.com/cedar-policy/cedar/compare/v4.6.0...v4.7.0
 [4.6.0]: https://github.com/cedar-policy/cedar/compare/v4.5.1...v4.6.0
 [4.5.1]: https://github.com/cedar-policy/cedar/compare/v4.5.0...v4.5.1
 [4.5.0]: https://github.com/cedar-policy/cedar/compare/v4.4.1...v4.5.0

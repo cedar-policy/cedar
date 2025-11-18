@@ -435,11 +435,7 @@ fn well_typed_policy_inner(
             policy.effect(),
             expr.into_expr::<ExprBuilder<()>>(),
             policy.id().clone(),
-            #[allow(
-                clippy::useless_conversion,
-                reason = "Additional `into()` to avoid build failure when the feature `cedar-policy-core:raw-parsing` is enabled"
-            )]
-            policy.loc().cloned().map(|l| l.into()),
+            policy.loc().cloned(),
         )),
         Irrelevant(errs, expr) =>
         // A policy could be irrelevant just for this environment, so unless there were errors we don't want to fail.
@@ -451,11 +447,7 @@ fn well_typed_policy_inner(
                     policy.effect(),
                     expr.into_expr::<ExprBuilder<()>>(),
                     policy.id().clone(),
-                    #[allow(
-                        clippy::useless_conversion,
-                        reason = "Additional `into()` to avoid build failure when the feature `cedar-policy-core:raw-parsing` is enabled"
-                    )]
-                    policy.loc().cloned().map(|l| l.into()),
+                    policy.loc().cloned(),
                 ))
             } else {
                 Err(Error::PolicyNotWellTyped { errs })
