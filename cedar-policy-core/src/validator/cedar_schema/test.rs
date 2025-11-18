@@ -2488,7 +2488,7 @@ mod common_type_references {
                 .unwrap()
                 .attr("a")
                 .unwrap(),
-            &AttributeType::new(Type::set(Type::primitive_long()).into(), true)
+            &AttributeType::new(Type::set(Type::primitive_long().into()).into(), true)
         );
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
             r#"
@@ -2509,7 +2509,7 @@ mod common_type_references {
                 .unwrap()
                 .attr("a")
                 .unwrap(),
-            &AttributeType::new(Type::set(Type::primitive_long()).into(), true)
+            &AttributeType::new(Type::set(Type::primitive_long().into()).into(), true)
         );
 
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
@@ -2535,7 +2535,10 @@ mod common_type_references {
                 .unwrap()
                 .attr("a")
                 .unwrap(),
-            &AttributeType::new(Type::set(Type::set(Type::primitive_long())).into(), true)
+            &AttributeType::new(
+                Type::set(Type::set(Type::primitive_long().into()).into()).into(),
+                true
+            )
         );
     }
 
@@ -2565,7 +2568,7 @@ mod common_type_references {
                 ..
             } => {
                 assert_matches!(attr_type.as_ref(), Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }) =>
-                {assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long()).into());});
+                {assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long().into()).into());});
             }
         );
 
@@ -2594,7 +2597,7 @@ mod common_type_references {
                 ..
             } => {
                 assert_matches!(attr_type.as_ref(), Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }) =>
-                {assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long()).into());});
+                {assert_eq!(attrs.get_attr("a").unwrap().attr_type.as_ref(), &Type::set(Type::primitive_long().into()));});
             }
         );
 
@@ -2627,7 +2630,7 @@ mod common_type_references {
                 ..
             } => {
                 assert_matches!(attr_type.as_ref(), Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }) =>
-                {assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long()).into());});
+                {assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long().into()).into());});
             }
         );
     }

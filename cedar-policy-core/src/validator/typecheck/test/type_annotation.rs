@@ -142,7 +142,7 @@ fn expr_typechecks_with_correct_annotation() {
     );
     assert_expr_has_annotated_ast(
         &Expr::set([Expr::val(1), Expr::val(2), Expr::val(3)]),
-        &ExprBuilder::with_data(Some(Type::set(Type::primitive_long()))).set([
+        &ExprBuilder::with_data(Some(Type::set(Type::primitive_long().into()))).set([
             ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
             ExprBuilder::with_data(Some(Type::primitive_long())).val(2),
             ExprBuilder::with_data(Some(Type::primitive_long())).val(3),

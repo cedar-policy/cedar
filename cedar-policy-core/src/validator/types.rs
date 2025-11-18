@@ -72,7 +72,7 @@ pub enum Type {
         /// used in a subtype comparison (commonly done through `expect_type` in
         /// `typecheck.rs`) or for error reporting through the `TypeError`
         /// structure.
-        element_type: Option<Box<Type>>,
+        element_type: Option<Arc<Type>>,
     },
 
     /// Record and entity types
@@ -135,9 +135,9 @@ impl Type {
     }
 
     /// The Set type, with the element type `ety`
-    pub fn set(ety: Type) -> Type {
+    pub fn set(ety: Arc<Type>) -> Type {
         Type::Set {
-            element_type: Some(Box::new(ety)),
+            element_type: Some(ety),
         }
     }
 
@@ -284,7 +284,9 @@ impl Type {
                 Type::Set {
                     element_type: Some(te1),
                 },
-            ) => Ok(Type::set(Type::least_upper_bound(schema, te0, te1, mode)?)),
+            ) => Ok(Type::set(
+                Type::least_upper_bound(schema, te0, te1, mode)?.into(),
+            )),
 
             (Type::EntityOrRecord(rk0), Type::EntityOrRecord(rk1)) => Ok(Type::EntityOrRecord(
                 EntityRecordKind::least_upper_bound(schema, rk0, rk1, mode)?,
@@ -734,7 +736,7 @@ impl TryFrom<Type> for CoreSchemaType {
             Type::Set {
                 element_type: Some(element_type),
             } => Ok(CoreSchemaType::Set {
-                element_ty: Box::new(CoreSchemaType::try_from(*element_type)?),
+                element_ty: Box::new(CoreSchemaType::try_from(element_type.as_ref().clone())?),
             }),
             Type::Set { element_type: None } => Ok(CoreSchemaType::EmptySet),
             Type::EntityOrRecord(kind @ EntityRecordKind::AnyEntity) => Err(format!(
@@ -1178,8 +1180,8 @@ impl EntityRecordKind {
                 .get_attribute_types(schema)
                 .attrs
                 .as_ref()
-                .clone()
-                .into_keys()
+                .keys()
+                .cloned()
                 .collect(),
         }
     }
@@ -1736,29 +1738,29 @@ mod test {
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Strict,
-            Type::set(Type::True),
-            Type::set(Type::True),
-            Ok(Type::set(Type::True)),
+            Type::set(Type::True.into()),
+            Type::set(Type::True.into()),
+            Ok(Type::set(Type::True.into())),
         );
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Strict,
-            Type::set(Type::False),
-            Type::set(Type::True),
-            Ok(Type::set(Type::primitive_boolean())),
+            Type::set(Type::False.into()),
+            Type::set(Type::True.into()),
+            Ok(Type::set(Type::primitive_boolean().into())),
         );
 
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Permissive,
-            Type::set(Type::primitive_boolean()),
-            Type::set(Type::primitive_long()),
+            Type::set(Type::primitive_boolean().into()),
+            Type::set(Type::primitive_long().into()),
             Err(LubHelp::None),
         );
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Permissive,
-            Type::set(Type::primitive_boolean()),
+            Type::set(Type::primitive_boolean().into()),
             Type::primitive_boolean(),
             Err(LubHelp::None),
         );
@@ -1774,13 +1776,13 @@ mod test {
             ValidatorSchema::empty(),
             ValidationMode::Strict,
             Type::any_set(),
-            Type::set(Type::primitive_long()),
+            Type::set(Type::primitive_long().into()),
             Ok(Type::any_set()),
         );
         assert_least_upper_bound(
             ValidatorSchema::empty(),
             ValidationMode::Strict,
-            Type::set(Type::primitive_long()),
+            Type::set(Type::primitive_long().into()),
             Type::any_set(),
             Ok(Type::any_set()),
         );
@@ -1815,7 +1817,7 @@ mod test {
             ValidatorSchema::empty(),
             ValidationMode::Permissive,
             Type::closed_record_with_attributes(None),
-            Type::set(Type::primitive_boolean()),
+            Type::set(Type::primitive_boolean().into()),
             Err(LubHelp::None),
         );
     }
@@ -2189,7 +2191,7 @@ mod test {
             simple_schema(),
             ValidationMode::Permissive,
             Type::named_entity_reference_from_str("foo"),
-            Type::set(Type::any_entity_reference()),
+            Type::set(Type::any_entity_reference().into()),
             Err(LubHelp::None),
         );
     }
@@ -2589,9 +2591,9 @@ mod test {
         assert_type_display_roundtrip(&Type::primitive_boolean());
         assert_type_display_roundtrip(&Type::primitive_long());
         assert_type_display_roundtrip(&Type::primitive_string());
-        assert_type_display_roundtrip(&Type::set(Type::primitive_boolean()));
-        assert_type_display_roundtrip(&Type::set(Type::primitive_string()));
-        assert_type_display_roundtrip(&Type::set(Type::primitive_long()));
+        assert_type_display_roundtrip(&Type::set(Type::primitive_boolean().into()));
+        assert_type_display_roundtrip(&Type::set(Type::primitive_string().into()));
+        assert_type_display_roundtrip(&Type::set(Type::primitive_long().into()));
         assert_type_display_roundtrip(&Type::closed_record_with_attributes(None));
         assert_type_display_roundtrip(&Type::closed_record_with_attributes([(
             "a".into(),

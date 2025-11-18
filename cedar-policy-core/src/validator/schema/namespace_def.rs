@@ -914,7 +914,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
         } => Ok(
             try_jsonschema_type_into_validator_type(*element, extensions, loc)?.map(|vt| {
                 let (vt_ty, vt_loc) = vt.into_type_and_loc();
-                LocatedType::new_with_loc(Type::set(vt_ty), &vt_loc)
+                LocatedType::new_with_loc(Type::set(vt_ty.into()), &vt_loc)
             }),
         ),
         json_schema::Type::Type {

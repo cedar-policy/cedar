@@ -145,7 +145,7 @@ fn slot_has_typechecks() {
 fn set_typechecks() {
     assert_typechecks_empty_schema(
         &Expr::set([Expr::val(true)]),
-        &Type::set(Type::singleton_boolean(true)),
+        &Type::set(Type::singleton_boolean(true).into()),
     );
 }
 
@@ -1310,7 +1310,7 @@ fn in_typecheck_fails() {
                 get_loc(src, "true"),
                 expr_id_placeholder(),
                 vec![
-                    Type::set(Type::any_entity_reference()),
+                    Type::set(Type::any_entity_reference().into()),
                     Type::any_entity_reference(),
                 ],
                 Type::singleton_boolean(true),

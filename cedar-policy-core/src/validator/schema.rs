@@ -5162,7 +5162,7 @@ mod test_resolver {
             HashMap::from_iter([
                 (
                     "a".parse().unwrap(),
-                    LocatedType::new(Type::set(Type::primitive_boolean()))
+                    LocatedType::new(Type::set(Type::primitive_boolean().into()))
                 ),
                 (
                     "b".parse().unwrap(),

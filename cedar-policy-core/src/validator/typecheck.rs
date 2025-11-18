@@ -777,7 +777,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                         let attr_ty = Type::lookup_attribute_type(self.schema, typ_actual, attr);
                         let annot_expr = ExprBuilder::with_data(
                             attr_ty
-                                .clone()
+                                .as_ref()
                                 .map(|attr_ty| attr_ty.attr_type.as_ref().clone()),
                         )
                         .with_same_source_loc(e)
@@ -1069,7 +1069,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             )
                         }
                         Some(elem_lub) => TypecheckAnswer::success(
-                            ExprBuilder::with_data(Some(Type::set(elem_lub)))
+                            ExprBuilder::with_data(Some(Type::set(elem_lub.into())))
                                 .with_same_source_loc(e)
                                 .set(elem_expr_types),
                         ),
@@ -1853,7 +1853,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             prior_capability,
             rhs,
             &[
-                Type::set(Type::any_entity_reference()),
+                Type::set(Type::any_entity_reference().into()),
                 Type::any_entity_reference(),
             ],
             type_errors,
