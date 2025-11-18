@@ -1797,7 +1797,8 @@ impl<T> Expr<T> {
                     error_kind: error_kind1,
                 },
             ) => error_kind.cmp(error_kind1),
-            // This should never be reached since we compare variants first
+            // PANIC SAFETY: This should never be reached since we compare variants first
+            #[allow(clippy::unreachable)]
             _ => unreachable!(
                 "Different variants should have been handled by variant_order comparison"
             ),
