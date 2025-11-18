@@ -626,7 +626,7 @@ pub(super) fn encode_string(s: &str) -> Option<String> {
 }
 
 fn encode_bitvec(bv: &BitVec) -> String {
-    format!("(_ bv{} {})", bv.to_nat(), bv.width())
+    format!("(_ bv{} {})", bv.as_nat(), bv.width())
 }
 
 fn encode_ipaddr_prefix_v4(pre: &IPv4Prefix) -> String {

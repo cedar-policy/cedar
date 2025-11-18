@@ -98,6 +98,11 @@ impl BitVec {
         self.v.clone()
     }
 
+    /// Interprets a [`BitVec`] as a [`Nat`].
+    pub fn as_nat(&self) -> &Nat {
+        &self.v
+    }
+
     /// Interprets a [`BitVec`] as an [`Int`].
     pub fn to_int(&self) -> Int {
         let sign_bit = self.msb();
@@ -398,17 +403,9 @@ impl BitVec {
         let lhs_msb = lhs.msb();
         let rhs_msb = rhs.msb();
 
-        let abs_lhs = if !lhs_msb {
-            lhs.clone()
-        } else {
-            BitVec::neg(lhs)
-        };
+        let abs_lhs = if !lhs_msb { lhs } else { &BitVec::neg(lhs) };
 
-        let abs_rhs = if !rhs_msb {
-            rhs.clone()
-        } else {
-            BitVec::neg(rhs)
-        };
+        let abs_rhs = if !rhs_msb { rhs } else { &BitVec::neg(rhs) };
 
         let u = BitVec::urem(&abs_lhs, &abs_rhs)?;
         if u.is_zero() || (!lhs_msb && !rhs_msb) {
