@@ -22,6 +22,7 @@ use cedar_policy_core::validator::types;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
     fn from(v: &cedar_policy_core::validator::ValidatorSchema) -> Self {
@@ -190,7 +191,7 @@ impl From<&models::Type> for types::Type {
                 }
             }
             models::r#type::Data::SetElem(elty) => types::Type::Set {
-                element_type: Some(Box::new(types::Type::from(elty.as_ref()))),
+                element_type: Some(Arc::new(types::Type::from(elty.as_ref()))),
             },
             models::r#type::Data::Entity(e) => {
                 types::Type::EntityOrRecord(types::EntityRecordKind::Entity(
@@ -272,7 +273,8 @@ impl From<&models::AttributeType> for types::AttributeType {
         Self {
             attr_type: types::Type::from(
                 v.attr_type.as_ref().expect("attr_type field should exist"),
-            ),
+            )
+            .into(),
             is_required: v.is_required,
             #[cfg(feature = "extended-schema")]
             loc: None,
@@ -283,7 +285,7 @@ impl From<&models::AttributeType> for types::AttributeType {
 impl From<&types::AttributeType> for models::AttributeType {
     fn from(v: &types::AttributeType) -> Self {
         Self {
-            attr_type: Some(models::Type::from(&v.attr_type)),
+            attr_type: Some(models::Type::from(v.attr_type.as_ref())),
             is_required: v.is_required,
         }
     }

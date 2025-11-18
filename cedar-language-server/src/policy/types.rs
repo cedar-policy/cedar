@@ -425,7 +425,7 @@ pub(crate) fn format_attribute(
     let indent = "    ".repeat(indent_level);
     let ty = &attr_type.attr_type;
 
-    match ty {
+    match ty.as_ref() {
         Type::EntityOrRecord(EntityRecordKind::Record { attrs: fields, .. }) => {
             let mut lines = vec![format!("{}{}: {{", indent, name)];
 

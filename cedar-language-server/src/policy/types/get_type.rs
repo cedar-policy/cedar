@@ -303,7 +303,7 @@ impl<'a> AttributeCollection<'a> {
         let mut next_attributes = Vec::new();
 
         for attr_info in matching_attrs {
-            match &attr_info.attr_type.attr_type {
+            match attr_info.attr_type.attr_type.as_ref() {
                 Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
                     if let Some(et) = lub.get_single_entity() {
                         if let Some(vet) = schema.get_entity_type(et) {

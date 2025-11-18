@@ -104,7 +104,7 @@ impl EntityTypeKind {
     ) -> Option<CedarTypeKind> {
         let vet = schema.get_entity_type(et)?;
         let attr_ty = vet.attr(attr)?.clone();
-        let c_ty = CedarTypeKind::from(attr_ty.attr_type);
+        let c_ty = CedarTypeKind::from(attr_ty.attr_type.as_ref().clone());
 
         Some(c_ty)
     }

@@ -219,9 +219,9 @@ impl From<Type> for CedarTypeKind {
                 Primitive::Long => Self::Long,
                 Primitive::String => Self::String,
             },
-            Type::Set { element_type } => {
-                element_type.map_or(Self::EmptySet, |ty| Self::Set(Box::new(Self::from(*ty))))
-            }
+            Type::Set { element_type } => element_type.map_or(Self::EmptySet, |ty| {
+                Self::Set(Box::new(Self::from(ty.as_ref().clone())))
+            }),
             Type::EntityOrRecord(entity_record_kind) => match entity_record_kind {
                 EntityRecordKind::Record { attrs, .. } => {
                     let m = attrs
