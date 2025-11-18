@@ -5877,9 +5877,9 @@ action CreateList in Create appliesTo {
         // Assert that attributes that are resolved from common types still get source locations
         let t = attrs.get_attr("tasks").unwrap();
         assert!(t.loc.is_some());
-        assert_matches!(&t.attr_type, cedar_policy_core::validator::types::Type::Set { ref element_type } => {
-            let el = *element_type.clone().unwrap();
-            assert_matches!(el, Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
+        assert_matches!(t.attr_type.as_ref(), cedar_policy_core::validator::types::Type::Set { ref element_type } => {
+            let el = element_type.as_ref().unwrap();
+            assert_matches!(el.as_ref(), Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                 assert!(attrs.get_attr("name").unwrap().loc.is_some());
                 assert!(attrs.get_attr("id").unwrap().loc.is_some());
                 assert!(attrs.get_attr("state").unwrap().loc.is_some());
