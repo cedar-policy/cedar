@@ -476,7 +476,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-symcc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-recursion",
  "cedar-policy 4.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
