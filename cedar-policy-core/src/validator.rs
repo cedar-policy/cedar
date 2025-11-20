@@ -467,10 +467,16 @@ mod test {
             false,
         );
 
-        let actual_undef_error = result.validation_errors().find(|e| matches!(e, ValidationError::UnrecognizedEntityType(_))).unwrap();
+        let actual_undef_error = result
+            .validation_errors()
+            .find(|e| matches!(e, ValidationError::UnrecognizedEntityType(_)))
+            .unwrap();
         assert_eq!(actual_undef_error, &undefined_err);
 
-        let actual_action_error = result.validation_errors().find(|e| matches!(e, ValidationError::InvalidActionApplication(_))).unwrap();
+        let actual_action_error = result
+            .validation_errors()
+            .find(|e| matches!(e, ValidationError::InvalidActionApplication(_)))
+            .unwrap();
         assert_eq!(actual_action_error, &invalid_action_err);
 
         // this is also an invalid link (not a valid resource type for any action in the schema)
