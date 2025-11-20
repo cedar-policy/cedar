@@ -64,6 +64,16 @@ impl Diagnostic for UnrecognizedEntityType {
     }
 }
 
+/// Given an unknown entity type and a schema, compute a suggestion for what
+/// entity type may have been intended.
+pub fn get_suggested_entity_type(unknown: &EntityType, schema: &ValidatorSchema) -> Option<String> {
+    let known_entity_types = schema
+        .entity_type_names()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    fuzzy_search(&unknown.to_string(), known_entity_types.as_slice())
+}
+
 /// Structure containing details about an unrecognized action id error.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 #[error("for policy `{policy_id}`, unrecognized action `{actual_action_id}`")]

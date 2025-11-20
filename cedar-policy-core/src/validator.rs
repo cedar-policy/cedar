@@ -253,6 +253,8 @@ mod test {
         parser::{self, Loc},
     };
 
+    use similar_asserts::assert_eq;
+
     #[test]
     fn top_level_validate() -> Result<()> {
         let mut set = PolicySet::new();
@@ -464,8 +466,18 @@ mod test {
             false,
             false,
         );
-        assert!(result.validation_errors().any(|x| x == &undefined_err));
-        assert!(result.validation_errors().any(|x| x == &invalid_action_err));
+
+        let actual_undef_error = result
+            .validation_errors()
+            .find(|e| matches!(e, ValidationError::UnrecognizedEntityType(_)))
+            .unwrap();
+        assert_eq!(actual_undef_error, &undefined_err);
+
+        let actual_action_error = result
+            .validation_errors()
+            .find(|e| matches!(e, ValidationError::InvalidActionApplication(_)))
+            .unwrap();
+        assert_eq!(actual_action_error, &invalid_action_err);
 
         // this is also an invalid link (not a valid resource type for any action in the schema)
         let mut values = HashMap::new();
