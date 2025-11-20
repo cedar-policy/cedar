@@ -22,8 +22,8 @@ use crate::{
         PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
     },
     entities::conformance::is_valid_enumerated_entity,
-    fuzzy_match::fuzzy_search,
     parser::Loc,
+    validator::validation_errors::get_suggested_entity_type,
 };
 
 use std::{collections::HashSet, sync::Arc};
@@ -71,30 +71,16 @@ impl Validator {
         schema: &'a ValidatorSchema,
         template: &'a Template,
     ) -> impl Iterator<Item = ValidationError> + 'a {
-        // All valid entity types in the schema. These will be used to generate
-        // suggestion when an entity type is not found.
-        let known_entity_types = schema
-            .entity_type_names()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-
-        policy_entity_type_names(template).filter_map(move |name| {
-            let is_known_entity_type = schema.is_known_entity_type(name);
-
-            if !name.is_action() && !is_known_entity_type {
-                let actual_entity_type = name.to_string();
-                let suggested_entity_type =
-                    fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
-                Some(ValidationError::unrecognized_entity_type(
-                    name.loc().cloned(),
+        policy_entity_type_names(template)
+            .filter(|ety| !schema.is_known_entity_type(ety))
+            .map(|ety| {
+                ValidationError::unrecognized_entity_type(
+                    ety.loc().cloned(),
                     template.id().clone(),
-                    actual_entity_type,
-                    suggested_entity_type,
-                ))
-            } else {
-                None
-            }
-        })
+                    ety.to_string(),
+                    get_suggested_entity_type(ety, schema),
+                )
+            })
     }
 
     /// Generate `UnrecognizedActionId` error for every entity id with an action
@@ -104,8 +90,6 @@ impl Validator {
         schema: &'a ValidatorSchema,
         template: &'a Template,
     ) -> impl Iterator<Item = ValidationError> + 'a {
-        // Valid action id names that will be used to generate suggestions if an
-        // action id is not found
         policy_entity_uids(template).filter_map(move |euid| {
             let entity_type = euid.entity_type();
             if entity_type.is_action() && !schema.is_known_action_id(euid) {
@@ -128,30 +112,17 @@ impl Validator {
         policy_id: &'a PolicyID,
         slots: &'a SlotEnv,
     ) -> impl Iterator<Item = ValidationError> + 'a {
-        // All valid entity types in the schema. These will be used to generate
-        // suggestion when an entity type is not found.
-        let known_entity_types = self
-            .schema
-            .entity_type_names()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-
-        slots.values().filter_map(move |euid| {
-            let entity_type = euid.entity_type();
-            if !self.schema.is_known_entity_type(entity_type) {
-                let actual_entity_type = entity_type.to_string();
-                let suggested_entity_type =
-                    fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
-                Some(ValidationError::unrecognized_entity_type(
+        slots
+            .values()
+            .filter(|euid| !self.schema.is_known_entity_type(euid.entity_type()))
+            .map(|euid| {
+                ValidationError::unrecognized_entity_type(
                     None,
                     policy_id.clone(),
-                    actual_entity_type,
-                    suggested_entity_type,
-                ))
-            } else {
-                None
-            }
-        })
+                    euid.entity_type().to_string(),
+                    get_suggested_entity_type(euid.entity_type(), &self.schema),
+                )
+            })
     }
 
     fn check_if_in_fixes_principal(
