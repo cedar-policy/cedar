@@ -14,6 +14,14 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+
+- Deprecated `entity-manifest` experimental feature. Consumers of these functions should migrate to the `tpe` feature and use `PolicySet::is_authorized_batch`. (#1945)
+
+### Fixed
+
+- Fixed authorization and other error messages to correctly display all diagnostic information. (#1944)
+
 ## [4.8.0] - 2025-11-17
 
 Cedar Language Version: 4.4
@@ -32,7 +40,6 @@ Cedar Language Version: 4.4
   These errors are never returned, so it is safe to delete any associated error handling code. (#1929)
 - Made policy validation for `in`, `==`, and `hasTag` slightly more permissive to match the formally verified Lean model. (#1931)
 - Increase partial evaluation precision for `if-then-else`, `or`, `and` expressions (#1940)
-- Deprecated `entity-manifest` experimental feature. Consumers of these functions should migrate to the `tpe` feature and use `PolicySet::is_authorized_batch`.
 
 ### Fixed
 
@@ -41,7 +48,6 @@ Cedar Language Version: 4.4
   policy with `PolicySet::policy` and `PolicySet::template`, but `Policy::id`, `Template::id`, and `Policy::template_id`
   continued to return the original id.
 - Fixed issue where `SchemaFragment::to_cedarschema` could return a string that is not a valid Cedar schema.
-- Fixed authorization and other error messages to correctly display all diagnostic information
 
 ## [4.7.0] - 2025-10-13
 
