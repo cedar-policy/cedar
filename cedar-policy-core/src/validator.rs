@@ -190,6 +190,19 @@ impl Validator {
         (validation_errors.chain(errors), warnings)
     }
 
+    /// Check that all entity types are defined in the schema, and each entity
+    /// literal that is an action or enum type defined in the schema. These
+    /// checks are notably not performed by [`Typechecker::typecheck_by_single_request_env`]
+    /// so callers of that function will typically want call this as well.
+    pub fn validate_entity_types_and_literals<'a>(
+        schema: &'a ValidatorSchema,
+        p: &'a Template,
+    ) -> impl Iterator<Item = ValidationError> + 'a {
+        Validator::validate_entity_types(&schema, p)
+            .chain(Validator::validate_enum_entity(&schema, p))
+            .chain(Validator::validate_action_ids(&schema, p))
+    }
+
     /// Run relevant validations against a single template-linked policy,
     /// gathering all validation errors together in the returned iterator.
     fn validate_slots<'a>(

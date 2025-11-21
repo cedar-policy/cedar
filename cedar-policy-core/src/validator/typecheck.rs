@@ -185,7 +185,12 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    /// Type check a `Template` by a single request environment
+    /// Type check a `Template` by a single request environment.  Note that this
+    /// does not perform the entity type, action literals, and enum entity
+    /// checks performed by [`crate::validator::Validator::validate_entity_types_and_literals`].
+    /// Callers should also call that function to fully validate the policy.
+    /// This function does not include these extra check itself because they only
+    /// need to be performed once per policy, and not per request environment.
     pub fn typecheck_by_single_request_env<'b>(
         &'b self,
         t: &'b Template,
