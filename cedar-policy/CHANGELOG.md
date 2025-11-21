@@ -40,6 +40,7 @@ Cedar Language Version: 4.4
   policy with `PolicySet::policy` and `PolicySet::template`, but `Policy::id`, `Template::id`, and `Policy::template_id`
   continued to return the original id.
 - Fixed issue where `SchemaFragment::to_cedarschema` could return a string that is not a valid Cedar schema.
+- Fixed authorization and other error messages to correctly display all diagnostic information
 
 ## [4.7.0] - 2025-10-13
 
