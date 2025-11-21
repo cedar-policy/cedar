@@ -407,7 +407,7 @@ impl BitVec {
 
         let abs_rhs = if !rhs_msb { rhs } else { &BitVec::neg(rhs) };
 
-        let u = BitVec::urem(&abs_lhs, &abs_rhs)?;
+        let u = BitVec::urem(abs_lhs, abs_rhs)?;
         if u.is_zero() || (!lhs_msb && !rhs_msb) {
             Ok(u)
         } else if lhs_msb && !rhs_msb {
