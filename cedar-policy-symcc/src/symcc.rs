@@ -45,6 +45,7 @@ pub mod type_abbrevs;
 pub mod verifier;
 
 use cedar_policy::Schema;
+use cedar_policy_core::validator::Validator;
 use decoder::{parse_sexpr, IdMaps};
 use env::to_validator_request_env;
 
@@ -406,23 +407,8 @@ fn well_typed_policy_inner(
     let validator_schema = schema.as_ref();
     // We need to perform these three checks like what the validator does here: https://github.com/cedar-policy/cedar/blob/82784864c01b5096cb73885dd2df5643074355ed/cedar-policy-core/src/validator.rs#L178-L185
     // We don't need `validate_template_action_application` because existence of `env` already serves as evidence
-    let errs: Vec<_> = cedar_policy_core::validator::Validator::validate_entity_types(
-        schema.as_ref(),
-        policy.template(),
-    )
-    .chain(
-        cedar_policy_core::validator::Validator::validate_enum_entity(
-            schema.as_ref(),
-            policy.template(),
-        ),
-    )
-    .chain(
-        cedar_policy_core::validator::Validator::validate_action_ids(
-            schema.as_ref(),
-            policy.template(),
-        ),
-    )
-    .collect();
+    let errs: Vec<_> =
+        Validator::validate_entity_types_and_literals(schema.as_ref(), policy.template()).collect();
     if !errs.is_empty() {
         return Err(Error::PolicyNotWellTyped { errs });
     }
