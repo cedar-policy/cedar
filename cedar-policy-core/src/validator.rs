@@ -193,7 +193,7 @@ impl Validator {
     /// Check that all entity types are defined in the schema, and each entity
     /// literal that is an action or enum type defined in the schema. These
     /// checks are notably not performed by [`Typechecker::typecheck_by_single_request_env`]
-    /// so callers of that function will typically want call this as well.
+    /// so callers of that function will typically need to call this as well.
     pub fn validate_entity_types_and_literals<'a>(
         schema: &'a ValidatorSchema,
         p: &'a Template,
