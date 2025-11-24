@@ -26,6 +26,7 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use num_bigint::BigUint;
 
+use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::symcc::bitvec::BitVecError;
@@ -550,10 +551,10 @@ pub fn parse_sexpr(src: &[u8]) -> Result<SExpr, DecodeError> {
 /// (principal, action, resource) and entity types.
 #[derive(Debug)]
 pub struct IdMaps {
-    types: BTreeMap<String, TermType>,
-    vars: BTreeMap<String, TermVar>,
-    uufs: BTreeMap<String, Uuf>,
-    enums: BTreeMap<String, EntityUid>,
+    types: BTreeMap<SmolStr, TermType>,
+    vars: BTreeMap<SmolStr, TermVar>,
+    uufs: BTreeMap<SmolStr, Uuf>,
+    enums: BTreeMap<SmolStr, EntityUid>,
 }
 
 impl IdMaps {
@@ -715,7 +716,7 @@ impl SExpr {
                     // Entity or record type
                     _ => id_maps
                         .types
-                        .get(s)
+                        .get(s.as_str())
                         .cloned()
                         .ok_or_else(|| DecodeError::UnknownType(self.clone())),
                 }
@@ -1020,14 +1021,14 @@ impl SExpr {
             SExpr::Symbol(s) if s == "false" => Ok(Term::Prim(TermPrim::Bool(false))),
 
             // Empty record type
-            SExpr::Symbol(s) if id_maps.types.contains_key(s) => {
+            SExpr::Symbol(s) if id_maps.types.contains_key(s.as_str()) => {
                 self.decode_entity_or_record(id_maps, s, &[])
             }
 
             // Entity enum
             SExpr::Symbol(e) => id_maps
                 .enums
-                .get(e)
+                .get(e.as_str())
                 .cloned()
                 .map(|uid| Term::Prim(TermPrim::Entity(uid)))
                 .ok_or_else(|| DecodeError::UnknownLiteral(self.clone())),

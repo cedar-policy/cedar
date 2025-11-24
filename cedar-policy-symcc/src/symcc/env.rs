@@ -92,7 +92,7 @@ pub struct SymEntityData {
     pub attrs: UnaryFunction,
     pub ancestors: BTreeMap<EntityType, UnaryFunction>,
     /// Specifies EIDs of enum members, if applicable
-    pub members: Option<BTreeSet<String>>,
+    pub members: Option<BTreeSet<SmolStr>>,
     pub tags: Option<SymTags>,
 }
 
@@ -238,7 +238,7 @@ impl SymEntityData {
                 Ok(SymEntityData {
                     attrs: attrs_udf,
                     ancestors: BTreeMap::new(),
-                    members: Some(eids.iter().map(|s| s.to_string()).collect()),
+                    members: Some(eids.iter().map(|s| s.clone()).collect()),
                     tags: None,
                 })
             }

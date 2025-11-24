@@ -53,14 +53,14 @@ pub trait SmtLibScript {
     async fn declare_fun(
         &mut self,
         id: &str,
-        args: impl IntoIterator<Item = String>,
+        args: impl IntoIterator<Item = &str>,
         ty: &str,
     ) -> tokio::io::Result<()>;
     async fn declare_datatype<'a>(
         &mut self,
         id: &str,
         params: impl IntoIterator<Item = &'a str>,
-        constructors: impl IntoIterator<Item = String>,
+        constructors: impl IntoIterator<Item = &str>,
     ) -> tokio::io::Result<()>;
     async fn check_sat(&mut self) -> tokio::io::Result<()>;
     async fn get_model(&mut self) -> tokio::io::Result<()>;
@@ -110,7 +110,7 @@ impl<W: tokio::io::AsyncWrite + Unpin + ?Sized> SmtLibScript for W {
     async fn declare_fun(
         &mut self,
         id: &str,
-        args: impl IntoIterator<Item = String>,
+        args: impl IntoIterator<Item = &str>,
         ty: &str,
     ) -> tokio::io::Result<()> {
         let inline = args.into_iter().join(" ");
@@ -121,7 +121,7 @@ impl<W: tokio::io::AsyncWrite + Unpin + ?Sized> SmtLibScript for W {
         &mut self,
         id: &str,
         params: impl IntoIterator<Item = &'a str>,
-        constructors: impl IntoIterator<Item = String>,
+        constructors: impl IntoIterator<Item = &str>,
     ) -> tokio::io::Result<()> {
         let c_inline = "\n  ".to_string() + &constructors.into_iter().join("\n  ");
         let p_inline = params.into_iter().join(" ");
