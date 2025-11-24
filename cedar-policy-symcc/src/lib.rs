@@ -175,8 +175,8 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// NOTE: This is an experimental feature that may break or change in the future.
     pub async fn check_sat(&mut self, asserts: &WellFormedAsserts<'_>) -> Result<Option<Env>> {
         self.symcc
-            .check_sat(
-                |_| Ok(asserts.asserts().clone()),
+            .check_sat_asserts(
+                asserts.asserts(),
                 asserts.symenv(),
                 asserts.footprint.iter(),
             )
