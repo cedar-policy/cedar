@@ -55,6 +55,12 @@ Cedar Language Version: 4.4
   continued to return the original id.
 - Fixed issue where `SchemaFragment::to_cedarschema` could return a string that is not a valid Cedar schema.
 
+## [4.7.1] - Coming soon
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1966)
+
 ## [4.7.0] - 2025-10-13
 
 Cedar Language Version: 4.4
