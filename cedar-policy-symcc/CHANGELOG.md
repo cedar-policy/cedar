@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fixed parsing of small negative decimal literals. (#1964)
+
 Cedar Language Version: TBD
 
 ## [0.1.1] - 2025-11-20
