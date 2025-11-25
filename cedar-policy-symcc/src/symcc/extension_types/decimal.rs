@@ -84,7 +84,7 @@ impl FromStr for Decimal {
                             let rlen_u32: u32 = rlen.try_into().unwrap();
                             let r: i128 = r.into();
                             let r_prime = r * 10_i128.pow(DECIMAL_DIGITS - rlen_u32);
-                            let i = if l >= 0 {
+                            let i = if !left.starts_with("-") {
                                 l_prime + r_prime
                             } else {
                                 l_prime - r_prime
@@ -134,6 +134,10 @@ mod tests {
     fn tests_for_valid_strings() {
         test_valid("0.0", 0);
         test_valid("0.0000", 0);
+        test_valid("-0.0001", -1);
+        test_valid("-0.9999", -9999);
+        test_valid("-0.23", -2300);
+        test_valid("-0.0023", -23);
         test_valid("12.34", 123400);
         test_valid("1.2345", 12345);
         test_valid("-1.0", -10000);
