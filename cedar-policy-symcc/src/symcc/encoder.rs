@@ -285,7 +285,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     TermType::Entity { ety } => self.declare_entity_type(ety).await?,
                     TermType::Ext { xty } => self.declare_ext_type(xty).await?.into(),
                     TermType::Record { rty } => {
-                        let mut record_type = vec![];
+                        let mut record_type = Vec::with_capacity(rty.len());
                         for (k, v) in rty.iter() {
                             record_type.push((k.clone(), self.encode_type(v).await?));
                         }
@@ -490,7 +490,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     .await?
             }
             Term::Set { elts, .. } => {
-                let mut encoded_terms = vec![];
+                let mut encoded_terms = Vec::with_capacity(elts.len());
                 for elt in elts.iter() {
                     encoded_terms.push(self.encode_term(elt).await?);
                 }
@@ -498,7 +498,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     .await?
             }
             Term::Record(ats) => {
-                let mut encoded_terms = vec![];
+                let mut encoded_terms = Vec::with_capacity(ats.len());
                 for t in ats.values() {
                     encoded_terms.push(self.encode_term(t).await?);
                 }
@@ -543,7 +543,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 }
             }
             Term::App { op, args, .. } => {
-                let mut encoded_terms = vec![];
+                let mut encoded_terms = Vec::with_capacity(args.len());
                 for arg in args.iter() {
                     encoded_terms.push(self.encode_term(arg).await?);
                 }
@@ -565,7 +565,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     /// construct an `Encoder` (`EncoderState` in Lean), and then does the encoding.
     /// Here in Rust, we have this as a method on `Encoder`, so the caller first
     /// constructs an `Encoder` themselves with the `SymEnv`, then calls this.
-    pub async fn encode(&mut self, ts: impl IntoIterator<Item = &Term>) -> Result<()> {
+    pub async fn encode(&mut self, ts: impl ExactSizeIterator<Item = &Term>) -> Result<()> {
         self.script
             .declare_datatype(
                 "Option",
@@ -573,7 +573,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 ["(none)".to_string(), "(some (val X))".to_string()],
             )
             .await?;
-        let mut ids: Vec<_> = Vec::new();
+        let mut ids: Vec<_> = Vec::with_capacity(ts.len());
         for t in ts {
             let id = self.encode_term(t).await?;
             ids.push(id);
