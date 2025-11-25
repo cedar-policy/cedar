@@ -22,7 +22,7 @@ Cedar Language Version: TBD
 
 - Fixed authorization and other error messages to correctly display all diagnostic information. (#1944)
 
-## [4.8.1] - Coming Soon
+## [4.8.1] - 2025-11-25
 
 ### Fixed
 
