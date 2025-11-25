@@ -21,6 +21,11 @@ Cedar Language Version: TBD
 ### Fixed
 
 - Fixed authorization and other error messages to correctly display all diagnostic information. (#1944)
+
+## [4.8.1] - Coming Soon
+
+### Fixed
+
 - Fixed parsing of small negative decimal literals. (#1964)
 
 ## [4.8.0] - 2025-11-17
