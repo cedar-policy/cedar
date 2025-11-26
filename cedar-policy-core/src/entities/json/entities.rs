@@ -278,7 +278,7 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
     fn parse_ejson(&self, ejson: EntityJson) -> Result<Entity, JsonDeserializationError> {
         let uid = ejson
             .uid
-            .into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+            .into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
         let etype = uid.entity_type();
         let entity_schema_info = match &self.schema {
             None => EntitySchemaInfo::NoSchema,
@@ -309,7 +309,7 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
             .map(|(k, v)| match &entity_schema_info {
                 EntitySchemaInfo::NoSchema => Ok((
                     k.clone(),
-                    vparser.val_into_restricted_expr(v.into(), None, || {
+                    vparser.val_into_restricted_expr(v.into(), None, &|| {
                         JsonDeserializationErrorContext::EntityAttribute {
                             uid: uid.clone(),
                             attr: k.clone(),
@@ -324,7 +324,7 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
                         // docs on the `attr_type()` trait method
                         None => {
                             if desc.open_attributes() {
-                                vparser.val_into_restricted_expr(v.into(), None, || {
+                                vparser.val_into_restricted_expr(v.into(), None, &|| {
                                     JsonDeserializationErrorContext::EntityAttribute {
                                         uid: uid.clone(),
                                         attr: k.clone(),
@@ -342,7 +342,7 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
                         Some(expected_ty) => vparser.val_into_restricted_expr(
                             v.into(),
                             Some(&expected_ty),
-                            || JsonDeserializationErrorContext::EntityAttribute {
+                            &|| JsonDeserializationErrorContext::EntityAttribute {
                                 uid: uid.clone(),
                                 attr: k.clone(),
                             },
@@ -358,7 +358,7 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
             .map(|(k, v)| match &entity_schema_info {
                 EntitySchemaInfo::NoSchema => Ok((
                     k.clone(),
-                    vparser.val_into_restricted_expr(v.into(), None, || {
+                    vparser.val_into_restricted_expr(v.into(), None, &|| {
                         JsonDeserializationErrorContext::EntityTag {
                             uid: uid.clone(),
                             tag: k.clone(),
@@ -379,7 +379,7 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
                         Some(expected_ty) => vparser.val_into_restricted_expr(
                             v.into(),
                             Some(&expected_ty),
-                            || JsonDeserializationErrorContext::EntityTag {
+                            &|| JsonDeserializationErrorContext::EntityTag {
                                 uid: uid.clone(),
                                 tag: k.clone(),
                             },
@@ -410,7 +410,7 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
             .parents
             .into_iter()
             .map(|parent| {
-                parent.into_euid(|| JsonDeserializationErrorContext::EntityParents {
+                parent.into_euid(&|| JsonDeserializationErrorContext::EntityParents {
                     uid: uid.clone(),
                 })
             })
