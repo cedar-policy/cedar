@@ -107,35 +107,35 @@ impl Decimal {
             return Err(Error::FailedParse(str.as_ref().to_owned()));
         }
 
-        // pull out the components before and after the decimal point
+        // pull out the components: integer part, and fractional part
         // (the check above should ensure that .captures() and .get() succeed,
         // but we include proper error handling for posterity)
         let caps = re
             .captures(str.as_ref())
             .ok_or_else(|| Error::FailedParse(str.as_ref().to_owned()))?;
-        let l = caps
+        let l_str = caps
             .get(1)
             .ok_or_else(|| Error::FailedParse(str.as_ref().to_owned()))?
             .as_str();
-        let r = caps
+        let r_str = caps
             .get(2)
             .ok_or_else(|| Error::FailedParse(str.as_ref().to_owned()))?
             .as_str();
 
-        // convert the left component to i64 and multiply by `10 ^ NUM_DIGITS`
-        let l = i64::from_str(l).map_err(|_| Error::Overflow)?;
+        // convert the integer component to i64 and multiply by `10 ^ NUM_DIGITS`
+        let l = i64::from_str(l_str).map_err(|_| Error::Overflow)?;
         let l = checked_mul_pow(l, NUM_DIGITS)?;
 
-        // convert the right component to i64 and multiply by `10 ^ (NUM_DIGITS - len)`
-        let len: u32 = r.len().try_into().map_err(|_| Error::Overflow)?;
+        // convert the fractional component to i64 and multiply by `10 ^ (NUM_DIGITS - len)`
+        let len: u32 = r_str.len().try_into().map_err(|_| Error::Overflow)?;
         if NUM_DIGITS < len {
             return Err(Error::TooManyDigits(str.as_ref().to_string()));
         }
-        let r = i64::from_str(r).map_err(|_| Error::Overflow)?;
+        let r = i64::from_str(r_str).map_err(|_| Error::Overflow)?;
         let r = checked_mul_pow(r, NUM_DIGITS - len)?;
 
         // compute the value
-        if l >= 0 {
+        if !l_str.starts_with('-') {
             l.checked_add(r)
         } else {
             l.checked_sub(r)
@@ -632,6 +632,37 @@ mod tests {
         );
         // bad use of `lessThan` as function
         parse_expr(r#"lessThan(decimal("-1.23"), decimal("1.23"))"#).expect_err("should fail");
+
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"decimal("-0.23") != decimal("0.23")"#).expect("parsing error")
+            ),
+            Ok(true.into())
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"decimal("-0.0001").lessThan(decimal("0.0"))"#)
+                    .expect("parsing error")
+            ),
+            Ok(true.into())
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"decimal("-0.0023").lessThan(decimal("-0.23"))"#)
+                    .expect("parsing error")
+            ),
+            Ok(false.into())
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"decimal("-1.0000").lessThan(decimal("-0.9999"))"#)
+                    .expect("parsing error")
+            ),
+            Ok(true.into())
+        );
     }
 
     fn check_round_trip(s: &str) {
