@@ -17,6 +17,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## 4.7.0
 
+## 4.6.2
+
 ## 4.6.1
 
 ## 4.6.0
@@ -25,9 +27,13 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 - New `run-tests` command to run policy tests in JSON format (#1641)
 
+## 4.5.2
+
 ## 4.5.1
 
 ## 4.5.0
+
+## 4.4.2
 
 ## 4.4.1
 
@@ -40,6 +46,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
   through the CLI. (#1508, resolving #1501)
 - Improved the `check-parse` command, which now checks the parse of policies, schema,
   and/or entities (whatever is passed). (#1548)
+
+## 4.3.4
 
 ## 4.3.3
 
@@ -54,11 +62,15 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 - Add schema options `schema` and `schema-format` for the `partially-authorize`
   command (#1416, resolving #1332)
 
+## 4.2.3
+
 ## 4.2.2
 
 ## 4.2.1
 
 ## 4.2.0
+
+## 4.1.1
 
 ## 4.1.0
 
@@ -70,6 +82,9 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 ### Added
 
 - Add a command `language-version` to print the Cedar language version (#1219)
+
+
+## 4.0.1
 
 ## 4.0.0
 
@@ -84,6 +99,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
   `cedar` or `json`, as opposed to `human` or `json`. Similarly, `--direction`
   takes `cedar-to-json` or `json-to-cedar`. (#1114)
 
+## 3.4.2
+
 ## 3.4.1
 
 - The `translate-schema` command will now fail when trying to convert a schema to the
@@ -92,6 +109,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
   in either format are accepted by the other commands.
 
 ## 3.4.0
+
+## 3.3.1
 
 ## 3.3.0
 
@@ -105,6 +124,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
   addition to a single policy or a policy template. (#1057)
 - experimental `partially-authorize` command (#1082)
 
+## 3.2.5
+
 ## 3.2.4
 
 ## 3.2.1
@@ -117,6 +138,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
   policy to the file specified by the `--policies` flag. (#795)
 - A `--check` flag for the `format` subcommand. This flag checks if the policy
   is already formatted and exits with a non-zero status if it is not. (#798, resolving #796)
+
+## 3.1.4
 
 ## 3.1.3
 
@@ -155,6 +178,8 @@ Now uses Cedar language version 3.1.0.
 
 - The `link` command now accepts templates in the Cedar JSON (EST) syntax.
 
+## 3.0.2
+
 ## 3.0.1
 
 ## 3.0.0
@@ -177,7 +202,11 @@ Now uses Cedar language version 3.0.0.
 - The short form of `--template-linked` was changed from `-t` to `-k`.
 - The `format` subcommand no longer takes a positional file argument.
 
+## 2.5.1
+
 ## 2.5.0
+
+## 2.4.8
 
 ## 2.4.7
 
@@ -210,6 +239,8 @@ Now uses Cedar language version 2.1.1.
 - Duplicate policy ids in `@id` annotations cause the CLI to exit gracefully
   instead of panicking.
 
+## 2.3.4
+
 ## 2.3.3
 
 ## 2.3.2
@@ -220,11 +251,15 @@ Now uses Cedar language version 2.1.1.
 
 Now uses Cedar language version 2.1.0.
 
+## 2.2.1
+
 ## 2.2.0
 
 ### Changed
 
 - Update `cedar-policy` and `cedar-policy-core` dependencies.
+
+## 2.1.1
 
 ## 2.1.0
 
@@ -235,6 +270,8 @@ Now uses Cedar language version 2.1.0.
 ### Fixed
 
 - Resolve warning in `Cargo.toml` due to having both `license` and `license-file` metadata entries.
+
+## 2.0.4
 
 ## 2.0.3
 
