@@ -536,6 +536,9 @@ mod tests {
         test_valid_duration("12s340ms", 12340);
         test_valid_duration("1s234ms", 1234);
         test_valid_duration("-1ms", -1);
+        test_valid_duration("-0h1ms", -1);
+        test_valid_duration("-0h0m1ms", -1);
+        test_valid_duration("-0h2s1ms", -2001);
         test_valid_duration("-1s", -1000);
         test_valid_duration("-4s200ms", -4200);
         test_valid_duration("-9s876ms", -9876);
