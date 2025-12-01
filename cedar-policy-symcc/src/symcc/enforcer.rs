@@ -25,6 +25,7 @@
 //! For more technical details, see comments in SymCC/Enforcer.lean.
 
 use std::{
+    borrow::Borrow,
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
@@ -143,12 +144,15 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
 
 /// Returns the set of Terms corresponding to the footprints of `exprs`.
 /// Returning a `BTreeSet` ensures there are no duplicates.
-fn footprints<'a>(exprs: impl IntoIterator<Item = &'a Expr>, env: &SymEnv) -> BTreeSet<Term> {
+pub(crate) fn footprints<'a>(
+    exprs: impl IntoIterator<Item = &'a Expr>,
+    env: &SymEnv,
+) -> BTreeSet<Term> {
     exprs.into_iter().flat_map(|x| footprint(x, env)).collect()
 }
 
 /// Returns the acyclicity constraint for the given term
-fn acyclicity(t: &Term, es: &SymEntities) -> Term {
+pub(crate) fn acyclicity(t: &Term, es: &SymEntities) -> Term {
     match t.type_of() {
         TermType::Option { ty } if matches!(*ty, TermType::Entity { .. }) => {
             match Arc::unwrap_or_clone(ty) {
@@ -175,7 +179,7 @@ fn acyclicity(t: &Term, es: &SymEntities) -> Term {
 }
 
 /// Returns the transitivity constraint for the given term
-fn transitivity(t1: &Term, t2: &Term, es: &SymEntities) -> Term {
+pub(crate) fn transitivity(t1: &Term, t2: &Term, es: &SymEntities) -> Term {
     let is_ancestor = |t2_unwrapped: Term, t1_unwrapped: Term, f12: UnaryFunction| -> Term {
         and(
             and(is_some(t1.clone()), is_some(t2.clone())),

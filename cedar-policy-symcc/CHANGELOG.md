@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Added
+
+- New optimized interface (`*_opt` methods on `CedarSymCompiler`) allowing you
+to precompile policies (see `CompiledPolicy` and `CompiledPolicies`) and reuse
+them across many queries.
+
 ## [0.1.2] - 2025-11-26
 Cedar Language Version: 4.4
 

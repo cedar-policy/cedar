@@ -41,7 +41,7 @@ type Result<T> = std::result::Result<T, CompileError>;
 /// a Term of type .option .bool, satisfies `phi` on all inputs drawn from `env`.  See also
 /// `verify_never_errors`.
 pub fn verify_evaluate(
-    phi: impl Fn(Term) -> Term,
+    phi: impl FnOnce(Term) -> Term,
     policy: &Policy,
     env: &SymEnv,
 ) -> Result<Asserts> {
@@ -60,7 +60,7 @@ pub fn verify_evaluate(
 /// inputs drawn from `env`. See also `verify_always_allows`, `verify_always_denies`,
 /// `verify_implies`, `verify_equivalent`, and `verify_disjoint`.
 pub fn verify_is_authorized(
-    phi: impl Fn(Term, Term) -> Term,
+    phi: impl FnOnce(Term, Term) -> Term,
     policies1: &PolicySet,
     policies2: &PolicySet,
     env: &SymEnv,
@@ -98,24 +98,36 @@ pub fn verify_implies(
     verify_is_authorized(implies, policies1, policies2, env)
 }
 
-/// Returns asserts that are unsatisfiable iff `policies` allows all inputs in `env`.
-pub fn verify_always_allows(policies: &PolicySet, env: &SymEnv) -> Result<Asserts> {
-    let allow_all = Policy::from_when_clause(
+/// The policy that allows all requests
+pub(crate) fn allow_all() -> Policy {
+    // Using the policy that SymCC/Verifier.lean uses; see notes there
+    Policy::from_when_clause(
         Effect::Permit,
-        Expr::from(Value::from(true)),
+        Expr::and(
+            Expr::val(true),
+            Expr::and(Expr::val(true), Expr::and(Expr::val(true), Expr::val(true))),
+        ),
         PolicyID::from_string("allowAll"),
         None,
-    );
-    let mut allow_all_ps = PolicySet::new();
+    )
+}
+
+/// The policyset that allows all requests
+pub(crate) fn allow_all_pset() -> PolicySet {
+    let mut pset = PolicySet::new();
     // PANIC SAFETY
     #[allow(
         clippy::expect_used,
         reason = "Adding allow_all to a `PolicySet` should not error"
     )]
-    allow_all_ps
-        .add(allow_all)
+    pset.add(allow_all())
         .expect("Could not add policy to policy set.");
-    verify_implies(&allow_all_ps, policies, env)
+    pset
+}
+
+/// Returns asserts that are unsatisfiable iff `policies` allows all inputs in `env`.
+pub fn verify_always_allows(policies: &PolicySet, env: &SymEnv) -> Result<Asserts> {
+    verify_implies(&allow_all_pset(), policies, env)
 }
 
 /// Returns asserts that are unsatisfiable iff `policies` denies all inputs in `env`.

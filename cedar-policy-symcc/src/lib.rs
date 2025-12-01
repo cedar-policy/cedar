@@ -19,17 +19,16 @@
 
 pub mod err;
 mod symcc;
+mod symccopt;
 
 use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
 use std::fmt;
 
 use err::{Error, Result};
 use solver::Solver;
-use symcc::Environment;
-use symcc::SymCompiler;
 use symcc::{
     verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
-    verify_never_errors, well_typed_policies, well_typed_policy,
+    verify_never_errors, well_typed_policies, well_typed_policy, Environment, SymCompiler,
 };
 
 pub use symcc::bitvec;
@@ -131,6 +130,48 @@ impl fmt::Display for WellTypedPolicies {
     }
 }
 
+/// Represents a symbolically compiled policy. This can be fed into various
+/// functions on [`CedarSymCompiler`] for efficient solver queries (that don't
+/// have to repeat symbolic compilation).
+#[derive(Debug, Clone)]
+pub struct CompiledPolicy {
+    policy: symccopt::CompiledPolicy,
+}
+
+impl CompiledPolicy {
+    /// Compile a policy for the given `RequestEnv`.
+    ///
+    /// This does all the validating and well-typing that you need; you need not
+    /// (and should not) call `WellTypedPolicy::from_policy()` prior to calling
+    /// this.
+    pub fn compile(policy: &Policy, env: &RequestEnv, schema: &Schema) -> Result<Self> {
+        Ok(Self {
+            policy: symccopt::CompiledPolicy::compile(policy.as_ref(), env, schema)?,
+        })
+    }
+}
+
+/// Represents a symbolically compiled policyset. This can be fed into various
+/// functions on [`CedarSymCompiler`] for efficient solver queries (that don't
+/// have to repeat symbolic compilation).
+#[derive(Debug, Clone)]
+pub struct CompiledPolicies {
+    policies: symccopt::CompiledPolicies,
+}
+
+impl CompiledPolicies {
+    /// Compile a policyset for the given `RequestEnv`.
+    ///
+    /// This does all the validating and well-typing that you need; you need not
+    /// (and should not) call `WellTypedPolicies::from_policies()` prior to
+    /// calling this.
+    pub fn compile(pset: &PolicySet, env: &RequestEnv, schema: &Schema) -> Result<Self> {
+        Ok(Self {
+            policies: symccopt::CompiledPolicies::compile(pset.as_ref(), env, schema)?,
+        })
+    }
+}
+
 /// Cedar symbolic compiler, which takes your policies and schemas
 /// and converts them to SMT queries to perform various verification
 /// tasks such as checking if a policy set always allows/denies,
@@ -185,6 +226,9 @@ impl<S: Solver> CedarSymCompiler<S> {
 
     /// Returns true iff [`WellTypedPolicy`] does not error on any well-formed
     /// input in the given symbolic environment.
+    ///
+    /// Consider using the optimized version `check_never_errors_opt()` instead,
+    /// which will allow you to reuse a `CompiledPolicy` across many queries.
     pub async fn check_never_errors(
         &mut self,
         policy: &WellTypedPolicy,
@@ -193,8 +237,18 @@ impl<S: Solver> CedarSymCompiler<S> {
         self.symcc.check_never_errors(&policy.policy, symenv).await
     }
 
+    /// Returns true iff the [`CompiledPolicy`] does not error on any
+    /// well-formed input in the `RequestEnv` it was compiled for.
+    pub async fn check_never_errors_opt(&mut self, policy: &CompiledPolicy) -> Result<bool> {
+        self.symcc.check_never_errors_opt(&policy.policy).await
+    }
+
     /// Similar to [`Self::check_never_errors`], but returns a counterexample
     /// if the policy could error on well-formed input.
+    ///
+    /// Consider using the optimized version `check_never_errors_with_counterexample_opt()`
+    /// instead, which will allow you to reuse a `CompiledPolicy` across many
+    /// queries.
     pub async fn check_never_errors_with_counterexample(
         &mut self,
         policy: &WellTypedPolicy,
@@ -205,10 +259,24 @@ impl<S: Solver> CedarSymCompiler<S> {
             .await
     }
 
+    /// Similar to [`Self::check_never_errors_opt`], but returns a counterexample
+    /// if the policy could error on well-formed input.
+    pub async fn check_never_errors_with_counterexample_opt(
+        &mut self,
+        policy: &CompiledPolicy,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_never_errors_with_counterexample_opt(&policy.policy)
+            .await
+    }
+
     /// Returns true iff the authorization decision of `pset1` implies that of
     /// `pset2` for every well-formed input in the `symenv`. That is, every
     /// input allowed by `pset1` is allowed by `pset2`; `pset2` is either more
     /// permissive than, or equivalent to, `pset1`.
+    ///
+    /// Consider using the optimized version `check_implies_opt()` instead,
+    /// which will allow you to reuse a `CompiledPolicies` across many queries.
     pub async fn check_implies(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -220,8 +288,28 @@ impl<S: Solver> CedarSymCompiler<S> {
             .await
     }
 
+    /// Returns true iff the authorization decision of `pset1` implies that of
+    /// `pset2` for every well-formed input in the `RequestEnv` which both
+    /// policysets were compiled for. (Caller guarantees that both policysets
+    /// were compiled for the same `RequestEnv`.) That is, every input allowed
+    /// by `pset1` is allowed by `pset2`; `pset2` is either more permissive
+    /// than, or equivalent to, `pset1`.
+    pub async fn check_implies_opt(
+        &mut self,
+        pset1: &CompiledPolicies,
+        pset2: &CompiledPolicies,
+    ) -> Result<bool> {
+        self.symcc
+            .check_implies_opt(&pset1.policies, &pset2.policies)
+            .await
+    }
+
     /// Similar to [`Self::check_implies`], but returns a counterexample
     /// that is allowed by `pset1` but not by `pset2` if it exists.
+    ///
+    /// Consider using the optimized version `check_implies_with_counterexample_opt()`
+    /// instead, which will allow you to reuse a `CompiledPolicies` across many
+    /// queries.
     pub async fn check_implies_with_counterexample(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -233,7 +321,22 @@ impl<S: Solver> CedarSymCompiler<S> {
             .await
     }
 
+    /// Similar to [`Self::check_implies_opt`], but returns a counterexample
+    /// that is allowed by `pset1` but not by `pset2` if it exists.
+    pub async fn check_implies_with_counterexample_opt(
+        &mut self,
+        pset1: &CompiledPolicies,
+        pset2: &CompiledPolicies,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_implies_with_counterexample_opt(&pset1.policies, &pset2.policies)
+            .await
+    }
+
     /// Returns true iff `pset` allows all well-formed inputs in the `symenv`.
+    ///
+    /// Consider using the optimized version `check_always_allows_opt()` instead,
+    /// which will allow you to reuse a `CompiledPolicies` across many queries.
     pub async fn check_always_allows(
         &mut self,
         pset: &WellTypedPolicies,
@@ -242,8 +345,18 @@ impl<S: Solver> CedarSymCompiler<S> {
         self.symcc.check_always_allows(&pset.policies, symenv).await
     }
 
+    /// Returns true iff `pset` allows all well-formed inputs in the
+    /// `RequestEnv` which it was compiled for.
+    pub async fn check_always_allows_opt(&mut self, pset: &CompiledPolicies) -> Result<bool> {
+        self.symcc.check_always_allows_opt(&pset.policies).await
+    }
+
     /// Similar to [`Self::check_always_allows`], but returns a counterexample
     /// that is denied by `pset` if it exists.
+    ///
+    /// Consider using the optimized version `check_always_allows_with_counterexample_opt()`
+    /// instead, which will allow you to reuse a `CompiledPolicies` across many
+    /// queries.
     pub async fn check_always_allows_with_counterexample(
         &mut self,
         pset: &WellTypedPolicies,
@@ -254,7 +367,21 @@ impl<S: Solver> CedarSymCompiler<S> {
             .await
     }
 
+    /// Similar to [`Self::check_always_allows_opt`], but returns a counterexample
+    /// that is denied by `pset` if it exists.
+    pub async fn check_always_allows_with_counterexample_opt(
+        &mut self,
+        pset: &CompiledPolicies,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_always_allows_with_counterexample_opt(&pset.policies)
+            .await
+    }
+
     /// Returns true iff `pset` denies all well-formed inputs in the `symenv`.
+    ///
+    /// Consider using the optimized version `check_always_denies_opt()` instead,
+    /// which will allow you to reuse a `CompiledPolicies` across many queries.
     pub async fn check_always_denies(
         &mut self,
         pset: &WellTypedPolicies,
@@ -263,8 +390,18 @@ impl<S: Solver> CedarSymCompiler<S> {
         self.symcc.check_always_denies(&pset.policies, symenv).await
     }
 
+    /// Returns true iff `pset` denies all well-formed inputs in the
+    /// `RequestEnv` which it was compiled for.
+    pub async fn check_always_denies_opt(&mut self, pset: &CompiledPolicies) -> Result<bool> {
+        self.symcc.check_always_denies_opt(&pset.policies).await
+    }
+
     /// Similar to [`Self::check_always_denies`], but returns a counterexample
     /// that is allowed by `pset` if it exists.
+    ///
+    /// Consider using the optimized version `check_always_denies_with_counterexample_opt()`
+    /// instead, which will allow you to reuse a `CompiledPolicies` across many
+    /// queries.
     pub async fn check_always_denies_with_counterexample(
         &mut self,
         pset: &WellTypedPolicies,
@@ -275,8 +412,22 @@ impl<S: Solver> CedarSymCompiler<S> {
             .await
     }
 
+    /// Similar to [`Self::check_always_denies_opt`], but returns a counterexample
+    /// that is denied by `pset` if it exists.
+    pub async fn check_always_denies_with_counterexample_opt(
+        &mut self,
+        pset: &CompiledPolicies,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_always_denies_with_counterexample_opt(&pset.policies)
+            .await
+    }
+
     /// Returns true iff `pset1` and `pset2` produce the same authorization
     /// decision on all well-formed inputs in the `symenv`.
+    ///
+    /// Consider using the optimized version `check_equivalent_opt()` instead,
+    /// which will allow you to reuse a `CompiledPolicies` across many queries.
     pub async fn check_equivalent(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -288,8 +439,26 @@ impl<S: Solver> CedarSymCompiler<S> {
             .await
     }
 
+    /// Returns true iff `pset1` and `pset2` produce the same authorization
+    /// decision on all well-formed inputs in the `RequestEnv` which both
+    /// policysets were compiled for. (Caller guarantees that both policysets
+    /// were compiled for the same `RequestEnv`.)
+    pub async fn check_equivalent_opt(
+        &mut self,
+        pset1: &CompiledPolicies,
+        pset2: &CompiledPolicies,
+    ) -> Result<bool> {
+        self.symcc
+            .check_equivalent_opt(&pset1.policies, &pset2.policies)
+            .await
+    }
+
     /// Similar to [`Self::check_equivalent`], but returns a counterexample
     /// on which the authorization decisions of `pset1` and `pset2` differ.
+    ///
+    /// Consider using the optimized version `check_equivalent_with_counterexample_opt()`
+    /// instead, which will allow you to reuse a `CompiledPolicies` across many
+    /// queries.
     pub async fn check_equivalent_with_counterexample(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -301,10 +470,25 @@ impl<S: Solver> CedarSymCompiler<S> {
             .await
     }
 
+    /// Similar to [`Self::check_equivalent_opt`], but returns a counterexample
+    /// on which the authorization decisions of `pset1` and `pset2` differ.
+    pub async fn check_equivalent_with_counterexample_opt(
+        &mut self,
+        pset1: &CompiledPolicies,
+        pset2: &CompiledPolicies,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_equivalent_with_counterexample_opt(&pset1.policies, &pset2.policies)
+            .await
+    }
+
     /// Returns true iff there is no well-formed input in the `symenv` that is
     /// allowed by both `pset1` and `pset2`. If this returns `false`, then there
     /// is at least one well-formed input that is allowed by both `pset1` and
     /// `pset2`.
+    ///
+    /// Consider using the optimized version `check_disjoint_opt()` instead,
+    /// which will allow you to reuse a `CompiledPolicies` across many queries.
     pub async fn check_disjoint(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -316,8 +500,26 @@ impl<S: Solver> CedarSymCompiler<S> {
             .await
     }
 
+    /// Returns true iff there is no well-formed input in the `RequestEnv` that
+    /// is allowed by both `pset1` and `pset2`.
+    /// (Caller guarantees that `policies1` and `policies2` were compiled for
+    /// the same `RequestEnv`.)
+    pub async fn check_disjoint_opt(
+        &mut self,
+        pset1: &CompiledPolicies,
+        pset2: &CompiledPolicies,
+    ) -> Result<bool> {
+        self.symcc
+            .check_disjoint_opt(&pset1.policies, &pset2.policies)
+            .await
+    }
+
     /// Similar to [`Self::check_disjoint`], but returns a counterexample
     /// that is allowed by both `pset1` and `pset2`.
+    ///
+    /// Consider using the optimized version `check_disjoint_with_counterexample_opt()`
+    /// instead, which will allow you to reuse a `CompiledPolicies` across many
+    /// queries.
     pub async fn check_disjoint_with_counterexample(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -326,6 +528,18 @@ impl<S: Solver> CedarSymCompiler<S> {
     ) -> Result<Option<Env>> {
         self.symcc
             .check_disjoint_with_counterexample(&pset1.policies, &pset2.policies, symenv)
+            .await
+    }
+
+    /// Similar to [`Self::check_disjoint_opt`], but returns a counterexample
+    /// that is allowed by both `pset1` and `pset2`.
+    pub async fn check_disjoint_with_counterexample_opt(
+        &mut self,
+        pset1: &CompiledPolicies,
+        pset2: &CompiledPolicies,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_disjoint_with_counterexample_opt(&pset1.policies, &pset2.policies)
             .await
     }
 }
