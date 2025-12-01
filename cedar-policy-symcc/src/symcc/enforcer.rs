@@ -25,7 +25,6 @@
 //! For more technical details, see comments in SymCC/Enforcer.lean.
 
 use std::{
-    borrow::Borrow,
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };

@@ -21,7 +21,7 @@ use super::{
     enforcer::{enforce_compiled_policy, enforce_pair_compiled_policies},
     CompiledPolicies, CompiledPolicy,
 };
-use crate::symcc::{self, factory, term::Term, verifier::Asserts};
+use crate::symcc::{factory, term::Term, verifier::Asserts};
 use std::sync::Arc;
 
 /// Returns asserts that are unsatisfiable iff the evaluation of `policy`,

@@ -30,7 +30,7 @@ use super::result::CompileError;
 use super::term::Term;
 
 use cedar_policy::Effect;
-use cedar_policy_core::ast::{Expr, Policy, PolicyID, PolicySet, Value};
+use cedar_policy_core::ast::{Expr, Policy, PolicyID, PolicySet};
 
 /// Type of assertions (i.e., a list of [`Term`]s).
 pub type Asserts = Arc<Vec<Term>>;
