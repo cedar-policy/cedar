@@ -23,6 +23,7 @@ Cedar Language Version: TBD
 - Fixed authorization and other error messages to correctly display all diagnostic information. (#1944)
 
 ## [4.8.1] - 2025-11-25
+Cedar Language Version: 4.4
 
 ### Fixed
 
@@ -55,7 +56,8 @@ Cedar Language Version: 4.4
   continued to return the original id.
 - Fixed issue where `SchemaFragment::to_cedarschema` could return a string that is not a valid Cedar schema.
 
-## [4.7.1] - Coming soon
+## [4.7.1] - 2025-11-25
+Cedar Language Version: 4.4
 
 ### Fixed
 
@@ -70,6 +72,13 @@ Cedar Language Version: 4.4
 - Added `Schema::actions_for_principal_and_resource` to list actions which apply to a particular principal and resource type.
 - For the `tpe` experimental feature, added `PolicySet::query_actions` to list the actions which might be authorized given partial request with an unknown action.
 - For the `tpe` experimental feature, added `PartialEntities::empty` to conveniently construct an empty partial entity set.
+
+## [4.6.2] - 2025-11-26
+Cedar Language Version: 4.4
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
 
 ## [4.6.1] - 2025-10-10
 
@@ -96,6 +105,13 @@ Cedar Language Version: 4.4
 ### Changed
 
 - Bumped MSRV to 1.85 (#1683)
+
+## [4.5.2] - 2025-11-26
+Cedar Language Version: 4.4
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
 
 ## [4.5.1] - 2025-08-14
 
@@ -148,6 +164,13 @@ Cedar Language Version: 4.4
   schema can be retrieved using `Validator::schema`. (#1584)
 - Bumped MSRV to 1.82 (#1611)
 
+## [4.4.2] - 2025-11-26
+Cedar Language Version: 4.3
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
+
 ## [4.4.1] - 2025-05-22
 
 Cedar Language Version: 4.3
@@ -197,6 +220,13 @@ Cedar Language Version: 4.3
   edge cases, policies that previously failed to validate under strict validation
   will now pass validation, probably with an `ImpossiblePolicy` warning. (#1355,
   resolving #638)
+
+## [4.3.4] - 2025-11-26
+Cedar Language Version: 4.2
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
 
 ## [4.3.3] - 2025-02-25
 
@@ -264,6 +294,14 @@ Cedar Language Version: 4.2
 
 - Attach source code to certain errors so that `miette::Report`s derived from these errors are self-contained (#1351, resolving #977 and #1335)
 
+## [4.2.3] - 2025-11-26
+Cedar Language version: 4.1
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
+
+
 ## [4.2.2] - 2024-11-11
 Cedar Language version: 4.1
 
@@ -305,6 +343,13 @@ Cedar Language version: 4.1
 
 - The validator provides a more specific hint when an action ID cannot be found
   and the same action ID with `Action::` has been defined (#1258, resolving #166)
+
+## [4.1.1] - 2025-11-26
+Cedar Language Version: 4.0
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
 
 ## [4.1.0] - 2024-09-30
 Cedar Language Version: 4.0
@@ -392,6 +437,13 @@ Cedar Language Version: 4.0
 - (*) Schemas can now reference entity and common types defined in the empty namespace,
   even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
 
+## [3.4.2] - 2025-11-26
+Cedar Language Version: 3.4
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
+
 ## [3.4.1] - 2024-09-23
 Cedar Language Version: 3.4
 
@@ -418,6 +470,13 @@ Cedar Language Version: 3.4
 
 - (*) `Entities::from_entities()` will now correctly reject record
   attributes with superfluous attributes. (#1177, resolving #1176)
+
+## [3.3.1] - 2025-11-26
+Cedar Language Version: 3.4
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
 
 ## [3.3.0] - 2024-08-19
 Cedar Language Version: 3.4
@@ -454,6 +513,13 @@ Cedar Language Version: 3.4
 - `Template` parsing functions (e.g., `Template::parse()`) will now fail when
   passed a static policy as input. Use the `Policy` parsing functions instead.
   (#1108, resolving #1095)
+
+## [3.2.5] - 2025-11-26
+Cedar Language Version: 3.3
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
 
 ## [3.2.4] - 2024-08-07
 Cedar Language Version: 3.3
@@ -530,6 +596,13 @@ Cedar Language Version: 3.3
   valid scope constraint. (#818, resolving #563)
 - Fixed policy formatter reordering some comments around if-then-else and
   entity identifier expressions. (#861, resolving #787)
+
+## [3.1.5] - 2025-11-26
+Cedar Language Version: 3.2
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
 
 ## [3.1.4] - 2024-05-17
 Cedar Language Version: 3.2
@@ -656,6 +729,13 @@ Cedar Language Version: 3.1
 - `Template::from_json` errors when there are slots in template conditions.
   (#626, resolving #606)
 
+## [3.0.2] - 2025-11-26
+Cedar Language Version: 3.0
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
+
 ## [3.0.1] - 2023-12-21
 Cedar Language Version: 3.0
 
@@ -774,6 +854,13 @@ Cedar Language Version: 3.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
+## [2.5.1] - 2025-11-25
+Cedar Language Version: 2.2
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
+
 ## [2.5.0] - 2024-09-16
 Cedar Language Version: 2.2
 
@@ -781,6 +868,13 @@ Cedar Language Version: 2.2
 
 - Convenience methods `num_of_policies()` and `num_of_templates()` to see how
   many policies and templates a policy set has (#1180)
+
+## [2.4.8] - 2025-11-26
+Cedar Language Version: 2.2
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
 
 ## [2.4.7] - 2024-05-31
 Cedar Language Version: 2.2
@@ -900,6 +994,13 @@ Cedar Language Version: 2.1
 
 - Uses of deprecated `__expr` escapes from integration tests.
 
+## [2.3.4] - 2025-11-26
+Cedar Language Version: 2.1
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
+
 ## [2.3.3] - 2023-08-29
 Cedar Language Version: 2.1
 
@@ -970,12 +1071,26 @@ extension function names). The risk that this may be a breaking change for some
 Cedar users was accepted due to the potential security ramifications; see
 discussion in the RFC.
 
+## [2.2.1] - 2025-11-26
+Cedar Language Version: 2.0
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
+
 ## 2.2.0 - 2023-05-25
 Cedar Language Version: 2.0
 
 ### Added
 
 - `Entities::write_to_json` function to api.rs.
+
+## [2.1.1] - 2025-11-26
+Cedar Language Version: 2.0
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
 
 ## 2.1.0 - 2023-05-23
 Cedar Language Version: 2.0
@@ -991,6 +1106,13 @@ Cedar Language Version: 2.0
 ### Fixed
 
 - Resolve warning in `Cargo.toml` due to having both `license` and `license-file` metadata entries.
+
+## [2.0.4] - 2025-11-26
+Cedar Language Version: 2.0
+
+### Fixed
+
+- Fixed parsing of small negative decimal literals. (#1964)
 
 ## 2.0.3 - 2023-05-17
 Cedar Language Version: 2.0
