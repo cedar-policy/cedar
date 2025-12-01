@@ -258,7 +258,7 @@ impl EntityUid {
     pub fn from_json(json: serde_json::Value) -> Result<Self, JsonDeserializationError> {
         let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
         Ok(parsed
-            .into_euid(|| JsonDeserializationErrorContext::EntityUid)?
+            .into_euid(&|| JsonDeserializationErrorContext::EntityUid)?
             .into())
     }
 }

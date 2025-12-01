@@ -234,7 +234,7 @@ impl PrincipalConstraint {
                 in_entity: None,
             }) => Ok(self),
             PrincipalConstraint::Eq(EqConstraint::Entity { entity }) => {
-                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                let euid = entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
                 match mapping.get(&euid) {
                     Some(new_euid) => Ok(PrincipalConstraint::Eq(EqConstraint::Entity {
                         entity: new_euid.into(),
@@ -243,7 +243,7 @@ impl PrincipalConstraint {
                 }
             }
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                let euid = entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
                 match mapping.get(&euid) {
                     Some(new_euid) => Ok(PrincipalConstraint::In(
                         PrincipalOrResourceInConstraint::Entity {
@@ -257,7 +257,7 @@ impl PrincipalConstraint {
                 entity_type: ety,
                 in_entity: Some(PrincipalOrResourceInConstraint::Entity { entity }),
             }) => {
-                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                let euid = entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
                 match mapping.get(&euid) {
                     Some(new_euid) => {
                         Ok(PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
@@ -359,7 +359,7 @@ impl ResourceConstraint {
                 in_entity: None,
             }) => Ok(self),
             ResourceConstraint::Eq(EqConstraint::Entity { entity }) => {
-                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                let euid = entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
                 match mapping.get(&euid) {
                     Some(new_euid) => Ok(ResourceConstraint::Eq(EqConstraint::Entity {
                         entity: new_euid.into(),
@@ -368,7 +368,7 @@ impl ResourceConstraint {
                 }
             }
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                let euid = entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
                 match mapping.get(&euid) {
                     Some(new_euid) => Ok(ResourceConstraint::In(
                         PrincipalOrResourceInConstraint::Entity {
@@ -382,7 +382,7 @@ impl ResourceConstraint {
                 entity_type: ety,
                 in_entity: Some(PrincipalOrResourceInConstraint::Entity { entity }),
             }) => {
-                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                let euid = entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
                 match mapping.get(&euid) {
                     Some(new_euid) => Ok(ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                         entity_type: ety,
@@ -432,7 +432,7 @@ impl ActionConstraint {
     ) -> Result<Self, JsonDeserializationError> {
         match self.clone() {
             ActionConstraint::Eq(EqConstraint::Entity { entity }) => {
-                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                let euid = entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
                 match mapping.get(&euid) {
                     Some(new_euid) => Ok(ActionConstraint::Eq(EqConstraint::Entity {
                         entity: new_euid.into(),
@@ -441,7 +441,7 @@ impl ActionConstraint {
                 }
             }
             ActionConstraint::In(ActionInConstraint::Single { entity }) => {
-                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                let euid = entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
                 match mapping.get(&euid) {
                     Some(new_euid) => Ok(ActionConstraint::In(ActionInConstraint::Single {
                         entity: new_euid.into(),
@@ -454,7 +454,7 @@ impl ActionConstraint {
                 for entity in entities {
                     let euid = entity
                         .clone()
-                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                        .into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
                     match mapping.get(&euid) {
                         Some(new_euid) => new_entities.push(new_euid.clone().into()),
                         None => new_entities.push(entity),
@@ -549,7 +549,7 @@ impl std::fmt::Display for EqConstraint {
             Self::Entity { entity } => {
                 match entity
                     .clone()
-                    .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                    .into_euid(&|| JsonDeserializationErrorContext::EntityUid)
                 {
                     Ok(euid) => write!(f, "== {euid}"),
                     Err(e) => write!(f, "== (invalid entity uid: {e})"),
@@ -566,7 +566,7 @@ impl std::fmt::Display for PrincipalOrResourceInConstraint {
             Self::Entity { entity } => {
                 match entity
                     .clone()
-                    .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                    .into_euid(&|| JsonDeserializationErrorContext::EntityUid)
                 {
                     Ok(euid) => write!(f, "in {euid}"),
                     Err(e) => write!(f, "in (invalid entity uid: {e})"),
@@ -593,7 +593,7 @@ impl std::fmt::Display for ActionInConstraint {
             Self::Single { entity } => {
                 match entity
                     .clone()
-                    .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                    .into_euid(&|| JsonDeserializationErrorContext::EntityUid)
                 {
                     Ok(euid) => write!(f, "in {euid}"),
                     Err(e) => write!(f, "in (invalid entity uid: {e})"),
@@ -604,7 +604,7 @@ impl std::fmt::Display for ActionInConstraint {
                 for (i, entity) in entities.iter().enumerate() {
                     match entity
                         .clone()
-                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                        .into_euid(&|| JsonDeserializationErrorContext::EntityUid)
                     {
                         Ok(euid) => write!(f, "{euid}"),
                         Err(e) => write!(f, "(invalid entity uid: {e})"),
@@ -749,7 +749,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             PrincipalConstraint::All => Ok(ast::PrincipalOrResourceConstraint::Any),
             PrincipalConstraint::Eq(EqConstraint::Entity { entity }) => Ok(
                 ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::EUID(Arc::new(
-                    entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                    entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?,
                 ))),
             ),
             PrincipalConstraint::Eq(EqConstraint::Slot { slot }) => {
@@ -763,7 +763,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             }
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => Ok(
                 ast::PrincipalOrResourceConstraint::In(ast::EntityReference::EUID(Arc::new(
-                    entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                    entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?,
                 ))),
             ),
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
@@ -778,29 +778,30 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
                 in_entity,
-            }) => ast::EntityType::from_normalized_str(entity_type.as_str())
-                .map_err(Self::Error::InvalidEntityType)
-                .and_then(|entity_type| {
-                    Ok(match in_entity {
-                        None => ast::PrincipalOrResourceConstraint::is_entity_type(Arc::new(
-                            entity_type,
-                        )),
-                        Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                            ast::PrincipalOrResourceConstraint::is_entity_type_in(
-                                Arc::new(entity_type),
-                                Arc::new(
-                                    entity
-                                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-                                ),
-                            )
-                        }
-                        Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
-                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(Arc::new(
+            }) => {
+                ast::EntityType::from_normalized_str(entity_type.as_str())
+                    .map_err(Self::Error::InvalidEntityType)
+                    .and_then(|entity_type| {
+                        Ok(match in_entity {
+                            None => ast::PrincipalOrResourceConstraint::is_entity_type(Arc::new(
                                 entity_type,
-                            ))
-                        }
+                            )),
+                            Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                                ast::PrincipalOrResourceConstraint::is_entity_type_in(
+                                    Arc::new(entity_type),
+                                    Arc::new(entity.into_euid(&|| {
+                                        JsonDeserializationErrorContext::EntityUid
+                                    })?),
+                                )
+                            }
+                            Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
+                                ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
+                                    Arc::new(entity_type),
+                                )
+                            }
+                        })
                     })
-                }),
+            }
         }
     }
 }
@@ -814,7 +815,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             ResourceConstraint::All => Ok(ast::PrincipalOrResourceConstraint::Any),
             ResourceConstraint::Eq(EqConstraint::Entity { entity }) => Ok(
                 ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::EUID(Arc::new(
-                    entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                    entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?,
                 ))),
             ),
             ResourceConstraint::Eq(EqConstraint::Slot { slot }) => {
@@ -828,7 +829,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             }
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => Ok(
                 ast::PrincipalOrResourceConstraint::In(ast::EntityReference::EUID(Arc::new(
-                    entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                    entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?,
                 ))),
             ),
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
@@ -843,29 +844,30 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
                 in_entity,
-            }) => ast::EntityType::from_normalized_str(entity_type.as_str())
-                .map_err(Self::Error::InvalidEntityType)
-                .and_then(|entity_type| {
-                    Ok(match in_entity {
-                        None => ast::PrincipalOrResourceConstraint::is_entity_type(Arc::new(
-                            entity_type,
-                        )),
-                        Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                            ast::PrincipalOrResourceConstraint::is_entity_type_in(
-                                Arc::new(entity_type),
-                                Arc::new(
-                                    entity
-                                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-                                ),
-                            )
-                        }
-                        Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
-                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(Arc::new(
+            }) => {
+                ast::EntityType::from_normalized_str(entity_type.as_str())
+                    .map_err(Self::Error::InvalidEntityType)
+                    .and_then(|entity_type| {
+                        Ok(match in_entity {
+                            None => ast::PrincipalOrResourceConstraint::is_entity_type(Arc::new(
                                 entity_type,
-                            ))
-                        }
+                            )),
+                            Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                                ast::PrincipalOrResourceConstraint::is_entity_type_in(
+                                    Arc::new(entity_type),
+                                    Arc::new(entity.into_euid(&|| {
+                                        JsonDeserializationErrorContext::EntityUid
+                                    })?),
+                                )
+                            }
+                            Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
+                                ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
+                                    Arc::new(entity_type),
+                                )
+                            }
+                        })
                     })
-                }),
+            }
         }
     }
 }
@@ -900,12 +902,12 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
         let ast_action_constraint = match constraint {
             ActionConstraint::All => Ok(ast::ActionConstraint::Any),
             ActionConstraint::Eq(EqConstraint::Entity { entity }) => Ok(ast::ActionConstraint::Eq(
-                Arc::new(entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?),
+                Arc::new(entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?),
             )),
             ActionConstraint::Eq(EqConstraint::Slot { .. }) => Err(Self::Error::ActionSlot),
             ActionConstraint::In(ActionInConstraint::Single { entity }) => {
                 Ok(ast::ActionConstraint::In(vec![Arc::new(
-                    entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                    entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?,
                 )]))
             }
             ActionConstraint::In(ActionInConstraint::Set { entities }) => {
@@ -913,7 +915,7 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
                     entities
                         .into_iter()
                         .map(|e| {
-                            e.into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                            e.into_euid(&|| JsonDeserializationErrorContext::EntityUid)
                                 .map(Arc::new)
                         })
                         .collect::<Result<Vec<_>, _>>()?,
