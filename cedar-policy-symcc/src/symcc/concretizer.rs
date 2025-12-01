@@ -383,7 +383,7 @@ impl SymEntityData {
 impl SymEntities {
     /// Concretizes a literal SymEntities to Entities
     pub fn concretize(&self, all_euids: &BTreeSet<EntityUid>) -> Result<Entities, ConcretizeError> {
-        let mut entities = Vec::new();
+        let mut entities = Vec::with_capacity(all_euids.len());
 
         for euid in all_euids {
             let sym_entity_data =
