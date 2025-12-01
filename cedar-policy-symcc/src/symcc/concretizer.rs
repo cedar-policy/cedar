@@ -18,6 +18,7 @@
 //! literal Term/SymRequest/SymEntities to their
 //! concrete versions
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::Arc;
 
@@ -438,9 +439,9 @@ impl SymEnv {
     ///
     /// In most cases, one should use [`SymEnv::extract`] instead
     /// to ensure well-formed output [`Env`].
-    pub(crate) fn concretize<'a>(
+    pub(crate) fn concretize<E: Borrow<Expr>>(
         &self,
-        exprs: impl Iterator<Item = &'a Expr>,
+        exprs: impl IntoIterator<Item = E>,
     ) -> Result<Env, ConcretizeError> {
         let mut uids = BTreeSet::new();
         self.request.get_all_entity_uids(&mut uids);
@@ -451,7 +452,7 @@ impl SymEnv {
         // short-circuiting in an incomplete entity store.
         let mut visitor = EntityUIDCollector(&mut uids);
         for expr in exprs {
-            visitor.visit_expr(expr);
+            visitor.visit_expr(expr.borrow());
         }
 
         Ok(Env {

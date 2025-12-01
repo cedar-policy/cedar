@@ -17,13 +17,13 @@
 //! This module is as straightforward a translation as possible of
 //! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/SymCC.lean>.
 
-mod authorizer;
+pub(crate) mod authorizer;
 pub mod bitvec;
-mod compiler;
-mod concretizer;
+pub(crate) mod compiler;
+pub(crate) mod concretizer;
 mod decoder;
 mod encoder;
-mod enforcer;
+pub(crate) mod enforcer;
 mod entity_tag;
 mod env;
 pub mod ext;
@@ -45,14 +45,15 @@ pub mod type_abbrevs;
 pub mod verifier;
 
 use cedar_policy::Schema;
-use cedar_policy_core::validator::Validator;
-use decoder::{parse_sexpr, IdMaps};
-use env::to_validator_request_env;
-
 use cedar_policy_core::ast::{Expr, ExprBuilder, Policy, PolicySet};
-use cedar_policy_core::validator::{typecheck::Typechecker, types::RequestEnv, ValidationMode};
+use cedar_policy_core::validator::{
+    typecheck::Typechecker, types::RequestEnv, ValidationMode, Validator,
+};
+use decoder::{parse_sexpr, IdMaps};
 use encoder::Encoder;
+use env::to_validator_request_env;
 use solver::{Decision, Solver};
+use std::borrow::Borrow;
 use verifier::Asserts;
 
 use crate::err::{Error, Result};
@@ -155,12 +156,14 @@ impl<S: Solver> SymCompiler<S> {
     /// with respect to `symenv`. This call resets the solver.
     ///
     /// For soundness, `footprint` must include all expressions used for generating `asserts`.
-    /// TODO: why does this function take a `footprint` argument when the corresponding Lean does not?
-    pub async fn check_sat_asserts(
+    ///
+    /// This function corresponds to `satAsserts?` (not `checkSatAsserts`) in the Lean.
+    /// The `footprint` argument here corresponds to the `ps` argument in the Lean.
+    pub async fn check_sat_asserts<E: Borrow<Expr>>(
         &mut self,
         asserts: &Asserts,
         symenv: &SymEnv,
-        footprint: impl IntoIterator<Item = &Expr>,
+        footprint: impl IntoIterator<Item = E>,
     ) -> Result<Option<Env>> {
         if asserts.iter().any(|assert| *assert == false.into()) {
             // some assert has been reduced to constant-false by the symcc process.
@@ -168,11 +171,7 @@ impl<S: Solver> SymCompiler<S> {
             Ok(None)
         } else if asserts.iter().all(|assert| *assert == true.into()) {
             let interp = Interpretation::default(symenv);
-            Ok(Some(
-                symenv
-                    .interpret(&interp)
-                    .concretize(footprint.into_iter())?,
-            ))
+            Ok(Some(symenv.interpret(&interp).concretize(footprint)?))
         } else {
             self.solver
                 .smtlib_input()
@@ -204,7 +203,7 @@ impl<S: Solver> SymCompiler<S> {
                     };
                     let model = parse_sexpr(model_str.as_bytes())?;
                     let interp = model.decode_model(symenv, &id_maps)?;
-                    Ok(Some(symenv.extract(footprint.into_iter(), &interp)?))
+                    Ok(Some(symenv.extract(footprint, &interp)?))
                 }
                 Decision::Unknown => Err(Error::SolverUnknown),
             }
@@ -262,12 +261,11 @@ impl<S: Solver> SymCompiler<S> {
         let footprint = policies1
             .policies()
             .chain(policies2.policies())
-            .map(|p| p.condition())
-            .collect::<Vec<_>>();
+            .map(|p| p.condition());
         self.check_sat_asserts(
             &verify_implies(policies1, policies2, symenv)?,
             symenv,
-            footprint.iter(),
+            footprint,
         )
         .await
     }
