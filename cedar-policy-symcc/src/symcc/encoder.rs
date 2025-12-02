@@ -118,9 +118,9 @@ type Result<T> = std::result::Result<T, EncodeError>;
 
 #[derive(Debug)]
 pub struct Encoder<'a, S> {
-    pub(super) terms: BTreeMap<Term, SmolStr>,
+    pub(super) terms: BTreeMap<&'a Term, SmolStr>,
     pub(super) types: BTreeMap<TermType, SmolStr>,
-    pub(super) uufs: BTreeMap<Uuf, SmolStr>,
+    pub(super) uufs: BTreeMap<&'a Uuf, SmolStr>,
     pub(super) enums: BTreeMap<&'a EntityType, &'a BTreeSet<SmolStr>>,
     script: S,
 }
@@ -171,7 +171,7 @@ impl<'a, S> Encoder<'a, S> {
     }
 }
 
-impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
+impl<'a, S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'a, S> {
     /// Returns `id` to match the Lean
     pub async fn declare_type<T: AsRef<str>>(
         &mut self,
@@ -337,7 +337,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         self.define_term(ty_enc, t_enc).await
     }
 
-    pub async fn encode_uuf(&mut self, uuf: &Uuf) -> Result<SmolStr> {
+    pub async fn encode_uuf(&mut self, uuf: &'a Uuf) -> Result<SmolStr> {
         match self.uufs.get(uuf) {
             Some(enc) => Ok(enc.clone()),
             None => {
@@ -348,7 +348,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 self.script
                     .declare_fun(&id, [encoded_arg_type.as_str()], &encoded_out_type)
                     .await?;
-                self.uufs.insert(uuf.clone(), id.clone());
+                self.uufs.insert(uuf, id.clone());
                 Ok(id)
             }
         }
@@ -415,7 +415,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     pub async fn define_app<'b>(
         &mut self,
         ty_enc: &str,
-        op: &Op,
+        op: &'a Op,
         t_encs: impl IntoIterator<Item = SmolStr>,
         ts: impl IntoIterator<Item = &'b Term>,
     ) -> Result<SmolStr> {
@@ -452,7 +452,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     }
 
     #[async_recursion]
-    pub async fn encode_term(&mut self, t: &Term) -> Result<SmolStr> {
+    pub async fn encode_term(&mut self, t: &'a Term) -> Result<SmolStr> {
         if let Some(enc) = self.terms.get(t) {
             return Ok(enc.clone());
         }
@@ -553,7 +553,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     .await?
             }
         };
-        self.terms.insert(t.clone(), enc.clone());
+        self.terms.insert(t, enc.clone());
         Ok(enc)
     }
 
@@ -567,7 +567,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     /// construct an `Encoder` (`EncoderState` in Lean), and then does the encoding.
     /// Here in Rust, we have this as a method on `Encoder`, so the caller first
     /// constructs an `Encoder` themselves with the `SymEnv`, then calls this.
-    pub async fn encode(&mut self, ts: impl ExactSizeIterator<Item = &Term>) -> Result<()> {
+    pub async fn encode(&mut self, ts: impl ExactSizeIterator<Item = &'a Term>) -> Result<()> {
         self.script
             .declare_datatype("Option", ["X"], ["(none)", "(some (val X))"])
             .await?;

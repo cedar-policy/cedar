@@ -194,7 +194,7 @@ impl<S: Solver> SymCompiler<S> {
                 .encode(asserts.iter())
                 .await
                 .map_err(Error::EncodeError)?;
-            let id_maps = IdMaps::from_encoder(&encoder);
+            let id_maps = IdMaps::from_encoder(encoder);
             match self.solver.check_sat().await? {
                 Decision::Unsat => Ok(None),
                 Decision::Sat => {
@@ -203,7 +203,7 @@ impl<S: Solver> SymCompiler<S> {
                     };
                     let model = parse_sexpr(model_str.as_bytes())?;
                     let interp = model.decode_model(symenv, &id_maps)?;
-                    Ok(Some(symenv.extract(footprint, &interp)?))
+                    Ok(Some(symenv.extract(footprint, interp)?))
                 }
                 Decision::Unknown => Err(Error::SolverUnknown),
             }

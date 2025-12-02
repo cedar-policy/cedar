@@ -33,8 +33,8 @@ use super::{factory, SymEnv};
 /// - A map from UUF to UDFs
 #[derive(Debug)]
 pub struct Interpretation<'a> {
-    pub(super) vars: BTreeMap<TermVar, Term>,
-    pub(super) funs: BTreeMap<Uuf, Udf>,
+    pub(super) vars: BTreeMap<&'a TermVar, Term>,
+    pub(super) funs: BTreeMap<&'a Uuf, Udf>,
     pub(super) env: &'a SymEnv,
 }
 

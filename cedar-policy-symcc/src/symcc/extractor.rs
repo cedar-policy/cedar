@@ -86,35 +86,29 @@ impl Interpretation<'_> {
     /// ancestor functions that are not in the footprint to empty sets
     ///
     /// Corresponds to `Interpretation.repair` in `Extractor.lean`
-    pub fn repair_as_counterexample<'b>(&self, exprs: impl Iterator<Item = &'b Expr>) -> Self {
+    pub fn repair_as_counterexample<'b>(mut self, exprs: impl Iterator<Item = &'b Expr>) -> Self {
         let mut footprint_uids = BTreeSet::new();
 
         // Interpret every term in the footprint to collect concrete EUIDs
         // occurring in them
         for term in exprs.flat_map(|e| footprint(e, self.env).collect::<Vec<_>>()) {
-            term.interpret(self)
+            term.interpret(&self)
                 .get_all_entity_uids(&mut footprint_uids);
         }
-
-        let mut funs = self.funs.clone();
 
         // Repair all ancestor functions
         for (ety, ent_data) in self.env.entities.iter() {
             for fun in ent_data.ancestors.values() {
                 if let UnaryFunction::Uuf(uuf) = fun {
-                    funs.insert(
-                        uuf.as_ref().clone(),
-                        uuf.repair_as_counterexample(ety, &footprint_uids, self),
+                    self.funs.insert(
+                        uuf.as_ref(),
+                        uuf.repair_as_counterexample(ety, &footprint_uids, &self),
                     );
                 }
             }
         }
 
-        Self {
-            vars: self.vars.clone(),
-            funs,
-            env: self.env,
-        }
+        self
     }
 }
 
@@ -127,7 +121,7 @@ impl SymEnv {
     pub fn extract<E: Borrow<Expr>>(
         &self,
         exprs: impl IntoIterator<Item = E>,
-        interp: &Interpretation<'_>,
+        interp: Interpretation<'_>,
     ) -> Result<Env, ConcretizeError> {
         let exprs = exprs.into_iter().collect::<Vec<_>>();
         let interp = interp.repair_as_counterexample(exprs.iter().map(Borrow::borrow));
