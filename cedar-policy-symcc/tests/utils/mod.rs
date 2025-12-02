@@ -28,9 +28,10 @@ use cedar_policy::{
 };
 use cedar_policy_core::{ast::RequestSchema, extensions::Extensions};
 use cedar_policy_symcc::{
-    compile_always_allows, compile_always_denies, compile_disjoint, compile_equivalent,
-    compile_implies, compile_never_errors, solver::Solver, CedarSymCompiler, Env, Interpretation,
-    SymEnv, WellTypedPolicies, WellTypedPolicy,
+    compile_always_allows, compile_always_denies, compile_always_matches, compile_disjoint,
+    compile_equivalent, compile_implies, compile_never_errors, compile_never_matches,
+    solver::Solver, CedarSymCompiler, Env, Interpretation, SymEnv, WellTypedPolicies,
+    WellTypedPolicy,
 };
 
 #[track_caller]
@@ -180,6 +181,152 @@ pub async fn assert_never_errors<S: Solver>(
     assert!(
         assert_never_errors_ok(compiler, policy, envs).await,
         "assert_never_errors failed for:\n{policy}"
+    );
+}
+
+pub async fn assert_always_matches_ok<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy: &Policy,
+    envs: &Environments<'_>,
+) -> bool {
+    let typed_policy = WellTypedPolicy::from_policy(policy, &envs.req_env, envs.schema).unwrap();
+    let res = compiler
+        .check_always_matches(&typed_policy, &envs.symenv)
+        .await
+        .unwrap();
+    let cex = compiler
+        .check_always_matches_with_counterexample(&typed_policy, &envs.symenv)
+        .await
+        .unwrap();
+    assert_eq!(res, cex.is_none());
+
+    if let Some(cex) = cex {
+        assert_cex_valid(envs.schema, &cex);
+        let pset = PolicySet::from_policies(std::iter::once(policy.clone())).unwrap();
+        let resp = Authorizer::new().is_authorized(&cex.request, &pset, &cex.entities);
+        // For a permit policy, always_matches means it always allows, so counterexample should deny
+        // For a forbid policy, always_matches means it always denies, so counterexample should allow
+        let expected_decision = if policy.effect() == cedar_policy_core::ast::Effect::Permit {
+            Decision::Deny
+        } else {
+            Decision::Allow
+        };
+        assert!(
+            resp.decision() == expected_decision,
+            "check_always_matches_with_counterexample returned an invalid counterexample"
+        );
+        // Re-perform the check with a symbolized concrete `Env`
+        let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        assert!(literal_symenv.is_literal());
+        let asserts = compile_always_matches(&typed_policy, &literal_symenv).unwrap();
+        // All asserts should be simplified to literal true's
+        assert!(asserts.asserts().iter().all(|t| t == &true.into()));
+    } else {
+        // Test that the default interpretation does satisfy the property
+        let interp = Interpretation::default(&envs.symenv);
+        let literal_symenv = envs.symenv.interpret(&interp);
+        assert!(literal_symenv.is_literal());
+        let asserts = compile_always_matches(&typed_policy, &literal_symenv).unwrap();
+        // There should be some literal false in the assertions
+        assert!(asserts.asserts().iter().all(|t| t.is_literal()));
+        assert!(asserts.asserts().iter().any(|t| t == &false.into()));
+    }
+
+    res
+}
+
+pub async fn assert_always_matches<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy: &Policy,
+    envs: &Environments<'_>,
+) {
+    assert!(
+        assert_always_matches_ok(compiler, policy, envs).await,
+        "assert_always_matches failed for:\n{policy}"
+    );
+}
+
+pub async fn assert_does_not_always_match<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy: &Policy,
+    envs: &Environments<'_>,
+) {
+    assert!(
+        !assert_always_matches_ok(compiler, policy, envs).await,
+        "assert_does_not_always_match failed for:\n{policy}"
+    );
+}
+
+pub async fn assert_never_matches_ok<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy: &Policy,
+    envs: &Environments<'_>,
+) -> bool {
+    let typed_policy = WellTypedPolicy::from_policy(policy, &envs.req_env, envs.schema).unwrap();
+    let res = compiler
+        .check_never_matches(&typed_policy, &envs.symenv)
+        .await
+        .unwrap();
+    let cex = compiler
+        .check_never_matches_with_counterexample(&typed_policy, &envs.symenv)
+        .await
+        .unwrap();
+    assert_eq!(res, cex.is_none());
+
+    if let Some(cex) = cex {
+        assert_cex_valid(envs.schema, &cex);
+        let pset = PolicySet::from_policies(std::iter::once(policy.clone())).unwrap();
+        let resp = Authorizer::new().is_authorized(&cex.request, &pset, &cex.entities);
+        // For a permit policy, never_matches means it never allows, so counterexample should allow
+        // For a forbid policy, never_matches means it never denies, so counterexample should deny
+        let expected_decision = if policy.effect() == cedar_policy_core::ast::Effect::Permit {
+            Decision::Allow
+        } else {
+            Decision::Deny
+        };
+        assert!(
+            resp.decision() == expected_decision,
+            "check_never_matches_with_counterexample returned an invalid counterexample"
+        );
+        // Re-perform the check with a symbolized concrete `Env`
+        let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        assert!(literal_symenv.is_literal());
+        let asserts = compile_never_matches(&typed_policy, &literal_symenv).unwrap();
+        // All asserts should be simplified to literal true's
+        assert!(asserts.asserts().iter().all(|t| t == &true.into()));
+    } else {
+        // Test that the default interpretation does satisfy the property
+        let interp = Interpretation::default(&envs.symenv);
+        let literal_symenv = envs.symenv.interpret(&interp);
+        assert!(literal_symenv.is_literal());
+        let asserts = compile_never_matches(&typed_policy, &literal_symenv).unwrap();
+        // There should be some literal false in the assertions
+        assert!(asserts.asserts().iter().all(|t| t.is_literal()));
+        assert!(asserts.asserts().iter().any(|t| t == &false.into()));
+    }
+
+    res
+}
+
+pub async fn assert_never_matches<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy: &Policy,
+    envs: &Environments<'_>,
+) {
+    assert!(
+        assert_never_matches_ok(compiler, policy, envs).await,
+        "assert_never_matches failed for:\n{policy}"
+    );
+}
+
+pub async fn assert_does_not_never_match<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy: &Policy,
+    envs: &Environments<'_>,
+) {
+    assert!(
+        !assert_never_matches_ok(compiler, policy, envs).await,
+        "assert_does_not_never_match failed for:\n{policy}"
     );
 }
 

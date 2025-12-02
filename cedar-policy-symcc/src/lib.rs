@@ -27,8 +27,9 @@ use std::fmt;
 use err::{Error, Result};
 use solver::Solver;
 use symcc::{
-    verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
-    verify_never_errors, well_typed_policies, well_typed_policy, Environment, SymCompiler,
+    verify_always_allows, verify_always_denies, verify_always_matches, verify_disjoint,
+    verify_equivalent, verify_implies, verify_never_errors, verify_never_matches,
+    well_typed_policies, well_typed_policy, Environment, SymCompiler,
 };
 
 pub use symcc::bitvec;
@@ -267,6 +268,102 @@ impl<S: Solver> CedarSymCompiler<S> {
     ) -> Result<Option<Env>> {
         self.symcc
             .check_never_errors_with_counterexample_opt(&policy.policy)
+            .await
+    }
+
+    /// Returns true iff [`WellTypedPolicy`] matches all well-formed inputs in
+    /// the given symbolic environment. That is, if `policy` is a `permit`
+    /// policy, it allows all inputs in the `symenv`, or if `policy` is a
+    /// `forbid` policy, it denies all inputs in the `symenv`.
+    ///
+    /// Consider using the optimized version `check_always_matches_opt()` instead,
+    /// which will allow you to reuse a `CompiledPolicy` across many queries.
+    pub async fn check_always_matches(
+        &mut self,
+        policy: &WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.symcc
+            .check_always_matches(&policy.policy, symenv)
+            .await
+    }
+
+    /// Returns true iff the [`CompiledPolicy`] matches all well-formed inputs
+    /// in the `RequestEnv` it was compiled for.
+    pub async fn check_always_matches_opt(&mut self, policy: &CompiledPolicy) -> Result<bool> {
+        self.symcc.check_always_matches_opt(&policy.policy).await
+    }
+
+    /// Similar to [`Self::check_always_matches`], but returns a counterexample
+    /// if the policy does not match some well-formed input.
+    ///
+    /// Consider using the optimized version `check_always_matches_with_counterexample_opt()`
+    /// instead, which will allow you to reuse a `CompiledPolicy` across many
+    /// queries.
+    pub async fn check_always_matches_with_counterexample(
+        &mut self,
+        policy: &WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_always_matches_with_counterexample(&policy.policy, symenv)
+            .await
+    }
+
+    /// Similar to [`Self::check_always_matches_opt`], but returns a counterexample
+    /// if the policy does not match some well-formed input.
+    pub async fn check_always_matches_with_counterexample_opt(
+        &mut self,
+        policy: &CompiledPolicy,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_always_matches_with_counterexample_opt(&policy.policy)
+            .await
+    }
+
+    /// Returns true iff [`WellTypedPolicy`] matches no well-formed inputs in
+    /// the given symbolic environment.
+    ///
+    /// Consider using the optimized version `check_never_matches_opt()` instead,
+    /// which will allow you to reuse a `CompiledPolicy` across many queries.
+    pub async fn check_never_matches(
+        &mut self,
+        policy: &WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.symcc.check_never_matches(&policy.policy, symenv).await
+    }
+
+    /// Returns true iff the [`CompiledPolicy`] matches no well-formed inputs
+    /// in the `RequestEnv` it was compiled for.
+    pub async fn check_never_matches_opt(&mut self, policy: &CompiledPolicy) -> Result<bool> {
+        self.symcc.check_never_matches_opt(&policy.policy).await
+    }
+
+    /// Similar to [`Self::check_never_matches`], but returns a counterexample
+    /// if the policy matches some well-formed input.
+    ///
+    /// Consider using the optimized version `check_never_matches_with_counterexample_opt()`
+    /// instead, which will allow you to reuse a `CompiledPolicy` across many
+    /// queries.
+    pub async fn check_never_matches_with_counterexample(
+        &mut self,
+        policy: &WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_never_matches_with_counterexample(&policy.policy, symenv)
+            .await
+    }
+
+    /// Similar to [`Self::check_never_matches_opt`], but returns a counterexample
+    /// if the policy matches some well-formed input.
+    pub async fn check_never_matches_with_counterexample_opt(
+        &mut self,
+        policy: &CompiledPolicy,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_never_matches_with_counterexample_opt(&policy.policy)
             .await
     }
 
@@ -616,6 +713,42 @@ pub fn compile_never_errors<'a>(
     Ok(WellFormedAsserts::from_asserts_unchecked(
         symenv,
         verify_never_errors(policy.policy(), symenv)?,
+        std::iter::once(policy.policy()),
+    ))
+}
+
+/// Compiles the verification task of [`CedarSymCompiler::check_always_matches`]
+/// to the unsatisfiability of the returned [`WellFormedAsserts`] without
+/// calling the solver.
+///
+/// Similar to [`compile_never_errors`].
+///
+/// NOTE: This is an experimental feature that may break or change in the future.
+pub fn compile_always_matches<'a>(
+    policy: &WellTypedPolicy,
+    symenv: &'a SymEnv,
+) -> Result<WellFormedAsserts<'a>> {
+    Ok(WellFormedAsserts::from_asserts_unchecked(
+        symenv,
+        verify_always_matches(policy.policy(), symenv)?,
+        std::iter::once(policy.policy()),
+    ))
+}
+
+/// Compiles the verification task of [`CedarSymCompiler::check_never_matches`]
+/// to the unsatisfiability of the returned [`WellFormedAsserts`] without
+/// calling the solver.
+///
+/// Similar to [`compile_never_errors`].
+///
+/// NOTE: This is an experimental feature that may break or change in the future.
+pub fn compile_never_matches<'a>(
+    policy: &WellTypedPolicy,
+    symenv: &'a SymEnv,
+) -> Result<WellFormedAsserts<'a>> {
+    Ok(WellFormedAsserts::from_asserts_unchecked(
+        symenv,
+        verify_never_matches(policy.policy(), symenv)?,
         std::iter::once(policy.policy()),
     ))
 }

@@ -25,7 +25,7 @@ use super::authorizer::is_authorized;
 use super::compiler::compile;
 use super::enforcer::enforce;
 use super::env::SymEnv;
-use super::factory::{and, eq, implies, is_some, not};
+use super::factory::{and, eq, implies, is_some, not, some_of};
 use super::result::CompileError;
 use super::term::Term;
 
@@ -85,6 +85,20 @@ pub fn verify_is_authorized(
 /// which `policy` errors.
 pub fn verify_never_errors(policy: &Policy, env: &SymEnv) -> Result<Asserts> {
     verify_evaluate(is_some, policy, env)
+}
+
+/// Returns asserts that are unsatisfiable iff `policy` matches all inputs in `env`.
+/// If the asserts are satisfiable, then there is some input in `env` which
+/// `policy` doesn't match.
+pub fn verify_always_matches(policy: &Policy, env: &SymEnv) -> Result<Asserts> {
+    verify_evaluate(|term| eq(term, some_of(true.into())), policy, env)
+}
+
+/// Returns asserts that are unsatisfiable iff `policy` matches no inputs in `env`.
+/// If the asserts are satisfiable, then there is some input in `env` which `policy`
+/// does match.
+pub fn verify_never_matches(policy: &Policy, env: &SymEnv) -> Result<Asserts> {
+    verify_evaluate(|term| not(eq(term, some_of(true.into()))), policy, env)
 }
 
 /// Returns asserts that are unsatisfiable iff the authorization decision of `policies1`
