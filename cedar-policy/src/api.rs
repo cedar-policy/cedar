@@ -4468,6 +4468,15 @@ impl From<ast::Request> for Request {
     }
 }
 
+impl PartialEq for Request {
+    fn eq(&self, other: &Self) -> bool {
+        self.principal() == other.principal()
+            && self.action() == other.action()
+            && self.resource() == other.resource()
+            && self.context() == other.context()
+    }
+}
+
 impl Request {
     /// Create a [`RequestBuilder`]
     #[doc = include_str!("../experimental_warning.md")]
@@ -4541,7 +4550,7 @@ impl Request {
 
 /// the Context object for an authorization request
 #[repr(transparent)]
-#[derive(Debug, Clone, RefCast)]
+#[derive(Debug, Clone, PartialEq, RefCast)]
 pub struct Context(ast::Context);
 
 #[doc(hidden)] // because this converts to a private/internal type

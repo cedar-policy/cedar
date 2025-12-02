@@ -30,8 +30,8 @@ use cedar_policy_core::{ast::RequestSchema, extensions::Extensions};
 use cedar_policy_symcc::{
     compile_always_allows, compile_always_denies, compile_always_matches, compile_disjoint,
     compile_equivalent, compile_implies, compile_never_errors, compile_never_matches,
-    solver::Solver, CedarSymCompiler, Env, Interpretation, SymEnv, WellTypedPolicies,
-    WellTypedPolicy,
+    solver::Solver, CedarSymCompiler, CompiledPolicies, CompiledPolicy, Env, Interpretation,
+    SymEnv, WellTypedPolicies, WellTypedPolicy,
 };
 
 #[track_caller]
@@ -135,14 +135,31 @@ pub async fn assert_never_errors_ok<S: Solver>(
     envs: &Environments<'_>,
 ) -> bool {
     let typed_policy = WellTypedPolicy::from_policy(policy, &envs.req_env, envs.schema).unwrap();
-    let res = compiler
-        .check_never_errors(&typed_policy, &envs.symenv)
-        .await
-        .unwrap();
-    let cex = compiler
-        .check_never_errors_with_counterexample(&typed_policy, &envs.symenv)
-        .await
-        .unwrap();
+    let compiled_policy = CompiledPolicy::compile(policy, &envs.req_env, envs.schema).unwrap();
+    let res = {
+        let unopt_res = compiler
+            .check_never_errors(&typed_policy, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_res = compiler
+            .check_never_errors_opt(&compiled_policy)
+            .await
+            .unwrap();
+        assert_eq!(unopt_res, opt_res);
+        unopt_res
+    };
+    let cex = {
+        let unopt_cex = compiler
+            .check_never_errors_with_counterexample(&typed_policy, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_cex = compiler
+            .check_never_errors_with_counterexample_opt(&compiled_policy)
+            .await
+            .unwrap();
+        assert_eq!(unopt_cex, opt_cex);
+        unopt_cex
+    };
     assert_eq!(res, cex.is_none());
 
     if let Some(cex) = cex {
@@ -190,14 +207,31 @@ pub async fn assert_always_matches_ok<S: Solver>(
     envs: &Environments<'_>,
 ) -> bool {
     let typed_policy = WellTypedPolicy::from_policy(policy, &envs.req_env, envs.schema).unwrap();
-    let res = compiler
-        .check_always_matches(&typed_policy, &envs.symenv)
-        .await
-        .unwrap();
-    let cex = compiler
-        .check_always_matches_with_counterexample(&typed_policy, &envs.symenv)
-        .await
-        .unwrap();
+    let compiled_policy = CompiledPolicy::compile(policy, &envs.req_env, envs.schema).unwrap();
+    let res = {
+        let unopt_res = compiler
+            .check_always_matches(&typed_policy, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_res = compiler
+            .check_always_matches_opt(&compiled_policy)
+            .await
+            .unwrap();
+        assert_eq!(unopt_res, opt_res);
+        unopt_res
+    };
+    let cex = {
+        let unopt_cex = compiler
+            .check_always_matches_with_counterexample(&typed_policy, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_cex = compiler
+            .check_always_matches_with_counterexample_opt(&compiled_policy)
+            .await
+            .unwrap();
+        assert_eq!(unopt_cex, opt_cex);
+        unopt_cex
+    };
     assert_eq!(res, cex.is_none());
 
     if let Some(cex) = cex {
@@ -263,14 +297,31 @@ pub async fn assert_never_matches_ok<S: Solver>(
     envs: &Environments<'_>,
 ) -> bool {
     let typed_policy = WellTypedPolicy::from_policy(policy, &envs.req_env, envs.schema).unwrap();
-    let res = compiler
-        .check_never_matches(&typed_policy, &envs.symenv)
-        .await
-        .unwrap();
-    let cex = compiler
-        .check_never_matches_with_counterexample(&typed_policy, &envs.symenv)
-        .await
-        .unwrap();
+    let compiled_policy = CompiledPolicy::compile(policy, &envs.req_env, envs.schema).unwrap();
+    let res = {
+        let unopt_res = compiler
+            .check_never_matches(&typed_policy, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_res = compiler
+            .check_never_matches_opt(&compiled_policy)
+            .await
+            .unwrap();
+        assert_eq!(unopt_res, opt_res);
+        unopt_res
+    };
+    let cex = {
+        let unopt_cex = compiler
+            .check_never_matches_with_counterexample(&typed_policy, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_cex = compiler
+            .check_never_matches_with_counterexample_opt(&compiled_policy)
+            .await
+            .unwrap();
+        assert_eq!(unopt_cex, opt_cex);
+        unopt_cex
+    };
     assert_eq!(res, cex.is_none());
 
     if let Some(cex) = cex {
@@ -336,14 +387,31 @@ pub async fn assert_always_allows_ok<S: Solver>(
     envs: &Environments<'_>,
 ) -> bool {
     let typed_pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    let res = compiler
-        .check_always_allows(&typed_pset, &envs.symenv)
-        .await
-        .unwrap();
-    let cex = compiler
-        .check_always_allows_with_counterexample(&typed_pset, &envs.symenv)
-        .await
-        .unwrap();
+    let compiled_pset = CompiledPolicies::compile(pset, &envs.req_env, envs.schema).unwrap();
+    let res = {
+        let unopt_res = compiler
+            .check_always_allows(&typed_pset, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_res = compiler
+            .check_always_allows_opt(&compiled_pset)
+            .await
+            .unwrap();
+        assert_eq!(unopt_res, opt_res);
+        unopt_res
+    };
+    let cex = {
+        let unopt_cex = compiler
+            .check_always_allows_with_counterexample(&typed_pset, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_cex = compiler
+            .check_always_allows_with_counterexample_opt(&compiled_pset)
+            .await
+            .unwrap();
+        assert_eq!(unopt_cex, opt_cex);
+        unopt_cex
+    };
     assert_eq!(res, cex.is_none());
 
     if let Some(cex) = cex {
@@ -401,14 +469,31 @@ pub async fn assert_always_denies_ok<S: Solver>(
     envs: &Environments<'_>,
 ) -> bool {
     let typed_pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    let res = compiler
-        .check_always_denies(&typed_pset, &envs.symenv)
-        .await
-        .unwrap();
-    let cex = compiler
-        .check_always_denies_with_counterexample(&typed_pset, &envs.symenv)
-        .await
-        .unwrap();
+    let compiled_pset = CompiledPolicies::compile(pset, &envs.req_env, envs.schema).unwrap();
+    let res = {
+        let unopt_res = compiler
+            .check_always_denies(&typed_pset, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_res = compiler
+            .check_always_denies_opt(&compiled_pset)
+            .await
+            .unwrap();
+        assert_eq!(unopt_res, opt_res);
+        unopt_res
+    };
+    let cex = {
+        let unopt_cex = compiler
+            .check_always_denies_with_counterexample(&typed_pset, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_cex = compiler
+            .check_always_denies_with_counterexample_opt(&compiled_pset)
+            .await
+            .unwrap();
+        assert_eq!(unopt_cex, opt_cex);
+        unopt_cex
+    };
     assert_eq!(res, cex.is_none());
 
     if let Some(cex) = cex {
@@ -468,14 +553,32 @@ pub async fn assert_equivalent_ok<S: Solver>(
 ) -> bool {
     let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
     let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    let res = compiler
-        .check_equivalent(&typed_pset1, &typed_pset2, &envs.symenv)
-        .await
-        .unwrap();
-    let cex = compiler
-        .check_equivalent_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv)
-        .await
-        .unwrap();
+    let compiled_pset1 = CompiledPolicies::compile(pset1, &envs.req_env, envs.schema).unwrap();
+    let compiled_pset2 = CompiledPolicies::compile(pset2, &envs.req_env, envs.schema).unwrap();
+    let res = {
+        let unopt_res = compiler
+            .check_equivalent(&typed_pset1, &typed_pset2, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_res = compiler
+            .check_equivalent_opt(&compiled_pset1, &compiled_pset2)
+            .await
+            .unwrap();
+        assert_eq!(unopt_res, opt_res);
+        unopt_res
+    };
+    let cex = {
+        let unopt_cex = compiler
+            .check_equivalent_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_cex = compiler
+            .check_equivalent_with_counterexample_opt(&compiled_pset1, &compiled_pset2)
+            .await
+            .unwrap();
+        assert_eq!(unopt_cex, opt_cex);
+        unopt_cex
+    };
     assert_eq!(res, cex.is_none());
 
     if let Some(cex) = cex {
@@ -538,14 +641,32 @@ pub async fn assert_implies_ok<S: Solver>(
 ) -> bool {
     let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
     let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    let res = compiler
-        .check_implies(&typed_pset1, &typed_pset2, &envs.symenv)
-        .await
-        .unwrap();
-    let cex = compiler
-        .check_implies_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv)
-        .await
-        .unwrap();
+    let compiled_pset1 = CompiledPolicies::compile(pset1, &envs.req_env, envs.schema).unwrap();
+    let compiled_pset2 = CompiledPolicies::compile(pset2, &envs.req_env, envs.schema).unwrap();
+    let res = {
+        let unopt_res = compiler
+            .check_implies(&typed_pset1, &typed_pset2, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_res = compiler
+            .check_implies_opt(&compiled_pset1, &compiled_pset2)
+            .await
+            .unwrap();
+        assert_eq!(unopt_res, opt_res);
+        unopt_res
+    };
+    let cex = {
+        let unopt_cex = compiler
+            .check_implies_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_cex = compiler
+            .check_implies_with_counterexample_opt(&compiled_pset1, &compiled_pset2)
+            .await
+            .unwrap();
+        assert_eq!(unopt_cex, opt_cex);
+        unopt_cex
+    };
     assert_eq!(res, cex.is_none());
 
     if let Some(cex) = cex {
@@ -608,14 +729,32 @@ pub async fn assert_disjoint_ok<S: Solver>(
 ) -> bool {
     let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
     let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    let res = compiler
-        .check_disjoint(&typed_pset1, &typed_pset2, &envs.symenv)
-        .await
-        .unwrap();
-    let cex = compiler
-        .check_disjoint_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv)
-        .await
-        .unwrap();
+    let compiled_pset1 = CompiledPolicies::compile(pset1, &envs.req_env, envs.schema).unwrap();
+    let compiled_pset2 = CompiledPolicies::compile(pset2, &envs.req_env, envs.schema).unwrap();
+    let res = {
+        let unopt_res = compiler
+            .check_disjoint(&typed_pset1, &typed_pset2, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_res = compiler
+            .check_disjoint_opt(&compiled_pset1, &compiled_pset2)
+            .await
+            .unwrap();
+        assert_eq!(unopt_res, opt_res);
+        unopt_res
+    };
+    let cex = {
+        let unopt_cex = compiler
+            .check_disjoint_with_counterexample(&typed_pset1, &typed_pset2, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_cex = compiler
+            .check_disjoint_with_counterexample_opt(&compiled_pset1, &compiled_pset2)
+            .await
+            .unwrap();
+        assert_eq!(unopt_cex, opt_cex);
+        unopt_cex
+    };
     assert_eq!(res, cex.is_none());
 
     if let Some(cex) = cex {
