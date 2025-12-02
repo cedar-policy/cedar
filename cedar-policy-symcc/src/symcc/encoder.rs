@@ -246,16 +246,16 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
             .clone()
             .into_iter()
             .enumerate()
-            .map(|(i, (_, ty))| format!("({} {})", record_attr_id(&rty_id, i), ty));
+            .map(|(i, (_, ty))| format_smolstr!("({} {})", record_attr_id(&rty_id, i), ty));
         self.script
-            .comment(&format!(
+            .comment(&format_smolstr!(
                 "{{{}}}",
                 rty.into_iter().map(|(k, _)| k).join(", ")
             ))
             .await?;
         self.declare_type(
             rty_id.clone(),
-            [format!("({} {})", rty_id, attrs.join(" ")).as_str()],
+            [format_smolstr!("({} {})", rty_id, attrs.join(" ")).as_str()],
         )
         .await
     }
