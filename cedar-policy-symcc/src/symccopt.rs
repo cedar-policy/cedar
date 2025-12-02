@@ -25,8 +25,9 @@ mod verifier;
 use crate::err::Result;
 use crate::symcc::{concretizer::Env, solver::Solver, SymCompiler};
 use crate::symccopt::verifier::{
-    verify_always_allows_opt, verify_always_denies_opt, verify_disjoint_opt, verify_equivalent_opt,
-    verify_implies_opt, verify_never_errors_opt,
+    verify_always_allows_opt, verify_always_denies_opt, verify_always_matches_opt,
+    verify_disjoint_opt, verify_equivalent_opt, verify_implies_opt, verify_never_errors_opt,
+    verify_never_matches_opt,
 };
 
 use cedar_policy_core::ast::Policy;
@@ -49,6 +50,52 @@ impl<S: Solver> SymCompiler<S> {
     ) -> Result<Option<Env>> {
         self.check_sat_asserts(
             &verify_never_errors_opt(policy),
+            &policy.symenv,
+            std::iter::once(policy.policy.condition()),
+        )
+        .await
+    }
+
+    /// Optimized version of `check_always_matches()`.
+    ///
+    /// Corresponds to `checkAlwaysMatchesOpt` in the Lean.
+    pub async fn check_always_matches_opt(&mut self, policy: &CompiledPolicy) -> Result<bool> {
+        self.check_unsat_asserts(&verify_always_matches_opt(policy), &policy.symenv)
+            .await
+    }
+
+    /// Optimized version of `check_always_matches_with_counterexample()`.
+    ///
+    /// Corresponds to `alwaysMatches?` in the Lean.
+    pub async fn check_always_matches_with_counterexample_opt(
+        &mut self,
+        policy: &CompiledPolicy,
+    ) -> Result<Option<Env>> {
+        self.check_sat_asserts(
+            &verify_always_matches_opt(policy),
+            &policy.symenv,
+            std::iter::once(policy.policy.condition()),
+        )
+        .await
+    }
+
+    /// Optimized version of `check_never_matches()`.
+    ///
+    /// Corresponds to `checkNeverMatchesOpt` in the Lean.
+    pub async fn check_never_matches_opt(&mut self, policy: &CompiledPolicy) -> Result<bool> {
+        self.check_unsat_asserts(&verify_never_matches_opt(policy), &policy.symenv)
+            .await
+    }
+
+    /// Optimized version of `check_never_matches_with_counterexample()`.
+    ///
+    /// Corresponds to `neverMatches?` in the Lean.
+    pub async fn check_never_matches_with_counterexample_opt(
+        &mut self,
+        policy: &CompiledPolicy,
+    ) -> Result<Option<Env>> {
+        self.check_sat_asserts(
+            &verify_never_matches_opt(policy),
             &policy.symenv,
             std::iter::once(policy.policy.condition()),
         )

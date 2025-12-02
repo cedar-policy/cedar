@@ -72,6 +72,27 @@ pub fn verify_never_errors_opt(policy: &CompiledPolicy) -> Asserts {
     verify_evaluate_opt(|term| factory::is_some(term.clone()), policy)
 }
 
+/// Returns asserts that are unsatisfiable iff `policy` matches all inputs in
+/// the `SymEnv` it was compiled for. If the asserts are satisfiable, then there
+/// is some input in the `SymEnv` which `policy` doesn't match.
+pub fn verify_always_matches_opt(policy: &CompiledPolicy) -> Asserts {
+    verify_evaluate_opt(
+        |term| factory::eq(term.clone(), factory::some_of(true.into())),
+        policy,
+    )
+}
+
+/// Returns asserts that are unsatisfiable iff `policy` matches no inputs in the
+/// `SymEnv` it was compiled for.
+/// If the asserts are satisfiable, then there is some input in the `SymEnv`
+/// which `policy` does match.
+pub fn verify_never_matches_opt(policy: &CompiledPolicy) -> Asserts {
+    verify_evaluate_opt(
+        |term| factory::not(factory::eq(term.clone(), factory::some_of(true.into()))),
+        policy,
+    )
+}
+
 /// Returns asserts that are unsatisfiable iff the authorization decision of
 /// `policies1` implies that of `policies2` for every input in the `SymEnv` that
 /// the policysets were compiled for.

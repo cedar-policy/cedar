@@ -69,8 +69,8 @@ pub use result::CompileError;
 pub use smtlib_script::SmtLibScript;
 pub use solver::SolverError;
 pub use verifier::{
-    verify_always_allows, verify_always_denies, verify_disjoint, verify_equivalent, verify_implies,
-    verify_never_errors,
+    verify_always_allows, verify_always_denies, verify_always_matches, verify_disjoint,
+    verify_equivalent, verify_implies, verify_never_errors, verify_never_matches,
 };
 
 /// Internal symbolic compiler.
@@ -226,6 +226,72 @@ impl<S: Solver> SymCompiler<S> {
     ) -> Result<Option<Env>> {
         self.check_sat_asserts(
             &verify_never_errors(policy, symenv)?,
+            symenv,
+            std::iter::once(&policy.condition()),
+        )
+        .await
+    }
+
+    /// Returns true iff `policy` matches all well-formed inputs in the
+    /// `symenv`.  That is, if `policy` is a `permit` policy, it allows all
+    /// inputs in the `symenv`, or if `policy` is a `forbid` policy, it denies
+    /// all inputs in the `symenv`.
+    ///
+    /// Compare with `check_always_allows`, which takes a policyset (which could
+    /// consist of a single policy, or more) and determines whether it _allows_
+    /// all well-formed inputs in a `symenv`. This function differs from
+    /// `check_always_allows` on a singleton policyset in how it treats `forbid`
+    /// policies -- while `check_always_allows` trivially doesn't hold for any
+    /// policyset containing only `forbid` policies, `check_always_matches` does
+    /// hold if the `forbid` policy explicitly denies all inputs in the
+    /// `symenv`.
+    pub async fn check_always_matches(&mut self, policy: &Policy, symenv: &SymEnv) -> Result<bool> {
+        self.check_unsat(|symenv| verify_always_matches(policy, symenv), symenv)
+            .await
+    }
+
+    /// Returns some counterexample iff [`Self::check_always_matches`] is false.
+    ///
+    /// Corresponds to `alwaysMatches?` in the Lean.
+    pub async fn check_always_matches_with_counterexample(
+        &mut self,
+        policy: &Policy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.check_sat_asserts(
+            &verify_always_matches(policy, symenv)?,
+            symenv,
+            std::iter::once(&policy.condition()),
+        )
+        .await
+    }
+
+    /// Returns true iff `policy` matches no well-formed inputs in the
+    /// `symenv`.
+    ///
+    /// Compare with `check_always_denies`, which takes a policyset (which could
+    /// consist of a single policy, or more) and determines whether it _denies_
+    /// all well-formed inputs in a `symenv`. This function differs from
+    /// `check_always_denies` on a singleton policyset in how it treats `forbid`
+    /// policies -- while `check_always_denies` trivially holds for any
+    /// policyset containing only `forbid` policies, `check_never_matches` only
+    /// holds if the `forbid` policy explicitly denies no inputs in the
+    /// `symenv`.
+    pub async fn check_never_matches(&mut self, policy: &Policy, symenv: &SymEnv) -> Result<bool> {
+        self.check_unsat(|symenv| verify_never_matches(policy, symenv), symenv)
+            .await
+    }
+
+    /// Returns some counterexample iff [`Self::check_never_matches`] is false.
+    ///
+    /// Corresponds to `neverMatches?` in the Lean.
+    pub async fn check_never_matches_with_counterexample(
+        &mut self,
+        policy: &Policy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.check_sat_asserts(
+            &verify_never_matches(policy, symenv)?,
             symenv,
             std::iter::once(&policy.condition()),
         )
