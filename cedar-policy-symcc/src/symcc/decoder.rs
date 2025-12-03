@@ -616,7 +616,7 @@ impl TermType {
                 )]
                 Term::Prim(TermPrim::Bitvec(BitVec::of_nat(*n, BigUint::ZERO).unwrap()))
             }
-            TermType::String => Term::Prim(TermPrim::String("".to_string())),
+            TermType::String => Term::Prim(TermPrim::String(SmolStr::new_static(""))),
 
             TermType::Entity { ety } => {
                 // If the entity is an enum type, we return the first enum
@@ -1015,7 +1015,7 @@ impl SExpr {
     pub fn decode_literal(&self, id_maps: &IdMaps) -> Result<Term, DecodeError> {
         match self {
             SExpr::BitVec(bv) => Ok(Term::Prim(TermPrim::Bitvec(bv.clone()))),
-            SExpr::String(s) => Ok(Term::Prim(TermPrim::String(s.clone()))),
+            SExpr::String(s) => Ok(Term::Prim(TermPrim::String(SmolStr::new(s)))),
 
             SExpr::Symbol(s) if s == "true" => Ok(Term::Prim(TermPrim::Bool(true))),
             SExpr::Symbol(s) if s == "false" => Ok(Term::Prim(TermPrim::Bool(false))),
