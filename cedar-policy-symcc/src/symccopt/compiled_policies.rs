@@ -19,10 +19,10 @@
 
 use std::collections::BTreeSet;
 
-use cedar_policy::{RequestEnv, Schema};
+use cedar_policy::{Effect, RequestEnv, Schema};
 use cedar_policy_core::ast::{Policy, PolicySet};
 
-use crate::symcc::{self, term::Term, SymEnv};
+use crate::symcc::{self, factory, term::Term, SymEnv};
 use crate::Result;
 
 // Unlike the Lean version, here in the Rust version we don't define our own
@@ -73,6 +73,31 @@ impl CompiledPolicy {
             footprint,
             acyclicity,
         })
+    }
+
+    /// Convert a `CompiledPolicy` to a `CompiledPolicies` representing a
+    /// singleton policyset with just that policy.
+    ///
+    /// This function is intended to be much more efficient than re-compiling
+    /// with `CompiledPolicies::compile()`.
+    pub fn into_compiled_policies(self) -> CompiledPolicies {
+        CompiledPolicies {
+            term: match self.policy.effect() {
+                Effect::Forbid => {
+                    // a singleton pset with only a forbid policy, always denies everything
+                    false.into()
+                }
+                Effect::Permit => {
+                    // a singleton pset with only a permit policy, allows iff that policy evaluates to some(true)
+                    factory::eq(self.term, factory::some_of(true.into()))
+                }
+            },
+            symenv: self.symenv,
+            policies: PolicySet::try_from_iter([self.policy])
+                .expect("constructing a singleton policyset should not fail"),
+            footprint: self.footprint, // the footprint of a singleton policyset is the same as the footprint of the policy
+            acyclicity: self.acyclicity, // the acyclicity constraints for a singleton policyset are the same as the acyclicity constraints for the policy
+        }
     }
 }
 
