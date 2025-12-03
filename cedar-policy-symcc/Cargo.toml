@@ -12,7 +12,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy = "4.7.1"
+cedar-policy = "=4.7.1"
 cedar-policy-core = "=4.7.1"
 async-recursion = "1.1"
 itertools = "0.14"
