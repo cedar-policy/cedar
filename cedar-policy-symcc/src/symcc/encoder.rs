@@ -105,7 +105,7 @@ pub enum EncodeError {
     MalformedRecordGet,
     /// Unable to encode string.
     #[error("unable to encode string \"{0}\" in SMT as it exceeds the max supported code point")]
-    EncodeStringFailed(String),
+    EncodeStringFailed(SmolStr),
     /// Unable to encode pattern.
     #[error("unable to encode pattern {0:?} in SMT as it exceeds the max supported code point")]
     EncodePatternFailed(OrdPattern),
@@ -372,7 +372,10 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     &format_smolstr!(
                         "({ty_enc} \"{}\")",
                         encode_string(<EntityID as AsRef<str>>::as_ref(entity.id())).ok_or_else(
-                            || EncodeError::EncodeStringFailed(format!("{:?}", entity.id()))
+                            || EncodeError::EncodeStringFailed(format_smolstr!(
+                                "{:?}",
+                                entity.id()
+                            ))
                         )?
                     ),
                 )

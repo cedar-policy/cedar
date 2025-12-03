@@ -363,7 +363,7 @@ impl SymEntityData {
                 Ok(SymEntityData {
                     attrs: attrs_udf,
                     ancestors: BTreeMap::new(),
-                    members: Some(eids.iter().map(|s| s.clone()).collect()),
+                    members: Some(eids.clone()),
                     tags: None,
                 })
             }
