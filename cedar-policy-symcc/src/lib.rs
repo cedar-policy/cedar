@@ -150,6 +150,17 @@ impl CompiledPolicy {
             policy: symccopt::CompiledPolicy::compile(policy.as_ref(), env, schema)?,
         })
     }
+
+    /// Convert a `CompiledPolicy` to a `CompiledPolicies` representing a
+    /// singleton policyset with just that policy.
+    ///
+    /// This function is intended to be much more efficient than re-compiling
+    /// with `CompiledPolicies::compile()`.
+    pub fn into_compiled_policies(self) -> CompiledPolicies {
+        CompiledPolicies {
+            policies: self.policy.into_compiled_policies(),
+        }
+    }
 }
 
 /// Represents a symbolically compiled policyset. This can be fed into various

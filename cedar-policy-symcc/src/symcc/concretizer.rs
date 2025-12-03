@@ -123,7 +123,7 @@ impl TryFrom<&Term> for BTreeSet<EntityUid> {
 }
 
 /// Tries to convert a `Term` to a string.
-impl TryFrom<&Term> for String {
+impl TryFrom<&Term> for SmolStr {
     type Error = ConcretizeError;
 
     fn try_from(term: &Term) -> Result<Self, Self::Error> {
@@ -136,7 +136,7 @@ impl TryFrom<&Term> for String {
 }
 
 /// Tries to extract a set of `Strings`'s from a `Term`.
-impl TryFrom<&Term> for BTreeSet<String> {
+impl TryFrom<&Term> for BTreeSet<SmolStr> {
     type Error = ConcretizeError;
 
     fn try_from(term: &Term) -> Result<Self, Self::Error> {
@@ -166,7 +166,7 @@ impl TryFrom<&Term> for Value {
             )),
 
             Term::Prim(TermPrim::String(s)) => {
-                Ok(Value::new(ValueKind::Lit(Literal::String(s.into())), None))
+                Ok(Value::new(ValueKind::Lit(Literal::String(s.clone())), None))
             }
 
             Term::Prim(TermPrim::Entity(uid)) => Ok(Value::new(
@@ -326,7 +326,7 @@ impl SymEntityData {
         // Read tags from the model
         let tags = if let Some(tags) = &self.tags {
             // Get all valid tag keys first
-            let keys: BTreeSet<String> =
+            let keys: BTreeSet<SmolStr> =
                 (&factory::app(tags.keys.clone(), tuid.clone())).try_into()?;
 
             keys.into_iter()
@@ -336,7 +336,7 @@ impl SymEntityData {
                         .get_tag_unchecked(tuid.clone(), Term::Prim(TermPrim::String(k.clone()))))
                         .try_into()?;
 
-                    Ok((k.into(), val.into()))
+                    Ok((k, val.into()))
                 })
                 .collect::<Result<_, ConcretizeError>>()?
         } else {
