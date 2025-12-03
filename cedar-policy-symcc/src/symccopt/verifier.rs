@@ -21,7 +21,11 @@ use super::{
     enforcer::{enforce_compiled_policy, enforce_pair_compiled_policies},
     CompiledPolicies, CompiledPolicy,
 };
-use crate::symcc::{factory, term::Term, verifier::Asserts};
+use crate::symcc::{
+    factory,
+    term::{Term, TermPrim},
+    verifier::Asserts,
+};
 use std::sync::Arc;
 
 /// Returns asserts that are unsatisfiable iff the evaluation of `policy`,
@@ -30,12 +34,21 @@ use std::sync::Arc;
 ///
 /// See also `verify_never_errors_opt()`.
 pub fn verify_evaluate_opt(phi: impl FnOnce(&Term) -> Term, policy: &CompiledPolicy) -> Asserts {
-    Arc::new(
-        enforce_compiled_policy(policy)
-            .into_iter()
-            .chain(std::iter::once(factory::not(phi(&policy.term))))
-            .collect(),
-    )
+    // As an optimization here in `symccopt`:
+    // Our callers only pass relatively simple functions as `phi`.
+    // We expect that `enforce_compiled_policy()` is much more expensive to compute than `phi`.
+    // So, we first compute the assert involving `phi`. If that is
+    // constant-false, we can just return constant-false and not compute
+    // `enforce_compiled_policy()`; the resulting asserts are equivalent.
+    match factory::not(phi(&policy.term)) {
+        Term::Prim(TermPrim::Bool(false)) => Arc::new(vec![false.into()]),
+        assert => Arc::new(
+            enforce_compiled_policy(policy)
+                .into_iter()
+                .chain(std::iter::once(assert))
+                .collect(),
+        ),
+    }
 }
 
 /// Returns asserts that are unsatisfiable iff the authorization decisions
@@ -54,15 +67,21 @@ pub fn verify_is_authorized_opt(
     policies2: &CompiledPolicies,
 ) -> Asserts {
     assert_eq!(&policies1.symenv, &policies2.symenv);
-    Arc::new(
-        enforce_pair_compiled_policies(policies1, policies2)
-            .into_iter()
-            .chain(std::iter::once(factory::not(phi(
-                &policies1.term,
-                &policies2.term,
-            ))))
-            .collect(),
-    )
+    // As an optimization here in `symccopt`:
+    // Our callers only pass relatively simple functions as `phi`.
+    // We expect that `enforce_pair_compiled_policies()` is much more expensive to compute than `phi`.
+    // So, we first compute the assert involving `phi`. If that is
+    // constant-false, we can just return constant-false and not compute
+    // `enforce_pair_compiled_policies()`; the resulting asserts are equivalent.
+    match factory::not(phi(&policies1.term, &policies2.term)) {
+        Term::Prim(TermPrim::Bool(false)) => Arc::new(vec![false.into()]),
+        assert => Arc::new(
+            enforce_pair_compiled_policies(policies1, policies2)
+                .into_iter()
+                .chain(std::iter::once(assert))
+                .collect(),
+        ),
+    }
 }
 
 /// Returns asserts that are unsatisfiable iff `policy` does not error on any
