@@ -12,8 +12,9 @@ Cedar Language Version: TBD
 
 - New optimized interface (`*_opt` methods on `CedarSymCompiler`) allowing you
 to precompile policies (see `CompiledPolicy` and `CompiledPolicies`) and reuse
-them across many queries.
-- `always_matches` and `never_matches` primitives for single policies
+them across many queries. (#2013, #2019)
+- `always_matches` and `never_matches` primitives for single policies (#2014)
+- Performance optimizations (#1947, #1970, #2017, #2020, #2021)
 
 ## [0.1.2] - 2025-11-26
 Cedar Language Version: 4.4
