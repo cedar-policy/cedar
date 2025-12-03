@@ -114,6 +114,15 @@ pub enum Commands {
     /// Partially evaluate an authorization request in a type-aware manner
     Tpe(TpeArgs),
     /// Run test cases on a policy set
+    ///
+    /// Tests are defined in a JSON array of objects with the following fields:
+    ///   - name: optional test name string
+    ///   - request: object using the same format as the `--request-json` argument for authorization
+    ///   - entities: array of entity JSON objects in the same format expected by `--entities` argument for authorization
+    ///   - decision: the string "allow" or "deny"
+    ///   - reason: array of policy ID strings expected to contribute to the authorization decision
+    ///   - num_errors: expected number of erroring policies
+    #[clap(verbatim_doc_comment)] // stops clap from dropping newlines in bulleted list
     RunTests(RunTestsArgs),
     /// Print Cedar language version
     LanguageVersion,
