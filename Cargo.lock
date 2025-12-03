@@ -346,12 +346,12 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy"
-version = "4.7.0"
+version = "4.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec59e2364d36d767fe2be9a38040087746b1db20b27868701f4356d9fc589736"
+checksum = "784e2502cff415b1970af7498f69d847803ae0de2169c74db4368f842f1b76b1"
 dependencies = [
- "cedar-policy-core 4.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "cedar-policy-formatter 4.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cedar-policy-core 4.7.1",
+ "cedar-policy-formatter 4.7.1",
  "itertools 0.14.0",
  "linked-hash-map",
  "miette",
@@ -419,9 +419,9 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-core"
-version = "4.7.0"
+version = "4.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b9d9a9691e7429fc89b447222688bbe2ef052a2c9b1e1f3a1d3f169cae080a6"
+checksum = "862e353fda86c0486dc6649aeaabda7495ff143d9a68b5c9994f31532e2a5bb4"
 dependencies = [
  "chrono",
  "educe",
@@ -461,11 +461,11 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-formatter"
-version = "4.7.0"
+version = "4.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22c837a7c5e55828c73ea468ba368aa1c74fb151ff8110ff94fb97bebcb5d095"
+checksum = "30c85f1590b39103bdbb23f9b27590c453b81153bcd03befe124d9e123176be6"
 dependencies = [
- "cedar-policy-core 4.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cedar-policy-core 4.7.1",
  "itertools 0.14.0",
  "logos",
  "miette",
@@ -476,11 +476,11 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-symcc"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-recursion",
- "cedar-policy 4.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "cedar-policy-core 4.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cedar-policy 4.7.1",
+ "cedar-policy-core 4.7.1",
  "chrono",
  "cool_asserts",
  "itertools 0.14.0",
