@@ -24,7 +24,7 @@ use cedar_policy_symcc::{
     term_type::*, CedarSymCompiler, SymEnv, WellFormedAsserts, WellTypedPolicies,
 };
 
-use crate::utils::{assert_always_allows, assert_does_not_always_deny, Environments};
+use crate::utils::{assert_always_allows_ok, assert_always_denies_ok, Environments, Pathway};
 mod utils;
 
 fn sample_schema() -> Schema {
@@ -199,8 +199,15 @@ async fn term_cex_custom_symenv() {
             .collect(),
     ));
 
-    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
-    assert_always_allows(&mut compiler, &pset, &envs).await;
+    // As of this writing, the optimized pathway assumes you only use the
+    // `SymEnv` that is derived from `envs.req_env` in the ordinary way; so for
+    // these tests, we need to use the unoptimized pathway only
+    let always_denies =
+        assert_always_denies_ok(&mut compiler, &pset, &envs, Pathway::UnoptOnly).await;
+    assert!(!always_denies);
+    let always_allows =
+        assert_always_allows_ok(&mut compiler, &pset, &envs, Pathway::UnoptOnly).await;
+    assert!(always_allows);
 }
 
 /// Tests modifying some parts of SymEnv
@@ -245,8 +252,15 @@ async fn term_cex_custom_symenv_set() {
         .collect(),
     ));
 
-    assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
-    assert_always_allows(&mut compiler, &pset, &envs).await;
+    // As of this writing, the optimized pathway assumes you only use the
+    // `SymEnv` that is derived from `envs.req_env` in the ordinary way; so for
+    // these tests, we need to use the unoptimized pathway only
+    let always_denies =
+        assert_always_denies_ok(&mut compiler, &pset, &envs, Pathway::UnoptOnly).await;
+    assert!(!always_denies);
+    let always_allows =
+        assert_always_allows_ok(&mut compiler, &pset, &envs, Pathway::UnoptOnly).await;
+    assert!(always_allows);
 }
 
 #[test]

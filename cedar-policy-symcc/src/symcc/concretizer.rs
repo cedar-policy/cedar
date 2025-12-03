@@ -84,7 +84,7 @@ pub enum ConcretizeError {
 }
 
 /// A concrete environment recovered from a [`SymEnv`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub struct Env {
     pub request: Request,

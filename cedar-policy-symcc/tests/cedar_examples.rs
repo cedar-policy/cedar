@@ -25,6 +25,7 @@ use rstest::rstest;
 use crate::utils::{
     assert_always_allows_ok, assert_always_denies_ok, assert_disjoint_ok, assert_equivalent,
     assert_equivalent_ok, assert_implies, assert_implies_ok, assert_never_errors_ok, Environments,
+    Pathway,
 };
 
 #[rstest]
@@ -72,24 +73,24 @@ async fn test_cedar_examples(#[case] policy_set_src: &str, #[case] schema_src: &
         // Sanity checks to make sure various verification tasks do not error
         // and produce valid counterexamples if they exist.
 
-        assert_always_allows_ok(&mut compiler, &pset, env).await;
-        assert_always_denies_ok(&mut compiler, &pset, env).await;
+        assert_always_allows_ok(&mut compiler, &pset, env, Pathway::Both).await;
+        assert_always_denies_ok(&mut compiler, &pset, env, Pathway::Both).await;
         assert_implies(&mut compiler, &pset, &pset, env).await;
         assert_equivalent(&mut compiler, &pset, &pset, env).await;
 
         for policy1 in pset.policies() {
             let pset1 = PolicySet::from_policies(std::iter::once(policy1.clone())).unwrap();
-            assert_never_errors_ok(&mut compiler, &policy1, env).await;
-            assert_always_allows_ok(&mut compiler, &pset1, env).await;
-            assert_always_denies_ok(&mut compiler, &pset1, env).await;
+            assert_never_errors_ok(&mut compiler, &policy1, env, Pathway::Both).await;
+            assert_always_allows_ok(&mut compiler, &pset1, env, Pathway::Both).await;
+            assert_always_denies_ok(&mut compiler, &pset1, env, Pathway::Both).await;
             assert_implies(&mut compiler, &pset1, &pset1, env).await;
             assert_equivalent(&mut compiler, &pset1, &pset1, env).await;
 
             for policy2 in pset.policies() {
                 let pset2 = PolicySet::from_policies(std::iter::once(policy2.clone())).unwrap();
-                assert_implies_ok(&mut compiler, &pset1, &pset2, env).await;
-                assert_equivalent_ok(&mut compiler, &pset1, &pset2, env).await;
-                assert_disjoint_ok(&mut compiler, &pset1, &pset2, env).await;
+                assert_implies_ok(&mut compiler, &pset1, &pset2, env, Pathway::Both).await;
+                assert_equivalent_ok(&mut compiler, &pset1, &pset2, env, Pathway::Both).await;
+                assert_disjoint_ok(&mut compiler, &pset1, &pset2, env, Pathway::Both).await;
             }
         }
     }
