@@ -94,7 +94,7 @@ impl CompiledPolicy {
             },
             symenv: self.symenv,
             // PANIC SAFETY: Constructing a singleton policyset should not fail. For more future-proof (in case somehow in the future it becomes possible for constructing a singleton policyset to fail), we should add a `PolicySet::singleton()` function to cedar-policy-core and use that here.
-            #[clippy::allow(expect_used)]
+            #[allow(clippy::expect_used)]
             policies: PolicySet::try_from_iter([self.policy])
                 .expect("constructing a singleton policyset should not fail"),
             footprint: self.footprint, // the footprint of a singleton policyset is the same as the footprint of the policy
