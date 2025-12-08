@@ -54,7 +54,7 @@ pub struct TermVar {
 pub enum TermPrim {
     Bool(bool),
     Bitvec(BitVec),
-    String(String),
+    String(SmolStr),
     Entity(EntityUID),
     Ext(Ext),
 }
@@ -109,15 +109,9 @@ impl From<BitVec> for Term {
     }
 }
 
-impl From<String> for Term {
-    fn from(s: String) -> Self {
-        Term::Prim(TermPrim::String(s))
-    }
-}
-
 impl From<SmolStr> for Term {
     fn from(s: SmolStr) -> Self {
-        Term::Prim(TermPrim::String(s.into()))
+        Term::Prim(TermPrim::String(s))
     }
 }
 

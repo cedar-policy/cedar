@@ -363,7 +363,7 @@ impl SymEntityData {
                 Ok(SymEntityData {
                     attrs: attrs_udf,
                     ancestors: BTreeMap::new(),
-                    members: Some(eids.iter().map(|s| s.to_string()).collect()),
+                    members: Some(eids.clone()),
                     tags: None,
                 })
             }
@@ -469,7 +469,7 @@ mod test {
         let ety = schema
             .get_entity_type(&EntityType::from_str("_").unwrap())
             .unwrap();
-        ety.attr("x").unwrap().attr_type.clone()
+        ety.attr("x").unwrap().attr_type.as_ref().clone()
     }
 
     fn assert_from_value_roundtrip_eq(v: &str, ty: &str) {

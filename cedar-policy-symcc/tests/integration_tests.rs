@@ -22,9 +22,10 @@ mod utils;
 use utils::Environments;
 
 use crate::utils::{
-    assert_always_allows, assert_always_denies, assert_disjoint, assert_does_not_always_allow,
-    assert_does_not_always_deny, assert_does_not_imply, assert_equivalent, assert_implies,
-    assert_never_errors, assert_not_disjoint, assert_not_equivalent,
+    assert_always_allows, assert_always_denies, assert_always_matches, assert_disjoint,
+    assert_does_not_always_allow, assert_does_not_always_deny, assert_does_not_always_match,
+    assert_does_not_imply, assert_does_not_never_match, assert_equivalent, assert_implies,
+    assert_never_errors, assert_never_matches, assert_not_disjoint, assert_not_equivalent,
 };
 
 fn sample_schema() -> Schema {
@@ -122,6 +123,8 @@ async fn simplest_permit() {
     let envs = envs_for_sample_schema(validator.schema());
 
     assert_never_errors(&mut compiler, &policy, &envs).await;
+    assert_always_matches(&mut compiler, &policy, &envs).await;
+    assert_does_not_never_match(&mut compiler, &policy, &envs).await;
     assert_always_allows(&mut compiler, &pset, &envs).await;
     assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
     assert_equivalent(&mut compiler, &pset, &pset, &envs).await;
@@ -134,6 +137,21 @@ async fn simplest_permit() {
 #[tokio::test]
 async fn vacuous() {
     let validator = Validator::new(sample_schema());
+    let policy_forbid_all = utils::policy_from_text(
+        "forbid_all",
+        "forbid(principal, action, resource);",
+        &validator,
+    );
+    let policy_permit_never_matches = utils::policy_from_text(
+        "permit_never_matches",
+        "permit(principal, action, resource) when { false };",
+        &validator,
+    );
+    let policy_forbid_never_matches = utils::policy_from_text(
+        "forbid_never_matches",
+        "forbid(principal, action, resource) when { false };",
+        &validator,
+    );
     let pset_forbid_all = utils::pset_from_text(
         r#"
         forbid(principal, action, resource);
@@ -234,6 +252,9 @@ async fn vacuous() {
 
     assert_always_denies(&mut compiler, &pset_empty(), &envs).await;
     assert_always_denies(&mut compiler, &pset_forbid_all, &envs).await;
+    assert_never_matches(&mut compiler, &policy_permit_never_matches, &envs).await;
+    assert_never_matches(&mut compiler, &policy_forbid_never_matches, &envs).await;
+    assert_always_matches(&mut compiler, &policy_forbid_all, &envs).await;
 
     for pset in psets_vacuous {
         assert_does_not_always_allow(&mut compiler, &pset, &envs).await;
@@ -255,11 +276,31 @@ async fn vacuous() {
 #[tokio::test]
 async fn nontrivial_permit() {
     let validator = Validator::new(sample_schema());
+    let policy1 = utils::policy_from_text(
+        "policy1",
+        r#"
+        permit(principal, action, resource)
+        when {
+            context.n1 != "a"
+        };
+    "#,
+        &validator,
+    );
     let pset1 = utils::pset_from_text(
         r#"
         permit(principal, action, resource)
         when {
             context.n1 != "a"
+        };
+    "#,
+        &validator,
+    );
+    let policy2 = utils::policy_from_text(
+        "policy2",
+        r#"
+        permit(principal, action, resource)
+        when {
+            context.n1 != "a" && context.n1 != "b"
         };
     "#,
         &validator,
@@ -278,6 +319,10 @@ async fn nontrivial_permit() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let envs = envs_for_sample_schema(validator.schema());
 
+    assert_does_not_always_match(&mut compiler, &policy1, &envs).await;
+    assert_does_not_never_match(&mut compiler, &policy1, &envs).await;
+    assert_does_not_always_match(&mut compiler, &policy2, &envs).await;
+    assert_does_not_never_match(&mut compiler, &policy2, &envs).await;
     assert_does_not_always_allow(&mut compiler, &pset1, &envs).await;
     assert_does_not_always_allow(&mut compiler, &pset2, &envs).await;
     assert_does_not_always_deny(&mut compiler, &pset1, &envs).await;

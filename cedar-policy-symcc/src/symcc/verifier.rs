@@ -25,12 +25,12 @@ use super::authorizer::is_authorized;
 use super::compiler::compile;
 use super::enforcer::enforce;
 use super::env::SymEnv;
-use super::factory::{and, eq, implies, is_some, not};
+use super::factory::{and, eq, implies, is_some, not, some_of};
 use super::result::CompileError;
 use super::term::Term;
 
 use cedar_policy::Effect;
-use cedar_policy_core::ast::{Expr, Policy, PolicyID, PolicySet, Value};
+use cedar_policy_core::ast::{Expr, Policy, PolicyID, PolicySet};
 
 /// Type of assertions (i.e., a list of [`Term`]s).
 pub type Asserts = Arc<Vec<Term>>;
@@ -41,7 +41,7 @@ type Result<T> = std::result::Result<T, CompileError>;
 /// a Term of type .option .bool, satisfies `phi` on all inputs drawn from `env`.  See also
 /// `verify_never_errors`.
 pub fn verify_evaluate(
-    phi: impl Fn(Term) -> Term,
+    phi: impl FnOnce(Term) -> Term,
     policy: &Policy,
     env: &SymEnv,
 ) -> Result<Asserts> {
@@ -60,7 +60,7 @@ pub fn verify_evaluate(
 /// inputs drawn from `env`. See also `verify_always_allows`, `verify_always_denies`,
 /// `verify_implies`, `verify_equivalent`, and `verify_disjoint`.
 pub fn verify_is_authorized(
-    phi: impl Fn(Term, Term) -> Term,
+    phi: impl FnOnce(Term, Term) -> Term,
     policies1: &PolicySet,
     policies2: &PolicySet,
     env: &SymEnv,
@@ -87,6 +87,20 @@ pub fn verify_never_errors(policy: &Policy, env: &SymEnv) -> Result<Asserts> {
     verify_evaluate(is_some, policy, env)
 }
 
+/// Returns asserts that are unsatisfiable iff `policy` matches all inputs in `env`.
+/// If the asserts are satisfiable, then there is some input in `env` which
+/// `policy` doesn't match.
+pub fn verify_always_matches(policy: &Policy, env: &SymEnv) -> Result<Asserts> {
+    verify_evaluate(|term| eq(term, some_of(true.into())), policy, env)
+}
+
+/// Returns asserts that are unsatisfiable iff `policy` matches no inputs in `env`.
+/// If the asserts are satisfiable, then there is some input in `env` which `policy`
+/// does match.
+pub fn verify_never_matches(policy: &Policy, env: &SymEnv) -> Result<Asserts> {
+    verify_evaluate(|term| not(eq(term, some_of(true.into()))), policy, env)
+}
+
 /// Returns asserts that are unsatisfiable iff the authorization decision of `policies1`
 /// implies that of `policies2` for every input in `env`. In other words, every input
 /// allowed by `policies1` is allowed by `policies2`.
@@ -98,24 +112,36 @@ pub fn verify_implies(
     verify_is_authorized(implies, policies1, policies2, env)
 }
 
-/// Returns asserts that are unsatisfiable iff `policies` allows all inputs in `env`.
-pub fn verify_always_allows(policies: &PolicySet, env: &SymEnv) -> Result<Asserts> {
-    let allow_all = Policy::from_when_clause(
+/// The policy that allows all requests
+pub(crate) fn allow_all() -> Policy {
+    // Using the policy that SymCC/Verifier.lean uses; see notes there
+    Policy::from_when_clause(
         Effect::Permit,
-        Expr::from(Value::from(true)),
+        Expr::and(
+            Expr::val(true),
+            Expr::and(Expr::val(true), Expr::and(Expr::val(true), Expr::val(true))),
+        ),
         PolicyID::from_string("allowAll"),
         None,
-    );
-    let mut allow_all_ps = PolicySet::new();
+    )
+}
+
+/// The policyset that allows all requests
+pub(crate) fn allow_all_pset() -> PolicySet {
+    let mut pset = PolicySet::new();
     // PANIC SAFETY
     #[allow(
         clippy::expect_used,
         reason = "Adding allow_all to a `PolicySet` should not error"
     )]
-    allow_all_ps
-        .add(allow_all)
+    pset.add(allow_all())
         .expect("Could not add policy to policy set.");
-    verify_implies(&allow_all_ps, policies, env)
+    pset
+}
+
+/// Returns asserts that are unsatisfiable iff `policies` allows all inputs in `env`.
+pub fn verify_always_allows(policies: &PolicySet, env: &SymEnv) -> Result<Asserts> {
+    verify_implies(&allow_all_pset(), policies, env)
 }
 
 /// Returns asserts that are unsatisfiable iff `policies` denies all inputs in `env`.

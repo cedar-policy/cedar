@@ -244,8 +244,7 @@ pub fn app(f: UnaryFunction, t: Term) -> Term {
 
 pub fn bvneg(t: Term) -> Term {
     match t {
-        #[allow(clippy::unwrap_used, reason = "BitVec::neg cannot return error.")]
-        Term::Prim(TermPrim::Bitvec(b)) => b.neg().unwrap().into(),
+        Term::Prim(TermPrim::Bitvec(b)) => b.neg().into(),
         // this optimization is not present in the Lean
         // PANIC SAFETY
         #[allow(

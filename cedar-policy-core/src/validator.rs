@@ -190,6 +190,19 @@ impl Validator {
         (validation_errors.chain(errors), warnings)
     }
 
+    /// Check that all entity types are defined in the schema, and each entity
+    /// literal that is an action or enum type is defined in the schema. These
+    /// checks are notably not performed by [`Typechecker::typecheck_by_single_request_env`]
+    /// so callers of that function will typically need to call this as well.
+    pub fn validate_entity_types_and_literals<'a>(
+        schema: &'a ValidatorSchema,
+        p: &'a Template,
+    ) -> impl Iterator<Item = ValidationError> + 'a {
+        Validator::validate_entity_types(&schema, p)
+            .chain(Validator::validate_enum_entity(&schema, p))
+            .chain(Validator::validate_action_ids(&schema, p))
+    }
+
     /// Run relevant validations against a single template-linked policy,
     /// gathering all validation errors together in the returned iterator.
     fn validate_slots<'a>(
@@ -252,6 +265,8 @@ mod test {
         est::Annotations,
         parser::{self, Loc},
     };
+
+    use similar_asserts::assert_eq;
 
     #[test]
     fn top_level_validate() -> Result<()> {
@@ -464,8 +479,18 @@ mod test {
             false,
             false,
         );
-        assert!(result.validation_errors().any(|x| x == &undefined_err));
-        assert!(result.validation_errors().any(|x| x == &invalid_action_err));
+
+        let actual_undef_error = result
+            .validation_errors()
+            .find(|e| matches!(e, ValidationError::UnrecognizedEntityType(_)))
+            .unwrap();
+        assert_eq!(actual_undef_error, &undefined_err);
+
+        let actual_action_error = result
+            .validation_errors()
+            .find(|e| matches!(e, ValidationError::InvalidActionApplication(_)))
+            .unwrap();
+        assert_eq!(actual_action_error, &invalid_action_err);
 
         // this is also an invalid link (not a valid resource type for any action in the schema)
         let mut values = HashMap::new();

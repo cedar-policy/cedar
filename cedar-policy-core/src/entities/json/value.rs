@@ -379,7 +379,7 @@ impl CedarValueJson {
     /// Convert this `CedarValueJson` into a Cedar "restricted expression"
     pub fn into_expr(
         self,
-        ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
+        ctx: &dyn Fn() -> JsonDeserializationErrorContext,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         match self {
             Self::Bool(b) => Ok(RestrictedExpr::val(b)),
@@ -387,12 +387,12 @@ impl CedarValueJson {
             Self::String(s) => Ok(RestrictedExpr::val(s)),
             Self::Set(vals) => Ok(RestrictedExpr::set(
                 vals.into_iter()
-                    .map(|v| v.into_expr(ctx.clone()))
+                    .map(|v| v.into_expr(ctx))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
             Self::Record(map) => Ok(RestrictedExpr::record(
                 map.into_iter()
-                    .map(|(k, v)| Ok((k, v.into_expr(ctx.clone())?)))
+                    .map(|(k, v)| Ok((k, v.into_expr(ctx)?)))
                     .collect::<Result<Vec<_>, JsonDeserializationError>>()?,
             )
             .map_err(|e| match e {
@@ -638,7 +638,7 @@ impl FnAndArgs {
     /// Convert this `FnAndArg` into a Cedar "restricted expression" (which will be a call to an extension constructor)
     pub fn into_expr(
         self,
-        ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
+        ctx: &dyn Fn() -> JsonDeserializationErrorContext,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         let ext_fn = self.fn_str();
         let args = self.args();
@@ -647,7 +647,7 @@ impl FnAndArgs {
                 JsonDeserializationError::parse_escape(EscapeKind::Extension, ext_fn, errs)
             })?,
             args.iter()
-                .map(|arg| CedarValueJson::into_expr(arg.clone(), ctx.clone()))
+                .map(|arg| CedarValueJson::into_expr(arg.clone(), ctx))
                 .collect::<Result<Vec<_>, _>>()?,
         ))
     }
@@ -674,7 +674,7 @@ impl<'e> ValueParser<'e> {
         &self,
         val: serde_json::Value,
         expected_ty: Option<&SchemaType>,
-        ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
+        ctx: &dyn Fn() -> JsonDeserializationErrorContext,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         // First we have to check if we've been given an Unknown. This is valid
         // regardless of the expected type (see #418).
@@ -684,7 +684,7 @@ impl<'e> ValueParser<'e> {
                 ExtnValueJson::ExplicitExtnEscape {
                     __extn: FnAndArgs::Single { ext_fn, arg },
                 } if ext_fn == "unknown" => {
-                    let arg = arg.into_expr(ctx.clone()).ok()?;
+                    let arg = arg.into_expr(ctx).ok()?;
                     let name = arg.as_string()?;
                     Some(RestrictedExpr::unknown(Unknown::new_untyped(name.clone())))
                 }
@@ -750,7 +750,7 @@ impl<'e> ValueParser<'e> {
                                         // `CedarValueJson` here
                                         serde_json::to_value(arg)?,
                                         Some(arg_type),
-                                        ctx.clone(),
+                                        ctx,
                                     )
                                 })
                                 .collect::<Result<Vec<_>, _>>()?,
@@ -793,14 +793,14 @@ impl<'e> ValueParser<'e> {
                     elements
                         .into_iter()
                         .map(|element| {
-                            self.val_into_restricted_expr(element, Some(element_ty), ctx.clone())
+                            self.val_into_restricted_expr(element, Some(element_ty), ctx)
                         })
                         .collect::<Result<Vec<RestrictedExpr>, JsonDeserializationError>>()?,
                 )),
                 val => {
                     let actual_val = {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                        jvalue.into_expr(ctx.clone())?
+                        jvalue.into_expr(ctx)?
                     };
                     let err = TypeMismatchError::type_mismatch(
                         expected_ty.clone(),
@@ -832,14 +832,13 @@ impl<'e> ValueParser<'e> {
                 },
             ) => match val {
                 serde_json::Value::Object(mut actual_attrs) => {
-                    let ctx2 = ctx.clone(); // for borrow-check, so the original `ctx` can be moved into the closure below
                     let mut_actual_attrs = &mut actual_attrs; // for borrow-check, so only a mut ref gets moved into the closure, and we retain ownership of `actual_attrs`
                     let rexpr_pairs = expected_attrs
                         .iter()
                         .filter_map(move |(k, expected_attr_ty)| {
                             match mut_actual_attrs.remove(k.as_str()) {
                                 Some(actual_attr) => {
-                                    match self.val_into_restricted_expr(actual_attr, Some(expected_attr_ty.schema_type()), ctx.clone()) {
+                                    match self.val_into_restricted_expr(actual_attr, Some(expected_attr_ty.schema_type()), ctx) {
                                         Ok(actual_attr) => Some(Ok((k.clone(), actual_attr))),
                                         Err(e) => Some(Err(e)),
                                     }
@@ -855,7 +854,7 @@ impl<'e> ValueParser<'e> {
                         // we still need to verify that we didn't have any unexpected attrs.
                         if let Some((record_attr, _)) = actual_attrs.into_iter().next() {
                             return Err(JsonDeserializationError::unexpected_record_attr(
-                                ctx2(),
+                                ctx(),
                                 record_attr,
                             ));
                         }
@@ -868,13 +867,13 @@ impl<'e> ValueParser<'e> {
                     RestrictedExpr::record(rexpr_pairs).map_err(|e| match e {
                         ExpressionConstructionError::DuplicateKey(
                             expression_construction_errors::DuplicateKeyError { key, .. },
-                        ) => JsonDeserializationError::duplicate_key(ctx2(), key),
+                        ) => JsonDeserializationError::duplicate_key(ctx(), key),
                     })
                 }
                 val => {
                     let actual_val = {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
-                        jvalue.into_expr(ctx.clone())?
+                        jvalue.into_expr(ctx)?
                     };
                     let err = TypeMismatchError::type_mismatch(
                         expected_ty.clone(),
@@ -966,7 +965,7 @@ impl<'de, C: DeserializationContext> DeserializeAs<'de, EntityUID> for EntityUid
         // We don't know the context that called us, so we'll rely on the statically set context
         let context = || JsonDeserializationErrorContext::Unknown;
         let s = EntityUidJson::<C>::deserialize(deserializer)?;
-        let euid = s.into_euid(context).map_err(Error::custom)?;
+        let euid = s.into_euid(&context).map_err(Error::custom)?;
         Ok(euid)
     }
 }
@@ -995,9 +994,9 @@ impl<C: DeserializationContext> EntityUidJson<C> {
     /// Convert this `EntityUidJson` into an `EntityUID`
     pub fn into_euid(
         self,
-        dynamic_ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
+        dynamic_ctx: &dyn Fn() -> JsonDeserializationErrorContext,
     ) -> Result<EntityUID, JsonDeserializationError> {
-        let ctx = || C::static_context().unwrap_or_else(&dynamic_ctx);
+        let ctx = &|| C::static_context().unwrap_or_else(&dynamic_ctx);
         match self {
             Self::ExplicitEntityEscape { __entity } | Self::ImplicitEntityEscape(__entity) => {
                 // reuse the same logic that parses CedarValueJson

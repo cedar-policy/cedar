@@ -29,6 +29,7 @@ use crate::ast::{Expr, PolicyID};
 use crate::tpe::err::{NonstaticPolicyError, TpeError};
 use crate::tpe::response::{ResidualPolicy, Response};
 use crate::validator::types::Type;
+use crate::validator::Validator;
 use crate::validator::{typecheck::PolicyCheck, typecheck::Typechecker, ValidatorSchema};
 use crate::{ast::PolicySet, extensions::Extensions};
 
@@ -49,10 +50,7 @@ pub(crate) fn policy_expr_map<'a>(
 
         let t = p.template();
 
-        let errs: Vec<_> = crate::validator::Validator::validate_entity_types(schema, t)
-            .chain(crate::validator::Validator::validate_enum_entity(schema, t))
-            .chain(crate::validator::Validator::validate_action_ids(schema, t))
-            .collect();
+        let errs: Vec<_> = Validator::validate_entity_types_and_literals(schema, t).collect();
         if !errs.is_empty() {
             return Err(TpeError::Validation(errs));
         }

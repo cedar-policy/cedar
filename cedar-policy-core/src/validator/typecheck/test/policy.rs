@@ -744,7 +744,7 @@ fn entity_record_lub_is_none() {
             [
                 Type::closed_record_with_required_attributes([(
                     "name".into(),
-                    Type::primitive_string(),
+                    Type::primitive_string().into(),
                 )]),
                 Type::named_entity_reference_from_str("User"),
             ],
@@ -982,7 +982,7 @@ fn record_entity_lub_non_term() {
             [
                 Type::closed_record_with_required_attributes([(
                     "foo".into(),
-                    Type::named_entity_reference_from_str("U"),
+                    Type::named_entity_reference_from_str("U").into(),
                 )]),
                 Type::named_entity_reference_from_str("U"),
             ],
