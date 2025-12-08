@@ -14,6 +14,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+## [4.8.2] - Coming soon
+
+Cedar Language Version: 4.4
+
 ### Changed
 
 - Deprecated `entity-manifest` experimental feature. Consumers of these functions should migrate to the `tpe` feature and use `PolicySet::is_authorized_batch`. (#1945)
@@ -1131,7 +1135,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.8.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.8.1...main
+[4.8.1]: https://github.com/cedar-policy/cedar/compare/v4.8.0...v4.8.1
 [4.8.0]: https://github.com/cedar-policy/cedar/compare/v4.7.0...v4.8.0
 [4.7.0]: https://github.com/cedar-policy/cedar/compare/v4.6.0...v4.7.0
 [4.6.0]: https://github.com/cedar-policy/cedar/compare/v4.5.1...v4.6.0

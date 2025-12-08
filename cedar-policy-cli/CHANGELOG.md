@@ -5,6 +5,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+## 4.8.2
+
 ## 4.8.1
 
 ## 4.8.0
