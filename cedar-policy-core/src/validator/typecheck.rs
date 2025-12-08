@@ -185,7 +185,12 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    /// Type check a `Template` by a single request environment
+    /// Type check a `Template` by a single request environment.  Note that this
+    /// does not perform the entity type, action literals, and enum entity
+    /// checks performed by [`crate::validator::Validator::validate_entity_types_and_literals`].
+    /// Callers should also call that function to fully validate the policy.
+    /// This function does not include these extra checks itself because they only
+    /// need to be performed once per policy, and not per request environment.
     pub fn typecheck_by_single_request_env<'b>(
         &'b self,
         t: &'b Template,
@@ -776,7 +781,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                         let all_attrs = typ_actual.all_attributes(self.schema);
                         let attr_ty = Type::lookup_attribute_type(self.schema, typ_actual, attr);
                         let annot_expr = ExprBuilder::with_data(
-                            attr_ty.clone().map(|attr_ty| attr_ty.attr_type),
+                            attr_ty
+                                .as_ref()
+                                .map(|attr_ty| attr_ty.attr_type.as_ref().clone()),
                         )
                         .with_same_source_loc(e)
                         .get_attr(typ_expr_actual.clone(), attr.clone());
@@ -1067,7 +1074,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             )
                         }
                         Some(elem_lub) => TypecheckAnswer::success(
-                            ExprBuilder::with_data(Some(Type::set(elem_lub)))
+                            ExprBuilder::with_data(Some(Type::set(elem_lub.into())))
                                 .with_same_source_loc(e)
                                 .set(elem_expr_types),
                         ),
@@ -1107,7 +1114,10 @@ impl<'a> SingleEnvTypechecker<'a> {
                             // exist, we pair them with the corresponding
                             // attribute names to get a record type.
                             let record_attrs = map.keys().cloned();
-                            let record_type_entries = std::iter::zip(record_attrs, record_attr_tys);
+                            let record_type_entries = std::iter::zip(
+                                record_attrs,
+                                record_attr_tys.into_iter().map(Into::into),
+                            );
                             Type::record_with_required_attributes(
                                 record_type_entries,
                                 OpenTag::ClosedAttributes,
@@ -1848,7 +1858,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             prior_capability,
             rhs,
             &[
-                Type::set(Type::any_entity_reference()),
+                Type::set(Type::any_entity_reference().into()),
                 Type::any_entity_reference(),
             ],
             type_errors,

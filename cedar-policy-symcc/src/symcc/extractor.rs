@@ -25,6 +25,7 @@
 //! and transitive (assuming the suitable acyclicity and transitivity
 //! constraints are satisfied for the footprint).
 
+use std::borrow::Borrow;
 use std::{collections::BTreeSet, sync::Arc};
 
 use cedar_policy_core::ast::Expr;
@@ -123,13 +124,13 @@ impl SymEnv {
     /// to remove entities outside the given footprint.
     ///
     /// Corresponds to `SymEnv.extract?` in `Extractor.lean`.
-    pub fn extract<'a>(
+    pub fn extract<E: Borrow<Expr>>(
         &self,
-        exprs: impl Iterator<Item = &'a Expr>,
+        exprs: impl IntoIterator<Item = E>,
         interp: &Interpretation<'_>,
     ) -> Result<Env, ConcretizeError> {
-        let exprs = exprs.collect::<Vec<_>>();
-        let interp = interp.repair_as_counterexample(exprs.iter().copied());
-        self.interpret(&interp).concretize(exprs.into_iter())
+        let exprs = exprs.into_iter().collect::<Vec<_>>();
+        let interp = interp.repair_as_counterexample(exprs.iter().map(Borrow::borrow));
+        self.interpret(&interp).concretize(exprs)
     }
 }

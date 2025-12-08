@@ -886,7 +886,7 @@ impl Expr {
     pub fn try_into_ast(self, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
         match self {
             Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => jsonvalue
-                .into_expr(|| JsonDeserializationErrorContext::Policy { id: id.clone() })
+                .into_expr(&|| JsonDeserializationErrorContext::Policy { id: id.clone() })
                 .map(Into::into)
                 .map_err(Into::into),
             Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(ast::Expr::var(var)),

@@ -86,7 +86,7 @@ impl<S: ContextSchema> ContextJsonParser<'_, '_, S> {
     ) -> Result<Context, ContextJsonDeserializationError> {
         let vparser = ValueParser::new(self.extensions);
         let expected_ty = self.schema.map(|s| s.context_type());
-        let rexpr = vparser.val_into_restricted_expr(json, expected_ty.as_ref(), || {
+        let rexpr = vparser.val_into_restricted_expr(json, expected_ty.as_ref(), &|| {
             JsonDeserializationErrorContext::Context
         })?;
         Context::from_expr(rexpr.as_borrowed(), self.extensions)

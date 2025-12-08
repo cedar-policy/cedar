@@ -2167,7 +2167,7 @@ pub(crate) mod test {
             .expect("Expected attribute name")
             .attr_type
             .clone();
-        assert_eq!(name_type, Type::named_entity_reference(foo_name));
+        assert_eq!(name_type, Type::named_entity_reference(foo_name).into());
     }
 
     #[test]
@@ -2491,7 +2491,7 @@ pub(crate) mod test {
         let baz = assert_entity_type_exists(&schema, "Bar::Baz");
         assert_eq!(
             baz.attr("fiz").unwrap().attr_type,
-            Type::named_entity_reference_from_str("Foo::Buz"),
+            Type::named_entity_reference_from_str("Foo::Buz").into(),
         );
     }
 
@@ -2561,7 +2561,7 @@ pub(crate) mod test {
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes(),
-            &Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            &Attributes::with_required_attributes([("a".into(), Type::primitive_long().into())])
         );
     }
 
@@ -2587,7 +2587,7 @@ pub(crate) mod test {
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes(),
-            &Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            &Attributes::with_required_attributes([("a".into(), Type::primitive_long().into())])
         );
     }
 
@@ -2619,7 +2619,7 @@ pub(crate) mod test {
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes(),
-            &Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            &Attributes::with_required_attributes([("a".into(), Type::primitive_long().into())])
         );
     }
 
@@ -2665,7 +2665,7 @@ pub(crate) mod test {
 
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes(),
-            &Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            &Attributes::with_required_attributes([("a".into(), Type::primitive_long().into())])
         );
     }
 
@@ -3021,7 +3021,7 @@ pub(crate) mod test {
             .iter();
         let (attr_name, attr_ty) = attributes.next().unwrap();
         assert_eq!(attr_name, "id");
-        assert_eq!(&attr_ty.attr_type, &Type::primitive_string());
+        assert_eq!(attr_ty.attr_type.as_ref(), &Type::primitive_string());
         assert_matches!(attributes.next(), None);
     }
 
@@ -4465,29 +4465,29 @@ mod test_rfc70 {
         let schema = assert_valid_cedar_schema(src);
         let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long()); // using the common type definition
         });
         assert_matches!(e.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_string());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_string());
         });
         assert_matches!(e.attr("c"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         assert_matches!(e.attr("d"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long()); // using the common type definition
         });
         assert_matches!(f.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_boolean());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_boolean());
         });
         assert_matches!(f.attr("c"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         assert_matches!(f.attr("d"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
 
         let src_json = json!({
@@ -4574,29 +4574,29 @@ mod test_rfc70 {
         let schema = assert_valid_json_schema(src_json);
         let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         assert_matches!(e.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_string());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_string());
         });
         assert_matches!(e.attr("c"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         assert_matches!(e.attr("d"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long()); // using the common type definition
         });
         assert_matches!(f.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_boolean());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_boolean());
         });
         assert_matches!(f.attr("c"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         assert_matches!(f.attr("d"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
     }
 
@@ -4625,29 +4625,29 @@ mod test_rfc70 {
         let schema = assert_valid_cedar_schema(src);
         let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long()); // using the common type definition
         });
         assert_matches!(e.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::extension("ipaddr".parse().unwrap()));
+            assert_eq!(atype.attr_type.as_ref(), &Type::extension("ipaddr".parse().unwrap()));
         });
         assert_matches!(e.attr("c"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         assert_matches!(e.attr("d"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long()); // using the common type definition
         });
         assert_matches!(f.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::extension("decimal".parse().unwrap()));
+            assert_eq!(atype.attr_type.as_ref(), &Type::extension("decimal".parse().unwrap()));
         });
         assert_matches!(f.attr("c"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         assert_matches!(f.attr("d"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
 
         let src_json = json!({
@@ -4693,29 +4693,29 @@ mod test_rfc70 {
         let schema = assert_valid_json_schema(src_json);
         let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long()); // using the common type definition
         });
         assert_matches!(e.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::extension("ipaddr".parse().unwrap()));
+            assert_eq!(atype.attr_type.as_ref(), &Type::extension("ipaddr".parse().unwrap()));
         });
         assert_matches!(e.attr("c"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         assert_matches!(e.attr("d"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long()); // using the common type definition
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long()); // using the common type definition
         });
         assert_matches!(f.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::extension("decimal".parse().unwrap()));
+            assert_eq!(atype.attr_type.as_ref(), &Type::extension("decimal".parse().unwrap()));
         });
         assert_matches!(f.attr("c"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
         assert_matches!(f.attr("d"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_long());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_long());
         });
     }
 
@@ -4740,17 +4740,17 @@ mod test_rfc70 {
         let schema = assert_valid_cedar_schema(src);
         let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("String"));
+            assert_eq!(atype.attr_type.as_ref(), &Type::named_entity_reference_from_str("String"));
         });
         assert_matches!(e.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_string());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_string());
         });
         let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::Bool")); // using the common type definition
+            assert_eq!(atype.attr_type.as_ref(), &Type::named_entity_reference_from_str("NS::Bool")); // using the common type definition
         });
         assert_matches!(f.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_boolean());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_boolean());
         });
 
         let src_json = json!({
@@ -4788,17 +4788,17 @@ mod test_rfc70 {
         let schema = assert_valid_json_schema(src_json);
         let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("String"));
+            assert_eq!(atype.attr_type.as_ref(), &Type::named_entity_reference_from_str("String"));
         });
         assert_matches!(e.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_string());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_string());
         });
         let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::Bool"));
+            assert_eq!(atype.attr_type.as_ref(), &Type::named_entity_reference_from_str("NS::Bool"));
         });
         assert_matches!(f.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::primitive_boolean());
+            assert_eq!(atype.attr_type.as_ref(), &Type::primitive_boolean());
         });
     }
 
@@ -4823,17 +4823,17 @@ mod test_rfc70 {
         let schema = assert_valid_cedar_schema(src);
         let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("ipaddr"));
+            assert_eq!(atype.attr_type.as_ref(), &Type::named_entity_reference_from_str("ipaddr"));
         });
         assert_matches!(e.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::extension("ipaddr".parse().unwrap()));
+            assert_eq!(atype.attr_type.as_ref(), &Type::extension("ipaddr".parse().unwrap()));
         });
         let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::decimal"));
+            assert_eq!(atype.attr_type.as_ref(), &Type::named_entity_reference_from_str("NS::decimal"));
         });
         assert_matches!(f.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::extension("decimal".parse().unwrap()));
+            assert_eq!(atype.attr_type.as_ref(), &Type::extension("decimal".parse().unwrap()));
         });
 
         let src_json = json!({
@@ -4871,17 +4871,17 @@ mod test_rfc70 {
         let schema = assert_valid_json_schema(src_json);
         let e = assert_entity_type_exists(&schema, "E");
         assert_matches!(e.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("ipaddr"));
+            assert_eq!(atype.attr_type.as_ref(), &Type::named_entity_reference_from_str("ipaddr"));
         });
         assert_matches!(e.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::extension("ipaddr".parse().unwrap()));
+            assert_eq!(atype.attr_type.as_ref(), &Type::extension("ipaddr".parse().unwrap()));
         });
         let f = assert_entity_type_exists(&schema, "NS::F");
         assert_matches!(f.attr("a"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::named_entity_reference_from_str("NS::decimal"));
+            assert_eq!(atype.attr_type.as_ref(), &Type::named_entity_reference_from_str("NS::decimal"));
         });
         assert_matches!(f.attr("b"), Some(atype) => {
-            assert_eq!(&atype.attr_type, &Type::extension("decimal".parse().unwrap()));
+            assert_eq!(atype.attr_type.as_ref(), &Type::extension("decimal".parse().unwrap()));
         });
     }
 }
@@ -5162,7 +5162,7 @@ mod test_resolver {
             HashMap::from_iter([
                 (
                     "a".parse().unwrap(),
-                    LocatedType::new(Type::set(Type::primitive_boolean()))
+                    LocatedType::new(Type::set(Type::primitive_boolean().into()))
                 ),
                 (
                     "b".parse().unwrap(),
@@ -5202,7 +5202,7 @@ mod test_resolver {
                 (
                     "a".parse().unwrap(),
                     LocatedType::new(Type::record_with_required_attributes(
-                        [("foo".into(), Type::primitive_boolean())],
+                        [("foo".into(), Type::primitive_boolean().into())],
                         crate::validator::types::OpenTag::ClosedAttributes
                     ))
                 ),

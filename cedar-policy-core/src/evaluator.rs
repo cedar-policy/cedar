@@ -870,11 +870,11 @@ impl<'e> Evaluator<'e> {
                 // Try to partial interpret both branches in best-effort:
                 // if a branch partial evaluation fails, then fallback to the original branch expression.
                 let consequent = self
-                    .partial_interpret(&consequent, slots)
+                    .partial_interpret(consequent, slots)
                     .map(|r| Arc::new(r.into()))
                     .unwrap_or_else(|_| consequent.clone());
                 let alternative = self
-                    .partial_interpret(&alternative, slots)
+                    .partial_interpret(alternative, slots)
                     .map(|r| Arc::new(r.into()))
                     .unwrap_or_else(|_| alternative.clone());
                 Ok(Expr::ite_arc(Arc::new(guard), consequent, alternative).into())

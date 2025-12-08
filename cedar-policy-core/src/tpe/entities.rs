@@ -208,7 +208,7 @@ pub fn parse_ejson(
 ) -> std::result::Result<PartialEntity, JsonDeserializationError> {
     let uid = e
         .uid
-        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+        .into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
     let core_schema = CoreSchema::new(schema);
 
     if uid.is_action() {
@@ -230,7 +230,7 @@ pub fn parse_ejson(
                                     .val_into_restricted_expr(
                                         v.into(),
                                         ty.attr_type(&k).as_ref(),
-                                        || JsonDeserializationErrorContext::EntityAttribute {
+                                        &|| JsonDeserializationErrorContext::EntityAttribute {
                                             uid: uid.clone(),
                                             attr: k.clone(),
                                         },
@@ -266,7 +266,7 @@ pub fn parse_ejson(
                 .into_iter()
                 .map(|parent| {
                     parent
-                        .into_euid(|| JsonDeserializationErrorContext::EntityParents {
+                        .into_euid(&|| JsonDeserializationErrorContext::EntityParents {
                             uid: uid.clone(),
                         })
                         .map_err(JsonDeserializationError::Concrete)
@@ -289,7 +289,7 @@ pub fn parse_ejson(
                                     .val_into_restricted_expr(
                                         v.into(),
                                         ty.tag_type().as_ref(),
-                                        || JsonDeserializationErrorContext::EntityAttribute {
+                                        &|| JsonDeserializationErrorContext::EntityAttribute {
                                             uid: uid.clone(),
                                             attr: k.clone(),
                                         },

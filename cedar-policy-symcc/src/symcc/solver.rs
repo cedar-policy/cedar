@@ -158,9 +158,8 @@ impl LocalSolver {
     /// executable using the `CVC5` environment variable
     /// or the `cvc5` binary in `PATH`.
     pub fn cvc5() -> Result<Self> {
-        let path = std::env::var("CVC5").unwrap_or_else(|_| "cvc5".into());
         // Limit of 60000ms = 1 min of wall time for local solves, for now
-        Self::from_command(Command::new(path).args(["--lang", "smt", "--tlimit=60000"]))
+        Self::cvc5_with_args(["--tlimit=60000"])
     }
 
     /// Similar to [`Self::cvc5`] but with custom arguments.

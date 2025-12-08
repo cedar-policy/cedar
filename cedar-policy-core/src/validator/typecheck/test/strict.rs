@@ -273,8 +273,8 @@ fn contains_any_strict_types_mismatch() {
             r#"[principal].containsAny([1])"#,
             Type::primitive_boolean(),
             [
-                Type::set(Type::named_entity_reference_from_str("User")),
-                Type::set(Type::primitive_long()),
+                Type::set(Type::named_entity_reference_from_str("User").into()),
+                Type::set(Type::primitive_long().into()),
             ],
             LubHelp::None,
             LubContext::ContainsAnyAll,
@@ -292,8 +292,8 @@ fn contains_all_strict_types_mismatch() {
             r#"[principal].containsAll([1])"#,
             Type::primitive_boolean(),
             [
-                Type::set(Type::named_entity_reference_from_str("User")),
-                Type::set(Type::primitive_long()),
+                Type::set(Type::named_entity_reference_from_str("User").into()),
+                Type::set(Type::primitive_long().into()),
             ],
             LubHelp::None,
             LubContext::ContainsAnyAll,
@@ -367,7 +367,7 @@ fn set_strict_types_mismatch() {
             &q,
             &Expr::from_str(r#"[User::"alice", Photo::"foo.jpg"]"#).unwrap(),
             r#"[User::"alice", Photo::"foo.jpg"]"#,
-            Type::set(Type::entity_lub(["User", "Photo"])),
+            Type::set(Type::entity_lub(["User", "Photo"]).into()),
             [
                 Type::named_entity_reference_from_str("User"),
                 Type::named_entity_reference_from_str("Photo"),
@@ -646,11 +646,11 @@ fn test_has_attr() {
             [
                 Type::closed_record_with_required_attributes([(
                     "name".into(),
-                    Type::primitive_long(),
+                    Type::primitive_long().into(),
                 )]),
                 Type::closed_record_with_required_attributes([(
                     "bar".into(),
-                    Type::primitive_long(),
+                    Type::primitive_long().into(),
                 )]),
             ],
             LubHelp::RecordWidth,
@@ -739,7 +739,7 @@ fn true_false_set() {
             s,
             &q,
             &Expr::from_str(r#"[true, false]"#).unwrap(),
-            Type::set(Type::primitive_boolean()),
+            Type::set(Type::primitive_boolean().into()),
         )
     });
     with_simple_schema_and_request(|s, q| {
@@ -747,7 +747,7 @@ fn true_false_set() {
             s,
             &q,
             &Expr::from_str(r#"[[true], [false]]"#).unwrap(),
-            Type::set(Type::set(Type::primitive_boolean())),
+            Type::set(Type::set(Type::primitive_boolean().into()).into()),
         )
     });
     with_simple_schema_and_request(|s, q| {
@@ -755,7 +755,7 @@ fn true_false_set() {
             s,
             &q,
             &Expr::from_str(r#"[[[true, false], [true, true]], [[false, false]]]"#).unwrap(),
-            Type::set(Type::set(Type::set(Type::primitive_boolean()))),
+            Type::set(Type::set(Type::set(Type::primitive_boolean().into()).into()).into()),
         )
     })
 }
@@ -783,14 +783,14 @@ fn qualified_record_attr() {
                 Type::record_with_attributes(
                     [(
                         "num_of_things".into(),
-                        AttributeType::new(Type::primitive_long(), false),
+                        AttributeType::new(Type::primitive_long().into(), false),
                     )],
                     OpenTag::ClosedAttributes,
                 ),
                 Type::record_with_attributes(
                     [(
                         "num_of_things".into(),
-                        AttributeType::new(Type::primitive_long(), true),
+                        AttributeType::new(Type::primitive_long().into(), true),
                     )],
                     OpenTag::ClosedAttributes,
                 ),

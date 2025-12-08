@@ -143,7 +143,7 @@ where
         Self::new(
             name.to_smolstr(),
             attr.is_required(),
-            Some(attr.attr_type.into()),
+            Some(attr.attr_type.as_ref().clone().into()),
         )
     }
 }
@@ -156,7 +156,7 @@ where
         Self::new(
             name.to_smolstr(),
             attr.is_required(),
-            Some(attr.attr_type.clone().into()),
+            Some(attr.attr_type.as_ref().clone().into()),
         )
     }
 }

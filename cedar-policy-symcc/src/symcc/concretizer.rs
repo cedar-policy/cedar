@@ -18,6 +18,7 @@
 //! literal Term/SymRequest/SymEntities to their
 //! concrete versions
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::Arc;
 
@@ -83,7 +84,7 @@ pub enum ConcretizeError {
 }
 
 /// A concrete environment recovered from a [`SymEnv`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(missing_docs)]
 pub struct Env {
     pub request: Request,
@@ -122,7 +123,7 @@ impl TryFrom<&Term> for BTreeSet<EntityUid> {
 }
 
 /// Tries to convert a `Term` to a string.
-impl TryFrom<&Term> for String {
+impl TryFrom<&Term> for SmolStr {
     type Error = ConcretizeError;
 
     fn try_from(term: &Term) -> Result<Self, Self::Error> {
@@ -135,7 +136,7 @@ impl TryFrom<&Term> for String {
 }
 
 /// Tries to extract a set of `Strings`'s from a `Term`.
-impl TryFrom<&Term> for BTreeSet<String> {
+impl TryFrom<&Term> for BTreeSet<SmolStr> {
     type Error = ConcretizeError;
 
     fn try_from(term: &Term) -> Result<Self, Self::Error> {
@@ -165,7 +166,7 @@ impl TryFrom<&Term> for Value {
             )),
 
             Term::Prim(TermPrim::String(s)) => {
-                Ok(Value::new(ValueKind::Lit(Literal::String(s.into())), None))
+                Ok(Value::new(ValueKind::Lit(Literal::String(s.clone())), None))
             }
 
             Term::Prim(TermPrim::Entity(uid)) => Ok(Value::new(
@@ -325,7 +326,7 @@ impl SymEntityData {
         // Read tags from the model
         let tags = if let Some(tags) = &self.tags {
             // Get all valid tag keys first
-            let keys: BTreeSet<String> =
+            let keys: BTreeSet<SmolStr> =
                 (&factory::app(tags.keys.clone(), tuid.clone())).try_into()?;
 
             keys.into_iter()
@@ -335,7 +336,7 @@ impl SymEntityData {
                         .get_tag_unchecked(tuid.clone(), Term::Prim(TermPrim::String(k.clone()))))
                         .try_into()?;
 
-                    Ok((k.into(), val.into()))
+                    Ok((k, val.into()))
                 })
                 .collect::<Result<_, ConcretizeError>>()?
         } else {
@@ -383,7 +384,7 @@ impl SymEntityData {
 impl SymEntities {
     /// Concretizes a literal SymEntities to Entities
     pub fn concretize(&self, all_euids: &BTreeSet<EntityUid>) -> Result<Entities, ConcretizeError> {
-        let mut entities = Vec::new();
+        let mut entities = Vec::with_capacity(all_euids.len());
 
         for euid in all_euids {
             let sym_entity_data =
@@ -438,9 +439,9 @@ impl SymEnv {
     ///
     /// In most cases, one should use [`SymEnv::extract`] instead
     /// to ensure well-formed output [`Env`].
-    pub(crate) fn concretize<'a>(
+    pub(crate) fn concretize<E: Borrow<Expr>>(
         &self,
-        exprs: impl Iterator<Item = &'a Expr>,
+        exprs: impl IntoIterator<Item = E>,
     ) -> Result<Env, ConcretizeError> {
         let mut uids = BTreeSet::new();
         self.request.get_all_entity_uids(&mut uids);
@@ -451,7 +452,7 @@ impl SymEnv {
         // short-circuiting in an incomplete entity store.
         let mut visitor = EntityUIDCollector(&mut uids);
         for expr in exprs {
-            visitor.visit_expr(expr);
+            visitor.visit_expr(expr.borrow());
         }
 
         Ok(Env {

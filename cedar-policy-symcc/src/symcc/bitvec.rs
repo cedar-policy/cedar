@@ -77,7 +77,7 @@ impl BitVec {
             )]
             let pos = BitVec::new(width, (-v).to_biguint().unwrap())?;
             Ok(BitVec::add(
-                &pos.not()?,
+                &pos.not(),
                 &BitVec::of_nat(width, BigUint::from(1u128))?,
             )?)
         }
@@ -96,6 +96,11 @@ impl BitVec {
     /// Interprets a [`BitVec`] as a [`Nat`].
     pub fn to_nat(&self) -> Nat {
         self.v.clone()
+    }
+
+    /// Interprets a [`BitVec`] as a [`Nat`].
+    pub fn as_nat(&self) -> &Nat {
+        &self.v
     }
 
     /// Interprets a [`BitVec`] as an [`Int`].
@@ -118,18 +123,18 @@ impl BitVec {
             // PANIC SAFETY
             #[allow(
                 clippy::unwrap_used,
-                reason = "The implementation of BigUint.to_bigint always returns Some"
+                reason = "The implementation of BigUint::to_bigint always returns Some"
             )]
-            let val_bigint = val.v.to_bigint().unwrap();
+            let val_bigint = BigUint::to_bigint(&val.v).unwrap();
             if !sign_bit {
                 val_bigint
             } else {
                 // PANIC SAFETY
                 #[allow(
                     clippy::unwrap_used,
-                    reason = "The implementation of BigUint.to_bigint always returns Some"
+                    reason = "The implementation of BigUint::to_bigint always returns Some"
                 )]
-                let res = -1 * TWO.pow(self.width - 1).to_bigint().unwrap() + val_bigint;
+                let res = -1 * BigUint::to_bigint(&TWO.pow(self.width - 1)).unwrap() + val_bigint;
                 res
             }
         }
@@ -195,9 +200,9 @@ impl BitVec {
             // PANIC SAFETY
             #[allow(
                 clippy::unwrap_used,
-                reason = "The implementation of BigUint.to_bigint always returns Some"
+                reason = "The implementation of BigUint::to_bigint always returns Some"
             )]
-            Ok(-(TWO.pow(n - 1).to_bigint().unwrap()))
+            Ok(-(BigUint::to_bigint(&TWO.pow(n - 1)).unwrap()))
         }
     }
 
@@ -209,9 +214,9 @@ impl BitVec {
             // PANIC SAFETY
             #[allow(
                 clippy::unwrap_used,
-                reason = "The implementation of BigUint.to_bigint always returns Some"
+                reason = "The implementation of BigUint::to_bigint always returns Some"
             )]
-            Ok(TWO.pow(n - 1).to_bigint().unwrap() - 1)
+            Ok(BigUint::to_bigint(&TWO.pow(n - 1)).unwrap() - 1)
         }
     }
 
@@ -225,18 +230,26 @@ impl BitVec {
     ////
 
     /// Bitwise not.
-    pub fn not(&self) -> Result<Self> {
-        BitVec::new(self.width, &self.v ^ BitVec::all_ones(self.width)?.v)
+    pub fn not(&self) -> Self {
+        //PANIC SAFETY: `self.width > 0` by invariant
+        #[allow(clippy::unwrap_used)]
+        BitVec::of_nat(
+            self.width,
+            &self.v ^ BitVec::all_ones(self.width).unwrap().v,
+        )
+        .unwrap()
     }
 
     /// Bit-vector negation.
-    pub fn neg(&self) -> Result<Self> {
+    pub fn neg(&self) -> Self {
         #[allow(
             clippy::unwrap_used,
             reason = "BitVec construction cannot fail: bitwidth is non-zero by invariant."
         )]
         let one = BitVec::of_u128(self.width, 1).unwrap();
-        BitVec::add(&self.not()?, &one)
+        //PANIC SAFETY: `self.not()` and `one` have width equal to `self.width`
+        #[allow(clippy::unwrap_used)]
+        BitVec::add(&self.not(), &one).unwrap()
     }
 
     /// Minimum signed value of the given bit-width, encoded as a [`BitVec`].
@@ -294,7 +307,7 @@ impl BitVec {
         if lhs.width != rhs.width {
             Err(BitVecError::MismatchedWidths("sub".into()))
         } else {
-            BitVec::add(lhs, &rhs.neg()?)
+            BitVec::add(lhs, &rhs.neg())
         }
     }
 
@@ -348,11 +361,11 @@ impl BitVec {
         if !lhs_msb && !rhs_msb {
             BitVec::udiv(lhs, rhs)
         } else if lhs_msb && !rhs_msb {
-            BitVec::neg(&BitVec::udiv(&BitVec::neg(lhs)?, rhs)?)
+            Ok(BitVec::neg(&BitVec::udiv(&BitVec::neg(lhs), rhs)?))
         } else if !lhs_msb && rhs_msb {
-            BitVec::neg(&BitVec::udiv(lhs, &BitVec::neg(rhs)?)?)
+            Ok(BitVec::neg(&BitVec::udiv(lhs, &BitVec::neg(rhs))?))
         } else {
-            BitVec::udiv(&BitVec::neg(lhs)?, &BitVec::neg(rhs)?)
+            BitVec::udiv(&BitVec::neg(lhs), &BitVec::neg(rhs))
         }
     }
 
@@ -369,11 +382,14 @@ impl BitVec {
         if !lhs_msb && !rhs_msb {
             BitVec::urem(lhs, rhs)
         } else if lhs_msb && !rhs_msb {
-            BitVec::neg(&BitVec::urem(&BitVec::neg(lhs)?, rhs)?)
+            Ok(BitVec::neg(&BitVec::urem(&BitVec::neg(lhs), rhs)?))
         } else if !lhs_msb && rhs_msb {
-            BitVec::urem(lhs, &BitVec::neg(rhs)?)
+            BitVec::urem(lhs, &BitVec::neg(rhs))
         } else {
-            BitVec::neg(&BitVec::urem(&BitVec::neg(lhs)?, &BitVec::neg(rhs)?)?)
+            Ok(BitVec::neg(&BitVec::urem(
+                &BitVec::neg(lhs),
+                &BitVec::neg(rhs),
+            )?))
         }
     }
 
@@ -387,27 +403,19 @@ impl BitVec {
         let lhs_msb = lhs.msb();
         let rhs_msb = rhs.msb();
 
-        let abs_lhs = if !lhs_msb {
-            lhs.clone()
-        } else {
-            BitVec::neg(lhs)?
-        };
+        let abs_lhs = if !lhs_msb { lhs } else { &BitVec::neg(lhs) };
 
-        let abs_rhs = if !rhs_msb {
-            rhs.clone()
-        } else {
-            BitVec::neg(rhs)?
-        };
+        let abs_rhs = if !rhs_msb { rhs } else { &BitVec::neg(rhs) };
 
-        let u = BitVec::urem(&abs_lhs, &abs_rhs)?;
+        let u = BitVec::urem(abs_lhs, abs_rhs)?;
         if u.is_zero() || (!lhs_msb && !rhs_msb) {
             Ok(u)
         } else if lhs_msb && !rhs_msb {
-            BitVec::add(&BitVec::neg(&u)?, rhs)
+            BitVec::add(&BitVec::neg(&u), rhs)
         } else if !lhs_msb && rhs_msb {
             BitVec::add(&u, rhs)
         } else {
-            BitVec::neg(&u)
+            Ok(BitVec::neg(&u))
         }
     }
 
@@ -551,10 +559,10 @@ mod tests {
     fn test_bitwise_ops() {
         // Test NOT operation
         let bv = from_bin_str("1010");
-        let not_bv = bv.not().unwrap();
+        let not_bv = bv.not();
         // In a 4-bit representation, NOT 1010 = 0101
         assert_eq_nat(not_bv.to_nat(), 5);
-        assert_eq!(not_bv.not().unwrap(), bv);
+        assert_eq!(not_bv.not(), bv);
     }
 
     #[test]
@@ -562,12 +570,12 @@ mod tests {
         let bv = from_bin_str("1010");
         assert_eq_int(bv.to_int(), -6);
         // Test negation (two's complement)
-        let neg_bv = bv.neg().unwrap();
+        let neg_bv = bv.neg();
         // NEG 1010 = NOT 1010 + 1 = 0101 + 1 = 0110 = 6
         assert_eq_nat(neg_bv.to_nat(), 6);
 
         let bv_min = from_bin_str("1000");
-        assert_eq!(bv_min, bv_min.neg().unwrap());
+        assert_eq!(bv_min, bv_min.neg());
 
         let bv1 = from_bin_str("0101"); // 5
         let bv2: BitVec = from_bin_str("0011"); // 3
