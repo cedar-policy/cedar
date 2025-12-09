@@ -13,7 +13,7 @@ repository.workspace = true
 [dependencies]
 cedar-policy-core = { version = "=4.8.2", path = "../cedar-policy-core", features = ["tolerant-ast", "extended-schema"] }
 cedar-policy-formatter = { version = "=4.8.2", path = "../cedar-policy-formatter", features = ["tolerant-ast"] }
-cedar-policy = { version = "=4.8.0", path = "../cedar-policy", features = ["tolerant-ast"]}
+cedar-policy = { version = "=4.8.2", path = "../cedar-policy", features = ["tolerant-ast"]}
 anyhow = "1.0.100"
 itertools = "0.14.0"
 miette = "7.4.0"
