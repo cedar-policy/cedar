@@ -29,7 +29,7 @@ use cedar_policy_core::{
 };
 use itertools::Itertools;
 use smol_str::SmolStr;
-use tower_lsp_server::lsp_types::Range;
+use tower_lsp_server::ls_types::Range;
 
 use crate::{
     policy::{

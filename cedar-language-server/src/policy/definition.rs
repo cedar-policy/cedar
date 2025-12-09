@@ -17,7 +17,7 @@
 use cedar_policy_core::ast::PolicyID;
 use cedar_policy_core::validator::ValidatorSchema;
 use itertools::Itertools;
-use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Location, Position, Uri};
+use tower_lsp_server::ls_types::{GotoDefinitionResponse, Location, Position, Uri};
 use visitor::PolicyGotoSchemaDefinition;
 
 use crate::{schema::SchemaInfo, utils::position_within_loc};
@@ -101,7 +101,7 @@ pub(crate) fn policy_goto_definition(
 mod tests {
     use std::{sync::LazyLock, vec};
 
-    use tower_lsp_server::lsp_types::{self, Uri};
+    use tower_lsp_server::ls_types::{self, Uri};
     use tracing_test::traced_test;
 
     use crate::{
@@ -119,14 +119,14 @@ mod tests {
             super::policy_goto_definition(position, &policy, Some(schema.clone()), Some(&*URI));
 
         let mut actual = match ranges {
-            Some(lsp_types::GotoDefinitionResponse::Scalar(location)) => {
+            Some(ls_types::GotoDefinitionResponse::Scalar(location)) => {
                 vec![slice_range(&schema.text, location.range)]
             }
-            Some(lsp_types::GotoDefinitionResponse::Array(locations)) => locations
+            Some(ls_types::GotoDefinitionResponse::Array(locations)) => locations
                 .into_iter()
                 .map(|l| slice_range(&schema.text, l.range))
                 .collect(),
-            Some(lsp_types::GotoDefinitionResponse::Link(_)) => {
+            Some(ls_types::GotoDefinitionResponse::Link(_)) => {
                 panic!("Unexpected GotoDefinitionResponse::Link response")
             }
             None => Vec::new(),

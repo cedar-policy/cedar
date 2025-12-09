@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::parser::text_to_cst::parse_policies_tolerant;
-use tower_lsp_server::lsp_types::{self, FoldingRange};
+use tower_lsp_server::ls_types::{self, FoldingRange};
 
 use crate::utils::ToRange;
 
@@ -69,7 +69,7 @@ pub(crate) fn fold_policy_set(policy_str: &str) -> Option<Vec<FoldingRange>> {
                 start_character: None,
                 end_line: src_range.end.line,
                 end_character: None,
-                kind: Some(lsp_types::FoldingRangeKind::Region),
+                kind: Some(ls_types::FoldingRangeKind::Region),
                 collapsed_text: None,
             })
         })

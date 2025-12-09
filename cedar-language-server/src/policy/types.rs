@@ -32,7 +32,7 @@ use cedar_policy_core::validator::{
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use tower_lsp_server::lsp_types::{CompletionItem, Position};
+use tower_lsp_server::ls_types::{CompletionItem, Position};
 
 use crate::policy::completion::items::{
     ActionCompletionItem, ContextCompletionIem, PrincipalCompletionItem, ResourceCompletionItem,

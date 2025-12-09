@@ -16,10 +16,10 @@
 
 pub(crate) fn new_symbol(
     name: String,
-    range: tower_lsp_server::lsp_types::Range,
-    kind: tower_lsp_server::lsp_types::SymbolKind,
-) -> tower_lsp_server::lsp_types::DocumentSymbol {
-    tower_lsp_server::lsp_types::DocumentSymbol {
+    range: tower_lsp_server::ls_types::Range,
+    kind: tower_lsp_server::ls_types::SymbolKind,
+) -> tower_lsp_server::ls_types::DocumentSymbol {
+    tower_lsp_server::ls_types::DocumentSymbol {
         name,
         detail: None,
         kind,

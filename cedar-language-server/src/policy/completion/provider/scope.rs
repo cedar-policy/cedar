@@ -20,7 +20,7 @@ use cedar_policy_core::ast::{
     ActionConstraint, EntityUID, Expr, Literal, PrincipalOrResourceConstraint, SlotId, Template,
     Var,
 };
-use tower_lsp_server::lsp_types::{self, CompletionItem, Position};
+use tower_lsp_server::ls_types::{self, CompletionItem, Position};
 
 use crate::{
     policy::{
@@ -200,19 +200,19 @@ fn get_action_operators() -> Vec<CompletionItem> {
         CompletionItem {
             label: "in action group".to_string(),
             insert_text: Some("in ${1:ActionGroup::\"\"}".to_string()),
-            insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+            insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
             ..CompletionItem::default()
         },
         CompletionItem {
             label: "in array".to_string(),
             insert_text: Some("in [${1}]".to_string()),
-            insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+            insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
             ..CompletionItem::default()
         },
         CompletionItem {
             label: "eq".to_string(),
             insert_text: Some("== ${1:Action::\"\"}".to_string()),
-            insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+            insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
             ..CompletionItem::default()
         },
     ]
