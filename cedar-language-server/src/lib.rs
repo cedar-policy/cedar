@@ -19,7 +19,8 @@
     clippy::missing_errors_doc,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    clippy::cast_possible_wrap
+    clippy::cast_possible_wrap,
+    clippy::string_slice,
 )]
 #![cfg_attr(not(feature = "bin"), allow(dead_code, unused_imports))]
 

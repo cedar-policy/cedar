@@ -205,6 +205,9 @@ impl Solver for LocalSolver {
                 // Read until a line ")\n"
                 loop {
                     let len: usize = self.read_line(&mut output).await?;
+                    // PANIC SAFETY: `output.len() >= len` because `read_line` returns number of bytes read into `output`.
+                    // TODO: Is this guaranteed to be on a character boundary?
+                    #[allow(clippy::string_slice)]
                     if &output[output.len() - len..] == ")\n" {
                         break;
                     }

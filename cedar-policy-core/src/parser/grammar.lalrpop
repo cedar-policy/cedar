@@ -422,6 +422,9 @@ Literal: Node<Option<cst::Literal>> = {
         => Node::with_source_loc(Some(cst::Literal::Str(s)), Loc::new(l..r, Arc::clone(src))),
 }
 Str: Node<Option<cst::Str>> = {
-    <l:@L> <s:STRINGLIT> <r:@R>
-        => Node::with_source_loc(Some(cst::Str::String(s[1..(s.len() - 1)].into())), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <s:STRINGLIT> <r:@R> => {
+        // PANIC SAFETY: STRINGLIT token has at least two characters, starting and ending with the ASCII character `"`
+        #[allow(clippy::string_slice)]
+        Node::with_source_loc(Some(cst::Str::String(s[1..(s.len() - 1)].into())), Loc::new(l..r, Arc::clone(src)))
+    },
 }
