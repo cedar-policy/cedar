@@ -307,9 +307,9 @@ name = "cedar-language-server"
 version = "0.0.1"
 dependencies = [
  "anyhow",
- "cedar-policy",
- "cedar-policy-core",
- "cedar-policy-formatter",
+ "cedar-policy 4.8.2",
+ "cedar-policy-core 4.8.2",
+ "cedar-policy-formatter 4.8.2",
  "cool_asserts",
  "dashmap",
  "insta",
@@ -338,8 +338,8 @@ dependencies = [
 name = "cedar-policy"
 version = "4.8.2"
 dependencies = [
- "cedar-policy-core",
- "cedar-policy-formatter",
+ "cedar-policy-core 4.8.2",
+ "cedar-policy-formatter 4.8.2",
  "cool_asserts",
  "criterion",
  "dhat",
@@ -365,12 +365,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "cedar-policy"
+version = "4.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8c84f46d7feed570e52cd93b0f1e3ce7f57e2ac61712fba0d1318f84c96a99b"
+dependencies = [
+ "cedar-policy-core 4.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cedar-policy-formatter 4.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "itertools 0.14.0",
+ "linked-hash-map",
+ "miette",
+ "ref-cast",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "smol_str",
+ "thiserror",
+]
+
+[[package]]
 name = "cedar-policy-cli"
 version = "4.8.2"
 dependencies = [
  "assert_cmd",
- "cedar-policy",
- "cedar-policy-formatter",
+ "cedar-policy 4.8.2",
+ "cedar-policy-formatter 4.8.2",
  "clap",
  "glob",
  "graphviz-rust",
@@ -418,11 +438,54 @@ dependencies = [
 ]
 
 [[package]]
+name = "cedar-policy-core"
+version = "4.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8011d10d2ffa8ee4497d4d7234d0d4e97f52a6e6e66a1150c5c3409ba7fe1b5c"
+dependencies = [
+ "chrono",
+ "educe",
+ "either",
+ "itertools 0.14.0",
+ "lalrpop",
+ "lalrpop-util",
+ "linked-hash-map",
+ "linked_hash_set",
+ "miette",
+ "nonempty",
+ "ref-cast",
+ "regex",
+ "rustc_lexer",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "smol_str",
+ "stacker",
+ "thiserror",
+ "unicode-security",
+]
+
+[[package]]
 name = "cedar-policy-formatter"
 version = "4.8.2"
 dependencies = [
- "cedar-policy-core",
+ "cedar-policy-core 4.8.2",
  "insta",
+ "itertools 0.14.0",
+ "logos",
+ "miette",
+ "pretty",
+ "regex",
+ "smol_str",
+]
+
+[[package]]
+name = "cedar-policy-formatter"
+version = "4.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f29faad4ed540d812bc213b1228de39a34731730bca6dd51a8086796461415c0"
+dependencies = [
+ "cedar-policy-core 4.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "itertools 0.14.0",
  "logos",
  "miette",
@@ -436,8 +499,8 @@ name = "cedar-policy-symcc"
 version = "0.2.0"
 dependencies = [
  "async-recursion",
- "cedar-policy",
- "cedar-policy-core",
+ "cedar-policy 4.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cedar-policy-core 4.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono",
  "cool_asserts",
  "itertools 0.14.0",
@@ -455,7 +518,7 @@ dependencies = [
 name = "cedar-testing"
 version = "4.8.2"
 dependencies = [
- "cedar-policy",
+ "cedar-policy 4.8.2",
  "cedar-policy-cli",
  "escargot",
  "miette",
@@ -470,9 +533,9 @@ dependencies = [
 name = "cedar-wasm"
 version = "4.8.2"
 dependencies = [
- "cedar-policy",
- "cedar-policy-core",
- "cedar-policy-formatter",
+ "cedar-policy 4.8.2",
+ "cedar-policy-core 4.8.2",
+ "cedar-policy-formatter 4.8.2",
  "console_error_panic_hook",
  "cool_asserts",
  "serde",
