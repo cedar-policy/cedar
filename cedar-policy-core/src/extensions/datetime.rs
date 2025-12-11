@@ -617,12 +617,11 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     };
 
     let date = date()?;
-    let time = NaiveTime::from_hms_milli_opt(h, m, sec, ms)
-        .ok_or_else(|| {
-            // PANIC SAFETY: match for HMS_PATTERN must starts with ASCII character `T`. Slicing `[1..]` skips this character.
-            #[allow(clippy::string_slice)]
-            DateTimeParseError::InvalidHMS(hms_str[1..].into())
-        })?;
+    let time = NaiveTime::from_hms_milli_opt(h, m, sec, ms).ok_or_else(|| {
+        // PANIC SAFETY: match for HMS_PATTERN must starts with ASCII character `T`. Slicing `[1..]` skips this character.
+        #[allow(clippy::string_slice)]
+        DateTimeParseError::InvalidHMS(hms_str[1..].into())
+    })?;
     let offset: Result<TimeDelta, DateTimeParseError> = if captures.get(4).is_some() {
         let positive = &captures[5] == "+";
         // PANIC SAFETY: should be valid given the limit on the number of digits.
