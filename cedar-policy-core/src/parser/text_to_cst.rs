@@ -23,6 +23,8 @@ lalrpop_mod!(
     #[allow(clippy::unwrap_used)]
     //PANIC SAFETY: lalrpop uses slicing, and we are trusting lalrpop to generate correct code
     #[allow(clippy::indexing_slicing)]
+    //PANIC SAFETY: lalrpop uses string slicing, and we are trusting lalrpop to generate correct code
+    #[allow(clippy::string_slicing)]
     //PANIC SAFETY: lalrpop uses unreachable, and we are trusting lalrpop to generate correct code
     #[allow(clippy::unreachable)]
     //PANIC SAFETY: lalrpop uses panic, and we are trusting lalrpop to generate correct code
