@@ -39,6 +39,7 @@ unsafe_code = "forbid"
 unexpected_cfgs = { level = 'deny', check-cfg = ['cfg(kani)', 'cfg(fuzzing)'] }
 missing_debug_implementations = "deny"
 rust-2018-idioms = "deny"
+unused_assignments = "allow" # In Rust 1.92 this one erroneously identifies some fields in error structs as unused, when they are actually used in the `#[error]` attribute
 
 # For clippy lints CI will only block on errors, so setting one to "warn" just
 # means we'll see it in local runs.

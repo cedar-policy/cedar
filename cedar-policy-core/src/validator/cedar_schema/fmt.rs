@@ -25,9 +25,8 @@ use nonempty::NonEmpty;
 use smol_str::{format_smolstr, SmolStr};
 use thiserror::Error;
 
-use crate::ast::is_normalized_ident;
+use crate::ast::{is_normalized_ident, InternalName};
 use crate::validator::{json_schema, RawName};
-use crate::{ast::InternalName, impl_diagnostic_from_method_on_nonempty_field};
 
 /// Number of spaces of indentation per level in the Cedarschema file
 pub const NUM_INDENTATION_SPACES: usize = 2;
