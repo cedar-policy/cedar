@@ -6488,9 +6488,12 @@ pub fn compute_entity_manifest(
     validator: &Validator,
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
-    #[cfg_attr(feature = "entity-manifest", expect(
-        deprecated,
-        reason = "this function and its callee are both deprecated"
+    #[cfg_attr(
+        feature = "entity-manifest",
+        expect(
+            deprecated,
+            reason = "this function and its callee are both deprecated"
+        )
     )]
     entity_manifest::compute_entity_manifest(&validator.0, &pset.ast)
         .map_err(std::convert::Into::into)
