@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
+## [0.2.0] - Coming soon
+Cedar Language Version: 4.4
+
 ### Added
 
 - New optimized interface (`*_opt` methods on `CedarSymCompiler`) allowing you
