@@ -6488,7 +6488,7 @@ pub fn compute_entity_manifest(
     validator: &Validator,
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
-    #[expect(
+    #[cfg_attr(feature = "entity-manifest", expect(
         deprecated,
         reason = "this function and its callee are both deprecated"
     )]
