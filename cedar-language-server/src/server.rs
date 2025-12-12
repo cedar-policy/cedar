@@ -26,7 +26,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tower_lsp_server::jsonrpc::{Error, Result};
 #[allow(clippy::wildcard_imports)]
-use tower_lsp_server::lsp_types::*;
+use tower_lsp_server::ls_types::*;
 use tower_lsp_server::LanguageServer;
 use tracing::info;
 

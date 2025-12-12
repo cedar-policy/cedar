@@ -30,7 +30,7 @@ use cedar_policy_core::{
     validator::{ValidatorEntityType, ValidatorSchema},
 };
 use itertools::Itertools;
-use tower_lsp_server::lsp_types::{self, CompletionItem, CompletionItemKind};
+use tower_lsp_server::ls_types::{self, CompletionItem, CompletionItemKind};
 
 /// Represents the context for completing a binary operation expression.
 ///
@@ -114,7 +114,7 @@ fn entity_type_completion(entity_type: &EntityType) -> CompletionItem {
         label: entity_type.to_string(),
         kind: Some(CompletionItemKind::CLASS),
         insert_text: Some(format!("{entity_type}::\"${{1:entityId}}\"")),
-        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
         ..CompletionItem::default()
     }
 }

@@ -21,7 +21,7 @@ use cedar_policy_core::{
     parser::Loc,
 };
 use smol_str::SmolStr;
-use tower_lsp_server::lsp_types::Hover;
+use tower_lsp_server::ls_types::Hover;
 
 use crate::{
     documentation::{

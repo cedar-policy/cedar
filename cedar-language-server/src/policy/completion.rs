@@ -17,7 +17,7 @@
 use cedar_policy_core::ast::EntityUID;
 use cedar_policy_core::validator::ValidatorSchema;
 use provider::PolicyCompletionProvider;
-use tower_lsp_server::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat, Position};
+use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind, InsertTextFormat, Position};
 
 pub(crate) mod items;
 mod provider;

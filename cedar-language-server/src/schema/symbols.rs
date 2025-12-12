@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::validator::ValidatorSchema;
-use tower_lsp_server::lsp_types::{DocumentSymbol, SymbolKind};
+use tower_lsp_server::ls_types::{DocumentSymbol, SymbolKind};
 
 use crate::{
     lsp::new_symbol,

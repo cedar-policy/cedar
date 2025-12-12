@@ -21,7 +21,7 @@ use cedar_policy_core::{
     parser::{cst::Policy, Node},
 };
 use process::preprocess_policy;
-use tower_lsp_server::lsp_types::{CompletionItem, Position};
+use tower_lsp_server::ls_types::{CompletionItem, Position};
 use tracing::{error, info};
 
 use crate::{

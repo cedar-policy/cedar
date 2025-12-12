@@ -89,10 +89,10 @@ impl Display for Comment<'_> {
 // Cedar tokens
 #[derive(Logos, Clone, Debug, PartialEq, Eq)]
 pub enum Token {
-    #[regex(r"\s*", logos::skip)]
+    #[regex(r"\s+", logos::skip)]
     Whitespace,
 
-    #[regex(r"//[^\n\r]*[\n\r]*", logos::skip)]
+    #[regex(r"//[^\n\r]*[\n\r]*", logos::skip, allow_greedy = true)]
     Comment,
 
     #[token("true")]
