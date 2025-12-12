@@ -27,7 +27,7 @@ macro_rules! impl_diagnostic_warning {
     };
 }
 
-use crate::{ast::PolicyID, impl_diagnostic_from_source_loc_opt_field, parser::Loc};
+use crate::{ast::PolicyID, parser::Loc};
 use miette::Diagnostic;
 use thiserror::Error;
 
