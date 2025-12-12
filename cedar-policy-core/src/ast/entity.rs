@@ -697,7 +697,10 @@ impl Entity {
     }
 
     /// Consume the entity and return the entity's owned Uid, attributes, ancestors, parents, and tags.
-    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::type_complexity,
+        reason = "needs to return a 5-tuple by design"
+    )]
     pub fn into_inner(
         self,
     ) -> (

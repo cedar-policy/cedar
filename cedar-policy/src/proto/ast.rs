@@ -23,11 +23,9 @@ use cedar_policy_core::{
 use smol_str::ToSmolStr;
 use std::{collections::HashSet, sync::Arc};
 
-// PANIC SAFETY: experimental feature
-#[allow(clippy::fallible_impl_from)]
+#[expect(clippy::fallible_impl_from, reason = "experimental feature")]
 impl From<&models::Name> for ast::InternalName {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::unwrap_used)]
+    #[expect(clippy::unwrap_used, reason = "experimental feature")]
     fn from(v: &models::Name) -> Self {
         let basename = ast::Id::from_normalized_str(&v.id).unwrap();
         let path = v
@@ -38,11 +36,9 @@ impl From<&models::Name> for ast::InternalName {
     }
 }
 
-// PANIC SAFETY: experimental feature
-#[allow(clippy::fallible_impl_from)]
+#[expect(clippy::fallible_impl_from, reason = "experimental feature")]
 impl From<&models::Name> for ast::Name {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::unwrap_used)]
+    #[expect(clippy::unwrap_used, reason = "experimental feature")]
     fn from(v: &models::Name) -> Self {
         ast::Name::try_from(ast::InternalName::from(v)).unwrap()
     }
@@ -79,8 +75,7 @@ impl From<&ast::EntityType> for models::Name {
 }
 
 impl From<&models::EntityUid> for ast::EntityUID {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::EntityUid) -> Self {
         Self::from_components(
             ast::EntityType::from(v.ty.as_ref().expect("ty field should exist")),
@@ -101,15 +96,13 @@ impl From<&ast::EntityUID> for models::EntityUid {
 
 impl From<&models::EntityUid> for ast::EntityUIDEntry {
     fn from(v: &models::EntityUid) -> Self {
-        // PANIC SAFETY: experimental feature
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "experimental feature")]
         ast::EntityUIDEntry::known(ast::EntityUID::from(v), None)
     }
 }
 
 impl From<&ast::EntityUIDEntry> for models::EntityUid {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::unimplemented)]
+    #[expect(clippy::unimplemented, reason = "experimental feature")]
     fn from(v: &ast::EntityUIDEntry) -> Self {
         match v {
             ast::EntityUIDEntry::Unknown { .. } => {
@@ -123,8 +116,11 @@ impl From<&ast::EntityUIDEntry> for models::EntityUid {
 }
 
 impl From<&models::Entity> for ast::Entity {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used, clippy::unwrap_used)]
+    #[expect(
+        clippy::expect_used,
+        clippy::unwrap_used,
+        reason = "experimental feature"
+    )]
     fn from(v: &models::Entity) -> Self {
         let eval = RestrictedEvaluator::new(Extensions::none());
 
@@ -194,8 +190,11 @@ impl From<&Arc<ast::Entity>> for models::Entity {
 }
 
 impl From<&models::Expr> for ast::Expr {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used, clippy::too_many_lines)]
+    #[expect(
+        clippy::expect_used,
+        clippy::too_many_lines,
+        reason = "experimental feature"
+    )]
     fn from(v: &models::Expr) -> Self {
         let kind = v.expr_kind.as_ref().expect("expr_kind field should exist");
 
@@ -326,8 +325,11 @@ impl From<&models::Expr> for ast::Expr {
 }
 
 impl From<&ast::Expr> for models::Expr {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::unimplemented, clippy::too_many_lines)]
+    #[expect(
+        clippy::unimplemented,
+        clippy::too_many_lines,
+        reason = "experimental feature"
+    )]
     fn from(v: &ast::Expr) -> Self {
         let expr_kind = match v.expr_kind() {
             ast::ExprKind::Lit(l) => {
@@ -466,8 +468,7 @@ impl From<&ast::Var> for models::expr::Var {
 }
 
 impl From<&models::expr::Literal> for ast::Literal {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::expr::Literal) -> Self {
         match v.lit.as_ref().expect("lit field should exist") {
             models::expr::literal::Lit::B(b) => ast::Literal::Bool(*b),
@@ -510,11 +511,9 @@ impl From<&models::SlotId> for ast::SlotId {
     }
 }
 
-// PANIC SAFETY: experimental feature
-#[allow(clippy::fallible_impl_from)]
+#[expect(clippy::fallible_impl_from, reason = "experimental feature")]
 impl From<&ast::SlotId> for models::SlotId {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::panic)]
+    #[expect(clippy::panic, reason = "experimental feature")]
     fn from(v: &ast::SlotId) -> Self {
         if v.is_principal() {
             models::SlotId::Principal
@@ -585,8 +584,7 @@ impl From<&ast::BinaryOp> for models::expr::binary_app::Op {
 }
 
 impl From<&models::expr::like::PatternElem> for ast::PatternElem {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::expr::like::PatternElem) -> Self {
         match v.data.as_ref().expect("data field should exist") {
             models::expr::like::pattern_elem::Data::C(c) => {
@@ -620,8 +618,7 @@ impl From<&ast::PatternElem> for models::expr::like::PatternElem {
 }
 
 impl From<&models::Request> for ast::Request {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::Request) -> Self {
         ast::Request::new_unchecked(
             ast::EntityUIDEntry::from(v.principal.as_ref().expect("principal.as_ref()")),
@@ -645,8 +642,7 @@ impl From<&models::Request> for ast::Request {
 }
 
 impl From<&ast::Request> for models::Request {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &ast::Request) -> Self {
         Self {
             principal: Some(models::EntityUid::from(v.principal())),
@@ -673,8 +669,7 @@ impl From<&ast::Request> for models::Request {
 
 impl From<&models::Expr> for ast::Context {
     fn from(v: &models::Expr) -> Self {
-        // PANIC SAFETY: experimental feature
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "experimental feature")]
         ast::Context::from_expr(
             ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v))
                 .expect("encoded context should be valid restricted expr"),

@@ -126,8 +126,10 @@ impl PartialRequest {
         &self,
         schema: &'s ValidatorSchema,
     ) -> std::result::Result<RequestEnv<'s>, NoMatchingReqEnvError> {
-        // PANIC SAFETY: strict validation should produce concrete action entity uid
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "strict validation should produce concrete action entity uid"
+        )]
         schema
             .unlinked_request_envs(ValidationMode::Strict)
             .find(|env| {
@@ -385,8 +387,10 @@ impl<'s> RequestBuilder<'s> {
             }
             .into())
         } else {
-            // PANIC SAFETY: partial_request is validated and hence the entity type must exist in the schema
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "partial_request is validated and hence the entity type must exist in the schema"
+            )]
             if candidate.entity_type() != &self.partial_request.principal.ty {
                 Err(IncorrectPrincipalEntityTypeError {
                     ty: candidate.entity_type().clone(),
@@ -433,8 +437,10 @@ impl<'s> RequestBuilder<'s> {
             }
             .into())
         } else {
-            // PANIC SAFETY: partial_request is validated and hence the entity type must exist in the schema
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "partial_request is validated and hence the entity type must exist in the schema"
+            )]
             if candidate.entity_type() != &self.partial_request.resource.ty {
                 Err(IncorrectResourceEntityTypeError {
                     ty: candidate.entity_type().clone(),

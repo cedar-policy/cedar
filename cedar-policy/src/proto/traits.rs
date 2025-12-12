@@ -30,7 +30,7 @@ pub trait Protobuf: Sized {
 /// Encode `thing` into `buf` using the protobuf format `M`
 ///
 /// `Err` is only returned if `buf` has insufficient space.
-#[allow(dead_code)] // experimental feature, we might have use for this one in the future
+#[expect(dead_code)] // experimental feature, we might have use for this one in the future
 pub(crate) fn encode<M: prost::Message>(
     thing: impl Into<M>,
     buf: &mut impl prost::bytes::BufMut,

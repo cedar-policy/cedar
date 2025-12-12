@@ -25,7 +25,7 @@ use ropey::Rope;
 use serde::Deserialize;
 use serde_json::Value;
 use tower_lsp_server::jsonrpc::{Error, Result};
-#[allow(clippy::wildcard_imports)]
+#[expect(clippy::wildcard_imports, reason = "existing code")]
 use tower_lsp_server::lsp_types::*;
 use tower_lsp_server::LanguageServer;
 use tracing::info;
@@ -524,7 +524,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
         Ok(None)
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines, reason = "existing code")]
     async fn execute_command(&self, params: ExecuteCommandParams) -> Result<Option<Value>> {
         match params.command.as_str() {
             "cedar.associateSchema" => {

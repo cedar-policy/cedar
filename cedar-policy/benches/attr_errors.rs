@@ -13,8 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-// PANIC SAFETY: benchmarking
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, reason = "benchmarking")]
 use cedar_policy::EntityUid;
 use cedar_policy::{Authorizer, Context, Entities, PolicySet, Request, RestrictedExpression};
 use criterion::{criterion_group, criterion_main, Criterion};

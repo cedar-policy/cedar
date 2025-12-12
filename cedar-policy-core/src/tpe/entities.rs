@@ -355,8 +355,10 @@ impl TCNode<EntityUID> for PartialEntity {
 impl PartialEntity {
     /// This method should be only called on entities that have known ancestors
     pub(crate) fn add_ancestor(&mut self, uid: EntityUID) {
-        // PANIC SAFETY: this method should be only called on entities that have known ancestors
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "this method should be only called on entities that have known ancestors"
+        )]
         self.ancestors
             .as_mut()
             .expect("should not be unknown")
@@ -634,8 +636,10 @@ impl PartialEntities {
         for (uid, action) in &schema.actions {
             self.entities.insert(
                 uid.clone(),
-                // PANIC SAFETY: action entities do not contain unknowns
-                #[allow(clippy::unwrap_used)]
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "action entities do not contain unknowns"
+                )]
                 action.as_ref().clone().try_into().unwrap(),
             );
         }

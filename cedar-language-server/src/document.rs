@@ -46,7 +46,10 @@ pub(crate) enum CedarUriKind {
 }
 
 impl CedarUriKind {
-    #[allow(clippy::case_sensitive_file_extension_comparisons)]
+    #[expect(
+        clippy::case_sensitive_file_extension_comparisons,
+        reason = "should fix this lint but allowing for now"
+    )]
     pub(crate) fn uri_kind(uri: &Uri) -> Option<Self> {
         if uri.path().as_str().ends_with(".cedar") {
             Some(Self::Cedar)
@@ -104,7 +107,6 @@ impl Document {
         Self::try_from_state(state)
     }
 
-    #[allow(clippy::case_sensitive_file_extension_comparisons)]
     pub(crate) fn new_uri(
         uri: &Uri,
         version: i32,

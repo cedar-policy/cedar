@@ -57,7 +57,6 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo install cargo-audit --locked
-      - run: ./panic_safety.sh
       - run: cargo doc --all-features --no-deps
 
       # Required to run cedar-symcc tests
@@ -108,9 +107,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: rustup component add clippy
-      # Clippy is configured by `.cargo/config.toml` to deny on lints like
-      # `unwrap_used`. They aren't detected by `panic_safety.sh` which only
-      # looks for comments where we've added an `allow` directive for clippy.
+      # Clippy is configured by our various `Cargo.toml`s to deny on lints like `unwrap_used`.
       - run: cargo clippy --all-features
 
   # Run `cargo fmt` independently so that tests are executed even if you forgot

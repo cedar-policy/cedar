@@ -89,8 +89,7 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
             Err(_) => Box::new(std::iter::empty()),
         }
     };
-    // PANIC SAFETY
-    #[allow(clippy::unimplemented, reason = "Should fail at an earlier stage")]
+    #[expect(clippy::unimplemented, reason = "Should fail at an earlier stage")]
     match x.expr_kind() {
         ExprKind::Lit(_) | ExprKind::Var(_) => of_entity(x),
         ExprKind::If {
@@ -136,7 +135,6 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
         ExprKind::Unknown(_) => {
             unimplemented!("analyzing partial expressions is not currently supported")
         }
-        #[allow(unreachable_patterns)]
         _ => unimplemented!("analyzing `{}` is not currently supported", x),
     }
 }
@@ -165,8 +163,7 @@ pub(crate) fn acyclicity(t: &Term, es: &SymEntities) -> Term {
                     }
                     None => true.into(),
                 },
-                // PANIC SAFETY
-                #[allow(
+                #[expect(
                     clippy::unreachable,
                     reason = "Code already checks that matches entity_type"
                 )]

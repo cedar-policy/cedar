@@ -13,10 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-// PANIC SAFETY: benchmarking
-#![allow(clippy::unwrap_used)]
-// PANIC SAFETY: benchmarking
-#![allow(clippy::indexing_slicing)]
+#![allow(clippy::unwrap_used, reason = "benchmarking")]
+#![allow(clippy::indexing_slicing, reason = "benchmarking")]
 
 use cedar_policy::{
     Authorizer, Context, Entities, Entity, EntityUid, PolicySet, Request, RestrictedExpression,

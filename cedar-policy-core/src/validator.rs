@@ -25,7 +25,13 @@
     rustdoc::bare_urls,
     clippy::doc_markdown
 )]
-#![cfg_attr(feature = "wasm", allow(non_snake_case))]
+#![cfg_attr(
+    feature = "wasm",
+    allow(
+        non_snake_case,
+        reason = "Wasm/TypeScript doesn't use snake case identifiers by convention"
+    )
+)]
 
 use crate::ast::{Policy, PolicySet, Template};
 use std::collections::HashSet;
@@ -198,9 +204,9 @@ impl Validator {
         schema: &'a ValidatorSchema,
         p: &'a Template,
     ) -> impl Iterator<Item = ValidationError> + 'a {
-        Validator::validate_entity_types(&schema, p)
-            .chain(Validator::validate_enum_entity(&schema, p))
-            .chain(Validator::validate_action_ids(&schema, p))
+        Validator::validate_entity_types(schema, p)
+            .chain(Validator::validate_enum_entity(schema, p))
+            .chain(Validator::validate_action_ids(schema, p))
     }
 
     /// Run relevant validations against a single template-linked policy,

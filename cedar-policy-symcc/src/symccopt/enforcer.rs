@@ -32,7 +32,7 @@ pub fn enforce_compiled_policy(cp: &CompiledPolicy) -> BTreeSet<Term> {
     cp.acyclicity.iter().cloned().chain(tr).collect()
 }
 
-#[allow(dead_code, reason = "exists in the Lean")]
+#[expect(dead_code, reason = "exists in the Lean")]
 pub fn enforce_compiled_policies(cps: &CompiledPolicies) -> BTreeSet<Term> {
     let tr = cps.footprint.iter().flat_map(|term1| {
         cps.footprint

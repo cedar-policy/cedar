@@ -141,8 +141,10 @@ impl WrappedAccessPaths {
                     WrappedAccessPaths::RecordLiteral(record)
                 }
             }
-            // PANIC SAFETY: Type checker should prevent using `.` operator on a set type.
-            #[allow(clippy::panic)]
+            #[expect(
+                clippy::panic,
+                reason = "Type checker should prevent using `.` operator on a set type."
+            )]
             WrappedAccessPaths::SetLiteral(_) => {
                 panic!("Attempted to dereference a set literal.")
             }
@@ -167,8 +169,10 @@ impl WrappedAccessPaths {
                 }) => {
                     let mut res = RootAccessTrie::new();
                     for (attr, attr_ty) in record_attrs.iter() {
-                        // PANIC SAFETY: Record literals should have attributes that match the type.
-                        #[allow(clippy::panic)]
+                        #[expect(
+                            clippy::panic,
+                            reason = "Record literals should have attributes that match the type."
+                        )]
                         let field = literal_fields
                             .remove(attr)
                             .unwrap_or_else(|| panic!("Missing field {attr} in record literal"));
@@ -178,23 +182,29 @@ impl WrappedAccessPaths {
 
                     res
                 }
-                // PANIC SAFETY: Typechecking should identify record literals as record types.
-                #[allow(clippy::panic)]
+                #[expect(
+                    clippy::panic,
+                    reason = "Typechecking should identify record literals as record types."
+                )]
                 _ => {
                     panic!("Found record literal when expected {} type", ty);
                 }
             },
             WrappedAccessPaths::SetLiteral(elements) => match ty {
                 Type::Set { element_type } => {
-                    // PANIC SAFETY: Typechecking should give concrete types for set elements.
-                    #[allow(clippy::expect_used)]
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "Typechecking should give concrete types for set elements."
+                    )]
                     let ele_type = element_type
                         .as_ref()
                         .expect("Expected concrete set type after typechecking");
                     elements.full_type_required(ele_type)
                 }
-                // PANIC SAFETY: Typechecking should identify set literals as set types.
-                #[allow(clippy::panic)]
+                #[expect(
+                    clippy::panic,
+                    reason = "Typechecking should identify set literals as set types."
+                )]
                 _ => {
                     panic!("Found set literal when expected {} type", ty);
                 }

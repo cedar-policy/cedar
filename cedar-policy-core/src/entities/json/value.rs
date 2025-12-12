@@ -767,8 +767,10 @@ impl<'e> ValueParser<'e> {
                             .extensions
                             .lookup_single_arg_constructor(&expected_return_type)
                         {
-                            // PANIC SAFETY: we've concluded above that it has one arugment
-                            #[allow(clippy::indexing_slicing)]
+                            #[expect(
+                                clippy::indexing_slicing,
+                                reason = "we've concluded above that it has one arugment"
+                            )]
                             Ok(RestrictedExpr::call_extension_fn(
                                 constructor.name().clone(),
                                 std::iter::once(self.val_into_restricted_expr(

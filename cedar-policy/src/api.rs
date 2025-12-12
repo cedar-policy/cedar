@@ -20,6 +20,7 @@
     clippy::missing_errors_doc,
     clippy::similar_names,
     clippy::result_large_err, // see #878
+    reason = "this module doesn't currently comply with these lints"
 )]
 
 mod id;
@@ -65,8 +66,10 @@ use std::io::Read;
 use std::str::FromStr;
 use std::sync::Arc;
 
-// PANIC SAFETY: `CARGO_PKG_VERSION` should return a valid SemVer version string
-#[allow(clippy::unwrap_used)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "`CARGO_PKG_VERSION` should return a valid SemVer version string"
+)]
 pub(crate) mod version {
     use semver::Version;
     use std::sync::LazyLock;
@@ -79,12 +82,10 @@ pub(crate) mod version {
     static LANG_VERSION: LazyLock<Version> = LazyLock::new(|| Version::new(4, 4, 0));
 
     /// Get the Cedar SDK Semantic Versioning version
-    #[allow(clippy::module_name_repetitions)]
     pub fn get_sdk_version() -> Version {
         SDK_VERSION.clone()
     }
     /// Get the Cedar language version
-    #[allow(clippy::module_name_repetitions)]
     pub fn get_lang_version() -> Version {
         LANG_VERSION.clone()
     }
@@ -874,8 +875,7 @@ impl Entities {
     /// Feel free to submit an issue if you are using this feature and would like it improved.
     pub fn to_dot_str(&self) -> String {
         let mut dot_str = String::new();
-        // PANIC SAFETY: Writing to the String `dot_str` cannot fail, so `to_dot_str` will not return an `Err` result.
-        #[allow(clippy::unwrap_used)]
+        #[expect(clippy::unwrap_used, reason = "writing to a String cannot fail")]
         self.0.to_dot_str(&mut dot_str).unwrap();
         dot_str
     }
@@ -1179,7 +1179,10 @@ impl PartialResponse {
     }
 
     /// Attempt to re-authorize this response given a mapping from unknowns to values.
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "don't want to change signature of deprecated public function"
+    )]
     #[deprecated = "use reauthorize_with_bindings"]
     pub fn reauthorize(
         &self,
@@ -2178,14 +2181,20 @@ impl std::error::Error for ValidationResult {
             .and_then(std::error::Error::source)
     }
 
-    #[allow(deprecated)]
     fn description(&self) -> &str {
+        #[expect(
+            deprecated,
+            reason = "description() is deprecated but we still want to forward it"
+        )]
         self.first_error_or_warning()
             .map_or("no errors or warnings", std::error::Error::description)
     }
 
-    #[allow(deprecated)]
     fn cause(&self) -> Option<&dyn std::error::Error> {
+        #[expect(
+            deprecated,
+            reason = "cause() is deprecated but we still want to forward it"
+        )]
         self.first_error_or_warning()
             .and_then(std::error::Error::cause)
     }
@@ -2351,16 +2360,14 @@ impl FromStr for PolicySet {
     /// See [`Policy`] for more.
     fn from_str(policies: &str) -> Result<Self, Self::Err> {
         let (texts, pset) = parser::parse_policyset_and_also_return_policy_text(policies)?;
-        // PANIC SAFETY: By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.policies()` occurs as a key in `text`.
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.policies()` occurs as a key in `text`.")]
         let policies = pset.policies().map(|p|
             (
                 PolicyId::new(p.id().clone()),
                 Policy { lossless: LosslessPolicy::policy_or_template_text(*texts.get(p.id()).expect("internal invariant violation: policy id exists in asts but not texts")), ast: p.clone() }
             )
         ).collect();
-        // PANIC SAFETY: By the same invariant, every `PolicyId` in `pset.templates()` also occurs as a key in `text`.
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.templates()` also occurs as a key in `text`.")]
         let templates = pset.templates().map(|t|
             (
                 PolicyId::new(t.id().clone()),
@@ -2379,8 +2386,10 @@ impl PolicySet {
     /// Build the policy set AST from the EST
     fn from_est(est: &est::PolicySet) -> Result<Self, PolicySetError> {
         let ast: ast::PolicySet = est.clone().try_into()?;
-        // PANIC SAFETY: Since conversion from EST to AST succeeded, every `PolicyId` in `ast.policies()` occurs in `est`
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "Since conversion from EST to AST succeeded, every `PolicyId` in `ast.policies()` occurs in `est`"
+        )]
         let policies = ast
             .policies()
             .map(|p| {
@@ -2395,8 +2404,10 @@ impl PolicySet {
                 )
             })
             .collect();
-        // PANIC SAFETY: Since conversion from EST to AST succeeded, every `PolicyId` in `ast.templates()` occurs in `est`
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "Since conversion from EST to AST succeeded, every `PolicyId` in `ast.templates()` occurs in `est`"
+        )]
         let templates = ast
             .templates()
             .map(|t| {
@@ -2419,7 +2430,10 @@ impl PolicySet {
     }
 
     /// Build the [`PolicySet`] from just the AST information
-    #[cfg_attr(not(feature = "protobufs"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "protobufs"),
+        expect(dead_code, reason = "only used with protobufs feature")
+    )]
     pub(crate) fn from_ast(ast: ast::PolicySet) -> Result<Self, PolicySetError> {
         Self::from_policies(ast.into_policies().map(Policy::from_ast))
     }
@@ -2599,8 +2613,10 @@ impl PolicySet {
                 for (pid, op) in &other.policies {
                     let pid = renaming.get(pid).unwrap_or(pid);
                     if !self.policies.contains_key(pid) {
-                        // PANIC SAFETY: `pid` is the new id of a policy from `other`, so it will be in `self` after merging.
-                        #[allow(clippy::unwrap_used)]
+                        #[expect(
+                            clippy::unwrap_used,
+                            reason = "`pid` is the new id of a policy from `other`, so it will be in `self` after merging"
+                        )]
                         let new_p = Policy {
                             // Use the representation from `self.ast` so that we get a version with internal references to
                             // policy ids updated to account for the renaming.
@@ -2613,8 +2629,10 @@ impl PolicySet {
                 for (pid, ot) in &other.templates {
                     let pid = renaming.get(pid).unwrap_or(pid);
                     if !self.templates.contains_key(pid) {
-                        // PANIC SAFETY: `pid` is the new id of a template from `other`, so it will be in `self` after merging.
-                        #[allow(clippy::unwrap_used)]
+                        #[expect(
+                            clippy::unwrap_used,
+                            reason = "`pid` is the new id of a template from `other`, so it will be in `self` after merging"
+                        )]
                         let new_t = Template {
                             ast: self.ast.get_template(pid.as_ref()).unwrap().clone(),
                             lossless: ot.lossless.clone(),
@@ -2692,8 +2710,7 @@ impl PolicySet {
             ));
         };
         // If self.templates and self.ast disagree, authorization cannot be trusted.
-        // PANIC SAFETY: We just found the policy in self.templates.
-        #[allow(clippy::panic)]
+        #[expect(clippy::panic, reason = "We just found the policy in self.templates")]
         match self
             .ast
             .remove_template(&ast::PolicyID::from_string(&template_id))
@@ -2808,7 +2825,6 @@ impl PolicySet {
     ///   3) `template_id` does not correspond to a template. Either the id is
     ///      not in the policy set, or it is in the policy set but is either a
     ///      linked or static policy rather than a template
-    #[allow(clippy::needless_pass_by_value)]
     pub fn link(
         &mut self,
         template_id: PolicyId,
@@ -2843,8 +2859,10 @@ impl PolicySet {
             unwrapped_vals.clone(),
         )?;
 
-        // PANIC SAFETY: `lossless.link()` will not fail after `ast.link()` succeeds
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "`lossless.link()` will not fail after `ast.link()` succeeds"
+        )]
         let linked_lossless = template
             .lossless
             .clone()
@@ -2884,8 +2902,7 @@ impl PolicySet {
             ));
         };
         // If self.policies and self.ast disagree, authorization cannot be trusted.
-        // PANIC SAFETY: We just found the policy in self.policies.
-        #[allow(clippy::panic)]
+        #[expect(clippy::panic, reason = "We just found the policy in self.policies")]
         match self.ast.unlink(&ast::PolicyID::from_string(&policy_id)) {
             Ok(_) => Ok(policy),
             Err(ast::PolicySetUnlinkError::NotLinkError(_)) => {
@@ -2944,7 +2961,10 @@ fn is_static_or_link(
 
 /// Like [`itertools::Itertools::partition_map`], but accepts a function that can fail.
 /// The first invocation of `f` that fails causes the whole computation to fail
-#[allow(clippy::redundant_pub_crate)] // can't be private because it's used in tests
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "can't be private because it's used in tests"
+)]
 pub(crate) fn fold_partition<T, A, B, E>(
     i: impl IntoIterator<Item = T>,
     f: impl Fn(T) -> Result<Either<A, B>, E>,
@@ -3047,8 +3067,10 @@ impl From<cedar_policy_core::validator::types::RequestEnv<'_>> for RequestEnv {
                 principal_slot: principal_slot.map(EntityTypeName::from),
                 resource_slot: resource_slot.map(EntityTypeName::from),
             },
-            // PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
-            #[allow(clippy::unreachable)]
+            #[expect(
+                clippy::unreachable,
+                reason = "partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up"
+            )]
             cedar_policy_core::validator::types::RequestEnv::UndeclaredAction => {
                 unreachable!("used unsupported feature")
             }
@@ -3290,7 +3312,10 @@ impl Template {
         })
     }
 
-    #[cfg_attr(not(feature = "protobufs"), allow(dead_code))]
+    #[cfg_attr(
+        not(feature = "protobufs"),
+        expect(dead_code, reason = "used only with protobufs feature")
+    )]
     pub(crate) fn from_ast(ast: ast::Template) -> Self {
         Self {
             lossless: LosslessPolicy::Est(ast.clone().into()),
@@ -3642,8 +3667,10 @@ impl Policy {
     ) -> &'a EntityUid {
         match r {
             ast::EntityReference::EUID(euid) => EntityUid::ref_cast(euid),
-            // PANIC SAFETY: This `unwrap` here is safe due the invariant (values total map) on policies.
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "This `unwrap` here is safe due the invariant (values total map) on policies"
+            )]
             ast::EntityReference::Slot(_) => {
                 EntityUid::ref_cast(self.ast.env().get(&slot).unwrap())
             }
@@ -3770,8 +3797,10 @@ impl Policy {
         &self,
         mapping: BTreeMap<EntityUid, EntityUid>,
     ) -> Result<Self, PolicyFromJsonError> {
-        // PANIC SAFETY: This can't fail for a policy that was already constructed
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "This can't fail for a policy that was already constructed"
+        )]
         let cloned_est = self
             .lossless
             .est(|| self.ast.clone().into())
@@ -3779,16 +3808,17 @@ impl Policy {
 
         let mapping = mapping.into_iter().map(|(k, v)| (k.0, v.0)).collect();
 
-        // PANIC SAFETY: This can't fail for a policy that was already constructed
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "This can't fail for a policy that was already constructed"
+        )]
         let est = cloned_est
             .sub_entity_literals(&mapping)
             .expect("Internal error, failed to sub entity literals.");
 
-        let ast = match est.clone().try_into_ast_policy(Some(self.ast.id().clone())) {
-            Ok(ast) => ast,
-            Err(e) => return Err(e.into()),
-        };
+        let ast = est
+            .clone()
+            .try_into_ast_policy(Some(self.ast.id().clone()))?;
 
         Ok(Self {
             ast,
@@ -4263,26 +4293,34 @@ impl RestrictedExpression {
 }
 
 fn decimal_extension_name() -> ast::Name {
-    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "This is a constant and is known to be safe, verified by a test"
+    )]
     ast::Name::unqualified_name("decimal".parse().unwrap())
 }
 
 fn ip_extension_name() -> ast::Name {
-    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "This is a constant and is known to be safe, verified by a test"
+    )]
     ast::Name::unqualified_name("ip".parse().unwrap())
 }
 
 fn datetime_extension_name() -> ast::Name {
-    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "This is a constant and is known to be safe, verified by a test"
+    )]
     ast::Name::unqualified_name("datetime".parse().unwrap())
 }
 
 fn duration_extension_name() -> ast::Name {
-    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "This is a constant and is known to be safe, verified by a test"
+    )]
     ast::Name::unqualified_name("duration".parse().unwrap())
 }
 
@@ -4550,7 +4588,7 @@ impl Request {
 
 /// the Context object for an authorization request
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, RefCast)]
+#[derive(Debug, Clone, PartialEq, Eq, RefCast)]
 pub struct Context(ast::Context);
 
 #[doc(hidden)] // because this converts to a private/internal type
@@ -4978,8 +5016,10 @@ impl From<ast::Value> for EvalResult {
 }
 
 #[doc(hidden)]
-// PANIC SAFETY: see the panic safety comments below
-#[allow(clippy::fallible_impl_from)]
+#[expect(
+    clippy::fallible_impl_from,
+    reason = "see the panic safety comments below"
+)]
 impl From<EvalResult> for Expression {
     fn from(res: EvalResult) -> Self {
         match res {
@@ -4990,14 +5030,19 @@ impl From<EvalResult> for Expression {
                 Self::from(ast::Expr::from(ast::Value::from(ast::EntityUID::from(eid))))
             }
             EvalResult::Set(set) => Self::new_set(set.iter().cloned().map(Self::from)),
-            EvalResult::Record(r) => {
-                // PANIC SAFETY: record originates from EvalResult so should not panic when reconstructing as an Expression
-                #[allow(clippy::unwrap_used)]
+            EvalResult::Record(r) =>
+            {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "record originates from EvalResult so should not panic when reconstructing as an Expression"
+                )]
                 Self::new_record(r.iter().map(|(k, v)| (k.clone(), Self::from(v.clone())))).unwrap()
             }
             EvalResult::ExtensionValue(s) => {
-                // PANIC SAFETY: the string s is constructed using RestrictedExpr::to_string() so should not panic when being parsed back into a RestrictedExpr
-                #[allow(clippy::unwrap_used)]
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "the string s is constructed using RestrictedExpr::to_string() so should not panic when being parsed back into a RestrictedExpr"
+                )]
                 let expr: ast::Expr = ast::RestrictedExpr::from_str(&s).unwrap().into();
                 Self::from(expr)
             }
@@ -5183,8 +5228,10 @@ mod tpe {
             resource_id: EntityId,
             schema: Option<&Schema>,
         ) -> Result<Request, RequestValidationError> {
-            // PANIC SAFETY: various fields are validated through the constructor
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "various fields are validated through the constructor"
+            )]
             Request::new(
                 EntityUid(self.0 .0.get_principal().try_into().unwrap()),
                 EntityUid(self.0 .0.get_action()),
@@ -5237,8 +5284,10 @@ mod tpe {
             principal_id: EntityId,
             schema: Option<&Schema>,
         ) -> Result<Request, RequestValidationError> {
-            // PANIC SAFETY: various fields are validated through the constructor
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "various fields are validated through the constructor"
+            )]
             Request::new(
                 EntityUid::from_type_name_and_id(
                     EntityTypeName(self.0 .0.get_principal_type()),
@@ -5584,8 +5633,10 @@ mod tpe {
         ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
             let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
-            // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "policy set construction should succeed because there shouldn't be any policy id conflicts"
+            )]
             let policies = &Self::from_policies(
                 residuals
                     .0
@@ -5593,8 +5644,10 @@ mod tpe {
                     .map(|p| Policy::from_ast(p.clone().into())),
             )
             .unwrap();
-            // PANIC SAFETY: request construction should succeed because each entity passes validation
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "request construction should succeed because each entity passes validation"
+            )]
             match residuals.decision() {
                 Some(Decision::Allow) => Ok(entities
                     .iter()
@@ -5637,8 +5690,10 @@ mod tpe {
         ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
             let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
             let residuals = self.tpe(&request.0, &partial_entities, schema)?;
-            // PANIC SAFETY: policy set construction should succeed because there shouldn't be any policy id conflicts
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "policy set construction should succeed because there shouldn't be any policy id conflicts"
+            )]
             let policies = &Self::from_policies(
                 residuals
                     .0
@@ -5646,8 +5701,10 @@ mod tpe {
                     .map(|p| Policy::from_ast(p.clone().into())),
             )
             .unwrap();
-            // PANIC SAFETY: request construction should succeed because each entity passes validation
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "request construction should succeed because each entity passes validation"
+            )]
             match residuals.decision() {
                 Some(Decision::Allow) => Ok(entities
                     .iter()
@@ -6426,12 +6483,15 @@ mod test_lossless_empty {
 /// for each action.
 #[doc = include_str!("../experimental_warning.md")]
 #[deprecated = "The `entity-manifest` experimental feature and all associated functions are deprecated. Migrate to `PolicySet::is_authorized_batch` for efficient authorization with on-demand entity loading."]
-#[allow(deprecated)]
 #[cfg(feature = "entity-manifest")]
 pub fn compute_entity_manifest(
     validator: &Validator,
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
+    #[expect(
+        deprecated,
+        reason = "this function and its callee are both deprecated"
+    )]
     entity_manifest::compute_entity_manifest(&validator.0, &pset.ast)
         .map_err(std::convert::Into::into)
 }

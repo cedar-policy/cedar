@@ -15,10 +15,7 @@
  */
 
 #![cfg(feature = "integration-testing")]
-// PANIC SAFETY tests
-#![allow(clippy::expect_used)]
-// PANIC SAFETY tests
-#![allow(clippy::panic)]
+#![allow(clippy::expect_used, clippy::panic, reason = "tests")]
 
 mod corpus_tests;
 #[cfg(feature = "decimal")]

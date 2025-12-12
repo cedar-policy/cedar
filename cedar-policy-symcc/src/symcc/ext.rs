@@ -33,7 +33,7 @@ use super::extension_types::ipaddr::IPNet;
 
 /// Internal representation of extension values.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "self-explanatory")]
 pub enum Ext {
     Decimal { d: Decimal },
     Ipaddr { ip: IPNet },
@@ -121,12 +121,12 @@ impl Ext {
                     return None;
                 }
 
-                #[allow(
+                #[expect(
                     clippy::indexing_slicing,
                     reason = "arg1_args.len() == 1 thus indexing by 0 should not panic"
                 )]
                 let dt = Datetime::from_str(arg1_args[0].as_string()?.as_str()).ok()?;
-                #[allow(
+                #[expect(
                     clippy::indexing_slicing,
                     reason = "arg2_args.len() == 1 thus indexing by 0 should not panic"
                 )]

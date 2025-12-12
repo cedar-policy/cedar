@@ -36,7 +36,7 @@ pub struct Uuf {
 
 /// Extension ADT operators.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "self-explanatory")]
 pub enum ExtOp {
     DecimalVal,
     IpaddrIsV4,
@@ -51,7 +51,7 @@ pub enum ExtOp {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "existing code")]
 pub enum Op {
     //   ---------- SMTLib core theory of equality with uninterpreted functions (`UF`) ----------
     Not,
@@ -123,7 +123,10 @@ impl ExtOp {
 
     /// Returns the output type of an extension operator when applied
     /// to terms of the given types.
-    #[allow(clippy::needless_pass_by_value)]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "should fix this lint but allowing for now"
+    )]
     pub fn type_of(self, l: Vec<TermType>) -> Option<TermType> {
         match self {
             ExtOp::DecimalVal
@@ -195,15 +198,14 @@ impl ExtOp {
 impl Op {
     /// Returns the output type of an operator when applied
     /// to terms of the given types.
-    #[allow(clippy::cognitive_complexity)]
+    #[expect(clippy::cognitive_complexity, reason = "corresponds to the Lean")]
     pub fn type_of(self, l: Vec<TermType>) -> Option<TermType> {
         use TermType::{Bitvec, Bool};
         match self {
             Op::Not if l == vec![TermType::Bool] => Some(TermType::Bool),
             Op::And if l == vec![TermType::Bool, TermType::Bool] => Some(TermType::Bool),
             Op::Or if l == vec![TermType::Bool, TermType::Bool] => Some(TermType::Bool),
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 2 should not error when indexed by 0 or 1"
             )]
@@ -214,8 +216,7 @@ impl Op {
                     None
                 }
             }
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 3 should not error when indexed by 0, 1, or 2"
             )]
@@ -226,8 +227,7 @@ impl Op {
                     None
                 }
             }
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 1 should not error when indexed by 0"
             )]
@@ -238,8 +238,7 @@ impl Op {
                     None
                 }
             }
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 1 should not error when indexed by 0"
             )]
@@ -247,8 +246,7 @@ impl Op {
                 Bitvec { n } => Some(Bitvec { n }),
                 _ => None,
             },
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 2 should not error when indexed by 0 or 1"
             )]
@@ -269,14 +267,12 @@ impl Op {
                     _ => None,
                 }
             }
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 1 should not error when indexed by 0"
             )]
             Op::Bvnego if l.len() == 1 && matches!(l[0].clone(), Bitvec { .. }) => Some(Bool),
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 2 should not error when indexed by 0 or 1"
             )]
@@ -294,8 +290,7 @@ impl Op {
                     _ => None,
                 }
             }
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 1 should not error when indexed by 0"
             )]
@@ -303,8 +298,7 @@ impl Op {
                 Bitvec { n } => Some(Bitvec { n: (n + m) }),
                 _ => None,
             },
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 2 should not error when indexed by 0 or 1"
             )]
@@ -312,8 +306,7 @@ impl Op {
                 (ty1, TermType::Set { ty: ty2 }) if ty1 == *ty2 => Some(Bool),
                 (_, _) => None,
             },
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 2 should not error when indexed by 0 or 1"
             )]
@@ -323,8 +316,7 @@ impl Op {
                 }
                 (_, _) => None,
             },
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "List of length 1 should not error on first call to next()"
             )]
@@ -332,8 +324,7 @@ impl Op {
                 TermType::Option { ty } => Some(Arc::unwrap_or_clone(ty)),
                 _ => None,
             },
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "List of length 1 should not error on first call to next()"
             )]

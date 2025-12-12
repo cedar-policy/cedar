@@ -60,7 +60,6 @@ impl ValidatorActionId {
     ///
     /// This constructor assumes that `descendants` has TC already computed.
     /// That is, caller is responsible for TC.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         name: EntityUID,
         principal_entity_types: impl IntoIterator<Item = ast::EntityType>,

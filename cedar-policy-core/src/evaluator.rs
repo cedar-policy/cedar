@@ -40,8 +40,7 @@ const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 #[cfg(feature = "partial-eval")]
 type UnknownsMapper<'e> = Box<dyn Fn(&str) -> Option<Value> + 'e>;
 
-// PANIC SAFETY `Name`s in here are valid `Name`s
-#[allow(clippy::expect_used)]
+#[expect(clippy::expect_used, reason = "`Name`s in here are valid `Name`s")]
 mod names {
     use super::Name;
     use std::sync::LazyLock;
@@ -141,8 +140,7 @@ pub fn binary_relation(
                 }
             }
         }
-        // PANIC SAFETY `op` is checked by the caller
-        #[allow(clippy::unreachable)]
+        #[expect(clippy::unreachable, reason = "`op` is checked by the caller")]
         _ => {
             unreachable!("Should have already checked that op was one of these")
         }
@@ -184,8 +182,7 @@ pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -
             })
             .into()),
         },
-        // PANIC SAFETY `op` is checked by the caller
-        #[allow(clippy::unreachable)]
+        #[expect(clippy::unreachable, reason = "`op` is checked by the caller")]
         _ => {
             unreachable!("Should have already checked that op was one of these")
         }
@@ -303,8 +300,7 @@ impl<'e> RestrictedEvaluator<'e> {
                 match split(attrs) {
                     Either::Left(values) => Ok(Value::record(names.into_iter().zip(values), expr.source_loc().cloned()).into()),
                     Either::Right(residuals) => {
-                        // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
-                        #[allow(clippy::expect_used)]
+                        #[expect(clippy::expect_used, reason = "can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")]
                         Ok(
                             Expr::record(names.into_iter().zip(residuals))
                                 .expect("can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")
@@ -327,8 +323,7 @@ impl<'e> RestrictedEvaluator<'e> {
                     Either::Right(residuals) => Ok(Expr::call_extension_fn(fn_name.clone(), residuals.collect()).into()),
                 }
             },
-            // PANIC SAFETY Unreachable via invariant on restricted expressions
-            #[allow(clippy::unreachable)]
+            #[expect(clippy::unreachable, reason = "Unreachable via invariant on restricted expressions")]
             expr => unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
         }
     }
@@ -454,7 +449,6 @@ impl<'e> Evaluator<'e> {
     /// `partial_interpret()` -- ie, so we can make sure the source locations of
     /// all errors are set properly before returning them from
     /// `partial_interpret()`.
-    #[allow(clippy::cognitive_complexity)]
     fn partial_interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
         let loc = expr.source_loc(); // the `loc` describing the location of the entire expression
         match expr.expr_kind() {
@@ -661,8 +655,10 @@ impl<'e> Evaluator<'e> {
                                     Ok(entity.get_tag(tag).is_some().into())
                                 }
                             },
-                            // PANIC SAFETY `op` is checked to be one of these two above
-                            #[allow(clippy::unreachable)]
+                            #[expect(
+                                clippy::unreachable,
+                                reason = "`op` is checked to be one of these two above"
+                            )]
                             _ => {
                                 unreachable!("Should have already checked that op was one of these")
                             }
@@ -770,8 +766,7 @@ impl<'e> Evaluator<'e> {
                         Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
                     }
                     Either::Right(rs) => {
-                        // PANIC SAFETY: can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`
-                        #[allow(clippy::expect_used)]
+                        #[expect(clippy::expect_used, reason = "can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")]
                         Ok(
                             Expr::record(names.into_iter().zip(rs))
                                 .expect("can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")
@@ -979,17 +974,13 @@ impl<'e> Evaluator<'e> {
                         )
                     })?,
             },
-            PartialValue::Value(v) => {
-                // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
-                #[allow(clippy::unwrap_used)]
-                Err(EvaluationError::type_error(
-                    nonempty![
-                        Type::Record,
-                        Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
-                    ],
-                    &v,
-                ))
-            }
+            PartialValue::Value(v) => Err(EvaluationError::type_error(
+                nonempty![
+                    Type::Record,
+                    Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
+                ],
+                &v,
+            )),
         }
     }
 
@@ -1176,9 +1167,7 @@ fn stack_size_check() -> Result<()> {
     Ok(())
 }
 
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
-#[allow(clippy::cognitive_complexity)]
+#[allow(clippy::panic, clippy::cognitive_complexity, reason = "Unit Test Code")]
 #[cfg(test)]
 pub(crate) mod test {
     use std::collections::{HashMap, HashSet};

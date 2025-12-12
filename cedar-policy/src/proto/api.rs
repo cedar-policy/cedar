@@ -76,8 +76,7 @@ impl From<&api::PolicySet> for models::PolicySet {
 impl TryFrom<&models::PolicySet> for api::PolicySet {
     type Error = api::PolicySetError;
     fn try_from(v: &models::PolicySet) -> Result<Self, Self::Error> {
-        // PANIC SAFETY: experimental feature
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "experimental feature")]
         Self::from_ast(
             v.try_into()
                 .expect("proto-encoded policy set should be a valid policy set"),
@@ -85,7 +84,7 @@ impl TryFrom<&models::PolicySet> for api::PolicySet {
     }
 }
 
-#[allow(clippy::use_self)]
+#[expect(clippy::use_self)]
 impl From<&api::ValidationMode> for models::ValidationMode {
     fn from(v: &api::ValidationMode) -> Self {
         match v {
@@ -98,7 +97,7 @@ impl From<&api::ValidationMode> for models::ValidationMode {
     }
 }
 
-#[allow(clippy::use_self)]
+#[expect(clippy::use_self)]
 impl From<&models::ValidationMode> for api::ValidationMode {
     fn from(v: &models::ValidationMode) -> Self {
         match v {
@@ -148,8 +147,7 @@ impl traits::Protobuf for api::PolicySet {
         traits::encode_to_vec::<models::PolicySet>(self)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        // PANIC SAFETY: experimental feature
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "experimental feature")]
         Ok(traits::try_decode::<models::PolicySet, _, Self>(buf)?
             .expect("protobuf-encoded policy set should be a valid policy set"))
     }

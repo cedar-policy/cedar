@@ -52,8 +52,7 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, NonEmpty<UnescapeE
     let bytes = s.as_bytes(); // to inspect string element in O(1) time
     let mut callback = |range: Range<usize>, r| match r {
         Ok(c) => unescaped_str.push(if c == '*' { PatternElem::Wildcard }else { PatternElem::Char(c) }),
-        // PANIC SAFETY By invariant, all passed in ranges must be in range
-        #[allow(clippy::indexing_slicing)]
+        #[expect(clippy::indexing_slicing, reason = "By invariant, all passed in ranges must be in range")]
         Err(EscapeError::InvalidEscape)
         // note that the range argument refers to the *byte* offset into the string.
         // so we can compare the byte slice against the bytes of the ``star'' escape sequence.
@@ -178,8 +177,7 @@ mod test {
         assert_eq!(errs.len(), 2);
     }
 
-    // PANIC SAFETY: testing
-    #[allow(clippy::indexing_slicing)]
+    #[allow(clippy::indexing_slicing, reason = "testing")]
     #[test]
     fn test_pattern_escape() {
         // valid ASCII escapes

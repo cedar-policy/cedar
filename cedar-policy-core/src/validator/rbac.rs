@@ -396,10 +396,8 @@ impl Validator {
     }
 }
 
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
-// PANIC SAFETY unit tests
-#[allow(clippy::indexing_slicing)]
+#[allow(clippy::panic, reason = "unit tests")]
+#[allow(clippy::indexing_slicing, reason = "unit tests")]
 #[cfg(test)]
 mod test {
     use std::collections::{HashMap, HashSet};

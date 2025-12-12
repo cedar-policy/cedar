@@ -353,13 +353,19 @@ impl std::error::Error for ToJsonSchemaErrors {
         self.0.first().source()
     }
 
-    #[allow(deprecated)]
     fn description(&self) -> &str {
+        #[expect(
+            deprecated,
+            reason = "description() is deprecated but we still want to forward it"
+        )]
         self.0.first().description()
     }
 
-    #[allow(deprecated)]
     fn cause(&self) -> Option<&dyn std::error::Error> {
+        #[expect(
+            deprecated,
+            reason = "cause() is deprecated but we still want to forward it"
+        )]
         self.0.first().cause()
     }
 }

@@ -235,7 +235,6 @@ impl ExtensionFunction {
     }
 
     /// Create a new `ExtensionFunction` taking one argument
-    #[allow(clippy::type_complexity)]
     pub fn unary(
         name: Name,
         style: CallStyle,
@@ -262,7 +261,6 @@ impl ExtensionFunction {
     }
 
     /// Create a new `ExtensionFunction` taking two arguments
-    #[allow(clippy::type_complexity)]
     pub fn binary(
         name: Name,
         style: CallStyle,
@@ -289,7 +287,6 @@ impl ExtensionFunction {
     }
 
     /// Create a new `ExtensionFunction` taking three arguments
-    #[allow(clippy::type_complexity)]
     pub fn ternary(
         name: Name,
         style: CallStyle,
@@ -316,7 +313,6 @@ impl ExtensionFunction {
     }
 
     /// Create a new variadic `ExtensionFunction` taking two or more argument.
-    #[allow(clippy::type_complexity)]
     pub fn variadic(
         name: Name,
         style: CallStyle,

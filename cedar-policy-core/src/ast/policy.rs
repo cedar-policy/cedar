@@ -63,11 +63,10 @@ cfg_tolerant_ast! {
     static DEFAULT_ACTION_CONSTRAINT: std::sync::LazyLock<ActionConstraint> =
         std::sync::LazyLock::new(ActionConstraint::any);
 
+    #[cfg_attr(feature = "tolerant-ast", expect(clippy::unwrap_used, reason = "Infallible error type - can never fail"))]
     static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> = std::sync::LazyLock::new(|| {
         // Non scope constraint expression of an Error policy should also be an error
         // This const represents an error expression that is part of an Error policy
-        // PANIC SAFETY: Infallible error type - can never fail
-        #[allow(clippy::unwrap_used)]
         Arc::new(
             <ExprWithErrsBuilder as ExprBuilder>::new()
                 .error(ParseErrors::singleton(ToASTError::new(
@@ -116,7 +115,10 @@ impl Template {
     }
 
     /// Construct a `Template` from its components
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "policies just have this many components"
+    )]
     pub fn new(
         id: PolicyID,
         loc: Option<Loc>,
@@ -150,7 +152,10 @@ impl Template {
     }
 
     /// Construct a template from an expression/annotations that are already [`std::sync::Arc`] allocated
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "policies just have this many components"
+    )]
     pub fn new_shared(
         id: PolicyID,
         loc: Option<Loc>,
@@ -391,8 +396,7 @@ fn describe_arity_error(
     fmt: &mut std::fmt::Formatter<'_>,
 ) -> std::fmt::Result {
     match (unbound_values.len(), extra_values.len()) {
-        // PANIC SAFETY 0,0 case is not an error
-        #[allow(clippy::unreachable)]
+        #[expect(clippy::unreachable, reason = "0,0 case is not an error")]
         (0,0) => unreachable!(),
         (_unbound, 0) => write!(fmt, "the following slots were not provided as arguments: {}", unbound_values.iter().join(",")),
         (0, _extra) => write!(fmt, "the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
@@ -431,8 +435,10 @@ impl Policy {
     fn new(template: Arc<Template>, link_id: Option<PolicyID>, values: SlotEnv) -> Self {
         #[cfg(debug_assertions)]
         {
-            // PANIC SAFETY: asserts (value total map invariant) which is justified at call sites
-            #[allow(clippy::expect_used)]
+            #[expect(
+                clippy::expect_used,
+                reason = "asserts (value total map invariant) which is justified at call sites"
+            )]
             Template::check_binding(&template, &values).expect("(values total map) does not hold!");
         }
         Self {
@@ -910,7 +916,10 @@ impl StaticPolicy {
     }
 
     /// Construct a `StaticPolicy` from its components
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "policies just have this many components"
+    )]
     pub fn new(
         id: PolicyID,
         loc: Option<Loc>,
@@ -1228,7 +1237,10 @@ impl TemplateBody {
     }
 
     /// Construct a `Policy` from components that are already [`std::sync::Arc`] allocated
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "policies just have this many components"
+    )]
     pub fn new_shared(
         id: PolicyID,
         loc: Option<Loc>,
@@ -1252,7 +1264,10 @@ impl TemplateBody {
     }
 
     /// Construct a `Policy` from its components
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "policies just have this many components"
+    )]
     pub fn new(
         id: PolicyID,
         loc: Option<Loc>,
@@ -2077,10 +2092,8 @@ pub(crate) mod test_generators {
 }
 
 #[cfg(test)]
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::indexing_slicing)]
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
+#[allow(clippy::indexing_slicing, reason = "Unit Test Code")]
+#[allow(clippy::panic, reason = "Unit Test Code")]
 mod test {
     use cool_asserts::assert_matches;
     use std::collections::HashSet;

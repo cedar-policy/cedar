@@ -182,8 +182,10 @@ impl<'a> Response<'a> {
 
     /// Get satisfied permit residual policies
     pub fn satisfied_permits(&self) -> impl Iterator<Item = &ResidualPolicy> {
-        // PANIC SAFETY: we know that the policy ids are in the residuals map
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "we know that the policy ids are in the residuals map"
+        )]
         self.satisfied_permits
             .iter()
             .map(|id| self.residuals.get(id).unwrap())
@@ -191,8 +193,10 @@ impl<'a> Response<'a> {
 
     /// Get satisfied forbid residual policies
     pub fn satisfied_forbids(&self) -> impl Iterator<Item = &ResidualPolicy> {
-        // PANIC SAFETY: we know that the policy ids are in the residuals map
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "we know that the policy ids are in the residuals map"
+        )]
         self.satisfied_forbids
             .iter()
             .map(|id| self.residuals.get(id).unwrap())
@@ -200,8 +204,10 @@ impl<'a> Response<'a> {
 
     /// Get trivially false permit residual policies
     pub fn false_permits(&self) -> impl Iterator<Item = &ResidualPolicy> {
-        // PANIC SAFETY: we know that the policy ids are in the residuals map
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "we know that the policy ids are in the residuals map"
+        )]
         self.false_permits
             .iter()
             .map(|id| self.residuals.get(id).unwrap())
@@ -209,8 +215,10 @@ impl<'a> Response<'a> {
 
     /// Get trivially false forbid residual policies
     pub fn false_forbids(&self) -> impl Iterator<Item = &ResidualPolicy> {
-        // PANIC SAFETY: we know that the policy ids are in the residuals map
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "we know that the policy ids are in the residuals map"
+        )]
         self.false_forbids
             .iter()
             .map(|id| self.residuals.get(id).unwrap())
@@ -218,8 +226,10 @@ impl<'a> Response<'a> {
 
     /// Get non-trivial permit residual policies
     pub fn residual_permits(&self) -> impl Iterator<Item = &ResidualPolicy> {
-        // PANIC SAFETY: we know that the policy ids are in the residuals map
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "we know that the policy ids are in the residuals map"
+        )]
         self.residual_permits
             .iter()
             .map(|id| self.residuals.get(id).unwrap())
@@ -227,8 +237,10 @@ impl<'a> Response<'a> {
 
     /// Get non-trivial forbid residual policies
     pub fn residual_forbids(&self) -> impl Iterator<Item = &ResidualPolicy> {
-        // PANIC SAFETY: we know that the policy ids are in the residuals map
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "we know that the policy ids are in the residuals map"
+        )]
         self.residual_forbids
             .iter()
             .map(|id| self.residuals.get(id).unwrap())
@@ -262,8 +274,7 @@ impl<'a> Response<'a> {
         self.request.check_consistency(request)?;
 
         let authorizer = Authorizer::new();
-        // PANIC SAFETY: policy ids should not clash
-        #[allow(clippy::unwrap_used)]
+        #[expect(clippy::unwrap_used, reason = "policy ids should not clash")]
         Ok(authorizer.is_authorized(
             request.clone(),
             &PolicySet::try_from_iter(self.residuals.values().map(|rp| rp.clone().into())).unwrap(),

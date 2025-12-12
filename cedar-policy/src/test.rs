@@ -15,10 +15,7 @@
  */
 
 #![cfg(test)]
-// PANIC SAFETY unit tests
-#![allow(clippy::panic)]
-// PANIC SAFETY unit tests
-#![allow(clippy::indexing_slicing)]
+#![allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 #![allow(clippy::cognitive_complexity, clippy::too_many_lines)]
 
 mod test;

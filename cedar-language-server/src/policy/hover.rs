@@ -65,8 +65,7 @@ pub fn policy_hover(
 
     let cst = policies
         .into_iter()
-        .filter(|p| position_within_loc(position, p.loc.as_ref()))
-        .next_back()?;
+        .rfind(|p| position_within_loc(position, p.loc.as_ref()))?;
 
     let policy = cst
         .to_policy_template(PolicyID::from_smolstr("0".into()))

@@ -33,8 +33,11 @@ use crate::{
 
 const DATETIME_EXTENSION_NAME: &str = "datetime";
 
-// PANIC SAFETY The `Name`s and `Regex` here are valid
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[expect(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "The `Name`s and `Regex` here are valid"
+)]
 mod constants {
     use regex::Regex;
     use std::sync::LazyLock;
@@ -76,8 +79,8 @@ mod constants {
     });
 
     // Global regex, initialized at first use
-    // PANIC SAFETY: These are valid `Regex`
     pub static DURATION_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+        #[expect(clippy::unwrap_used, reason = "These are valid `Regex`")]
         Regex::new(r"^-?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?$").unwrap()
     });
     pub static DATE_PATTERN: LazyLock<Regex> =
@@ -151,8 +154,7 @@ where
 {
     match &v.value {
         ValueKind::ExtensionValue(ev) if ev.typename() == *type_name => {
-            // PANIC SAFETY Conditional above performs a typecheck
-            #[allow(clippy::expect_used)]
+            #[expect(clippy::expect_used, reason = "Conditional above performs a typecheck")]
             let ext = ev
                 .value()
                 .as_any()
@@ -566,8 +568,10 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     // It's a closure because we want to perform syntactical check first and
     // hence delay semantic check
     // Both checks are from left to right
-    // PANIC SAFETY: `year`, `month`, and `day` should be all valid given the limit on the number of digits.
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "`year`, `month`, and `day` should be all valid given the limit on the number of digits."
+    )]
     let date = || {
         NaiveDate::from_ymd_opt(
             year.parse().unwrap(),
@@ -579,8 +583,10 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
 
     // A complete match; simply return
     if date_str.len() == s.len() {
-        // PANIC SAFETY: `0`s should be all valid given the limit on the number of digits.
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "`0`s should be all valid given the limit on the number of digits."
+        )]
         return Ok(NaiveDateTime::new(
             date()?,
             NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
@@ -596,8 +602,10 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
         .captures(s)
         .ok_or(DateTimeParseError::InvalidHMSPattern)?
         .extract();
-    // PANIC SAFETY: `h`, `m`, and `sec` should be all valid given the limit on the number of digits.
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "`h`, `m`, and `sec` should be all valid given the limit on the number of digits."
+    )]
     let (h, m, sec): (u32, u32, u32) =
         (h.parse().unwrap(), m.parse().unwrap(), sec.parse().unwrap());
 
@@ -609,8 +617,10 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
         .captures(s)
         .ok_or(DateTimeParseError::InvalidMSOffsetPattern)?;
     let ms: u32 = if captures.get(1).is_some() {
-        // PANIC SAFETY: should be valid given the limit on the number of digits.
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "should be valid given the limit on the number of digits."
+        )]
         captures[2].parse().unwrap()
     } else {
         0
@@ -624,8 +634,10 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     })?;
     let offset: Result<TimeDelta, DateTimeParseError> = if captures.get(4).is_some() {
         let positive = &captures[5] == "+";
-        // PANIC SAFETY: should be valid given the limit on the number of digits.
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "should be valid given the limit on the number of digits."
+        )]
         let (offset_hour, offset_min): (u32, u32) =
             (captures[6].parse().unwrap(), captures[7].parse().unwrap());
         let offset = UTCOffset {
@@ -635,8 +647,10 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
         };
         if offset.is_valid() {
             let offset_in_secs = offset.to_seconds();
-            // PANIC SAFETY: should be valid because the limit on the values of offsets.
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "should be valid because the limit on the values of offsets."
+            )]
             Ok(TimeDelta::new(-offset_in_secs, 0).unwrap())
         } else {
             Err(DateTimeParseError::InvalidOffset((offset_hour, offset_min)))

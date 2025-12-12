@@ -33,10 +33,19 @@
     clippy::doc_lazy_continuation,
     clippy::too_long_first_doc_paragraph
 )]
-#![allow(clippy::must_use_candidate)]
+#![allow(
+    clippy::must_use_candidate,
+    reason = "in the future we can enable this lint but currently it doesn't pass"
+)]
 // enable doc_cfg feature if docsrs cfg is present
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![cfg_attr(feature = "wasm", allow(non_snake_case))]
+#![cfg_attr(
+    feature = "wasm",
+    allow(
+        non_snake_case,
+        reason = "Wasm/TypeScript doesn't use snake case identifiers by convention"
+    )
+)]
 
 /// Rust public API
 mod api;

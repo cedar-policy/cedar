@@ -135,8 +135,6 @@ impl AccessTrie {
                         open_attributes: _,
                     } => attrs,
                     EntityRecordKind::AnyEntity => Err(MismatchedNotStrictSchemaError {})?,
-                    // PANIC SAFETY: entity LUB should succeed after strict validation, and so should looking up the resulting type
-                    #[allow(clippy::unwrap_used)]
                     EntityRecordKind::Entity(entitylub) => {
                         let entity_ty = entitylub
                             .get_single_entity()

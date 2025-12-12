@@ -31,8 +31,7 @@ use super::eval_extension_constructor;
 // If any of the panics in this file are triggered, that means that this file has become
 // out-of-date with the ipaddr extension definition in Core.
 
-// PANIC SAFETY see `Note on safety` above
-#[allow(clippy::panic)]
+#[expect(clippy::panic, reason = "see `Note on safety` above")]
 fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
     if !fname.as_ref().is_unqualified() {
         panic!("unexpected ipaddr extension function name: {fname}")
@@ -45,8 +44,7 @@ fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
     }
 }
 
-// PANIC SAFETY see `Note on safety` above
-#[allow(clippy::panic)]
+#[expect(clippy::panic, reason = "see `Note on safety` above")]
 fn get_return_type(fname: &Name, ipaddr_ty: &Type) -> Type {
     if !fname.as_ref().is_unqualified() {
         panic!("unexpected ipaddr extension function name: {fname}")
@@ -60,8 +58,7 @@ fn get_return_type(fname: &Name, ipaddr_ty: &Type) -> Type {
     }
 }
 
-// PANIC SAFETY see `Note on safety` above
-#[allow(clippy::panic)]
+#[expect(clippy::panic, reason = "see `Note on safety` above")]
 fn get_argument_check(fname: &Name) -> Option<ArgumentCheckFn> {
     if !fname.as_ref().is_unqualified() {
         panic!("unexpected ipaddr extension function name: {fname}")
