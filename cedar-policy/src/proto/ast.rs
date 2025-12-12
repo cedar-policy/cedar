@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#![allow(clippy::use_self)]
+#![allow(clippy::use_self, reason = "readability")]
 
 use super::models;
 use cedar_policy_core::{
@@ -96,7 +96,6 @@ impl From<&ast::EntityUID> for models::EntityUid {
 
 impl From<&models::EntityUid> for ast::EntityUIDEntry {
     fn from(v: &models::EntityUid) -> Self {
-        #[expect(clippy::expect_used, reason = "experimental feature")]
         ast::EntityUIDEntry::known(ast::EntityUID::from(v), None)
     }
 }

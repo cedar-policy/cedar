@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#![allow(clippy::use_self)]
+#![allow(clippy::use_self, reason = "readability")]
 
 use super::models;
 use cedar_policy_core::ast;
@@ -34,7 +34,6 @@ impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
 }
 
 impl From<&models::Schema> for cedar_policy_core::validator::ValidatorSchema {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::Schema) -> Self {
         Self::new(
             v.entity_decls
@@ -48,7 +47,6 @@ impl From<&models::Schema> for cedar_policy_core::validator::ValidatorSchema {
 }
 
 impl From<&cedar_policy_core::validator::ValidationMode> for models::ValidationMode {
-    #[expect(clippy::unimplemented, reason = "experimental feature")]
     fn from(v: &cedar_policy_core::validator::ValidationMode) -> Self {
         match v {
             cedar_policy_core::validator::ValidationMode::Strict => models::ValidationMode::Strict,

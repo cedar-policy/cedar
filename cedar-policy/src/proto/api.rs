@@ -84,7 +84,7 @@ impl TryFrom<&models::PolicySet> for api::PolicySet {
     }
 }
 
-#[expect(clippy::use_self)]
+#[expect(clippy::use_self, reason = "readability")]
 impl From<&api::ValidationMode> for models::ValidationMode {
     fn from(v: &api::ValidationMode) -> Self {
         match v {
@@ -97,7 +97,7 @@ impl From<&api::ValidationMode> for models::ValidationMode {
     }
 }
 
-#[expect(clippy::use_self)]
+#[expect(clippy::use_self, reason = "readability")]
 impl From<&models::ValidationMode> for api::ValidationMode {
     fn from(v: &models::ValidationMode) -> Self {
         match v {

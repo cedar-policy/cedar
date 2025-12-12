@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#![allow(clippy::use_self)]
+#![allow(clippy::use_self, reason = "readability")]
 
 use super::models;
 use cedar_policy_core::{ast, FromNormalizedStr};
@@ -180,7 +180,6 @@ impl From<&ast::Template> for models::TemplateBody {
 }
 
 impl From<&models::PrincipalOrResourceConstraint> for ast::PrincipalConstraint {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::PrincipalOrResourceConstraint) -> Self {
         Self::new(ast::PrincipalOrResourceConstraint::from(v))
     }
@@ -193,7 +192,6 @@ impl From<&ast::PrincipalConstraint> for models::PrincipalOrResourceConstraint {
 }
 
 impl From<&models::PrincipalOrResourceConstraint> for ast::ResourceConstraint {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::PrincipalOrResourceConstraint) -> Self {
         Self::new(ast::PrincipalOrResourceConstraint::from(v))
     }
