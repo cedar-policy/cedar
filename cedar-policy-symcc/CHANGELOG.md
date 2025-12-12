@@ -19,7 +19,7 @@ them across many queries. (#2013, #2019)
 - `always_matches` and `never_matches` primitives for single policies (#2014)
 - Performance optimizations (#1947, #1970, #2017, #2020, #2021)
 
-## [0.1.3] - Coming soon
+## [0.1.3] - 2025-12-12
 Cedar Language Version: 4.4
 
 ### Fixed
