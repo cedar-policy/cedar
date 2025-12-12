@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-#![allow(clippy::use_self)]
+#![allow(clippy::use_self, reason = "readability")]
 
 use super::models;
 use cedar_policy_core::{ast, FromNormalizedStr};
 use std::collections::HashMap;
 
 impl From<&models::Policy> for ast::LiteralPolicy {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::Policy) -> Self {
         let mut values: ast::SlotEnv = HashMap::new();
         if v.principal_euid.is_some() {
@@ -109,8 +108,11 @@ impl From<&models::TemplateBody> for ast::Template {
 }
 
 impl From<&models::TemplateBody> for ast::TemplateBody {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used, clippy::unwrap_used)]
+    #[expect(
+        clippy::expect_used,
+        clippy::unwrap_used,
+        reason = "experimental feature"
+    )]
     fn from(v: &models::TemplateBody) -> Self {
         ast::TemplateBody::new(
             ast::PolicyID::from_string(v.id.clone()),
@@ -178,8 +180,6 @@ impl From<&ast::Template> for models::TemplateBody {
 }
 
 impl From<&models::PrincipalOrResourceConstraint> for ast::PrincipalConstraint {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
     fn from(v: &models::PrincipalOrResourceConstraint) -> Self {
         Self::new(ast::PrincipalOrResourceConstraint::from(v))
     }
@@ -192,8 +192,6 @@ impl From<&ast::PrincipalConstraint> for models::PrincipalOrResourceConstraint {
 }
 
 impl From<&models::PrincipalOrResourceConstraint> for ast::ResourceConstraint {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
     fn from(v: &models::PrincipalOrResourceConstraint) -> Self {
         Self::new(ast::PrincipalOrResourceConstraint::from(v))
     }
@@ -206,8 +204,7 @@ impl From<&ast::ResourceConstraint> for models::PrincipalOrResourceConstraint {
 }
 
 impl From<&models::EntityReference> for ast::EntityReference {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::EntityReference) -> Self {
         match v.data.as_ref().expect("data field should exist") {
             models::entity_reference::Data::Slot(slot) => {
@@ -242,8 +239,7 @@ impl From<&ast::EntityReference> for models::EntityReference {
 }
 
 impl From<&models::PrincipalOrResourceConstraint> for ast::PrincipalOrResourceConstraint {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::PrincipalOrResourceConstraint) -> Self {
         match v.data.as_ref().expect("data field should exist") {
             models::principal_or_resource_constraint::Data::Any(unit) => {
@@ -332,8 +328,7 @@ impl From<&ast::PrincipalOrResourceConstraint> for models::PrincipalOrResourceCo
 }
 
 impl From<&models::ActionConstraint> for ast::ActionConstraint {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::ActionConstraint) -> Self {
         match v.data.as_ref().expect("data.as_ref()") {
             models::action_constraint::Data::Any(unit) => {
@@ -415,8 +410,7 @@ impl From<&ast::Effect> for models::Effect {
 }
 
 impl From<&models::PolicySet> for ast::LiteralPolicySet {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::PolicySet) -> Self {
         let templates = v.templates.iter().map(|tb| {
             (

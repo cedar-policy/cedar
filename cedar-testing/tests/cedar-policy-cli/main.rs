@@ -17,10 +17,7 @@
 //! Helper code to run Cedar integration tests through the CLI
 
 #![cfg(feature = "integration-testing")]
-// PANIC SAFETY tests
-#![allow(clippy::expect_used)]
-// PANIC SAFETY tests
-#![allow(clippy::panic)]
+#![allow(clippy::expect_used, clippy::panic, reason = "tests")]
 
 mod corpus_tests;
 #[cfg(feature = "decimal")]
@@ -44,8 +41,7 @@ fn value_to_euid_string(v: serde_json::Value) -> Result<String, impl miette::Dia
 /// For relative paths, return the absolute path, assuming that the path
 /// is relative to the root of the CedarIntegrationTests repo.
 /// For absolute paths, return them unchanged.
-// PANIC SAFETY: this is all test code
-#[allow(clippy::expect_used)]
+#[allow(clippy::expect_used, reason = "this is all test code")]
 fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
     if path.as_ref().is_relative() {
         let manifest_dir = env::var("CARGO_MANIFEST_DIR")
@@ -66,10 +62,11 @@ fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
 /// Relative paths are assumed to be relative to the root of the
 /// cedar-integration-tests folder.
 /// Absolute paths are handled without modification.
-// PANIC SAFETY: this is all test code
-#[allow(clippy::unwrap_used)]
-// PANIC SAFETY: this is all test code
-#[allow(clippy::expect_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "this is all test code"
+)]
 fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let jsonfile = resolve_integration_test_path(jsonfile);
     let jsonstr = std::fs::read_to_string(&jsonfile)

@@ -33,7 +33,10 @@ use {crate::parser::err::ParseErrors, std::fmt::Debug};
 
 /// Defines a generic interface for building different expression data
 /// structures.
-#[allow(clippy::wrong_self_convention)]
+#[expect(
+    clippy::wrong_self_convention,
+    reason = "builder pattern doesn't usually adhere to this convention"
+)]
 pub trait ExprBuilder: Clone {
     /// The type of expression constructed by this instance of `ExprBuilder`.
     type Expr: Clone + std::fmt::Display;

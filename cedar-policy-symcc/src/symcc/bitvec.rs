@@ -64,14 +64,14 @@ impl BitVec {
     /// Converts a (signed) [`Int`] into a [`BitVec`] of the given width.
     pub fn of_int(width: Width, v: Int) -> Result<Self> {
         if v >= BigInt::ZERO {
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "to_biguint only panicks if the value is negative so unwrap is safe here."
             )]
             BitVec::new(width, v.to_biguint().unwrap())
         } else {
             // Do 2's complement encoding for the given bit-width.
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "Ssafe because -v is guaranteed to be positive now."
             )]
@@ -115,13 +115,12 @@ impl BitVec {
         } else {
             // extract_bits follows the SMT-LIB semantics of returning bits from [i:j].
             // Val returns the 2's complement value without the sign bit.
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "If condition ensures extract is within bounds."
             )]
             let val = self.extract_bits(0, self.width - 2).unwrap();
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "The implementation of BigUint::to_bigint always returns Some"
             )]
@@ -129,8 +128,7 @@ impl BitVec {
             if !sign_bit {
                 val_bigint
             } else {
-                // PANIC SAFETY
-                #[allow(
+                #[expect(
                     clippy::unwrap_used,
                     reason = "The implementation of BigUint::to_bigint always returns Some"
                 )]
@@ -168,8 +166,7 @@ impl BitVec {
         BitVec::of_nat(width, all_ones)
     }
 
-    // PANIC SAFETY
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "BitVec constructors enforce the invariant that width is always > 0."
     )]
@@ -197,8 +194,7 @@ impl BitVec {
         if n == 0 {
             Err(BitVecError::ZeroWidthBitVec)
         } else {
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "The implementation of BigUint::to_bigint always returns Some"
             )]
@@ -211,8 +207,7 @@ impl BitVec {
         if n == 0 {
             Err(BitVecError::ZeroWidthBitVec)
         } else {
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "The implementation of BigUint::to_bigint always returns Some"
             )]
@@ -231,8 +226,7 @@ impl BitVec {
 
     /// Bitwise not.
     pub fn not(&self) -> Self {
-        //PANIC SAFETY: `self.width > 0` by invariant
-        #[allow(clippy::unwrap_used)]
+        #[expect(clippy::unwrap_used, reason = "`self.width > 0` by invariant")]
         BitVec::of_nat(
             self.width,
             &self.v ^ BitVec::all_ones(self.width).unwrap().v,
@@ -242,13 +236,15 @@ impl BitVec {
 
     /// Bit-vector negation.
     pub fn neg(&self) -> Self {
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "BitVec construction cannot fail: bitwidth is non-zero by invariant."
         )]
         let one = BitVec::of_u128(self.width, 1).unwrap();
-        //PANIC SAFETY: `self.not()` and `one` have width equal to `self.width`
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "`self.not()` and `one` have width equal to `self.width`"
+        )]
         BitVec::add(&self.not(), &one).unwrap()
     }
 

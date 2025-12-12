@@ -386,8 +386,10 @@ fn convert_entity_decl(
     impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
     ToJsonSchemaErrors,
 > {
-    // 2025-02-28: this Clippy nursery lint is bugged, makes a suggestion that does not compile
-    #[allow(clippy::needless_collect)]
+    #[expect(
+        clippy::needless_collect,
+        reason = "2025-02-28: this Clippy nursery lint is bugged, makes a suggestion that does not compile"
+    )]
     let names: Vec<Node<Id>> = e.data.node.names().cloned().collect();
     let etype = json_schema::EntityType {
         kind: match e.data.node {
@@ -673,7 +675,7 @@ fn partition_decls(
     (entities, actions, types)
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity, reason = "judged to be readable enough")]
 fn into_partition_decls(
     decls: impl IntoIterator<Item = Annotated<Node<Declaration>>>,
 ) -> (

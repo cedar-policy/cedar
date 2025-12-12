@@ -122,11 +122,10 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
 
     fn attr_type(&self, attr: &str) -> Option<entities::SchemaType> {
         let attr_type: &crate::validator::types::Type = &self.validator_type.attr(attr)?.attr_type;
-        // This converts a type from a schema into the representation of schema
-        // types used by core. `attr_type` is taken from a `ValidatorEntityType`
-        // which was constructed from a schema.
-        // PANIC SAFETY: see above
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "`attr_type` is taken from a `ValidatorEntityType` which was constructed from a schema"
+        )]
         let core_schema_type: entities::SchemaType = attr_type
             .clone()
             .try_into()
@@ -137,11 +136,10 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
 
     fn tag_type(&self) -> Option<entities::SchemaType> {
         let tag_type: &crate::validator::types::Type = self.validator_type.tag_type()?;
-        // This converts a type from a schema into the representation of schema
-        // types used by core. `tag_type` is taken from a `ValidatorEntityType`
-        // which was constructed from a schema.
-        // PANIC SAFETY: see above
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "`tag_type` is taken from a `ValidatorEntityType` which was constructed from a schema"
+        )]
         let core_schema_type: entities::SchemaType = tag_type
             .clone()
             .try_into()
@@ -645,8 +643,10 @@ pub struct ContextSchema(
 /// A `Type` contains all the information we need for a Core `ContextSchema`.
 impl entities::ContextSchema for ContextSchema {
     fn context_type(&self) -> entities::SchemaType {
-        // PANIC SAFETY: By `ContextSchema` invariant, `self.0` is representable as a schema type.
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "By `ContextSchema` invariant, `self.0` is representable as a schema type"
+        )]
         self.0
             .clone()
             .try_into()

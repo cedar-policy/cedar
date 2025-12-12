@@ -27,7 +27,7 @@ pub(crate) fn new_symbol(
         range,
         selection_range: range,
         children: None,
-        #[allow(deprecated)]
+        #[expect(deprecated, reason = "deprecated")]
         deprecated: None,
     }
 }

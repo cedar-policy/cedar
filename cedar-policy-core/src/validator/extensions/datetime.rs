@@ -31,8 +31,7 @@ use super::eval_extension_constructor;
 // If any of the panics in this file are triggered, that means that this file has become
 // out-of-date with the datetime extension definition in Core.
 
-// PANIC SAFETY see `Note on safety` above
-#[allow(clippy::panic)]
+#[expect(clippy::panic, reason = "see `Note on safety` above")]
 fn get_argument_types(fname: &Name, datetime_ty: &Type, duration_ty: &Type) -> Vec<types::Type> {
     if !fname.as_ref().is_unqualified() {
         panic!("unexpected datetime extension function name: {fname}")
@@ -50,8 +49,7 @@ fn get_argument_types(fname: &Name, datetime_ty: &Type, duration_ty: &Type) -> V
     }
 }
 
-// PANIC SAFETY see `Note on safety` above
-#[allow(clippy::panic)]
+#[expect(clippy::panic, reason = "see `Note on safety` above")]
 fn get_return_type(fname: &Name, datetime_ty: &Type, duration_ty: &Type) -> Type {
     if !fname.as_ref().is_unqualified() {
         panic!("unexpected datetime extension function name: {fname}")
@@ -66,8 +64,7 @@ fn get_return_type(fname: &Name, datetime_ty: &Type, duration_ty: &Type) -> Type
     }
 }
 
-// PANIC SAFETY see `Note on safety` above
-#[allow(clippy::panic)]
+#[expect(clippy::panic, reason = "see `Note on safety` above")]
 fn get_argument_check(fname: &Name) -> Option<ArgumentCheckFn> {
     if !fname.as_ref().is_unqualified() {
         panic!("unexpected datetime extension function name: {fname}")
@@ -95,8 +92,7 @@ fn get_argument_check(fname: &Name) -> Option<ArgumentCheckFn> {
 pub fn extension_schema() -> ExtensionSchema {
     let datetime_ext = datetime::extension();
     let datetime_ty = Type::extension(datetime_ext.name().clone());
-    //PANIC SAFETY: `duration` is a valid name
-    #[allow(clippy::unwrap_used)]
+    #[expect(clippy::unwrap_used, reason = "`duration` is a valid name")]
     let duration_ty_name: Name = "duration".parse().unwrap();
     let duration_ty = Type::extension(duration_ty_name.clone());
 

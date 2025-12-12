@@ -164,8 +164,7 @@ impl FromNormalizedStr for UnreservedId {
 impl UnreservedId {
     /// Create an [`UnreservedId`] from an empty string
     pub(crate) fn empty() -> Self {
-        // PANIC SAFETY: "" does not contain `__cedar`
-        #[allow(clippy::unwrap_used)]
+        #[expect(clippy::unwrap_used, reason = "\"\" does not contain `__cedar`")]
         Id("".into()).try_into().unwrap()
     }
 
@@ -266,8 +265,7 @@ impl<'a> arbitrary::Arbitrary<'a> for UnreservedId {
         match UnreservedId::try_from(id.clone()) {
             Ok(id) => Ok(id),
             Err(_) => {
-                // PANIC SAFETY: `___cedar` is a valid unreserved id
-                #[allow(clippy::unwrap_used)]
+                #[expect(clippy::unwrap_used, reason = "`___cedar` is a valid unreserved id")]
                 let new_id = format!("_{id}").parse().unwrap();
                 Ok(new_id)
             }
@@ -403,8 +401,7 @@ impl<'a> arbitrary::Arbitrary<'a> for AnyId {
     }
 }
 
-// PANIC SAFETY: unit-test code
-#[allow(clippy::panic)]
+#[allow(clippy::panic, reason = "unit-test code")]
 #[cfg(test)]
 mod test {
     use super::*;

@@ -385,8 +385,10 @@ impl PolicySet {
             // If it's static, then we updated this already by updating the
             // policy's own id.
             let other_policy = match renaming.get(other_policy.template().id()) {
-                // PANIC SAFETY: `if` confirms that `other_policy` is a template link
-                #[allow(clippy::unwrap_used)]
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "`if` confirms that `other_policy` is a template link"
+                )]
                 Some(new_tid) if !other_policy.is_static() => {
                     other_policy.new_template_id(new_tid.clone()).unwrap()
                 }
@@ -517,8 +519,7 @@ impl PolicySet {
             }
         };
 
-        // PANIC SAFETY: every linked policy should have a template
-        #[allow(clippy::panic)]
+        #[expect(clippy::panic, reason = "every linked policy should have a template")]
         match self.templates.remove(policy_id) {
             Some(t) => {
                 self.template_to_links_map.remove(policy_id);
@@ -591,8 +592,7 @@ impl PolicySet {
         }
         match self.links.remove(policy_id) {
             Some(p) => {
-                // PANIC SAFETY: every linked policy should have a template
-                #[allow(clippy::panic)]
+                #[expect(clippy::panic, reason = "every linked policy should have a template")]
                 match self.template_to_links_map.entry(p.template().id().clone()) {
                     Entry::Occupied(t) => t.into_mut().remove(policy_id),
                     Entry::Vacant(_) => {
@@ -677,10 +677,8 @@ impl std::fmt::Display for PolicySet {
     }
 }
 
-// PANIC SAFETY tests
-#[allow(clippy::panic)]
-// PANIC SAFETY tests
-#[allow(clippy::indexing_slicing)]
+#[allow(clippy::panic, reason = "tests")]
+#[allow(clippy::indexing_slicing, reason = "tests")]
 #[cfg(test)]
 mod test {
     use super::*;

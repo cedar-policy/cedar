@@ -58,23 +58,34 @@ fn levenshtein_distance(word1: &str, word2: &str) -> usize {
 
     // The access at 0 is safe because `word2_length` is at least 1.
     // The access at `i` is safe because it stops before `word1_length`.
-    // PANIC SAFETY: See above.
-    #[allow(clippy::indexing_slicing)]
+    #[expect(clippy::indexing_slicing, reason = "see above comment")]
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "probably clearer written like this than with iterators"
+    )]
     for i in 1..word1_length {
         matrix[0][i] = i;
     }
-    // PANIC SAFETY: Similar to above, but fixing the column index instead.
-    #[allow(clippy::indexing_slicing)]
-    #[allow(clippy::needless_range_loop)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "similar to above, but fixing the column index instead"
+    )]
+    #[expect(
+        clippy::needless_range_loop,
+        reason = "probably clearer written like this than with iterators"
+    )]
     for j in 1..word2_length {
         matrix[j][0] = j;
     }
 
-    // `i` and `j` start at 1, so the accesses at `i - 1` and `j - 1` are safe.
-    // `i` and `j` stop before the length of the array in their respective
-    // dimensions, so accesses at `i` and `j` are safe.
-    // PANIC SAFETY: See above.
-    #[allow(clippy::indexing_slicing)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = r#"
+            `i` and `j` start at 1, so the accesses at `i - 1` and `j - 1` are safe.
+            `i` and `j` stop before the length of the array in their respective
+            dimensions, so accesses at `i` and `j` are safe.
+        "#
+    )]
     for j in 1..word2_length {
         for i in 1..word1_length {
             let x: usize = if w1[i - 1] == w2[j - 1] {
@@ -88,8 +99,10 @@ fn levenshtein_distance(word1: &str, word2: &str) -> usize {
             matrix[j][i] = x;
         }
     }
-    // PANIC SAFETY: Accesses at one less than length in both dimensions. The length in both dimensions is non-zero.
-    #[allow(clippy::indexing_slicing)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "Accesses at one less than length in both dimensions. The length in both dimensions is non-zero"
+    )]
     matrix[word2_length - 1][word1_length - 1]
 }
 

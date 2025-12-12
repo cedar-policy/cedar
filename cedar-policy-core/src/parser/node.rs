@@ -120,13 +120,19 @@ impl<T: std::error::Error> std::error::Error for Node<T> {
         self.node.source()
     }
 
-    #[allow(deprecated)]
     fn description(&self) -> &str {
+        #[expect(
+            deprecated,
+            reason = "description() is deprecated but we still want to forward it"
+        )]
         self.node.description()
     }
 
     fn cause(&self) -> Option<&dyn std::error::Error> {
-        #[allow(deprecated)]
+        #[expect(
+            deprecated,
+            reason = "cause() is deprecated but we still want to forward it"
+        )]
         self.node.cause()
     }
 }

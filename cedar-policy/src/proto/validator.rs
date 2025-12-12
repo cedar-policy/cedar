@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#![allow(clippy::use_self)]
+#![allow(clippy::use_self, reason = "readability")]
 
 use super::models;
 use cedar_policy_core::ast;
@@ -34,8 +34,6 @@ impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
 }
 
 impl From<&models::Schema> for cedar_policy_core::validator::ValidatorSchema {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
     fn from(v: &models::Schema) -> Self {
         Self::new(
             v.entity_decls
@@ -49,8 +47,6 @@ impl From<&models::Schema> for cedar_policy_core::validator::ValidatorSchema {
 }
 
 impl From<&cedar_policy_core::validator::ValidationMode> for models::ValidationMode {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::unimplemented)]
     fn from(v: &cedar_policy_core::validator::ValidationMode) -> Self {
         match v {
             cedar_policy_core::validator::ValidationMode::Strict => models::ValidationMode::Strict,
@@ -84,11 +80,9 @@ impl From<&models::ValidationMode> for cedar_policy_core::validator::ValidationM
     }
 }
 
-// PANIC SAFETY: experimental feature
-#[allow(clippy::fallible_impl_from)]
+#[expect(clippy::fallible_impl_from, reason = "experimental feature")]
 impl From<&cedar_policy_core::validator::ValidatorActionId> for models::ActionDecl {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::panic)]
+    #[expect(clippy::panic, reason = "experimental feature")]
     fn from(v: &cedar_policy_core::validator::ValidatorActionId) -> Self {
         let ctx_attrs = match v.context() {
             types::Type::EntityOrRecord(types::EntityRecordKind::Record {
@@ -108,8 +102,7 @@ impl From<&cedar_policy_core::validator::ValidatorActionId> for models::ActionDe
 }
 
 impl From<&models::ActionDecl> for cedar_policy_core::validator::ValidatorActionId {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::ActionDecl) -> Self {
         Self::new(
             ast::EntityUID::from(v.name.as_ref().expect("name field should exist")),
@@ -151,8 +144,7 @@ impl From<&cedar_policy_core::validator::ValidatorEntityType> for models::Entity
 }
 
 impl From<&models::EntityDecl> for cedar_policy_core::validator::ValidatorEntityType {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::EntityDecl) -> Self {
         let name = ast::EntityType::from(v.name.as_ref().expect("name field should exist"));
         let descendants = v.descendants.iter().map(ast::EntityType::from);
@@ -178,8 +170,7 @@ impl From<&models::EntityDecl> for cedar_policy_core::validator::ValidatorEntity
 }
 
 impl From<&models::Type> for types::Type {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::Type) -> Self {
         match v.data.as_ref().expect("data field should exist") {
             models::r#type::Data::Prim(vt) => {
@@ -211,11 +202,9 @@ impl From<&models::Type> for types::Type {
     }
 }
 
-// PANIC SAFETY: experimental feature
-#[allow(clippy::fallible_impl_from)]
+#[expect(clippy::fallible_impl_from, reason = "experimental feature")]
 impl From<&types::Type> for models::Type {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used, clippy::panic)]
+    #[expect(clippy::expect_used, clippy::panic, reason = "experimental feature")]
     fn from(v: &types::Type) -> Self {
         match v {
             types::Type::Never => panic!("can't encode Never type in protobuf; Never should never appear in a Schema"),
@@ -267,8 +256,7 @@ fn attributes_to_model(v: &types::Attributes) -> HashMap<String, models::Attribu
 }
 
 impl From<&models::AttributeType> for types::AttributeType {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::AttributeType) -> Self {
         Self {
             attr_type: types::Type::from(

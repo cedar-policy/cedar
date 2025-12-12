@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-#![allow(clippy::literal_string_with_formatting_args)]
+#![allow(
+    clippy::literal_string_with_formatting_args,
+    reason = "strings used by LSP"
+)]
 use std::{collections::HashSet, sync::Arc};
 
 use crate::policy::{

@@ -1098,8 +1098,6 @@ impl ValidatorSchema {
 fn cedar_fragment(
     extensions: &Extensions<'_>,
 ) -> ValidatorSchemaFragment<ConditionalName, ConditionalName> {
-    // PANIC SAFETY: these are valid `Id`s
-    #[allow(clippy::unwrap_used)]
     let mut common_types = HashMap::from_iter(primitive_types());
     for ext_type in extensions.ext_types() {
         assert!(
@@ -1116,8 +1114,10 @@ fn cedar_fragment(
         );
     }
 
-    // PANIC SAFETY: this is a valid schema fragment. This code is tested by every test that constructs `ValidatorSchema`, and this fragment is the same every time, modulo active extensions.
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "this is a valid schema fragment. This code is tested by every test that constructs `ValidatorSchema`, and this fragment is the same every time, modulo active extensions"
+    )]
     ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_type_defs(
         Some(InternalName::__cedar()),
         common_types,
@@ -1154,8 +1154,7 @@ fn single_alias_in_empty_namespace(
 /// Get the names of all primitive types, as unqualified `UnreservedId`s,
 /// paired with the primitive [`json_schema::Type`]s they represent
 fn primitive_types<N>() -> impl Iterator<Item = (UnreservedId, json_schema::Type<N>)> {
-    // PANIC SAFETY: these are valid `UnreservedId`s
-    #[allow(clippy::unwrap_used)]
+    #[expect(clippy::unwrap_used, reason = "these are valid `UnreservedId`s")]
     [
         (
             UnreservedId::from_str("Bool").unwrap(),
@@ -1553,8 +1552,10 @@ impl<'a> CommonTypeResolver<'a> {
         let mut tys: HashMap<&'a InternalName, LocatedType> = HashMap::new();
 
         for &name in sorted_names.iter() {
-            // PANIC SAFETY: `name.basename()` should be an existing common type id
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "`name.basename()` should be an existing common type id"
+            )]
             let ty = self.defs.get(name).unwrap();
             let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
             resolve_table.insert(name, substituted_ty.clone());
@@ -1573,10 +1574,7 @@ impl<'a> CommonTypeResolver<'a> {
     }
 }
 
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
-// PANIC SAFETY unit tests
-#[allow(clippy::indexing_slicing)]
+#[allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 #[cfg(test)]
 pub(crate) mod test {
     use std::{

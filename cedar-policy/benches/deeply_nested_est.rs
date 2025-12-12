@@ -20,8 +20,7 @@ use cedar_policy::Policy;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-// PANIC SAFETY: benchmarking
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, reason = "benchmarking")]
 pub fn deeply_nested_est(c: &mut Criterion) {
     let json_str = r#"
         {

@@ -47,7 +47,6 @@ use std::str::FromStr;
 /// To get an escaped representation, use `.escaped()`.
 /// To get an unescaped representation, use `.unescaped()` or `.as_ref()`.
 #[repr(transparent)]
-#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityId(ast::Eid);
 
@@ -254,7 +253,10 @@ impl EntityUid {
     /// # assert_eq!(euid.type_name(), &EntityTypeName::from_str("User").unwrap());
     /// # assert_eq!(euid.id(), &EntityId::from_str("123abc").unwrap());
     /// ```
-    #[allow(clippy::result_large_err)]
+    #[expect(
+        clippy::result_large_err,
+        reason = "don't want to change the signature of a public function to fix this lint"
+    )]
     pub fn from_json(json: serde_json::Value) -> Result<Self, JsonDeserializationError> {
         let parsed: cedar_policy_core::entities::EntityUidJson = serde_json::from_value(json)?;
         Ok(parsed
@@ -340,7 +342,6 @@ impl From<ast::EntityUID> for EntityUid {
 /// # assert_eq!(AsRef::<str>::as_ref(&id), "my-id");
 /// ```
 #[repr(transparent)]
-#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Serialize, Deserialize, RefCast)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -390,7 +391,6 @@ impl From<PolicyId> for ast::PolicyID {
 
 /// Identifier for a Template slot
 #[repr(transparent)]
-#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]

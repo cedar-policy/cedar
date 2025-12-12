@@ -154,8 +154,7 @@ impl PolicyCompletionProvider {
             .map(|p| p.0)?;
         policies
             .into_iter()
-            .filter(|p| position_within_loc(self.cursor_position, p.loc.as_ref()))
-            .next_back()
+            .rfind(|p| position_within_loc(self.cursor_position, p.loc.as_ref()))
     }
 }
 

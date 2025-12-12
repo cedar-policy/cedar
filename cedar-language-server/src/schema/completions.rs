@@ -21,8 +21,10 @@ use tower_lsp_server::lsp_types::{
     self, CompletionItem, CompletionItemKind, CompletionResponse, Position, Range,
 };
 
-// PANIC SAFETY: These regex are valid and would panic immediately in test if not.
-#[allow(clippy::unwrap_used)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "these regexes are valid and would panic immediately in tests if not"
+)]
 mod regex_consts {
     use regex::Regex;
     use std::sync::LazyLock;

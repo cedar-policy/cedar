@@ -53,16 +53,14 @@ impl FromStr for Decimal {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.split(".").collect::<Vec<&str>>() {
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 2 can be indexed by 0"
             )]
             list if list.len() == 2 && list[0] == "-" => {
                 Err(DecimalError::ParseError(s.to_string()))
             }
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "List of length 2 can be indexed by 0 or 1"
             )]
@@ -76,8 +74,7 @@ impl FromStr for Decimal {
                     match (left.parse::<i128>(), right.parse::<u32>()) {
                         (Ok(l), Ok(r)) => {
                             let l_prime = l * 10_i128.pow(DECIMAL_DIGITS);
-                            // PANIC SAFETY
-                            #[allow(
+                            #[expect(
                                 clippy::unwrap_used,
                                 reason = "cannot panic as we previously checked that rlen is between 0 and 4."
                             )]

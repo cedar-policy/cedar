@@ -513,8 +513,10 @@ where
     /// # Panics
     ///
     /// Panics if the self value is not `Data`.
-    // PANIC SAFETY: This function is intended to panic, and says so in the documentation
-    #[allow(clippy::panic)]
+    #[expect(
+        clippy::panic,
+        reason = "This function is intended to panic, and says so in the documentation"
+    )]
     pub fn unwrap(self) -> &'a T {
         match self {
             Self::Data(e) => e,
@@ -531,8 +533,10 @@ where
     /// # Panics
     ///
     /// Panics if the self value is not `Data`.
-    // PANIC SAFETY: This function is intended to panic, and says so in the documentation
-    #[allow(clippy::panic)]
+    #[expect(
+        clippy::panic,
+        reason = "This function is intended to panic, and says so in the documentation"
+    )]
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     pub fn expect(self, msg: &str) -> &'a T {
         match self {
@@ -542,22 +546,16 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Mode {
+    #[default]
     Concrete,
     #[cfg(feature = "partial-eval")]
     Partial,
 }
 
-impl Default for Mode {
-    fn default() -> Self {
-        Self::Concrete
-    }
-}
-
 /// Describes the option for how the TC (transitive closure) of the entity
 /// hierarchy is computed
-#[allow(dead_code)] // only `ComputeNow` is used currently, that's intentional
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TCComputation {
     /// Assume that the TC has already been computed and that the input is a DAG before the call of
@@ -573,11 +571,9 @@ pub enum TCComputation {
     ComputeNow,
 }
 
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
+#[allow(clippy::panic, reason = "Unit Test Code")]
 #[cfg(test)]
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
+#[allow(clippy::panic, reason = "unit tests")]
 #[allow(clippy::cognitive_complexity)]
 mod json_parsing_tests {
     use super::*;
@@ -2220,8 +2216,7 @@ mod json_parsing_tests {
     }
 }
 
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
+#[allow(clippy::panic, reason = "Unit Test Code")]
 #[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 mod entities_tests {
@@ -2469,8 +2464,7 @@ mod entities_tests {
     }
 }
 
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
+#[allow(clippy::panic, reason = "Unit Test Code")]
 #[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 mod schema_based_parsing_tests {

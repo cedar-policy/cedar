@@ -286,8 +286,7 @@ impl<'a> AttributeCollection<'a> {
     #[must_use]
     pub(crate) fn get_by_name(&self, name: &str) -> Vec<&AttributeInfo<'a>> {
         self.name_index.get(name).map_or_else(Vec::new, |indices| {
-            // PANIC SAFETY: From invariant on `name_index`, every stored index is a valid index into attributes.
-            #[allow(clippy::indexing_slicing)]
+            #[expect(clippy::indexing_slicing, reason = "from invariant on `name_index`, every stored index is a valid index into `attributes`")]
             indices.iter().map(|&idx| &self.attributes[idx]).collect()
         })
     }

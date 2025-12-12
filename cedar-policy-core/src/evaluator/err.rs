@@ -430,8 +430,7 @@ pub mod evaluation_errors {
                 )
             };
             if self.exists_the_other_kind {
-                // PANIC SAFETY: A `write!` to a `String` cannot fail
-                #[allow(clippy::unwrap_used)]
+                #[expect(clippy::unwrap_used, reason = "A `write!` to a `String` cannot fail")]
                 write!(
                     &mut help_text,
                     "; note that {} (not {}) named `{}` does exist",

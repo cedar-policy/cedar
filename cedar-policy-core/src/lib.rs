@@ -16,7 +16,13 @@
 
 //! Implementation of the Cedar parser and evaluation engine in Rust.
 #![warn(missing_docs)]
-#![cfg_attr(feature = "wasm", allow(non_snake_case))]
+#![cfg_attr(
+    feature = "wasm",
+    allow(
+        non_snake_case,
+        reason = "Wasm/TypeScript doesn't use snake case identifiers by convention"
+    )
+)]
 
 #[macro_use]
 extern crate lalrpop_util;

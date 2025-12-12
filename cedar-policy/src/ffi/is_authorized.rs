@@ -17,7 +17,11 @@
 //! JSON FFI entry points for the Cedar authorizer. The Cedar Wasm authorizer
 //! is generated from the [`is_authorized()`] function in this file.
 
-#![allow(clippy::module_name_repetitions)]
+#![allow(
+    clippy::module_name_repetitions,
+    reason = "the natural FFI function names"
+)]
+
 use super::check_parse::CheckParseAnswer;
 #[cfg(feature = "partial-eval")]
 use super::utils::JsonValueWithNoDuplicateKeys;
@@ -907,8 +911,7 @@ impl PartialAuthorizationCall {
     }
 }
 
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
+#[allow(clippy::panic, reason = "unit tests")]
 #[cfg(test)]
 mod test {
     use super::*;

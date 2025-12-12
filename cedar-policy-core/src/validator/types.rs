@@ -804,8 +804,10 @@ impl EntityLUB {
     /// Check if this LUB is a singleton, and if so, return a reference to its entity type
     pub fn get_single_entity(&self) -> Option<&EntityType> {
         let mut names = self.lub_elements.iter();
-        // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "Invariant on `lub_elements` guarantees the set is non-empty"
+        )]
         let first = names.next().expect("should have one element by invariant");
         match names.next() {
             Some(_) => None, // there are two or more names
@@ -817,8 +819,10 @@ impl EntityLUB {
     /// owned entity type name
     pub fn into_single_entity(self) -> Option<EntityType> {
         let mut names = self.lub_elements.into_iter();
-        // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "Invariant on `lub_elements` guarantees the set is non-empty"
+        )]
         let first = names.next().expect("should have one element by invariant");
         match names.next() {
             Some(_) => None, // there are two or more names
@@ -852,8 +856,10 @@ impl EntityLUB {
         // would need a bottom record type that would contain every attribute with a
         // bottom type. We don't have that, so I instead restrict EntityLUB to
         // be a least upper bound of one or more entities.
-        // PANIC SAFETY: Invariant on `lub_elements` guarantees the set is non-empty.
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "Invariant on `lub_elements` guarantees the set is non-empty"
+        )]
         let arbitrary_first = Attributes::with_attributes(
             lub_element_attributes
                 .next()
@@ -1422,10 +1428,8 @@ impl Primitive {
     }
 }
 
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
-// PANIC SAFETY unit tests
-#[allow(clippy::indexing_slicing)]
+#[allow(clippy::panic, reason = "unit tests")]
+#[allow(clippy::indexing_slicing, reason = "unit tests")]
 #[cfg(test)]
 mod test {
     use super::*;

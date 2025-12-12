@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
-// This modules makes use of `return` to exit early with a particular exit code.
-// For consistency, it also uses `return` in some places where it could be
-// omitted.
-#![allow(clippy::needless_return)]
+#![allow(
+    clippy::needless_return,
+    reason = r#"
+    This module makes use of `return` to exit early with a particular exit code.
+    For consistency, it also uses `return` in some places where it could be
+    omitted.
+"#
+)]
 
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};

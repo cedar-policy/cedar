@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 #![cfg(test)]
-// PANIC SAFETY: unit tests
 #![allow(
     clippy::cognitive_complexity,
     clippy::panic,
     clippy::unwrap_used,
     clippy::indexing_slicing,
-    clippy::unreachable
+    clippy::unreachable,
+    reason = "unit tests"
 )]
 
 mod demo_tests {

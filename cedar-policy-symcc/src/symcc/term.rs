@@ -50,31 +50,46 @@ pub struct TermVar {
 
 /// Primitive terms.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
-#[allow(missing_docs)]
 pub enum TermPrim {
+    /// Literal bool
     Bool(bool),
+    /// Literal bitvec
     Bitvec(BitVec),
+    /// Literal string
     String(SmolStr),
+    /// Literal EntityUID
     Entity(EntityUID),
+    /// Literal extension value
     Ext(Ext),
 }
 
 /// Intermediate representation of [`Term`]s.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
-#[allow(missing_docs)]
 pub enum Term {
+    /// Literal
     Prim(TermPrim),
+    /// Variable
     Var(TermVar),
+    /// None
     None(TermType),
+    /// Some
     Some(Arc<Term>),
+    /// Sets
     Set {
+        /// Elements of the set (as `Term`)
         elts: Arc<BTreeSet<Term>>,
+        /// Type shared by all elements of the set
         elts_ty: TermType,
     },
+    /// Records
     Record(Arc<BTreeMap<Attr, Term>>),
+    /// Function calls
     App {
+        /// Function being called
         op: Op,
+        /// Arguments
         args: Arc<Vec<Term>>,
+        /// Return type of the function
         ret_ty: TermType,
     },
 }
@@ -92,7 +107,7 @@ impl From<bool> for Term {
 
 impl From<i64> for Term {
     fn from(i: i64) -> Self {
-        #[allow(
+        #[expect(
             clippy::expect_used,
             reason = "Cannot panic because bitwidth passed in is non-zero."
         )]

@@ -113,10 +113,8 @@ const BIDI_CHARS: [char; 9] = [
     '\u{2069}',
 ];
 
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
-// PANIC SAFETY unit tests
-#[allow(clippy::indexing_slicing)]
+#[allow(clippy::panic, reason = "unit tests")]
+#[allow(clippy::indexing_slicing, reason = "unit tests")]
 #[cfg(test)]
 mod test {
     use super::*;

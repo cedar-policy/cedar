@@ -17,7 +17,10 @@
 //! JSON FFI entry points for parsing various Cedar structures. The Cedar Wasm
 //! parsing functions are generated from the functions in this file.
 
-#![allow(clippy::module_name_repetitions)]
+#![allow(
+    clippy::module_name_repetitions,
+    reason = "the natural FFI function names"
+)]
 
 use super::{utils::DetailedError, Context, Entities, EntityUid, PolicySet, Schema};
 use serde::{Deserialize, Serialize};

@@ -188,22 +188,28 @@ pub fn remove_empty_lines(text: &str) -> String {
             (Some(m1), Some(m2)) => {
                 // Handle the earlier match
                 let m = std::cmp::min_by_key(m1, m2, |m| m.start());
-                // PANIC SAFETY: Slicing `text` is safe since `index <= m.start()` and both are within the bounds of `text`.
-                #[allow(clippy::string_slice)]
+                #[expect(
+                    clippy::string_slice,
+                    reason = "Slicing `text` is safe since `index <= m.start()` and both are within the bounds of `text`."
+                )]
                 final_text.push_str(&remove_empty_interior_lines(&text[index..m.start()]));
                 final_text.push_str(m.as_str());
                 index = m.end();
             }
             (Some(m), None) | (None, Some(m)) => {
-                // PANIC SAFETY: Slicing `text` is safe since `index <= m.start()` and both are within the bounds of `text`.
-                #[allow(clippy::string_slice)]
+                #[expect(
+                    clippy::string_slice,
+                    reason = "Slicing `text` is safe since `index <= m.start()` and both are within the bounds of `text`."
+                )]
                 final_text.push_str(&remove_empty_interior_lines(&text[index..m.start()]));
                 final_text.push_str(m.as_str());
                 index = m.end();
             }
             (None, None) => {
-                // PANIC SAFETY: Slicing `text` is safe since `index` is within the bounds of `text`.
-                #[allow(clippy::string_slice)]
+                #[expect(
+                    clippy::string_slice,
+                    reason = "Slicing `text` is safe since `index` is within the bounds of `text`."
+                )]
                 final_text.push_str(&remove_empty_interior_lines(&text[index..]));
                 break;
             }

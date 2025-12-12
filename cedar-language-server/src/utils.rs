@@ -69,11 +69,11 @@ pub(crate) fn to_lsp_diagnostics<'a>(
 ) -> Vec<lsp_types::Diagnostic> {
     let mut message = diagnostic.to_string();
     if let Some(source) = diagnostic.source() {
-        #[allow(clippy::unwrap_used, reason = "writing string cannot fail")]
+        #[expect(clippy::unwrap_used, reason = "writing string cannot fail")]
         write!(&mut message, ". {source}").unwrap();
     }
     if let Some(help) = diagnostic.help() {
-        #[allow(clippy::unwrap_used, reason = "writing string cannot fail")]
+        #[expect(clippy::unwrap_used, reason = "writing string cannot fail")]
         write!(&mut message, ". {help}").unwrap();
     }
 
@@ -315,7 +315,7 @@ pub(crate) struct ScopeVariableInfo {
     pub(crate) text: SmolStr,
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines, reason = "existing code")]
 pub(crate) fn get_policy_scope_variable(
     policy_text: &str,
     cursor_position: Position,
@@ -396,8 +396,10 @@ pub(crate) fn get_policy_scope_variable(
         param_sections.get(param_index)
     {
         if start_line == end_line {
-            // PANIC SAFETY: Line numbers in `param_sections` are always indexes from enumerating `lines()`.
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "Line numbers in `param_sections` are always indexes from enumerating `lines()`"
+            )]
             let line = policy_text.lines().nth(*start_line).unwrap();
             line[*start_pos..*end_pos].trim().into()
         } else {
@@ -491,14 +493,18 @@ pub(crate) fn is_cursor_in_condition_braces(position: Position, source_text: &st
     let chars: Vec<char> = source_text.chars().collect();
 
     while pos < chars.len() && pos < target_pos {
-        // PANIC SAFETY: while loop guard ensures `pos` is in bounds
-        #[allow(clippy::indexing_slicing)]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "while loop guard ensures `pos` is in bounds"
+        )]
         let c = chars[pos];
 
         match state {
             State::Normal => {
-                // PANIC SAFETY: indexing to `chars` is guarded by length check
-                #[allow(clippy::indexing_slicing)]
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "indexing to `chars` is guarded by length check"
+                )]
                 // Check for when/unless keywords
                 if pos + 4 <= chars.len()
                     && chars[pos..pos + 4] == ['w', 'h', 'e', 'n']

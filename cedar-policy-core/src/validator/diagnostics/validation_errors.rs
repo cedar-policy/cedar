@@ -717,8 +717,7 @@ mod test_attr_access {
     use super::AttributeAccess;
     use crate::validator::types::{OpenTag, RequestEnv, Type};
 
-    // PANIC SAFETY: testing
-    #[allow(clippy::panic)]
+    #[allow(clippy::panic, reason = "testing")]
     #[track_caller]
     fn assert_message_and_help(
         attr_access: &Expr<Option<Type>>,

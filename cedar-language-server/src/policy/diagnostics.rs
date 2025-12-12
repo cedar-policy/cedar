@@ -108,7 +108,7 @@ fn convert_validation_error_data(error: &ValidationError) -> Option<serde_json::
 
     let code_action = DidYouMeanCodeAction {
         range: data.1.to_range(),
-        alternative: data.0.to_string(),
+        alternative: data.0.clone(),
     };
 
     serde_json::to_value(code_action).ok()

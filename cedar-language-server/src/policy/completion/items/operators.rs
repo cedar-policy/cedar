@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-#![allow(clippy::literal_string_with_formatting_args)]
+#![allow(
+    clippy::literal_string_with_formatting_args,
+    reason = "strings used by LSP"
+)]
 use tower_lsp_server::lsp_types::{self, CompletionItem, CompletionItemKind, InsertTextFormat};
 
 pub(crate) struct IfCompletionItem;

@@ -260,8 +260,10 @@ impl<'a> DocumentContext<'a> {
                 }
 
                 if entity_types.len() == 1 {
-                    // PANIC SAFETY: If condition ensures there is an element
-                    #[allow(clippy::unwrap_used)]
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "the `if` condition ensures there is an element"
+                    )]
                     return EntityTypeKind::Concrete(entity_types.into_iter().next().unwrap());
                 }
 
@@ -323,8 +325,10 @@ impl<'a> DocumentContext<'a> {
 
                 // Handle single-element optimization for resources
                 if any_type == EntityTypeKind::AnyResource && entities.len() == 1 {
-                    // PANIC SAFETY: If condition ensures there is an element
-                    #[allow(clippy::unwrap_used)]
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "the `if` condition ensures there is an element"
+                    )]
                     return EntityTypeKind::Concrete(entities.into_iter().next().unwrap());
                 }
 
@@ -350,8 +354,10 @@ impl<'a> DocumentContext<'a> {
 
                 // Handle single-element optimization for resources
                 if any_type == EntityTypeKind::AnyResource && entities.len() == 1 {
-                    // PANIC SAFETY: If condition ensures there is an element
-                    #[allow(clippy::unwrap_used)]
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "the `if` condition ensures there is an element"
+                    )]
                     return EntityTypeKind::Concrete(entities.into_iter().next().unwrap());
                 }
 

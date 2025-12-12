@@ -105,8 +105,10 @@ pub fn is_authorized_batched(
             let residual = initial_evaluator
                 .interpret_expr(&expr)
                 .map_err(TpeError::from)?;
-            // PANIC SAFETY: exprs and policy set contain the same policy ids
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "exprs and policy set contain the same policy ids"
+            )]
             Ok(ResidualPolicy::new(
                 Arc::new(residual),
                 Arc::new(ps.get(id).unwrap().clone()),
@@ -115,8 +117,10 @@ pub fn is_authorized_batched(
         .collect();
     let mut residuals = residuals_res?;
 
-    // PANIC SAFETY: residuals and policy set contain the same policy ids
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "residuals and policy set contain the same policy ids"
+    )]
     for _i in 0..max_iters {
         let ids = residuals.iter().flat_map(|r| r.all_literal_uids());
         let mut to_load = HashSet::new();

@@ -289,7 +289,6 @@ impl EntityManifest {
 
     /// Convert a json value to an [`EntityManifest`].
     /// Requires the schema in order to add type annotations.
-    #[allow(dead_code)]
     pub fn from_json_value(
         value: serde_json::Value,
         schema: &ValidatorSchema,
@@ -473,8 +472,10 @@ pub fn compute_entity_manifest(
                     Ok(RootAccessTrie::new())
                 }
 
-                // PANIC SAFETY: policy check should not fail after full strict validation above.
-                #[allow(clippy::panic)]
+                #[expect(
+                    clippy::panic,
+                    reason = "policy check should not fail after full strict validation above"
+                )]
                 PolicyCheck::Fail(_errors) => {
                     panic!("Policy check failed after validation succeeded")
                 }
@@ -494,8 +495,10 @@ pub fn compute_entity_manifest(
         }
     }
 
-    // PANIC SAFETY: entity manifest cannot be out of date, since it was computed from the schema given
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "entity manifest cannot be out of date, since it was computed from the schema given"
+    )]
     Ok(EntityManifest {
         per_action: manifest,
     }
@@ -554,8 +557,10 @@ fn entity_manifest_from_expr(
                 // these unary ops are on primitive types, so they are simple
                 UnaryOp::Not | UnaryOp::Neg => Ok(entity_manifest_from_expr(arg)?.empty_paths()),
                 UnaryOp::IsEmpty => {
-                    // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
-                    #[allow(clippy::expect_used)]
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "Typechecking succeeded, so type annotations are present"
+                    )]
                     let ty = arg
                         .data()
                         .as_ref()
@@ -580,14 +585,18 @@ fn entity_manifest_from_expr(
             let mut arg1_res = entity_manifest_from_expr(arg1)?;
             let arg2_res = entity_manifest_from_expr(arg2)?;
 
-            // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
-            #[allow(clippy::expect_used)]
+            #[expect(
+                clippy::expect_used,
+                reason = "Typechecking succeeded, so type annotations are present"
+            )]
             let ty1 = arg1
                 .data()
                 .as_ref()
                 .expect("Expected annotated types after typechecking");
-            // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
-            #[allow(clippy::expect_used)]
+            #[expect(
+                clippy::expect_used,
+                reason = "Typechecking succeeded, so type annotations are present"
+            )]
             let ty2 = arg2
                 .data()
                 .as_ref()

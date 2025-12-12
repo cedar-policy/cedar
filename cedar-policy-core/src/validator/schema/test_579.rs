@@ -60,10 +60,11 @@
 //! we only do the test for the more sensible one. (For instance, for 1a1, we
 //! only test an entity type reference, not a common type reference.)
 
-// Don't warn on the test case names based on above scenario classification scheme
-#![allow(non_snake_case)]
-// PANIC SAFETY: testing code
-#![allow(clippy::indexing_slicing)]
+#![allow(
+    non_snake_case,
+    reason = "test names based on above scenario classification scheme may not fit snake_case convention"
+)]
+#![allow(clippy::indexing_slicing, reason = "testing code")]
 
 use super::{test::utils::collect_warnings, SchemaWarning, ValidatorSchema};
 use crate::extensions::Extensions;

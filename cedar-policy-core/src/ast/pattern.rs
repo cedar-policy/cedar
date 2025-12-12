@@ -132,8 +132,10 @@ impl Pattern {
         let pattern_len = pattern.len();
 
         while i < text_len && (!contains_star || star_idx != pattern_len - 1) {
-            // PANIC SAFETY `j` is checked to be less than length
-            #[allow(clippy::indexing_slicing)]
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "`j` is checked to be less than length"
+            )]
             if j < pattern_len && pattern[j].is_wildcard() {
                 contains_star = true;
                 star_idx = j;
@@ -151,8 +153,10 @@ impl Pattern {
             }
         }
 
-        // PANIC SAFETY `j` is checked to be less than length
-        #[allow(clippy::indexing_slicing)]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "`j` is checked to be less than length"
+        )]
         while j < pattern_len && pattern[j].is_wildcard() {
             j += 1;
         }

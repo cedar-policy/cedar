@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 
-// PANIC SAFETY tests
-#![allow(clippy::expect_used)]
-// PANIC SAFETY tests
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used, reason = "tests")]
+#![allow(clippy::unwrap_used, reason = "tests")]
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -991,10 +989,8 @@ fn test_link_samples() {
 }
 
 #[rstest]
-// PANIC SAFETY: this is all test code
-#[allow(clippy::expect_used)]
-// PANIC SAFETY: this is all test code
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::expect_used, reason = "this is all test code")]
+#[allow(clippy::unwrap_used, reason = "this is all test code")]
 #[track_caller]
 fn test_format_samples(#[files("sample-data/**/polic*.cedar")] path: PathBuf) {
     let policies_file = path.to_str().unwrap();

@@ -78,13 +78,13 @@ pub fn subnet_width(w: Width, prefix: Term) -> Term {
     let n = 2_u32.pow(w);
     ite(
         is_none(prefix.clone()),
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
         )]
         BitVec::of_nat(n, nat(0)).unwrap().into(),
         bvsub(
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
             )]
@@ -97,7 +97,7 @@ pub fn subnet_width(w: Width, prefix: Term) -> Term {
 pub fn range(w: Width, ip_addr: Term, prefix: Term) -> (Term, Term) {
     let n = 2_u32.pow(w);
     let width = subnet_width(w, prefix);
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]
@@ -199,17 +199,17 @@ pub fn duration_since(dt1: Term, dt2: Term) -> Term {
 }
 
 pub fn to_date(dt: Term) -> Term {
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]
     let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0).unwrap()));
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]
     let one = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 1).unwrap()));
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]
@@ -239,12 +239,12 @@ pub fn to_date(dt: Term) -> Term {
 }
 
 pub fn to_time(dt: Term) -> Term {
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]
     let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0).unwrap()));
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
     )]

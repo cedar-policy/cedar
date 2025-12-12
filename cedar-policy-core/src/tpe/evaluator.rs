@@ -48,7 +48,7 @@ impl Evaluator<'_> {
     /// Interpret a typed expression into a residual
     /// This function always succeeds because it wraps an error encountered
     /// into a `ResidualKind::Error`
-    #[allow(clippy::cognitive_complexity)]
+    #[expect(clippy::cognitive_complexity, reason = "experimental feature")]
     pub fn interpret(&self, r: &Residual) -> Residual {
         let ty = r.ty().clone();
         let kind = match r {

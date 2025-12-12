@@ -38,15 +38,17 @@ struct Decimal {
     value: i64,
 }
 
-// PANIC SAFETY The `Name`s and `Regex` here are valid
-#[allow(clippy::expect_used, clippy::unwrap_used)]
+#[expect(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "The `Name`s and `Regex` here are valid"
+)]
 mod constants {
     use super::EXTENSION_NAME;
     use crate::ast::Name;
     use regex::Regex;
     use std::sync::LazyLock;
 
-    // PANIC SAFETY all of the names here are valid names
     pub static DECIMAL_FROM_STR_NAME: LazyLock<Name> = LazyLock::new(|| {
         Name::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier")
     });
@@ -64,7 +66,6 @@ mod constants {
     });
 
     // Global regex, initialized at first use
-    // PANIC SAFETY This is a valid `Regex`
     pub static DECIMAL_REGEX: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^(-?\d+)\.(\d+)$").unwrap());
 }
@@ -214,8 +215,7 @@ fn decimal_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
 fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
     match &v.value {
         ValueKind::ExtensionValue(ev) if ev.typename() == Decimal::typename() => {
-            // PANIC SAFETY Conditional above performs a typecheck
-            #[allow(clippy::expect_used)]
+            #[expect(clippy::expect_used, reason = "Conditional above performs a typecheck")]
             let d = ev
                 .value()
                 .as_any()
@@ -322,8 +322,7 @@ pub fn extension() -> Extension {
 }
 
 #[cfg(test)]
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
+#[allow(clippy::panic, reason = "Unit Test Code")]
 mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};

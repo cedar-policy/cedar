@@ -46,21 +46,27 @@ unused_assignments = "allow" # In Rust 1.92 this one erroneously identifies some
 [workspace.lints.clippy]
 nursery = { level = "warn", priority = -1 }
 # Enabling some pedantic lints incrementally
-inefficient_to_string = "warn"
-implicit_clone = "warn"
+cast_lossless = "warn"
+cast_possible_truncation = "warn"
 cloned_instead_of_copied = "warn"
 format_collect = "warn"
 format_push_string = "warn"
-trivially_copy_pass_by_ref = "warn"
+implicit_clone = "warn"
+inconsistent_struct_constructor = "warn"
+inefficient_to_string = "warn"
 large_types_passed_by_value = "warn"
 needless_pass_by_value = "warn"
 option_as_ref_cloned = "warn"
-ref_option_ref = "warn"
-ref_option = "warn"
 option_option = "warn"
-inconsistent_struct_constructor = "warn"
-cast_lossless = "warn"
-cast_possible_truncation = "warn"
+redundant_clone = "deny"
+ref_option = "warn"
+ref_option_ref = "warn"
+trivially_copy_pass_by_ref = "warn"
+
+# When overriding lints, require `expect` instead of `allow`, and require a reason
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+should_panic_without_expect = "deny"
 
 # These lints may be worth enforcing, but cause a lot of noise at the moment.
 use_self = "allow"
@@ -74,7 +80,6 @@ needless_doctest_main = "allow"
 result_large_err = "allow"
 large_enum_variant = "allow"
 
-redundant_clone = "deny"
 # Error on potential panics
 unwrap_used = "deny"
 expect_used = "deny"

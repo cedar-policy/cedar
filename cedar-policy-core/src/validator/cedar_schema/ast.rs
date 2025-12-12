@@ -23,8 +23,12 @@ use crate::{
 use itertools::{Either, Itertools};
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
-// We don't need this import on macOS but CI fails without it
-#[allow(unused_imports)]
+/*
+#[cfg_attr(target_os = "macos", expect(
+    unused_imports,
+    reason = "we don't need this import on macOS but CI fails without it"
+))]
+*/
 use smol_str::ToSmolStr;
 
 use crate::validator::json_schema;
@@ -46,7 +50,7 @@ pub struct Annotated<T> {
 
 pub type Schema = Vec<Annotated<Namespace>>;
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity, reason = "judged to be readable enough")]
 pub fn deduplicate_annotations<T>(
     data: T,
     annotations: Vec<Node<(Node<AnyId>, Option<Node<SmolStr>>)>>,
@@ -117,7 +121,10 @@ impl Path {
     }
 
     /// Consume the [`Path`] and get an owned iterator over the elements. Most significant name first
-    #[allow(clippy::should_implement_trait)] // difficult to write the `IntoIter` type for this implementation
+    #[expect(
+        clippy::should_implement_trait,
+        reason = "difficult to write the `IntoIter` type for this implementation"
+    )]
     pub fn into_iter(self) -> impl Iterator<Item = Node<Id>> {
         let loc = self.0.loc;
         self.0

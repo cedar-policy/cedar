@@ -129,8 +129,7 @@ pub(crate) fn allow_all() -> Policy {
 /// The policyset that allows all requests
 pub(crate) fn allow_all_pset() -> PolicySet {
     let mut pset = PolicySet::new();
-    // PANIC SAFETY
-    #[allow(
+    #[expect(
         clippy::expect_used,
         reason = "Adding allow_all to a `PolicySet` should not error"
     )]

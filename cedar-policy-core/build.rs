@@ -19,16 +19,16 @@ fn main() {
 }
 
 /// Reads parser grammar files (.lalrpop) and generates Rust modules
+#[expect(
+    clippy::expect_used,
+    reason = "panics in build.rs are acceptable, they just fail the build"
+)]
 fn generate_parsers() {
-    // PANIC SAFETY: panicking inside our build script on a build dependency error is acceptable
-    #[allow(clippy::expect_used)]
     lalrpop::Configuration::new()
         .process_dir("src/parser/")
-        .expect("parser synth");
+        .expect("failed to run lalrpop");
 
-    // PANIC SAFETY: panicking inside our build script on a build dependency error is acceptable
-    #[allow(clippy::expect_used)]
     lalrpop::Configuration::new()
         .process_dir("src/validator/cedar_schema/")
-        .expect("parser synth");
+        .expect("failed to run lalrpop");
 }

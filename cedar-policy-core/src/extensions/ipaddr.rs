@@ -25,8 +25,7 @@ use crate::evaluator;
 
 use std::sync::Arc;
 
-// PANIC SAFETY All the names are valid names
-#[allow(clippy::expect_used)]
+#[expect(clippy::expect_used, reason = "All the names are valid names")]
 mod names {
     use crate::ast::Name;
     use std::sync::LazyLock;
@@ -273,10 +272,7 @@ fn contains_at_least_two(s: &str, c: char) -> bool {
             //     position `i` in `s`.
             // The above is checked by [`proof::contains_at_least_two_correct`], which proves
             // safety for strings up to length 6
-            // PANIC SAFETY: (see above)
-            #[allow(clippy::indexing_slicing)]
-            // PANIC SAFETY: (see above)
-            #[allow(clippy::unwrap_used)]
+            #[expect(clippy::unwrap_used, reason = "see above comment")]
             let idx = s.get(i + c.len_utf8()..).unwrap().find(c);
             idx.is_some()
         }
@@ -337,8 +333,7 @@ fn ip_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
 fn as_ipaddr(v: &Value) -> Result<&IPAddr, evaluator::EvaluationError> {
     match &v.value {
         ValueKind::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => {
-            // PANIC SAFETY Conditional above performs a typecheck
-            #[allow(clippy::expect_used)]
+            #[expect(clippy::expect_used, reason = "Conditional above performs a typecheck")]
             let ipaddr = ev
                 .value()
                 .as_any()
@@ -461,10 +456,8 @@ pub fn extension() -> Extension {
     )
 }
 
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
+#[allow(clippy::panic, clippy::cognitive_complexity, reason = "Unit Test Code")]
 #[cfg(test)]
-#[allow(clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};

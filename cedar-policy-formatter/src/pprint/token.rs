@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
-// PANIC SAFETY: there's little we can do about Logos.
-#![allow(clippy::indexing_slicing)]
+#![allow(
+    clippy::indexing_slicing,
+    reason = "there's little we can do about Logos."
+)]
 use logos::{Logos, Span};
 use smol_str::SmolStr;
 use std::fmt::{self, Display};
 
-// PANIC SAFETY: These regex patterns are valid
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used, reason = "These regex patterns are valid")]
 pub(crate) mod regex_constants {
     use regex::Regex;
     use std::sync::LazyLock;
@@ -249,8 +250,10 @@ impl fmt::Display for Token {
             Self::At => write!(f, "@"),
             Self::Colon => write!(f, ":"),
             Self::Comma => write!(f, ","),
-            // PANIC SAFETY: comment should be ignored as specified by the lexer regex
-            #[allow(clippy::unreachable)]
+            #[expect(
+                clippy::unreachable,
+                reason = "comment should be ignored as specified by the lexer regex"
+            )]
             Self::Comment => unreachable!("comment should be skipped!"),
             Self::Context => write!(f, "context"),
             Self::Dash => write!(f, "-"),
@@ -294,8 +297,10 @@ impl fmt::Display for Token {
             Self::True => write!(f, "true"),
             Self::Unless => write!(f, "unless"),
             Self::When => write!(f, "when"),
-            // PANIC SAFETY: whitespace should be ignored as specified by the lexer regex
-            #[allow(clippy::unreachable)]
+            #[expect(
+                clippy::unreachable,
+                reason = "whitespace should be ignored as specified by the lexer regex"
+            )]
             Self::Whitespace => unreachable!("whitespace should be skipped!"),
         }
     }

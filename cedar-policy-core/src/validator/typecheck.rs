@@ -179,8 +179,10 @@ impl<'a> Typechecker<'a> {
             (false, true, Some(e)) => PolicyCheck::Success(e),
             (false, false, _) => PolicyCheck::Fail(type_errors),
             (true, _, Some(e)) => PolicyCheck::Irrelevant(type_errors, e),
-            // PANIC SAFETY: `is_false` implies `e` has a type implies `Some(e)`.
-            #[allow(clippy::unreachable)]
+            #[expect(
+                clippy::unreachable,
+                reason = "`is_false` implies `e` has a type implies `Some(e)`"
+            )]
             (true, _, None) => unreachable!(),
         }
     }
@@ -1124,8 +1126,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             )
                         });
                         let is_success = ty.is_some();
-                        // PANIC SAFETY: can't have duplicate keys because the keys are the same as those in `map` which was already a BTreeMap
-                        #[allow(clippy::expect_used)]
+                        #[expect(clippy::expect_used, reason = "can't have duplicate keys because the keys are the same as those in `map` which was already a BTreeMap")]
                         let expr = ExprBuilder::with_data(ty)
                             .with_same_source_loc(e)
                             .record(map.keys().cloned().zip(record_attr_expr_tys))
@@ -1179,8 +1180,7 @@ impl<'a> SingleEnvTypechecker<'a> {
         bin_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
-        // PANIC SAFETY: maintained by invariant on this function
-        #[allow(clippy::panic)]
+        #[expect(clippy::panic, reason = "maintained by invariant on this function")]
         let ExprKind::BinaryApp { op, arg1, arg2 } = bin_expr.expr_kind() else {
             panic!("`typecheck_binary` called with an expression kind other than `BinaryApp`");
         };
@@ -2058,8 +2058,7 @@ impl<'a> SingleEnvTypechecker<'a> {
         unary_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
-        // PANIC SAFETY maintained by invariant on this function
-        #[allow(clippy::panic)]
+        #[expect(clippy::panic, reason = "maintained by invariant on this function")]
         let ExprKind::UnaryApp { op, arg } = unary_expr.expr_kind() else {
             panic!("`typecheck_unary` called with an expression kind other than `UnaryApp`");
         };
@@ -2294,8 +2293,7 @@ impl<'a> SingleEnvTypechecker<'a> {
         ext_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
-        // PANIC SAFETY maintained by invariant on this function
-        #[allow(clippy::panic)]
+        #[expect(clippy::panic, reason = "maintained by invariant on this function")]
         let ExprKind::ExtensionFunctionApp { fn_name, args } = ext_expr.expr_kind() else {
             panic!("`typecheck_extension` called with an expression kind other than `ExtensionFunctionApp`");
         };
@@ -2313,8 +2311,10 @@ impl<'a> SingleEnvTypechecker<'a> {
             Ok(efunc) => {
                 let arg_tys = efunc.argument_types();
                 let ret_ty = efunc.return_type();
-                // since we mutate several times, I think readability is better if we keep a consistent pattern, rather than using Clippy's suggestion for the first block
-                #[allow(clippy::useless_let_if_seq)]
+                #[expect(
+                    clippy::useless_let_if_seq,
+                    reason = "since we mutate several times, I think readability is better if we keep a consistent pattern, rather than using Clippy's suggestion for the first block"
+                )]
                 let mut failed = false;
 
                 // variadic functions can take one or more arguments of the last argument type
@@ -2376,12 +2376,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                         .zip_longest(arg_tys)
                         .map(|item| match item {
                             Both(arg, ty) => (arg, ty),
-                            // PANIC SAFETY: only variadic functions can have more arguments than argument types, and by construction
-                            // PANIC SAFETY: variadic functions have at least 2 argument types. See [`crate::crate::ast::ExtensionFunction::variadic`]
-                            #[allow(clippy::unwrap_used)]
+                            #[expect(clippy::unwrap_used, reason = "only variadic functions can have more arguments than argument types, and by construction variadic functions have at least 2 argument types; see `crate::ast::ExtensionFunction::variadic`")]
                             Left(arg) => (arg, arg_tys.last().unwrap()),
-                            // PANIC SAFETY
-                            #[allow(clippy::unreachable)]
+                            #[expect(clippy::unreachable, reason = "Previous checks ensure args.len() >= arg_tys.len()")]
                             Right(_ty) => {
                                 unreachable!("Previous checks ensure args.len() >= arg_tys.len()")
                             }

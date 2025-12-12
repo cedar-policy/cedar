@@ -160,9 +160,10 @@ impl SymEntities {
 
 /// Symbolic representation of a request environment.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
-#[allow(missing_docs)]
 pub struct SymEnv {
+    /// Symbolic request
     pub request: SymRequest,
+    /// Symbolic entities
     pub entities: SymEntities,
 }
 
@@ -344,8 +345,7 @@ impl SymEntities {
                 Err(e) => Err(e),
             }
         });
-        // PANIC SAFETY
-        #[allow(
+        #[expect(
             clippy::expect_used,
             reason = "ValidatorSchema::action_entities should not error"
         )]
@@ -492,8 +492,7 @@ impl Deref for ActionSchemaEntries {
 impl ActionSchemaEntries {
     fn of_schema(schema: &ValidatorSchema) -> Self {
         Self(
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::expect_used,
                 reason = "ValidatorSchema::action_entities should not error"
             )]

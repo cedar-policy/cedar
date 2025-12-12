@@ -1014,9 +1014,12 @@ impl Expr {
                     .map(|el| el.try_into_ast(id))
                     .collect::<Result<Vec<_>, FromJsonError>>()?,
             )),
-            Expr::ExprNoExt(ExprNoExt::Record(map)) => {
-                // PANIC SAFETY: can't have duplicate keys here because the input was already a HashMap
-                #[allow(clippy::expect_used)]
+            Expr::ExprNoExt(ExprNoExt::Record(map)) =>
+            {
+                #[expect(
+                    clippy::expect_used,
+                    reason = "can't have duplicate keys here because the input was already a HashMap"
+                )]
                 Ok(ast::Expr::record(
                     map.into_iter()
                         .map(|(k, v)| Ok((k, v.try_into_ast(id)?)))
@@ -1024,39 +1027,32 @@ impl Expr {
                 )
                 .expect("can't have duplicate keys here because the input was already a HashMap"))
             }
-            Expr::ExtFuncCall(ExtFuncCall { call }) => {
-                match call.len() {
-                    0 => Err(FromJsonError::MissingOperator),
-                    1 => {
-                        // PANIC SAFETY checked that `call.len() == 1`
-                        #[allow(clippy::expect_used)]
-                        let (fn_name, args) = call
-                            .into_iter()
-                            .next()
-                            .expect("already checked that len was 1");
-                        let fn_name = Name::from_normalized_str(&fn_name).map_err(|errs| {
-                            JsonDeserializationError::parse_escape(
-                                EscapeKind::Extension,
-                                fn_name,
-                                errs,
-                            )
-                        })?;
-                        if cst_to_ast::is_known_extension_func_name(&fn_name) {
-                            Ok(ast::Expr::call_extension_fn(
-                                fn_name,
-                                args.into_iter()
-                                    .map(|arg| arg.try_into_ast(id))
-                                    .collect::<Result<_, _>>()?,
-                            ))
-                        } else {
-                            Err(FromJsonError::UnknownExtensionFunction(fn_name))
-                        }
+            Expr::ExtFuncCall(ExtFuncCall { call }) => match call.len() {
+                0 => Err(FromJsonError::MissingOperator),
+                1 => {
+                    #[expect(clippy::expect_used, reason = "checked that `call.len() == 1`")]
+                    let (fn_name, args) = call
+                        .into_iter()
+                        .next()
+                        .expect("already checked that len was 1");
+                    let fn_name = Name::from_normalized_str(&fn_name).map_err(|errs| {
+                        JsonDeserializationError::parse_escape(EscapeKind::Extension, fn_name, errs)
+                    })?;
+                    if cst_to_ast::is_known_extension_func_name(&fn_name) {
+                        Ok(ast::Expr::call_extension_fn(
+                            fn_name,
+                            args.into_iter()
+                                .map(|arg| arg.try_into_ast(id))
+                                .collect::<Result<_, _>>()?,
+                        ))
+                    } else {
+                        Err(FromJsonError::UnknownExtensionFunction(fn_name))
                     }
-                    _ => Err(FromJsonError::MultipleOperators {
-                        ops: call.into_keys().collect(),
-                    }),
                 }
-            }
+                _ => Err(FromJsonError::MultipleOperators {
+                    ops: call.into_keys().collect(),
+                }),
+            },
             #[cfg(feature = "tolerant-ast")]
             Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ASTErrorNode),
         }
@@ -1163,12 +1159,16 @@ fn display_cedarvaluejson(
             });
             match style {
                 Some(ast::CallStyle::MethodStyle) => {
-                    // PANIC SAFETY: method-style calls must have more than one argument
-                    #[allow(clippy::indexing_slicing)]
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "method-style calls must have more than one argument"
+                    )]
                     display_cedarvaluejson(f, &args[0], n)?;
                     write!(f, ".{ext_fn}(")?;
-                    // PANIC SAFETY: method-style calls must have more than one argument
-                    #[allow(clippy::indexing_slicing)]
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "method-style calls must have more than one argument"
+                    )]
                     match &args[1..] {
                         [] => {}
                         [args @ .., last] => {
@@ -1490,8 +1490,7 @@ impl std::fmt::Display for ExtFuncCall {
 
 impl BoundedDisplay for ExtFuncCall {
     fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
-        // PANIC SAFETY: safe due to INVARIANT on `ExtFuncCall`
-        #[allow(clippy::unreachable)]
+        #[expect(clippy::unreachable, reason = "safe due to INVARIANT on `ExtFuncCall`")]
         let Some((fn_name, args)) = self.call.iter().next() else {
             unreachable!("invariant violated: empty ExtFuncCall")
         };
@@ -1578,10 +1577,8 @@ fn maybe_with_parens(
 }
 
 #[cfg(test)]
-// PANIC SAFETY: this is unit test code
-#[allow(clippy::indexing_slicing)]
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
+#[allow(clippy::indexing_slicing, reason = "this is unit test code")]
+#[allow(clippy::panic, reason = "Unit Test Code")]
 mod test {
     use crate::parser::{
         err::{ParseError, ToASTErrorKind},

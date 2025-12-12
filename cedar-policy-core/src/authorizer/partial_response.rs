@@ -81,7 +81,10 @@ pub struct PartialResponse {
 
 impl PartialResponse {
     /// Create a partial response from each of the policy result categories
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "maybe in the future we could group these arguments into single-use structs"
+    )]
     pub fn new(
         true_permits: impl IntoIterator<Item = (PolicyID, Arc<Annotations>)>,
         false_permits: impl IntoIterator<Item = (PolicyID, (ErrorState, Arc<Annotations>))>,
@@ -506,8 +509,7 @@ fn did_error<'a>(
 }
 
 #[cfg(test)]
-// PANIC SAFETY testing
-#[allow(clippy::indexing_slicing)]
+#[allow(clippy::indexing_slicing, reason = "testing")]
 mod test {
     use std::{
         collections::HashSet,

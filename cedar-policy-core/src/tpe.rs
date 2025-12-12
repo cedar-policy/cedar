@@ -94,8 +94,10 @@ pub fn is_authorized<'a>(
         .into_iter()
         .map(|(id, expr)| {
             let residual = evaluator.interpret_expr(&expr)?;
-            // PANIC SAFETY: exprs and policy set contain the same policy ids
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "exprs and policy set contain the same policy ids"
+            )]
             Ok(ResidualPolicy::new(
                 Arc::new(residual),
                 Arc::new(ps.get(id).unwrap().clone()),
@@ -103,8 +105,6 @@ pub fn is_authorized<'a>(
         })
         .collect();
 
-    // PANIC SAFETY: `id` should exist in the policy set
-    #[allow(clippy::unwrap_used)]
     Ok(Response::new(
         residuals?.into_iter(),
         request,

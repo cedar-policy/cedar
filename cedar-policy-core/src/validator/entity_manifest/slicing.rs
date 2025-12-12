@@ -350,8 +350,7 @@ action Read appliesTo {
             .slice_entities(&original_entities, &request)
             .unwrap();
 
-        // PANIC SAFETY: panic in testing when test fails
-        #[allow(clippy::panic)]
+        #[allow(clippy::panic, reason = "panic in testing when test fails")]
         if !sliced_entities.deep_eq(&expected_entities) {
             panic!(
                 "Sliced entities differed from expected. Expected:\n{}\nGot:\n{}",

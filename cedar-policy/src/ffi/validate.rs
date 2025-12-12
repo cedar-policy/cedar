@@ -17,7 +17,11 @@
 //! JSON FFI entry points for the Cedar validator. The Cedar Wasm validator is
 //! generated from the [`validate()`] function in this file.
 
-#![allow(clippy::module_name_repetitions)]
+#![allow(
+    clippy::module_name_repetitions,
+    reason = "the natural FFI function names"
+)]
+
 use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
 use crate::{PolicyId, ValidationMode, Validator};
 use serde::{Deserialize, Serialize};
@@ -201,8 +205,7 @@ pub enum ValidationAnswer {
     },
 }
 
-// PANIC SAFETY unit tests
-#[allow(clippy::panic, clippy::indexing_slicing)]
+#[allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 #[cfg(test)]
 mod test {
     use super::*;

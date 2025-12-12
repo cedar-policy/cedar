@@ -32,16 +32,13 @@ use crate::validator::json_schema;
 
 lalrpop_mod!(
     #[allow(warnings, unused, missing_docs, missing_debug_implementations)]
-    //PANIC SAFETY: lalrpop uses unwraps, and we are trusting lalrpop to generate correct code
-    #[allow(clippy::unwrap_used)]
-    //PANIC SAFETY: lalrpop uses slicing, and we are trusting lalrpop to generate correct code
-    #[allow(clippy::indexing_slicing)]
-    //PANIC SAFETY: lalrpop uses string slicing, and we are trusting lalrpop to generate correct code
-    #[allow(clippy::string_slicing)]
-    //PANIC SAFETY: lalrpop uses unreachable, and we are trusting lalrpop to generate correct code
-    #[allow(clippy::unreachable)]
-    //PANIC SAFETY: lalrpop uses panic, and we are trusting lalrpop to generate correct code
-    #[allow(clippy::panic)]
+    #[allow(clippy::unwrap_used, reason = "lalrpop uses unwraps, and we are trusting lalrpop to generate correct code")]
+    #[allow(clippy::indexing_slicing, reason = "lalrpop uses slicing, and we are trusting lalrpop to generate correct code")]
+    #[allow(clippy::string_slice, reason = "lalrpop uses slicing, and we are trusting lalrpop to generate correct code")]
+    #[allow(clippy::unreachable, reason = "lalrpop uses unreachable, and we are trusting lalrpop to generate correct code")]
+    #[allow(clippy::panic, reason = "lalrpop uses panic, and we are trusting lalrpop to generate correct code")]
+    #[allow(clippy::allow_attributes, reason = "lalrpop allows this, and we are trusting lalrpop to generate correct code")]
+    #[allow(clippy::allow_attributes_without_reason, reason = "lalrpop allows this, and we are trusting lalrpop to generate correct code")]
     pub grammar,
     "/src/validator/cedar_schema/grammar.rs"
 );

@@ -78,8 +78,10 @@ impl RestrictedExpr {
     pub fn new_unchecked(expr: Expr) -> Self {
         // in debug builds, this does the check anyway, panicking if it fails
         if cfg!(debug_assertions) {
-            // PANIC SAFETY: We're in debug mode and panicking intentionally
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "We're in debug mode and panicking intentionally"
+            )]
             Self::new(expr).unwrap()
         } else {
             Self(expr)
@@ -251,8 +253,10 @@ impl From<ValueKind> for RestrictedExpr {
             ValueKind::Set(set) => {
                 RestrictedExpr::set(set.iter().map(|val| RestrictedExpr::from(val.clone())))
             }
-            // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
-            #[allow(clippy::expect_used)]
+            #[expect(
+                clippy::expect_used,
+                reason = "cannot have duplicate key because the input was already a BTreeMap"
+            )]
             ValueKind::Record(record) => RestrictedExpr::record(
                 Arc::unwrap_or_clone(record)
                     .into_iter()
@@ -336,8 +340,10 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     pub fn new_unchecked(expr: &'a Expr) -> Self {
         // in debug builds, this does the check anyway, panicking if it fails
         if cfg!(debug_assertions) {
-            // PANIC SAFETY: We're in debug mode and panicking intentionally
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "We're in debug mode and panicking intentionally"
+            )]
             Self::new(expr).unwrap()
         } else {
             Self(expr)

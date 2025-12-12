@@ -564,8 +564,7 @@ pub fn well_typed_policies(
     match typed_policies {
         Ok(ps) => {
             let mut res = PolicySet::new();
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "adding well-typed policy should not error"
             )]

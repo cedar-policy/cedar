@@ -28,8 +28,7 @@ use crate::validator::types::{self, Type};
 // If any of the panics in this file are triggered, that means that this file has become
 // out-of-date with the decimal extension definition in Core.
 
-// PANIC SAFETY see `Note on safety` above
-#[allow(clippy::panic)]
+#[expect(clippy::panic, reason = "see `Note on safety` above")]
 fn get_argument_types(fname: &str) -> Vec<types::Type> {
     match fname {
         "error" => vec![Type::primitive_string()],
@@ -38,8 +37,7 @@ fn get_argument_types(fname: &str) -> Vec<types::Type> {
     }
 }
 
-// PANIC SAFETY see `Note on safety` above
-#[allow(clippy::panic)]
+#[expect(clippy::panic, reason = "see `Note on safety` above")]
 fn get_return_type(fname: &str) -> Type {
     match fname {
         "error" => Type::Never,

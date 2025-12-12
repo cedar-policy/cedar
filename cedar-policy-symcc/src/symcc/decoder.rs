@@ -175,8 +175,7 @@ fn decode_string(s: &[u8]) -> Option<String> {
     let mut i: usize = 0;
 
     while i < s.len() {
-        // PANIC SAFETY
-        #[allow(
+        #[expect(
             clippy::indexing_slicing,
             reason = "i < s.len() thus indexing by i should not panic"
         )]
@@ -189,8 +188,7 @@ fn decode_string(s: &[u8]) -> Option<String> {
             } else {
                 out.push('"');
 
-                // PANIC SAFETY
-                #[allow(
+                #[expect(
                     clippy::indexing_slicing,
                     reason = "i + 1 < s.len() thus indexing by i + 1 should not panic"
                 )]
@@ -214,15 +212,13 @@ fn decode_string(s: &[u8]) -> Option<String> {
         let esc_start = i;
         let mut is_esc = false;
 
-        // PANIC SAFETY
-        #[allow(
+        #[expect(
             clippy::indexing_slicing,
             reason = "i + 1 < s.len() thus indexing by i + 1 should not panic"
         )]
         if i + 1 < s.len() && s[i + 1] == b'u' {
             i += 2;
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "i < s.len() thus indexing by i should not panic"
             )]
@@ -236,8 +232,7 @@ fn decode_string(s: &[u8]) -> Option<String> {
                 let mut j = i;
                 let mut failed = false;
 
-                // PANIC SAFETY
-                #[allow(
+                #[expect(
                     clippy::indexing_slicing,
                     reason = "j < s.len() thus indexing by j should not panic"
                 )]
@@ -253,8 +248,7 @@ fn decode_string(s: &[u8]) -> Option<String> {
 
                 // At least one digit is required
                 if j > i && !failed {
-                    // PANIC SAFETY
-                    #[allow(
+                    #[expect(
                         clippy::indexing_slicing,
                         reason = "j < s.len() thus indexing by j should not panic"
                     )]
@@ -268,8 +262,7 @@ fn decode_string(s: &[u8]) -> Option<String> {
             } else {
                 // No brace, we expect exactly 4 hex digits
                 if i + 3 < s.len() {
-                    // PANIC SAFETY
-                    #[allow(
+                    #[expect(
                         clippy::indexing_slicing,
                         reason = "i + 3 < s.len() thus indexing by i .. i + 3 should not panic"
                     )]
@@ -309,8 +302,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
     let mut tokens = Vec::new();
 
     while i < src.len() {
-        // PANIC SAFETY
-        #[allow(
+        #[expect(
             clippy::indexing_slicing,
             reason = "i < src.len() thus indexing by i should not panic"
         )]
@@ -319,8 +311,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
         if in_str {
             match c {
                 b'"' => {
-                    // PANIC SAFETY
-                    #[allow(
+                    #[expect(
                         clippy::indexing_slicing,
                         reason = "i + 1 < src.len() thus indexing by i + 1 should not panic"
                     )]
@@ -330,8 +321,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                         i += 2;
                     } else {
                         // String is terminated
-                        // PANIC SAFETY
-                        #[allow(
+                        #[expect(
                             clippy::indexing_slicing,
                             reason = "invariant str_start <= i and i <= src.len() thus slicing should not panic"
                         )]
@@ -367,8 +357,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                 // Bit vector
                 b'#' => {
                     if i + 1 < src.len() {
-                        // PANIC SAFETY
-                        #[allow(
+                        #[expect(
                             clippy::indexing_slicing,
                             reason = "i + 1 < src.len() thus indexing by i + 1 should not panic"
                         )]
@@ -378,8 +367,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                                 // Read until a non-0 and non-1 character
                                 i += 2;
                                 let start = i;
-                                // PANIC SAFETY
-                                #[allow(
+                                #[expect(
                                     clippy::indexing_slicing,
                                     reason = "i < src.len() thus indexing by i should not panic"
                                 )]
@@ -388,8 +376,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                                 }
 
                                 let width: usize = i - start;
-                                // PANIC SAFETY
-                                #[allow(
+                                #[expect(
                                     clippy::indexing_slicing,
                                     reason = "start <= i <= src.len() thus slicing should not panic"
                                 )]
@@ -427,8 +414,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                 c if c.is_ascii_digit() => {
                     // Read until a non-digit
                     let start = i;
-                    // PANIC SAFETY
-                    #[allow(
+                    #[expect(
                         clippy::indexing_slicing,
                         reason = "i < src.len() thus indexing by i should not panic"
                     )]
@@ -436,8 +422,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                         i += 1;
                     }
 
-                    // PANIC SAFETY
-                    #[allow(
+                    #[expect(
                         clippy::indexing_slicing,
                         reason = "start <= i <= src.len() ===> slicing should not panic"
                     )]
@@ -448,9 +433,9 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                 }
 
                 // Comment
-                b';' => {
-                    // PANIC SAFETY
-                    #[allow(
+                b';' =>
+                {
+                    #[expect(
                         clippy::indexing_slicing,
                         reason = "i < src.len() thus indexing src by i should not panic"
                     )]
@@ -468,8 +453,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                 _ => {
                     // Take until (, ), or whitespace
                     let start = i;
-                    // PANIC SAFETY
-                    #[allow(
+                    #[expect(
                         clippy::indexing_slicing,
                         reason = "i < src.len() thus indexing by I should not panic"
                     )]
@@ -483,8 +467,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                     {
                         i += 1;
                     }
-                    // PANIC SAFETY
-                    #[allow(
+                    #[expect(
                         clippy::indexing_slicing,
                         reason = "start <= i and i <= src.len ==> slicing should not panic"
                     )]
@@ -610,7 +593,7 @@ impl TermType {
             TermType::Bool => Term::Prim(TermPrim::Bool(false)),
             TermType::Bitvec { n } =>
             {
-                #[allow(
+                #[expect(
                     clippy::unwrap_used,
                     reason = "Assume the bit-vectors have the same width by construction for now."
                 )]
@@ -864,8 +847,7 @@ impl SExpr {
             }
 
             // ((as some <typ>) <val>)
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "Slice of length 3 can be indexed by 0-2"
             )]
@@ -1104,8 +1086,7 @@ impl SExpr {
             // Check if the body is of the form
             // (ite (= <literal> <arg_name>) <literal> <else>)
             if let SExpr::App(exprs) = cur_body {
-                // PANIC SAFETY
-                #[allow(
+                #[expect(
                     clippy::indexing_slicing,
                     reason = "Slice of length 4 can be indexed by 0-3"
                 )]

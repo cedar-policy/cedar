@@ -278,8 +278,7 @@ pub fn compile_app2(op2: BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Resu
                     t2,
                     es.ancestors_of_type(&ety1, &ety2).cloned(),
                 ))),
-                // PANIC SAFETY
-                #[allow(
+                #[expect(
                     clippy::unreachable,
                     reason = "Code is unreachable due to above match that type must be an Entity"
                 )]
@@ -389,8 +388,7 @@ pub fn compile_set(ts: Vec<Term>) -> Result<Term> {
             "empty set literals are not supported".to_string(),
         ))
     } else {
-        // PANIC SAFETY
-        #[allow(
+        #[expect(
             clippy::indexing_slicing,
             reason = "ts must be non-empty and thus indexing by 0 should not panic"
         )]
@@ -414,7 +412,7 @@ pub fn compile_set(ts: Vec<Term>) -> Result<Term> {
 }
 
 pub fn compile_record(ats: Vec<(Attr, Term)>) -> Result<Term> {
-    #[allow(
+    #[expect(
         clippy::needless_collect,
         reason = "collect allows ats to be moved in the following line"
     )]
@@ -496,8 +494,7 @@ pub fn compile_call2(
 /// Extract the first item from a `Vec`, consuming the `Vec`.
 /// Panics if there is less than one element.
 fn extract_first<T>(v: Vec<T>) -> T {
-    // PANIC SAFETY
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "This function is only called from contexts where v has length >= 1"
     )]
@@ -508,8 +505,7 @@ fn extract_first<T>(v: Vec<T>) -> T {
 /// Panics if there are less than two elements.
 fn extract_first2<T>(v: Vec<T>) -> (T, T) {
     let mut it = v.into_iter();
-    // PANIC SAFETY
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "This function is only called from contexts where v has length >= 2"
     )]
@@ -709,7 +705,6 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
         ExprKind::Unknown(_) => Err(CompileError::UnsupportedFeature(
             "partial evaluation is not supported".to_string(),
         )),
-        #[allow(unreachable_patterns)]
         _ => Err(CompileError::UnsupportedFeature(format!(
             "symbolic compilation of `{}` is not supported",
             x
