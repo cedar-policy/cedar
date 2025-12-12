@@ -273,8 +273,7 @@ AnyIdent: Node<AnyId> = {
 
 STR: Node<SmolStr> = {
     <l:@L> <s:STRINGLIT> <r:@R> =>? {
-        // PANIC SAFETY: STRINGLIT token has at least two characters, starting and ending with the ASCII character `"`
-        #[allow(clippy::string_slice)]
+        #[allow(clippy::string_slice, reason = "STRINGLIT token has at least two characters, starting and ending with the ASCII character `\"`")]
         to_unescaped_string(&s[1..(s.len() - 1)]).map_or_else(|e| Err(ParseError::User {
             error: UserError::StringEscape(Node::with_source_loc(e, Loc::new(l..r, Arc::clone(src)))),
         }), |v| Ok(Node::with_source_loc(v, Loc::new(l..r, Arc::clone(src)))))

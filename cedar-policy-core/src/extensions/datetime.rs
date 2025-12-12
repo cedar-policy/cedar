@@ -594,8 +594,7 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     }
 
     // Get hour, minute, and second
-    // PANIC SAFETY: `date_str` is a prefix of `s`
-    #[allow(clippy::string_slice)]
+    #[expect(clippy::string_slice, reason = "`date_str` is a prefix of `s`")]
     let s = &s[date_str.len()..];
 
     let (hms_str, [h, m, sec]) = constants::HMS_PATTERN
@@ -610,8 +609,7 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
         (h.parse().unwrap(), m.parse().unwrap(), sec.parse().unwrap());
 
     // Get millisecond and offset
-    // PANIC SAFETY: `hms_str` is a prefix fo `s`
-    #[allow(clippy::string_slice)]
+    #[expect(clippy::string_slice, reason = "`hms_str` is a prefix of `s`")]
     let s = &s[hms_str.len()..];
     let captures = constants::MS_AND_OFFSET_PATTERN
         .captures(s)
@@ -628,8 +626,7 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
 
     let date = date()?;
     let time = NaiveTime::from_hms_milli_opt(h, m, sec, ms).ok_or_else(|| {
-        // PANIC SAFETY: match for HMS_PATTERN must starts with ASCII character `T`. Slicing `[1..]` skips this character.
-        #[allow(clippy::string_slice)]
+        #[expect(clippy::string_slice, reason = "match for HMS_PATTERN must start with ASCII character `T`. Slicing `[1..]` skips this character.")]
         DateTimeParseError::InvalidHMS(hms_str[1..].into())
     })?;
     let offset: Result<TimeDelta, DateTimeParseError> = if captures.get(4).is_some() {

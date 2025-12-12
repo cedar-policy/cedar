@@ -126,8 +126,10 @@ fn clone_escape_error(e: &EscapeError) -> EscapeError {
 }
 
 impl std::fmt::Display for UnescapeError {
-    // PANIC SAFETY By invariant, the range will always be within the bounds of `input`
-    #[allow(clippy::string_slice)]
+    #[expect(
+        clippy::string_slice,
+        reason = "By invariant, the range will always be within the bounds of `input`"
+    )]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

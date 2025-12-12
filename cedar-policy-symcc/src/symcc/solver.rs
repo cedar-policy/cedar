@@ -210,8 +210,10 @@ impl Solver for LocalSolver {
                 // Read until a line ")\n"
                 loop {
                     let len: usize = self.read_line(&mut output).await?;
-                    // PANIC SAFETY: `output.len() - len` gives the end index of `output` before the `read_line`
-                    #[allow(clippy::string_slice)]
+                    #[expect(
+                        clippy::string_slice,
+                        reason = "`output.len() - len` gives the end index of `output` before the `read_line`"
+                    )]
                     if &output[output.len() - len..] == ")\n" {
                         break;
                     }
