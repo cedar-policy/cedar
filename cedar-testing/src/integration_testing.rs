@@ -25,6 +25,10 @@
 
 use crate::cedar_test_impl::*;
 #[cfg(feature = "entity-manifest")]
+#[expect(
+    deprecated,
+    reason = "still want to test this deprecated fucntion until it is fully removed"
+)]
 use cedar_policy::{compute_entity_manifest, Validator};
 use cedar_policy::{
     Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, Schema, TestEntityLoader,
@@ -313,6 +317,10 @@ pub fn perform_integration_test(
 
         // now check that entity slicing arrives at the same decision
         #[cfg(feature = "entity-manifest")]
+        #[expect(
+            deprecated,
+            reason = "still want to test this deprecated fucntion until it is fully removed"
+        )]
         if should_validate {
             let entity_manifest =
                 compute_entity_manifest(&Validator::new(schema.clone()), policies)
