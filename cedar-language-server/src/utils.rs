@@ -592,6 +592,7 @@ pub(crate) fn is_cursor_in_condition_braces(position: Position, source_text: &st
 }
 
 #[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "tests")]
 pub(crate) mod tests {
     use std::{fs::read_to_string, str::FromStr};
 
@@ -1210,23 +1211,23 @@ permit(
 
     #[test]
     fn test_incomplete_policy_scope() {
-        let (policies, carets) = remove_all_caret_markers(r#"permit(|caret|);"#);
+        let (policies, carets) = remove_all_caret_markers(r"permit(|caret|);");
         let result = get_policy_scope_variable(&policies, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "");
 
-        let (policies, carets) = remove_all_caret_markers(r#"permit(princi|caret|pal);"#);
+        let (policies, carets) = remove_all_caret_markers(r"permit(princi|caret|pal);");
         let result = get_policy_scope_variable(&policies, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");
 
-        let (policies, carets) = remove_all_caret_markers(r#"permit(princi|caret|pal, );"#);
+        let (policies, carets) = remove_all_caret_markers(r"permit(princi|caret|pal, );");
         let result = get_policy_scope_variable(&policies, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");
 
         let (policies, carets) =
-            remove_all_caret_markers(r#"permit(princi|caret|pal, a|caret|ction, );"#);
+            remove_all_caret_markers(r"permit(princi|caret|pal, a|caret|ction, );");
         let result = get_policy_scope_variable(&policies, carets[0]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
         assert_eq!(result.text, "principal");

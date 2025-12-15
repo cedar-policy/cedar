@@ -677,8 +677,7 @@ impl std::fmt::Display for PolicySet {
     }
 }
 
-#[allow(clippy::panic, reason = "tests")]
-#[allow(clippy::indexing_slicing, reason = "tests")]
+#[expect(clippy::panic, clippy::indexing_slicing, reason = "tests")]
 #[cfg(test)]
 mod test {
     use super::*;

@@ -86,12 +86,12 @@ mod test {
 
     #[test]
     fn test_concrete_entity_type_with_schema() {
-        let schema = r#"
+        let schema = r"
           entity Photo {
             private: Bool,
             size: Long
           };
-        "#
+        "
         .parse()
         .unwrap();
         let docs = ResourceDocumentation::new(EntityTypeKind::Concrete(Arc::new(

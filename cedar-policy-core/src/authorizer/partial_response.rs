@@ -509,7 +509,6 @@ fn did_error<'a>(
 }
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing, reason = "testing")]
 mod test {
     use std::{
         collections::HashSet,

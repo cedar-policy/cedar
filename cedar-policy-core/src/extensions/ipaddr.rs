@@ -456,8 +456,8 @@ pub fn extension() -> Extension {
     )
 }
 
-#[allow(clippy::panic, clippy::cognitive_complexity, reason = "Unit Test Code")]
 #[cfg(test)]
+#[expect(clippy::panic, clippy::cognitive_complexity, reason = "Unit Test Code")]
 mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};

@@ -113,8 +113,7 @@ const BIDI_CHARS: [char; 9] = [
     '\u{2069}',
 ];
 
-#[allow(clippy::panic, reason = "unit tests")]
-#[allow(clippy::indexing_slicing, reason = "unit tests")]
+#[expect(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 #[cfg(test)]
 mod test {
     use super::*;
@@ -146,7 +145,7 @@ mod test {
     }
 
     #[test]
-    #[allow(clippy::invisible_characters)]
+    #[expect(clippy::invisible_characters, reason = "part of the test")]
     fn idents() {
         assert_eq!(
             permissable_ident(None, &PolicyID::from_string("0"), "test"),
@@ -253,7 +252,7 @@ mod test {
     }
 
     #[test]
-    #[allow(clippy::invisible_characters)]
+    #[expect(clippy::invisible_characters, reason = "part of the test")]
     fn b() {
         let src = r#"
         permit(principal, action, resource) when {

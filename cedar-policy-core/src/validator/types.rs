@@ -1428,9 +1428,8 @@ impl Primitive {
     }
 }
 
-#[allow(clippy::panic, reason = "unit tests")]
-#[allow(clippy::indexing_slicing, reason = "unit tests")]
 #[cfg(test)]
+#[expect(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 mod test {
     use super::*;
     use crate::validator::json_schema;

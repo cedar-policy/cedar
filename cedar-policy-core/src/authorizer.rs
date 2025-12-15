@@ -182,7 +182,6 @@ impl std::fmt::Debug for Authorizer {
     }
 }
 
-#[allow(clippy::panic, reason = "Unit Test Code")]
 #[cfg(test)]
 mod test {
     use super::*;

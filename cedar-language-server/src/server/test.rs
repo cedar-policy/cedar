@@ -15,6 +15,8 @@
  */
 
 #![cfg(test)]
+#![expect(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
+
 use crate::server::Backend;
 use crate::server::Client;
 use crate::utils::tests::remove_all_caret_markers;
@@ -811,7 +813,7 @@ async fn associated_schema_change_sends_linked_diagnostics() {
     let policy_diagnostic = &get_diagnostics(&backend, &policy_uri)[0];
     assert_eq!(
         policy_diagnostic.message,
-        r#"the types Long and String are not compatible. for policy `policy0`, both operands to a `==` expression must have compatible types. Types must be exactly equal to be compatible"#
+        r"the types Long and String are not compatible. for policy `policy0`, both operands to a `==` expression must have compatible types. Types must be exactly equal to be compatible"
     );
 }
 

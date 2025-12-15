@@ -142,7 +142,7 @@ mod test {
     use super::*;
 
     fn test_schema() -> ValidatorSchema {
-        r#"
+        r"
           entity Photo;
           entity User {
             name: String,
@@ -175,7 +175,7 @@ mod test {
              principal: User,
              resource: Photo
           };
-        "#
+        "
         .parse()
         .unwrap()
     }

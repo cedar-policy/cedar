@@ -86,11 +86,11 @@ mod test {
 
     #[test]
     fn test_concrete_entity_type_with_schema() {
-        let schema = r#"
+        let schema = r"
           entity User {
             age: Long
           };
-        "#
+        "
         .parse()
         .unwrap();
         let docs = PrincipalDocumentation::new(EntityTypeKind::Concrete(Arc::new(

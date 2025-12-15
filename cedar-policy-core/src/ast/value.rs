@@ -721,7 +721,6 @@ impl<T: Into<Literal>> From<T> for ValueKind {
     }
 }
 
-#[allow(clippy::panic, reason = "Unit Test Code")]
 #[cfg(test)]
 mod test {
     use super::*;

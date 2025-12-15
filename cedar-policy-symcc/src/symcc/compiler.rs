@@ -713,6 +713,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
 }
 
 #[cfg(test)]
+#[expect(clippy::panic, reason = "unit tests")]
 mod decimal_tests {
 
     use cedar_policy_core::ast::Name;
@@ -859,6 +860,7 @@ mod decimal_tests {
 }
 
 #[cfg(test)]
+#[expect(clippy::panic, reason = "unit tests")]
 mod datetime_tests {
     use cedar_policy_core::ast::Name;
 

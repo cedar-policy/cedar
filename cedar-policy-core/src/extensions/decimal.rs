@@ -322,7 +322,7 @@ pub fn extension() -> Extension {
 }
 
 #[cfg(test)]
-#[allow(clippy::panic, reason = "Unit Test Code")]
+#[expect(clippy::panic, reason = "Unit Test Code")]
 mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};

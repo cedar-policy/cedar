@@ -715,7 +715,7 @@ mod preserves_source_locations {
     use json_schema::{EntityType, EntityTypeKind};
 
     #[test]
-    #[allow(clippy::cognitive_complexity)]
+    #[expect(clippy::cognitive_complexity, reason = "testing code")]
     fn entity_action_and_common_type_decls() {
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
             r#"
@@ -800,7 +800,7 @@ mod preserves_source_locations {
     }
 
     #[test]
-    #[allow(clippy::cognitive_complexity)]
+    #[expect(clippy::cognitive_complexity, reason = "testing code")]
     fn types() {
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
             r#"

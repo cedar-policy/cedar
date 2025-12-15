@@ -143,8 +143,8 @@ where
     }
 }
 
-#[allow(clippy::panic, reason = "Unit Test Code")]
 #[cfg(test)]
+#[expect(clippy::panic, reason = "Unit Test Code")]
 mod test {
     use super::*;
 

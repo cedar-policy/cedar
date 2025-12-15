@@ -571,10 +571,13 @@ pub enum TCComputation {
     ComputeNow,
 }
 
-#[allow(clippy::panic, reason = "Unit Test Code")]
 #[cfg(test)]
-#[allow(clippy::panic, reason = "unit tests")]
-#[allow(clippy::cognitive_complexity)]
+#[expect(
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    reason = "unit tests"
+)]
 mod json_parsing_tests {
     use super::*;
     use crate::{
@@ -2216,9 +2219,8 @@ mod json_parsing_tests {
     }
 }
 
-#[allow(clippy::panic, reason = "Unit Test Code")]
-#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
+#[expect(clippy::panic, reason = "Unit Test Code")]
 mod entities_tests {
     use super::*;
     use cool_asserts::assert_matches;
@@ -2464,9 +2466,8 @@ mod entities_tests {
     }
 }
 
-#[allow(clippy::panic, reason = "Unit Test Code")]
-#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
+#[expect(clippy::panic, clippy::cognitive_complexity, reason = "Unit Test Code")]
 mod schema_based_parsing_tests {
     use super::json::NullEntityTypeDescription;
     use super::*;

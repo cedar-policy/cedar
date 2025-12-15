@@ -989,8 +989,6 @@ fn test_link_samples() {
 }
 
 #[rstest]
-#[allow(clippy::expect_used, reason = "this is all test code")]
-#[allow(clippy::unwrap_used, reason = "this is all test code")]
 #[track_caller]
 fn test_format_samples(#[files("sample-data/**/polic*.cedar")] path: PathBuf) {
     let policies_file = path.to_str().unwrap();

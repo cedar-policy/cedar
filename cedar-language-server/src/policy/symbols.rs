@@ -84,6 +84,7 @@ fn to_symbol(policy: &Template) -> Option<DocumentSymbol> {
 }
 
 #[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "testing code")]
 mod test {
     use itertools::Itertools;
 

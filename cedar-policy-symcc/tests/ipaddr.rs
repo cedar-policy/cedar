@@ -38,7 +38,7 @@ fn sample_schema() -> Schema {
 }
 
 fn env_for_sample_schema<'a>(schema: &'a Schema) -> Environments<'a> {
-    Environments::new(&schema, "User", "Action::\"View\"", "Thing")
+    Environments::new(schema, "User", "Action::\"View\"", "Thing")
 }
 
 #[tokio::test]

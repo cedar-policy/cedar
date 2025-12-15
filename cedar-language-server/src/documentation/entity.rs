@@ -144,7 +144,7 @@ mod test {
     use insta::assert_snapshot;
 
     fn test_schema() -> ValidatorSchema {
-        r#"
+        r"
           entity Photo;
           entity User {
             name: String,
@@ -155,7 +155,7 @@ mod test {
              principal: User,
              resource: Photo,
           };
-        "#
+        "
         .parse()
         .unwrap()
     }

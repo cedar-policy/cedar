@@ -182,8 +182,8 @@ pub fn parse_expr_tolerant(text: &str) -> Result<Node<Option<cst::Expr>>, err::P
     parse_collect_errors_tolerant(&*EXPR_PARSER, grammar::ExprParser::parse, text)
 }
 
-#[allow(clippy::panic, reason = "unit test code")]
-#[allow(clippy::indexing_slicing, reason = "unit test code")]
+#[expect(clippy::panic, reason = "unit test code")]
+#[expect(clippy::indexing_slicing, reason = "unit test code")]
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "tolerant-ast")]
@@ -1058,7 +1058,6 @@ mod tests {
         );
     }
 
-    #[allow(unreachable_code)]
     #[test]
     fn policies6() {
         // test that an error doesn't stop the parser

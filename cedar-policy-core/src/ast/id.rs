@@ -401,8 +401,8 @@ impl<'a> arbitrary::Arbitrary<'a> for AnyId {
     }
 }
 
-#[allow(clippy::panic, reason = "unit-test code")]
 #[cfg(test)]
+#[expect(clippy::panic, reason = "unit-test code")]
 mod test {
     use super::*;
 
