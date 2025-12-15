@@ -158,7 +158,10 @@ impl PolicyCompletionProvider {
     }
 }
 
-#[expect(clippy::literal_string_with_formatting_args, reason = "strings used by LSP")]
+#[expect(
+    clippy::literal_string_with_formatting_args,
+    reason = "strings used by LSP"
+)]
 #[cfg(test)]
 pub(crate) mod tests {
     use std::vec;

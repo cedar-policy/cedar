@@ -1058,7 +1058,10 @@ mod tests {
         );
     }
 
-    #[expect(unreachable_code, reason = "reachable depending on combinations of features")]
+    #[expect(
+        unreachable_code,
+        reason = "reachable depending on combinations of features"
+    )]
     #[test]
     fn policies6() {
         // test that an error doesn't stop the parser

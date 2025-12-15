@@ -402,7 +402,10 @@ const NAMESPACE_SNIPPET: &str = r"namespace ${1} {
 ";
 
 #[cfg(test)]
-#[expect(clippy::literal_string_with_formatting_args, reason = "strings used by LSP")]
+#[expect(
+    clippy::literal_string_with_formatting_args,
+    reason = "strings used by LSP"
+)]
 mod test {
     use super::CedarSchemaParser;
     use crate::utils::tests::remove_caret_marker;

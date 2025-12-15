@@ -572,7 +572,12 @@ pub enum TCComputation {
 }
 
 #[cfg(test)]
-#[expect(clippy::panic, clippy::indexing_slicing, clippy::cognitive_complexity, reason = "unit tests")]
+#[expect(
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    reason = "unit tests"
+)]
 mod json_parsing_tests {
     use super::*;
     use crate::{

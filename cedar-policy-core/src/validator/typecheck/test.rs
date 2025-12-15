@@ -15,7 +15,12 @@
  */
 
 #![cfg(test)]
-#![expect(clippy::panic, clippy::indexing_slicing, clippy::cognitive_complexity, reason = "unit tests")]
+#![expect(
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    reason = "unit tests"
+)]
 
 pub(crate) mod test_utils;
 
