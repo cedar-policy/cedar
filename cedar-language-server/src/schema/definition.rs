@@ -220,15 +220,20 @@ pub(crate) fn find_common_type_definition(type_name: &str, schema_text: &str) ->
         // Convert character offset to Position (line, character)
         let start = offset_to_position(schema_text, start_offset);
 
+        // Get the schema text starting from the start of the type pattern
+        // match. Not `mat.as_str()` because we want the rest of `schema_text`,
+        // not just the match.
+        #[expect(
+            clippy::string_slice,
+            reason = "index returned from find() is valid byte index"
+        )]
+        let from_match_start = &schema_text[start_offset..];
+
         // Find the end of the type definition (looking for semicolon or next type definition)
-        let mut end_offset = schema_text[start_offset..]
+        let mut end_offset = from_match_start
             .find(';')
             .map(|pos| start_offset + pos + 1)
-            .or_else(|| {
-                schema_text[start_offset..]
-                    .find("type ")
-                    .map(|pos| start_offset + pos)
-            })
+            .or_else(|| from_match_start.find("type ").map(|pos| start_offset + pos))
             .unwrap_or(schema_text.len());
 
         // Ensure we don't go past the end of the schema

@@ -29,11 +29,19 @@ impl<'a> SchemaActionLoc<'a> {
     // schema and get rid of this whole mess.
     pub(crate) fn context_loc(&self) -> Option<Loc> {
         // Get the full text within this location
+        #[expect(
+            clippy::string_slice,
+            reason = "SourceSpan offset and len constructed by parser to be valid byte index"
+        )]
         let text = &self.0.src[self.0.span.offset()..self.0.span.offset() + self.0.span.len()];
 
         // First find if we're inside an appliesTo block
         if let Some(applies_to_pos) = text.find("appliesTo") {
             // Extract everything from "appliesTo" forward
+            #[expect(
+                clippy::string_slice,
+                reason = "index returned from find() is valid byte index"
+            )]
             let applies_to_text = &text[applies_to_pos..];
 
             // Find "context:" within the appliesTo block
@@ -42,6 +50,10 @@ impl<'a> SchemaActionLoc<'a> {
                 let after_context = absolute_context_pos + "context:".len();
 
                 // Get an iterator over characters with their byte positions
+                #[expect(
+                    clippy::string_slice,
+                    reason = "after_context is an index from `find` advanced by the length of the matched pattern"
+                )]
                 let mut chars = text[after_context..].char_indices();
                 let first_non_whitespace = loop {
                     let (p, c) = chars.next()?;

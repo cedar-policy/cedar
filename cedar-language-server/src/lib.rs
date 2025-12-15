@@ -20,7 +20,6 @@
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap,
-    clippy::string_slice,
     reason = "existing code"
 )]
 #![cfg_attr(not(feature = "bin"), allow(dead_code, unused_imports))]
