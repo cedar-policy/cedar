@@ -1925,4 +1925,10 @@ pub(crate) mod tests {
         "permit(principal, action\n |caret|",
         Vec::<String>::new()
     );
+
+    no_schema_completion_test!(
+        policy_condition_check_misaligned_char_boundary,
+        "🐛permi(|caret|",
+        Vec::<String>::new()
+    );
 }

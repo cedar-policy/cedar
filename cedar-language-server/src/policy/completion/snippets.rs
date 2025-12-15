@@ -116,11 +116,10 @@ fn get_text_before_cursor(text: &str, cursor_position: Position) -> String {
                 result.push('\n');
             }
             std::cmp::Ordering::Equal => {
-                if cursor_position.character as usize <= line.len() {
-                    result.push_str(&line[..cursor_position.character as usize]);
-                } else {
-                    result.push_str(line);
-                }
+                result.push_str(
+                    line.get(..cursor_position.character as usize)
+                        .unwrap_or(line),
+                );
                 break;
             }
             std::cmp::Ordering::Greater => {
@@ -142,8 +141,10 @@ fn has_unclosed_policy_elements(text: &str) -> bool {
         if c == '(' {
             parens_count += 1;
 
-            // Check if this opening parenthesis is part of a policy declaration
-            if i >= 6 && matches!(&text[i - 6..=i], "permit(" | "forbid(") {
+            // Check if this opening parenthesis is part of a policy
+            // declaration.  Byte index `i - 6` might not be on a character
+            // boundary, but `get` handles this gracefully.
+            if matches!(text.get(i - 6..=i), Some("permit(" | "forbid(")) {
                 in_policy_declaration = true;
             }
         } else if c == ')' {
@@ -288,4 +289,29 @@ pub(crate) fn condition_completions(doc_cx: &DocumentContext<'_>) -> Vec<Complet
         HasCompletionItem.into(),
         LikeCompletionItem.into(),
     ]
+}
+
+#[cfg(test)]
+mod test {
+    use super::has_unclosed_policy_elements;
+
+    #[test]
+    fn test_has_unclosed_policy_elements() {
+        assert!(has_unclosed_policy_elements("permit("));
+        assert!(has_unclosed_policy_elements("forbid("));
+        assert!(has_unclosed_policy_elements(
+            "permit(principal, action, resource"
+        ));
+
+        assert!(!has_unclosed_policy_elements(""));
+        assert!(!has_unclosed_policy_elements(
+            "permit(principal, action, resource);"
+        ));
+        assert!(!has_unclosed_policy_elements(
+            "forbid(principal, action, resource);"
+        ));
+
+        // condition check would not be on char boundary if written incorrectly.
+        assert!(!has_unclosed_policy_elements("🐛permi("));
+    }
 }

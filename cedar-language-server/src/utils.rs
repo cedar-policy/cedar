@@ -96,12 +96,22 @@ pub(crate) fn to_lsp_diagnostics<'a>(
     diagnostics
 }
 
+/// The function will panic if `source_span.offset()` or
+/// `source_space().offset() + source_span.len()` is not a valid index into str.
 pub(crate) fn to_range(source_span: &SourceSpan, src: &str) -> Range {
+    #[expect(
+        clippy::string_slice,
+        reason = "Callers is responsible for providing valid byte index"
+    )]
     let text = &src[..source_span.offset()];
     let start_line = text.chars().filter(|&c| c == '\n').count();
     let start_col = text.chars().rev().take_while(|&c| c != '\n').count();
 
     let end = source_span.offset() + source_span.len();
+    #[expect(
+        clippy::string_slice,
+        reason = "Callers is responsible for providing valid byte index"
+    )]
     let text = &src[..end];
     let end_line = text.chars().filter(|&c| c == '\n').count();
     let end_col = text.chars().rev().take_while(|&c| c != '\n').count();
@@ -154,6 +164,10 @@ pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<&st
     let is_word_char = |c: char| c.is_alphanumeric() || c == '_' || c == ':' || c == '=';
 
     // Find the start of the word
+    #[expect(
+        clippy::string_slice,
+        reason = "char_pos from line.char_indices() guaranteed valid char boundary"
+    )]
     let start = line[..char_pos]
         .char_indices()
         .rev()
@@ -161,6 +175,10 @@ pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<&st
         .map_or(0, |(i, _)| i + 1);
 
     // Find the end of the word
+    #[expect(
+        clippy::string_slice,
+        reason = "char_pos from line.char_indices() guaranteed valid char boundary"
+    )]
     let end = line[char_pos..]
         .char_indices()
         .find(|(_, c)| !is_word_char(*c))
@@ -175,11 +193,6 @@ pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option
     let line = text.lines().nth(position.line as usize)?;
     let char_pos = position.character as usize;
 
-    // Check if we're within the line bounds
-    if char_pos > line.len() {
-        return None;
-    }
-
     // Define all possible operators
     let operators = [
         "&&", "||", "!=", "==", ">=", "<=", "!", "+", "-", "*", "<", ">",
@@ -188,15 +201,18 @@ pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option
     // Helper function to check if a character could be part of an operator
     let is_operator_char = |c: char| "!&|=<>+-*".contains(c);
 
+    // Will return `None` here if cursor is out of line bounds or not on char boundary.
+    let (before_cursor, after_cursor) = line.split_at_checked(char_pos)?;
+
     // Find the start of the operator
-    let start = line[..char_pos]
+    let start = before_cursor
         .char_indices()
         .rev()
         .find(|(_, c)| !is_operator_char(*c))
         .map_or(0, |(i, _)| i + 1);
 
     // Find the end of the operator
-    let end = line[char_pos..]
+    let end = after_cursor
         .char_indices()
         .find(|(_, c)| !is_operator_char(*c))
         .map_or(line.len(), |(i, _)| char_pos + i);
@@ -225,15 +241,20 @@ fn get_policy_scope_ranges(policy_text: &str) -> Vec<Range> {
     // Identify effect keywords and their parentheses
     for (line_idx, line) in policy_text.lines().enumerate() {
         for (char_idx, char) in line.char_indices() {
-            let substring = &line[char_idx..];
+            #[expect(
+                clippy::unwrap_used,
+                reason = "char_idx from line.char_indices() is valid byte index"
+            )]
+            let (before_char, after_char) = line.split_at_checked(char_idx).unwrap();
 
             // Check for effect keywords
             if !in_effect_keyword
-                && (substring.starts_with("permit") || substring.starts_with("forbid"))
-                && (char_idx == 0
-                    || !line[..char_idx]
+                && (after_char.starts_with("permit") || after_char.starts_with("forbid"))
+                && (char_idx == 0 || {
+                    !before_char
                         .trim_end()
-                        .ends_with(|c: char| c.is_alphanumeric() || c == '_'))
+                        .ends_with(|c: char| c.is_alphanumeric() || c == '_')
+                })
             {
                 in_effect_keyword = true;
                 continue;
@@ -329,8 +350,16 @@ pub(crate) fn get_policy_scope_variable(
         };
     };
 
-    // Now find the commas within this policy to determine the variables
+    // Now find the commas within this policy to determine the variables.
+    // For every tuple in `param_section`, the first element must be a line
+    // number in `policy_text` and the second must be a byte index into that
+    // line. The tuples are all either `current_start` or `(line_num, char_pos)`
+    // where `char_pos` comes from `line.char_indices()` and `current_start` is
+    // valid (see below).
     let mut param_sections: Vec<((usize, usize), (usize, usize))> = Vec::new();
+    // We assume that `policy_scope_range_containing_cursor` gives valid offsets
+    // _and_ that the start of the scope range is always before the ASCII
+    // character `(`, making the `+1` yield a valid byte index.
     let mut current_start = (
         policy_range.start.line as usize,
         policy_range.start.character as usize + 1,
@@ -350,7 +379,7 @@ pub(crate) fn get_policy_scope_variable(
             0
         };
 
-        for (char_pos, c) in line.chars().enumerate().skip(start_char as usize) {
+        for (char_pos, c) in line.char_indices().skip(start_char as usize) {
             match c {
                 '(' => paren_depth += 1,
                 ')' => {
@@ -367,6 +396,7 @@ pub(crate) fn get_policy_scope_variable(
                     // Only count commas at top level (not within arrays)
                     comma_positions.push((line_num, char_pos));
                     param_sections.push((current_start, (line_num, char_pos)));
+                    // `char_pos + 1` is still a valid byte index because character as `char_pos` is ASCII `,`
                     current_start = (line_num, char_pos + 1);
                 }
                 _ => {}
@@ -401,6 +431,10 @@ pub(crate) fn get_policy_scope_variable(
                 reason = "Line numbers in `param_sections` are always indexes from enumerating `lines()`"
             )]
             let line = policy_text.lines().nth(*start_line).unwrap();
+            #[expect(
+                clippy::string_slice,
+                reason = "Indices are valid based on comments on definition of `param_sections` above"
+            )]
             line[*start_pos..*end_pos].trim().into()
         } else {
             // Handle multi-line parameters
@@ -412,8 +446,16 @@ pub(crate) fn get_policy_scope_variable(
                 .skip(*start_line)
             {
                 if line_num == *start_line {
+                    #[expect(
+                        clippy::string_slice,
+                        reason = "start_pos is a valid byte index based on comments on definition of `param_sections` above"
+                    )]
                     text.push_str(&item[*start_pos..]);
                 } else if line_num == *end_line {
+                    #[expect(
+                        clippy::string_slice,
+                        reason = "end_pos is a valid byte index based on comments on definition of `param_sections` above"
+                    )]
                     text.push_str(&item[..*end_pos]);
                 } else {
                     text.push_str(item);
@@ -1191,6 +1233,23 @@ permit(
         let result = get_policy_scope_variable(&policies, carets[1]);
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
+    }
+
+    #[test]
+    fn get_policy_scope_unicode() {
+        let (policy, carets) = remove_all_caret_markers(
+            r#"permit(pr|caret|incipal == Bug::"🐛", act|caret|ion, re|caret|source);"#,
+        );
+
+        let result = get_policy_scope_variable(&policy, carets[0]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, r#"principal == Bug::"🐛""#);
+        let result = get_policy_scope_variable(&policy, carets[1]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action");
+        let result = get_policy_scope_variable(&policy, carets[2]);
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, "resource");
     }
 
     #[test]

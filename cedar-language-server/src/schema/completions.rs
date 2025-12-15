@@ -108,6 +108,10 @@ impl CedarSchemaParser {
 
         for (i, line) in doc_text.lines().enumerate() {
             let i = i as isize;
+            #[expect(
+                clippy::string_slice,
+                reason = "index returned from find() is valid byte index"
+            )]
             let line_pre_comment = line.find("//").map_or(line, |pos| &line[..pos]).trim();
 
             if line_pre_comment.is_empty() {
@@ -221,6 +225,10 @@ impl CedarSchemaParser {
                     if let Some(range) = find_range(line, line_idx as usize, trimmed_id) {
                         // Extract the actual action ID, removing quotes if present
                         let actual_id = if is_quoted && trimmed_id.len() >= 2 {
+                            #[expect(
+                                clippy::string_slice,
+                                reason = r#"`is_quoted` is `true`, so trimmed id starts and ends with ASCII '"'"#
+                            )]
                             &trimmed_id[1..trimmed_id.len() - 1]
                         } else {
                             trimmed_id
@@ -243,11 +251,9 @@ impl CedarSchemaParser {
         let line_index = position.line as usize;
 
         let line_text = lines.get(line_index)?;
-        let line_prefix = if (position.character as usize) <= line_text.len() {
-            &line_text[..position.character as usize]
-        } else {
-            line_text // Handle out-of-bounds case
-        };
+        let line_prefix = line_text
+            .get(..position.character as usize)
+            .unwrap_or(line_text);
 
         let trimmed_prefix = line_prefix.trim();
 
