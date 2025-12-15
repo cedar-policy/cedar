@@ -2430,10 +2430,6 @@ impl PolicySet {
     }
 
     /// Build the [`PolicySet`] from just the AST information
-    #[cfg_attr(
-        not(feature = "protobufs"),
-        expect(dead_code, reason = "only used with protobufs feature")
-    )]
     pub(crate) fn from_ast(ast: ast::PolicySet) -> Result<Self, PolicySetError> {
         Self::from_policies(ast.into_policies().map(Policy::from_ast))
     }
@@ -3312,10 +3308,6 @@ impl Template {
         })
     }
 
-    #[cfg_attr(
-        not(feature = "protobufs"),
-        expect(dead_code, reason = "used only with protobufs feature")
-    )]
     pub(crate) fn from_ast(ast: ast::Template) -> Self {
         Self {
             lossless: LosslessPolicy::Est(ast.clone().into()),
