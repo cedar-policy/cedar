@@ -21,7 +21,8 @@ pub mod models {
             missing_docs,
             clippy::doc_markdown,
             clippy::derive_partial_eq_without_eq,
-            clippy::module_name_repetitions
+            clippy::module_name_repetitions,
+            reason = "generated code"
         )]
         include!(concat!(env!("OUT_DIR"), "/cedar_policy_core.rs"));
     }
@@ -29,7 +30,8 @@ pub mod models {
         #![allow(
             missing_docs,
             clippy::doc_markdown,
-            clippy::derive_partial_eq_without_eq
+            clippy::derive_partial_eq_without_eq,
+            reason = "generated code"
         )]
         include!(concat!(env!("OUT_DIR"), "/cedar_policy_validator.rs"));
     }

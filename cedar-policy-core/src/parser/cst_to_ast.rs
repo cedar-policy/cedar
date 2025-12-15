@@ -230,8 +230,7 @@ impl Node<Option<cst::Policy>> {
     ) -> Result<Either<ast::StaticPolicy, ast::Template>> {
         let t = self.to_policy_template(id)?;
         if t.slots().count() == 0 {
-            // PANIC SAFETY: A `Template` with no slots will successfully convert to a `StaticPolicy`
-            #[allow(clippy::expect_used)]
+            #[expect(clippy::expect_used, reason = "A `Template` with no slots will successfully convert to a `StaticPolicy`")]
             let p = ast::StaticPolicy::try_from(t).expect("internal invariant violation: a template with no slots should be a valid static policy");
             Ok(Either::Left(p))
         } else {
@@ -247,8 +246,7 @@ impl Node<Option<cst::Policy>> {
     ) -> Result<Either<ast::StaticPolicy, ast::Template>> {
         let t = self.to_policy_template_tolerant(id)?;
         if t.slots().count() == 0 {
-            // PANIC SAFETY: A `Template` with no slots will successfully convert to a `StaticPolicy`
-            #[allow(clippy::expect_used)]
+            #[expect(clippy::expect_used, reason = "A `Template` with no slots will successfully convert to a `StaticPolicy`")]
             let p = ast::StaticPolicy::try_from(t).expect("internal invariant violation: a template with no slots should be a valid static policy");
             Ok(Either::Left(p))
         } else {
@@ -1158,7 +1156,7 @@ fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
 ) -> Result<Build::Expr> {
     #[cfg(feature = "tolerant-ast")]
     return build_ast_error_node_if_possible::<Build>(error, loc);
-    #[allow(unreachable_code)]
+    #[cfg(not(feature = "tolerant-ast"))]
     Err(error)
 }
 
@@ -1577,8 +1575,10 @@ impl Node<Option<cst::Add>> {
                             })?,
                         )),
                         (ExprOrSpecial::Var { var, .. }, rest) => {
-                            // PANIC SAFETY: any variable should be a valid identifier
-                            #[allow(clippy::unwrap_used)]
+                            #[expect(
+                                clippy::unwrap_used,
+                                reason = "any variable should be a valid identifier"
+                            )]
                             let first = construct_string_from_var(var).parse().unwrap();
                             Ok(Either::Right(construct_attrs(first, rest)?))
                         }
@@ -1790,7 +1790,7 @@ impl Node<Option<cst::Member>> {
     /// `next` access applied to `head`, and the second element is the new tail of
     /// acessors. In most cases, `tail` is returned unmodified, but in the method
     /// call case we need to pull off the `Call` element containing the arguments.
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity, reason = "judged readable enough")]
     fn build_expr_accessor<'a, Build: ExprBuilder>(
         &self,
         head: Build::Expr,
@@ -2002,7 +2002,6 @@ impl Node<Option<cst::Primary>> {
                         loc: s.loc.clone(),
                     })
             }
-            #[allow(clippy::manual_map)]
             cst::Primary::Name(n) => {
                 // ignore errors in the case where `n` isn't a var - we'll get them elsewhere
                 if let Some(var) = n.maybe_to_var() {
@@ -2291,7 +2290,10 @@ impl Node<Option<cst::RecInit>> {
 
 /// This section (construct_*) exists to handle differences between standard ast constructors and
 /// the needs or conveniences here. Especially concerning source location data.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "policies just have this many components"
+)]
 fn construct_template_policy(
     id: ast::PolicyID,
     annotations: ast::Annotations,
@@ -2364,11 +2366,12 @@ fn construct_expr_rel<Build: ExprBuilder>(
     }
 }
 
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::indexing_slicing)]
-#[allow(clippy::cognitive_complexity)]
+#[allow(
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    reason = "Unit Test Code"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

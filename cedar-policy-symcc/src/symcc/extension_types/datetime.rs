@@ -188,8 +188,7 @@ impl FromStr for Datetime {
         const MAX_OFFSET_SECONDS: i32 = 86400; // 24 hours in seconds
 
         // Try parsing with each format
-        // PANIC SAFETY
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Should be able to construct a datetime with hour = 0, minute = 0, seconds = 0"
         )]
@@ -247,7 +246,7 @@ impl From<i64> for Datetime {
     }
 }
 
-#[allow(
+#[expect(
     clippy::derivable_impls,
     reason = "Make explicit as require the default be 0"
 )]
@@ -313,8 +312,11 @@ impl Duration {
                 let pos = prefix
                     .rfind(|c: char| !c.is_ascii_digit())
                     .map_or(0, |i| i + 1);
-                // PANIC SAFETY: by construction pos must be a valid index into prefix
-                let (prefix, digits) = prefix.split_at(pos);
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "by construction pos must be a valid index into prefix"
+                )]
+                let (prefix, digits) = prefix.split_at_checked(pos).unwrap();
 
                 let val: i64 = BigInt::from_biguint(
                     if is_neg { Sign::Minus } else { Sign::Plus },
@@ -383,7 +385,7 @@ impl FromStr for Duration {
     }
 }
 
-#[allow(
+#[expect(
     clippy::derivable_impls,
     reason = "Make explicit as require the default be 0"
 )]

@@ -57,8 +57,7 @@ pub(crate) fn policy_goto_definition(
 
     let cst = policies
         .into_iter()
-        .filter(|p| position_within_loc(position, p.loc.as_ref()))
-        .next_back()?;
+        .rfind(|p| position_within_loc(position, p.loc.as_ref()))?;
 
     let policy = cst
         .to_policy_template(PolicyID::from_smolstr("0".into()))
@@ -74,8 +73,10 @@ pub(crate) fn policy_goto_definition(
         PolicyLanguageFeatures::default(),
     );
 
-    // PANIC SAFETY: We just constructed `d_cx` with a schema, so it will be present here.
-    #[allow(clippy::unwrap_used)]
+    #[expect(
+        clippy::unwrap_used,
+        reason = "We just constructed `d_cx` with a schema, so it will be present here"
+    )]
     let validator_ref = d_cx.schema().unwrap();
 
     let schema_ranges =

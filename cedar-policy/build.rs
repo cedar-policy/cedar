@@ -19,11 +19,13 @@ fn main() {
     generate_schemas();
 }
 
-#[cfg(feature = "protobufs")]
 /// Reads protobuf schema files (.proto) and generates Rust modules
+#[cfg(feature = "protobufs")]
+#[expect(
+    clippy::expect_used,
+    reason = "panics in build.rs are acceptable, they just fail the build"
+)]
 fn generate_schemas() {
-    // PANIC SAFETY: panics in build.rs are acceptable, they just fail the build
-    #[allow(clippy::expect_used)]
     prost_build::compile_protos(
         &[
             "./protobuf_schema/core.proto",

@@ -15,10 +15,8 @@
  */
 
 #![cfg(test)]
-// PANIC SAFETY unit tests
-#![allow(clippy::panic)]
-// PANIC SAFETY unit tests
-#![allow(clippy::indexing_slicing)]
+#![allow(clippy::panic, reason = "unit tests")]
+#![allow(clippy::indexing_slicing, reason = "unit tests")]
 #![allow(clippy::cognitive_complexity)]
 
 pub(crate) mod test_utils;

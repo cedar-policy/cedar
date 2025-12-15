@@ -506,8 +506,7 @@ impl FromIterator<Value> for Set {
                     value: ValueKind::Lit(lit),
                     ..
                 } => lit,
-                // PANIC SAFETY: This is unreachable as every item in `literals` matches ValueKind::Lit
-                #[allow(clippy::unreachable)]
+                #[expect(clippy::unreachable, reason = "This is unreachable as every item in `literals` matches ValueKind::Lit")]
                 _ => unreachable!(),
             }))
         } else {
@@ -663,8 +662,7 @@ pub trait BoundedToString {
 impl<T: BoundedDisplay> BoundedToString for T {
     fn to_string(&self, n: Option<usize>) -> String {
         let mut s = String::new();
-        // PANIC SAFETY: `std::fmt::Write` does not return errors when writing to a `String`
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "`std::fmt::Write` does not return errors when writing to a `String`")]
         BoundedDisplay::fmt(self, &mut s, n).expect("a `BoundedDisplay` implementation returned an error when writing to a `String`, which shouldn't happen");
         s
     }
@@ -723,8 +721,7 @@ impl<T: Into<Literal>> From<T> for ValueKind {
     }
 }
 
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
+#[allow(clippy::panic, reason = "Unit Test Code")]
 #[cfg(test)]
 mod test {
     use super::*;

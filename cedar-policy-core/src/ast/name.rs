@@ -416,13 +416,11 @@ impl FromStr for Name {
     }
 }
 
-// PANIC SAFETY: this is a valid Regex pattern
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used, reason = "this is a valid Regex pattern")]
 static VALID_ANY_IDENT_REGEX: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| Regex::new("^[_a-zA-Z][_a-zA-Z0-9]*$").unwrap());
 
-// PANIC SAFETY: this is a valid Regex pattern
-#[allow(clippy::unwrap_used)]
+#[expect(clippy::unwrap_used, reason = "this is a valid Regex pattern")]
 static VALID_NAME_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new("^[_a-zA-Z][_a-zA-Z0-9]*(?:::[_a-zA-Z][_a-zA-Z0-9]*)*$").unwrap()
 });
@@ -511,8 +509,10 @@ impl Name {
     /// Get the basename of the [`Name`] (ie, with namespaces stripped).
     /// Return an [`UnreservedId`]
     pub fn basename(&self) -> UnreservedId {
-        // PANIC SAFETY: Any component of a `Name` is a `UnreservedId`
-        #![allow(clippy::unwrap_used)]
+        #![allow(
+            clippy::unwrap_used,
+            reason = "Any component of a `Name` is a `UnreservedId`"
+        )]
         self.0.basename().clone().try_into().unwrap()
     }
 
@@ -639,8 +639,10 @@ impl<'a> arbitrary::Arbitrary<'a> for Name {
             .map(|_| u.arbitrary())
             .collect::<Result<Vec<_>, _>>()?;
         let name = InternalName::new(basename.into(), path.into_iter().map(|id| id.into()), None);
-        // PANIC SAFETY: `name` is made of `UnreservedId`s and thus should be a valid `Name`
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "`name` is made of `UnreservedId`s and thus should be a valid `Name`"
+        )]
         Ok(name.try_into().unwrap())
     }
 

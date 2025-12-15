@@ -143,8 +143,7 @@ where
     }
 }
 
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
+#[allow(clippy::panic, reason = "Unit Test Code")]
 #[cfg(test)]
 mod test {
     use super::*;

@@ -218,26 +218,26 @@ pub enum SchemaError {
     /// This error variant is deprecated and will never be returned.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[allow(deprecated)]
     #[deprecated = "this error is deprecated and should never be returned"]
+    #[expect(deprecated, reason = "inner variant is deprecated too")]
     ActionAttributesContainEmptySet(#[from] schema_errors::ActionAttributesContainEmptySetError),
     /// This error variant is deprecated and will never be returned.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[allow(deprecated)]
     #[deprecated = "this error is deprecated and should never be returned"]
+    #[expect(deprecated, reason = "inner variant is deprecated too")]
     UnsupportedActionAttribute(#[from] schema_errors::UnsupportedActionAttributeError),
     /// This error variant is deprecated and will never be returned.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[allow(deprecated)]
     #[deprecated = "this error is deprecated and should never be returned"]
+    #[expect(deprecated, reason = "inner variant is deprecated too")]
     ActionAttrEval(#[from] schema_errors::ActionAttrEvalError),
     /// This error variant is deprecated and will never be returned.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[allow(deprecated)]
     #[deprecated = "this error is deprecated and should never be returned"]
+    #[expect(deprecated, reason = "inner variant is deprecated too")]
     ExprEscapeUsed(#[from] schema_errors::ExprEscapeUsedError),
     /// The schema used an extension type that the validator doesn't know about.
     #[error(transparent)]
@@ -306,8 +306,10 @@ impl SchemaError {
                 // be empty. Then we partitioned `non_type_ndef_errors` into what we now know is an
                 // empty vector (`action_ndef_errors`) and `other_errors`, so `other_errors` cannot
                 // be empty.
-                // PANIC SAFETY: see comments immediately above
-                #[allow(clippy::expect_used)]
+                #[expect(
+                    clippy::expect_used,
+                    reason = "other_errors cannot be empty due to partitioning logic explained in comment above"
+                )]
                 other_errors.into_iter().next().expect("cannot be empty")
             }
         }
@@ -341,7 +343,7 @@ pub mod schema_errors {
     // If I don't allow this at the module level I get warnings about using a
     // deprecated type when I try to _define_ the deprecated type, and it still
     // doesn't work if I try to allow each type individually.
-    #![allow(deprecated)]
+    #![expect(deprecated, reason = "see comment immediately above")]
 
     use std::fmt::Display;
 

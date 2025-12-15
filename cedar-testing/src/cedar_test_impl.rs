@@ -43,8 +43,7 @@ impl<T> TestResult<T> {
     /// Get the underlying value of a `TestResult`.
     /// # Panics
     /// If the `TestResult` is a `Failure`.
-    /// PANIC SAFETY only used in testing code
-    #[allow(clippy::panic)]
+    #[expect(clippy::panic, reason = "only used in testing code")]
     #[track_caller]
     pub fn expect(self, msg: &str) -> T {
         match self {

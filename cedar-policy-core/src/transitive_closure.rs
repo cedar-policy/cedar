@@ -90,8 +90,10 @@ where
     }
     for node in nodes.values_mut() {
         node.reset_edges();
-        // PANIC SAFETY All nodes in `ancestors` came from `nodes`
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "All nodes in `ancestors` came from `nodes`"
+        )]
         for ancestor_uid in ancestors
             .get(&node.get_key())
             .expect("shouldn't have added any new values to the `nodes` map")
@@ -183,10 +185,8 @@ where
     Ok(())
 }
 
-// PANIC SAFETY test cases
-#[allow(clippy::indexing_slicing)]
-// PANIC SAFETY: Unit Test Code
-#[allow(clippy::panic)]
+#[allow(clippy::indexing_slicing, reason = "test cases")]
+#[allow(clippy::panic, reason = "Unit Test Code")]
 #[cfg(test)]
 mod tests {
     use crate::ast::{Entity, EntityUID};

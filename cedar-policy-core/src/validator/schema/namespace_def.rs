@@ -210,8 +210,10 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
                 loc: self.loc,
             }),
             (res1, res2, res3) => {
-                // PANIC SAFETY: at least one of the results is `Err`, so the input to `NonEmpty::collect()` cannot be an empty iterator
-                #[allow(clippy::expect_used)]
+                #[expect(
+                    clippy::expect_used,
+                    reason = "at least one of the results is `Err`, so the input to `NonEmpty::collect()` cannot be an empty iterator"
+                )]
                 let errs = NonEmpty::collect(
                     res1.err()
                         .into_iter()

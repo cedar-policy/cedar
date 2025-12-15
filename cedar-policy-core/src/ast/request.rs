@@ -357,8 +357,7 @@ impl Context {
                 // The function call cannot return `Err` because `expr` is a
                 // record, and partially evaluating a record expression will
                 // yield a record expression or a record value.
-                // PANIC SAFETY: See above
-                #[allow(clippy::expect_used)]
+                #[expect(clippy::expect_used, reason = "See above")]
                 Ok(Self::from_restricted_partial_val_unchecked(pval).expect(
                     "`from_restricted_partial_val_unchecked` should succeed when called on a record.",
                 ))
@@ -475,8 +474,7 @@ impl Context {
                 // The function call cannot fail because because `expr` was
                 // constructed as a record, and substitution and partial
                 // evaluation does not change this.
-                // PANIC SAFETY: See above
-                #[allow(clippy::expect_used)]
+                #[expect(clippy::expect_used, reason = "See above")]
                 Ok(
                     Self::from_restricted_partial_val_unchecked(partial_value).expect(
                         "`from_restricted_partial_val_unchecked` should succeed when called on a record.",

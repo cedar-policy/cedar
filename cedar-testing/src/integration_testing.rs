@@ -16,13 +16,19 @@
 
 //! Helper code to run Cedar integration tests
 
-// PANIC SAFETY: This module is used only for testing.
-#![allow(clippy::unwrap_used)]
-// PANIC SAFETY: This module is used only for testing.
-#![allow(clippy::expect_used)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "This module is used only for testing"
+)]
 
 use crate::cedar_test_impl::*;
 #[cfg(feature = "entity-manifest")]
+#[expect(
+    deprecated,
+    reason = "still want to test this deprecated function until it is fully removed"
+)]
 use cedar_policy::{compute_entity_manifest, Validator};
 use cedar_policy::{
     Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, Schema, TestEntityLoader,
@@ -134,8 +140,6 @@ pub fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
 /// Given a `JsonTest`, parse the provided policies file.
 /// # Panics
 /// On failure to load or parse policies file.
-// PANIC SAFETY this is testing code
-#[allow(clippy::panic)]
 pub fn parse_policies_from_test(test: &JsonTest) -> PolicySet {
     let policy_file = resolve_integration_test_path(&test.policies);
     let policies_text = std::fs::read_to_string(policy_file)
@@ -147,8 +151,6 @@ pub fn parse_policies_from_test(test: &JsonTest) -> PolicySet {
 /// Given a `JsonTest`, parse the provided schema file.
 /// # Panics
 /// On failure to load or parse schema file.
-// PANIC SAFETY this is testing code
-#[allow(clippy::panic)]
 pub fn parse_schema_from_test(test: &JsonTest) -> Schema {
     let schema_file = resolve_integration_test_path(&test.schema);
     let schema_text = std::fs::read_to_string(schema_file)
@@ -161,8 +163,6 @@ pub fn parse_schema_from_test(test: &JsonTest) -> Schema {
 /// Given a `JsonTest`, parse (and validate) the provided entities file.
 /// # Panics
 /// On failure to load or parse entities file.
-// PANIC SAFETY this is testing code
-#[allow(clippy::panic)]
 pub fn parse_entities_from_test(test: &JsonTest, schema: &Schema) -> Entities {
     let entity_file = resolve_integration_test_path(&test.entities);
     let json = std::fs::OpenOptions::new()
@@ -174,8 +174,6 @@ pub fn parse_entities_from_test(test: &JsonTest, schema: &Schema) -> Entities {
         .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities))
 }
 
-// PANIC SAFETY this is testing code
-#[allow(clippy::panic)]
 fn parse_entity_uid(json: serde_json::Value, error_string: &str) -> EntityUid {
     EntityUid::from_json(json).unwrap_or_else(|e| panic!("{error_string}: {e}"))
 }
@@ -183,8 +181,6 @@ fn parse_entity_uid(json: serde_json::Value, error_string: &str) -> EntityUid {
 /// Given a `JsonRequest`, parse (and optionally validate) the provided request.
 /// # Panics
 /// On failure to parse or validate request.
-// PANIC SAFETY this is testing code
-#[allow(clippy::panic)]
 pub fn parse_request_from_test(
     json_request: &JsonRequest,
     schema: &Schema,
@@ -277,9 +273,6 @@ fn check_matches_json(
 ///
 /// # Panics
 /// When the integration test fails.
-#[allow(clippy::too_many_lines)]
-// PANIC SAFETY this is testing code
-#[allow(clippy::panic)]
 pub fn perform_integration_test(
     policies: &PolicySet,
     entities: &Entities,
@@ -324,6 +317,10 @@ pub fn perform_integration_test(
 
         // now check that entity slicing arrives at the same decision
         #[cfg(feature = "entity-manifest")]
+        #[expect(
+            deprecated,
+            reason = "still want to test this deprecated function until it is fully removed"
+        )]
         if should_validate {
             let entity_manifest =
                 compute_entity_manifest(&Validator::new(schema.clone()), policies)
@@ -368,9 +365,6 @@ pub fn perform_integration_test(
 /// Absolute paths are handled without modification.
 /// # Panics
 /// When integration test data cannot be found.
-#[allow(clippy::too_many_lines)]
-// PANIC SAFETY this is testing code
-#[allow(clippy::panic)]
 pub fn perform_integration_test_from_json_custom(
     jsonfile: impl AsRef<Path>,
     test_impl: &impl CedarTestImplementation,

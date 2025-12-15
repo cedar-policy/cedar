@@ -292,8 +292,10 @@ impl ConditionalName {
             ReferenceType::Entity => "as an entity type",
             ReferenceType::CommonOrEntity => "as a common or entity type",
         };
-        // PANIC SAFETY: indexing is safe because we first check the `.len()`
-        #[allow(clippy::indexing_slicing)]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "indexing is safe because we first check the `.len()`"
+        )]
         match self.possibilities.len() {
             1 => format!(
                 "`{}` has not been declared {}",

@@ -29,11 +29,11 @@ async fn emitln(
 }
 
 /// Abstraction layer to write output in the SMTLib2 format.
-#[allow(
+#[expect(
     async_fn_in_trait,
     reason = "We would like consumers to be able to use these functions asyncronously"
 )]
-#[allow(
+#[expect(
     missing_docs,
     reason = "Names of these trait members are exactly their corresponding SMT-LIB commands"
 )]

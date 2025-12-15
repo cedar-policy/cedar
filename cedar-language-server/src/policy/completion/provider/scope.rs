@@ -36,8 +36,10 @@ use regex_consts::{
     ACTION_EQ_REGEX, ACTION_IN_ARRAY, ACTION_IN_REGEX, PRINCIPAL_IS_REGEX, RESOURCE_IS_REGEX,
 };
 
-// PANIC SAFETY: These regex are valid and would panic immediately in test if not.
-#[allow(clippy::unwrap_used)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "these regexes are valid and would panic immediately in tests if not"
+)]
 mod regex_consts {
     use std::sync::LazyLock;
 

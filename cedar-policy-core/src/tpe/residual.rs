@@ -373,8 +373,10 @@ impl Residual {
 }
 
 /// Conversion from `Residual` to `Expr` so that we can use the concrete evaluator for re-authorization
-// PANIC SAFETY: Residual to Expr conversion should always succeed
-#[allow(clippy::fallible_impl_from)]
+#[expect(
+    clippy::fallible_impl_from,
+    reason = "Residual to Expr conversion should always succeed"
+)]
 impl From<Residual> for Expr {
     fn from(value: Residual) -> Expr {
         match value {
@@ -422,8 +424,7 @@ impl From<Residual> for Expr {
                     ResidualKind::Or { left, right } => {
                         builder.or(left.as_ref().clone().into(), right.as_ref().clone().into())
                     }
-                    // PANIC SAFETY: record construction should succeed
-                    #[allow(clippy::expect_used)]
+                    #[expect(clippy::expect_used, reason = "record construction should succeed")]
                     ResidualKind::Record(map) => builder
                         .record(map.as_ref().clone().into_iter().map(|(k, v)| (k, v.into())))
                         .expect("should succeed"),
@@ -443,8 +444,7 @@ impl From<Residual> for Expr {
             Residual::Concrete { value, .. } => value.into(),
             Residual::Error(_) => {
                 let builder: ast::ExprBuilder<()> = ExprBuilder::with_data(());
-                // PANIC SAFETY: `error` is a valid `Name`
-                #[allow(clippy::unwrap_used)]
+                #[expect(clippy::unwrap_used, reason = "`error` is a valid `Name`")]
                 builder.call_extension_fn("error".parse().unwrap(), std::iter::empty())
             }
         }

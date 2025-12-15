@@ -69,8 +69,7 @@ pub fn tag_of(entity: Term, tag: Term) -> Term {
 pub fn not(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Bool(b)) => (!b).into(),
-        // PANIC SAFETY
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "List of length 1 should not panic when unwrapping first element"
         )]
@@ -87,16 +86,20 @@ pub fn not(t: Term) -> Term {
 
 pub fn opposites(t1: &Term, t2: &Term) -> bool {
     match (t1, t2) {
-        // PANIC SAFETY: List of length 1 should not error when indexed by 0
-        #[allow(clippy::indexing_slicing)]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "List of length 1 should not error when indexed by 0"
+        )]
         (
             t1,
             Term::App {
                 op: Op::Not, args, ..
             },
         ) if args.len() == 1 => t1 == &args[0],
-        // PANIC SAFETY: List of length 2 should not error when indexed by 0 or 1
-        #[allow(clippy::indexing_slicing)]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "List of length 1 should not error when indexed by 0"
+        )]
         (
             Term::App {
                 op: Op::Not, args, ..
@@ -246,8 +249,7 @@ pub fn bvneg(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Bitvec(b)) => b.neg().into(),
         // this optimization is not present in the Lean
-        // PANIC SAFETY
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "List of length 1 should not panic when unwrapping first element"
         )]
@@ -277,7 +279,7 @@ pub fn bvapp<E: std::fmt::Debug + Into<CompileError>>(
     t2: Term,
 ) -> Term {
     match (t1, t2) {
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Assume the bit-vectors have the same width by construction for now."
         )]
@@ -319,12 +321,10 @@ pub fn bvsrem(t1: Term, t2: Term) -> Term {
     bvapp(Op::Bvsrem, &BitVec::srem, t1, t2)
 }
 
-#[allow(unused, reason = "Added for completeness")]
 pub fn bvsmod(t1: Term, t2: Term) -> Term {
     bvapp(Op::Bvsmod, &BitVec::smod, t1, t2)
 }
 
-#[allow(unused, reason = "Added for completeness")]
 pub fn bvurem(t1: Term, t2: Term) -> Term {
     bvapp(Op::Bvumod, &BitVec::urem, t1, t2)
 }
@@ -344,7 +344,7 @@ fn bvcmp<E: std::fmt::Debug + Into<CompileError>>(
     t2: Term,
 ) -> Term {
     match (t1, t2) {
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Assume the bit-vectors have the same width by construction for now."
         )]
@@ -380,7 +380,7 @@ pub fn bvnego(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Bitvec(bv)) =>
         {
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "By construction bit-vectors have non-zero width."
             )]
@@ -398,7 +398,7 @@ pub fn bvso(op: Op, f: &dyn Fn(&Int, &Int) -> Int, t1: Term, t2: Term) -> Term {
     match (t1, t2) {
         (Term::Prim(TermPrim::Bitvec(bv1)), Term::Prim(TermPrim::Bitvec(bv2))) => {
             assert!(bv1.width() == bv2.width());
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "Assert above guarantees same bit-vector width."
             )]
@@ -434,7 +434,7 @@ pub fn zero_extend(n: Width, t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Bitvec(bv)) =>
         {
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "By construction bit-vectors have non-zero width."
             )]
@@ -591,7 +591,7 @@ pub fn ext_decimal_val(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Ext(Ext::Decimal { d })) =>
         {
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
             )]
@@ -674,7 +674,7 @@ pub fn ext_datetime_val(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Ext(Ext::Datetime { dt })) =>
         {
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
             )]
@@ -692,9 +692,12 @@ pub fn ext_datetime_val(t: Term) -> Term {
 
 pub fn ext_datetime_of_bitvec(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 => {
-            // PANIC SAFETY: If condition ensures the value will fit in 64 bits.
-            #[allow(clippy::unwrap_used)]
+        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 =>
+        {
+            #[expect(
+                clippy::unwrap_used,
+                reason = "If condition ensures the value will fit in 64 bits"
+            )]
             Term::Prim(TermPrim::Ext(Ext::Datetime {
                 dt: Datetime::from(bv.to_int().to_i64().unwrap()),
             }))
@@ -711,7 +714,7 @@ pub fn ext_datetime_of_bitvec(t: Term) -> Term {
 
 pub fn ext_duration_val(t: Term) -> Term {
     match t {
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
         )]
@@ -728,9 +731,12 @@ pub fn ext_duration_val(t: Term) -> Term {
 
 pub fn ext_duration_of_bitvec(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 => {
-            // PANIC SAFETY: If condition ensures the value will fit in 64 bits.
-            #[allow(clippy::unwrap_used)]
+        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 =>
+        {
+            #[expect(
+                clippy::unwrap_used,
+                reason = "If condition ensures the value will fit in 64 bits"
+            )]
             Term::Prim(TermPrim::Ext(Ext::Duration {
                 d: Duration::from(bv.to_int().to_i64().unwrap()),
             }))
@@ -756,8 +762,7 @@ pub fn is_none(t: Term) -> Term {
         } => {
             #[cfg(test)]
             assert!(args.len() == 3);
-            // PANIC SAFETY
-            #[allow(
+            #[expect(
                 clippy::indexing_slicing,
                 reason = "Ite should have 3 args. Since term is constructed it should have 3 args"
             )]

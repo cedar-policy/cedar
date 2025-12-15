@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-// PANIC SAFETY: testing code
-#![allow(
+#![expect(
     clippy::panic,
     clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::expect_used
+    clippy::expect_used,
+    reason = "testing code"
 )]
 
 //! Shared test utilities.

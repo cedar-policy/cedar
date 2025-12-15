@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
-#![allow(clippy::use_self)]
+#![allow(clippy::use_self, reason = "readability")]
 
 use super::models;
 use cedar_policy_core::{ast, entities, extensions};
 
 impl From<&models::Entities> for entities::Entities {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::Entities) -> Self {
         let entities: Vec<ast::Entity> = v.entities.iter().map(ast::Entity::from).collect();
 

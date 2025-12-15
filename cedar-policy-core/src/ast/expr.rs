@@ -206,8 +206,10 @@ impl From<ValueKind> for Expr {
         match v {
             ValueKind::Lit(lit) => Expr::val(lit),
             ValueKind::Set(set) => Expr::set(set.iter().map(|v| Expr::from(v.clone()))),
-            // PANIC SAFETY: cannot have duplicate key because the input was already a BTreeMap
-            #[allow(clippy::expect_used)]
+            #[expect(
+                clippy::expect_used,
+                reason = "cannot have duplicate key because the input was already a BTreeMap"
+            )]
             ValueKind::Record(record) => Expr::record(
                 Arc::unwrap_or_clone(record)
                     .into_iter()
@@ -491,8 +493,10 @@ impl<T> Expr<T> {
                     .into_iter()
                     .map(|e| e.into_expr::<B>()),
             ),
-            // PANIC SAFETY: `map` is a map, so it will not have duplicates keys, so the `record` constructor cannot error.
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "`map` is a map, so it will not have duplicate keys, so the `.record()` constructor cannot error"
+            )]
             ExprKind::Record(map) => builder
                 .record(
                     Arc::unwrap_or_clone(map)
@@ -501,8 +505,10 @@ impl<T> Expr<T> {
                 )
                 .unwrap(),
             #[cfg(feature = "tolerant-ast")]
-            // PANIC SAFETY: error type is Infallible so can never happen
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "error type is Infallible so can never happen"
+            )]
             ExprKind::Error { .. } => builder
                 .error(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::ASTErrorNode,
@@ -513,8 +519,10 @@ impl<T> Expr<T> {
     }
 }
 
-#[allow(dead_code)] // some constructors are currently unused, or used only in tests, but provided for completeness
-#[allow(clippy::should_implement_trait)] // the names of arithmetic constructors alias with those of certain trait methods such as `add` of `std::ops::Add`
+#[expect(
+    clippy::should_implement_trait,
+    reason = "the names of arithmetic constructors alias with those of certain trait methods such as `add` of `std::ops::Add`"
+)]
 impl Expr {
     /// Create an `Expr` that's just a single `Literal`.
     ///
@@ -840,8 +848,10 @@ impl Expr {
                     .iter()
                     .map(|(name, e)| Ok((name.clone(), e.substitute_general::<T>(definitions)?)))
                     .collect::<Result<BTreeMap<_, _>, _>>()?;
-                // PANIC SAFETY: cannot have a duplicate key because the input was already a BTreeMap
-                #[allow(clippy::expect_used)]
+                #[expect(
+                    clippy::expect_used,
+                    reason = "cannot have a duplicate key because the input was already a BTreeMap"
+                )]
                 Ok(Expr::record(map)
                     .expect("cannot have a duplicate key because the input was already a BTreeMap"))
             }
@@ -1797,8 +1807,10 @@ impl<T> Expr<T> {
                     error_kind: error_kind1,
                 },
             ) => error_kind.cmp(error_kind1),
-            // PANIC SAFETY: This should never be reached since we compare variants first
-            #[allow(clippy::unreachable)]
+            #[expect(
+                clippy::unreachable,
+                reason = "This should never be reached since we compare variants first"
+            )]
             _ => unreachable!(
                 "Different variants should have been handled by variant_order comparison"
             ),
@@ -1832,22 +1844,30 @@ impl From<PrincipalOrResource> for Var {
     }
 }
 
-// PANIC SAFETY Tested by `test::all_vars_are_ids`. Never panics.
-#[allow(clippy::fallible_impl_from)]
+#[expect(
+    clippy::fallible_impl_from,
+    reason = "Tested by `test::all_vars_are_ids`. Never panics"
+)]
 impl From<Var> for Id {
     fn from(var: Var) -> Self {
-        // PANIC SAFETY: `Var` is a simple enum and all vars are formatted as valid `Id`. Tested by `test::all_vars_are_ids`
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "`Var` is a simple enum and all vars are formatted as valid `Id`. Tested by `test::all_vars_are_ids`"
+        )]
         format!("{var}").parse().unwrap()
     }
 }
 
-// PANIC SAFETY Tested by `test::all_vars_are_ids`. Never panics.
-#[allow(clippy::fallible_impl_from)]
+#[expect(
+    clippy::fallible_impl_from,
+    reason = "Tested by `test::all_vars_are_ids`. Never panics"
+)]
 impl From<Var> for UnreservedId {
     fn from(var: Var) -> Self {
-        // PANIC SAFETY: `Var` is a simple enum and all vars are formatted as valid `UnreservedId`. Tested by `test::all_vars_are_ids`
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "`Var` is a simple enum and all vars are formatted as valid `UnreservedId`. Tested by `test::all_vars_are_ids`"
+        )]
         Id::from(var).try_into().unwrap()
     }
 }

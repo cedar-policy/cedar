@@ -257,11 +257,15 @@ impl CommonTypeId {
     #[cfg(feature = "arbitrary")]
     fn make_into_valid_common_type_id(id: &UnreservedId) -> Self {
         Self::new(id.clone()).unwrap_or_else(|_| {
-            // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid unreserved names.
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "`_Bool`, `_Record`, and etc are valid unreserved names."
+            )]
             let new_id = format!("_{id}").parse().unwrap();
-            // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid common type basenames.
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "`_Bool`, `_Record`, and etc are valid common type basenames."
+            )]
             Self::new(new_id).unwrap()
         })
     }
@@ -498,8 +502,10 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
         D: serde::Deserializer<'de>,
     {
         // A "real" option that does not accept `null` during deserialization
+        #[derive(Default)]
         enum RealOption<T> {
             Some(T),
+            #[default]
             None,
         }
         impl<'de, T: Deserialize<'de>> Deserialize<'de> for RealOption<T> {
@@ -508,11 +514,6 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
                 D: Deserializer<'de>,
             {
                 T::deserialize(deserializer).map(Self::Some)
-            }
-        }
-        impl<T> Default for RealOption<T> {
-            fn default() -> Self {
-                Self::None
             }
         }
 
@@ -1052,8 +1053,7 @@ impl ActionEntityUID<RawName> {
         ActionEntityUID {
             id: self.id,
             ty: {
-                // PANIC SAFETY: this is a valid raw name
-                #[allow(clippy::expect_used)]
+                #[expect(clippy::expect_used, reason = "this is a valid raw name")]
                 let raw_name = self
                     .ty
                     .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
@@ -1071,8 +1071,7 @@ impl ActionEntityUID<RawName> {
         ActionEntityUID {
             id: self.id,
             ty: {
-                // PANIC SAFETY: this is a valid raw name
-                #[allow(clippy::expect_used)]
+                #[expect(clippy::expect_used, reason = "this is a valid raw name")]
                 let raw_name = self
                     .ty
                     .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
@@ -1087,8 +1086,7 @@ impl ActionEntityUID<RawName> {
 impl ActionEntityUID<ConditionalName> {
     /// Get the action type, as a [`ConditionalName`].
     pub fn ty(&self) -> &ConditionalName {
-        // PANIC SAFETY: by INVARIANT on self.ty
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "by INVARIANT on self.ty")]
         self.ty.as_ref().expect("by INVARIANT on self.ty")
     }
 
@@ -1148,8 +1146,7 @@ impl ActionEntityUID<ConditionalName> {
 impl ActionEntityUID<Name> {
     /// Get the action type, as a [`Name`].
     pub fn ty(&self) -> &Name {
-        // PANIC SAFETY: by INVARIANT on self.ty
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "by INVARIANT on self.ty")]
         self.ty.as_ref().expect("by INVARIANT on self.ty")
     }
 }
@@ -1157,8 +1154,7 @@ impl ActionEntityUID<Name> {
 impl ActionEntityUID<InternalName> {
     /// Get the action type, as an [`InternalName`].
     pub fn ty(&self) -> &InternalName {
-        // PANIC SAFETY: by INVARIANT on self.ty
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "by INVARIANT on self.ty")]
         self.ty.as_ref().expect("by INVARIANT on self.ty")
     }
 }
@@ -2049,7 +2045,7 @@ impl TypeVariant<ConditionalName> {
 }
 
 // Only used for serialization
-#[allow(
+#[expect(
     clippy::trivially_copy_pass_by_ref,
     reason = "Reference required to work with derived serde serialize implementation"
 )]
@@ -2058,8 +2054,7 @@ fn is_partial_schema_default(b: &bool) -> bool {
 }
 
 #[cfg(feature = "arbitrary")]
-// PANIC SAFETY property testing code
-#[allow(clippy::panic)]
+#[expect(clippy::panic, reason = "property testing code")]
 impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Type<RawName>> {
         use std::collections::BTreeSet;
@@ -2091,13 +2086,11 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
                     name: u.arbitrary()?,
                 },
                 7 => TypeVariant::Extension {
-                    // PANIC SAFETY: `ipaddr` is a valid `UnreservedId`
-                    #[allow(clippy::unwrap_used)]
+                    #[expect(clippy::unwrap_used, reason = "`ipaddr` is a valid `UnreservedId`")]
                     name: "ipaddr".parse().unwrap(),
                 },
                 8 => TypeVariant::Extension {
-                    // PANIC SAFETY: `decimal` is a valid `UnreservedId`
-                    #[allow(clippy::unwrap_used)]
+                    #[expect(clippy::unwrap_used, reason = "`decimal` is a valid `UnreservedId`")]
                     name: "decimal".parse().unwrap(),
                 },
                 n => panic!("bad index: {n}"),
@@ -2221,7 +2214,7 @@ impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
 }
 
 // Only used for serialization
-#[allow(
+#[expect(
     clippy::trivially_copy_pass_by_ref,
     reason = "Reference required to work with derived serde serialize implementation"
 )]
@@ -3899,8 +3892,7 @@ mod ord {
 }
 
 #[cfg(test)]
-// PANIC SAFETY: tests
-#[allow(clippy::indexing_slicing)]
+#[allow(clippy::indexing_slicing, reason = "tests")]
 mod enumerated_entity_types {
     use cool_asserts::assert_matches;
 

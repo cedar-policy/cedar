@@ -26,15 +26,23 @@ use std::sync::Arc;
 
 /// Types of the intermediate [`super::term::Term`] representation.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "fields are self explanatory")]
 pub enum TermType {
+    /// Bool type
     Bool,
+    /// Bitvec type
     Bitvec { n: Width },
+    /// String type
     String,
+    /// Option type
     Option { ty: Arc<TermType> },
+    /// Entity type
     Entity { ety: EntityType },
+    /// (Finite) set type
     Set { ty: Arc<TermType> },
+    /// Record type
     Record { rty: Arc<BTreeMap<Attr, TermType>> },
+    /// Extension type
     Ext { xty: ExtType },
 }
 

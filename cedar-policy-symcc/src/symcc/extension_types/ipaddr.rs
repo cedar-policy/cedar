@@ -78,7 +78,7 @@ impl IPv4Addr {
 
     /// Helper method that does not exist in the corresponding Lean code
     fn mk_u8(a0: u8, a1: u8, a2: u8, a3: u8) -> Self {
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Cannot panic because bitwidth is guaranteed to be 8."
         )]
@@ -101,7 +101,7 @@ pub struct IPv6Addr {
 }
 
 impl IPv6Addr {
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments, reason = "IPv6 has this many components")]
     fn mk(
         a0: &BitVec,
         a1: &BitVec,
@@ -141,9 +141,9 @@ impl IPv6Addr {
     }
 
     /// Helper method that does not exist in the corresponding Lean code
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments, reason = "IPv6 has this many components")]
     fn mk_u16(a0: u16, a1: u16, a2: u16, a3: u16, a4: u16, a5: u16, a6: u16, a7: u16) -> Self {
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Cannot panic because bitwidth is guaranteed to be 16."
         )]
@@ -171,7 +171,7 @@ pub struct IPv4Prefix {
 impl IPv4Prefix {
     fn of_nat(pre: Nat) -> Self {
         if pre < nat(V4_SIZE) {
-            #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
+            #[expect(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
             Self {
                 val: Some(BitVec::of_nat(V4_WIDTH, pre).unwrap()),
             }
@@ -198,7 +198,7 @@ pub struct IPv6Prefix {
 impl IPv6Prefix {
     fn of_nat(pre: Nat) -> Self {
         if pre < nat(V6_SIZE) {
-            #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
+            #[expect(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
             Self {
                 val: Some(BitVec::of_nat(V6_WIDTH, pre).unwrap()),
             }
@@ -218,9 +218,10 @@ impl IPv6Prefix {
 /// Internal representation of a single IPv4 address,
 /// or a range of IPv4 addresses defined by a CIDR suffix.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[allow(missing_docs)]
 pub struct CIDRv4 {
+    /// Address
     pub addr: IPv4Addr,
+    /// Prefix
     pub prefix: IPv4Prefix,
 }
 
@@ -229,7 +230,7 @@ impl CIDRv4 {
 
     fn subnet_width(&self) -> BitVec {
         match &self.prefix.val {
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "Width passed is greater than 0 and same for all bv."
             )]
@@ -238,21 +239,21 @@ impl CIDRv4 {
                 let prefix_zero_extend = BitVec::zero_extend(bv, Self::SIZE).unwrap();
                 BitVec::sub(&n, &prefix_zero_extend).unwrap()
             }
-            #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
+            #[expect(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
             None => BitVec::of_u128(Self::SIZE, 0).unwrap(),
         }
     }
 
     fn range(&self) -> (IPv4Addr, IPv4Addr) {
         let width = self.subnet_width();
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Shifts cannot panic because subnet_width is guaranteed to fit in u32."
         )]
         let lo = BitVec::shl(&BitVec::lshr(&self.addr.val, &width).unwrap(), &width).unwrap();
-        #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
+        #[expect(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
         let one = BitVec::of_u128(Self::SIZE, 1).unwrap();
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Shifts cannot panic because subnet_width is guaranteed to fit in u32. Add and sub cannot panic because the bit-vectors have the same width."
         )]
@@ -264,7 +265,7 @@ impl CIDRv4 {
         (IPv4Addr { val: lo }, IPv4Addr { val: hi })
     }
 
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "Ule cannot panic because range returns bit-vectors of width Self::SIZE which are the same bitwidth."
     )]
@@ -279,9 +280,10 @@ impl CIDRv4 {
 /// Internal representation of a single IPv6 address,
 /// or a range of IPv6 addresses defined by a CIDR suffix.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[allow(missing_docs)]
 pub struct CIDRv6 {
+    /// Address
     pub addr: IPv6Addr,
+    /// Prefix
     pub prefix: IPv6Prefix,
 }
 
@@ -290,7 +292,7 @@ impl CIDRv6 {
 
     fn subnet_width(&self) -> BitVec {
         match &self.prefix.val {
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "Width passed is greater than 0 and same for all bv."
             )]
@@ -299,21 +301,21 @@ impl CIDRv6 {
                 let prefix_zero_extend = BitVec::zero_extend(bv, Self::SIZE).unwrap();
                 BitVec::sub(&n, &prefix_zero_extend).unwrap()
             }
-            #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
+            #[expect(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
             None => BitVec::of_u128(Self::SIZE, 0).unwrap(),
         }
     }
 
     fn range(&self) -> (IPv6Addr, IPv6Addr) {
         let width = self.subnet_width();
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Shifts cannot panic because subnet_width is guaranteed to fit in u32."
         )]
         let lo = BitVec::shl(&BitVec::lshr(&self.addr.val, &width).unwrap(), &width).unwrap();
-        #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
+        #[expect(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
         let one = BitVec::of_u128(Self::SIZE, 1).unwrap();
-        #[allow(
+        #[expect(
             clippy::unwrap_used,
             reason = "Shifts cannot panic because subnet_width is guaranteed to fit in u32. Add and sub cannot panic because the bit-vectors have the same width."
         )]
@@ -325,7 +327,7 @@ impl CIDRv6 {
         (IPv6Addr { val: lo }, IPv6Addr { val: hi })
     }
 
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "Ule cannot panic because range returns bit-vectors of width Self::SIZE which are the same bitwidth."
     )]
@@ -456,7 +458,7 @@ fn parse_num_v4(s: &str) -> Option<BitVec> {
         match s.parse::<Nat>() {
             Ok(n) => {
                 if n <= nat(255) {
-                    #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
+                    #[expect(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
                     return Some(BitVec::of_nat(8, n).unwrap());
                 } else {
                     return None;
@@ -474,19 +476,27 @@ fn parse_segs_v4(s: &str) -> Option<IPv4Addr> {
         return None;
     }
 
-    // PANIC SAFETY: if condition ensures accesses are within bounds
-    #[allow(clippy::indexing_slicing)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "if condition ensures accesses are within bounds"
+    )]
     let a0 = parse_num_v4(parts[0])?;
-    // PANIC SAFETY: if condition ensures accesses are within bounds
-    #[allow(clippy::indexing_slicing)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "if condition ensures accesses are within bounds"
+    )]
     let a1 = parse_num_v4(parts[1])?;
-    // PANIC SAFETY: if condition ensures accesses are within bounds
-    #[allow(clippy::indexing_slicing)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "if condition ensures accesses are within bounds"
+    )]
     let a2 = parse_num_v4(parts[2])?;
-    // PANIC SAFETY: if condition ensures accesses are within bounds
-    #[allow(clippy::indexing_slicing)]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "if condition ensures accesses are within bounds"
+    )]
     let a3 = parse_num_v4(parts[3])?;
-    #[allow(
+    #[expect(
         clippy::unwrap_used,
         reason = "parse_num_v4 returns bit-vectors of size 8 so mk cannot panic."
     )]
@@ -539,7 +549,7 @@ fn parse_num_v6(s: &str) -> Option<BitVec> {
             .chars()
             .fold(BigUint::ZERO, |acc, c| acc * nat(16) + to_hex_nat(c));
         if n <= nat(0xffff) {
-            #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
+            #[expect(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
             Some(BitVec::of_nat(16, n).unwrap())
         } else {
             None
@@ -567,7 +577,7 @@ fn parse_segs_v6(s: &str) -> Option<IPv6Addr> {
             let len = ns1.len() + ns2.len();
             if len < 8 {
                 let mut result = ns1;
-                #[allow(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
+                #[expect(clippy::unwrap_used, reason = "Width passed is greater than 0.")]
                 let bv_zero = BitVec::of_u128(16, 0).unwrap();
                 result.extend(std::iter::repeat_n(bv_zero, 8 - len));
                 result.extend(ns2);
@@ -582,7 +592,7 @@ fn parse_segs_v6(s: &str) -> Option<IPv6Addr> {
         // This is guaranteed to have length 8 because we expand the compressed notation.
         Some([s0, s1, s2, s3, s4, s5, s6, s7]) =>
         {
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "parse_num_segs_v6 calls parse_num_v6 which creates bit-vectors of size 16."
             )]

@@ -21,22 +21,22 @@ use ref_cast::RefCast;
 use smol_str::SmolStr;
 use std::{cmp::Ordering, ops::Deref};
 
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "existing code")]
 pub type EntityType = cedar_policy::EntityTypeName;
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "existing code")]
 pub type EntityID = cedar_policy::EntityId;
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "existing code")]
 pub type EntityUID = cedar_policy::EntityUid;
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "existing code")]
 pub type Attr = SmolStr;
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "existing code")]
 pub type Prim = cedar_policy_core::ast::Literal;
 
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "existing code")]
 pub type Nat = BigUint;
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "existing code")]
 pub type Int = BigInt;
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "existing code")]
 pub type Width = u32;
 
 /// Convert `ast::EntityType` into `EntityType` in O(1)
@@ -53,7 +53,7 @@ pub fn core_uid_into_uid(uid: &cedar_policy_core::ast::EntityUID) -> &EntityUID 
 
 /// Types of extensions.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "existing code")]
 pub enum ExtType {
     IpAddr,
     Decimal,

@@ -17,7 +17,10 @@
 //! JSON FFI entry points for the Cedar policy formatter. The Cedar Wasm
 //! formatter is generated from the [`format()`] function in this file.
 
-#![allow(clippy::module_name_repetitions)]
+#![allow(
+    clippy::module_name_repetitions,
+    reason = "the natural FFI function names"
+)]
 
 use super::utils::DetailedError;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
@@ -30,7 +33,10 @@ extern crate tsify;
 
 /// Apply the Cedar policy formatter to a policy set in the Cedar policy format
 #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "formatPolicies"))]
-#[allow(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 pub fn format(call: FormattingCall) -> FormattingAnswer {
     let config = Config {
         line_width: call.line_width,
@@ -113,8 +119,7 @@ pub enum FormattingAnswer {
     },
 }
 
-// PANIC SAFETY unit tests
-#[allow(clippy::panic, clippy::indexing_slicing)]
+#[allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 #[cfg(test)]
 mod test {
     use super::*;

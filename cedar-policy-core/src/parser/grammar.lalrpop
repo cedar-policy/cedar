@@ -423,8 +423,7 @@ Literal: Node<Option<cst::Literal>> = {
 }
 Str: Node<Option<cst::Str>> = {
     <l:@L> <s:STRINGLIT> <r:@R> => {
-        // PANIC SAFETY: STRINGLIT token has at least two characters, starting and ending with the ASCII character `"`
-        #[allow(clippy::string_slice)]
+        #[expect(clippy::string_slice, reason = "STRINGLIT token has at least two characters, starting and ending with the ASCII character `\"`")]
         Node::with_source_loc(Some(cst::Str::String(s[1..(s.len() - 1)].into())), Loc::new(l..r, Arc::clone(src)))
     },
 }

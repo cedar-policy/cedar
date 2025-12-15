@@ -175,8 +175,10 @@ impl AccessTrie {
     }
 
     pub(crate) fn prune_entity_dereferences(&self) -> AccessTrie {
-        // PANIC SAFETY: Node types should always be present on entity manifests after creation.
-        #[allow(clippy::unwrap_used)]
+        #[expect(
+            clippy::unwrap_used,
+            reason = "Node types should always be present on entity manifests after creation."
+        )]
         let children = if self.node_type.as_ref().unwrap().is_entity_type() {
             HashMap::new()
         } else {
@@ -356,8 +358,10 @@ fn merge_entities(e1: Entity, e2: Entity) -> Entity {
                         assert_eq!(e1, e2, "attempting to merge different residuals!");
                         attrs1.insert(k, PartialValue::Residual(e1));
                     }
-                    // PANIC SAFETY: We're merging sliced copies of the same entity, so the attribute must be the same
-                    #[allow(clippy::panic)]
+                    #[expect(
+                        clippy::panic,
+                        reason = "We're merging sliced copies of the same entity, so the attribute must be the same"
+                    )]
                     (PartialValue::Value(_), PartialValue::Residual(_))
                     | (PartialValue::Residual(_), PartialValue::Value(_)) => {
                         panic!("attempting to merge a value with a residual")
@@ -412,8 +416,10 @@ fn merge_values(v1: Value, v2: Value) -> Value {
             );
             Value::new(vk1, v1.loc)
         }
-        // PANIC SAFETY: We're merging sliced copies of the same entity, so the attribute must be the same
-        #[allow(clippy::panic)]
+        #[expect(
+            clippy::panic,
+            reason = "We're merging sliced copies of the same entity, so the attribute must be the same"
+        )]
         _ => {
             panic!("attempting to merge values of different kinds!")
         }
@@ -508,8 +514,10 @@ fn find_remaining_entities_value<'a>(
                         ValueKind::Lit(Literal::EntityUID(id)) => {
                             required_ancestors.insert((**id).clone());
                         }
-                        // PANIC SAFETY: see assert above- ancestor annotation is only valid on sets of entities or entities
-                        #[allow(clippy::panic)]
+                        #[expect(
+                            clippy::panic,
+                            reason = "see assert above- ancestor annotation is only valid on sets of entities or entities"
+                        )]
                         _ => {
                             panic!(
                                 "Found is_ancestor on set of non-entity-type {}",

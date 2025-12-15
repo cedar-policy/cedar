@@ -1,5 +1,4 @@
-// PANIC SAFETY: it's ok for benchmarking code to panic
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, reason = "benchmarking")]
 
 use std::{hint::black_box, str::FromStr};
 

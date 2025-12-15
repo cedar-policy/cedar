@@ -515,8 +515,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 args,
                 ret_ty: TermType::Bool,
             } if args.len() == 1 => {
-                // PANIC SAFETY
-                #[allow(
+                #[expect(
                     clippy::indexing_slicing,
                     reason = "Slice of length 1 can be indexed by 0"
                 )]
@@ -619,7 +618,7 @@ pub(super) fn encode_string(s: &str) -> Option<String> {
             if c as u32 > SMT_LIB_MAX_CODE_POINT {
                 return None; // Invalid code point for SMT-LIB
             }
-            #[allow(clippy::unwrap_used, reason = "writing string cannot fail")]
+            #[expect(clippy::unwrap_used, reason = "writing string cannot fail")]
             write!(out, "\\u{{{:x}}}", c as u32).unwrap();
         }
     }
@@ -647,7 +646,7 @@ fn encode_ipaddr_prefix_v6(pre: &IPv6Prefix) -> SmolStr {
 fn encode_ext(e: &Ext) -> SmolStr {
     match e {
         Ext::Decimal { d } => {
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "Cannot panic because bitwidth is non-zero."
             )]
@@ -669,7 +668,7 @@ fn encode_ext(e: &Ext) -> SmolStr {
             format_smolstr!("(V6 {addr} {pre})")
         }
         Ext::Duration { d } => {
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "Cannot panic because bitwidth is non-zero."
             )]
@@ -677,7 +676,7 @@ fn encode_ext(e: &Ext) -> SmolStr {
             format_smolstr!("(Duration {bv_enc})")
         }
         Ext::Datetime { dt } => {
-            #[allow(
+            #[expect(
                 clippy::unwrap_used,
                 reason = "Cannot panic because bitwidth is non-zero."
             )]
@@ -725,8 +724,7 @@ fn encode_pattern(pattern: &OrdPattern) -> Option<SmolStr> {
     if pattern.get_elems().is_empty() {
         Some(SmolStr::new_static("(str.to_re \"\")"))
     } else if pattern.get_elems().len() == 1 {
-        // PANIC SAFETY
-        #[allow(
+        #[expect(
             clippy::indexing_slicing,
             reason = "Slice of length 1 can be indexed by 0"
         )]

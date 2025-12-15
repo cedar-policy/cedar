@@ -812,8 +812,10 @@ pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> 
     }
 
     let mut expected_string = "expected ".to_owned();
-    // PANIC SAFETY Shouldn't be `Err` since we're writing strings to a string
-    #[allow(clippy::expect_used)]
+    #[expect(
+        clippy::expect_used,
+        reason = "Shouldn't be `Err` since we're writing strings to a string"
+    )]
     join_with_conjunction(
         &mut expected_string,
         "or",
@@ -889,8 +891,10 @@ impl ParseErrors {
         if errs.is_empty() {
             Ok(oks)
         } else {
-            // PANIC SAFETY: `errs` is not empty so `flatten` will return `Some(..)`
-            #[allow(clippy::unwrap_used)]
+            #[expect(
+                clippy::unwrap_used,
+                reason = "`errs` is not empty so `flatten` will return `Some(..)"
+            )]
             Err(Self::flatten(errs).unwrap())
         }
     }
@@ -907,13 +911,19 @@ impl std::error::Error for ParseErrors {
         self.first().source()
     }
 
-    #[allow(deprecated)]
     fn description(&self) -> &str {
+        #[expect(
+            deprecated,
+            reason = "description() is deprecated but we still want to forward it"
+        )]
         self.first().description()
     }
 
-    #[allow(deprecated)]
     fn cause(&self) -> Option<&dyn std::error::Error> {
+        #[expect(
+            deprecated,
+            reason = "cause() is deprecated but we still want to forward it"
+        )]
         self.first().cause()
     }
 }

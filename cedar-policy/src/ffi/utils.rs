@@ -53,7 +53,7 @@ pub struct DetailedError {
     pub source_locations: Vec<SourceLabel>,
     /// Related errors
     #[serde(default)]
-    pub related: Vec<DetailedError>,
+    pub related: Vec<Self>,
 }
 
 impl FromStr for DetailedError {
@@ -663,10 +663,13 @@ pub(super) struct WithWarnings<T> {
 }
 
 /// Testing utilities used here and elsewhere
-// PANIC SAFETY unit tests
-#[allow(clippy::panic, clippy::indexing_slicing)]
+#[allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 // Also disable some other clippy lints that are unimportant for testing code
-#[allow(clippy::module_name_repetitions, clippy::missing_panics_doc)]
+#[allow(
+    clippy::module_name_repetitions,
+    clippy::missing_panics_doc,
+    reason = "unit tests"
+)]
 #[cfg(test)]
 pub mod test_utils {
     use super::*;
@@ -702,8 +705,7 @@ pub mod test_utils {
     }
 }
 
-// PANIC SAFETY unit tests
-#[allow(clippy::panic, clippy::indexing_slicing)]
+#[allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 // Also disable some other clippy lints that are unimportant for testing code
 #[allow(clippy::too_many_lines)]
 #[cfg(test)]

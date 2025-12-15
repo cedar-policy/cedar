@@ -43,7 +43,6 @@ pub enum Str {
     // but left as future improvement and to clarify the
     // validity of the above `String` form
     /// poorly formed string
-    #[allow(unused)]
     Invalid(SmolStr),
 }
 
@@ -87,7 +86,6 @@ pub struct VariableDef {
 
 /// Any identifier, including special ones
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[allow(unused)] // definitional, or for later improvements
 pub enum Ident {
     // Variables
     /// principal

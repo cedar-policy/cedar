@@ -207,8 +207,10 @@ impl Display for CedarTypeKind {
     }
 }
 
-// PANIC SAFETY: See comment on `unwrap` bellow
-#[allow(clippy::fallible_impl_from)]
+#[expect(
+    clippy::fallible_impl_from,
+    reason = "see comment on `expect(clippy::unwrap_used)` below"
+)]
 impl From<Type> for CedarTypeKind {
     fn from(ty: Type) -> Self {
         match ty {
@@ -234,8 +236,10 @@ impl From<Type> for CedarTypeKind {
                 EntityRecordKind::AnyEntity => Self::Error,
                 EntityRecordKind::Entity(entity_lub) => {
                     // FIXME: This feels like an easy assumption to break. We should handle it gracefully
-                    // PANIC SAFETY: LSP is only used with strict validation, so all entities are singleton
-                    #[allow(clippy::unwrap_used)]
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "LSP is only used with strict validation, so all entities are singleton"
+                    )]
                     let e = entity_lub.into_single_entity().unwrap();
                     Self::EntityType(EntityTypeKind::Concrete(Arc::new(e)))
                 }

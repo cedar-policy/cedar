@@ -42,10 +42,12 @@ use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
 
 /// Satisfiability decision from the SMT solver.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
-#[allow(missing_docs)]
 pub enum Decision {
+    /// Sat
     Sat,
+    /// Unsat
     Unsat,
+    /// Unknown
     Unknown,
 }
 
@@ -120,9 +122,12 @@ pub trait Solver {
 pub struct LocalSolver {
     /// The spawned solver process.
     child: Child,
+    /// Stdin of the solver process (which we write to)
     solver_stdin: BufWriter<ChildStdin>,
+    /// Stdout of the solver process (which we read from)
     solver_stdout: BufReader<ChildStdout>,
-    #[expect(unused)]
+    /// Stderr of the solver process (which we read from)
+    #[expect(unused, reason = "included for completeness")]
     solver_stderr: BufReader<ChildStderr>,
 }
 
@@ -205,8 +210,10 @@ impl Solver for LocalSolver {
                 // Read until a line ")\n"
                 loop {
                     let len: usize = self.read_line(&mut output).await?;
-                    // PANIC SAFETY: `output.len() - len` gives the end index of `output` before the `read_line`
-                    #[allow(clippy::string_slice)]
+                    #[expect(
+                        clippy::string_slice,
+                        reason = "`output.len() - len` gives the end index of `output` before the `read_line`"
+                    )]
                     if &output[output.len() - len..] == ")\n" {
                         break;
                     }
