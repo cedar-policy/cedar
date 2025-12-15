@@ -291,7 +291,7 @@ fn validate_template_has_slots(
 
 /// Utilities used in tests in this file (and maybe other files in this crate)
 #[cfg(test)]
-#[allow(clippy::panic, reason = "unit tests")]
+#[expect(clippy::panic, reason = "unit testing code")]
 pub(crate) mod test_utils {
     use super::err::ParseErrors;
     use crate::test_utils::*;
@@ -345,7 +345,7 @@ pub(crate) mod test_utils {
     }
 }
 
-#[allow(
+#[expect(
     clippy::panic,
     clippy::indexing_slicing,
     clippy::cognitive_complexity,

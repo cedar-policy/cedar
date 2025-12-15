@@ -264,6 +264,7 @@ fn offset_to_position(text: &str, offset: usize) -> Position {
 }
 
 #[cfg(test)]
+#[expect(clippy::panic, reason = "testing code")]
 mod test {
     use std::sync::LazyLock;
 

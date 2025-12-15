@@ -80,7 +80,7 @@ async fn test_cedar_examples(#[case] policy_set_src: &str, #[case] schema_src: &
 
         for policy1 in pset.policies() {
             let pset1 = PolicySet::from_policies(std::iter::once(policy1.clone())).unwrap();
-            assert_never_errors_ok(&mut compiler, &policy1, env, Pathway::Both).await;
+            assert_never_errors_ok(&mut compiler, policy1, env, Pathway::Both).await;
             assert_always_allows_ok(&mut compiler, &pset1, env, Pathway::Both).await;
             assert_always_denies_ok(&mut compiler, &pset1, env, Pathway::Both).await;
             assert_implies(&mut compiler, &pset1, &pset1, env).await;

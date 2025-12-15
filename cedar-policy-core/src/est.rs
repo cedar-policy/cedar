@@ -427,8 +427,7 @@ impl std::fmt::Display for Clause {
     }
 }
 
-#[allow(clippy::panic, reason = "Unit Test Code")]
-#[allow(clippy::indexing_slicing, reason = "Unit Test Code")]
+#[expect(clippy::panic, clippy::indexing_slicing, reason = "Unit Test Code")]
 #[cfg(test)]
 mod test {
     use super::*;

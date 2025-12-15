@@ -33,7 +33,7 @@ fn folder() -> &'static Path {
 // Don't run the corpus tests by default because they can take a minute to
 // complete, slowing things down substantially.
 #[ignore]
-#[allow(clippy::panic, reason = "Corpus Tests")]
+#[expect(clippy::panic, reason = "Corpus Tests")]
 fn corpus_tests(
     // TODO(#438): rstest can use a glob to have one test for each matching
     // file, but we're dynamically resolving the corpus test folder, so this

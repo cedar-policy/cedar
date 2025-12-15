@@ -1574,8 +1574,8 @@ impl<'a> CommonTypeResolver<'a> {
     }
 }
 
-#[allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 #[cfg(test)]
+#[expect(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 pub(crate) mod test {
     use std::{
         collections::{BTreeMap, HashSet},
@@ -3887,7 +3887,7 @@ pub(crate) mod test {
 mod test_579; // located in separate file test_579.rs
 
 #[cfg(test)]
-#[allow(clippy::cognitive_complexity)]
+#[expect(clippy::cognitive_complexity, reason = "unit tests")]
 mod test_rfc70 {
     use super::test::utils::*;
     use super::ValidatorSchema;
@@ -4886,7 +4886,7 @@ mod test_rfc70 {
 
 /// Tests involving entity tags (RFC 82)
 #[cfg(test)]
-#[allow(clippy::cognitive_complexity)]
+#[expect(clippy::cognitive_complexity, reason = "tests")]
 mod entity_tags {
     use super::{test::utils::*, *};
     use crate::{
@@ -5642,8 +5642,7 @@ action CreateList in Create appliesTo {
             .actions_for_principal_and_resource(&pty, &rty)
             .cloned()
             .collect::<HashSet<EntityUID>>();
-        let expected = ["GetList"]
-            .into_iter()
+        let expected = std::iter::once("GetList")
             .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
             .collect::<HashSet<EntityUID>>();
         assert_eq!(actions, expected);

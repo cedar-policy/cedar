@@ -20,7 +20,7 @@ use cedar_policy::{Policy, PolicySet, Schema, Validator};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-#[allow(clippy::unwrap_used, reason = "benchmarking")]
+#[expect(clippy::unwrap_used, reason = "benchmarking")]
 pub fn extension_fn_validation(c: &mut Criterion) {
     let (schema, _) = Schema::from_cedarschema_str(
         "entity E; action Act appliesTo { principal: E, resource: E, context: {}};",

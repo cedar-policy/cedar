@@ -692,6 +692,7 @@ mod tests {
         })
     }
 
+    #[expect(clippy::too_many_arguments, reason = "IPv6 addresses simply have this many components")]
     fn ipv6(
         a0: u16,
         a1: u16,

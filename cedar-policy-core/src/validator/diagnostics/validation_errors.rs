@@ -708,6 +708,7 @@ impl Diagnostic for InvalidEnumEntity {
 // only the primary message would included in the final error. If it was an
 // optional attribute without a guard, then the help message is also printed.
 #[cfg(test)]
+#[expect(clippy::panic, reason = "testing")]
 mod test_attr_access {
     use crate::{
         ast::{EntityUID, Expr, ExprBuilder, ExprKind, Var},
@@ -717,7 +718,6 @@ mod test_attr_access {
     use super::AttributeAccess;
     use crate::validator::types::{OpenTag, RequestEnv, Type};
 
-    #[allow(clippy::panic, reason = "testing")]
     #[track_caller]
     fn assert_message_and_help(
         attr_access: &Expr<Option<Type>>,

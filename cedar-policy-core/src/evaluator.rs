@@ -1167,7 +1167,7 @@ fn stack_size_check() -> Result<()> {
     Ok(())
 }
 
-#[allow(clippy::panic, clippy::cognitive_complexity, reason = "Unit Test Code")]
+#[expect(clippy::panic, clippy::cognitive_complexity, reason = "Unit Test Code")]
 #[cfg(test)]
 pub(crate) mod test {
     use std::collections::{HashMap, HashSet};
@@ -5794,7 +5794,7 @@ pub(crate) mod test {
     fn partial_and_res_true() {
         let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2));
-        let e = Expr::and(lhs.clone(), rhs.clone());
+        let e = Expr::and(lhs.clone(), rhs);
         let es = Entities::new();
         let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 
@@ -5807,7 +5807,7 @@ pub(crate) mod test {
     fn partial_and_res_false() {
         let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
-        let e = Expr::and(lhs.clone(), rhs.clone());
+        let e = Expr::and(lhs.clone(), rhs);
         let es = Entities::new();
         let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 
@@ -5887,7 +5887,7 @@ pub(crate) mod test {
     fn partial_or_res_true() {
         let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2));
-        let e = Expr::or(lhs.clone(), rhs.clone());
+        let e = Expr::or(lhs.clone(), rhs);
         let es = Entities::new();
         let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 
@@ -5901,7 +5901,7 @@ pub(crate) mod test {
     fn partial_or_res_false() {
         let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
-        let e = Expr::or(lhs.clone(), rhs.clone());
+        let e = Expr::or(lhs.clone(), rhs);
         let es = Entities::new();
         let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 

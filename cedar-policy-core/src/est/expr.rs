@@ -1577,8 +1577,8 @@ fn maybe_with_parens(
 }
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing, reason = "this is unit test code")]
-#[allow(clippy::panic, reason = "Unit Test Code")]
+#[expect(clippy::indexing_slicing, reason = "this is unit test code")]
+#[expect(clippy::panic, reason = "Unit Test Code")]
 mod test {
     use crate::parser::{
         err::{ParseError, ToASTErrorKind},

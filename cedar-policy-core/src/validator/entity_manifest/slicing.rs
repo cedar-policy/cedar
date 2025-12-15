@@ -244,6 +244,7 @@ impl AccessTrie {
 }
 
 #[cfg(test)]
+#[expect(clippy::panic, reason = "testing code")]
 mod entity_slice_tests {
     use similar_asserts::assert_eq;
 
@@ -350,7 +351,6 @@ action Read appliesTo {
             .slice_entities(&original_entities, &request)
             .unwrap();
 
-        #[allow(clippy::panic, reason = "panic in testing when test fails")]
         if !sliced_entities.deep_eq(&expected_entities) {
             panic!(
                 "Sliced entities differed from expected. Expected:\n{}\nGot:\n{}",

@@ -185,9 +185,8 @@ where
     Ok(())
 }
 
-#[allow(clippy::indexing_slicing, reason = "test cases")]
-#[allow(clippy::panic, reason = "Unit Test Code")]
 #[cfg(test)]
+#[expect(clippy::panic, clippy::indexing_slicing, reason = "test code")]
 mod tests {
     use crate::ast::{Entity, EntityUID};
 

@@ -3870,13 +3870,13 @@ mod annotations {
 }
 
 #[cfg(test)]
+#[expect(clippy::collection_is_never_read, reason = "testing code")]
 mod ord {
     use super::{InternalName, RawName, Type, TypeVariant};
     use std::collections::BTreeSet;
 
     /// Tests that `Type<RawName>` and `Type<InternalName>` are `Ord`
     #[test]
-    #[allow(clippy::collection_is_never_read)]
     fn type_ord() {
         let mut set: BTreeSet<Type<RawName>> = BTreeSet::default();
         set.insert(Type::Type {
@@ -3892,7 +3892,7 @@ mod ord {
 }
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing, reason = "tests")]
+#[expect(clippy::indexing_slicing, reason = "tests")]
 mod enumerated_entity_types {
     use cool_asserts::assert_matches;
 

@@ -755,7 +755,7 @@ pub fn extension() -> Extension {
 }
 
 #[cfg(test)]
-#[allow(clippy::cognitive_complexity)]
+#[expect(clippy::cognitive_complexity, reason = "testing code")]
 mod tests {
     use std::{str::FromStr, sync::Arc};
 

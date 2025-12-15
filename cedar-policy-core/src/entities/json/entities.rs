@@ -471,7 +471,7 @@ impl EntityJson {
     }
 }
 
-#[allow(clippy::panic, reason = "unit test code")]
+#[expect(clippy::panic, reason = "unit test code")]
 #[cfg(test)]
 mod test {
     use super::*;

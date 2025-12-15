@@ -306,6 +306,7 @@ impl SymEnv {
 }
 
 #[cfg(test)]
+#[expect(clippy::panic, reason = "unit tests")]
 mod interpret_test {
     use std::str::FromStr;
 

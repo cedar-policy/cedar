@@ -177,6 +177,7 @@ pub(crate) fn schema_symbols(schema_info: &SchemaInfo) -> Option<Vec<DocumentSym
 }
 
 #[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "testing code")]
 mod test {
     use itertools::Itertools;
 

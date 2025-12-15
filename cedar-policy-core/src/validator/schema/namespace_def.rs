@@ -620,7 +620,7 @@ impl<N, A> ActionsDef<N, A> {
     }
 }
 
-#[cfg_attr(not(feature = "extended-schema"), allow(unused_variables))]
+#[cfg_attr(not(feature = "extended-schema"), expect(unused_variables, reason = "used with some features"))]
 fn create_action_entity_uid_default_type(
     action_name: &SmolStr,
     action_type: &json_schema::ActionType<RawName>,

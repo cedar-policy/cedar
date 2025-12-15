@@ -2092,8 +2092,6 @@ pub(crate) mod test_generators {
 }
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing, reason = "Unit Test Code")]
-#[allow(clippy::panic, reason = "Unit Test Code")]
 mod test {
     use cool_asserts::assert_matches;
     use std::collections::HashSet;

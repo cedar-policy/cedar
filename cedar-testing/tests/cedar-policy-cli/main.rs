@@ -41,7 +41,7 @@ fn value_to_euid_string(v: serde_json::Value) -> Result<String, impl miette::Dia
 /// For relative paths, return the absolute path, assuming that the path
 /// is relative to the root of the CedarIntegrationTests repo.
 /// For absolute paths, return them unchanged.
-#[allow(clippy::expect_used, reason = "this is all test code")]
+#[expect(clippy::expect_used, reason = "this is all test code")]
 fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
     if path.as_ref().is_relative() {
         let manifest_dir = env::var("CARGO_MANIFEST_DIR")
@@ -62,7 +62,7 @@ fn resolve_integration_test_path(path: impl AsRef<Path>) -> PathBuf {
 /// Relative paths are assumed to be relative to the root of the
 /// cedar-integration-tests folder.
 /// Absolute paths are handled without modification.
-#[allow(
+#[expect(
     clippy::unwrap_used,
     clippy::expect_used,
     reason = "this is all test code"
@@ -167,7 +167,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
                 "test {} failed for request \"{}\": output does not contain expected error {error:?}.\noutput was: {output}\nstderr was: {}",
                 jsonfile.display(),
                 &json_request.description,
-                String::from_utf8(authorize_cmd.stderr.clone()).expect("stderr should be valid UTF-8"),
+                String::from_utf8(authorize_cmd.stderr).expect("stderr should be valid UTF-8"),
             );
         }
 
@@ -177,7 +177,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
                 "test {} failed for request \"{}\": output does not contain the string \"no policies applied to this request\", as expected.\noutput was: {output}\nstderr was: {}",
                 jsonfile.display(),
                 &json_request.description,
-                String::from_utf8(authorize_cmd.stderr.clone()).expect("stderr should be valid UTF-8"),
+                String::from_utf8(authorize_cmd.stderr).expect("stderr should be valid UTF-8"),
             );
         } else {
             assert!(output.contains("this decision was due to the following policies"));
@@ -187,7 +187,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
                     "test {} failed for request \"{}\": output does not contain the reason string {reason:?}.\noutput was: {output}\nstderr was: {}",
                     jsonfile.display(),
                     &json_request.description,
-                    String::from_utf8(authorize_cmd.stderr.clone()).expect("stderr should be valid UTF-8"),
+                    String::from_utf8(authorize_cmd.stderr).expect("stderr should be valid UTF-8"),
                 );
             }
         };

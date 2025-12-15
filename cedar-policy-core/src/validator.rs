@@ -583,6 +583,7 @@ mod test {
 }
 
 #[cfg(test)]
+#[expect(clippy::cognitive_complexity, reason = "unit test code")]
 mod enumerated_entity_types {
     use std::collections::HashMap;
 
@@ -666,7 +667,6 @@ mod enumerated_entity_types {
     }
 
     #[test]
-    #[allow(clippy::cognitive_complexity)]
     fn basic_invalid() {
         let schema = schema();
         let template = parse_policy_or_template(None, r#"permit(principal, action == Action::"a", resource) when { principal == Foo::"fo" };"#).unwrap();

@@ -140,6 +140,7 @@ impl std::fmt::Display for UnescapeError {
 }
 
 #[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "testing")]
 mod test {
     use cool_asserts::assert_matches;
 
@@ -179,7 +180,6 @@ mod test {
         assert_eq!(errs.len(), 2);
     }
 
-    #[allow(clippy::indexing_slicing, reason = "testing")]
     #[test]
     fn test_pattern_escape() {
         // valid ASCII escapes
