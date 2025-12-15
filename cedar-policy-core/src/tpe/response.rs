@@ -36,7 +36,9 @@ use crate::{
 /// Represent a residual policy
 #[derive(Debug, Clone)]
 pub struct ResidualPolicy {
+    /// The residual expression remaining after partial evaluation.
     residual: Arc<Residual>,
+    /// The original policy prior to partial evaluation.
     policy: Arc<Policy>,
 }
 
