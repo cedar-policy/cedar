@@ -44,6 +44,7 @@ cool_asserts = "2.0.4"
 similar-asserts = "1.7.0"
 insta = "1.44.3"
 tempfile = "3.23.0"
+proptest = "1.5"
 
 [features]
 default = ["bin"]

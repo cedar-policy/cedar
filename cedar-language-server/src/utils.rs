@@ -96,22 +96,25 @@ pub(crate) fn to_lsp_diagnostics<'a>(
     diagnostics
 }
 
-/// The function will panic if `source_span.offset()` or
-/// `source_space().offset() + source_span.len()` is not a valid index into str.
 pub(crate) fn to_range(source_span: &SourceSpan, src: &str) -> Range {
-    #[expect(
-        clippy::string_slice,
-        reason = "Callers is responsible for providing valid byte index"
-    )]
-    let text = &src[..source_span.offset()];
+    // Find valid character boundary at or before offset
+    let offset = source_span.offset().min(src.len());
+    let offset = (0..=offset)
+        .rev()
+        .find(|&i| src.is_char_boundary(i))
+        .unwrap_or(0);
+    #[expect(clippy::string_slice, reason = "Scanned for char boundary above")]
+    let text = &src[..offset];
     let start_line = text.chars().filter(|&c| c == '\n').count();
     let start_col = text.chars().rev().take_while(|&c| c != '\n').count();
 
-    let end = source_span.offset() + source_span.len();
-    #[expect(
-        clippy::string_slice,
-        reason = "Callers is responsible for providing valid byte index"
-    )]
+    // Find valid character boundary at or before end
+    let end = (source_span.offset() + source_span.len()).min(src.len());
+    let end = (0..=end)
+        .rev()
+        .find(|&i| src.is_char_boundary(i))
+        .unwrap_or(0);
+    #[expect(clippy::string_slice, reason = "Scanned for char boundary above")]
     let text = &src[..end];
     let end_line = text.chars().filter(|&c| c == '\n').count();
     let end_col = text.chars().rev().take_while(|&c| c != '\n').count();
@@ -155,10 +158,11 @@ pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<&st
     let line = text.lines().nth(position.line as usize)?;
     let char_pos = position.character as usize;
 
-    // Check if we're within the line bounds
-    if char_pos > line.len() {
-        return None;
-    }
+    // Convert character position to byte offset
+    let byte_pos = line
+        .char_indices()
+        .nth(char_pos)
+        .map_or(line.len(), |(i, _)| i);
 
     // Helper function to check if a character is part of a word
     let is_word_char = |c: char| c.is_alphanumeric() || c == '_' || c == ':' || c == '=';
@@ -166,9 +170,9 @@ pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<&st
     // Find the start of the word
     #[expect(
         clippy::string_slice,
-        reason = "char_pos from line.char_indices() guaranteed valid char boundary"
+        reason = "byte_pos is computed from char_indicies()"
     )]
-    let start = line[..char_pos]
+    let start = line[..byte_pos]
         .char_indices()
         .rev()
         .find(|(_, c)| !is_word_char(*c))
@@ -177,12 +181,12 @@ pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<&st
     // Find the end of the word
     #[expect(
         clippy::string_slice,
-        reason = "char_pos from line.char_indices() guaranteed valid char boundary"
+        reason = "byte_pos is computed from char_indicies()"
     )]
-    let end = line[char_pos..]
+    let end = line[byte_pos..]
         .char_indices()
         .find(|(_, c)| !is_word_char(*c))
-        .map_or(line.len(), |(i, _)| char_pos + i);
+        .map_or(line.len(), |(i, _)| byte_pos + i);
 
     // If we're not actually on a word, return None
     line.get(start..end).filter(|word| !word.is_empty())
@@ -193,6 +197,12 @@ pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option
     let line = text.lines().nth(position.line as usize)?;
     let char_pos = position.character as usize;
 
+    // Convert character position to byte offset
+    let byte_pos = line
+        .char_indices()
+        .nth(char_pos)
+        .map_or(line.len(), |(i, _)| i);
+
     // Define all possible operators
     let operators = [
         "&&", "||", "!=", "==", ">=", "<=", "!", "+", "-", "*", "<", ">",
@@ -201,21 +211,26 @@ pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option
     // Helper function to check if a character could be part of an operator
     let is_operator_char = |c: char| "!&|=<>+-*".contains(c);
 
-    // Will return `None` here if cursor is out of line bounds or not on char boundary.
-    let (before_cursor, after_cursor) = line.split_at_checked(char_pos)?;
-
     // Find the start of the operator
-    let start = before_cursor
+    #[expect(
+        clippy::string_slice,
+        reason = "byte_pos is computed from char_indicies"
+    )]
+    let start = line[..byte_pos]
         .char_indices()
         .rev()
         .find(|(_, c)| !is_operator_char(*c))
         .map_or(0, |(i, _)| i + 1);
 
     // Find the end of the operator
-    let end = after_cursor
+    #[expect(
+        clippy::string_slice,
+        reason = "byte_pos is computed from char_indicies"
+    )]
+    let end = line[byte_pos..]
         .char_indices()
         .find(|(_, c)| !is_operator_char(*c))
-        .map_or(line.len(), |(i, _)| char_pos + i);
+        .map_or(line.len(), |(i, _)| byte_pos + i);
 
     let potential_operator = line.get(start..end)?;
 
@@ -240,21 +255,25 @@ fn get_policy_scope_ranges(policy_text: &str) -> Vec<Range> {
 
     // Identify effect keywords and their parentheses
     for (line_idx, line) in policy_text.lines().enumerate() {
-        for (char_idx, char) in line.char_indices() {
+        // Use enumerate() to get char_idx (character index) and char_indices() for byte_idx
+        for (char_idx, (byte_idx, char)) in line.char_indices().enumerate() {
             #[expect(
-                clippy::unwrap_used,
-                reason = "char_idx from line.char_indices() is valid byte index"
+                clippy::string_slice,
+                reason = "byte_idx is computed from char_indicies()"
             )]
-            let (before_char, after_char) = line.split_at_checked(char_idx).unwrap();
+            let substring = &line[byte_idx..];
 
             // Check for effect keywords
+            #[expect(
+                clippy::string_slice,
+                reason = "byte_idx is computed from char_indicies()"
+            )]
             if !in_effect_keyword
-                && (after_char.starts_with("permit") || after_char.starts_with("forbid"))
-                && (char_idx == 0 || {
-                    !before_char
+                && (substring.starts_with("permit") || substring.starts_with("forbid"))
+                && (byte_idx == 0
+                    || !line[..byte_idx]
                         .trim_end()
-                        .ends_with(|c: char| c.is_alphanumeric() || c == '_')
-                })
+                        .ends_with(|c: char| c.is_alphanumeric() || c == '_'))
             {
                 in_effect_keyword = true;
                 continue;
@@ -1304,5 +1323,219 @@ permit(
 
         let (text, position) = remove_caret_marker("hello world|caret|");
         assert_eq!(get_word_at_position(position, &text), Some("world"));
+    }
+
+    mod proptests {
+        use super::*;
+        use proptest::prelude::*;
+
+        // Implement ToRange for Range in tests
+        impl ToRange for Range {
+            fn to_range(&self) -> Range {
+                *self
+            }
+        }
+
+        fn arb_position() -> impl Strategy<Value = Position> {
+            (0u32..100, 0u32..200).prop_map(|(line, character)| Position { line, character })
+        }
+
+        fn arb_range() -> impl Strategy<Value = Range> {
+            (arb_position(), arb_position()).prop_map(|(p1, p2)| {
+                let (start, end) = if (p1.line, p1.character) <= (p2.line, p2.character) {
+                    (p1, p2)
+                } else {
+                    (p2, p1)
+                };
+                Range { start, end }
+            })
+        }
+
+        proptest! {
+            #[test]
+            fn ranges_intersect_is_symmetric(a in arb_range(), b in arb_range()) {
+                prop_assert_eq!(ranges_intersect(&a, &b), ranges_intersect(&b, &a));
+            }
+
+            #[test]
+            fn ranges_intersect_is_reflexive(a in arb_range()) {
+                prop_assert!(ranges_intersect(&a, &a));
+            }
+
+            #[test]
+            fn to_range_start_lte_end(offset in 0usize..1000, len in 0usize..500, src in "[^\n]{0,500}(\n[^\n]{0,500}){0,20}") {
+                let src_len = src.len();
+                prop_assume!(offset < src_len);
+                let actual_len = len.min(src_len - offset);
+                let span = SourceSpan::new(miette::SourceOffset::from(offset), actual_len);
+                let range = to_range(&span, &src);
+                prop_assert!(
+                    (range.start.line, range.start.character) <= (range.end.line, range.end.character),
+                    "start {:?} should be <= end {:?}", range.start, range.end
+                );
+            }
+
+            #[test]
+            fn get_word_at_position_returns_nonempty_or_none(
+                text in "[a-zA-Z0-9_ ]{1,100}",
+                line in 0u32..5,
+                character in 0u32..50
+            ) {
+                let position = Position { line, character };
+                if let Some(word) = get_word_at_position(position, &text) {
+                    prop_assert!(!word.is_empty(), "word should be non-empty");
+                }
+            }
+
+            #[test]
+            fn get_word_at_position_only_word_chars(
+                text in "[a-zA-Z0-9_: =]{1,100}",
+                character in 0u32..50
+            ) {
+                let position = Position { line: 0, character };
+                if let Some(word) = get_word_at_position(position, &text) {
+                    let is_word_char = |c: char| c.is_alphanumeric() || c == '_' || c == ':' || c == '=';
+                    prop_assert!(word.chars().all(is_word_char), "word '{}' should only contain word chars", word);
+                }
+            }
+
+            #[test]
+            fn position_within_loc_includes_start(range in arb_range()) {
+                let result = position_within_loc::<Range, _>(range.start, Some(&range));
+                prop_assert!(result, "start position {:?} should be within range {:?}", range.start, range);
+            }
+
+            #[test]
+            fn position_within_loc_includes_end(range in arb_range()) {
+                let result = position_within_loc::<Range, _>(range.end, Some(&range));
+                prop_assert!(result, "end position {:?} should be within range {:?}", range.end, range);
+            }
+
+            #[test]
+            fn get_char_at_position_valid_for_ascii(
+                text in "[a-zA-Z0-9 \n]{1,200}",
+                line in 0u32..10,
+                character in 0u32..50
+            ) {
+                let position = Position { line, character };
+                if let Some(c) = get_char_at_position(position, &text) {
+                    prop_assert!(c.is_ascii(), "char should be ascii for ascii input");
+                }
+            }
+
+            #[test]
+            fn get_operator_at_position_returns_valid_operator(
+                text in "[a-z&|!=<>+\\-*]{1,50}",
+                character in 0u32..30
+            ) {
+                let position = Position { line: 0, character };
+                let operators = ["&&", "||", "!=", "==", ">=", "<=", "!", "+", "-", "*", "<", ">"];
+                if let Some(op) = get_operator_at_position(position, &text) {
+                    prop_assert!(operators.contains(&op), "operator '{}' should be valid", op);
+                }
+            }
+
+            #[test]
+            fn get_word_at_position_unicode_no_panic(
+                prefix in "[a-z]{0,10}",
+                unicode_char in "[àéîöü]{1}",
+                suffix in "[a-z]{0,10}",
+                character in 0u32..30
+            ) {
+                let text = format!("{}{}{}", prefix, unicode_char, suffix);
+                let position = Position { line: 0, character };
+                // Should not panic, even with Unicode
+                let _ = get_word_at_position(position, &text);
+            }
+
+            #[test]
+            fn get_operator_at_position_unicode_no_panic(
+                prefix in "[a-z]{0,10}",
+                unicode_char in "[àéîöü]{1}",
+                suffix in "[a-z]{0,10}",
+                character in 0u32..30
+            ) {
+                let text = format!("{}{}{}", prefix, unicode_char, suffix);
+                let position = Position { line: 0, character };
+                // Should not panic, even with Unicode
+                let _ = get_operator_at_position(position, &text);
+            }
+
+            #[test]
+            fn is_cursor_in_condition_braces_unicode_consistency(
+                prefix in "[a-z]{0,5}",
+                unicode_char in "[àéîöü]{1}",
+                suffix in "[a-z]{0,5}",
+                line in 0u32..3,
+                character in 0u32..20
+            ) {
+                // Create a simple policy with Unicode in a comment
+                let policy = format!(
+                    "permit(principal, action, resource) when {{ // {}{}{}\n  true\n}};",
+                    prefix, unicode_char, suffix
+                );
+                let position = Position { line, character };
+                // Should not panic
+                let _ = is_cursor_in_condition_braces(position, &policy);
+            }
+
+            #[test]
+            fn policy_scope_ranges_unicode_char_indices(
+                unicode_prefix in "[àéîöü]{1,3}"
+            ) {
+                // Create a policy with Unicode before the permit keyword
+                // The bug is that char_indices() returns byte indices, not char indices
+                let policy = format!("// {}\npermit(principal, action, resource);", unicode_prefix);
+                let ranges = get_policy_scope_ranges(&policy);
+
+                // The range should be valid - character positions should be char indices, not byte indices
+                if let Some(range) = ranges.first() {
+                    // Line 1 is where permit is, character should be 0 for the '(' after permit
+                    // If the bug exists, character would be wrong due to byte vs char confusion
+                    let line = policy.lines().nth(range.start.line as usize).unwrap();
+                    let char_count = line.chars().count();
+                    prop_assert!(
+                        (range.start.character as usize) <= char_count,
+                        "start character {} should be <= line char count {} for line '{}'",
+                        range.start.character, char_count, line
+                    );
+                    prop_assert!(
+                        (range.end.character as usize) <= char_count,
+                        "end character {} should be <= line char count {} for line '{}'",
+                        range.end.character, char_count, line
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn policy_scope_ranges_unicode_on_same_line() {
+            // Valid Cedar: Unicode in annotation on same line as permit
+            let policy = r#"@id("café") permit(principal, action, resource);"#;
+            let ranges = get_policy_scope_ranges(policy);
+
+            if let Some(range) = ranges.first() {
+                let line = policy.lines().next().unwrap();
+
+                // Find where the '(' after "permit" is (character index)
+                // "permit(" starts after "@id(\"café\") "
+                let permit_start = line
+                    .chars()
+                    .collect::<Vec<_>>()
+                    .windows(6)
+                    .position(|w| w == ['p', 'e', 'r', 'm', 'i', 't'])
+                    .unwrap();
+                let paren_char_idx = permit_start + 6; // '(' is right after "permit"
+
+                // The bug: char_indices() returns byte index, not char index
+                // 'é' in café is 2 bytes, so byte index will be off by 1
+                assert!(
+                    range.start.character as usize == paren_char_idx,
+                    "BUG: start.character is {} but should be {} (char index of '(' after permit). \
+                     Policy: {}",
+                    range.start.character, paren_char_idx, policy
+                );
+            }
+        }
     }
 }
