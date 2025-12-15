@@ -27,7 +27,7 @@ use crate::cedar_test_impl::*;
 #[cfg(feature = "entity-manifest")]
 #[expect(
     deprecated,
-    reason = "still want to test this deprecated fucntion until it is fully removed"
+    reason = "still want to test this deprecated function until it is fully removed"
 )]
 use cedar_policy::{compute_entity_manifest, Validator};
 use cedar_policy::{
@@ -319,7 +319,7 @@ pub fn perform_integration_test(
         #[cfg(feature = "entity-manifest")]
         #[expect(
             deprecated,
-            reason = "still want to test this deprecated fucntion until it is fully removed"
+            reason = "still want to test this deprecated function until it is fully removed"
         )]
         if should_validate {
             let entity_manifest =
