@@ -367,7 +367,7 @@ mod interpret_test {
     }
 
     fn parse_expr(str: &str) -> Expr {
-        Expr::from_str(str).expect(format!("Could not parse expression: {str}").as_str())
+        Expr::from_str(str).unwrap_or_else(|e| panic!("Could not parse expression: {str}: {e}"))
     }
 
     fn test_valid_bool_interp_expr(str: &str, interp: &Interpretation<'_>, res: bool) {

@@ -115,6 +115,7 @@ impl Schema {
 }
 
 #[cfg(test)]
+#[expect(deprecated, reason = "testing deprecated functionality")]
 mod test_utils {
     use cedar_policy_core::test_utils::{
         expect_err, ExpectedErrorMessage, ExpectedErrorMessageBuilder,
@@ -124,7 +125,7 @@ mod test_utils {
 
     use crate::Schema;
 
-    fn schema_with_entity_attribute(attr_ty: serde_json::Value) -> serde_json::Value {
+    fn schema_with_entity_attribute(attr_ty: &serde_json::Value) -> serde_json::Value {
         json!({
             "ns": {
                 "commonTypes": {"ty": {"type": "Long"}},
@@ -143,7 +144,7 @@ mod test_utils {
         })
     }
 
-    fn schema_with_context_attribute(attr_ty: serde_json::Value) -> serde_json::Value {
+    fn schema_with_context_attribute(attr_ty: &serde_json::Value) -> serde_json::Value {
         json!({
             "ns": {
                 "commonTypes": {"ty": {"type": "Long"}},
@@ -168,7 +169,7 @@ mod test_utils {
         })
     }
 
-    fn schema_with_common_type(ty: serde_json::Value) -> serde_json::Value {
+    fn schema_with_common_type(ty: &serde_json::Value) -> serde_json::Value {
         json!({
             "ns": {
                 "commonTypes": {
@@ -184,19 +185,18 @@ mod test_utils {
     }
 
     #[track_caller]
-    #[allow(deprecated)]
     pub(crate) fn assert_type_json_ok_deprecated_and_err_standard(
-        ty: serde_json::Value,
+        ty: &serde_json::Value,
         err: &str,
     ) {
-        let in_entity_attr = schema_with_entity_attribute(ty.clone());
+        let in_entity_attr = schema_with_entity_attribute(ty);
         Schema::from_deprecated_json_value(in_entity_attr.clone()).unwrap();
         expect_err(
             "",
             &Report::new(Schema::from_json_value(in_entity_attr).unwrap_err()),
             &ExpectedErrorMessageBuilder::error(err).build(),
         );
-        let in_context = schema_with_context_attribute(ty.clone());
+        let in_context = schema_with_context_attribute(ty);
         Schema::from_deprecated_json_value(in_context.clone()).unwrap();
         expect_err(
             "",
@@ -213,12 +213,11 @@ mod test_utils {
     }
 
     #[track_caller]
-    #[allow(deprecated)]
-    pub(crate) fn assert_type_json_ok_deprecated_and_standard(ty: serde_json::Value) {
-        let in_entity_attr = schema_with_entity_attribute(ty.clone());
+    pub(crate) fn assert_type_json_ok_deprecated_and_standard(ty: &serde_json::Value) {
+        let in_entity_attr = schema_with_entity_attribute(ty);
         Schema::from_deprecated_json_value(in_entity_attr.clone()).unwrap();
         Schema::from_json_value(in_entity_attr).unwrap();
-        let in_context = schema_with_context_attribute(ty.clone());
+        let in_context = schema_with_context_attribute(ty);
         Schema::from_deprecated_json_value(in_context.clone()).unwrap();
         Schema::from_json_value(in_context).unwrap();
         let in_common = schema_with_common_type(ty);
@@ -227,22 +226,20 @@ mod test_utils {
     }
 
     #[track_caller]
-    #[allow(deprecated)]
     pub(crate) fn assert_type_json_err_deprecated_and_standard(
-        ty: serde_json::Value,
+        ty: &serde_json::Value,
         current_err: &ExpectedErrorMessage<'_>,
         deprecated_err: &ExpectedErrorMessage<'_>,
     ) {
-        let in_entity_attr = schema_with_entity_attribute(ty.clone());
+        let in_entity_attr = schema_with_entity_attribute(ty);
         assert_schema_json_err_deprecated_and_standard(in_entity_attr, current_err, deprecated_err);
-        let in_context = schema_with_context_attribute(ty.clone());
+        let in_context = schema_with_context_attribute(ty);
         assert_schema_json_err_deprecated_and_standard(in_context, current_err, deprecated_err);
         let in_common = schema_with_common_type(ty);
         assert_schema_json_err_deprecated_and_standard(in_common, current_err, deprecated_err);
     }
 
     #[track_caller]
-    #[allow(deprecated)]
     pub(crate) fn assert_schema_json_err_deprecated_and_standard(
         schema: serde_json::Value,
         current_err: &ExpectedErrorMessage<'_>,
@@ -271,41 +268,41 @@ mod extra_fields_allowed {
     #[test]
     fn in_long() {
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Long",
                 "bogus": "bogus",
             }),
             "unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Long",
                 "name": "my_long",
             }),
             "unknown field `name`, there are no fields",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Long",
                 "element": "bogus"
             }),
             "invalid type: string \"bogus\", expected builtin type or reference to type defined in commonTypes",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Long",
                 "attributes": "bogus",
             }),
             "invalid type: string \"bogus\", expected a map",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Long",
                 "additionalAttributes": "bogus",
             }),
             "invalid type: string \"bogus\", expected a boolean",
         );
-        assert_type_json_ok_deprecated_and_standard(json!({
+        assert_type_json_ok_deprecated_and_standard(&json!({
             "type": "Long",
             "annotations": {},
         }));
@@ -314,41 +311,41 @@ mod extra_fields_allowed {
     #[test]
     fn in_bool() {
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Boolean",
                 "bogus": "bogus",
             }),
             "unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Boolean",
                 "name": "my_long",
             }),
             "unknown field `name`, there are no fields",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Boolean",
                 "element": "bogus",
             }),
             "invalid type: string \"bogus\", expected builtin type or reference to type defined in commonTypes",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Boolean",
                 "attributes": "bogus",
             }),
             "invalid type: string \"bogus\", expected a map",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Boolean",
                 "additionalAttributes": "bogus",
             }),
             "invalid type: string \"bogus\", expected a boolean",
         );
-        assert_type_json_ok_deprecated_and_standard(json!({
+        assert_type_json_ok_deprecated_and_standard(&json!({
             "type": "Boolean",
             "annotations": {},
         }));
@@ -357,41 +354,41 @@ mod extra_fields_allowed {
     #[test]
     fn in_string() {
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "String",
                 "bogus": "bogus",
             }),
             "unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "String",
                 "name": "bogus",
             }),
             "unknown field `name`, there are no fields",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "String",
                 "element": {"type": "Long"}
             }),
             "unknown field `element`, there are no fields",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "String",
                 "attributes": {},
             }),
             "unknown field `attributes`, there are no fields",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "String",
                 "additionalAttributes": false,
             }),
             "unknown field `additionalAttributes`, there are no fields",
         );
-        assert_type_json_ok_deprecated_and_standard(json!({
+        assert_type_json_ok_deprecated_and_standard(&json!({
             "type": "String",
             "annotations": {},
         }));
@@ -400,41 +397,41 @@ mod extra_fields_allowed {
     #[test]
     fn in_common() {
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "ty",
                 "bogus": "bogus",
             }),
             "unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "ty",
                 "name": "my_long",
             }),
             "unknown field `name`, there are no fields",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "ty",
                 "element": 10,
             }),
             "invalid type: integer `10`, expected builtin type or reference to type defined in commonTypes",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "ty",
                 "attributes": ["bogus"],
             }),
             "invalid type: sequence, expected a map",
         );
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "ty",
                 "additionalAttributes": {"bogus": "bogus"},
             }),
             "invalid type: map, expected a boolean",
         );
-        assert_type_json_ok_deprecated_and_standard(json!({
+        assert_type_json_ok_deprecated_and_standard(&json!({
             "type": "ty",
             "annotations": {},
         }));
@@ -443,7 +440,7 @@ mod extra_fields_allowed {
     #[test]
     fn in_set_elem() {
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Set",
                 "element": {"type": "Long", "name": "my_long"},
             }),
@@ -454,7 +451,7 @@ mod extra_fields_allowed {
     #[test]
     fn in_record_attr() {
         assert_type_json_ok_deprecated_and_err_standard(
-            json!({
+            &json!({
                 "type": "Record",
                 "attributes": { "a": {"type": "Long", "name": "foo"} },
             }),
@@ -473,7 +470,7 @@ mod extra_fields_forbidden {
     #[test]
     fn in_set() {
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Set",
                 "element": {"type": "Long"},
                 "bogus": "bogus",
@@ -486,7 +483,7 @@ mod extra_fields_forbidden {
                 .build(),
         );
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Set",
                 "element": {"type": "Long"},
                 "name": "my_long",
@@ -500,7 +497,7 @@ mod extra_fields_forbidden {
         );
 
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Set",
                 "element": {"type": "Long"},
                 "attributes": {},
@@ -513,7 +510,7 @@ mod extra_fields_forbidden {
                 .build(),
         );
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Set",
                 "element": {"type": "Long"},
                 "additionalAttributes": false,
@@ -530,7 +527,7 @@ mod extra_fields_forbidden {
     #[test]
     fn in_entity() {
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Entity",
                 "name": "User",
                 "bogus": "bogus",
@@ -543,7 +540,7 @@ mod extra_fields_forbidden {
                 .build(),
         );
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Entity",
                 "name": "User",
                 "element": {"type": "Long"},
@@ -556,7 +553,7 @@ mod extra_fields_forbidden {
                 .build(),
         );
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Entity",
                 "name": "User",
                 "attributes": {},
@@ -569,7 +566,7 @@ mod extra_fields_forbidden {
                 .build(),
         );
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Entity",
                 "name": "User",
                 "additionalAttributes": false,
@@ -586,7 +583,7 @@ mod extra_fields_forbidden {
     #[test]
     fn in_extension() {
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Extension",
                 "name": "ip",
                 "bogus": "bogus"
@@ -599,7 +596,7 @@ mod extra_fields_forbidden {
                 .build(),
         );
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Extension",
                 "name": "ip",
                 "element": {"type": "Long"},
@@ -612,7 +609,7 @@ mod extra_fields_forbidden {
                 .build(),
         );
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Extension",
                 "name": "ip",
                 "attributes": {},
@@ -625,7 +622,7 @@ mod extra_fields_forbidden {
                 .build(),
         );
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Extension",
                 "name": "ip",
                 "additionalAttributes": false,
@@ -642,7 +639,7 @@ mod extra_fields_forbidden {
     #[test]
     fn in_record() {
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Record",
                 "attributes": {},
                 "bogus": "bogus"
@@ -655,7 +652,7 @@ mod extra_fields_forbidden {
                 .build(),
         );
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Record",
                 "attributes": {},
                 "element": {"type": "Long"},
@@ -668,7 +665,7 @@ mod extra_fields_forbidden {
                 .build(),
         );
         assert_type_json_err_deprecated_and_standard(
-            json!({
+            &json!({
                 "type": "Record",
                 "attributes": {},
                 "name": "ip",
@@ -1096,6 +1093,7 @@ mod invalid_names_detected {
 }
 
 #[cfg(test)]
+#[expect(deprecated, reason = "testing deprecated functionality")]
 mod from_str_parse_err {
 
     use miette::Report;
@@ -1104,7 +1102,6 @@ mod from_str_parse_err {
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
 
     #[test]
-    #[allow(deprecated)]
     fn from_cedar_schema_str_err() {
         let src = "entity User;";
         expect_err(

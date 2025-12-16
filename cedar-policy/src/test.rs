@@ -15,8 +15,13 @@
  */
 
 #![cfg(test)]
-#![allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
-#![allow(clippy::cognitive_complexity, clippy::too_many_lines)]
+#![expect(
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    reason = "unit tests"
+)]
 
 mod test;
 

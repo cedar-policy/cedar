@@ -49,6 +49,10 @@ fn env_for_sample_schema<'a>(schema: &'a Schema) -> Environments<'a> {
 }
 
 #[tokio::test]
+#[expect(
+    clippy::bool_assert_comparison,
+    reason = "easier to read assert_eq with true/false than to look for presence/absence of `!`"
+)]
 async fn term_basic_arith_unsat() {
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
     let schema = sample_schema();
@@ -194,9 +198,7 @@ async fn term_cex_custom_symenv() {
 
     // Fix `context.user` to be the same as `principal`
     envs.symenv.request.context = Term::Record(Arc::new(
-        [("user".into(), envs.symenv.request.principal.clone())]
-            .into_iter()
-            .collect(),
+        std::iter::once(("user".into(), envs.symenv.request.principal.clone())).collect(),
     ));
 
     // As of this writing, the optimized pathway assumes you only use the
@@ -237,18 +239,13 @@ async fn term_cex_custom_symenv_set() {
 
     // Fix `context.users` to be `[principal]`
     envs.symenv.request.context = Term::Record(Arc::new(
-        [(
+        std::iter::once((
             "users".into(),
             Term::Set {
-                elts: Arc::new(
-                    [envs.symenv.request.principal.clone()]
-                        .into_iter()
-                        .collect(),
-                ),
+                elts: Arc::new(std::iter::once(envs.symenv.request.principal.clone()).collect()),
                 elts_ty: envs.symenv.request.principal.type_of(),
             },
-        )]
-        .into_iter()
+        ))
         .collect(),
     ));
 

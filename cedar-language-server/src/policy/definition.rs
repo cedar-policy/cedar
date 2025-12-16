@@ -99,7 +99,7 @@ pub(crate) fn policy_goto_definition(
 }
 
 #[cfg(test)]
-#[expect(clippy::panic, clippy::indexing_slicing, reason = "testing code")]
+#[expect(clippy::panic, clippy::indexing_slicing, reason = "unit test code")]
 mod tests {
     use std::{sync::LazyLock, vec};
 

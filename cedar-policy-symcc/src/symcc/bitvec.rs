@@ -471,7 +471,7 @@ mod tests {
 
         // Parse the binary string into a BigInt
         let val = BigUint::parse_bytes(s.as_bytes(), 2).unwrap();
-        BitVec::of_nat(s.len() as Width, val).unwrap()
+        BitVec::of_nat(Width::try_from(s.len()).unwrap(), val).unwrap()
     }
 
     fn bitvec(width: u32, val: u128) -> BitVec {

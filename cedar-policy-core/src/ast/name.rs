@@ -736,11 +736,11 @@ mod test {
         ];
 
         for id in not_reserved_for_ids {
-            assert!(Name::from_normalized_str(&format!("A::{id}")).is_ok());
+            Name::from_normalized_str(&format!("A::{id}")).unwrap();
         }
 
         for id in RESERVED_IDS.iter() {
-            assert!(Name::from_normalized_str(&format!("A::{id}")).is_err());
+            Name::from_normalized_str(&format!("A::{id}")).unwrap_err();
         }
     }
 }

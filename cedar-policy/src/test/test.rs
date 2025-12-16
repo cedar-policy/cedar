@@ -419,7 +419,7 @@ mod policy_set_tests {
         }
         #[cfg(feature = "partial-eval")]
         {
-            assert!(pset.is_ok());
+            pset.unwrap();
         }
     }
 
@@ -1882,7 +1882,7 @@ mod policy_set_tests {
             "forbid(principal,action,resource == ?resource);//lossless keeps comments",
         )
         .unwrap();
-        let mut ps0 = PolicySet::from_policies([p0.clone()]).unwrap();
+        let mut ps0 = PolicySet::from_policies([p0]).unwrap();
         let mut ps1 = PolicySet::new();
         ps1.add_template(p1).unwrap();
         ps0.merge(&ps1, true).unwrap();
@@ -4999,7 +4999,7 @@ mod schema_based_parsing_tests {
         );
 
         // Both entity jsons are ok (the default TC setting is `ComputeNow`)
-        assert!(Entities::from_json_value(entitiesjson_tc, Some(&schema)).is_ok());
+        Entities::from_json_value(entitiesjson_tc, Some(&schema)).unwrap();
         Entities::from_json_value(entitiesjson_no_tc.clone(), Some(&schema)).unwrap();
 
         // Parsing will fail if the TC doesn't match
@@ -6227,7 +6227,7 @@ mod issue_596 {
     fn json_bignum_3() {
         let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
         let v: serde_json::Value = serde_json::from_str(src).unwrap();
-        assert!(Policy::from_json(None, v).is_err());
+        Policy::from_json(None, v).unwrap_err();
     }
 }
 
@@ -6563,7 +6563,7 @@ mod policy_set_est_tests {
         };
 
         let lst = ["23", "24", "not-a-number", "75", "9320"];
-        assert!(fold_partition(lst, even_or_odd).is_err());
+        fold_partition(lst, even_or_odd).unwrap_err();
     }
 
     #[test]
@@ -8243,7 +8243,7 @@ mod reserved_keywords_in_policies {
     }
 
     #[track_caller]
-    #[allow(unused)]
+    #[expect(unused, reason = "utility that may be useful in the future")]
     fn assert_invalid_expression_with_help(src: &str, error: &str, underline: &str, help: &str) {
         let expected_err = ExpectedErrorMessageBuilder::error(error)
             .exactly_one_underline(underline)
@@ -8769,13 +8769,13 @@ mod to_cedar {
         let policy = Policy::from_json(None, policy_json).unwrap();
 
         let policy_cedar = policy.to_cedar().unwrap();
-        let expected_policy_cedar = r#"permit(
+        let expected_policy_cedar = r"permit(
   principal,
   action,
   resource
 ) when {
   context.is_frobnicated
-};"#;
+};";
 
         assert_eq!(policy_cedar, expected_policy_cedar);
     }
@@ -8821,7 +8821,7 @@ mod to_cedar {
             "templateLinks" : []
         });
         let pset = PolicySet::from_json_value(pset_json).unwrap();
-        let expected = r#"permit(
+        let expected = r"permit(
   principal,
   action,
   resource
@@ -8833,7 +8833,7 @@ permit(
   principal == ?principal,
   action,
   resource
-);"#;
+);";
         assert_eq!(pset.to_cedar().unwrap(), expected);
     }
 
@@ -8916,23 +8916,23 @@ mod tpe_tests {
     #[test]
     fn entity_construction() {
         let schema = Schema::from_str(
-            r#"
+            r"
             entity A in B tags Long;
             entity B;
-        "#,
+        ",
         )
         .unwrap();
-        assert!(PartialEntity::new(
+        PartialEntity::new(
             r#"A::"foo""#.parse().unwrap(),
             None,
             Some(HashSet::from_iter([r#"B::"b""#.parse().unwrap()])),
             Some(BTreeMap::from_iter([(
                 "".into(),
-                RestrictedExpression::new_long(1)
+                RestrictedExpression::new_long(1),
             )])),
-            &schema
+            &schema,
         )
-        .is_ok());
+        .unwrap();
         assert_matches!(
             PartialEntity::new(
                 r#"A::"foo""#.parse().unwrap(),
@@ -8980,32 +8980,32 @@ mod tpe_tests {
         #[test]
         fn entities_construction() {
             let schema = schema();
-            assert!(PartialEntity::new(
+            PartialEntity::new(
                 r#"Movie::"foo""#.parse().unwrap(),
                 None,
                 None,
                 None,
-                &schema
+                &schema,
             )
-            .is_ok());
-            assert!(PartialEntity::new(
+            .unwrap();
+            PartialEntity::new(
                 r#"Show::"foo""#.parse().unwrap(),
                 Some(BTreeMap::from_iter([
                     ("isFree".into(), RestrictedExpression::new_bool(true)),
                     (
                         "releaseDate".into(),
-                        RestrictedExpression::new_datetime("2025-01-01")
+                        RestrictedExpression::new_datetime("2025-01-01"),
                     ),
                     (
                         "isEarlyAccess".into(),
-                        RestrictedExpression::new_bool(false)
+                        RestrictedExpression::new_bool(false),
                     ),
                 ])),
                 None,
                 None,
-                &schema
+                &schema,
             )
-            .is_ok());
+            .unwrap();
 
             assert_matches!(
                 PartialEntity::new(
@@ -9050,9 +9050,7 @@ mod tpe_tests {
                 &schema,
             )
             .unwrap();
-            assert!(
-                PartialEntities::from_partial_entities([e1.clone(), e2.clone()], &schema).is_ok()
-            );
+            PartialEntities::from_partial_entities([e1.clone(), e2.clone()], &schema).unwrap();
             let e3 = PartialEntity::new(
                 r#"Show::"foo""#.parse().unwrap(),
                 Some(BTreeMap::from_iter([
@@ -9077,7 +9075,7 @@ mod tpe_tests {
         #[track_caller]
         fn schema() -> Schema {
             Schema::from_cedarschema_str(
-                r#"
+                r"
             // Types
 type Subscription = {
   tier: String
@@ -9127,7 +9125,7 @@ action rent, buy
       }
     }
   };
-            "#,
+            ",
             )
             .unwrap()
             .0
@@ -9357,7 +9355,7 @@ unless
             let request = PartialRequest::new(
                 PartialEntityUid::from_concrete(r#"Subscriber::"Alice""#.parse().unwrap()),
                 r#"Action::"watch""#.parse().unwrap(),
-                PartialEntityUid::new(r#"Movie"#.parse().unwrap(), None),
+                PartialEntityUid::new("Movie".parse().unwrap(), None),
                 Some(
                     Context::from_pairs([(
                         "now".into(),
@@ -9409,12 +9407,12 @@ unless
 
             let request = Request::new(
                 EntityUid::from_type_name_and_id(
-                    r#"Subscriber"#.parse().unwrap(),
+                    "Subscriber".parse().unwrap(),
                     EntityId::new("Alice"),
                 ),
                 r#"Action::"watch""#.parse().unwrap(),
                 EntityUid::from_type_name_and_id(
-                    r#"Movie"#.parse().unwrap(),
+                    "Movie".parse().unwrap(),
                     EntityId::new("The Godparent"),
                 ),
                 Context::from_pairs([(
@@ -9441,12 +9439,12 @@ unless
 
             let request = Request::new(
                 EntityUid::from_type_name_and_id(
-                    r#"Subscriber"#.parse().unwrap(),
+                    "Subscriber".parse().unwrap(),
                     EntityId::new("Alice"),
                 ),
                 r#"Action::"watch""#.parse().unwrap(),
                 EntityUid::from_type_name_and_id(
-                    r#"Movie"#.parse().unwrap(),
+                    "Movie".parse().unwrap(),
                     EntityId::new("Devilish"),
                 ),
                 Context::from_pairs([(
@@ -9479,7 +9477,7 @@ unless
             let request = ResourceQueryRequest::new(
                 r#"Subscriber::"Alice""#.parse().unwrap(),
                 r#"Action::"watch""#.parse().unwrap(),
-                r#"Movie"#.parse().unwrap(),
+                "Movie".parse().unwrap(),
                 Context::from_pairs([(
                     "now".into(),
                     RestrictedExpression::new_record([
@@ -9521,7 +9519,7 @@ unless
             let policies = policy_set();
 
             let request = PrincipalQueryRequest::new(
-                r#"Subscriber"#.parse().unwrap(),
+                "Subscriber".parse().unwrap(),
                 r#"Action::"watch""#.parse().unwrap(),
                 r#"Movie::"The Godparent""#.parse().unwrap(),
                 Context::from_pairs([(
@@ -9938,7 +9936,7 @@ when { principal in resource.admins };
             let request = ResourceQueryRequest::new(
                 r#"User::"jane""#.parse().unwrap(),
                 r#"Action::"push""#.parse().unwrap(),
-                r#"Repository"#.parse().unwrap(),
+                "Repository".parse().unwrap(),
                 Context::empty(),
                 &schema,
             )
@@ -10295,7 +10293,7 @@ when { principal in resource.admins };
                 &schema,
             )
             .unwrap();
-            let response = PolicySet::from_str(r#"permit(principal, action, resource);"#)
+            let response = PolicySet::from_str(r"permit(principal, action, resource);")
                 .unwrap()
                 .tpe(&req, &partial_entities, &schema)
                 .unwrap();
@@ -10610,7 +10608,7 @@ when { principal in resource.admins };
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
                 PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
                 None,
-                schema.clone(),
+                schema,
             )
             .unwrap();
 
@@ -10641,7 +10639,7 @@ when { principal in resource.admins };
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
                 PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
                 None,
-                schema.clone(),
+                schema,
             )
             .unwrap();
 
@@ -10671,7 +10669,7 @@ when { principal in resource.admins };
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
                 PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
                 None,
-                schema.clone(),
+                schema,
             )
             .unwrap();
 
@@ -10695,7 +10693,7 @@ when { principal in resource.admins };
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
                 PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
                 None,
-                schema.clone(),
+                schema,
             )
             .unwrap();
 
@@ -10716,7 +10714,7 @@ when { principal in resource.admins };
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
                 PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
                 None,
-                schema.clone(),
+                schema,
             )
             .unwrap();
 
@@ -10737,7 +10735,7 @@ when { principal in resource.admins };
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
                 PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
                 Some(Context::empty()),
-                schema.clone(),
+                schema,
             )
             .unwrap();
 
@@ -10758,7 +10756,7 @@ when { principal in resource.admins };
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
                 PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
                 None,
-                schema.clone(),
+                schema,
             )
             .unwrap();
 
@@ -10782,7 +10780,7 @@ when { principal in resource.admins };
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
                 PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
                 None,
-                schema.clone(),
+                schema,
             )
             .unwrap();
 
@@ -10809,7 +10807,7 @@ when { principal in resource.admins };
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
                 PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
                 None,
-                schema.clone(),
+                schema,
             )
             .unwrap();
 
@@ -10840,7 +10838,7 @@ when { principal in resource.admins };
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
                 PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
                 None,
-                schema.clone(),
+                schema,
             )
             .unwrap();
 
@@ -10948,7 +10946,7 @@ mod deep_eq {
     fn deep_eq_same_hierachy() {
         let es = Entities::from_entities(
             [Entity::new_no_attrs(
-                EntityUid::from_strs("test", "A").clone(),
+                EntityUid::from_strs("test", "A"),
                 HashSet::new(),
             )],
             None,
@@ -10961,7 +10959,7 @@ mod deep_eq {
     fn not_deep_eq_hierarchy_different_attributes() {
         let es = Entities::from_entities(
             [Entity::new_no_attrs(
-                EntityUid::from_strs("test", "A").clone(),
+                EntityUid::from_strs("test", "A"),
                 HashSet::new(),
             )],
             None,
@@ -10969,7 +10967,7 @@ mod deep_eq {
         .unwrap();
         let other = Entities::from_entities(
             [Entity::new(
-                EntityUid::from_strs("test", "A").clone(),
+                EntityUid::from_strs("test", "A"),
                 HashMap::from_iter([("foo".into(), RestrictedExpression::new_bool(false))]),
                 HashSet::new(),
             )
@@ -10984,7 +10982,7 @@ mod deep_eq {
     fn not_deep_eq_hierarchy_different_ids() {
         let es = Entities::from_entities(
             [Entity::new_no_attrs(
-                EntityUid::from_strs("test", "A").clone(),
+                EntityUid::from_strs("test", "A"),
                 HashSet::new(),
             )],
             None,
@@ -10992,7 +10990,7 @@ mod deep_eq {
         .unwrap();
         let other = Entities::from_entities(
             [Entity::new_no_attrs(
-                EntityUid::from_strs("test", "B").clone(),
+                EntityUid::from_strs("test", "B"),
                 HashSet::new(),
             )],
             None,
@@ -11005,15 +11003,15 @@ mod deep_eq {
     fn not_deep_eq_hierarchy_different_num_entities() {
         let es = Entities::from_entities(
             [
-                Entity::new_no_attrs(EntityUid::from_strs("test", "A").clone(), HashSet::new()),
-                Entity::new_no_attrs(EntityUid::from_strs("test", "B").clone(), HashSet::new()),
+                Entity::new_no_attrs(EntityUid::from_strs("test", "A"), HashSet::new()),
+                Entity::new_no_attrs(EntityUid::from_strs("test", "B"), HashSet::new()),
             ],
             None,
         )
         .unwrap();
         let other = Entities::from_entities(
             [Entity::new_no_attrs(
-                EntityUid::from_strs("test", "A").clone(),
+                EntityUid::from_strs("test", "A"),
                 HashSet::new(),
             )],
             None,
@@ -11046,11 +11044,11 @@ mod has_non_scope_constraint {
 
     #[test]
     fn non_scope_constraints() {
-        let p: Policy = r#"permit(principal, action, resource) when { true };"#
+        let p: Policy = r"permit(principal, action, resource) when { true };"
             .parse()
             .unwrap();
         assert!(p.has_non_scope_constraint());
-        let p: Policy = r#"forbid(principal, action, resource) unless { principal.is_foo };"#
+        let p: Policy = r"forbid(principal, action, resource) unless { principal.is_foo };"
             .parse()
             .unwrap();
         assert!(p.has_non_scope_constraint());
@@ -11058,12 +11056,12 @@ mod has_non_scope_constraint {
 
     #[test]
     fn templates() {
-        let t: Template = r#"permit(principal == ?principal, action, resource);"#
+        let t: Template = r"permit(principal == ?principal, action, resource);"
             .parse()
             .unwrap();
         assert!(!t.has_non_scope_constraint());
         let t: Template =
-            r#"permit(principal == ?principal, action, resource) when { principal.is_foo };"#
+            r"permit(principal == ?principal, action, resource) when { principal.is_foo };"
                 .parse()
                 .unwrap();
         assert!(t.has_non_scope_constraint());

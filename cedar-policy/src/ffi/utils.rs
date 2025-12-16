@@ -663,14 +663,12 @@ pub(super) struct WithWarnings<T> {
 }
 
 /// Testing utilities used here and elsewhere
-#[allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
-// Also disable some other clippy lints that are unimportant for testing code
-#[allow(
-    clippy::module_name_repetitions,
+#[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
     clippy::missing_panics_doc,
     reason = "unit tests"
 )]
-#[cfg(test)]
 pub mod test_utils {
     use super::*;
 
@@ -705,9 +703,9 @@ pub mod test_utils {
     }
 }
 
-#[allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
+#[expect(clippy::indexing_slicing, reason = "unit tests")]
 // Also disable some other clippy lints that are unimportant for testing code
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines, reason = "unit tests")]
 #[cfg(test)]
 mod test {
     use super::*;

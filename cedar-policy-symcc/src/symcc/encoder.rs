@@ -799,7 +799,7 @@ mod unit_tests {
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         encoder
-            .declare_record_type([("foo".into(), SmolStr::new_static("bar"))].iter())
+            .declare_record_type(std::iter::once(&("foo".into(), SmolStr::new_static("bar"))))
             .await
             .unwrap();
     }

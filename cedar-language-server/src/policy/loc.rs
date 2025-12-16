@@ -117,6 +117,7 @@ impl<'a> SchemaActionLoc<'a> {
 }
 
 #[cfg(test)]
+#[expect(clippy::string_slice, reason = "unit test code")]
 mod tests {
     use similar_asserts::assert_eq;
     use std::sync::Arc;

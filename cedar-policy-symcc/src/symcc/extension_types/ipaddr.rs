@@ -677,12 +677,12 @@ mod tests {
 
     use super::*;
 
-    fn test_valid(str: &str, expected: IPNet) {
-        assert_eq!(IPNet::from_str(str).unwrap(), expected);
+    fn test_valid(str: &str, expected: &IPNet) {
+        assert_eq!(&IPNet::from_str(str).unwrap(), expected);
     }
 
     fn test_invalid(str: &str, _msg: &str) {
-        assert!(IPNet::from_str(str).is_err());
+        IPNet::from_str(str).unwrap_err();
     }
 
     fn ipv4(a0: u8, a1: u8, a2: u8, a3: u8, pre: Width) -> IPNet {
@@ -715,17 +715,17 @@ mod tests {
 
     #[test]
     fn tests_for_valid_strings() {
-        test_valid("127.0.0.1", ipv4(127, 0, 0, 1, V4_SIZE));
-        test_valid("127.3.4.1/2", ipv4(127, 3, 4, 1, 2));
-        test_valid("::", ipv6(0, 0, 0, 0, 0, 0, 0, 0, V6_SIZE));
-        test_valid("::/5", ipv6(0, 0, 0, 0, 0, 0, 0, 0, 5));
-        test_valid("a::", ipv6(0xa, 0, 0, 0, 0, 0, 0, 0, V6_SIZE));
-        test_valid("::f", ipv6(0, 0, 0, 0, 0, 0, 0, 0xf, V6_SIZE));
+        test_valid("127.0.0.1", &ipv4(127, 0, 0, 1, V4_SIZE));
+        test_valid("127.3.4.1/2", &ipv4(127, 3, 4, 1, 2));
+        test_valid("::", &ipv6(0, 0, 0, 0, 0, 0, 0, 0, V6_SIZE));
+        test_valid("::/5", &ipv6(0, 0, 0, 0, 0, 0, 0, 0, 5));
+        test_valid("a::", &ipv6(0xa, 0, 0, 0, 0, 0, 0, 0, V6_SIZE));
+        test_valid("::f", &ipv6(0, 0, 0, 0, 0, 0, 0, 0xf, V6_SIZE));
         test_valid(
             "F:AE::F:5:F:F:0",
-            ipv6(0xf, 0xae, 0, 0xf, 0x5, 0xf, 0xf, 0, V6_SIZE),
+            &ipv6(0xf, 0xae, 0, 0xf, 0x5, 0xf, 0xf, 0, V6_SIZE),
         );
-        test_valid("a::f/120", ipv6(0xa, 0, 0, 0, 0, 0, 0, 0xf, 120));
+        test_valid("a::f/120", &ipv6(0xa, 0, 0, 0, 0, 0, 0, 0xf, 120));
     }
 
     #[test]

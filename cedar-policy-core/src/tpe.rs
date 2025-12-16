@@ -499,7 +499,7 @@ when { principal in resource.editors };
         assert!(non_trivial_permits.contains(policy2.id()));
         let non_trivial_forbids: HashSet<PolicyID> = residuals
             .residual_forbids()
-            .map(|p| p.get_policy_id().clone())
+            .map(|p| p.get_policy_id())
             .collect();
         assert!(non_trivial_forbids.is_empty());
         assert_matches!(residuals.decision(), None);
