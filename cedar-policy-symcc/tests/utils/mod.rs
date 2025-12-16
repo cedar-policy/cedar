@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-#![allow(
+#![expect(
     dead_code,
     reason = "not actually dead, but cargo issues warnings per test file"
 )]
+#![expect(clippy::panic, clippy::unwrap_used, reason = "unit test code")]
 
 //! Utilities shared by various tests throughout the package
 use std::str::FromStr;
@@ -129,7 +130,7 @@ fn assert_cex_valid(schema: &Schema, cex: &Env) {
     Entities::from_entities(cex.entities.clone(), Some(schema)).unwrap();
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 
 pub enum Pathway {
     /// Use only the unoptimized pathway; still run the optimized one, but just check that it doesn't error

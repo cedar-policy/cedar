@@ -380,7 +380,7 @@ mod test {
         my_solver.smtlib_input().assert("false").await.unwrap();
         let decision = my_solver.check_sat().await.unwrap();
         assert_eq!(decision, Decision::Unsat);
-        assert!(my_solver.get_model().await.is_err());
+        my_solver.get_model().await.unwrap_err();
     }
 
     #[tokio::test]

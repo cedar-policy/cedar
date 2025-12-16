@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 /*
  * Copyright Cedar Contributors
  *
@@ -15,11 +13,16 @@ use std::str::FromStr;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#![expect(clippy::unwrap_used, reason = "unit test code")]
+
 use cedar_policy::{Policy, Schema, Validator};
 use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler, SymEnv, WellTypedPolicy};
 use cool_asserts::assert_matches;
-use utils::Environments;
+use std::str::FromStr;
+
 mod utils;
+use utils::Environments;
 
 // Comment from corresponding Lean test in
 // https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/SymTest/WellTyped.lean
@@ -240,7 +243,7 @@ fn undeclared_entity_type() {
     "#,
     )
     .unwrap();
-    let env = schema.request_envs().next().unwrap().clone();
+    let env = schema.request_envs().next().unwrap();
     assert_matches!(WellTypedPolicy::from_policy(&policy, &env, &schema), Err(cedar_policy_symcc::err::Error::PolicyNotWellTyped { errs }) => {
         assert_matches!(&errs, [cedar_policy_core::validator::ValidationError::UnrecognizedEntityType(_)]);
     });
@@ -269,7 +272,7 @@ fn undeclared_action_id() {
     "#,
     )
     .unwrap();
-    let env = schema.request_envs().next().unwrap().clone();
+    let env = schema.request_envs().next().unwrap();
     assert_matches!(WellTypedPolicy::from_policy(&policy, &env, &schema), Err(cedar_policy_symcc::err::Error::PolicyNotWellTyped { errs }) => {
         assert_matches!(&errs, [cedar_policy_core::validator::ValidationError::UnrecognizedActionId(_)]);
     });
@@ -298,7 +301,7 @@ fn invalid_enum_entity() {
     "#,
     )
     .unwrap();
-    let env = schema.request_envs().next().unwrap().clone();
+    let env = schema.request_envs().next().unwrap();
     assert_matches!(WellTypedPolicy::from_policy(&policy, &env, &schema), Err(cedar_policy_symcc::err::Error::PolicyNotWellTyped { errs }) => {
         assert_matches!(&errs, [cedar_policy_core::validator::ValidationError::InvalidEnumEntity(_)]);
     });

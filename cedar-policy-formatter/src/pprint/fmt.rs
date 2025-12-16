@@ -186,7 +186,7 @@ mod tests {
         when { "a" };
         permit (principal, action, resource)
         when { "b"};"#;
-        assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_ok());
+        soundness_check(p2, &parse_policyset(p1).unwrap()).unwrap();
     }
 
     #[test]

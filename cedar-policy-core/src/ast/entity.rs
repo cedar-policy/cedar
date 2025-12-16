@@ -899,7 +899,7 @@ mod test {
 
     #[test]
     fn action_type_is_valid_id() {
-        assert!(Id::from_normalized_str(ACTION_ENTITY_TYPE).is_ok());
+        Id::from_normalized_str(ACTION_ENTITY_TYPE).unwrap();
     }
 
     #[cfg(feature = "tolerant-ast")]

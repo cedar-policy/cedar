@@ -32,7 +32,7 @@ const NUM_POLICIES: usize = 10;
 fn create_policy_array(rng: &mut oorandom::Rand32) -> Vec<PolicySet> {
     let mut buf = vec![];
     for _ in 0..NUM_POLICIES {
-        let attribute_number = rng.rand_range(1..((LARGE_SIZE - 1) as u32));
+        let attribute_number = rng.rand_range(1..u32::try_from(LARGE_SIZE - 1).unwrap());
         let policy = PolicySet::from_str(&format!(
             r#"
         permit( principal, action, resource)
@@ -46,7 +46,7 @@ fn create_policy_array(rng: &mut oorandom::Rand32) -> Vec<PolicySet> {
 }
 
 fn choose<'a>(policies: &'a [PolicySet], rng: &'a mut oorandom::Rand32) -> &'a PolicySet {
-    let index = rng.rand_range(0..(policies.len() as u32)) as usize;
+    let index = rng.rand_range(0..u32::try_from(policies.len()).unwrap()) as usize;
     &policies[index]
 }
 

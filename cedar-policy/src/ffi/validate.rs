@@ -205,8 +205,8 @@ pub enum ValidationAnswer {
     },
 }
 
-#[allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 #[cfg(test)]
+#[expect(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 mod test {
     use super::*;
 

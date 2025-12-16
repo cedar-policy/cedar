@@ -592,7 +592,7 @@ pub(crate) fn is_cursor_in_condition_braces(position: Position, source_text: &st
 }
 
 #[cfg(test)]
-#[expect(clippy::indexing_slicing, reason = "tests")]
+#[expect(clippy::indexing_slicing, clippy::string_slice, reason = "tests")]
 pub(crate) mod tests {
     use std::{fs::read_to_string, str::FromStr};
 

@@ -498,7 +498,7 @@ mod test {
     }
 
     #[test]
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines, reason = "unit test code")]
     fn policy_roundtrip() {
         let annotation1 = ast::Annotation {
             val: "".into(),

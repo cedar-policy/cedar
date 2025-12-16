@@ -119,7 +119,6 @@ pub enum FormattingAnswer {
     },
 }
 
-#[allow(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 #[cfg(test)]
 mod test {
     use super::*;

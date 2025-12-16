@@ -1286,7 +1286,7 @@ mod string_encode_decode_test {
 
         for s in strs {
             let enc = encode_string(s).unwrap();
-            assert_eq!(decode_string(&enc.as_bytes()).unwrap(), s);
+            assert_eq!(decode_string(enc.as_bytes()).unwrap(), s);
         }
     }
 }

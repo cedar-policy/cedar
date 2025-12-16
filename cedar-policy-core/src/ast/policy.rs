@@ -2145,7 +2145,7 @@ mod test {
                 let p = ip.principal_constraint().clone();
                 let a = ip.action_constraint().clone();
                 let r = ip.resource_constraint().clone();
-                let non_scope = ip.non_scope_constraints().clone();
+                let non_scope = ip.non_scope_constraints();
                 let ip2 = StaticPolicy::new(id, None, anno, e, p, a, r, non_scope.cloned())
                     .expect("Policy Creation Failed");
                 assert_eq!(ip, ip2);
