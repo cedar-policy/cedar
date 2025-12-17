@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Added
+
+- `matches_equivalent`, `matches_implies`, and `matches_disjoint` primitives
+for single policies (#2047)
+- `.effect()` for `CompiledPolicy` (#2047)
+
 ## [0.2.0] - 2025-12-12
 Cedar Language Version: 4.4
 

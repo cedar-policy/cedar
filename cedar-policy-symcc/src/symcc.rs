@@ -70,7 +70,8 @@ pub use smtlib_script::SmtLibScript;
 pub use solver::SolverError;
 pub use verifier::{
     verify_always_allows, verify_always_denies, verify_always_matches, verify_disjoint,
-    verify_equivalent, verify_implies, verify_never_errors, verify_never_matches,
+    verify_equivalent, verify_implies, verify_matches_disjoint, verify_matches_equivalent,
+    verify_matches_implies, verify_never_errors, verify_never_matches,
 };
 
 /// Internal symbolic compiler.
@@ -294,6 +295,132 @@ impl<S: Solver> SymCompiler<S> {
             &verify_never_matches(policy, symenv)?,
             symenv,
             std::iter::once(&policy.condition()),
+        )
+        .await
+    }
+
+    /// Returns true iff `policy1` and `policy2` match exactly the same set of
+    /// well-formed inputs in the `symenv`.
+    ///
+    /// Compare with `check_equivalent`, which takes two policysets (which could consist
+    /// of a single policy, or more) and determines whether the _authorization behavior_
+    /// of those policysets is equivalent for well-formed inputs in the `symenv`. This
+    /// function differs from `check_equivalent` on singleton policysets in how it treats
+    /// `forbid` policies -- while `check_equivalent` trivially holds for any pair of
+    /// `forbid` policies (as they both always-deny), `check_matches_equivalent` only
+    /// holds if the two policies match exactly the same set of inputs. Also, a nontrivial
+    /// `permit` and nontrivial `forbid` policy can be `check_matches_equivalent`, but can
+    /// never be `check_equivalent`.
+    pub async fn check_matches_equivalent(
+        &mut self,
+        policy1: &Policy,
+        policy2: &Policy,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.check_unsat(
+            |symenv| verify_matches_equivalent(policy1, policy2, symenv),
+            symenv,
+        )
+        .await
+    }
+
+    /// Returns some counterexample iff [`Self::check_matches_equivalent`] is false.
+    ///
+    /// Corresponds to `matchesEquivalent?` in the Lean.
+    pub async fn check_matches_equivalent_with_counterexample(
+        &mut self,
+        policy1: &Policy,
+        policy2: &Policy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.check_sat_asserts(
+            &verify_matches_equivalent(policy1, policy2, symenv)?,
+            symenv,
+            [&policy1.condition(), &policy2.condition()],
+        )
+        .await
+    }
+
+    /// Returns true iff `policy1` matching implies that `policy2` matches, for every
+    /// well-formed input in the `symenv`. That is, for every request where `policy1`
+    /// matches, `policy2` also matches.
+    ///
+    /// Compare with `check_implies`, which takes two policysets (which could consist of
+    /// a single policy, or more) and determines whether the _authorization decision_ of
+    /// the first implies that of the second. This function differs from `check_implies`
+    /// on singleton policysets in how it treats `forbid` policies -- while for
+    /// `check_implies`, any `forbid` policy trivially implies any `permit` policy (as
+    /// always-deny always implies any policy), for `check_matches_implies`, a `forbid`
+    /// policy may or may not imply a `permit` policy, and a `permit` policy may or may
+    /// not imply a `forbid` policy.
+    pub async fn check_matches_implies(
+        &mut self,
+        policy1: &Policy,
+        policy2: &Policy,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.check_unsat(
+            |symenv| verify_matches_implies(policy1, policy2, symenv),
+            symenv,
+        )
+        .await
+    }
+
+    /// Returns some counterexample iff [`Self::check_matches_implies`] is false.
+    ///
+    /// Corresponds to `matchesImplies?` in the Lean.
+    pub async fn check_matches_implies_with_counterexample(
+        &mut self,
+        policy1: &Policy,
+        policy2: &Policy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.check_sat_asserts(
+            &verify_matches_implies(policy1, policy2, symenv)?,
+            symenv,
+            [&policy1.condition(), &policy2.condition()],
+        )
+        .await
+    }
+
+    /// Returns true iff there is no well-formed input in the `symenv` that is matched
+    /// by both `policy1` and `policy2`. This checks that the sets of inputs matched by
+    /// `policy1` and `policy2` are disjoint.
+    ///
+    /// Compare with `check_disjoint`, which takes two policysets (which could consist
+    /// of a single policy, or more) and determines whether the _authorization behavior_
+    /// of those policysets are disjoint. This function differs from `check_disjoint` on
+    /// singleton policysets in how it treats `forbid` policies -- while for
+    /// `check_disjoint`, any `forbid` policy is trivially disjoint from any other policy
+    /// (as it allows nothing), `check_matches_disjoint` considers whether the `forbid`
+    /// policy may _match_ (rather than _allow_) any input that is matched by the other
+    /// policy.
+    pub async fn check_matches_disjoint(
+        &mut self,
+        policy1: &Policy,
+        policy2: &Policy,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.check_unsat(
+            |symenv| verify_matches_disjoint(policy1, policy2, symenv),
+            symenv,
+        )
+        .await
+    }
+
+    /// Returns some counterexample iff [`Self::check_matches_disjoint`] is false.
+    ///
+    /// Corresponds to `matchesDisjoint?` in the Lean.
+    pub async fn check_matches_disjoint_with_counterexample(
+        &mut self,
+        policy1: &Policy,
+        policy2: &Policy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.check_sat_asserts(
+            &verify_matches_disjoint(policy1, policy2, symenv)?,
+            symenv,
+            [&policy1.condition(), &policy2.condition()],
         )
         .await
     }

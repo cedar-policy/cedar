@@ -75,6 +75,11 @@ impl CompiledPolicy {
         })
     }
 
+    /// Get the `Effect` of this `CompiledPolicy`
+    pub fn effect(&self) -> Effect {
+        self.policy.effect()
+    }
+
     /// Convert a `CompiledPolicy` to a `CompiledPolicies` representing a
     /// singleton policyset with just that policy.
     ///

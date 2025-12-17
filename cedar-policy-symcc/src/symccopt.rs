@@ -26,7 +26,8 @@ use crate::err::Result;
 use crate::symcc::{concretizer::Env, solver::Solver, SymCompiler};
 use crate::symccopt::verifier::{
     verify_always_allows_opt, verify_always_denies_opt, verify_always_matches_opt,
-    verify_disjoint_opt, verify_equivalent_opt, verify_implies_opt, verify_never_errors_opt,
+    verify_disjoint_opt, verify_equivalent_opt, verify_implies_opt, verify_matches_disjoint_opt,
+    verify_matches_equivalent_opt, verify_matches_implies_opt, verify_never_errors_opt,
     verify_never_matches_opt,
 };
 
@@ -66,7 +67,7 @@ impl<S: Solver> SymCompiler<S> {
 
     /// Optimized version of `check_always_matches_with_counterexample()`.
     ///
-    /// Corresponds to `alwaysMatches?` in the Lean.
+    /// Corresponds to `alwaysMatchesOpt?` in the Lean.
     pub async fn check_always_matches_with_counterexample_opt(
         &mut self,
         policy: &CompiledPolicy,
@@ -89,7 +90,7 @@ impl<S: Solver> SymCompiler<S> {
 
     /// Optimized version of `check_never_matches_with_counterexample()`.
     ///
-    /// Corresponds to `neverMatches?` in the Lean.
+    /// Corresponds to `neverMatchesOpt?` in the Lean.
     pub async fn check_never_matches_with_counterexample_opt(
         &mut self,
         policy: &CompiledPolicy,
@@ -98,6 +99,99 @@ impl<S: Solver> SymCompiler<S> {
             &verify_never_matches_opt(policy),
             &policy.symenv,
             std::iter::once(policy.policy.condition()),
+        )
+        .await
+    }
+
+    /// Optimized version of `check_matches_equivalent()`.
+    ///
+    /// Corresponds to `checkMatchesEquivalentOpt` in the Lean.
+    pub async fn check_matches_equivalent_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<bool> {
+        self.check_unsat_asserts(
+            &verify_matches_equivalent_opt(policy1, policy2),
+            &policy1.symenv,
+        )
+        .await
+    }
+
+    /// Optimized version of `check_matches_equivalent_with_counterexample()`.
+    ///
+    /// Corresponds to `matchesEquivalentOpt?` in the Lean.
+    pub async fn check_matches_equivalent_with_counterexample_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<Option<Env>> {
+        self.check_sat_asserts(
+            &verify_matches_equivalent_opt(policy1, policy2),
+            &policy1.symenv,
+            [policy1.policy.condition(), policy2.policy.condition()],
+        )
+        .await
+    }
+
+    /// Optimized version of `check_matches_implies()`.
+    ///
+    /// Corresponds to `checkMatchesImpliesOpt` in the Lean.
+    pub async fn check_matches_implies_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<bool> {
+        self.check_unsat_asserts(
+            &verify_matches_implies_opt(policy1, policy2),
+            &policy1.symenv,
+        )
+        .await
+    }
+
+    /// Optimized version of `check_matches_implies_with_counterexample()`.
+    ///
+    /// Corresponds to `matchesImpliesOpt?` in the Lean.
+    pub async fn check_matches_implies_with_counterexample_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<Option<Env>> {
+        self.check_sat_asserts(
+            &verify_matches_implies_opt(policy1, policy2),
+            &policy1.symenv,
+            [policy1.policy.condition(), policy2.policy.condition()],
+        )
+        .await
+    }
+
+    /// Optimized version of `check_matches_disjoint()`.
+    ///
+    /// Corresponds to `checkMatchesDisjointOpt` in the Lean.
+    pub async fn check_matches_disjoint_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<bool> {
+        self.check_unsat_asserts(
+            &verify_matches_disjoint_opt(policy1, policy2),
+            &policy1.symenv,
+        )
+        .await
+    }
+
+    /// Optimized version of `check_matches_disjoint_with_counterexample()`.
+    ///
+    /// Corresponds to `matchesDisjointOpt?` in the Lean.
+    pub async fn check_matches_disjoint_with_counterexample_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<Option<Env>> {
+        self.check_sat_asserts(
+            &verify_matches_disjoint_opt(policy1, policy2),
+            &policy1.symenv,
+            [policy1.policy.condition(), policy2.policy.condition()],
         )
         .await
     }
