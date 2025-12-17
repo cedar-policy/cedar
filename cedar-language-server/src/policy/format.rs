@@ -49,3 +49,33 @@ pub(crate) fn format_policy(policy: &str) -> Option<Vec<TextEdit>> {
 
     Some(vec![edit])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn format_policy_idempotent(policy in "permit\\(principal, action, resource\\);") {
+            if let Some(edits) = format_policy(&policy) {
+                let formatted = &edits[0].new_text;
+                if let Some(edits2) = format_policy(formatted) {
+                    prop_assert_eq!(&edits2[0].new_text, formatted, "formatting should be idempotent");
+                }
+            }
+        }
+
+        #[test]
+        fn format_policy_range_covers_input(policy in "permit\\(principal, action, resource\\);\n?") {
+            if let Some(edits) = format_policy(&policy) {
+                let range = &edits[0].range;
+                prop_assert_eq!(range.start.line, 0);
+                prop_assert_eq!(range.start.character, 0);
+                let input_lines = policy.lines().count() as u32;
+                prop_assert!(range.end.line >= input_lines.saturating_sub(1),
+                    "end line {} should cover input lines {}", range.end.line, input_lines);
+            }
+        }
+    }
+}

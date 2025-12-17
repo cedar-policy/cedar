@@ -315,6 +315,7 @@ dependencies = [
  "insta",
  "itertools 0.14.0",
  "miette",
+ "proptest",
  "regex",
  "ropey",
  "serde",
