@@ -24,8 +24,10 @@ use utils::Environments;
 use crate::utils::{
     assert_always_allows, assert_always_denies, assert_always_matches, assert_disjoint,
     assert_does_not_always_allow, assert_does_not_always_deny, assert_does_not_always_match,
-    assert_does_not_imply, assert_does_not_never_match, assert_equivalent, assert_implies,
-    assert_never_errors, assert_never_matches, assert_not_disjoint, assert_not_equivalent,
+    assert_does_not_imply, assert_does_not_matches_imply, assert_does_not_never_match,
+    assert_equivalent, assert_implies, assert_matches_disjoint, assert_matches_equivalent,
+    assert_matches_implies, assert_never_errors, assert_never_matches, assert_not_disjoint,
+    assert_not_equivalent, assert_not_matches_disjoint, assert_not_matches_equivalent,
 };
 
 fn sample_schema() -> Schema {
@@ -125,6 +127,9 @@ async fn simplest_permit() {
     assert_never_errors(&mut compiler, &policy, &envs).await;
     assert_always_matches(&mut compiler, &policy, &envs).await;
     assert_does_not_never_match(&mut compiler, &policy, &envs).await;
+    assert_matches_equivalent(&mut compiler, &policy, &policy, &envs).await;
+    assert_matches_implies(&mut compiler, &policy, &policy, &envs).await;
+    assert_not_matches_disjoint(&mut compiler, &policy, &policy, &envs).await;
     assert_always_allows(&mut compiler, &pset, &envs).await;
     assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
     assert_equivalent(&mut compiler, &pset, &pset, &envs).await;
@@ -158,6 +163,7 @@ async fn vacuous() {
     "#,
         &validator,
     );
+    let policy_permit_all = policy_permit_all(&validator);
 
     let psets_vacuous = [
         utils::pset_from_text(
@@ -256,6 +262,83 @@ async fn vacuous() {
     assert_never_matches(&mut compiler, &policy_forbid_never_matches, &envs).await;
     assert_always_matches(&mut compiler, &policy_forbid_all, &envs).await;
 
+    assert_matches_equivalent(
+        &mut compiler,
+        &policy_permit_never_matches,
+        &policy_permit_never_matches,
+        &envs,
+    )
+    .await;
+    assert_matches_equivalent(&mut compiler, &policy_forbid_all, &policy_forbid_all, &envs).await;
+    assert_matches_equivalent(
+        &mut compiler,
+        &policy_permit_never_matches,
+        &policy_forbid_never_matches,
+        &envs,
+    )
+    .await;
+    assert_matches_equivalent(&mut compiler, &policy_permit_all, &policy_forbid_all, &envs).await; // matches-equivalent, but not equivalent
+    assert_not_matches_equivalent(
+        &mut compiler,
+        &policy_permit_all,
+        &policy_permit_never_matches,
+        &envs,
+    )
+    .await;
+    assert_not_matches_equivalent(
+        &mut compiler,
+        &policy_forbid_all,
+        &policy_permit_never_matches,
+        &envs,
+    )
+    .await; // equivalent, but not matches-equivalent
+
+    assert_matches_implies(
+        &mut compiler,
+        &policy_permit_never_matches,
+        &policy_permit_never_matches,
+        &envs,
+    )
+    .await;
+    assert_matches_implies(
+        &mut compiler,
+        &policy_permit_never_matches,
+        &policy_permit_all,
+        &envs,
+    )
+    .await;
+    assert_does_not_matches_imply(
+        &mut compiler,
+        &policy_permit_all,
+        &policy_permit_never_matches,
+        &envs,
+    )
+    .await;
+    assert_matches_implies(&mut compiler, &policy_permit_all, &policy_forbid_all, &envs).await; // matches-implies, but not implies
+    assert_does_not_matches_imply(
+        &mut compiler,
+        &policy_forbid_all,
+        &policy_permit_never_matches,
+        &envs,
+    )
+    .await; // implies, but not matches-implies
+
+    assert_matches_disjoint(
+        &mut compiler,
+        &policy_permit_all,
+        &policy_permit_never_matches,
+        &envs,
+    )
+    .await;
+    assert_matches_disjoint(
+        &mut compiler,
+        &policy_forbid_all,
+        &policy_forbid_never_matches,
+        &envs,
+    )
+    .await;
+    assert_not_matches_disjoint(&mut compiler, &policy_forbid_all, &policy_forbid_all, &envs).await; // disjoint, but not matches-disjoint
+
     for pset in psets_vacuous {
         assert_does_not_always_allow(&mut compiler, &pset, &envs).await;
         assert_always_denies(&mut compiler, &pset, &envs).await;
@@ -314,6 +397,7 @@ async fn nontrivial_permit() {
     "#,
         &validator,
     );
+    let policy_permit_all = policy_permit_all(&validator);
     let pset_permit_all = pset_permit_all(&validator);
 
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
@@ -328,20 +412,30 @@ async fn nontrivial_permit() {
     assert_does_not_always_deny(&mut compiler, &pset1, &envs).await;
     assert_does_not_always_deny(&mut compiler, &pset2, &envs).await;
     assert_equivalent(&mut compiler, &pset1, &pset1, &envs).await;
+    assert_matches_equivalent(&mut compiler, &policy1, &policy1, &envs).await;
     assert_not_equivalent(&mut compiler, &pset1, &pset2, &envs).await;
+    assert_not_matches_equivalent(&mut compiler, &policy1, &policy2, &envs).await;
     assert_not_equivalent(&mut compiler, &pset1, &pset_empty(), &envs).await;
     assert_not_equivalent(&mut compiler, &pset1, &pset_permit_all, &envs).await;
+    assert_not_matches_equivalent(&mut compiler, &policy1, &policy_permit_all, &envs).await;
     assert_does_not_imply(&mut compiler, &pset1, &pset2, &envs).await;
+    assert_does_not_matches_imply(&mut compiler, &policy1, &policy2, &envs).await;
     assert_implies(&mut compiler, &pset2, &pset1, &envs).await;
+    assert_matches_implies(&mut compiler, &policy2, &policy1, &envs).await;
     assert_does_not_imply(&mut compiler, &pset1, &pset_empty(), &envs).await;
     assert_does_not_imply(&mut compiler, &pset2, &pset_empty(), &envs).await;
     assert_implies(&mut compiler, &pset_empty(), &pset1, &envs).await;
     assert_implies(&mut compiler, &pset_empty(), &pset2, &envs).await;
     assert_implies(&mut compiler, &pset1, &pset_permit_all, &envs).await;
+    assert_matches_implies(&mut compiler, &policy1, &policy_permit_all, &envs).await;
     assert_implies(&mut compiler, &pset2, &pset_permit_all, &envs).await;
+    assert_matches_implies(&mut compiler, &policy2, &policy_permit_all, &envs).await;
     assert_does_not_imply(&mut compiler, &pset_permit_all, &pset1, &envs).await;
+    assert_does_not_matches_imply(&mut compiler, &policy_permit_all, &policy1, &envs).await;
     assert_does_not_imply(&mut compiler, &pset_permit_all, &pset2, &envs).await;
+    assert_does_not_matches_imply(&mut compiler, &policy_permit_all, &policy2, &envs).await;
     assert_not_disjoint(&mut compiler, &pset1, &pset2, &envs).await;
+    assert_not_matches_disjoint(&mut compiler, &policy1, &policy2, &envs).await;
     assert_disjoint(&mut compiler, &pset1, &pset_empty(), &envs).await;
 }
 

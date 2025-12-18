@@ -28,8 +28,9 @@ use err::{Error, Result};
 use solver::Solver;
 use symcc::{
     verify_always_allows, verify_always_denies, verify_always_matches, verify_disjoint,
-    verify_equivalent, verify_implies, verify_never_errors, verify_never_matches,
-    well_typed_policies, well_typed_policy, Environment, SymCompiler,
+    verify_equivalent, verify_implies, verify_matches_disjoint, verify_matches_equivalent,
+    verify_matches_implies, verify_never_errors, verify_never_matches, well_typed_policies,
+    well_typed_policy, Environment, SymCompiler,
 };
 
 pub use symcc::bitvec;
@@ -1011,6 +1012,60 @@ pub fn compile_never_matches<'a>(
         symenv,
         verify_never_matches(policy.policy(), symenv)?,
         std::iter::once(policy.policy()),
+    ))
+}
+
+/// Compiles the verification task of [`CedarSymCompiler::check_matches_equivalent`] to the unsatisfiability
+/// of the returned [`WellFormedAsserts`] without calling the solver.
+///
+/// Similar to [`compile_never_errors`].
+///
+/// NOTE: This is an experimental feature that may break or change in the future.
+pub fn compile_matches_equivalent<'a>(
+    policy1: &WellTypedPolicy,
+    policy2: &WellTypedPolicy,
+    symenv: &'a SymEnv,
+) -> Result<WellFormedAsserts<'a>> {
+    Ok(WellFormedAsserts::from_asserts_unchecked(
+        symenv,
+        verify_matches_equivalent(policy1.policy(), policy2.policy(), symenv)?,
+        [policy1.policy(), policy2.policy()].into_iter(),
+    ))
+}
+
+/// Compiles the verification task of [`CedarSymCompiler::check_matches_implies`] to the unsatisfiability
+/// of the returned [`WellFormedAsserts`] without calling the solver.
+///
+/// Similar to [`compile_never_errors`].
+///
+/// NOTE: This is an experimental feature that may break or change in the future.
+pub fn compile_matches_implies<'a>(
+    policy1: &WellTypedPolicy,
+    policy2: &WellTypedPolicy,
+    symenv: &'a SymEnv,
+) -> Result<WellFormedAsserts<'a>> {
+    Ok(WellFormedAsserts::from_asserts_unchecked(
+        symenv,
+        verify_matches_implies(policy1.policy(), policy2.policy(), symenv)?,
+        [policy1.policy(), policy2.policy()].into_iter(),
+    ))
+}
+
+/// Compiles the verification task of [`CedarSymCompiler::check_matches_disjoint`] to the unsatisfiability
+/// of the returned [`WellFormedAsserts`] without calling the solver.
+///
+/// Similar to [`compile_never_errors`].
+///
+/// NOTE: This is an experimental feature that may break or change in the future.
+pub fn compile_matches_disjoint<'a>(
+    policy1: &WellTypedPolicy,
+    policy2: &WellTypedPolicy,
+    symenv: &'a SymEnv,
+) -> Result<WellFormedAsserts<'a>> {
+    Ok(WellFormedAsserts::from_asserts_unchecked(
+        symenv,
+        verify_matches_disjoint(policy1.policy(), policy2.policy(), symenv)?,
+        [policy1.policy(), policy2.policy()].into_iter(),
     ))
 }
 
