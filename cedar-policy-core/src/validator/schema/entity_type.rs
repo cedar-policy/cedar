@@ -50,11 +50,28 @@ pub struct ValidatorEntityType {
     pub loc: Option<Loc>,
 }
 
+/// PartialEq implementation for ValidatorEntityType, assumes that location
+/// information is irrelevant to the comparison
+impl PartialEq for ValidatorEntityType {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name &&
+            self.kind == other.kind &&
+            self.descendants == other.descendants &&
+            self.attributes == other.attributes
+    }
+}
+
+/// There's no ValidatorEntityType's which are non comparable to one another
+/// if we assume location is irrelevant
+impl Eq for ValidatorEntityType {
+
+}
+
 /// The kind of validator entity types.
 ///
 /// It can either be a standard (non-enum) entity type, or
 /// an enumerated entity type
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValidatorEntityTypeKind {
     /// Standard, aka non-enum
     Standard(StandardValidatorEntityType),
@@ -62,7 +79,7 @@ pub enum ValidatorEntityTypeKind {
     Enum(NonEmpty<SmolStr>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StandardValidatorEntityType {
     /// Indicates that this entity type may have additional attributes
     /// other than the declared attributes that may be accessed under partial
