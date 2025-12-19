@@ -73,7 +73,7 @@ pub fn verify_evaluate_pair_opt(
     // Our callers only pass relatively simple functions as `phi`.
     // We expect that `enforce_pair_compiled_policy()` is much more expensive to compute than `phi`.
     // So, we first compute the assert involving `phi`. If that is
-    // constant-false, we can just reutrn constant-false and not compute
+    // constant-false, we can just return constant-false and not compute
     // `enforce_pair_compiled_policy()`; the resulting asserts are equivalent.
     match factory::not(phi(&policy1.term, &policy2.term)) {
         Term::Prim(TermPrim::Bool(false)) => Arc::new(vec![false.into()]),
