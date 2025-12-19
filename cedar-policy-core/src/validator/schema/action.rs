@@ -55,6 +55,23 @@ pub struct ValidatorActionId {
     pub(crate) loc: Option<Loc>,
 }
 
+/// PartialEq implementation for ValidatorActionId, assumes that location
+/// information is irrelevant to the comparison
+impl PartialEq for ValidatorActionId {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name &&
+            self.applies_to == other.applies_to &&
+            self.descendants == other.descendants &&
+            self.context == other.context
+    }
+}
+
+/// There's no ValidatorActionId's which are non comparable to one another
+/// if we assume location is irrelevant
+impl Eq for ValidatorActionId {
+
+}
+
 impl ValidatorActionId {
     /// Construct a new `ValidatorActionId`.
     ///
@@ -177,6 +194,15 @@ pub(crate) struct ValidatorApplySpec<N> {
     /// The resource entity types the action can be applied to.
     resource_apply_spec: HashSet<N>,
 }
+
+impl<N: PartialEq + Eq + std::hash::Hash> PartialEq for ValidatorApplySpec<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.principal_apply_spec == other.principal_apply_spec
+            && self.resource_apply_spec == other.resource_apply_spec
+    }
+}
+
+impl<N: PartialEq + Eq + std::hash::Hash> Eq for ValidatorApplySpec<N> {}
 
 impl<N> ValidatorApplySpec<N> {
     /// Create an apply spec for an action that can only be applied to some
