@@ -413,6 +413,9 @@ impl Entities {
                 to_dot_id(f, &entity.uid())?;
                 write!(f, " -> ")?;
                 to_dot_id(f, &ancestor)?;
+                if !entity.is_child_of(&ancestor) {
+                    write!(f, " [style=dashed]")?;
+                }
                 writeln!(f)?;
             }
         }
