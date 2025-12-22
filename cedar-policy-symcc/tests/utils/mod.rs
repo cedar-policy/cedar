@@ -30,9 +30,10 @@ use cedar_policy::{
 use cedar_policy_core::{ast::RequestSchema, extensions::Extensions};
 use cedar_policy_symcc::{
     compile_always_allows, compile_always_denies, compile_always_matches, compile_disjoint,
-    compile_equivalent, compile_implies, compile_never_errors, compile_never_matches,
-    solver::Solver, CedarSymCompiler, CompiledPolicies, CompiledPolicy, Env, Interpretation,
-    SymEnv, WellTypedPolicies, WellTypedPolicy,
+    compile_equivalent, compile_implies, compile_matches_disjoint, compile_matches_equivalent,
+    compile_matches_implies, compile_never_errors, compile_never_matches, solver::Solver,
+    CedarSymCompiler, CompiledPolicies, CompiledPolicy, Env, Interpretation, SymEnv,
+    WellTypedPolicies, WellTypedPolicy,
 };
 
 #[track_caller]
@@ -430,6 +431,335 @@ pub async fn assert_does_not_never_match<S: Solver>(
     assert!(
         !assert_never_matches_ok(compiler, policy, envs, Pathway::default()).await,
         "assert_does_not_never_match failed for:\n{policy}"
+    );
+}
+
+pub async fn assert_matches_equivalent_ok<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy1: &Policy,
+    policy2: &Policy,
+    envs: &Environments<'_>,
+    pathway: Pathway,
+) -> bool {
+    let typed_policy1 = WellTypedPolicy::from_policy(policy1, &envs.req_env, envs.schema).unwrap();
+    let typed_policy2 = WellTypedPolicy::from_policy(policy2, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy1 = CompiledPolicy::compile(policy1, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy2 = CompiledPolicy::compile(policy2, &envs.req_env, envs.schema).unwrap();
+    let res = {
+        let unopt_res = compiler
+            .check_matches_equivalent(&typed_policy1, &typed_policy2, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_res = compiler
+            .check_matches_equivalent_opt(&compiled_policy1, &compiled_policy2)
+            .await
+            .unwrap();
+        match pathway {
+            Pathway::UnoptOnly => unopt_res,
+            Pathway::OptOnly => opt_res,
+            Pathway::Both => {
+                assert_eq!(unopt_res, opt_res);
+                unopt_res
+            }
+        }
+    };
+    let cex = {
+        let unopt_cex = compiler
+            .check_matches_equivalent_with_counterexample(
+                &typed_policy1,
+                &typed_policy2,
+                &envs.symenv,
+            )
+            .await
+            .unwrap();
+        let opt_cex = compiler
+            .check_matches_equivalent_with_counterexample_opt(&compiled_policy1, &compiled_policy2)
+            .await
+            .unwrap();
+        match pathway {
+            Pathway::UnoptOnly => unopt_cex,
+            Pathway::OptOnly => opt_cex,
+            Pathway::Both => {
+                assert_eq!(unopt_cex, opt_cex);
+                unopt_cex
+            }
+        }
+    };
+    assert_eq!(res, cex.is_none());
+
+    if let Some(cex) = cex {
+        assert_cex_valid(envs.schema, &cex);
+        let pset1 = PolicySet::from_policies(std::iter::once(policy1.clone())).unwrap();
+        let pset2 = PolicySet::from_policies(std::iter::once(policy2.clone())).unwrap();
+        let resp1 = Authorizer::new().is_authorized(&cex.request, &pset1, &cex.entities);
+        let resp2 = Authorizer::new().is_authorized(&cex.request, &pset2, &cex.entities);
+        let policy1_matches = resp1.diagnostics().reason().next().is_some();
+        let policy2_matches = resp2.diagnostics().reason().next().is_some();
+        assert!(
+            policy1_matches != policy2_matches,
+            "check_matches_equivalent_with_counterexample returned an invalid counterexample"
+        );
+        // Re-perform the check with a symbolized concrete `Env`
+        let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        assert!(literal_symenv.is_literal());
+        let asserts =
+            compile_matches_equivalent(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        // All asserts should be simplified to literal true's
+        assert!(asserts.asserts().iter().all(|t| t == &true.into()));
+    } else {
+        // Test that the default interpretation does satisfy the property
+        let interp = Interpretation::default(&envs.symenv);
+        let literal_symenv = envs.symenv.interpret(&interp);
+        assert!(literal_symenv.is_literal());
+        let asserts =
+            compile_matches_equivalent(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        // There should be some literal false in the assertions
+        assert!(asserts.asserts().iter().all(|t| t.is_literal()));
+        assert!(asserts.asserts().iter().any(|t| t == &false.into()));
+    }
+
+    res
+}
+
+pub async fn assert_matches_equivalent<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy1: &Policy,
+    policy2: &Policy,
+    envs: &Environments<'_>,
+) {
+    assert!(
+        assert_matches_equivalent_ok(compiler, policy1, policy2, envs, Pathway::default()).await,
+        "assert_matches_equivalent failed for:\n{policy1}\n{policy2}"
+    );
+}
+
+pub async fn assert_not_matches_equivalent<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy1: &Policy,
+    policy2: &Policy,
+    envs: &Environments<'_>,
+) {
+    assert!(
+        !assert_matches_equivalent_ok(compiler, policy1, policy2, envs, Pathway::default()).await,
+        "assert_not_matches_equivalent failed for:\n{policy1}\n{policy2}"
+    );
+}
+
+pub async fn assert_matches_implies_ok<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy1: &Policy,
+    policy2: &Policy,
+    envs: &Environments<'_>,
+    pathway: Pathway,
+) -> bool {
+    let typed_policy1 = WellTypedPolicy::from_policy(policy1, &envs.req_env, envs.schema).unwrap();
+    let typed_policy2 = WellTypedPolicy::from_policy(policy2, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy1 = CompiledPolicy::compile(policy1, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy2 = CompiledPolicy::compile(policy2, &envs.req_env, envs.schema).unwrap();
+    let res = {
+        let unopt_res = compiler
+            .check_matches_implies(&typed_policy1, &typed_policy2, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_res = compiler
+            .check_matches_implies_opt(&compiled_policy1, &compiled_policy2)
+            .await
+            .unwrap();
+        match pathway {
+            Pathway::UnoptOnly => unopt_res,
+            Pathway::OptOnly => opt_res,
+            Pathway::Both => {
+                assert_eq!(unopt_res, opt_res);
+                unopt_res
+            }
+        }
+    };
+    let cex = {
+        let unopt_cex = compiler
+            .check_matches_implies_with_counterexample(&typed_policy1, &typed_policy2, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_cex = compiler
+            .check_matches_implies_with_counterexample_opt(&compiled_policy1, &compiled_policy2)
+            .await
+            .unwrap();
+        match pathway {
+            Pathway::UnoptOnly => unopt_cex,
+            Pathway::OptOnly => opt_cex,
+            Pathway::Both => {
+                assert_eq!(unopt_cex, opt_cex);
+                unopt_cex
+            }
+        }
+    };
+    assert_eq!(res, cex.is_none());
+
+    if let Some(cex) = cex {
+        assert_cex_valid(envs.schema, &cex);
+        let pset1 = PolicySet::from_policies(std::iter::once(policy1.clone())).unwrap();
+        let pset2 = PolicySet::from_policies(std::iter::once(policy2.clone())).unwrap();
+        let resp1 = Authorizer::new().is_authorized(&cex.request, &pset1, &cex.entities);
+        let resp2 = Authorizer::new().is_authorized(&cex.request, &pset2, &cex.entities);
+        let policy1_matches = resp1.diagnostics().reason().next().is_some();
+        let policy2_matches = resp2.diagnostics().reason().next().is_some();
+        assert!(
+            policy1_matches && !policy2_matches,
+            "check_matches_implies_with_counterexample returned an invalid counterexample"
+        );
+        // Re-perform the check with a symbolized concrete `Env`
+        let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        assert!(literal_symenv.is_literal());
+        let asserts =
+            compile_matches_implies(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        // All asserts should be simplified to literal true's
+        assert!(asserts.asserts().iter().all(|t| t == &true.into()));
+    } else {
+        // Test that the default interpretation does satisfy the property
+        let interp = Interpretation::default(&envs.symenv);
+        let literal_symenv = envs.symenv.interpret(&interp);
+        assert!(literal_symenv.is_literal());
+        let asserts =
+            compile_matches_implies(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        // There should be some literal false in the assertions
+        assert!(asserts.asserts().iter().all(|t| t.is_literal()));
+        assert!(asserts.asserts().iter().any(|t| t == &false.into()));
+    }
+
+    res
+}
+
+pub async fn assert_matches_implies<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy1: &Policy,
+    policy2: &Policy,
+    envs: &Environments<'_>,
+) {
+    assert!(
+        assert_matches_implies_ok(compiler, policy1, policy2, envs, Pathway::default()).await,
+        "assert_matches_implies failed for:\n{policy1}\n{policy2}"
+    );
+}
+
+pub async fn assert_does_not_matches_imply<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy1: &Policy,
+    policy2: &Policy,
+    envs: &Environments<'_>,
+) {
+    assert!(
+        !assert_matches_implies_ok(compiler, policy1, policy2, envs, Pathway::default()).await,
+        "assert_does_not_matches_imply failed for:\n{policy1}\n{policy2}"
+    );
+}
+
+pub async fn assert_matches_disjoint_ok<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy1: &Policy,
+    policy2: &Policy,
+    envs: &Environments<'_>,
+    pathway: Pathway,
+) -> bool {
+    let typed_policy1 = WellTypedPolicy::from_policy(policy1, &envs.req_env, envs.schema).unwrap();
+    let typed_policy2 = WellTypedPolicy::from_policy(policy2, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy1 = CompiledPolicy::compile(policy1, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy2 = CompiledPolicy::compile(policy2, &envs.req_env, envs.schema).unwrap();
+    let res = {
+        let unopt_res = compiler
+            .check_matches_disjoint(&typed_policy1, &typed_policy2, &envs.symenv)
+            .await
+            .unwrap();
+        let opt_res = compiler
+            .check_matches_disjoint_opt(&compiled_policy1, &compiled_policy2)
+            .await
+            .unwrap();
+        match pathway {
+            Pathway::UnoptOnly => unopt_res,
+            Pathway::OptOnly => opt_res,
+            Pathway::Both => {
+                assert_eq!(unopt_res, opt_res);
+                unopt_res
+            }
+        }
+    };
+    let cex = {
+        let unopt_cex = compiler
+            .check_matches_disjoint_with_counterexample(
+                &typed_policy1,
+                &typed_policy2,
+                &envs.symenv,
+            )
+            .await
+            .unwrap();
+        let opt_cex = compiler
+            .check_matches_disjoint_with_counterexample_opt(&compiled_policy1, &compiled_policy2)
+            .await
+            .unwrap();
+        match pathway {
+            Pathway::UnoptOnly => unopt_cex,
+            Pathway::OptOnly => opt_cex,
+            Pathway::Both => {
+                assert_eq!(unopt_cex, opt_cex);
+                unopt_cex
+            }
+        }
+    };
+    assert_eq!(res, cex.is_none());
+
+    if let Some(cex) = cex {
+        assert_cex_valid(envs.schema, &cex);
+        let pset1 = PolicySet::from_policies(std::iter::once(policy1.clone())).unwrap();
+        let pset2 = PolicySet::from_policies(std::iter::once(policy2.clone())).unwrap();
+        let resp1 = Authorizer::new().is_authorized(&cex.request, &pset1, &cex.entities);
+        let resp2 = Authorizer::new().is_authorized(&cex.request, &pset2, &cex.entities);
+        let policy1_matches = resp1.diagnostics().reason().next().is_some();
+        let policy2_matches = resp2.diagnostics().reason().next().is_some();
+        assert!(
+            policy1_matches && policy2_matches,
+            "check_matches_disjoint_with_counterexample returned an invalid counterexample"
+        );
+        // Re-perform the check with a symbolized concrete `Env`
+        let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
+        assert!(literal_symenv.is_literal());
+        let asserts =
+            compile_matches_disjoint(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        // All asserts should be simplified to literal true's
+        assert!(asserts.asserts().iter().all(|t| t == &true.into()));
+    } else {
+        // Test that the default interpretation does satisfy the property
+        let interp = Interpretation::default(&envs.symenv);
+        let literal_symenv = envs.symenv.interpret(&interp);
+        assert!(literal_symenv.is_literal());
+        let asserts =
+            compile_matches_disjoint(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        // There should be some literal false in the assertions
+        assert!(asserts.asserts().iter().all(|t| t.is_literal()));
+        assert!(asserts.asserts().iter().any(|t| t == &false.into()));
+    }
+
+    res
+}
+
+pub async fn assert_matches_disjoint<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy1: &Policy,
+    policy2: &Policy,
+    envs: &Environments<'_>,
+) {
+    assert!(
+        assert_matches_disjoint_ok(compiler, policy1, policy2, envs, Pathway::default()).await,
+        "assert_matches_disjoint failed for:\n{policy1}\n{policy2}"
+    );
+}
+
+pub async fn assert_not_matches_disjoint<S: Solver>(
+    compiler: &mut CedarSymCompiler<S>,
+    policy1: &Policy,
+    policy2: &Policy,
+    envs: &Environments<'_>,
+) {
+    assert!(
+        !assert_matches_disjoint_ok(compiler, policy1, policy2, envs, Pathway::default()).await,
+        "assert_not_matches_disjoint failed for:\n{policy1}\n{policy2}"
     );
 }
 

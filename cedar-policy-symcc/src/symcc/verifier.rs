@@ -39,7 +39,7 @@ type Result<T> = std::result::Result<T, CompileError>;
 
 /// Returns asserts that are unsatisfiable iff the evaluation of `policy`, represented as
 /// a Term of type .option .bool, satisfies `phi` on all inputs drawn from `env`.  See also
-/// `verify_never_errors`.
+/// `verify_never_errors`, `verify_always_matches`, and `verify_never_matches`.
 pub fn verify_evaluate(
     phi: impl FnOnce(Term) -> Term,
     policy: &Policy,
@@ -51,6 +51,28 @@ pub fn verify_evaluate(
         enforce([&policy_expr], env)
             .into_iter()
             .chain([not(phi(term))])
+            .collect(),
+    ))
+}
+
+/// Returns asserts that are unsatisfiable iff the evaluation of `policy1` and `policy2`,
+/// represented as Terms of type .option .bool, satisfy `phi` on all inputs drawn from
+/// `env`. See also `verify_matches_implies`, `verify_matches_equivalent`, and
+/// `verify_matches_disjoint`.
+pub fn verify_evaluate_pair(
+    phi: impl FnOnce(Term, Term) -> Term,
+    policy1: &Policy,
+    policy2: &Policy,
+    env: &SymEnv,
+) -> Result<Asserts> {
+    let policy1_expr = policy1.condition();
+    let policy2_expr = policy2.condition();
+    let term1 = compile(&policy1_expr, env)?;
+    let term2 = compile(&policy2_expr, env)?;
+    Ok(Arc::new(
+        enforce([&policy1_expr, &policy2_expr], env)
+            .into_iter()
+            .chain([not(phi(term1, term2))])
             .collect(),
     ))
 }
@@ -99,6 +121,63 @@ pub fn verify_always_matches(policy: &Policy, env: &SymEnv) -> Result<Asserts> {
 /// does match.
 pub fn verify_never_matches(policy: &Policy, env: &SymEnv) -> Result<Asserts> {
     verify_evaluate(|term| not(eq(term, some_of(true.into()))), policy, env)
+}
+
+/// Returns asserts that are unsatisfiable iff `policy1` and `policy2` match exactly
+/// the same set of inputs in `env`.
+pub fn verify_matches_equivalent(
+    policy1: &Policy,
+    policy2: &Policy,
+    env: &SymEnv,
+) -> Result<Asserts> {
+    verify_evaluate_pair(
+        |term1, term2| {
+            let t1matches = eq(term1, some_of(true.into()));
+            let t2matches = eq(term2, some_of(true.into()));
+            eq(t1matches, t2matches)
+        },
+        policy1,
+        policy2,
+        env,
+    )
+}
+
+/// Returns asserts that are unsatisfiable iff `policy1` matching implies that `policy2`
+/// matches, for every input in `env`. In other words, for every request where `policy1`
+/// matches, `policy2` also matches.
+pub fn verify_matches_implies(policy1: &Policy, policy2: &Policy, env: &SymEnv) -> Result<Asserts> {
+    verify_evaluate_pair(
+        |term1, term2| {
+            let t1matches = eq(term1, some_of(true.into()));
+            let t2matches = eq(term2, some_of(true.into()));
+            implies(t1matches, t2matches)
+        },
+        policy1,
+        policy2,
+        env,
+    )
+}
+
+/// Returns asserts that are unsatisfiable iff there is no input in the `env` that is
+/// matched by both `policy1` and `policy2`. In other words, the sets of inputs matched
+/// by `policy1` and `policy2` are disjoint. If this query is satisfiable, then there is
+/// at least one input that is matched by both `policy1` and `policy2`.
+pub fn verify_matches_disjoint(
+    policy1: &Policy,
+    policy2: &Policy,
+    env: &SymEnv,
+) -> Result<Asserts> {
+    let disjoint = |t1: Term, t2: Term| not(and(t1, t2));
+    verify_evaluate_pair(
+        |term1, term2| {
+            let t1matches = eq(term1, some_of(true.into()));
+            let t2matches = eq(term2, some_of(true.into()));
+            disjoint(t1matches, t2matches)
+        },
+        policy1,
+        policy2,
+        env,
+    )
 }
 
 /// Returns asserts that are unsatisfiable iff the authorization decision of `policies1`

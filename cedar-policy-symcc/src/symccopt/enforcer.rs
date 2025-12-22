@@ -42,6 +42,22 @@ pub fn enforce_compiled_policies(cps: &CompiledPolicies) -> BTreeSet<Term> {
     cps.acyclicity.iter().cloned().chain(tr).collect()
 }
 
+pub fn enforce_pair_compiled_policy(cp1: &CompiledPolicy, cp2: &CompiledPolicy) -> BTreeSet<Term> {
+    assert_eq!(&cp1.symenv, &cp2.symenv);
+    let footprint = cp1.footprint.iter().chain(cp2.footprint.iter()); // since `footprint` is just an iterator, it is cheap to clone
+    let tr = footprint.clone().flat_map(|term1| {
+        footprint
+            .clone()
+            .map(|term2| symcc::enforcer::transitivity(term1, term2, &cp1.symenv.entities))
+    });
+    cp1.acyclicity
+        .iter()
+        .cloned()
+        .chain(cp2.acyclicity.iter().cloned())
+        .chain(tr)
+        .collect()
+}
+
 pub fn enforce_pair_compiled_policies(
     cps1: &CompiledPolicies,
     cps2: &CompiledPolicies,

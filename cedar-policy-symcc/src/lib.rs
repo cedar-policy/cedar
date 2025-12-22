@@ -21,15 +21,16 @@ pub mod err;
 mod symcc;
 mod symccopt;
 
-use cedar_policy::{Policy, PolicySet, RequestEnv, Schema};
+use cedar_policy::{Effect, Policy, PolicySet, RequestEnv, Schema};
 use std::fmt;
 
 use err::{Error, Result};
 use solver::Solver;
 use symcc::{
     verify_always_allows, verify_always_denies, verify_always_matches, verify_disjoint,
-    verify_equivalent, verify_implies, verify_never_errors, verify_never_matches,
-    well_typed_policies, well_typed_policy, Environment, SymCompiler,
+    verify_equivalent, verify_implies, verify_matches_disjoint, verify_matches_equivalent,
+    verify_matches_implies, verify_never_errors, verify_never_matches, well_typed_policies,
+    well_typed_policy, Environment, SymCompiler,
 };
 
 pub use symcc::bitvec;
@@ -149,6 +150,11 @@ impl CompiledPolicy {
         Ok(Self {
             policy: symccopt::CompiledPolicy::compile(policy.as_ref(), env, schema)?,
         })
+    }
+
+    /// Get the `Effect` of this `CompiledPolicy`
+    pub fn effect(&self) -> Effect {
+        self.policy.effect()
     }
 
     /// Convert a `CompiledPolicy` to a `CompiledPolicies` representing a
@@ -375,6 +381,253 @@ impl<S: Solver> CedarSymCompiler<S> {
     ) -> Result<Option<Env>> {
         self.symcc
             .check_never_matches_with_counterexample_opt(&policy.policy)
+            .await
+    }
+
+    /// Returns true iff `policy1` and `policy2` match exactly the same set of
+    /// well-formed inputs in the given symbolic environment.
+    ///
+    /// Compare with `check_equivalent`, which takes two policysets (which could consist
+    /// of a single policy, or more) and determines whether the _authorization behavior_
+    /// of those policysets is equivalent for well-formed inputs in the `symenv`. This
+    /// function differs from `check_equivalent` on singleton policysets in how it treats
+    /// `forbid` policies -- while `check_equivalent` trivially holds for any pair of
+    /// `forbid` policies (as they both always-deny), `check_matches_equivalent` only
+    /// holds if the two policies match exactly the same set of inputs. Also, a nonempty
+    /// `permit` and nonempty `forbid` policy can be `check_matches_equivalent`, but can
+    /// never be `check_equivalent`. (By "nonempty" we mean, matches at least one request
+    /// in the given symbolic environment.)
+    ///
+    /// Consider using the optimized version `check_matches_equivalent_opt()` instead,
+    /// which will allow you to reuse a `CompiledPolicy` across many queries.
+    pub async fn check_matches_equivalent(
+        &mut self,
+        policy1: &WellTypedPolicy,
+        policy2: &WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.symcc
+            .check_matches_equivalent(&policy1.policy, &policy2.policy, symenv)
+            .await
+    }
+
+    /// Returns true iff the [`CompiledPolicy`] `policy1` and `policy2` match exactly
+    /// the same set of well-formed inputs in the `RequestEnv` they were compiled for.
+    /// (Caller guarantees that both policies were compiled for the same `RequestEnv`.)
+    ///
+    /// Compare with `check_equivalent_opt`, which takes two compiled policysets and
+    /// determines whether the _authorization behavior_ of those policysets is equivalent
+    /// for well-formed inputs in the `RequestEnv`. This function differs from
+    /// `check_equivalent_opt` on singleton policysets in how it treats `forbid` policies --
+    /// while `check_equivalent_opt` trivially holds for any pair of `forbid` policies
+    /// (as they both always-deny), `check_matches_equivalent_opt` only holds if the two
+    /// policies match exactly the same set of inputs. Also, a nonempty `permit` and
+    /// nonempty `forbid` policy can be `check_matches_equivalent_opt`, but can never
+    /// be `check_equivalent_opt`. (By "nonempty" we mean, matches as least one request
+    /// in the `RequestEnv` they were compiled for.)
+    ///
+    /// Corresponds to `checkMatchesEquivalentOpt` in the Lean.
+    pub async fn check_matches_equivalent_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<bool> {
+        self.symcc
+            .check_matches_equivalent_opt(&policy1.policy, &policy2.policy)
+            .await
+    }
+
+    /// Similar to [`Self::check_matches_equivalent`], but returns a counterexample
+    /// on which the matching behavior of `policy1` and `policy2` differ.
+    ///
+    /// Corresponds to `matchesEquivalent?` in the Lean.
+    ///
+    /// Consider using the optimized version `check_matches_equivalent_with_counterexample_opt()`
+    /// instead, which will allow you to reuse a `CompiledPolicy` across many queries.
+    pub async fn check_matches_equivalent_with_counterexample(
+        &mut self,
+        policy1: &WellTypedPolicy,
+        policy2: &WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_matches_equivalent_with_counterexample(&policy1.policy, &policy2.policy, symenv)
+            .await
+    }
+
+    /// Similar to [`Self::check_matches_equivalent_opt`], but returns a counterexample
+    /// on which the matching behavior of `policy1` and `policy2` differ.
+    ///
+    /// Corresponds to `matchesEquivalentOpt?` in the Lean.
+    pub async fn check_matches_equivalent_with_counterexample_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_matches_equivalent_with_counterexample_opt(&policy1.policy, &policy2.policy)
+            .await
+    }
+
+    /// Returns true iff `policy1` matching implies that `policy2` matches, for every
+    /// well-formed input in the `symenv`. That is, for every request where `policy1`
+    /// matches, `policy2` also matches.
+    ///
+    /// Compare with `check_implies`, which takes two policysets (which could consist of
+    /// a single policy, or more) and determines whether the _authorization decision_ of
+    /// the first implies that of the second. This function differs from `check_implies`
+    /// on singleton policysets in how it treats `forbid` policies -- while for
+    /// `check_implies`, any `forbid` policy trivially implies any `permit` policy (as
+    /// always-deny always implies any policy), for `check_matches_implies`, a `forbid`
+    /// policy may or may not imply a `permit` policy, and a `permit` policy may or may
+    /// not imply a `forbid` policy.
+    ///
+    /// Consider using the optimized version `check_matches_implies_opt()` instead,
+    /// which will allow you to reuse a `CompiledPolicy` across many queries.
+    pub async fn check_matches_implies(
+        &mut self,
+        policy1: &WellTypedPolicy,
+        policy2: &WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.symcc
+            .check_matches_implies(&policy1.policy, &policy2.policy, symenv)
+            .await
+    }
+
+    /// Returns true iff the [`CompiledPolicy`] `policy1` matching implies that `policy2`
+    /// matches, for every well-formed input in the `RequestEnv` they were compiled for.
+    /// (Caller guarantees that both policies were compiled for the same `RequestEnv`.)
+    ///
+    /// Compare with `check_implies_opt`, which takes two compiled policysets and
+    /// determines whether the _authorization decision_ of the first implies that of the
+    /// second. This function differs from `check_implies_opt` on singleton policysets
+    /// in how it treats `forbid` policies -- while for `check_implies_opt`, any `forbid`
+    /// policy trivially implies any `permit` policy (as always-deny always implies any
+    /// policy), for `check_matches_implies_opt`, a `forbid` policy may or may not imply
+    /// a `permit` policy, and a `permit` policy may or may not imply a `forbid` policy.
+    ///
+    /// Corresponds to `checkMatchesImpliesOpt` in the Lean.
+    pub async fn check_matches_implies_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<bool> {
+        self.symcc
+            .check_matches_implies_opt(&policy1.policy, &policy2.policy)
+            .await
+    }
+
+    /// Similar to [`Self::check_matches_implies`], but returns a counterexample
+    /// that is matched by `policy1` but not by `policy2` if it exists.
+    ///
+    /// Corresponds to `matchesImplies?` in the Lean.
+    ///
+    /// Consider using the optimized version `check_matches_implies_with_counterexample_opt()`
+    /// instead, which will allow you to reuse a `CompiledPolicy` across many queries.
+    pub async fn check_matches_implies_with_counterexample(
+        &mut self,
+        policy1: &WellTypedPolicy,
+        policy2: &WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_matches_implies_with_counterexample(&policy1.policy, &policy2.policy, symenv)
+            .await
+    }
+
+    /// Similar to [`Self::check_matches_implies_opt`], but returns a counterexample
+    /// that is matched by `policy1` but not by `policy2` if it exists.
+    ///
+    /// Corresponds to `matchesImpliesOpt?` in the Lean.
+    pub async fn check_matches_implies_with_counterexample_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_matches_implies_with_counterexample_opt(&policy1.policy, &policy2.policy)
+            .await
+    }
+
+    /// Returns true iff there is no well-formed input in the `symenv` that is matched
+    /// by both `policy1` and `policy2`. This checks that the sets of inputs matched by
+    /// `policy1` and `policy2` are disjoint.
+    ///
+    /// Compare with `check_disjoint`, which takes two policysets (which could consist
+    /// of a single policy, or more) and determines whether the _authorization behavior_
+    /// of those policysets are disjoint. This function differs from `check_disjoint` on
+    /// singleton policysets in how it treats `forbid` policies -- while for
+    /// `check_disjoint`, any `forbid` policy is trivially disjoint from any other policy
+    /// (as it allows nothing), `check_matches_disjoint` considers whether the `forbid`
+    /// policy may _match_ (rather than _allow_) any input that is matched by the other
+    /// policy.
+    ///
+    /// Consider using the optimized version `check_matches_disjoint_opt()` instead,
+    /// which will allow you to reuse a `CompiledPolicy` across many queries.
+    pub async fn check_matches_disjoint(
+        &mut self,
+        policy1: &WellTypedPolicy,
+        policy2: &WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<bool> {
+        self.symcc
+            .check_matches_disjoint(&policy1.policy, &policy2.policy, symenv)
+            .await
+    }
+
+    /// Returns true iff there is no well-formed input in the `RequestEnv` that is
+    /// matched by both [`CompiledPolicy`] `policy1` and `policy2`.
+    /// (Caller guarantees that both policies were compiled for the same `RequestEnv`.)
+    ///
+    /// Compare with `check_disjoint_opt`, which takes two compiled policysets and
+    /// determines whether the _authorization behavior_ of those policysets are disjoint.
+    /// This function differs from `check_disjoint_opt` on singleton policysets in how it
+    /// treats `forbid` policies -- while for `check_disjoint_opt`, any `forbid` policy
+    /// is trivially disjoint from any other policy (as it allows nothing),
+    /// `check_matches_disjoint_opt` considers whether the `forbid` policy may _match_
+    /// (rather than _allow_) any input that is matched by the other policy.
+    ///
+    /// Corresponds to `checkMatchesDisjointOpt` in the Lean.
+    pub async fn check_matches_disjoint_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<bool> {
+        self.symcc
+            .check_matches_disjoint_opt(&policy1.policy, &policy2.policy)
+            .await
+    }
+
+    /// Similar to [`Self::check_matches_disjoint`], but returns a counterexample
+    /// that is matched by both `policy1` and `policy2` if it exists.
+    ///
+    /// Corresponds to `matchesDisjoint?` in the Lean.
+    ///
+    /// Consider using the optimized version `check_matches_disjoint_with_counterexample_opt()`
+    /// instead, which will allow you to reuse a `CompiledPolicy` across many queries.
+    pub async fn check_matches_disjoint_with_counterexample(
+        &mut self,
+        policy1: &WellTypedPolicy,
+        policy2: &WellTypedPolicy,
+        symenv: &SymEnv,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_matches_disjoint_with_counterexample(&policy1.policy, &policy2.policy, symenv)
+            .await
+    }
+
+    /// Similar to [`Self::check_matches_disjoint_opt`], but returns a counterexample
+    /// that is matched by both `policy1` and `policy2` if it exists.
+    ///
+    /// Corresponds to `matchesDisjointOpt?` in the Lean.
+    pub async fn check_matches_disjoint_with_counterexample_opt(
+        &mut self,
+        policy1: &CompiledPolicy,
+        policy2: &CompiledPolicy,
+    ) -> Result<Option<Env>> {
+        self.symcc
+            .check_matches_disjoint_with_counterexample_opt(&policy1.policy, &policy2.policy)
             .await
     }
 
@@ -761,6 +1014,60 @@ pub fn compile_never_matches<'a>(
         symenv,
         verify_never_matches(policy.policy(), symenv)?,
         std::iter::once(policy.policy()),
+    ))
+}
+
+/// Compiles the verification task of [`CedarSymCompiler::check_matches_equivalent`] to the unsatisfiability
+/// of the returned [`WellFormedAsserts`] without calling the solver.
+///
+/// Similar to [`compile_never_errors`].
+///
+/// NOTE: This is an experimental feature that may break or change in the future.
+pub fn compile_matches_equivalent<'a>(
+    policy1: &WellTypedPolicy,
+    policy2: &WellTypedPolicy,
+    symenv: &'a SymEnv,
+) -> Result<WellFormedAsserts<'a>> {
+    Ok(WellFormedAsserts::from_asserts_unchecked(
+        symenv,
+        verify_matches_equivalent(policy1.policy(), policy2.policy(), symenv)?,
+        [policy1.policy(), policy2.policy()].into_iter(),
+    ))
+}
+
+/// Compiles the verification task of [`CedarSymCompiler::check_matches_implies`] to the unsatisfiability
+/// of the returned [`WellFormedAsserts`] without calling the solver.
+///
+/// Similar to [`compile_never_errors`].
+///
+/// NOTE: This is an experimental feature that may break or change in the future.
+pub fn compile_matches_implies<'a>(
+    policy1: &WellTypedPolicy,
+    policy2: &WellTypedPolicy,
+    symenv: &'a SymEnv,
+) -> Result<WellFormedAsserts<'a>> {
+    Ok(WellFormedAsserts::from_asserts_unchecked(
+        symenv,
+        verify_matches_implies(policy1.policy(), policy2.policy(), symenv)?,
+        [policy1.policy(), policy2.policy()].into_iter(),
+    ))
+}
+
+/// Compiles the verification task of [`CedarSymCompiler::check_matches_disjoint`] to the unsatisfiability
+/// of the returned [`WellFormedAsserts`] without calling the solver.
+///
+/// Similar to [`compile_never_errors`].
+///
+/// NOTE: This is an experimental feature that may break or change in the future.
+pub fn compile_matches_disjoint<'a>(
+    policy1: &WellTypedPolicy,
+    policy2: &WellTypedPolicy,
+    symenv: &'a SymEnv,
+) -> Result<WellFormedAsserts<'a>> {
+    Ok(WellFormedAsserts::from_asserts_unchecked(
+        symenv,
+        verify_matches_disjoint(policy1.policy(), policy2.policy(), symenv)?,
+        [policy1.policy(), policy2.policy()].into_iter(),
     ))
 }
 

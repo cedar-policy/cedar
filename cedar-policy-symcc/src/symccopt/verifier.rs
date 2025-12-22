@@ -21,10 +21,13 @@ use super::{
     enforcer::{enforce_compiled_policy, enforce_pair_compiled_policies},
     CompiledPolicies, CompiledPolicy,
 };
-use crate::symcc::{
-    factory,
-    term::{Term, TermPrim},
-    verifier::Asserts,
+use crate::{
+    symcc::{
+        factory,
+        term::{Term, TermPrim},
+        verifier::Asserts,
+    },
+    symccopt::enforcer::enforce_pair_compiled_policy,
 };
 use std::sync::Arc;
 
@@ -32,7 +35,8 @@ use std::sync::Arc;
 /// represented as a `Term` of type .option .bool, satisfies `phi` on all inputs
 /// drawn from the `symenv` that `policy` was compiled for.
 ///
-/// See also `verify_never_errors_opt()`.
+/// See also `verify_never_errors_opt()`, `verify_always_matches_opt()`, and
+/// `verify_never_matches_opt()`.
 pub fn verify_evaluate_opt(phi: impl FnOnce(&Term) -> Term, policy: &CompiledPolicy) -> Asserts {
     // As an optimization here in `symccopt`:
     // Our callers only pass relatively simple functions as `phi`.
@@ -44,6 +48,37 @@ pub fn verify_evaluate_opt(phi: impl FnOnce(&Term) -> Term, policy: &CompiledPol
         Term::Prim(TermPrim::Bool(false)) => Arc::new(vec![false.into()]),
         assert => Arc::new(
             enforce_compiled_policy(policy)
+                .into_iter()
+                .chain(std::iter::once(assert))
+                .collect(),
+        ),
+    }
+}
+
+/// Returns asserts that are unsatisfiable iff the evaluation of `policy1`
+/// and `policy2`, represented as `Term`s of type .option .bool, satisfy `phi`
+/// on all inputs drawn from the `symenv` that the policies were compiled for.
+/// (Caller guarantees that `policy1` and `policy2` were compiled for the same
+/// `symenv`.)
+///
+/// See also `verify_matches_equivalent_opt()`, `verify_matches_implies_opt()`,
+/// and `verify_matches_disjoint_opt()`.
+pub fn verify_evaluate_pair_opt(
+    phi: impl FnOnce(&Term, &Term) -> Term,
+    policy1: &CompiledPolicy,
+    policy2: &CompiledPolicy,
+) -> Asserts {
+    assert_eq!(&policy1.symenv, &policy2.symenv);
+    // As an optimization here in `symccopt`:
+    // Our callers only pass relatively simple functions as `phi`.
+    // We expect that `enforce_pair_compiled_policy()` is much more expensive to compute than `phi`.
+    // So, we first compute the assert involving `phi`. If that is
+    // constant-false, we can just return constant-false and not compute
+    // `enforce_pair_compiled_policy()`; the resulting asserts are equivalent.
+    match factory::not(phi(&policy1.term, &policy2.term)) {
+        Term::Prim(TermPrim::Bool(false)) => Arc::new(vec![false.into()]),
+        assert => Arc::new(
+            enforce_pair_compiled_policy(policy1, policy2)
                 .into_iter()
                 .chain(std::iter::once(assert))
                 .collect(),
@@ -109,6 +144,62 @@ pub fn verify_never_matches_opt(policy: &CompiledPolicy) -> Asserts {
     verify_evaluate_opt(
         |term| factory::not(factory::eq(term.clone(), factory::some_of(true.into()))),
         policy,
+    )
+}
+
+/// Returns asserts that are unsatisfiable iff `policy1` and `policy2` match exactly
+/// the same set of inputs in the `SymEnv` they were compiled for.
+/// (Caller guarantees that `policy1` and `policy2` were compiled for the same `SymEnv`.)
+/// If the asserts are satisfiable, then there is some input in the `SymEnv` on which
+/// `policy1` and `policy2` have different matching behavior.
+pub fn verify_matches_equivalent_opt(
+    policy1: &CompiledPolicy,
+    policy2: &CompiledPolicy,
+) -> Asserts {
+    verify_evaluate_pair_opt(
+        |term1, term2| {
+            let t1matches = factory::eq(term1.clone(), factory::some_of(true.into()));
+            let t2matches = factory::eq(term2.clone(), factory::some_of(true.into()));
+            factory::eq(t1matches, t2matches)
+        },
+        policy1,
+        policy2,
+    )
+}
+
+/// Returns asserts that are unsatisfiable iff `policy1` matching implies that `policy2`
+/// matches, for every input in the `SymEnv` they were compiled for.
+/// (Caller guarantees that `policy1` and `policy2` were compiled for the same `SymEnv`).
+/// If the asserts are satisfiable, then there is some input in the `SymEnv` that is
+/// matched by `policy1` but not matched by `policy2`.
+pub fn verify_matches_implies_opt(policy1: &CompiledPolicy, policy2: &CompiledPolicy) -> Asserts {
+    verify_evaluate_pair_opt(
+        |term1, term2| {
+            let t1matches = factory::eq(term1.clone(), factory::some_of(true.into()));
+            let t2matches = factory::eq(term2.clone(), factory::some_of(true.into()));
+            factory::implies(t1matches, t2matches)
+        },
+        policy1,
+        policy2,
+    )
+}
+
+/// Returns asserts that are unsatisfiable iff there is no input in the `SymEnv` that
+/// `policy1` and `policy2` were compiled for that is matched by both `policy1` and
+/// `policy2`.
+/// (Caller guarantees that `policy1` and `policy2` were compiled for the same `SymEnv`).
+/// If the asserts are satisfiable, then there is some input in the `SymEnv` that is
+/// matched by both `policy1` and `policy2`.
+pub fn verify_matches_disjoint_opt(policy1: &CompiledPolicy, policy2: &CompiledPolicy) -> Asserts {
+    let disjoint = |t1: Term, t2: Term| factory::not(factory::and(t1, t2));
+    verify_evaluate_pair_opt(
+        |term1, term2| {
+            let t1matches = factory::eq(term1.clone(), factory::some_of(true.into()));
+            let t2matches = factory::eq(term2.clone(), factory::some_of(true.into()));
+            disjoint(t1matches, t2matches)
+        },
+        policy1,
+        policy2,
     )
 }
 
