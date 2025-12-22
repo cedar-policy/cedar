@@ -393,9 +393,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// function differs from `check_equivalent` on singleton policysets in how it treats
     /// `forbid` policies -- while `check_equivalent` trivially holds for any pair of
     /// `forbid` policies (as they both always-deny), `check_matches_equivalent` only
-    /// holds if the two policies match exactly the same set of inputs. Also, a nontrivial
-    /// `permit` and nontrivial `forbid` policy can be `check_matches_equivalent`, but can
-    /// never be `check_equivalent`.
+    /// holds if the two policies match exactly the same set of inputs. Also, a nonempty
+    /// `permit` and nonempty `forbid` policy can be `check_matches_equivalent`, but can
+    /// never be `check_equivalent`. (By "nonempty" we mean, matches at least one request
+    /// in the given symbolic environment.)
     ///
     /// Consider using the optimized version `check_matches_equivalent_opt()` instead,
     /// which will allow you to reuse a `CompiledPolicy` across many queries.
@@ -420,9 +421,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// `check_equivalent_opt` on singleton policysets in how it treats `forbid` policies --
     /// while `check_equivalent_opt` trivially holds for any pair of `forbid` policies
     /// (as they both always-deny), `check_matches_equivalent_opt` only holds if the two
-    /// policies match exactly the same set of inputs. Also, a nontrivial `permit` and
-    /// nontrivial `forbid` policy can be `check_matches_equivalent_opt`, but can never
-    /// be `check_equivalent_opt`.
+    /// policies match exactly the same set of inputs. Also, a nonempty `permit` and
+    /// nonempty `forbid` policy can be `check_matches_equivalent_opt`, but can never
+    /// be `check_equivalent_opt`. (By "nonempty" we mean, matches as least one request
+    /// in the `RequestEnv` they were compiled for.)
     ///
     /// Corresponds to `checkMatchesEquivalentOpt` in the Lean.
     pub async fn check_matches_equivalent_opt(

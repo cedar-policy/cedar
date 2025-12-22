@@ -308,9 +308,10 @@ impl<S: Solver> SymCompiler<S> {
     /// function differs from `check_equivalent` on singleton policysets in how it treats
     /// `forbid` policies -- while `check_equivalent` trivially holds for any pair of
     /// `forbid` policies (as they both always-deny), `check_matches_equivalent` only
-    /// holds if the two policies match exactly the same set of inputs. Also, a nontrivial
-    /// `permit` and nontrivial `forbid` policy can be `check_matches_equivalent`, but can
-    /// never be `check_equivalent`.
+    /// holds if the two policies match exactly the same set of inputs. Also, a nonempty
+    /// `permit` and nonempty `forbid` policy can be `check_matches_equivalent`, but can
+    /// never be `check_equivalent`. (By "nonempty" we mean, matches at least one request
+    /// in the `symenv`.)
     pub async fn check_matches_equivalent(
         &mut self,
         policy1: &Policy,
