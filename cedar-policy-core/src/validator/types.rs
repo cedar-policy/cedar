@@ -85,7 +85,7 @@ pub enum Type {
         open_attributes: OpenTag,
     },
 
-    /// Record and entity types
+    /// Entity types
     Entity(EntityKind),
 
     /// Extension types
@@ -203,10 +203,7 @@ impl Type {
         Type::ExtensionType { name }
     }
 
-    /// Implements a subtype relation for the type structure. This requires a
-    /// `schema` so that the declared attributes for named entity types can be
-    /// retrieved. This is used to determine subtyping between a named entity
-    /// type and a record type.
+    /// Implements a subtype relation for the type structure.
     pub(crate) fn is_subtype(ty0: &Type, ty1: &Type, mode: ValidationMode) -> bool {
         match (ty0, ty1) {
             // Never is a subtype of every type.
@@ -257,10 +254,10 @@ impl Type {
                 // type with closed attributes, so open attribute record types
                 // can never subtype closed attribute record types.
                 (!open0.is_open() || open1.is_open())
-                // When `rk1` has open attributes, width subtyping applies since
-                // there may be attributes in `rk0` that are not listed in
-                // `rk1`.  When `rk1` is closed, a subtype of `rk1` may not have
-                // any attributes that are not listed in `rk1`, so we apply
+                // When `ty1` has open attributes, width subtyping applies since
+                // there may be attributes in `ty0` that are not listed in
+                // `ty1`.  When `ty1` is closed, a subtype of `ty1` may not have
+                // any attributes that are not listed in `ty1`, so we apply
                 // depth subtyping only. We apply this same restriction in
                 // strict mode, i.e., strict mode applies depth subtyping but
                 // not width subtyping.
@@ -268,7 +265,7 @@ impl Type {
                         || attrs0.is_subtype_depth_only( attrs1, mode))
             }
 
-            (Type::Entity(rk0), Type::Entity(rk1)) => EntityKind::is_subtype(rk0, rk1, mode),
+            (Type::Entity(e0), Type::Entity(e1)) => EntityKind::is_subtype(e0, e1, mode),
 
             // Subtypes between extension types only occurs when the extension
             // types are the same.
@@ -329,7 +326,7 @@ impl Type {
                 // Even though this function will never be called when the
                 // records are in a subtype relation, it is still possible that
                 // the LUB attribute set is the same the attribute key sets for
-                // `rk0` and `rk1`. This occurs when `rk0` and `rk1` have
+                // `ty0` and `ty1`. This occurs when `ty0` and `ty1` have
                 // identical attribute keys sets with all corresponding
                 // attributes having a LUB while at least one pair of
                 // corresponding attributes is not in a subtype relation.
@@ -351,8 +348,8 @@ impl Type {
                 })
             }
 
-            (Type::Entity(rk0), Type::Entity(rk1)) => {
-                Ok(Type::Entity(EntityKind::least_upper_bound(rk0, rk1, mode)?))
+            (Type::Entity(e0), Type::Entity(e1)) => {
+                Ok(Type::Entity(EntityKind::least_upper_bound(e0, e1, mode)?))
             }
 
             (Type::Entity(_), Type::Record { .. }) | (Type::Record { .. }, Type::Entity(_)) => {
@@ -419,7 +416,7 @@ impl Type {
     ) -> Option<AttributeType> {
         match ty {
             Type::Record { attrs, .. } => attrs.get_attr(attr).cloned(),
-            Type::Entity(rk) => rk.get_attr(schema, attr),
+            Type::Entity(e) => e.get_attr(schema, attr),
             _ => None,
         }
     }
@@ -447,8 +444,7 @@ impl Type {
             // An Entity might have an open attributes record, in which
             // case it could have any attribute.
             Type::Entity(k) if k.has_open_attributes_record(schema) => true,
-            // In this case and all following Entity cases, we know it
-            // does not have an open attributes record, so we know that an
+            // It doesn't have an open attributes record, so we know that an
             // attribute may not exist if it is not explicitly listed in the
             // type. For an entity, we look this up in the schema.  For an
             // entity least upper bound resulting from multiple entity
@@ -1116,10 +1112,11 @@ impl OpenTag {
     }
 }
 
-/// Represents whether a type is an entity type, record type, or could be either
+/// Represents a type which is some specific entity type, one of a set of
+/// possible entity types or _any_ entity type. In strict typing, only the
+/// single-entity-type case is constructed.
 ///
-/// The subtyping lattice for these types is that
-/// `Entity` <: `AnyEntity`. `Record` does not subtype anything.
+/// The subtyping lattice for these types is that `Entity` <: `AnyEntity`.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone)]
 pub enum EntityKind {
     /// Any entity type
@@ -1127,7 +1124,7 @@ pub enum EntityKind {
     /// An entity reference type. An entity reference might be a reference to one
     /// of multiple possible entity types when the entity references is the
     /// result of a least upper bound. An arbitrary entity without a name is
-    /// represented using the `AnyEntity` record kind.
+    /// represented using the `AnyEntity` entity kind.
     ///
     /// Attributes in this case are not stored inline but must be looked up in
     /// the schema, based on the elements of the [`EntityLUB`].
@@ -1205,12 +1202,12 @@ impl EntityKind {
     }
 
     pub(crate) fn least_upper_bound(
-        rk0: &EntityKind,
-        rk1: &EntityKind,
+        e0: &EntityKind,
+        e1: &EntityKind,
         mode: ValidationMode,
     ) -> Result<EntityKind, LubHelp> {
         use EntityKind::*;
-        match (rk0, rk1) {
+        match (e0, e1) {
             (Entity(lub0), Entity(lub1)) => {
                 if mode.is_strict() && lub0 != lub1 {
                     Err(LubHelp::EntityType)
@@ -1232,9 +1229,9 @@ impl EntityKind {
     }
 
     /// Entity subtype is based on the lattice `named entity <: arbitrary entity`.
-    pub(crate) fn is_subtype(rk0: &EntityKind, rk1: &EntityKind, mode: ValidationMode) -> bool {
+    pub(crate) fn is_subtype(e0: &EntityKind, e1: &EntityKind, mode: ValidationMode) -> bool {
         use EntityKind::*;
-        match (rk0, rk1) {
+        match (e0, e1) {
             (Entity(lub0), Entity(lub1)) => {
                 if mode.is_strict() {
                     lub0 == lub1
