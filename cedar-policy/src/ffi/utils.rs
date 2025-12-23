@@ -53,7 +53,7 @@ pub struct DetailedError {
     pub source_locations: Vec<SourceLabel>,
     /// Related errors
     #[serde(default)]
-    pub related: Vec<Self>,
+    pub related: Vec<DetailedError>,
 }
 
 impl FromStr for DetailedError {
