@@ -831,6 +831,22 @@ pub struct ActionType<N> {
     pub(crate) defn_loc: Option<Loc>,
 }
 
+impl ActionType<InternalName> {
+    /// Function that consumes an ActionType<InternalName> and returns a new definition with
+    /// a new apply spec
+    #[must_use]
+    pub fn new_with_apply_spec(old: ActionType<InternalName>, new_apply_spec: Option<ApplySpec<InternalName>>) -> Self {
+        Self {
+            attributes: old.attributes,
+            applies_to: new_apply_spec,
+            member_of: old.member_of,
+            annotations: old.annotations,
+            loc: old.loc,
+            defn_loc: old.defn_loc,
+        }
+    }
+}
+
 impl ActionType<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
