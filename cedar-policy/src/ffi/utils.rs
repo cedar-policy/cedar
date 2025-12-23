@@ -30,6 +30,7 @@ pub use cedar_policy_core::jsonvalue::JsonValueWithNoDuplicateKeys;
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
+#[expect(clippy::use_self, reason="cedar-wasm build will fail until wasm-bindgen fixes a bug that doesn't translsate `Self` to `this`.")]
 /// Structure of the JSON output representing one `miette` error
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize, Default)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
