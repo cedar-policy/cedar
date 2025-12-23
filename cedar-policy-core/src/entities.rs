@@ -409,11 +409,13 @@ impl Entities {
         // adding edges
         for entity in self.iter() {
             for ancestor in entity.ancestors() {
-                write!(f, "\t")?;
-                to_dot_id(f, &entity.uid())?;
-                write!(f, " -> ")?;
-                to_dot_id(f, &ancestor)?;
-                writeln!(f)?;
+                if entity.is_child_of(&ancestor) {
+                    write!(f, "\t")?;
+                    to_dot_id(f, &entity.uid())?;
+                    write!(f, " -> ")?;
+                    to_dot_id(f, &ancestor)?;
+                    writeln!(f)?;
+                }
             }
         }
         writeln!(f, "}}")?;
