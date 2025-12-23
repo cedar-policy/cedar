@@ -129,8 +129,8 @@ impl AccessTrie {
                 return Ok(HashMap::default());
             }
             Type::Record { attrs, .. } => attrs,
-            Type::Entity(entity_or_record_ty) => {
-                match entity_or_record_ty {
+            Type::Entity(entity_ty) => {
+                match entity_ty {
                     EntityKind::AnyEntity => Err(MismatchedNotStrictSchemaError {})?,
                     EntityKind::Entity(entitylub) => {
                         let entity_ty = entitylub

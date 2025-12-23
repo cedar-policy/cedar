@@ -154,7 +154,7 @@ impl TermType {
                     ))
                 }
             }
-            Type::Entity(entity_record_kind) => match entity_record_kind {
+            Type::Entity(entity_kind) => match entity_kind {
                 EntityKind::AnyEntity => Err(CompileError::UnsupportedFeature(
                     "AnyEntity is not supported".into(),
                 )),

@@ -232,7 +232,7 @@ impl From<Type> for CedarTypeKind {
                 let record = Record { attrs: m.into() };
                 Self::Record(record)
             }
-            Type::Entity(entity_record_kind) => match entity_record_kind {
+            Type::Entity(entity_kind) => match entity_kind {
                 EntityKind::AnyEntity => Self::Error,
                 EntityKind::Entity(entity_lub) => {
                     // FIXME: This feels like an easy assumption to break. We should handle it gracefully

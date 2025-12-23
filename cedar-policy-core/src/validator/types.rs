@@ -425,7 +425,8 @@ impl Type {
     }
 
     /// Get all statically known attributes of an entity or record type.
-    /// Returns an empty vector if no attributes or type is not an entity or record type.
+    /// Returns an empty vector if there are no declared attributes or the type
+    /// is not an entity or record type.
     pub fn all_attributes(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
         match self {
             Type::Entity(e) => e.all_known_attrs(schema),
@@ -440,13 +441,13 @@ impl Type {
     /// attributes, so we return false.
     pub(crate) fn may_have_attr(schema: &ValidatorSchema, ty: &Type, attr: &str) -> bool {
         match ty {
-            // Never, being the bottom type, is a subtype of EntityOrRecord, so
+            // Never, being the bottom type, is a subtype of Entity and Record, so
             // it could have any attributes.
             Type::Never => true,
-            // An EntityOrRecord might have an open attributes record, in which
+            // An Entity might have an open attributes record, in which
             // case it could have any attribute.
             Type::Entity(k) if k.has_open_attributes_record(schema) => true,
-            // In this case and all following `EntityOrRecord` cases, we know it
+            // In this case and all following Entity cases, we know it
             // does not have an open attributes record, so we know that an
             // attribute may not exist if it is not explicitly listed in the
             // type. For an entity, we look this up in the schema.  For an
@@ -1141,8 +1142,7 @@ impl EntityKind {
         }
     }
 
-    /// Return `true` if this entity or record may have additional undeclared
-    /// attributes.
+    /// Return `true` if this entity may have additional undeclared attributes.
     pub(crate) fn has_open_attributes_record(&self, schema: &ValidatorSchema) -> bool {
         match self {
             // The `AnyEntity` type has no declared attributes, but it is a
@@ -1166,14 +1166,11 @@ impl EntityKind {
         }
     }
 
-    /// Get the type of the given attribute in this entity or record.
+    /// Get the type of the given attribute in this entity.
     ///
-    /// - If the attribute is known to not exist on this entity or record, returns
-    ///   `None`.
-    /// - If the attribute is known to be optional on tihs entity or record,
-    ///   returns `Some` with the type.
-    ///   (Note that [`AttributeType`] contains an `is_required` flag, so you can
-    ///   distinguish this case.)
+    /// - If the attribute is known to not exist on this entity, returns `None`.
+    /// - If the attribute is known to be optional on this entity, returns `Some` with the type.
+    ///   (Note that [`AttributeType`] contains an `is_required` flag, so you can distinguish this case.)
     /// - If the attribute may exist, but multiple types are possible for the
     ///   attribute (e.g., `AnyEntity`), returns `None`.
     pub(crate) fn get_attr(&self, schema: &ValidatorSchema, attr: &str) -> Option<AttributeType> {
@@ -1186,7 +1183,7 @@ impl EntityKind {
         }
     }
 
-    /// Get all the attribute names _known to exist_ for this entity or record
+    /// Get all the attribute names _known to exist_ for this entity.
     ///
     /// For `AnyEntity`, this will return an empty vec, as there are no
     /// attribute names we _know_ must exist (even though `AnyEntity` types may
@@ -1234,8 +1231,7 @@ impl EntityKind {
         }
     }
 
-    /// Record/entity subtype is based on the lattice named entity <: arbitrary
-    /// entity. We do not support subtyping between records and entities.
+    /// Entity subtype is based on the lattice `named entity <: arbitrary entity`.
     pub(crate) fn is_subtype(rk0: &EntityKind, rk1: &EntityKind, mode: ValidationMode) -> bool {
         use EntityKind::*;
         match (rk0, rk1) {
