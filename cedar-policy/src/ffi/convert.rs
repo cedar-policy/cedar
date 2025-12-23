@@ -187,210 +187,11 @@ pub fn schema_to_json(schema: Schema) -> SchemaToJsonAnswer {
     }
 }
 
-/// Helper function to resolve EntityOrCommon types to specific Entity or CommonType designations
-fn resolve_entity_or_common_types(
-    fragment: json_schema::Fragment<InternalName>,
-    all_defs: &AllDefs,
-) -> json_schema::Fragment<InternalName> {
-    json_schema::Fragment(
-        fragment
-            .0
-            .into_iter()
-            .map(|(ns_name, ns_def)| {
-                (
-                    ns_name,
-                    resolve_namespace_entity_or_common_types(ns_def, all_defs),
-                )
-            })
-            .collect(),
-    )
-}
-
-/// Helper function to resolve EntityOrCommon types in a namespace definition
-fn resolve_namespace_entity_or_common_types(
-    ns_def: json_schema::NamespaceDefinition<InternalName>,
-    all_defs: &AllDefs,
-) -> json_schema::NamespaceDefinition<InternalName> {
-    json_schema::NamespaceDefinition {
-        common_types: ns_def
-            .common_types
-            .into_iter()
-            .map(|(k, v)| {
-                (
-                    k,
-                    json_schema::CommonType {
-                        ty: resolve_type_entity_or_common(v.ty, all_defs),
-                        annotations: v.annotations,
-                        loc: v.loc,
-                    },
-                )
-            })
-            .collect(),
-        entity_types: ns_def
-            .entity_types
-            .into_iter()
-            .map(|(k, v)| (k, resolve_entity_type_entity_or_common(v, all_defs)))
-            .collect(),
-        actions: ns_def
-            .actions
-            .into_iter()
-            .map(|(k, v)| (k, resolve_action_type_entity_or_common(v, all_defs)))
-            .collect(),
-        annotations: ns_def.annotations,
-        #[cfg(feature = "extended-schema")]
-        loc: ns_def.loc,
-    }
-}
-
-/// Helper function to resolve EntityOrCommon types in a Type
-fn resolve_type_entity_or_common(
-    ty: json_schema::Type<InternalName>,
-    all_defs: &AllDefs,
-) -> json_schema::Type<InternalName> {
-    match ty {
-        json_schema::Type::Type { ty, loc } => {
-            match resolve_type_variant_entity_or_common(ty, all_defs) {
-                ResolvedTypeVariant::TypeVariant(resolved_ty) => json_schema::Type::Type {
-                    ty: resolved_ty,
-                    loc,
-                },
-                ResolvedTypeVariant::CommonTypeRef(type_name) => {
-                    json_schema::Type::CommonTypeRef { type_name, loc }
-                }
-            }
-        }
-        json_schema::Type::CommonTypeRef { type_name, loc } => {
-            json_schema::Type::CommonTypeRef { type_name, loc }
-        }
-    }
-}
-
-/// Helper enum to handle the case where EntityOrCommon resolves to a CommonTypeRef
-enum ResolvedTypeVariant {
-    TypeVariant(json_schema::TypeVariant<InternalName>),
-    CommonTypeRef(InternalName),
-}
-
-/// Helper function to resolve EntityOrCommon types in a TypeVariant
-fn resolve_type_variant_entity_or_common(
-    ty: json_schema::TypeVariant<InternalName>,
-    all_defs: &AllDefs,
-) -> ResolvedTypeVariant {
-    match ty {
-        json_schema::TypeVariant::EntityOrCommon { type_name } => {
-            // Check if this is an entity type or common type
-            if all_defs.is_defined_as_entity(&type_name) {
-                ResolvedTypeVariant::TypeVariant(json_schema::TypeVariant::Entity {
-                    name: type_name,
-                })
-            } else if all_defs.is_defined_as_common(&type_name) {
-                // Convert to a CommonTypeRef
-                ResolvedTypeVariant::CommonTypeRef(type_name)
-            } else {
-                // If it's neither, keep as EntityOrCommon (shouldn't happen with valid schemas)
-                ResolvedTypeVariant::TypeVariant(json_schema::TypeVariant::EntityOrCommon {
-                    type_name,
-                })
-            }
-        }
-        json_schema::TypeVariant::Set { element } => {
-            ResolvedTypeVariant::TypeVariant(json_schema::TypeVariant::Set {
-                element: Box::new(resolve_type_entity_or_common(*element, all_defs)),
-            })
-        }
-        json_schema::TypeVariant::Record(record_type) => {
-            ResolvedTypeVariant::TypeVariant(json_schema::TypeVariant::Record(
-                resolve_record_type_entity_or_common(record_type, all_defs),
-            ))
-        }
-        // Other variants don't contain EntityOrCommon types
-        other => ResolvedTypeVariant::TypeVariant(other),
-    }
-}
-
-/// Helper function to resolve EntityOrCommon types in a RecordType
-fn resolve_record_type_entity_or_common(
-    record_type: json_schema::RecordType<InternalName>,
-    all_defs: &AllDefs,
-) -> json_schema::RecordType<InternalName> {
-    json_schema::RecordType {
-        attributes: record_type
-            .attributes
-            .into_iter()
-            .map(|(k, v)| (k, resolve_type_of_attribute_entity_or_common(v, all_defs)))
-            .collect(),
-        additional_attributes: record_type.additional_attributes,
-    }
-}
-
-/// Helper function to resolve EntityOrCommon types in a TypeOfAttribute
-fn resolve_type_of_attribute_entity_or_common(
-    attr: json_schema::TypeOfAttribute<InternalName>,
-    all_defs: &AllDefs,
-) -> json_schema::TypeOfAttribute<InternalName> {
-    json_schema::TypeOfAttribute {
-        ty: resolve_type_entity_or_common(attr.ty, all_defs),
-        required: attr.required,
-        annotations: attr.annotations,
-        loc: attr.loc,
-    }
-}
-
-/// Helper function to resolve EntityOrCommon types in an EntityType
-fn resolve_entity_type_entity_or_common(
-    entity_type: json_schema::EntityType<InternalName>,
-    all_defs: &AllDefs,
-) -> json_schema::EntityType<InternalName> {
-    json_schema::EntityType {
-        kind: match entity_type.kind {
-            json_schema::EntityTypeKind::Standard(standard) => {
-                json_schema::EntityTypeKind::Standard(json_schema::StandardEntityType {
-                    member_of_types: standard.member_of_types, // These are already resolved InternalNames
-                    shape: resolve_attributes_or_context_entity_or_common(standard.shape, all_defs),
-                    tags: standard
-                        .tags
-                        .map(|tags| resolve_type_entity_or_common(tags, all_defs)),
-                })
-            }
-            json_schema::EntityTypeKind::Enum { choices } => {
-                json_schema::EntityTypeKind::Enum { choices }
-            }
-        },
-        annotations: entity_type.annotations,
-        loc: entity_type.loc,
-    }
-}
-
-/// Helper function to resolve EntityOrCommon types in an ActionType
-fn resolve_action_type_entity_or_common(
-    action_type: json_schema::ActionType<InternalName>,
-    all_defs: &AllDefs,
-) -> json_schema::ActionType<InternalName> {
-    let new_apply_spec = action_type
-            .applies_to
-            .clone()
-            .map(|apply_spec| json_schema::ApplySpec {
-                resource_types: apply_spec.resource_types, // These are already resolved InternalNames
-                principal_types: apply_spec.principal_types, // These are already resolved InternalNames
-                context: resolve_attributes_or_context_entity_or_common(
-                    apply_spec.context,
-                    all_defs,
-                ),
-            });
-    json_schema::ActionType::<InternalName>::new_with_apply_spec(action_type, new_apply_spec)
-}
-
-/// Helper function to resolve EntityOrCommon types in AttributesOrContext
-fn resolve_attributes_or_context_entity_or_common(
-    context: json_schema::AttributesOrContext<InternalName>,
-    all_defs: &AllDefs,
-) -> json_schema::AttributesOrContext<InternalName> {
-    json_schema::AttributesOrContext(resolve_type_entity_or_common(context.0, all_defs))
-}
-
 /// Convert a Cedar schema string to JSON format with resolved types.
 /// This function resolves ambiguous "EntityOrCommon" types to their specific
 /// Entity or CommonType classifications using the schema's type definitions.
+/// This is primarily meant to be used when working with schemas programmatically,
+/// for example when creating a schema building UI.
 #[cfg_attr(
     feature = "wasm",
     wasm_bindgen(js_name = "schemaToJsonWithResolvedTypes")
@@ -467,9 +268,7 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
             .0
             .into_iter()
             .map(|(ns_name, ns_def)| {
-                let internal_ns_name = ns_name
-                    .as_ref()
-                    .map(|name| name.clone().into());
+                let internal_ns_name = ns_name.as_ref().map(|name| name.clone().into());
                 let conditional_ns_def =
                     ns_def.conditionally_qualify_type_references(internal_ns_name.as_ref());
                 (ns_name, conditional_ns_def)
@@ -478,7 +277,7 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
     );
 
     // Step 2: Convert Fragment<ConditionalName> to Fragment<InternalName> using fully_qualify_type_references
-    let resolved_fragment_result: std::result::Result<BTreeMap<_, _>, _> = conditional_fragment
+    let internal_name_fragment_result: std::result::Result<BTreeMap<_, _>, _> = conditional_fragment
         .0
         .into_iter()
         .map(|(ns_name, ns_def)| {
@@ -488,7 +287,7 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
         })
         .collect();
 
-    let mut resolved_fragment = match resolved_fragment_result {
+    let internal_name_fragment = match internal_name_fragment_result {
         Ok(map) => json_schema::Fragment(map),
         Err(e) => {
             return SchemaToJsonWithResolvedTypesAnswer::Failure {
@@ -498,10 +297,17 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
     };
 
     // Step 3: Convert EntityOrCommon types to specific Entity or CommonType designations
-    resolved_fragment = resolve_entity_or_common_types(resolved_fragment, &all_defs);
+    let fully_resolved_fragment = match internal_name_fragment.resolve_entity_or_common_types(&all_defs) {
+        Ok(fragment) => fragment,
+        Err(e) => {
+            return SchemaToJsonWithResolvedTypesAnswer::Failure {
+                errors: vec![miette::Report::new(e).into()],
+            };
+        }
+    };
 
     // Serialize the resolved Fragment<InternalName> to JSON
-    match serde_json::to_value(&resolved_fragment) {
+    match serde_json::to_value(&fully_resolved_fragment) {
         Ok(json) => SchemaToJsonWithResolvedTypesAnswer::Success { json: json.into() },
         Err(e) => SchemaToJsonWithResolvedTypesAnswer::Failure {
             errors: vec![

@@ -54,18 +54,16 @@ pub struct ValidatorEntityType {
 /// information is irrelevant to the comparison
 impl PartialEq for ValidatorEntityType {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name &&
-            self.kind == other.kind &&
-            self.descendants == other.descendants &&
-            self.attributes == other.attributes
+        self.name == other.name
+            && self.kind == other.kind
+            && self.descendants == other.descendants
+            && self.attributes == other.attributes
     }
 }
 
 /// There's no ValidatorEntityType's which are non comparable to one another
 /// if we assume location is irrelevant
-impl Eq for ValidatorEntityType {
-
-}
+impl Eq for ValidatorEntityType {}
 
 /// The kind of validator entity types.
 ///

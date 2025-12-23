@@ -205,6 +205,26 @@ impl<N: Display> Fragment<N> {
     }
 }
 
+impl Fragment<InternalName> {
+    /// Resolve EntityOrCommon types to specific Entity or CommonType designations
+    pub fn resolve_entity_or_common_types(
+        self,
+        all_defs: &AllDefs,
+    ) -> Result<Fragment<InternalName>> {
+        Ok(Fragment(
+            self.0
+                .into_iter()
+                .map(|(ns_name, ns_def)| {
+                    Ok((
+                        ns_name,
+                        ns_def.fully_resolve_common_and_entity_types(all_defs)?,
+                    ))
+                })
+                .collect::<Result<_>>()?,
+        ))
+    }
+}
+
 /// An [`UnreservedId`] that cannot be reserved JSON schema keywords
 /// like `Set`, `Long`, and etc.
 #[derive(Educe, Debug, Clone, Serialize)]
@@ -440,6 +460,50 @@ impl NamespaceDefinition<ConditionalName> {
                 .actions
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
+                .collect::<Result<_>>()?,
+            annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
+        })
+    }
+}
+
+/// Helper enum to handle the case where EntityOrCommon resolves to a CommonTypeRef
+enum ResolvedTypeVariant {
+    TypeVariant(TypeVariant<InternalName>),
+    CommonTypeRef(InternalName),
+}
+
+impl NamespaceDefinition<InternalName> {
+    /// Resolve EntityOrCommon types to specific Entity or CommonType designations
+    pub fn fully_resolve_common_and_entity_types(
+        self,
+        all_defs: &AllDefs,
+    ) -> Result<NamespaceDefinition<InternalName>> {
+        Ok(NamespaceDefinition {
+            common_types: self
+                .common_types
+                .into_iter()
+                .map(|(k, v)| {
+                    Ok((
+                        k,
+                        CommonType {
+                            ty: v.ty.resolve_type_entity_or_common(all_defs)?,
+                            annotations: v.annotations,
+                            loc: v.loc,
+                        },
+                    ))
+                })
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
+            entity_types: self
+                .entity_types
+                .into_iter()
+                .map(|(k, v)| Ok((k, v.resolve_entity_type_entity_or_common(all_defs)?)))
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
+            actions: self
+                .actions
+                .into_iter()
+                .map(|(k, v)| Ok((k, v.resolve_action_type_entity_or_common(all_defs)?)))
                 .collect::<Result<_>>()?,
             annotations: self.annotations,
             #[cfg(feature = "extended-schema")]
@@ -835,13 +899,17 @@ impl ActionType<InternalName> {
     /// Function that consumes an ActionType<InternalName> and returns a new definition with
     /// a new apply spec
     #[must_use]
-    pub fn new_with_apply_spec(old: ActionType<InternalName>, new_apply_spec: Option<ApplySpec<InternalName>>) -> Self {
+    pub fn new_with_apply_spec(
+        old: ActionType<InternalName>,
+        new_apply_spec: Option<ApplySpec<InternalName>>,
+    ) -> Self {
         Self {
             attributes: old.attributes,
             applies_to: new_apply_spec,
             member_of: old.member_of,
             annotations: old.annotations,
             loc: old.loc,
+            #[cfg(feature = "extended-schema")]
             defn_loc: old.defn_loc,
         }
     }
@@ -1412,6 +1480,177 @@ impl Type<ConditionalName> {
                 loc,
             }),
         }
+    }
+}
+
+impl Type<InternalName> {
+    /// Resolve EntityOrCommon types to specific Entity or CommonType designations
+    pub fn resolve_type_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<Type<InternalName>, TypeNotDefinedError> {
+        match self {
+            Type::Type { ty, loc } => match ty.resolve_type_variant_entity_or_common(all_defs)? {
+                ResolvedTypeVariant::TypeVariant(resolved_ty) => Ok(Type::Type {
+                    ty: resolved_ty,
+                    loc,
+                }),
+                ResolvedTypeVariant::CommonTypeRef(type_name) => {
+                    Ok(Type::CommonTypeRef { type_name, loc })
+                }
+            },
+            Type::CommonTypeRef { type_name, loc } => Ok(Type::CommonTypeRef { type_name, loc }),
+        }
+    }
+}
+
+impl TypeVariant<InternalName> {
+    /// Resolve EntityOrCommon types in a TypeVariant
+    fn resolve_type_variant_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<ResolvedTypeVariant, TypeNotDefinedError> {
+        match self {
+            TypeVariant::EntityOrCommon { type_name } => {
+                // Check if this is an entity type or common type
+                if all_defs.is_defined_as_entity(&type_name) {
+                    Ok(ResolvedTypeVariant::TypeVariant(TypeVariant::Entity {
+                        name: type_name,
+                    }))
+                } else if all_defs.is_defined_as_common(&type_name) {
+                    // Convert to a CommonTypeRef
+                    Ok(ResolvedTypeVariant::CommonTypeRef(type_name))
+                } else {
+                    // If it's neither, this means that the json_schema::Fragment wasn't complete
+                    Err(TypeNotDefinedError {
+                        undefined_types: NonEmpty {
+                            head: ConditionalName::unconditional(
+                                type_name,
+                                ReferenceType::CommonOrEntity,
+                            ),
+                            tail: vec![],
+                        },
+                    })
+                }
+            }
+            TypeVariant::Set { element } => {
+                Ok(ResolvedTypeVariant::TypeVariant(TypeVariant::Set {
+                    element: Box::new(element.resolve_type_entity_or_common(all_defs)?),
+                }))
+            }
+            TypeVariant::Record(record_type) => Ok(ResolvedTypeVariant::TypeVariant(
+                TypeVariant::Record(record_type.resolve_record_type_entity_or_common(all_defs)?),
+            )),
+            // Other variants don't contain EntityOrCommon types
+            other => Ok(ResolvedTypeVariant::TypeVariant(other)),
+        }
+    }
+}
+
+impl RecordType<InternalName> {
+    /// Resolve EntityOrCommon types in a RecordType
+    fn resolve_record_type_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<RecordType<InternalName>, TypeNotDefinedError> {
+        Ok(RecordType {
+            attributes: self
+                .attributes
+                .into_iter()
+                .map(|(k, v)| Ok((k, v.resolve_type_of_attribute_entity_or_common(all_defs)?)))
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
+            additional_attributes: self.additional_attributes,
+        })
+    }
+}
+
+impl TypeOfAttribute<InternalName> {
+    /// Resolve EntityOrCommon types in a TypeOfAttribute
+    fn resolve_type_of_attribute_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<TypeOfAttribute<InternalName>, TypeNotDefinedError> {
+        Ok(TypeOfAttribute {
+            ty: self.ty.resolve_type_entity_or_common(all_defs)?,
+            required: self.required,
+            annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
+        })
+    }
+}
+
+impl EntityType<InternalName> {
+    /// Resolve EntityOrCommon types in an EntityType
+    fn resolve_entity_type_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<EntityType<InternalName>, TypeNotDefinedError> {
+        Ok(EntityType {
+            kind: match self.kind {
+                EntityTypeKind::Standard(standard) => {
+                    EntityTypeKind::Standard(StandardEntityType {
+                        member_of_types: standard.member_of_types, // These are already resolved InternalNames
+                        shape: standard
+                            .shape
+                            .resolve_attributes_or_context_entity_or_common(all_defs)?,
+                        tags: standard
+                            .tags
+                            .map(|tags| tags.resolve_type_entity_or_common(all_defs))
+                            .transpose()?,
+                    })
+                }
+                EntityTypeKind::Enum { choices } => EntityTypeKind::Enum { choices },
+            },
+            annotations: self.annotations,
+            loc: self.loc,
+        })
+    }
+}
+
+impl ActionType<InternalName> {
+    /// Resolve EntityOrCommon types in an ActionType
+    fn resolve_action_type_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<ActionType<InternalName>, TypeNotDefinedError> {
+        let new_apply_spec = self
+            .applies_to
+            .clone()
+            .map(|apply_spec| apply_spec.resolve_apply_spec_entity_or_common(all_defs))
+            .transpose()?;
+        Ok(ActionType::<InternalName>::new_with_apply_spec(
+            self,
+            new_apply_spec,
+        ))
+    }
+}
+
+impl ApplySpec<InternalName> {
+    /// Resolve EntityOrCommon types in an ApplySpec
+    fn resolve_apply_spec_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<ApplySpec<InternalName>, TypeNotDefinedError> {
+        Ok(ApplySpec {
+            resource_types: self.resource_types, // These are already resolved InternalNames
+            principal_types: self.principal_types, // These are already resolved InternalNames
+            context: self
+                .context
+                .resolve_attributes_or_context_entity_or_common(all_defs)?,
+        })
+    }
+}
+
+impl AttributesOrContext<InternalName> {
+    /// Resolve EntityOrCommon types in AttributesOrContext
+    fn resolve_attributes_or_context_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<AttributesOrContext<InternalName>, TypeNotDefinedError> {
+        Ok(AttributesOrContext(
+            self.0.resolve_type_entity_or_common(all_defs)?,
+        ))
     }
 }
 
