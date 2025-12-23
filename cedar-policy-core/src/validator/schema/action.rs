@@ -59,18 +59,16 @@ pub struct ValidatorActionId {
 /// information is irrelevant to the comparison
 impl PartialEq for ValidatorActionId {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name &&
-            self.applies_to == other.applies_to &&
-            self.descendants == other.descendants &&
-            self.context == other.context
+        self.name == other.name
+            && self.applies_to == other.applies_to
+            && self.descendants == other.descendants
+            && self.context == other.context
     }
 }
 
 /// There's no ValidatorActionId's which are non comparable to one another
 /// if we assume location is irrelevant
-impl Eq for ValidatorActionId {
-
-}
+impl Eq for ValidatorActionId {}
 
 impl ValidatorActionId {
     /// Construct a new `ValidatorActionId`.
