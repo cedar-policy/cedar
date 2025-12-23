@@ -4,7 +4,7 @@ use smol_str::SmolStr;
 
 use crate::validator::{
     entity_manifest::{AccessPath, AccessTrie, EntityRoot, RootAccessTrie},
-    types::{EntityRecordKind, Type},
+    types::Type,
 };
 
 /// Represents [`AccessPath`]s possibly
@@ -163,10 +163,10 @@ impl WrappedAccessPaths {
                 path.to_root_access_trie_with_leaf(leaf_trie)
             }
             WrappedAccessPaths::RecordLiteral(mut literal_fields) => match ty {
-                Type::EntityOrRecord(EntityRecordKind::Record {
+                Type::Record {
                     attrs: record_attrs,
                     ..
-                }) => {
+                } => {
                     let mut res = RootAccessTrie::new();
                     for (attr, attr_ty) in record_attrs.iter() {
                         #[expect(
@@ -271,14 +271,7 @@ fn type_to_access_trie(ty: &Type) -> AccessTrie {
         | Type::False
         | Type::Primitive { .. }
         | Type::Set { .. } => AccessTrie::new(),
-        Type::EntityOrRecord(record_type) => entity_or_record_to_access_trie(record_type),
-    }
-}
-
-/// Compute the full [`AccessTrie`] for the given entity or record type.
-fn entity_or_record_to_access_trie(ty: &EntityRecordKind) -> AccessTrie {
-    match ty {
-        EntityRecordKind::Record { attrs, .. } => {
+        Type::Record { attrs, .. } => {
             let mut fields = HashMap::new();
             for (attr_name, attr_type) in attrs.iter() {
                 fields.insert(
@@ -293,8 +286,7 @@ fn entity_or_record_to_access_trie(ty: &EntityRecordKind) -> AccessTrie {
                 node_type: None,
             }
         }
-
-        EntityRecordKind::Entity(_) | EntityRecordKind::AnyEntity => {
+        Type::Entity(_) => {
             // no need to load data for entities, which are compared
             // using ids
             AccessTrie::new()

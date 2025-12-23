@@ -85,10 +85,10 @@ impl From<&cedar_policy_core::validator::ValidatorActionId> for models::ActionDe
     #[expect(clippy::panic, reason = "experimental feature")]
     fn from(v: &cedar_policy_core::validator::ValidatorActionId) -> Self {
         let ctx_attrs = match v.context() {
-            types::Type::EntityOrRecord(types::EntityRecordKind::Record {
+            types::Type::Record {
                 attrs,
                 open_attributes: types::OpenTag::ClosedAttributes,
-            }) => attrs,
+            } => attrs,
             ty => panic!("expected context to be a closed record, but got {ty:?}"),
         };
         Self {
@@ -109,10 +109,10 @@ impl From<&models::ActionDecl> for cedar_policy_core::validator::ValidatorAction
             v.principal_types.iter().map(ast::EntityType::from),
             v.resource_types.iter().map(ast::EntityType::from),
             v.descendants.iter().map(ast::EntityUID::from),
-            types::Type::EntityOrRecord(types::EntityRecordKind::Record {
+            types::Type::Record {
                 attrs: model_to_attributes(&v.context),
                 open_attributes: types::OpenTag::default(),
-            }),
+            },
             None,
         )
     }
@@ -184,17 +184,13 @@ impl From<&models::Type> for types::Type {
             models::r#type::Data::SetElem(elty) => types::Type::Set {
                 element_type: Some(Arc::new(types::Type::from(elty.as_ref()))),
             },
-            models::r#type::Data::Entity(e) => {
-                types::Type::EntityOrRecord(types::EntityRecordKind::Entity(
-                    types::EntityLUB::single_entity(ast::EntityType::from(e)),
-                ))
-            }
-            models::r#type::Data::Record(r) => {
-                types::Type::EntityOrRecord(types::EntityRecordKind::Record {
-                    attrs: model_to_attributes(&r.attrs),
-                    open_attributes: types::OpenTag::default(),
-                })
-            }
+            models::r#type::Data::Entity(e) => types::Type::Entity(types::EntityKind::Entity(
+                types::EntityLUB::single_entity(ast::EntityType::from(e)),
+            )),
+            models::r#type::Data::Record(r) => types::Type::Record {
+                attrs: model_to_attributes(&r.attrs),
+                open_attributes: types::OpenTag::default(),
+            },
             models::r#type::Data::Ext(name) => types::Type::ExtensionType {
                 name: ast::Name::from(name),
             },
@@ -228,16 +224,16 @@ impl From<&types::Type> for models::Type {
                         .as_ref(),
                 )))),
             },
-            types::Type::EntityOrRecord(types::EntityRecordKind::Entity(lub)) => Self {
+            types::Type::Entity(types::EntityKind::Entity(lub)) => Self {
                 data: Some(models::r#type::Data::Entity(models::Name::from(lub.get_single_entity().expect("can't encode non-singleton LUB in protobuf; non-singleton LUB types should never appear in a Schema").as_ref()))),
             },
-            types::Type::EntityOrRecord(types::EntityRecordKind::Record { attrs, open_attributes }) => {
+            types::Type::Record{ attrs, open_attributes } => {
                 assert_eq!(open_attributes, &types::OpenTag::ClosedAttributes, "can't encode open record in protobuf");
                 Self {
                     data: Some(models::r#type::Data::Record(models::r#type::Record { attrs: attributes_to_model(attrs) })),
                 }
             }
-            types::Type::EntityOrRecord(types::EntityRecordKind::AnyEntity) => panic!("can't encode AnyEntity type in protobuf; AnyEntity should never appear in a Schema"),
+            types::Type::Entity(types::EntityKind::AnyEntity) => panic!("can't encode AnyEntity type in protobuf; AnyEntity should never appear in a Schema"),
             types::Type::ExtensionType { name } => Self {
                 data: Some(models::r#type::Data::Ext(models::Name::from(name))),
             },

@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use cedar_policy_core::ast::EntityType;
 use cedar_policy_core::validator::{
-    types::{EntityRecordKind, Type},
+    types::{EntityKind, Type},
     ValidatorActionId, ValidatorEntityType, ValidatorSchema,
 };
 use itertools::Itertools;
@@ -181,11 +181,9 @@ impl FindDefinition for EntityType {
 impl FindDefinition for Type {
     fn find_definition(&self, cx: &FindDefinitionContext<'_>) -> Option<Range> {
         match self {
-            Self::EntityOrRecord(entity_record_kind) => match entity_record_kind {
-                EntityRecordKind::Record { .. } => {
-                    find_common_type_definition(cx.cursor_word, cx.schema_src)
-                }
-                EntityRecordKind::Entity(entity_lub) => {
+            Self::Record { .. } => find_common_type_definition(cx.cursor_word, cx.schema_src),
+            Self::Entity(entity_record_kind) => match entity_record_kind {
+                EntityKind::Entity(entity_lub) => {
                     let et = entity_lub.get_single_entity()?;
                     if cx.cursor_word != et.to_string() {
                         return None;
@@ -194,7 +192,7 @@ impl FindDefinition for Type {
                     let loc = vet.loc.as_ref()?;
                     Some(loc.to_range())
                 }
-                EntityRecordKind::AnyEntity => None,
+                EntityKind::AnyEntity => None,
             },
             Self::Set { element_type } => {
                 element_type.as_ref().and_then(|el| el.find_definition(cx))

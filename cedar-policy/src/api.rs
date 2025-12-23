@@ -5913,10 +5913,7 @@ action CreateList in Create appliesTo {
     fn common_types_extended() {
         use cool_asserts::assert_matches;
 
-        use cedar_policy_core::validator::{
-            types::{EntityRecordKind, Type},
-            LocatedCommonType,
-        };
+        use cedar_policy_core::validator::{types::Type, LocatedCommonType};
 
         let schema = schema();
         assert_eq!(schema.0.common_types().collect::<HashSet<_>>().len(), 3);
@@ -5952,7 +5949,7 @@ action CreateList in Create appliesTo {
         assert!(t.loc.is_some());
         assert_matches!(t.attr_type.as_ref(), cedar_policy_core::validator::types::Type::Set { ref element_type } => {
             let el = element_type.as_ref().unwrap();
-            assert_matches!(el.as_ref(), Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
+            assert_matches!(el.as_ref(), Type::Record{ attrs, .. } => {
                 assert!(attrs.get_attr("name").unwrap().loc.is_some());
                 assert!(attrs.get_attr("id").unwrap().loc.is_some());
                 assert!(attrs.get_attr("state").unwrap().loc.is_some());

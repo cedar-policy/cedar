@@ -27,7 +27,7 @@ use crate::type_abbrevs::core_entity_type_into_entity_type;
 use cedar_policy::entities_errors::EntitiesError;
 use cedar_policy::{Entities, Request, RequestEnv, Schema};
 use cedar_policy_core::ast::{Context, Literal, PartialValue, Value, ValueKind};
-use cedar_policy_core::validator::types::{EntityRecordKind, OpenTag, Type};
+use cedar_policy_core::validator::types::{OpenTag, Type};
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -92,10 +92,10 @@ impl Term {
             }
             (
                 ValueKind::Record(rec),
-                Type::EntityOrRecord(EntityRecordKind::Record {
+                Type::Record {
                     attrs,
                     open_attributes: OpenTag::ClosedAttributes,
-                }),
+                },
             ) => {
                 let attrs = attrs
                     .iter()
@@ -182,10 +182,10 @@ impl SymEntityData {
         sch: &StandardEntitySchemaEntry,
         entities: &Entities,
     ) -> Result<UnaryFunction, SymbolizeError> {
-        let attr_udf_out_ty = Type::EntityOrRecord(EntityRecordKind::Record {
+        let attr_udf_out_ty = Type::Record {
             attrs: sch.attrs.clone(),
             open_attributes: OpenTag::ClosedAttributes,
-        });
+        };
         let attrs_udf_out = TermType::of_type(&attr_udf_out_ty)?;
         let attrs_udf_default = attrs_udf_out.default_literal(sym_env);
 

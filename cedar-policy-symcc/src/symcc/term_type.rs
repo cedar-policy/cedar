@@ -97,7 +97,7 @@ impl TermType {
     ///
     /// This doesn't match the Lean model because [`Type`] doesn't.
     pub fn of_type(ty: &Type) -> Result<Self, CompileError> {
-        use cedar_policy_core::validator::types::{EntityRecordKind, Primitive};
+        use cedar_policy_core::validator::types::{EntityKind, Primitive};
         match ty {
             Type::Primitive { primitive_type } => match primitive_type {
                 Primitive::Bool => Ok(TermType::Bool),
@@ -121,54 +121,52 @@ impl TermType {
                     "unsupported extension {name}"
                 ))),
             },
-            Type::EntityOrRecord(entity_record_kind) => {
-                match entity_record_kind {
-                    EntityRecordKind::Record {
-                        attrs,
-                        open_attributes,
-                    } => {
-                        if *open_attributes == OpenTag::ClosedAttributes {
-                            Ok(TermType::Record {
-                                rty: Arc::new(
-                                    attrs
-                                        .iter()
-                                        .map(|(k, v)| {
-                                            match Self::of_type(&v.attr_type) {
-                                                Ok(vt) => Ok((
-                                                    k.clone(),
-                                                    //Inlining ofRecordType and ofQualifiedType here
-                                                    if v.is_required {
-                                                        vt
-                                                    } else {
-                                                        TermType::Option { ty: Arc::new(vt) }
-                                                    },
-                                                )),
-                                                Err(e) => Err(e),
-                                            }
-                                        })
-                                        .collect::<Result<_, _>>()?,
-                                ),
-                            })
-                        } else {
-                            // Attributes should be closed
-                            Err(CompileError::UnsupportedFeature(
-                                "unsupported open attributes".into(),
-                            ))
-                        }
-                    }
-                    EntityRecordKind::AnyEntity => Err(CompileError::UnsupportedFeature(
-                        "AnyEntity is not supported".into(),
-                    )),
-                    EntityRecordKind::Entity(entity_lub) => match entity_lub.get_single_entity() {
-                        Some(name) => Ok(TermType::Entity {
-                            ety: core_entity_type_into_entity_type(name).clone(),
-                        }),
-                        None => Err(CompileError::UnsupportedFeature(
-                            "EntityLUB has multiple elements".into(),
-                        )),
-                    },
+            Type::Record {
+                attrs,
+                open_attributes,
+            } => {
+                if *open_attributes == OpenTag::ClosedAttributes {
+                    Ok(TermType::Record {
+                        rty: Arc::new(
+                            attrs
+                                .iter()
+                                .map(|(k, v)| {
+                                    match Self::of_type(&v.attr_type) {
+                                        Ok(vt) => Ok((
+                                            k.clone(),
+                                            //Inlining ofRecordType and ofQualifiedType here
+                                            if v.is_required {
+                                                vt
+                                            } else {
+                                                TermType::Option { ty: Arc::new(vt) }
+                                            },
+                                        )),
+                                        Err(e) => Err(e),
+                                    }
+                                })
+                                .collect::<Result<_, _>>()?,
+                        ),
+                    })
+                } else {
+                    // Attributes should be closed
+                    Err(CompileError::UnsupportedFeature(
+                        "unsupported open attributes".into(),
+                    ))
                 }
             }
+            Type::Entity(entity_record_kind) => match entity_record_kind {
+                EntityKind::AnyEntity => Err(CompileError::UnsupportedFeature(
+                    "AnyEntity is not supported".into(),
+                )),
+                EntityKind::Entity(entity_lub) => match entity_lub.get_single_entity() {
+                    Some(name) => Ok(TermType::Entity {
+                        ety: core_entity_type_into_entity_type(name).clone(),
+                    }),
+                    None => Err(CompileError::UnsupportedFeature(
+                        "EntityLUB has multiple elements".into(),
+                    )),
+                },
+            },
             Type::Set { element_type } => match element_type {
                 Some(element_type) => Ok(TermType::Set {
                     ty: Arc::new(Self::of_type(element_type)?),

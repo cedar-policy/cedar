@@ -25,7 +25,7 @@ use std::{
 use cedar_policy_core::{
     ast::EntityUID,
     validator::{
-        types::{EntityRecordKind, Primitive, Type},
+        types::{EntityKind, Primitive, Type},
         ValidatorSchema,
     },
 };
@@ -224,17 +224,17 @@ impl From<Type> for CedarTypeKind {
             Type::Set { element_type } => element_type.map_or(Self::EmptySet, |ty| {
                 Self::Set(Box::new(Self::from(ty.as_ref().clone())))
             }),
-            Type::EntityOrRecord(entity_record_kind) => match entity_record_kind {
-                EntityRecordKind::Record { attrs, .. } => {
-                    let m = attrs
-                        .into_iter()
-                        .map(|kv_pair| (kv_pair.0.clone(), Attribute::from(kv_pair)))
-                        .collect::<BTreeMap<_, _>>();
-                    let record = Record { attrs: m.into() };
-                    Self::Record(record)
-                }
-                EntityRecordKind::AnyEntity => Self::Error,
-                EntityRecordKind::Entity(entity_lub) => {
+            Type::Record { attrs, .. } => {
+                let m = attrs
+                    .into_iter()
+                    .map(|kv_pair| (kv_pair.0.clone(), Attribute::from(kv_pair)))
+                    .collect::<BTreeMap<_, _>>();
+                let record = Record { attrs: m.into() };
+                Self::Record(record)
+            }
+            Type::Entity(entity_record_kind) => match entity_record_kind {
+                EntityKind::AnyEntity => Self::Error,
+                EntityKind::Entity(entity_lub) => {
                     // FIXME: This feels like an easy assumption to break. We should handle it gracefully
                     #[expect(
                         clippy::unwrap_used,

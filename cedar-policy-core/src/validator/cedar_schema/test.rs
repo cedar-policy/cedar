@@ -1255,7 +1255,7 @@ mod translator_tests {
         },
         json_schema,
         schema::test::utils::collect_warnings,
-        types::{EntityLUB, EntityRecordKind, Primitive, Type},
+        types::{EntityKind, EntityLUB, Primitive, Type},
         ValidatorSchema,
     };
 
@@ -1420,10 +1420,7 @@ mod translator_tests {
                 "Demo::Host" => {
                     for (attr_name, attr) in ety.attributes().iter() {
                         match attr_name.as_ref() {
-                            "ip" => assert_matches!(
-                                attr.attr_type.as_ref(),
-                                Type::EntityOrRecord(EntityRecordKind::Record { .. })
-                            ),
+                            "ip" => assert_matches!(attr.attr_type.as_ref(), Type::Record { .. }),
                             "bandwidth" => assert_matches!(
                                 attr.attr_type.as_ref(),
                                 Type::ExtensionType { name } => {
@@ -1589,7 +1586,7 @@ mod translator_tests {
                 .unwrap()
                 .attr_type
                 .as_ref(),
-            &Type::EntityOrRecord(EntityRecordKind::Entity(EntityLUB::single_entity(
+            &Type::Entity(EntityKind::Entity(EntityLUB::single_entity(
                 "X::Z".parse().unwrap()
             )))
         );
@@ -2392,7 +2389,7 @@ mod common_type_references {
     use crate::extensions::Extensions;
     use crate::validator::{
         json_schema,
-        types::{AttributeType, EntityRecordKind, Type},
+        types::{AttributeType, Type},
         SchemaError, ValidatorSchema,
     };
 
@@ -2567,7 +2564,7 @@ mod common_type_references {
                 is_required: true,
                 ..
             } => {
-                assert_matches!(attr_type.as_ref(), Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }) =>
+                assert_matches!(attr_type.as_ref(), Type::Record{ attrs, open_attributes: _ } =>
                 {assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::primitive_long().into());});
             }
         );
@@ -2596,7 +2593,7 @@ mod common_type_references {
                 is_required: true,
                 ..
             } => {
-                assert_matches!(attr_type.as_ref(), Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }) =>
+                assert_matches!(attr_type.as_ref(), Type::Record{ attrs, open_attributes: _ } =>
                 {assert_eq!(attrs.get_attr("a").unwrap().attr_type.as_ref(), &Type::primitive_long());});
             }
         );
@@ -2629,7 +2626,7 @@ mod common_type_references {
                 is_required: true,
                 ..
             } => {
-                assert_matches!(attr_type.as_ref(), Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }) =>
+                assert_matches!(attr_type.as_ref(), Type::Record{ attrs, open_attributes: _ } =>
                 {assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long().into()).into());});
             }
         );
