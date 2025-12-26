@@ -14,6 +14,9 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+- Added a new schema_to_json_with_resolved_types function, which takes in a Cedar schema and returns a json schema without any instances of EntityOrCommon; they're all either Entity or CommonType.
+
 ## [4.8.2] - 2025-12-09
 
 Cedar Language Version: 4.4
