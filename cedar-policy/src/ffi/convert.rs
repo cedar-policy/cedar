@@ -452,6 +452,7 @@ mod test {
     use crate::ffi::test_utils::*;
     use cool_asserts::assert_matches;
     use serde_json::json;
+    use assert_json_diff::assert_json_eq;
 
     #[test]
     fn test_policy_to_json() {
@@ -775,7 +776,9 @@ action "sendMessage" appliesTo {
                 action view appliesTo {
                     principal: [AppUser],
                     resource: [AppUser],
-                    context: {}
+                    context: {
+                        prop1: Long
+                    }
                 };
             }
             namespace MyApp2 {
@@ -791,31 +794,85 @@ action "sendMessage" appliesTo {
             }
         "#;
 
-        // First, let's see what the normal schema_to_json produces
-        let normal_result = schema_to_json(Schema::Cedar(schema_str.into()));
-        match normal_result {
-            SchemaToJsonAnswer::Success { json, warnings } => {
-                let json_value: serde_json::Value = json.into();
-                let json_str = serde_json::to_string_pretty(&json_value).unwrap();
-                assert!(json_str.contains("EntityOrCommon"));
-                assert!(warnings.len() == 0);
-            }
-            SchemaToJsonAnswer::Failure { errors } => {
-                panic!("Normal schema conversion failed. {:?}", errors)
-            }
-        }
-
         let result = schema_to_json_with_resolved_types(schema_str);
         match result {
             SchemaToJsonWithResolvedTypesAnswer::Success { json, warnings } => {
-                // The result should be valid JSON
                 let json_value: serde_json::Value = json.into();
-
-                // Check that the JSON doesn't contain "EntityOrCommon"
                 let json_str = serde_json::to_string(&json_value).unwrap();
-
                 assert!(!json_str.contains("EntityOrCommon"));
                 assert!(warnings.len() == 0);
+
+                // Construct expected JSON structure
+                let expected = json!({
+                    "": {
+                        "entityTypes": {
+                            "User": {
+                                "shape": {
+                                    "type": "Record",
+                                    "attributes": {
+                                        "name": {"type": "String"}
+                                    }
+                                }
+                            }
+                        },
+                        "actions": {
+                            "sendMessage": {
+                                "appliesTo": {
+                                    "principalTypes": ["User"],
+                                    "resourceTypes": ["User"]
+                                }
+                            }
+                        }
+                    },
+                    "MyApp": {
+                        "entityTypes": {
+                            "AppUser": {
+                                "shape": {
+                                    "type": "Record",
+                                    "attributes": {
+                                        "name": {"type": "__cedar::String"}
+                                    }
+                                }
+                            }
+                        },
+                        "actions": {
+                            "view": {
+                                "appliesTo": {
+                                    "principalTypes": ["MyApp::AppUser"],
+                                    "resourceTypes": ["MyApp::AppUser"],
+                                    "context": {
+                                        "type": "Record",
+                                        "attributes": {
+                                            "prop1": {"type": "Long"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "MyApp2": {
+                        "entityTypes": {
+                            "AppUser": {
+                                "shape": {
+                                    "type": "Record",
+                                    "attributes": {
+                                        "name": {"type": "__cedar::String"}
+                                    }
+                                }
+                            }
+                        },
+                        "actions": {
+                            "view": {
+                                "appliesTo": {
+                                    "principalTypes": ["MyApp2::AppUser"],
+                                    "resourceTypes": ["MyApp2::AppUser"]
+                                }
+                            }
+                        }
+                    }
+                });
+
+                assert_json_eq!(json_value, expected);
             }
             SchemaToJsonWithResolvedTypesAnswer::Failure { errors } => {
                 panic!("Expected success but got errors: {:?}", errors);
@@ -835,10 +892,29 @@ action "sendMessage" appliesTo {
         match result {
             SchemaToJsonWithResolvedTypesAnswer::Success { json, warnings } => {
                 let json_value: serde_json::Value = json.into();
-
                 let json_str = serde_json::to_string(&json_value).unwrap();
                 assert!(!json_str.contains("EntityOrCommon"));
                 assert!(warnings.len() == 0);
+
+                // Construct expected JSON structure
+                let expected = json!({
+                    "": {
+                        "entityTypes": {
+                            "User": {},
+                            "Document": {}
+                        },
+                        "actions": {
+                            "view": {
+                                "appliesTo": {
+                                    "principalTypes": ["User"],
+                                    "resourceTypes": ["Document"]
+                                }
+                            }
+                        }
+                    }
+                });
+
+                assert_json_eq!(json_value, expected);
             }
             SchemaToJsonWithResolvedTypesAnswer::Failure { errors } => {
                 panic!("Expected success but got errors: {:?}", errors);
@@ -858,10 +934,38 @@ action "sendMessage" appliesTo {
         match result {
             SchemaToJsonWithResolvedTypesAnswer::Success { json, warnings } => {
                 let json_value: serde_json::Value = json.into();
-
                 let json_str = serde_json::to_string(&json_value).unwrap();
                 assert!(!json_str.contains("EntityOrCommon"));
                 assert!(warnings.len() == 0);
+
+                // Construct expected JSON structure
+                let expected = json!({
+                    "": {
+                        "commonTypes": {
+                            "MyString": {"type": "String"}
+                        },
+                        "entityTypes": {
+                            "User": {
+                                "shape": {
+                                    "type": "Record",
+                                    "attributes": {
+                                        "name": {"type": "MyString"}
+                                    }
+                                }
+                            }
+                        },
+                        "actions": {
+                            "sendMessage": {
+                                "appliesTo": {
+                                    "principalTypes": ["User"],
+                                    "resourceTypes": ["User"]
+                                }
+                            }
+                        }
+                    }
+                });
+
+                assert_json_eq!(json_value, expected);
             }
             SchemaToJsonWithResolvedTypesAnswer::Failure { errors } => {
                 panic!("Expected success but got errors: {:?}", errors);
