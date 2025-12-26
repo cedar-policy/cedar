@@ -1,0 +1,64 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/cross_namespace_references.cedarschema
+---
+{
+  "App": {
+    "actions": {
+      "edit": {
+        "appliesTo": {
+          "principalTypes": [
+            "Core::User"
+          ],
+          "resourceTypes": [
+            "App::Document"
+          ]
+        }
+      }
+    },
+    "entityTypes": {
+      "Document": {
+        "shape": {
+          "attributes": {
+            "editors": {
+              "element": {
+                "name": "Core::User",
+                "type": "Entity"
+              },
+              "type": "Set"
+            },
+            "owner": {
+              "name": "Core::User",
+              "type": "Entity"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  },
+  "Core": {
+    "actions": {},
+    "commonTypes": {
+      "UserId": {
+        "type": "__cedar::String"
+      }
+    },
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "id": {
+              "type": "Core::UserId"
+            },
+            "name": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

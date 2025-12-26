@@ -1,0 +1,52 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/common_types.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "view": {
+        "appliesTo": {
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "User"
+          ]
+        }
+      }
+    },
+    "commonTypes": {
+      "UserId": {
+        "type": "__cedar::String"
+      },
+      "UserProfile": {
+        "attributes": {
+          "age": {
+            "type": "__cedar::Long"
+          },
+          "name": {
+            "type": "__cedar::String"
+          }
+        },
+        "type": "Record"
+      }
+    },
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "id": {
+              "type": "UserId"
+            },
+            "profile": {
+              "type": "UserProfile"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

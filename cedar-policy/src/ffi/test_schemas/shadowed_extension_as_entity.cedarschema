@@ -1,0 +1,35 @@
+type Address = {
+    "street": String,
+    "city": String,
+    "zipcode": String
+};
+
+entity decimal = {
+    "wholeValue": __cedar::Long,
+    "decimalPart": __cedar::Long
+};
+
+type ContactInfo = {
+    "email": String,
+    "phone"?: String,
+    "address": Address
+};
+
+type UserPermissions = Set<__cedar::String>;
+
+entity User = {
+    "contact": ContactInfo,
+    "permissions": UserPermissions,
+    "active": Bool
+};
+
+action updateContact appliesTo {
+    principal: [User],
+    resource: [User],
+    context: {
+        "reason": __cedar::String,
+        "timestamp": Long,
+        "shadowedScore": decimal,
+        "score": __cedar::decimal
+    }
+};

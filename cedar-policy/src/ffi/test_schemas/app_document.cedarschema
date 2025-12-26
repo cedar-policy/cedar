@@ -1,0 +1,14 @@
+namespace App {
+    entity Document = {
+        "owner": User,
+        "editors": Set<User>
+    };
+    
+    entity User;
+    
+    action edit appliesTo {
+        principal: [User],
+        resource: [Document],
+        context: {}
+    };
+}

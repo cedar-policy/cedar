@@ -1,0 +1,22 @@
+type UserId = __cedar::String;
+type GroupId = __cedar::String;
+
+entity User, Admin = {
+    "id": UserId,
+    "name": __cedar::String
+};
+
+entity Group = {
+    "id": GroupId,
+    "members": Set<User>
+};
+
+entity Status enum ["active", "inactive"];
+
+action read, write appliesTo {
+    principal: [User, Admin],
+    resource: [Group],
+    context: {}
+};
+
+action manage in [read, write];

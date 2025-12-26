@@ -1,0 +1,41 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/multiple_namespaces.cedarschema
+---
+{
+  "App1": {
+    "actions": {
+      "view": {
+        "appliesTo": {
+          "principalTypes": [
+            "App1::User"
+          ],
+          "resourceTypes": [
+            "App1::User"
+          ]
+        }
+      }
+    },
+    "entityTypes": {
+      "User": {}
+    }
+  },
+  "App2": {
+    "actions": {
+      "edit": {
+        "appliesTo": {
+          "principalTypes": [
+            "App1::User"
+          ],
+          "resourceTypes": [
+            "App2::Document"
+          ]
+        }
+      }
+    },
+    "entityTypes": {
+      "Document": {}
+    }
+  }
+}

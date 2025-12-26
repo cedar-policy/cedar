@@ -1,0 +1,107 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/shadowed_extension_as_entity.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "updateContact": {
+        "appliesTo": {
+          "context": {
+            "attributes": {
+              "reason": {
+                "type": "__cedar::String"
+              },
+              "score": {
+                "type": "__cedar::decimal"
+              },
+              "shadowedScore": {
+                "name": "decimal",
+                "type": "Entity"
+              },
+              "timestamp": {
+                "type": "Long"
+              }
+            },
+            "type": "Record"
+          },
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "User"
+          ]
+        }
+      }
+    },
+    "commonTypes": {
+      "Address": {
+        "attributes": {
+          "city": {
+            "type": "String"
+          },
+          "street": {
+            "type": "String"
+          },
+          "zipcode": {
+            "type": "String"
+          }
+        },
+        "type": "Record"
+      },
+      "ContactInfo": {
+        "attributes": {
+          "address": {
+            "type": "Address"
+          },
+          "email": {
+            "type": "String"
+          },
+          "phone": {
+            "required": false,
+            "type": "String"
+          }
+        },
+        "type": "Record"
+      },
+      "UserPermissions": {
+        "element": {
+          "type": "__cedar::String"
+        },
+        "type": "Set"
+      }
+    },
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "active": {
+              "type": "Bool"
+            },
+            "contact": {
+              "type": "ContactInfo"
+            },
+            "permissions": {
+              "type": "UserPermissions"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "decimal": {
+        "shape": {
+          "attributes": {
+            "decimalPart": {
+              "type": "__cedar::Long"
+            },
+            "wholeValue": {
+              "type": "__cedar::Long"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

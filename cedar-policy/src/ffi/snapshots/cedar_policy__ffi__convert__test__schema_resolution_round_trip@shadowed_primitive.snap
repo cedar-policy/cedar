@@ -1,0 +1,106 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/shadowed_primitive.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "updateContact": {
+        "appliesTo": {
+          "context": {
+            "attributes": {
+              "newtypeReason": {
+                "name": "String",
+                "type": "Entity"
+              },
+              "reason": {
+                "type": "__cedar::String"
+              },
+              "timestamp": {
+                "type": "Long"
+              }
+            },
+            "type": "Record"
+          },
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "User"
+          ]
+        }
+      }
+    },
+    "commonTypes": {
+      "Address": {
+        "attributes": {
+          "city": {
+            "name": "String",
+            "type": "Entity"
+          },
+          "street": {
+            "name": "String",
+            "type": "Entity"
+          },
+          "zipcode": {
+            "name": "String",
+            "type": "Entity"
+          }
+        },
+        "type": "Record"
+      },
+      "ContactInfo": {
+        "attributes": {
+          "address": {
+            "type": "Address"
+          },
+          "email": {
+            "name": "String",
+            "type": "Entity"
+          },
+          "phone": {
+            "name": "String",
+            "required": false,
+            "type": "Entity"
+          }
+        },
+        "type": "Record"
+      },
+      "UserPermissions": {
+        "element": {
+          "type": "__cedar::String"
+        },
+        "type": "Set"
+      }
+    },
+    "entityTypes": {
+      "String": {
+        "shape": {
+          "attributes": {
+            "realContent": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "User": {
+        "shape": {
+          "attributes": {
+            "active": {
+              "type": "Bool"
+            },
+            "contact": {
+              "type": "ContactInfo"
+            },
+            "permissions": {
+              "type": "UserPermissions"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/action_no_applies_to.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "standalone": {
+        "appliesTo": {
+          "principalTypes": [],
+          "resourceTypes": []
+        }
+      }
+    },
+    "entityTypes": {}
+  }
+}

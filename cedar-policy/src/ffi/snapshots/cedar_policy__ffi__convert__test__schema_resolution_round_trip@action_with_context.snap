@@ -1,0 +1,35 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/action_with_context.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "view": {
+        "appliesTo": {
+          "context": {
+            "attributes": {
+              "ip": {
+                "type": "__cedar::String"
+              },
+              "timestamp": {
+                "type": "__cedar::Long"
+              }
+            },
+            "type": "Record"
+          },
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "User"
+          ]
+        }
+      }
+    },
+    "entityTypes": {
+      "User": {}
+    }
+  }
+}

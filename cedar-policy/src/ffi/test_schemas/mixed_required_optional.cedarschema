@@ -1,0 +1,8 @@
+entity User = {
+    "id": __cedar::String,
+    "name": __cedar::String,
+    "email"?: __cedar::String,
+    "age"?: __cedar::Long,
+    "active": __cedar::Bool,
+    "tags"?: Set<__cedar::String>
+};

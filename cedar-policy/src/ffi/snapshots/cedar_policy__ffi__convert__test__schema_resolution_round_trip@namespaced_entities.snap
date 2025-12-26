@@ -1,0 +1,33 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/namespaced_entities.cedarschema
+---
+{
+  "MyApp": {
+    "actions": {
+      "view": {
+        "appliesTo": {
+          "principalTypes": [
+            "MyApp::User"
+          ],
+          "resourceTypes": [
+            "MyApp::User"
+          ]
+        }
+      }
+    },
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "name": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

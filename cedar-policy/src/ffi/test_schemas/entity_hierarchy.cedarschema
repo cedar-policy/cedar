@@ -1,0 +1,3 @@
+entity User;
+entity Admin in [User];
+entity SuperAdmin in [Admin];

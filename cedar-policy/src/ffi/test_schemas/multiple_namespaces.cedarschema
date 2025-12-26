@@ -1,0 +1,17 @@
+namespace App1 {
+    entity User;
+    action view appliesTo {
+        principal: [User],
+        resource: [User],
+        context: {}
+    };
+}
+
+namespace App2 {
+    entity Document;
+    action edit appliesTo {
+        principal: [App1::User],
+        resource: [Document],
+        context: {}
+    };
+}

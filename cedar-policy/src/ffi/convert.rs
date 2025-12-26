@@ -207,17 +207,7 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
             }
         };
 
-    let text_warnings = warnings.map(|w| format!("{}", w)).collect::<Vec<_>>();
-
-    if text_warnings.len() > 0 {
-        return SchemaToJsonWithResolvedTypesAnswer::Failure {
-            errors: vec![DetailedError::from_str(&format!(
-                "Got some warnings while parsing Cedar schema fragment: {}",
-                text_warnings.join(", ")
-            ))
-            .unwrap_or_default()],
-        };
-    }
+    let warnings_as_detailed_errs: Vec<DetailedError> = warnings.map(|w| (&w).into()).collect();
 
     let validator_fragment =
         match ValidatorSchemaFragment::from_schema_fragment(json_schema_fragment.clone()) {
@@ -232,7 +222,7 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
     let mut all_defs = AllDefs::single_fragment(&validator_fragment);
 
     // Add built-in primitive types in the __cedar namespace
-    let cedar_namespace = InternalName::parse_unqualified_name("__cedar").unwrap();
+    let cedar_namespace = InternalName::__cedar();
     all_defs.mark_as_defined_as_common_type(
         InternalName::parse_unqualified_name("Bool")
             .unwrap()
@@ -249,10 +239,16 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
             .qualify_with(Some(&cedar_namespace)),
     );
 
-    // Add extension types if any
+    // Add extension types in __cedar namespace and also without
+    // namespace (if they're not already defined as commonTypes)
     for ext_type in Extensions::all_available().ext_types() {
         all_defs
             .mark_as_defined_as_common_type(ext_type.as_ref().qualify_with(Some(&cedar_namespace)));
+        if !all_defs.is_defined_as_common(ext_type.as_ref())
+            && !all_defs.is_defined_as_entity(ext_type.as_ref())
+        {
+            all_defs.mark_as_defined_as_common_type(ext_type.as_ref().qualify_with(None));
+        }
     }
 
     // Add aliases for primitive types in the empty namespace (so "String" resolves to "__cedar::String")
@@ -277,15 +273,16 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
     );
 
     // Step 2: Convert Fragment<ConditionalName> to Fragment<InternalName> using fully_qualify_type_references
-    let internal_name_fragment_result: std::result::Result<BTreeMap<_, _>, _> = conditional_fragment
-        .0
-        .into_iter()
-        .map(|(ns_name, ns_def)| {
-            ns_def
-                .fully_qualify_type_references(&all_defs)
-                .map(|resolved_ns_def| (ns_name, resolved_ns_def))
-        })
-        .collect();
+    let internal_name_fragment_result: std::result::Result<BTreeMap<_, _>, _> =
+        conditional_fragment
+            .0
+            .into_iter()
+            .map(|(ns_name, ns_def)| {
+                ns_def
+                    .fully_qualify_type_references(&all_defs)
+                    .map(|resolved_ns_def| (ns_name, resolved_ns_def))
+            })
+            .collect();
 
     let internal_name_fragment = match internal_name_fragment_result {
         Ok(map) => json_schema::Fragment(map),
@@ -297,18 +294,22 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
     };
 
     // Step 3: Convert EntityOrCommon types to specific Entity or CommonType designations
-    let fully_resolved_fragment = match internal_name_fragment.resolve_entity_or_common_types(&all_defs) {
-        Ok(fragment) => fragment,
-        Err(e) => {
-            return SchemaToJsonWithResolvedTypesAnswer::Failure {
-                errors: vec![miette::Report::new(e).into()],
-            };
-        }
-    };
+    let fully_resolved_fragment =
+        match internal_name_fragment.resolve_entity_or_common_types(&all_defs) {
+            Ok(fragment) => fragment,
+            Err(e) => {
+                return SchemaToJsonWithResolvedTypesAnswer::Failure {
+                    errors: vec![miette::Report::new(e).into()],
+                };
+            }
+        };
 
     // Serialize the resolved Fragment<InternalName> to JSON
     match serde_json::to_value(&fully_resolved_fragment) {
-        Ok(json) => SchemaToJsonWithResolvedTypesAnswer::Success { json: json.into() },
+        Ok(json) => SchemaToJsonWithResolvedTypesAnswer::Success {
+            json: json.into(),
+            warnings: warnings_as_detailed_errs,
+        },
         Err(e) => SchemaToJsonWithResolvedTypesAnswer::Failure {
             errors: vec![
                 DetailedError::from_str(&format!("JSON serialization failed: {}", e))
@@ -434,6 +435,8 @@ pub enum SchemaToJsonWithResolvedTypesAnswer {
         /// JSON format schema with resolved types
         #[cfg_attr(feature = "wasm", tsify(type = "SchemaJson<string>"))]
         json: JsonValueWithNoDuplicateKeys,
+        /// Warnings
+        warnings: Vec<DetailedError>,
     },
     /// Represents a failed call (e.g., because the input is ill-formed)
     Failure {
@@ -791,17 +794,11 @@ action "sendMessage" appliesTo {
         // First, let's see what the normal schema_to_json produces
         let normal_result = schema_to_json(Schema::Cedar(schema_str.into()));
         match normal_result {
-            SchemaToJsonAnswer::Success { json, .. } => {
+            SchemaToJsonAnswer::Success { json, warnings } => {
                 let json_value: serde_json::Value = json.into();
-                println!(
-                    "Normal schema JSON: {}",
-                    serde_json::to_string_pretty(&json_value).unwrap()
-                );
-                let json_str = serde_json::to_string(&json_value).unwrap();
-                println!(
-                    "Normal contains EntityOrCommon: {}",
-                    json_str.contains("EntityOrCommon")
-                );
+                let json_str = serde_json::to_string_pretty(&json_value).unwrap();
+                assert!(json_str.contains("EntityOrCommon"));
+                assert!(warnings.len() == 0);
             }
             SchemaToJsonAnswer::Failure { errors } => {
                 panic!("Normal schema conversion failed. {:?}", errors)
@@ -810,22 +807,15 @@ action "sendMessage" appliesTo {
 
         let result = schema_to_json_with_resolved_types(schema_str);
         match result {
-            SchemaToJsonWithResolvedTypesAnswer::Success { json } => {
+            SchemaToJsonWithResolvedTypesAnswer::Success { json, warnings } => {
                 // The result should be valid JSON
                 let json_value: serde_json::Value = json.into();
-                println!(
-                    "Resolved schema JSON: {}",
-                    serde_json::to_string_pretty(&json_value).unwrap()
-                );
 
                 // Check that the JSON doesn't contain "EntityOrCommon"
                 let json_str = serde_json::to_string(&json_value).unwrap();
-                println!(
-                    "Resolved contains EntityOrCommon: {}",
-                    json_str.contains("EntityOrCommon")
-                );
-                // Temporarily comment out the assertion to see what we get
-                // assert!(!json_str.contains("EntityOrCommon"), "Result should not contain EntityOrCommon types");
+
+                assert!(!json_str.contains("EntityOrCommon"));
+                assert!(warnings.len() == 0);
             }
             SchemaToJsonWithResolvedTypesAnswer::Failure { errors } => {
                 panic!("Expected success but got errors: {:?}", errors);
@@ -843,18 +833,12 @@ action "sendMessage" appliesTo {
 
         let result = schema_to_json_with_resolved_types(schema_str);
         match result {
-            SchemaToJsonWithResolvedTypesAnswer::Success { json } => {
+            SchemaToJsonWithResolvedTypesAnswer::Success { json, warnings } => {
                 let json_value: serde_json::Value = json.into();
-                println!(
-                    "Simple resolved schema JSON: {}",
-                    serde_json::to_string_pretty(&json_value).unwrap()
-                );
 
                 let json_str = serde_json::to_string(&json_value).unwrap();
-                println!(
-                    "Simple resolved contains EntityOrCommon: {}",
-                    json_str.contains("EntityOrCommon")
-                );
+                assert!(!json_str.contains("EntityOrCommon"));
+                assert!(warnings.len() == 0);
             }
             SchemaToJsonWithResolvedTypesAnswer::Failure { errors } => {
                 panic!("Expected success but got errors: {:?}", errors);
@@ -872,22 +856,106 @@ action "sendMessage" appliesTo {
 
         let result = schema_to_json_with_resolved_types(schema_str);
         match result {
-            SchemaToJsonWithResolvedTypesAnswer::Success { json } => {
+            SchemaToJsonWithResolvedTypesAnswer::Success { json, warnings } => {
                 let json_value: serde_json::Value = json.into();
-                println!(
-                    "Common type resolved schema JSON: {}",
-                    serde_json::to_string_pretty(&json_value).unwrap()
-                );
 
                 let json_str = serde_json::to_string(&json_value).unwrap();
-                println!(
-                    "Common type resolved contains EntityOrCommon: {}",
-                    json_str.contains("EntityOrCommon")
-                );
+                assert!(!json_str.contains("EntityOrCommon"));
+                assert!(warnings.len() == 0);
             }
             SchemaToJsonWithResolvedTypesAnswer::Failure { errors } => {
                 panic!("Expected success but got errors: {:?}", errors);
             }
         }
+    }
+
+    #[test]
+    fn test_shadowing_types() {
+        insta::glob!("test_schemas/shadowed_*.cedarschema", |path| {
+            let schema_str = std::fs::read_to_string(path).unwrap();
+            let result = schema_to_json_with_resolved_types(&schema_str);
+            match result {
+                SchemaToJsonWithResolvedTypesAnswer::Success { json, warnings } => {
+                    let json_value: serde_json::Value = json.into();
+
+                    let json_str = serde_json::to_string(&json_value).unwrap();
+
+                    assert!(!json_str.contains("EntityOrCommon"));
+                    assert!(warnings.len() > 0);
+                }
+                SchemaToJsonWithResolvedTypesAnswer::Failure { errors } => {
+                    panic!("Expected success but got errors: {:?}", errors);
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn test_schema_resolution_round_trip() {
+        insta::glob!("test_schemas/*.cedarschema", |path| {
+            let mut insta_settings = insta::Settings::clone_current();
+            insta_settings.set_sort_maps(true);
+
+            // Set snapshot suffix to include the file name
+            let file_name = path.file_stem().unwrap().to_str().unwrap();
+            insta_settings.set_snapshot_suffix(file_name);
+
+            let schema_str = std::fs::read_to_string(path).unwrap();
+
+            // Parse original schema to ValidatorSchema
+            let validator_schema_direct_parse = match crate::Schema::from_str(&schema_str) {
+                Ok(schema) => schema,
+                Err(e) => panic!("Failed to parse original schema from {:?}: {:?}", path, e),
+            };
+
+            // Convert to JSON with resolved types
+            let result = schema_to_json_with_resolved_types(&schema_str);
+            let resolved_json = match result {
+                SchemaToJsonWithResolvedTypesAnswer::Success { json, .. } => json,
+                SchemaToJsonWithResolvedTypesAnswer::Failure { errors } => {
+                    panic!(
+                        "Failed to convert schema to JSON with resolved types for {:?}: {:?}",
+                        path, errors
+                    );
+                }
+            };
+            let resolved_json_stringified = serde_json::to_string_pretty(&resolved_json)
+                .expect("Serialization of json failed!");
+
+            insta_settings.bind(|| {
+                insta::assert_json_snapshot!(resolved_json);
+            });
+
+            // Parse resolved JSON back to ValidatorSchema
+            let validator_schema_round_tripped =
+                match crate::Schema::from_json_str(&resolved_json_stringified) {
+                    Ok(schema) => schema,
+                    Err(e) => panic!(
+                        "Failed to parse resolved JSON back to schema for {:?}: {:?}",
+                        path, e
+                    ),
+                };
+
+            // Compare entity types and action definitions for semantic equivalence
+            let entity_types_v1: std::collections::HashSet<_> =
+                validator_schema_direct_parse.entity_types().collect();
+            let entity_types_v2: std::collections::HashSet<_> =
+                validator_schema_round_tripped.entity_types().collect();
+            assert_eq!(
+                entity_types_v1, entity_types_v2,
+                "Entity types should be identical for {:?}",
+                path
+            );
+
+            let action_ids_v1: std::collections::HashSet<_> =
+                validator_schema_direct_parse.actions().collect();
+            let action_ids_v2: std::collections::HashSet<_> =
+                validator_schema_round_tripped.actions().collect();
+            assert_eq!(
+                action_ids_v1, action_ids_v2,
+                "Action definitions should be identical for {:?}",
+                path
+            );
+        });
     }
 }

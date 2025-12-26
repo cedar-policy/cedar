@@ -1,0 +1,87 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/complex_common_types.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "updateContact": {
+        "appliesTo": {
+          "context": {
+            "attributes": {
+              "reason": {
+                "type": "__cedar::String"
+              },
+              "timestamp": {
+                "type": "__cedar::Long"
+              }
+            },
+            "type": "Record"
+          },
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "User"
+          ]
+        }
+      }
+    },
+    "commonTypes": {
+      "Address": {
+        "attributes": {
+          "city": {
+            "type": "__cedar::String"
+          },
+          "street": {
+            "type": "__cedar::String"
+          },
+          "zipcode": {
+            "type": "__cedar::String"
+          }
+        },
+        "type": "Record"
+      },
+      "ContactInfo": {
+        "attributes": {
+          "address": {
+            "type": "Address"
+          },
+          "email": {
+            "type": "__cedar::String"
+          },
+          "phone": {
+            "required": false,
+            "type": "__cedar::String"
+          }
+        },
+        "type": "Record"
+      },
+      "UserPermissions": {
+        "element": {
+          "type": "__cedar::String"
+        },
+        "type": "Set"
+      }
+    },
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "active": {
+              "type": "__cedar::Bool"
+            },
+            "contact": {
+              "type": "ContactInfo"
+            },
+            "permissions": {
+              "type": "UserPermissions"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}
