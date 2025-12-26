@@ -1,0 +1,52 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/action_hierarchy.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "read": {
+        "appliesTo": {
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "User"
+          ]
+        },
+        "memberOf": [
+          {
+            "id": "readWrite",
+            "type": "Action"
+          }
+        ]
+      },
+      "readWrite": {
+        "appliesTo": {
+          "principalTypes": [],
+          "resourceTypes": []
+        }
+      },
+      "write": {
+        "appliesTo": {
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "User"
+          ]
+        },
+        "memberOf": [
+          {
+            "id": "readWrite",
+            "type": "Action"
+          }
+        ]
+      }
+    },
+    "entityTypes": {
+      "User": {}
+    }
+  }
+}

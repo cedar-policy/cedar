@@ -1,0 +1,43 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/mixed_required_optional.cedarschema
+---
+{
+  "": {
+    "actions": {},
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "active": {
+              "type": "__cedar::Bool"
+            },
+            "age": {
+              "required": false,
+              "type": "__cedar::Long"
+            },
+            "email": {
+              "required": false,
+              "type": "__cedar::String"
+            },
+            "id": {
+              "type": "__cedar::String"
+            },
+            "name": {
+              "type": "__cedar::String"
+            },
+            "tags": {
+              "element": {
+                "type": "__cedar::String"
+              },
+              "required": false,
+              "type": "Set"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

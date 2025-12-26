@@ -1518,7 +1518,6 @@ impl TypeVariant<InternalName> {
                         name: type_name,
                     }))
                 } else if all_defs.is_defined_as_common(&type_name) {
-                    // Convert to a CommonTypeRef
                     Ok(ResolvedTypeVariant::CommonTypeRef(type_name))
                 } else {
                     // If it's neither, this means that the json_schema::Fragment wasn't complete

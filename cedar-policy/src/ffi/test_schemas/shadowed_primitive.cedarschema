@@ -1,0 +1,33 @@
+entity String = {
+    "realContent": __cedar::String 
+};
+
+type Address = {
+    "street": String,
+    "city": String,
+    "zipcode": String
+};
+
+type ContactInfo = {
+    "email": String,
+    "phone"?: String,
+    "address": Address
+};
+
+type UserPermissions = Set<__cedar::String>;
+
+entity User = {
+    "contact": ContactInfo,
+    "permissions": UserPermissions,
+    "active": Bool
+};
+
+action updateContact appliesTo {
+    principal: [User],
+    resource: [User],
+    context: {
+        "reason": __cedar::String,
+        "timestamp": Long,
+        "newtypeReason": String
+    }
+};

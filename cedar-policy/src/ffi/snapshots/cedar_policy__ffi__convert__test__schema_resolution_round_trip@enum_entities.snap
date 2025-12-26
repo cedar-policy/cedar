@@ -1,0 +1,44 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/enum_entities.cedarschema
+---
+{
+  "": {
+    "actions": {},
+    "entityTypes": {
+      "Priority": {
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "Status": {
+        "enum": [
+          "active",
+          "inactive",
+          "pending"
+        ]
+      },
+      "Task": {
+        "shape": {
+          "attributes": {
+            "priority": {
+              "name": "Priority",
+              "type": "Entity"
+            },
+            "status": {
+              "name": "Status",
+              "type": "Entity"
+            },
+            "title": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}
