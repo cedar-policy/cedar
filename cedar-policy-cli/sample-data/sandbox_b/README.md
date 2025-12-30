@@ -73,7 +73,7 @@ cargo run authorize \
 ```
 
 But, if you change the IP in `context.json` to one that is in the blocked range
-in the policy, the access will not be allowed.
+in the policy (as in `context_deny.json`), the access will not be allowed.
 
 ## Policy validation
 

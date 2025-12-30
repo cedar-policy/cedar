@@ -424,6 +424,15 @@ fn test_authorize_samples() {
         "sample-data/sandbox_b/context.json",
         CedarExitCode::Success,
     );
+    run_authorize_test_context(
+        "sample-data/sandbox_b/policies_6.cedar",
+        "sample-data/sandbox_b/entities.json",
+        "User::\"alice\"",
+        "Action::\"view\"",
+        "Photo::\"vacation.jpg\"",
+        "sample-data/sandbox_b/context_deny.json",
+        CedarExitCode::AuthorizeDeny,
+    );
 
     run_authorize_test_json(
         "sample-data/tiny_sandboxes/sample1/policy.cedar",
