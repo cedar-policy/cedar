@@ -20,7 +20,7 @@ use anyhow::Ok;
 use dashmap::DashMap;
 use itertools::Itertools;
 use ropey::Rope;
-use tower_lsp_server::lsp_types::{
+use tower_lsp_server::ls_types::{
     CodeActionOrCommand, CodeActionParams, CodeActionResponse, CompletionResponse, Diagnostic,
     DocumentSymbol, FoldingRange, GotoDefinitionResponse, Hover, Position, Range, TextEdit, Uri,
 };

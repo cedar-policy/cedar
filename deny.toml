@@ -5,6 +5,7 @@ allow = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "MIT",
+    "MIT-0",
     "ISC",
     "Unicode-DFS-2016",
     "Unicode-3.0",
