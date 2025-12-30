@@ -5881,11 +5881,9 @@ mod error_source_tests {
         for src in srcs {
             let pset = PolicySet::from_str(src).unwrap();
             let resp = Authorizer::new().is_authorized(&req, &pset, &entities);
-            for _err in resp.diagnostics().errors() {
-                /* TODO(#485): evaluation errors don't currently have source locations
+            for err in resp.diagnostics().errors() {
                 assert!(err.labels().is_some(), "no source span for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(err.clone()));
                 assert!(err.source_code().is_some(), "no source code for the evaluation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(err.clone()));
-                */
             }
         }
 
