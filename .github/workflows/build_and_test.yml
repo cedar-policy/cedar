@@ -20,8 +20,8 @@ on:
 permissions: read-all
 
 jobs:
-  build_and_test:
-    name: Build and Test
+  build:
+    name: Build
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -32,6 +32,25 @@ jobs:
     # doesn't trigger a fresh build.
     env:
       RUSTFLAGS: '-D warnings -F unsafe-code'
+
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - run: sudo apt-get update && sudo apt-get install protobuf-compiler
+      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: cargo install cargo-audit --locked
+
+      - run: cargo build --verbose
+      - run: cargo build --verbose --features "experimental"
+      - run: cargo doc --all-features --no-deps
+      - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
 
     steps:
       - name: Check initialize disk space
@@ -50,14 +69,12 @@ jobs:
         if: ${{ inputs.collect_coverage }} && ${{ matrix.toolchain }} == 'stable'
         shell: bash
         run: |
-          echo "RUSTFLAGS=${RUSTFLAGS} -C instrument-coverage" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C instrument-coverage" >> $GITHUB_ENV
           echo "LLVM_PROFILE_FILE=cedar_%m_%p.profraw" >> $GITHUB_ENV
 
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
       - run: sudo apt-get update && sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo install cargo-audit --locked
-      - run: cargo doc --all-features --no-deps
 
       # Required to run cedar-symcc tests
       - name: Install cvc5
@@ -77,15 +94,10 @@ jobs:
               chmod +x cvc5-Linux-${ARCH_NAME}-static/bin/cvc5
               echo "CVC5=$GITHUB_WORKSPACE/cvc5-Linux-${ARCH_NAME}-static/bin/cvc5" >> $GITHUB_ENV
 
-      # All targets are run with the same `RUSTFLAGS
-      - run: cargo build --verbose
       - run: cargo test --verbose
       - run: cargo test --verbose --benches
       - run: cargo test --verbose --no-default-features
-      - run: cargo build --verbose --features "experimental"
       - run: cargo test --verbose --features "experimental"
-      - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
-
       - name: Create a coverage report
         if: ${{ inputs.collect_coverage }} && ${{ matrix.toolchain }} == 'stable'
         uses: ./.github/actions/create_coverage_reports
