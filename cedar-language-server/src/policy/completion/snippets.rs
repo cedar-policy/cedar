@@ -18,7 +18,7 @@
     clippy::literal_string_with_formatting_args,
     reason = "strings used by LSP"
 )]
-use tower_lsp_server::lsp_types::{self, CompletionItem, CompletionItemKind, Position};
+use tower_lsp_server::ls_types::{self, CompletionItem, CompletionItemKind, Position};
 
 use crate::{
     policy::{
@@ -209,7 +209,7 @@ fn new_policy_snippet(label: &str, detail: &str, new_text: &str) -> CompletionIt
         kind: Some(CompletionItemKind::SNIPPET),
         detail: Some(detail.to_string()),
         insert_text: Some(new_text.to_string()),
-        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
         ..CompletionItem::default()
     }
 }
@@ -219,7 +219,7 @@ pub(crate) fn equals_euid_snippet(curr_char: Option<char>) -> CompletionItem {
         label: "Equals Entity UID".to_string(),
         kind: Some(CompletionItemKind::SNIPPET),
         insert_text: Some("${1:EntityType}::\"${2:id}\"".to_string()),
-        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
         preselect: Some(true),
         filter_text: curr_char.map(|c| c.to_string()),
         ..CompletionItem::default()
@@ -231,7 +231,7 @@ pub(crate) fn equals_action_euid_snippet(curr_char: Option<char>) -> CompletionI
         label: "Equals Action UID".to_string(),
         kind: Some(CompletionItemKind::SNIPPET),
         insert_text: Some("${1:Action}::\"${2:id}\"".to_string()),
-        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
         preselect: Some(true),
         filter_text: curr_char.map(|c| c.to_string()),
         ..CompletionItem::default()
@@ -243,7 +243,7 @@ pub(crate) fn in_action_group_snippet(curr_char: Option<char>) -> CompletionItem
         label: "In Action Group".to_string(),
         kind: Some(CompletionItemKind::SNIPPET),
         insert_text: Some("${1:Action}::\"${2:id}\"".to_string()),
-        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
         preselect: Some(true),
         filter_text: curr_char.map(|c| c.to_string()),
         ..CompletionItem::default()
@@ -255,7 +255,7 @@ pub(crate) fn in_action_set_snippet(curr_char: Option<char>) -> CompletionItem {
         label: "In Action Set".to_string(),
         kind: Some(CompletionItemKind::SNIPPET),
         insert_text: Some("[${1:Action}::\"${2:id}\"${3}]".to_string()),
-        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
         preselect: Some(true),
         filter_text: curr_char.map(|c| c.to_string()),
         ..CompletionItem::default()
@@ -267,7 +267,7 @@ pub(crate) fn in_entity_snippet(curr_char: Option<char>) -> CompletionItem {
         label: "In Entity UID".to_string(),
         kind: Some(CompletionItemKind::SNIPPET),
         insert_text: Some("${1:EntityType}::\"${2:id}\"".to_string()),
-        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
         preselect: Some(true),
         filter_text: curr_char.map(|c| c.to_string()),
         ..CompletionItem::default()

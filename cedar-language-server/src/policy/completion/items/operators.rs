@@ -18,7 +18,7 @@
     clippy::literal_string_with_formatting_args,
     reason = "strings used by LSP"
 )]
-use tower_lsp_server::lsp_types::{self, CompletionItem, CompletionItemKind, InsertTextFormat};
+use tower_lsp_server::ls_types::{self, CompletionItem, CompletionItemKind, InsertTextFormat};
 
 pub(crate) struct IfCompletionItem;
 
@@ -83,7 +83,7 @@ impl From<IsCompletionItem> for CompletionItem {
         Self {
             label: "is".to_string(),
             insert_text: Some("is ${1:Entity}".to_string()),
-            insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+            insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
             ..Self::default()
         }
     }
@@ -96,7 +96,7 @@ impl From<IsInCompletionItem> for CompletionItem {
         Self {
             label: "is in".to_string(),
             insert_text: Some("is ${1:Entity} in ${2:EntityId}".to_string()),
-            insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+            insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
             ..Self::default()
         }
     }
@@ -109,7 +109,7 @@ impl From<EqCompletionItem> for CompletionItem {
         Self {
             label: "eq".to_string(),
             insert_text: Some("== ${1:EntityId}".to_string()),
-            insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+            insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
             ..Self::default()
         }
     }

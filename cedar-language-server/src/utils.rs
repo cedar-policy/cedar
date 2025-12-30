@@ -19,7 +19,7 @@ use std::fmt::Write;
 use cedar_policy_core::parser::Loc;
 use miette::SourceSpan;
 use smol_str::SmolStr;
-use tower_lsp_server::lsp_types::{self, Position, Range};
+use tower_lsp_server::ls_types::{self, Position, Range};
 
 pub(crate) trait ToRange {
     fn to_range(&self) -> Range;
@@ -50,11 +50,11 @@ pub(crate) const START_RANGE: Range = Range {
     },
 };
 
-fn to_lsp_severity(severity: miette::Severity) -> lsp_types::DiagnosticSeverity {
+fn to_lsp_severity(severity: miette::Severity) -> ls_types::DiagnosticSeverity {
     match severity {
-        miette::Severity::Advice => lsp_types::DiagnosticSeverity::INFORMATION,
-        miette::Severity::Warning => lsp_types::DiagnosticSeverity::WARNING,
-        miette::Severity::Error => lsp_types::DiagnosticSeverity::ERROR,
+        miette::Severity::Advice => ls_types::DiagnosticSeverity::INFORMATION,
+        miette::Severity::Warning => ls_types::DiagnosticSeverity::WARNING,
+        miette::Severity::Error => ls_types::DiagnosticSeverity::ERROR,
     }
 }
 
@@ -66,7 +66,7 @@ fn to_lsp_severity(severity: miette::Severity) -> lsp_types::DiagnosticSeverity 
 pub(crate) fn to_lsp_diagnostics<'a>(
     diagnostic: &'a dyn miette::Diagnostic,
     src: &'a str,
-) -> Vec<lsp_types::Diagnostic> {
+) -> Vec<ls_types::Diagnostic> {
     let mut message = diagnostic.to_string();
     if let Some(source) = diagnostic.source() {
         #[expect(clippy::unwrap_used, reason = "writing string cannot fail")]
@@ -80,14 +80,14 @@ pub(crate) fn to_lsp_diagnostics<'a>(
     let mut diagnostics = Vec::new();
     let severity = diagnostic.severity().map(to_lsp_severity);
     if let Some(labels) = diagnostic.labels() {
-        diagnostics.extend(labels.map(move |l| lsp_types::Diagnostic {
+        diagnostics.extend(labels.map(move |l| ls_types::Diagnostic {
             severity,
-            ..lsp_types::Diagnostic::new_simple(to_range(l.inner(), src), message.clone())
+            ..ls_types::Diagnostic::new_simple(to_range(l.inner(), src), message.clone())
         }));
     } else {
-        diagnostics.push(lsp_types::Diagnostic {
+        diagnostics.push(ls_types::Diagnostic {
             severity,
-            ..lsp_types::Diagnostic::new_simple(START_RANGE, message)
+            ..ls_types::Diagnostic::new_simple(START_RANGE, message)
         });
     }
     if let Some(related) = diagnostic.related() {

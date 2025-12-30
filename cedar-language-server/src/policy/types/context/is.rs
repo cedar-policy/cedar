@@ -17,7 +17,7 @@
 use cedar_policy_core::ast::EntityType;
 use cedar_policy_core::validator::ValidatorSchema;
 use itertools::Itertools;
-use tower_lsp_server::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat};
+use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind, InsertTextFormat};
 
 use crate::policy::{
     types::{

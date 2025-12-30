@@ -28,7 +28,7 @@ use cedar_policy_core::ast::{
     ResourceConstraint,
 };
 use cedar_policy_core::validator::ValidatorSchema;
-use tower_lsp_server::lsp_types::{self, Hover, HoverContents, MarkupKind, Position};
+use tower_lsp_server::ls_types::{self, Hover, HoverContents, MarkupKind, Position};
 use visitor::HoverVisitor;
 
 use crate::schema::SchemaInfo;
@@ -105,7 +105,7 @@ trait ToHover {
     fn to_hover_with_range(
         &self,
         cx: &DocumentContext<'_>,
-        range: tower_lsp_server::lsp_types::Range,
+        range: tower_lsp_server::ls_types::Range,
     ) -> Option<Hover> {
         self.to_hover(cx).map(|mut h| {
             h.range = Some(range);
@@ -120,7 +120,7 @@ where
 {
     fn to_hover(&self, cx: &DocumentContext<'_>) -> Option<Hover> {
         Some(Hover {
-            contents: HoverContents::Markup(lsp_types::MarkupContent {
+            contents: HoverContents::Markup(ls_types::MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: self.to_documentation_string(cx.schema()).into_owned(),
             }),

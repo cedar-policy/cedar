@@ -26,7 +26,7 @@ use cool_asserts::assert_matches;
 use dashmap::DashMap;
 use similar_asserts::assert_eq;
 use std::sync::Arc;
-use tower_lsp_server::lsp_types::*;
+use tower_lsp_server::ls_types::*;
 use tower_lsp_server::LanguageServer;
 
 async fn open_test_document(

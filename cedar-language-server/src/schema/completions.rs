@@ -17,7 +17,7 @@
 use super::SchemaInfo;
 use regex::Regex;
 use std::collections::HashMap;
-use tower_lsp_server::lsp_types::{
+use tower_lsp_server::ls_types::{
     self, CompletionItem, CompletionItemKind, CompletionResponse, Position, Range,
 };
 
@@ -292,7 +292,7 @@ impl CedarSchemaParser {
             label: "namespace".to_string(),
             kind: Some(CompletionItemKind::SNIPPET),
             insert_text: Some(NAMESPACE_SNIPPET.to_string()),
-            insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+            insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
             ..CompletionItem::default()
         }]
     }
@@ -303,14 +303,14 @@ impl CedarSchemaParser {
                 label: "entity".to_string(),
                 kind: Some(CompletionItemKind::SNIPPET),
                 insert_text: Some(ENTITY_SNIPPET.to_string()),
-                insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+                insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
                 ..CompletionItem::default()
             },
             CompletionItem {
                 label: "entity in".to_string(),
                 kind: Some(CompletionItemKind::SNIPPET),
                 insert_text: Some(ENTITY_IN_SNIPPET.to_string()),
-                insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+                insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
                 ..CompletionItem::default()
             },
         ]
@@ -321,7 +321,7 @@ impl CedarSchemaParser {
             label: "type".to_string(),
             kind: Some(CompletionItemKind::SNIPPET),
             insert_text: Some(TYPE_SNIPPET.to_string()),
-            insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+            insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
             ..CompletionItem::default()
         }]
     }
@@ -332,14 +332,14 @@ impl CedarSchemaParser {
                 label: "action".to_string(),
                 kind: Some(CompletionItemKind::SNIPPET),
                 insert_text: Some(ACTION_SNIPPET.to_string()),
-                insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+                insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
                 ..CompletionItem::default()
             },
             CompletionItem {
                 label: "action in".to_string(),
                 kind: Some(CompletionItemKind::SNIPPET),
                 insert_text: Some(ACTION_IN_SNIPPET.to_string()),
-                insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+                insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
                 ..CompletionItem::default()
             },
         ]

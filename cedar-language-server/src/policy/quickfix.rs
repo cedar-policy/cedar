@@ -16,7 +16,7 @@
 
 use std::collections::HashMap;
 
-use tower_lsp_server::lsp_types::{
+use tower_lsp_server::ls_types::{
     CodeAction, CodeActionContext, CodeActionKind, TextEdit, Uri, WorkspaceEdit,
 };
 
@@ -44,7 +44,7 @@ pub fn policy_quickfix_code_actions(
                 // Create a workspace edit
                 #[expect(
                     clippy::mutable_key_type,
-                    reason = "type required by tower_lsp_server::lsp_types::WorkspaceEdit"
+                    reason = "type required by tower_lsp_server::ls_types::WorkspaceEdit"
                 )]
                 let changes = HashMap::from([(uri.clone(), vec![edit])]);
                 let workspace_edit = WorkspaceEdit {

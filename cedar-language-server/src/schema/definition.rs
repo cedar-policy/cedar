@@ -22,7 +22,7 @@ use cedar_policy_core::validator::{
     ValidatorActionId, ValidatorEntityType, ValidatorSchema,
 };
 use itertools::Itertools;
-use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
+use tower_lsp_server::ls_types::{GotoDefinitionResponse, Location, Position, Range, Uri};
 
 use crate::utils::{get_word_at_position, position_within_loc, ToRange};
 
@@ -269,7 +269,7 @@ fn offset_to_position(text: &str, offset: usize) -> Position {
 mod test {
     use std::sync::LazyLock;
 
-    use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Uri};
+    use tower_lsp_server::ls_types::{GotoDefinitionResponse, Uri};
 
     use crate::{
         schema::SchemaInfo,
