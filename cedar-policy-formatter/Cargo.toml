@@ -13,7 +13,7 @@ repository.workspace = true
 [dependencies]
 cedar-policy-core = { version = "=4.8.2", path = "../cedar-policy-core" }
 pretty = "0.12.5"
-logos = "0.15.1"
+logos = "0.16.0"
 itertools = "0.14"
 smol_str = { version = "0.3", features = ["serde"] }
 regex = { version= "1.12.2", features = ["unicode"] }
