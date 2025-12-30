@@ -1,11 +1,9 @@
 [licenses]
-unlicensed = "deny"
-copyleft = "deny"
-default = "deny"
 unused-allowed-license = "allow"
 confidence-threshold = 0.95
 allow = [
     "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
     "MIT",
     "ISC",
     "CC0-1.0",
