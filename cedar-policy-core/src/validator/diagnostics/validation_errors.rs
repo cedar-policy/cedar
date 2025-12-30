@@ -31,7 +31,7 @@ use crate::ast::{Eid, EntityType, EntityUID, Expr, ExprKind, PolicyID, Var};
 use crate::parser::join_with_conjunction;
 
 use crate::validator::level_validate::EntityDerefLevel;
-use crate::validator::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
+use crate::validator::types::{EntityKind, EntityLUB, RequestEnv, Type};
 use crate::validator::ValidatorSchema;
 use itertools::Itertools;
 use smol_str::SmolStr;
@@ -609,7 +609,7 @@ impl AttributeAccess {
     ) -> AttributeAccess {
         let mut attrs: Vec<SmolStr> = vec![attr];
         loop {
-            if let Some(Type::EntityOrRecord(EntityRecordKind::Entity(lub))) = expr.data() {
+            if let Some(Type::Entity(EntityKind::Entity(lub))) = expr.data() {
                 return AttributeAccess::EntityLUB(lub.clone(), attrs);
             } else if matches!(expr.expr_kind(), ExprKind::Var(Var::Context)) {
                 return match req_env.action_entity_uid() {

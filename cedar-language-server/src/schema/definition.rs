@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use cedar_policy_core::ast::EntityType;
 use cedar_policy_core::validator::{
-    types::{EntityRecordKind, Type},
+    types::{EntityKind, Type},
     ValidatorActionId, ValidatorEntityType, ValidatorSchema,
 };
 use itertools::Itertools;
@@ -181,25 +181,21 @@ impl FindDefinition for EntityType {
 impl FindDefinition for Type {
     fn find_definition(&self, cx: &FindDefinitionContext<'_>) -> Option<Range> {
         match self {
-            Self::EntityOrRecord(entity_record_kind) => match entity_record_kind {
-                EntityRecordKind::Record { .. } => {
-                    find_common_type_definition(cx.cursor_word, cx.schema_src)
+            Self::Record { .. } => find_common_type_definition(cx.cursor_word, cx.schema_src),
+            Self::Entity(EntityKind::Entity(entity_lub)) => {
+                let et = entity_lub.get_single_entity()?;
+                if cx.cursor_word != et.to_string() {
+                    return None;
                 }
-                EntityRecordKind::Entity(entity_lub) => {
-                    let et = entity_lub.get_single_entity()?;
-                    if cx.cursor_word != et.to_string() {
-                        return None;
-                    }
-                    let vet = cx.schema.get_entity_type(et)?;
-                    let loc = vet.loc.as_ref()?;
-                    Some(loc.to_range())
-                }
-                EntityRecordKind::AnyEntity => None,
-            },
+                let vet = cx.schema.get_entity_type(et)?;
+                let loc = vet.loc.as_ref()?;
+                Some(loc.to_range())
+            }
             Self::Set { element_type } => {
                 element_type.as_ref().and_then(|el| el.find_definition(cx))
             }
-            Self::Never
+            Self::Entity(EntityKind::AnyEntity)
+            | Self::Never
             | Self::True
             | Self::False
             | Self::Primitive { .. }

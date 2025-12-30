@@ -34,8 +34,7 @@ use crate::validator::{
     extensions::ExtensionSchemas,
     schema::ValidatorSchema,
     types::{
-        AttributeType, Capability, CapabilitySet, EntityRecordKind, OpenTag, Primitive, RequestEnv,
-        Type,
+        AttributeType, Capability, CapabilitySet, EntityKind, OpenTag, Primitive, RequestEnv, Type,
     },
     validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
     ValidationError, ValidationMode, ValidationWarning,
@@ -884,16 +883,13 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // `false` when this is the case, we can't
                                 // conclude that `has` is true just because an
                                 // attribute is required for an entity type.
-                                let exists_in_store = matches!(
-                                    typ_actual,
-                                    Type::EntityOrRecord(EntityRecordKind::Record { .. })
-                                );
+                                let is_record_type = matches!(typ_actual, Type::Record { .. });
                                 // However, we can make an exception when the attribute
                                 // access of the expression is already in the prior capability,
                                 // which means the entity must exist.
                                 let in_prior_capability = prior_capability
                                     .contains(&Capability::new_attribute(expr, attr.clone()));
-                                let type_of_has = if exists_in_store || in_prior_capability {
+                                let type_of_has = if is_record_type || in_prior_capability {
                                     Type::singleton_boolean(true)
                                 } else {
                                     Type::primitive_boolean()
@@ -975,9 +971,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                     Type::primitive_string(),
                     type_errors,
                     |actual| match actual {
-                        Type::EntityOrRecord(
-                            EntityRecordKind::AnyEntity | EntityRecordKind::Entity(_),
-                        ) => Some(UnexpectedTypeHelp::TryUsingIs),
+                        Type::Entity(EntityKind::AnyEntity | EntityKind::Entity(_)) => {
+                            Some(UnexpectedTypeHelp::TryUsingIs)
+                        }
                         _ => None,
                     },
                 );
@@ -1000,7 +996,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                 )
                 .then_typecheck(|expr_ty, _| {
                     match expr_ty.data() {
-                        Some(Type::EntityOrRecord(EntityRecordKind::Entity(actual_lub))) => {
+                        Some(Type::Entity(EntityKind::Entity(actual_lub))) => {
                             let type_of_is = if !actual_lub.contains_entity_type(entity_type) {
                                 // The actual EntityLUB does not contain the entity type
                                 // we're testing for, so the `is` will always be `false`
@@ -1023,13 +1019,11 @@ impl<'a> SingleEnvTypechecker<'a> {
                         }
                         // For `AnyEntity` we don't know anything about what
                         // entity type it could be, so we just return `Bool`.
-                        Some(Type::EntityOrRecord(EntityRecordKind::AnyEntity)) => {
-                            TypecheckAnswer::success(
-                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                    .with_same_source_loc(e)
-                                    .is_entity_type(expr_ty, entity_type.clone()),
-                            )
-                        }
+                        Some(Type::Entity(EntityKind::AnyEntity)) => TypecheckAnswer::success(
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_loc(e)
+                                .is_entity_type(expr_ty, entity_type.clone()),
+                        ),
                         // Expression type is not an entity type or is `None`.
                         // In either case a type error was already reported.
                         _ => TypecheckAnswer::fail(
@@ -1389,12 +1383,10 @@ impl<'a> SingleEnvTypechecker<'a> {
                     Type::any_set(),
                     type_errors,
                     |actual| match actual {
-                        Type::EntityOrRecord(
-                            EntityRecordKind::AnyEntity | EntityRecordKind::Entity(_),
-                        ) => Some(UnexpectedTypeHelp::TryUsingIn),
-                        Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
-                            Some(UnexpectedTypeHelp::TryUsingHas)
+                        Type::Entity(EntityKind::AnyEntity | EntityKind::Entity(_)) => {
+                            Some(UnexpectedTypeHelp::TryUsingIn)
                         }
+                        Type::Record { .. } => Some(UnexpectedTypeHelp::TryUsingHas),
                         Type::Primitive {
                             primitive_type: Primitive::String,
                         } => Some(UnexpectedTypeHelp::TryUsingLike),
@@ -1446,12 +1438,10 @@ impl<'a> SingleEnvTypechecker<'a> {
                     Type::any_set(),
                     type_errors,
                     |actual| match actual {
-                        Type::EntityOrRecord(
-                            EntityRecordKind::AnyEntity | EntityRecordKind::Entity(_),
-                        ) => Some(UnexpectedTypeHelp::TryUsingIn),
-                        Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
-                            Some(UnexpectedTypeHelp::TryUsingHas)
+                        Type::Entity(EntityKind::AnyEntity | EntityKind::Entity(_)) => {
+                            Some(UnexpectedTypeHelp::TryUsingIn)
                         }
+                        Type::Record { .. } => Some(UnexpectedTypeHelp::TryUsingHas),
                         Type::Primitive {
                             primitive_type: Primitive::String,
                         } => Some(UnexpectedTypeHelp::TryUsingLike),
@@ -1505,7 +1495,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     )
                     .then_typecheck(|expr_ty_arg2, _| {
                         let kind = match expr_ty_arg1.data() {
-                            Some(Type::EntityOrRecord(kind)) => kind,
+                            Some(Type::Entity(kind)) => kind,
                             None => {
                                 // should have already reported an error in this case.
                                 // just return a failure.
@@ -1529,34 +1519,16 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 );
                             }
                         };
-                        let type_of_has = match self.tag_types(kind) {
-                            Ok(tag_types) if tag_types.is_empty() => {
-                                // impossible for the type to have any tags, thus the `has` will always be `False`
-                                Type::singleton_boolean(false)
-                            }
-                            Err(()) => {
-                                // Not an entity type; should be unreachable, as we already typechecked
-                                // that this matches `Type::any_entity_reference()`
-                                type_errors.push(ValidationError::internal_invariant_violation(
-                                    bin_expr_loc.clone(),
-                                    self.policy_id.clone(),
-                                ));
-                                return TypecheckAnswer::fail(
-                                    ExprBuilder::new()
-                                        .with_same_source_loc(bin_expr)
-                                        .has_tag(expr_ty_arg1, expr_ty_arg2),
-                                );
-                            }
-                            _ => {
-                                if prior_capability
-                                    .contains(&Capability::new_borrowed_tag(arg1, arg2))
-                                {
-                                    // Prior capability tells us that we already checked for the tag, so `hasTag` is `True`
-                                    Type::singleton_boolean(true)
-                                } else {
-                                    Type::primitive_boolean()
-                                }
-                            }
+                        let type_of_has = if self.tag_types(kind).is_empty() {
+                            // impossible for the type to have any tags, thus the `has` will always be `False`
+                            Type::singleton_boolean(false)
+                        } else if prior_capability
+                            .contains(&Capability::new_borrowed_tag(arg1, arg2))
+                        {
+                            // Prior capability tells us that we already checked for the tag, so `hasTag` is `True`
+                            Type::singleton_boolean(true)
+                        } else {
+                            Type::primitive_boolean()
                         };
                         TypecheckAnswer::success_with_capability(
                             ExprBuilder::with_data(Some(type_of_has))
@@ -1585,7 +1557,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     )
                     .then_typecheck(|expr_ty_arg2, _| {
                         let kind = match expr_ty_arg1.data() {
-                            Some(Type::EntityOrRecord(kind)) => kind,
+                            Some(Type::Entity(kind)) => kind,
                             None => {
                                 // should have already reported an error in this case.
                                 // just return a failure.
@@ -1611,25 +1583,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                         };
                         if prior_capability.contains(&Capability::new_borrowed_tag(arg1, arg2)) {
                             // Determine the set of possible tag types for this access.
-                            let tag_types = match self.tag_types(kind) {
-                                Ok(tag_types) => tag_types,
-                                Err(()) => {
-                                    // `kind` was not an entity type.
-                                    // should be unreachable, as we already typechecked that this matches
-                                    // `Type::any_entity_reference()`
-                                    type_errors.push(
-                                        ValidationError::internal_invariant_violation(
-                                            bin_expr_loc.clone(),
-                                            self.policy_id.clone(),
-                                        ),
-                                    );
-                                    return TypecheckAnswer::fail(
-                                        ExprBuilder::new()
-                                            .with_same_source_loc(bin_expr)
-                                            .get_tag(expr_ty_arg1, expr_ty_arg2),
-                                    );
-                                }
-                            };
+                            let tag_types = self.tag_types(kind);
                             if tag_types.is_empty() {
                                 // no entities in the LUB are allowed to have tags.
                                 // This is a somewhat weird case where we did do a `has` check (we
@@ -1637,9 +1591,8 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // this tag), but the entity type(s) we're operating on just can't
                                 // have tags.
                                 let entity_ty = match kind {
-                                    EntityRecordKind::Entity(lub) => lub.get_single_entity(),
-                                    EntityRecordKind::AnyEntity => None,
-                                    EntityRecordKind::Record { .. } => None,
+                                    EntityKind::Entity(lub) => lub.get_single_entity(),
+                                    EntityKind::AnyEntity => None,
                                 };
                                 type_errors.push(ValidationError::no_tags_allowed(
                                     bin_expr_loc.clone(),
@@ -1656,7 +1609,6 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // compute the LUB of all the relevant tag types, and assign that
                                 // as the type.
                                 let tag_type = match Type::reduce_to_least_upper_bound(
-                                    self.schema,
                                     tag_types.clone(),
                                     self.mode,
                                 ) {
@@ -1687,7 +1639,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 bin_expr_loc.clone(),
                                 self.policy_id.clone(),
                                 match kind {
-                                    EntityRecordKind::Entity(lub) => Some(lub.clone()),
+                                    EntityKind::Entity(lub) => Some(lub.clone()),
                                     _ => None,
                                 },
                                 expr_ty_arg2.clone(),
@@ -1717,9 +1669,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             Some(Type::True | Type::False) => TypecheckAnswer::success(annotated_expr),
             _ => match (lhs_ty, rhs_ty) {
                 (Some(lhs_ty), Some(rhs_ty)) => {
-                    if let Err(lub_hint) =
-                        Type::least_upper_bound(self.schema, lhs_ty, rhs_ty, self.mode)
-                    {
+                    if let Err(lub_hint) = Type::least_upper_bound(lhs_ty, rhs_ty, self.mode) {
                         type_errors.push(ValidationError::incompatible_types(
                             unannotated_expr.source_loc().cloned(),
                             self.policy_id.clone(),
@@ -1779,30 +1729,28 @@ impl<'a> SingleEnvTypechecker<'a> {
 
     /// Get the set of types that are possible tag types for `kind`.
     ///
-    /// If `kind` is not an entity type (e.g., a record type), this returns `Err`.
     /// If `kind` is an entity type without a `tags` declaration, this returns
-    /// `Ok` with the empty set.
+    /// the empty set.
     ///
     /// If `kind` is a LUB containing some entity types that have tags and some
     /// that do not, this ignores the entity types that do not; we just assume
     /// the access is not on one of those entity types.
-    fn tag_types<'s>(&'s self, kind: &EntityRecordKind) -> Result<HashSet<&'s Type>, ()> {
+    fn tag_types<'s>(&'s self, kind: &EntityKind) -> HashSet<&'s Type> {
         use crate::validator::schema::ValidatorEntityType;
         match kind {
-            EntityRecordKind::Entity(lub) => Ok(lub
+            EntityKind::Entity(lub) => lub
                 .iter()
                 .filter_map(|ety| {
                     self.schema
                         .get_entity_type(ety)
                         .and_then(ValidatorEntityType::tag_type)
                 })
-                .collect()),
-            EntityRecordKind::AnyEntity => Ok(self
+                .collect(),
+            EntityKind::AnyEntity => self
                 .schema
                 .entity_types()
                 .filter_map(ValidatorEntityType::tag_type)
-                .collect()),
-            EntityRecordKind::Record { .. } => Err(()),
+                .collect(),
         }
     }
 
@@ -1902,21 +1850,15 @@ impl<'a> SingleEnvTypechecker<'a> {
                         ),
                     _ => {
                         let lhs_etys = match lhs_expr.data() {
-                            Some(Type::EntityOrRecord(EntityRecordKind::Entity(lhs_etys))) => {
-                                Some(lhs_etys)
-                            }
+                            Some(Type::Entity(EntityKind::Entity(lhs_etys))) => Some(lhs_etys),
                             _ => None,
                         };
                         let rhs_etys = match rhs_expr.data() {
-                            Some(Type::EntityOrRecord(EntityRecordKind::Entity(rhs_etys))) => {
-                                Some(rhs_etys)
-                            }
+                            Some(Type::Entity(EntityKind::Entity(rhs_etys))) => Some(rhs_etys),
                             Some(Type::Set {
                                 element_type: Some(element_type),
                             }) => match element_type.as_ref() {
-                                Type::EntityOrRecord(EntityRecordKind::Entity(rhs_etys)) => {
-                                    Some(rhs_etys)
-                                }
+                                Type::Entity(EntityKind::Entity(rhs_etys)) => Some(rhs_etys),
                                 _ => None,
                             },
                             _ => None,
@@ -2160,12 +2102,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     // we need to make the check using width subtyping to avoid
                     // reporting an error every time we see a `GetAttr` on a
                     // non-empty record.
-                    Type::is_subtype(
-                        self.schema,
-                        actual_ty,
-                        expected_ty,
-                        ValidationMode::Permissive,
-                    )
+                    Type::is_subtype(actual_ty, expected_ty, ValidationMode::Permissive)
                 }) {
                     type_errors.push(ValidationError::expected_one_of_types(
                         expr.source_loc().cloned(),
@@ -2234,8 +2171,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             // defined.
             .collect::<Option<Vec<_>>>()
             .and_then(|typechecked_types| {
-                let lub =
-                    Type::reduce_to_least_upper_bound(self.schema, &typechecked_types, self.mode);
+                let lub = Type::reduce_to_least_upper_bound(&typechecked_types, self.mode);
                 match lub {
                     Err(lub_hint) => {
                         // A type error is generated if we could not find a least

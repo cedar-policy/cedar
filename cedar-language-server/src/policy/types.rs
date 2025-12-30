@@ -26,7 +26,7 @@ use cedar_policy_core::ast::{
 use cedar_policy_core::parser::Loc;
 use cedar_policy_core::validator::ValidatorSchema;
 use cedar_policy_core::validator::{
-    types::{AttributeType, EntityRecordKind, Type},
+    types::{AttributeType, Type},
     ValidatorEntityType,
 };
 use itertools::Itertools;
@@ -432,7 +432,7 @@ pub(crate) fn format_attribute(
     let ty = &attr_type.attr_type;
 
     match ty.as_ref() {
-        Type::EntityOrRecord(EntityRecordKind::Record { attrs: fields, .. }) => {
+        Type::Record { attrs: fields, .. } => {
             let mut lines = vec![format!("{}{}: {{", indent, name)];
 
             // Format each field in the record

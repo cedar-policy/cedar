@@ -25,7 +25,7 @@ use crate::validator::{
         AccessTrie, EntityManifest, EntityRoot, Fields, MismatchedEntityManifestError,
         MismatchedMissingEntityError, MismatchedNotStrictSchemaError, RootAccessTrie,
     },
-    types::{Attributes, EntityRecordKind, Type},
+    types::{Attributes, EntityKind, Type},
     ValidatorSchema,
 };
 
@@ -112,13 +112,13 @@ impl RootAccessTrie {
 }
 
 impl AccessTrie {
-    pub(crate) fn to_typed(
+    fn children_of(
         &self,
         request_type: &RequestType,
         ty: &Type,
         schema: &ValidatorSchema,
-    ) -> Result<AccessTrie, MismatchedEntityManifestError> {
-        let children: Fields = match ty {
+    ) -> Result<Fields, MismatchedEntityManifestError> {
+        let attributes = match ty {
             Type::Never
             | Type::True
             | Type::False
@@ -126,16 +126,13 @@ impl AccessTrie {
             | Type::Set { .. }
             | Type::ExtensionType { .. } => {
                 assert!(self.children.is_empty());
-                HashMap::default()
+                return Ok(HashMap::default());
             }
-            Type::EntityOrRecord(entity_or_record_ty) => {
-                let attributes: &Attributes = match entity_or_record_ty {
-                    EntityRecordKind::Record {
-                        attrs,
-                        open_attributes: _,
-                    } => attrs,
-                    EntityRecordKind::AnyEntity => Err(MismatchedNotStrictSchemaError {})?,
-                    EntityRecordKind::Entity(entitylub) => {
+            Type::Record { attrs, .. } => attrs,
+            Type::Entity(entity_ty) => {
+                match entity_ty {
+                    EntityKind::AnyEntity => Err(MismatchedNotStrictSchemaError {})?,
+                    EntityKind::Entity(entitylub) => {
                         let entity_ty = entitylub
                             .get_single_entity()
                             .ok_or(MismatchedNotStrictSchemaError {})?;
@@ -149,25 +146,32 @@ impl AccessTrie {
                                 .attributes()
                         }
                     }
-                };
-
-                let mut new_children = HashMap::new();
-                for (field, child) in self.children.iter() {
-                    // if the schema doesn't mention an attribute,
-                    // it's safe to drop it.
-                    // this can come up with the `has` operator
-                    // on a type that doesn't have the attribute
-                    if let Some(ty) = attributes.get_attr(field) {
-                        new_children.insert(
-                            field.clone(),
-                            Box::new(child.to_typed(request_type, &ty.attr_type, schema)?),
-                        );
-                    }
                 }
-                new_children
             }
         };
+        let mut new_children = HashMap::new();
+        for (field, child) in self.children.iter() {
+            // if the schema doesn't mention an attribute,
+            // it's safe to drop it.
+            // this can come up with the `has` operator
+            // on a type that doesn't have the attribute
+            if let Some(ty) = attributes.get_attr(field) {
+                new_children.insert(
+                    field.clone(),
+                    Box::new(child.to_typed(request_type, &ty.attr_type, schema)?),
+                );
+            }
+        }
+        Ok(new_children)
+    }
 
+    pub(crate) fn to_typed(
+        &self,
+        request_type: &RequestType,
+        ty: &Type,
+        schema: &ValidatorSchema,
+    ) -> Result<AccessTrie, MismatchedEntityManifestError> {
+        let children: Fields = self.children_of(request_type, ty, schema)?;
         Ok(AccessTrie {
             children,
             node_type: Some(ty.clone()),

@@ -31,7 +31,7 @@ use super::term_type::TermType;
 use super::type_abbrevs::*;
 use cedar_policy_core::validator::ValidatorSchema;
 use cedar_policy_core::validator::{
-    types::{Attributes, EntityRecordKind, OpenTag, Type},
+    types::{Attributes, OpenTag, Type},
     ValidatorActionId,
 };
 use cedar_policy_core::validator::{ValidatorEntityType, ValidatorEntityTypeKind};
@@ -424,10 +424,10 @@ fn entity(ety: EntityType) -> TermType {
 }
 
 fn record(attrs: Attributes) -> Type {
-    Type::EntityOrRecord(EntityRecordKind::Record {
+    Type::Record {
         attrs,
         open_attributes: OpenTag::ClosedAttributes,
-    })
+    }
 }
 
 // From `Validation/Types.lean`
@@ -513,10 +513,10 @@ impl ActionSchemaEntries {
 
 fn context_attributes(action: &ValidatorActionId) -> Result<&Attributes, CompileError> {
     match action.context_type() {
-        Type::EntityOrRecord(EntityRecordKind::Record {
+        Type::Record {
             attrs,
             open_attributes: OpenTag::ClosedAttributes,
-        }) => Ok(attrs),
+        } => Ok(attrs),
         _ => Err(CompileError::NonRecordContext),
     }
 }

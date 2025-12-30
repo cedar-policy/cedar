@@ -126,12 +126,13 @@ impl Typechecker<'_> {
 /// In the future it might better to only assert actual <: expected to allow
 /// improvement to the typechecker to return more specific types.
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual: &Type) {
+pub(crate) fn assert_types_eq(expected: &Type, actual: &Type) {
+    assert_eq!(expected, actual);
     assert!(
-            Type::is_subtype(schema, expected, actual, ValidationMode::Permissive),
+            Type::is_subtype(expected, actual, ValidationMode::Permissive),
             "Type equality assertion failed: the expected type is not a subtype of the actual type.\nexpected: {expected:#?}\nactual: {actual:#?}");
     assert!(
-            Type::is_subtype(schema, actual, expected, ValidationMode::Permissive),
+            Type::is_subtype(actual, expected, ValidationMode::Permissive),
              "Type equality assertion failed: the actual type is not a subtype of the expected type.\nexpected: {expected:#?}\nactual: {actual:#?}");
 }
 
@@ -323,7 +324,7 @@ pub(crate) fn assert_typechecks_for_mode(
     let pid = expr_id_placeholder();
     let actual = typechecker.typecheck_expr(expr, &pid, &mut type_errors);
     assert_matches!(actual, TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
-        assert_types_eq(typechecker.schema, expected, &expr_type.into_data().expect("Typechecked expression must have type"));
+        assert_types_eq(expected, &expr_type.into_data().expect("Typechecked expression must have type"));
     });
     assert_eq!(
         type_errors,
@@ -370,7 +371,7 @@ pub(crate) fn assert_typecheck_fails_for_mode(
         match (expected_ty.as_ref(), expr_recovery_type.data()) {
             (None, None) => (),
             (Some(expected_ty), Some(actual_ty)) => {
-                assert_types_eq(typechecker.schema, expected_ty, actual_ty);
+                assert_types_eq(expected_ty, actual_ty);
             }
             _ => panic!("Expected that actual type would be defined iff expected type is defined."),
         }
