@@ -25,8 +25,7 @@ use cedar_policy::{EntityId, EntityUid};
 use itertools::Itertools;
 use miette::Diagnostic;
 use num_bigint::BigUint;
-
-use smol_str::SmolStr;
+use smol_str::{SmolStr, SmolStrBuilder};
 use thiserror::Error;
 
 use crate::symcc::bitvec::BitVecError;
@@ -130,8 +129,8 @@ enum Token {
 pub enum SExpr {
     BitVec(BitVec),
     Numeral(u128),
-    String(String),
-    Symbol(String),
+    String(SmolStr),
+    Symbol(SmolStr),
     App(Vec<SExpr>),
 }
 
@@ -155,9 +154,8 @@ pub enum SExpr {
 /// - The (right) inverse: `encode_string`
 /// - The concrete C++ implementation in cvc5, which this function mimics
 ///   https://github.com/cvc5/cvc5/blob/b78e7ed23348659db52a32765ad181ae0c26bbd5/src/util/string.cpp#L136
-fn decode_string(s: &[u8]) -> Option<String> {
-    // Now handle string-theory-level escape sequences
-    let mut out = String::with_capacity(s.len());
+fn decode_string(s: &[u8]) -> Option<SmolStr> {
+    let mut out = SmolStrBuilder::new();
 
     // Helper function to read the byte as a hexadecimal digit
     let as_hex = |c: u8| {
@@ -288,7 +286,7 @@ fn decode_string(s: &[u8]) -> Option<String> {
         }
     }
 
-    Some(out)
+    Some(out.finish())
 }
 
 /// Tokenizes a string of SMT-LIB 2 S-expressions
@@ -473,7 +471,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                     )]
                     let symbol = String::from_utf8(src[start..i].to_vec())?;
 
-                    tokens.push(Token::Atom(SExpr::Symbol(symbol)));
+                    tokens.push(Token::Atom(SExpr::Symbol(symbol.into())));
                 }
             }
         }
@@ -533,45 +531,48 @@ pub fn parse_sexpr(src: &[u8]) -> Result<SExpr, DecodeError> {
 /// Maps from SMT symbols their corresponding variables
 /// (principal, action, resource) and entity types.
 #[derive(Debug)]
-pub struct IdMaps {
-    types: BTreeMap<SmolStr, TermType>,
-    vars: BTreeMap<SmolStr, TermVar>,
-    uufs: BTreeMap<SmolStr, Uuf>,
+pub struct IdMaps<'a> {
+    types: BTreeMap<&'a SmolStr, &'a TermType>,
+    vars: BTreeMap<&'a SmolStr, &'a TermVar>,
+    uufs: BTreeMap<&'a SmolStr, &'a Uuf>,
     enums: BTreeMap<SmolStr, EntityUid>,
 }
 
-impl IdMaps {
+impl<'a> IdMaps<'a> {
     /// Extracts the reverse mapping from SMT symbols to
     /// Term-level names from the encoder state.
-    pub fn from_encoder<S>(encoder: &Encoder<'_, S>) -> Self {
+    pub fn from_encoder<S>(encoder: &'a Encoder<'_, S>) -> Self {
         let mut types = BTreeMap::new();
         let mut vars = BTreeMap::new();
         let mut uufs = BTreeMap::new();
         let mut enums = BTreeMap::new();
 
         for (term, enc) in &encoder.types {
-            types.insert(enc.clone(), term.clone());
+            types.insert(enc, term);
         }
 
         for (term, enc) in &encoder.terms {
             if let Term::Var(var) = term {
-                vars.insert(enc.clone(), var.clone());
+                vars.insert(enc, var);
             }
         }
 
         for (uuf, id) in &encoder.uufs {
-            uufs.insert(id.clone(), uuf.clone());
+            uufs.insert(id, uuf);
         }
 
         for (&entity_type, &enum_ids) in &encoder.enums {
-            for (i, enum_id) in enum_ids.iter().enumerate() {
-                let uid =
-                    EntityUid::from_type_name_and_id(entity_type.clone(), EntityId::new(enum_id));
-
-                if let Some(entity_type_id) = encoder.types.get(&TermType::Entity {
-                    ety: entity_type.clone(),
-                }) {
-                    enums.insert(super::encoder::enum_id(entity_type_id, i), uid);
+            if let Some(entity_type_id) = encoder.types.get(&TermType::Entity {
+                ety: entity_type.clone(),
+            }) {
+                for (i, enum_id) in enum_ids.iter().enumerate() {
+                    enums.insert(
+                        super::encoder::enum_id(entity_type_id, i),
+                        EntityUid::from_type_name_and_id(
+                            entity_type.clone(),
+                            EntityId::new(enum_id),
+                        ),
+                    );
                 }
             }
         }
@@ -676,7 +677,7 @@ impl SExpr {
     }
 
     /// Decodes [`TermType`] from an [`SExpr`].
-    pub fn decode_type(&self, id_maps: &IdMaps) -> Result<TermType, DecodeError> {
+    pub fn decode_type(&self, id_maps: &IdMaps<'_>) -> Result<TermType, DecodeError> {
         match self {
             // Atomic types
             SExpr::Symbol(s) => {
@@ -699,7 +700,8 @@ impl SExpr {
                     // Entity or record type
                     _ => id_maps
                         .types
-                        .get(s.as_str())
+                        .get(s)
+                        .copied()
                         .cloned()
                         .ok_or_else(|| DecodeError::UnknownType(self.clone())),
                 }
@@ -740,8 +742,8 @@ impl SExpr {
     /// Corresponds to `SExpr.decodeLit.constructEntityOrRecord` in Lean.
     fn decode_entity_or_record(
         &self,
-        id_maps: &IdMaps,
-        name: &str,
+        id_maps: &IdMaps<'_>,
+        name: &SmolStr,
         args: &[SExpr],
     ) -> Result<Term, DecodeError> {
         match (id_maps.types.get(name), args) {
@@ -789,7 +791,11 @@ impl SExpr {
 
     /// Helper function to decode more complex applications as literals.
     /// Corresponds to `SExpr.decodeLit.construct` in Lean.
-    fn decode_literal_app(&self, id_maps: &IdMaps, args: &[SExpr]) -> Result<Term, DecodeError> {
+    fn decode_literal_app(
+        &self,
+        id_maps: &IdMaps<'_>,
+        args: &[SExpr],
+    ) -> Result<Term, DecodeError> {
         match args {
             // Sometimes cvc5 does not simplify the terms in the model,
             // and having these custom interpreters alleviates such issues
@@ -994,7 +1000,7 @@ impl SExpr {
     }
 
     /// Decodse a literal (with only SMT constants and no bound variables).
-    pub fn decode_literal(&self, id_maps: &IdMaps) -> Result<Term, DecodeError> {
+    pub fn decode_literal(&self, id_maps: &IdMaps<'_>) -> Result<Term, DecodeError> {
         match self {
             SExpr::BitVec(bv) => Ok(Term::Prim(TermPrim::Bitvec(bv.clone()))),
             SExpr::String(s) => Ok(Term::Prim(TermPrim::String(SmolStr::new(s)))),
@@ -1003,7 +1009,7 @@ impl SExpr {
             SExpr::Symbol(s) if s == "false" => Ok(Term::Prim(TermPrim::Bool(false))),
 
             // Empty record type
-            SExpr::Symbol(s) if id_maps.types.contains_key(s.as_str()) => {
+            SExpr::Symbol(s) if id_maps.types.contains_key(s) => {
                 self.decode_entity_or_record(id_maps, s, &[])
             }
 
@@ -1024,12 +1030,12 @@ impl SExpr {
 
     /// Decodes a constant definition in the model.
     pub fn decode_var(
-        id_maps: &IdMaps,
-        name: &str,
+        id_maps: &IdMaps<'_>,
+        name: &SmolStr,
         typ: &SExpr,
         value: &SExpr,
     ) -> Result<(TermVar, Term), DecodeError> {
-        let Some(term_var) = id_maps.vars.get(name) else {
+        let Some(&term_var) = id_maps.vars.get(name) else {
             return Err(DecodeError::UnknownVariable(name.to_string()));
         };
 
@@ -1053,15 +1059,15 @@ impl SExpr {
     ///
     /// TODO: generalize to other forms?
     pub fn decode_unary_function(
-        id_maps: &IdMaps,
-        name: &str,
+        id_maps: &IdMaps<'_>,
+        name: &SmolStr,
         arg_name: &str,
         arg_typ: &SExpr,
         ret_typ: &SExpr,
         body: &SExpr,
     ) -> Result<(Uuf, Udf), DecodeError> {
         // First check if the SMT name actually corresponds to a UUF
-        let Some(uuf) = id_maps.uufs.get(name) else {
+        let Some(&uuf) = id_maps.uufs.get(name) else {
             return Err(DecodeError::UnknownUUF(name.to_string()));
         };
 
@@ -1132,7 +1138,7 @@ impl SExpr {
     pub fn decode_model<'a>(
         &self,
         env: &'a SymEnv,
-        id_maps: &IdMaps,
+        id_maps: &IdMaps<'_>,
     ) -> Result<Interpretation<'a>, DecodeError> {
         let SExpr::App(cmds) = self else {
             return Err(DecodeError::UnexpectedModel);

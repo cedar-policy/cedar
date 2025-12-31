@@ -15,7 +15,7 @@ jobs:
       contents: read # Allow repository contents to be read.
       issues: write # Allow issues to be created.
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: EmbarkStudios/cargo-deny-action@76cd80eb775d7bbbd2d80292136d74d39e1b4918 # v2.0.14
         with:
           command: check advisories
@@ -25,7 +25,7 @@ jobs:
       - name: Open an issue on failure
         # Run only if the cargo deny step failed.
         if: steps.cargo_deny.outcome == 'failure'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |

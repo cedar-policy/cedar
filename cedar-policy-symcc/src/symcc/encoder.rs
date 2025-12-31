@@ -169,6 +169,18 @@ impl<'a, S> Encoder<'a, S> {
             script,
         })
     }
+
+    /// "Finalize" the encoder, removing the ability to write to the `script`, and thus also dropping all borrows inherent in the `S` type.
+    /// The resulting encoder can have its state inspected (e.g., by the decoder), but can no longer encode anything new.
+    pub fn finalize(self) -> Encoder<'a, ()> {
+        Encoder {
+            terms: self.terms,
+            types: self.types,
+            uufs: self.uufs,
+            enums: self.enums,
+            script: (),
+        }
+    }
 }
 
 impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
