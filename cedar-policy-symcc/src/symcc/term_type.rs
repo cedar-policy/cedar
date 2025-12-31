@@ -54,6 +54,13 @@ impl TermType {
         Self::Set { ty: Arc::new(ty) }
     }
 
+    /// Constructs an option type with the given inner type.
+    ///
+    /// No corresponding Lean function; convenience constructor used in Rust.
+    pub fn option_of(ty: TermType) -> Self {
+        Self::Option { ty: Arc::new(ty) }
+    }
+
     /// Returns the type of tag keys in the symbolic representation of tags.
     pub fn tag_for(ety: EntityType) -> Self {
         Self::Record {
@@ -138,7 +145,7 @@ impl TermType {
                                             if v.is_required {
                                                 vt
                                             } else {
-                                                TermType::Option { ty: Arc::new(vt) }
+                                                TermType::option_of(vt)
                                             },
                                         )),
                                         Err(e) => Err(e),
@@ -168,9 +175,7 @@ impl TermType {
                 },
             },
             Type::Set { element_type } => match element_type {
-                Some(element_type) => Ok(TermType::Set {
-                    ty: Arc::new(Self::of_type(element_type)?),
-                }),
+                Some(element_type) => Ok(TermType::set_of(Self::of_type(element_type)?)),
                 None => Err(CompileError::UnsupportedFeature(
                     "empty set type is unsupported".into(),
                 )),

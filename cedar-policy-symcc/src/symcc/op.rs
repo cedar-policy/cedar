@@ -155,9 +155,7 @@ impl ExtOp {
                     xty: ExtType::IpAddr,
                 }] =>
             {
-                Some(TermType::Option {
-                    ty: Arc::new(TermType::Bitvec { n: 5 }),
-                })
+                Some(TermType::option_of(TermType::Bitvec { n: 5 }))
             }
             ExtOp::IpaddrAddrV6
                 if l == vec![TermType::Ext {

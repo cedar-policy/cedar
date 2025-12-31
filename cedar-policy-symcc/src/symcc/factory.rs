@@ -636,9 +636,7 @@ pub fn ext_ipaddr_prefix_v4(t: Term) -> Term {
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV4),
             args: Arc::new(vec![t]),
-            ret_ty: TermType::Option {
-                ty: Arc::new(TermType::Bitvec { n: 5 }),
-            },
+            ret_ty: TermType::option_of(TermType::Bitvec { n: 5 }),
         },
     }
 }
@@ -663,9 +661,7 @@ pub fn ext_ipaddr_prefix_v6(t: Term) -> Term {
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV6),
             args: Arc::new(vec![t]),
-            ret_ty: TermType::Option {
-                ty: Arc::new(TermType::Bitvec { n: 7 }),
-            },
+            ret_ty: TermType::option_of(TermType::Bitvec { n: 7 }),
         },
     }
 }
@@ -803,9 +799,12 @@ pub fn if_some(g: Term, t: Term) -> Term {
     }
 }
 
+pub fn any_true(f: impl Fn(Term) -> Term, ts: impl IntoIterator<Item = Term>) -> Term {
+    ts.into_iter().fold(false.into(), |acc, g| or(f(g), acc))
+}
+
 pub fn any_none(gs: impl IntoIterator<Item = Term>) -> Term {
-    gs.into_iter()
-        .fold(false.into(), |acc, g| or(is_none(g), acc))
+    any_true(is_none, gs)
 }
 
 pub fn if_all_some(gs: impl IntoIterator<Item = Term>, t: Term) -> Term {

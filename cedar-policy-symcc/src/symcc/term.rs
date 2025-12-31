@@ -180,15 +180,9 @@ impl Term {
         match self {
             Term::Prim(l) => l.type_of(),
             Term::Var(v) => v.ty.clone(),
-            Term::None(ty) => TermType::Option {
-                ty: Arc::new(ty.clone()),
-            },
-            Term::Some(t) => TermType::Option {
-                ty: Arc::new(t.type_of()),
-            },
-            Term::Set { elts_ty, .. } => TermType::Set {
-                ty: Arc::new(elts_ty.clone()),
-            },
+            Term::None(ty) => TermType::option_of(ty.clone()),
+            Term::Some(t) => TermType::option_of(t.type_of()),
+            Term::Set { elts_ty, .. } => TermType::set_of(elts_ty.clone()),
             Term::Record(m) => {
                 let rty = Arc::new(m.iter().map(|(k, v)| (k.clone(), v.type_of())).collect());
                 TermType::Record { rty }
