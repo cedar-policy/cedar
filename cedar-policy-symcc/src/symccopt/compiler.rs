@@ -111,7 +111,7 @@ fn compile_prim(p: &Prim, es: &SymEntities) -> Result<CompileResult> {
             if es.is_valid_entity_uid(uid) {
                 let term = some_of(uid.clone().into());
                 Ok(CompileResult {
-                    footprint: [term.clone()].into_iter().collect(),
+                    footprint: std::iter::once(term.clone()).collect(),
                     term,
                 })
             } else {
@@ -127,7 +127,7 @@ fn compile_var(v: &Var, req: &SymRequest) -> Result<CompileResult> {
             if req.principal.type_of().is_entity_type() {
                 let term = some_of(req.principal.clone());
                 Ok(CompileResult {
-                    footprint: [term.clone()].into_iter().collect(),
+                    footprint: std::iter::once(term.clone()).collect(),
                     term,
                 })
             } else {
@@ -138,7 +138,7 @@ fn compile_var(v: &Var, req: &SymRequest) -> Result<CompileResult> {
             if req.action.type_of().is_entity_type() {
                 let term = some_of(req.action.clone());
                 Ok(CompileResult {
-                    footprint: [term.clone()].into_iter().collect(),
+                    footprint: std::iter::once(term.clone()).collect(),
                     term,
                 })
             } else {
@@ -149,7 +149,7 @@ fn compile_var(v: &Var, req: &SymRequest) -> Result<CompileResult> {
             if req.resource.type_of().is_entity_type() {
                 let term = some_of(req.resource.clone());
                 Ok(CompileResult {
-                    footprint: [term.clone()].into_iter().collect(),
+                    footprint: std::iter::once(term.clone()).collect(),
                     term,
                 })
             } else {
@@ -681,7 +681,7 @@ pub fn compile_call0(
             term: Term::Some(t),
             footprint,
         } => match t.as_ref() {
-            Term::Prim(TermPrim::String(s)) => match mk(&s) {
+            Term::Prim(TermPrim::String(s)) => match mk(s.as_ref()) {
                 Ok(v) => Ok(CompileResult {
                     term: some_of(v.into()),
                     footprint,
@@ -753,13 +753,7 @@ pub fn compile_call2(
     arg1: CompileResult,
     arg2: CompileResult,
 ) -> Result<CompileResult> {
-    compile_call2_error(
-        xty.clone(),
-        xty.clone(),
-        |t1, t2| some_of(enc(t1, t2)),
-        arg1,
-        arg2,
-    )
+    compile_call2_error(xty.clone(), xty, |t1, t2| some_of(enc(t1, t2)), arg1, arg2)
 }
 
 pub fn compile_call(
