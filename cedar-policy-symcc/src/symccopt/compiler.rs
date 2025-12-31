@@ -738,11 +738,11 @@ pub fn compile_call0(
 
 // Use directly for encoding calls that can error
 pub fn compile_call1_error(
-    xty: &ExtType,
+    xty: ExtType,
     enc: impl Fn(Term) -> Term,
     arg1: CompileResult,
 ) -> Result<CompileResult> {
-    if matches!(arg1.term.type_of(), TermType::Option { ty } if matches!(&*ty, TermType::Ext { xty: other } if xty == other))
+    if matches!(arg1.term.type_of(), TermType::Option { ty } if matches!(&*ty, TermType::Ext { xty: other } if xty == *other))
     {
         Ok(CompileResult {
             term: if_some(arg1.term.clone(), enc(option_get(arg1.term))),
@@ -755,7 +755,7 @@ pub fn compile_call1_error(
 
 // Use directly for encoding calls that cannot error
 pub fn compile_call1(
-    xty: &ExtType,
+    xty: ExtType,
     enc: impl Fn(Term) -> Term,
     arg1: CompileResult,
 ) -> Result<CompileResult> {
@@ -795,7 +795,7 @@ pub fn compile_call2(
     arg1: CompileResult,
     arg2: CompileResult,
 ) -> Result<CompileResult> {
-    compile_call2_error(xty.clone(), xty, |t1, t2| some_of(enc(t1, t2)), arg1, arg2)
+    compile_call2_error(xty, xty, |t1, t2| some_of(enc(t1, t2)), arg1, arg2)
 }
 
 pub fn compile_call(
@@ -829,19 +829,19 @@ pub fn compile_call(
         }
         ("isIpv4", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::IpAddr, extfun::is_ipv4, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_ipv4, t1)
         }
         ("isIpv6", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::IpAddr, extfun::is_ipv6, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_ipv6, t1)
         }
         ("isLoopback", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::IpAddr, extfun::is_loopback, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_loopback, t1)
         }
         ("isMulticast", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::IpAddr, extfun::is_multicast, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_multicast, t1)
         }
         ("isInRange", 2) => {
             let (t1, t2) = extract_first2(args);
@@ -871,31 +871,31 @@ pub fn compile_call(
         }
         ("toDate", 1) => {
             let t1 = extract_first(args);
-            compile_call1_error(&ExtType::DateTime, extfun::to_date, t1)
+            compile_call1_error(ExtType::DateTime, extfun::to_date, t1)
         }
         ("toTime", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::DateTime, extfun::to_time, t1)
+            compile_call1(ExtType::DateTime, extfun::to_time, t1)
         }
         ("toMilliseconds", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::Duration, extfun::to_milliseconds, t1)
+            compile_call1(ExtType::Duration, extfun::to_milliseconds, t1)
         }
         ("toSeconds", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::Duration, extfun::to_seconds, t1)
+            compile_call1(ExtType::Duration, extfun::to_seconds, t1)
         }
         ("toMinutes", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::Duration, extfun::to_minutes, t1)
+            compile_call1(ExtType::Duration, extfun::to_minutes, t1)
         }
         ("toHours", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::Duration, extfun::to_hours, t1)
+            compile_call1(ExtType::Duration, extfun::to_hours, t1)
         }
         ("toDays", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::Duration, extfun::to_days, t1)
+            compile_call1(ExtType::Duration, extfun::to_days, t1)
         }
         (_, _) => Err(CompileError::TypeError),
     }
