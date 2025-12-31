@@ -34,7 +34,7 @@ jobs:
       RUSTFLAGS: '-D warnings -F unsafe-code'
 
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - run: sudo apt-get update && sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo install cargo-audit --locked
@@ -72,7 +72,7 @@ jobs:
           echo "RUSTFLAGS=-C instrument-coverage" >> $GITHUB_ENV
           echo "LLVM_PROFILE_FILE=cedar_%m_%p.profraw" >> $GITHUB_ENV
 
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - run: sudo apt-get update && sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
 
@@ -115,7 +115,7 @@ jobs:
           - stable
 
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - run: sudo apt-get update && sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: rustup component add clippy
@@ -132,7 +132,7 @@ jobs:
           - stable
 
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: rustup component add rustfmt
       - run: cargo fmt --all --check
@@ -141,14 +141,14 @@ jobs:
     name: cargo deny
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: EmbarkStudios/cargo-deny-action@76cd80eb775d7bbbd2d80292136d74d39e1b4918 # v2.0.14
 
   # See https://doc.rust-lang.org/cargo/guide/continuous-integration.html#verifying-rust-version
   msrv:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
     - uses: taiki-e/install-action@fe18b65ff0d7a76aced2f43aeace5de8f236b1f7 # cargo-hack
     - run: sudo apt-get update && sudo apt-get install protobuf-compiler
     - run: cargo hack check --rust-version --workspace --all-targets --ignore-private --all-features
@@ -164,7 +164,7 @@ jobs:
       RUSTFLAGS: '-D warnings -F unsafe-code'
 
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - name: update llvm (macOS)
         if: ${{ matrix.os  == 'macos-15-intel' }}
         run: brew install llvm && echo "/usr/local/opt/llvm/bin" >> $GITHUB_PATH
