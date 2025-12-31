@@ -195,6 +195,7 @@ impl<S: Solver> SymCompiler<S> {
                 .encode(asserts.iter())
                 .await
                 .map_err(Error::EncodeError)?;
+            let encoder = encoder.finalize(); // drops borrows of `self.solver.smtlib_input()`, so that we can run `self.solver.check_sat()`
             let id_maps = IdMaps::from_encoder(&encoder);
             match self.solver.check_sat().await? {
                 Decision::Unsat => Ok(None),
