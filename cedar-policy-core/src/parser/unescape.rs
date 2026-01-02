@@ -18,7 +18,7 @@ use crate::ast::PatternElem;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
-use rustc_lexer::unescape::{unescape_str, EscapeError};
+use rustc_literal_escaper::{unescape_str, EscapeError};
 use smol_str::{SmolStr, SmolStrBuilder};
 use std::ops::Range;
 use thiserror::Error;
@@ -27,13 +27,15 @@ use thiserror::Error;
 pub fn to_unescaped_string(s: &str) -> Result<SmolStr, NonEmpty<UnescapeError>> {
     let mut unescaped_str = SmolStrBuilder::new();
     let mut errs = Vec::new();
-    let mut callback = |range, r| match r {
+    let mut callback = |range, r: Result<char, EscapeError>| match r {
         Ok(c) => unescaped_str.push(c),
-        Err(err) => errs.push(UnescapeError {
+        // `EscapeError` includes two not-fatal warnings: `UnskippedWhitespaceWarning` and `MultipleSkippedLinesWarning`
+        Err(err) if err.is_fatal() => errs.push(UnescapeError {
             err,
             input: s.to_owned(),
             range,
         }),
+        Err(_) => (),
     };
     unescape_str(s, &mut callback);
     if let Some((head, tails)) = errs.split_first() {
@@ -121,7 +123,9 @@ fn clone_escape_error(e: &EscapeError) -> EscapeError {
         EscapeError::OutOfRangeUnicodeEscape => EscapeError::OutOfRangeUnicodeEscape,
         EscapeError::UnicodeEscapeInByte => EscapeError::UnicodeEscapeInByte,
         EscapeError::NonAsciiCharInByte => EscapeError::NonAsciiCharInByte,
-        EscapeError::NonAsciiCharInByteString => EscapeError::NonAsciiCharInByteString,
+        EscapeError::NulInCStr => EscapeError::NulInCStr,
+        EscapeError::UnskippedWhitespaceWarning => EscapeError::UnskippedWhitespaceWarning,
+        EscapeError::MultipleSkippedLinesWarning => EscapeError::MultipleSkippedLinesWarning,
     }
 }
 
