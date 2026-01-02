@@ -50,7 +50,7 @@ type Result<T> = std::result::Result<T, CompileError>;
 fn compile_prim(p: &Prim, es: &SymEntities) -> Result<Term> {
     match p {
         Prim::Bool(b) => Ok(some_of((*b).into())),
-        Prim::Long(i) => Ok(some_of(BitVec::of_i128(64, i128::from(*i))?.into())),
+        Prim::Long(i) => Ok(some_of(BitVec::of_i128(SIXTY_FOUR, i128::from(*i)).into())),
         Prim::String(s) => Ok(some_of(s.clone().into())),
         Prim::EntityUID(uid) => {
             let uid = core_uid_into_uid(uid);
@@ -99,7 +99,7 @@ fn compile_var(v: Var, req: &SymRequest) -> Result<Term> {
 fn compile_app1(op1: UnaryOp, t: Term) -> Result<Term> {
     match (op1, t.type_of()) {
         (UnaryOp::Not, TermType::Bool) => Ok(some_of(factory::not(t))),
-        (UnaryOp::Neg, TermType::Bitvec { n: 64 }) => Ok(factory::if_false(
+        (UnaryOp::Neg, TermType::Bitvec { n: SIXTY_FOUR }) => Ok(factory::if_false(
             factory::bvnego(t.clone()),
             factory::bvneg(t),
         )),
@@ -215,7 +215,9 @@ pub fn compile_app2(op2: BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Resu
                 Ok(some_of(false.into()))
             }
         }
-        (Less, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(some_of(factory::bvslt(t1, t2))),
+        (Less, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
+            Ok(some_of(factory::bvslt(t1, t2)))
+        }
         (Less, Ext { xty: DateTime }, Ext { xty: DateTime }) => Ok(some_of(factory::bvslt(
             factory::ext_datetime_val(t1),
             factory::ext_datetime_val(t2),
@@ -224,7 +226,9 @@ pub fn compile_app2(op2: BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Resu
             factory::ext_duration_val(t1),
             factory::ext_duration_val(t2),
         ))),
-        (LessEq, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(some_of(factory::bvsle(t1, t2))),
+        (LessEq, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
+            Ok(some_of(factory::bvsle(t1, t2)))
+        }
         (LessEq, Ext { xty: DateTime }, Ext { xty: DateTime }) => Ok(some_of(factory::bvsle(
             factory::ext_datetime_val(t1),
             factory::ext_datetime_val(t2),
@@ -233,15 +237,15 @@ pub fn compile_app2(op2: BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Resu
             factory::ext_duration_val(t1),
             factory::ext_duration_val(t2),
         ))),
-        (Add, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(factory::if_false(
+        (Add, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => Ok(factory::if_false(
             factory::bvsaddo(t1.clone(), t2.clone()),
             factory::bvadd(t1, t2),
         )),
-        (Sub, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(factory::if_false(
+        (Sub, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => Ok(factory::if_false(
             factory::bvssubo(t1.clone(), t2.clone()),
             factory::bvsub(t1, t2),
         )),
-        (Mul, Bitvec { n: 64 }, Bitvec { n: 64 }) => Ok(factory::if_false(
+        (Mul, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => Ok(factory::if_false(
             factory::bvsmulo(t1.clone(), t2.clone()),
             factory::bvmul(t1, t2),
         )),

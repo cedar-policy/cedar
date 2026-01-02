@@ -89,7 +89,7 @@ pub enum Op {
     Bvssubo,
     /// Bit-vector signed multiplication overflow predicate.
     Bvsmulo,
-    ZeroExtend(Width),
+    ZeroExtend(u32), // allowed to be 0
     //   ---------- CVC theory of finite sets (`FS`) ----------
     SetMember,
     SetSubset,
@@ -134,7 +134,7 @@ impl ExtOp {
                     xty: ExtType::Decimal,
                 }] =>
             {
-                Some(TermType::Bitvec { n: 64 })
+                Some(TermType::Bitvec { n: SIXTY_FOUR })
             }
             ExtOp::IpaddrIsV4
                 if l == vec![TermType::Ext {
@@ -148,7 +148,7 @@ impl ExtOp {
                     xty: ExtType::IpAddr,
                 }] =>
             {
-                Some(TermType::Bitvec { n: 32 })
+                Some(TermType::Bitvec { n: THIRTY_TWO })
             }
             ExtOp::IpaddrPrefixV4
                 if l == vec![TermType::Ext {
@@ -156,7 +156,7 @@ impl ExtOp {
                 }] =>
             {
                 Some(TermType::Option {
-                    ty: Arc::new(TermType::Bitvec { n: 5 }),
+                    ty: Arc::new(TermType::Bitvec { n: FIVE }),
                 })
             }
             ExtOp::IpaddrAddrV6
@@ -164,16 +164,18 @@ impl ExtOp {
                     xty: ExtType::IpAddr,
                 }] =>
             {
-                Some(TermType::Bitvec { n: 128 })
+                Some(TermType::Bitvec {
+                    n: HUNDRED_TWENTY_EIGHT,
+                })
             }
             ExtOp::DatetimeVal
                 if l == vec![TermType::Ext {
                     xty: ExtType::DateTime,
                 }] =>
             {
-                Some(TermType::Bitvec { n: 64 })
+                Some(TermType::Bitvec { n: SIXTY_FOUR })
             }
-            ExtOp::DatetimeOfBitVec if l == vec![TermType::Bitvec { n: 64 }] => {
+            ExtOp::DatetimeOfBitVec if l == vec![TermType::Bitvec { n: SIXTY_FOUR }] => {
                 Some(TermType::Ext {
                     xty: ExtType::DateTime,
                 })
@@ -183,9 +185,9 @@ impl ExtOp {
                     xty: ExtType::Duration,
                 }] =>
             {
-                Some(TermType::Bitvec { n: 64 })
+                Some(TermType::Bitvec { n: SIXTY_FOUR })
             }
-            ExtOp::DurationOfBitVec if l == vec![TermType::Bitvec { n: 64 }] => {
+            ExtOp::DurationOfBitVec if l == vec![TermType::Bitvec { n: SIXTY_FOUR }] => {
                 Some(TermType::Ext {
                     xty: ExtType::Duration,
                 })
@@ -198,6 +200,10 @@ impl ExtOp {
 impl Op {
     /// Returns the output type of an operator when applied
     /// to terms of the given types.
+    ///
+    /// Panics if any operation would construct a bitvector whose length exceeds u32::MAX.
+    /// As of this writing, we shouldn't ever construct any bitvector longer than 128,
+    /// which is an extremely long way from u32::MAX.
     #[expect(clippy::cognitive_complexity, reason = "corresponds to the Lean")]
     pub fn type_of(self, l: Vec<TermType>) -> Option<TermType> {
         use TermType::{Bitvec, Bool};
@@ -294,8 +300,14 @@ impl Op {
                 clippy::indexing_slicing,
                 reason = "List of length 1 should not error when indexed by 0"
             )]
+            #[expect(
+                clippy::expect_used,
+                reason = "Function is documented to panic if any operation would construct a bitvector of length exceeding u32::MAX"
+            )]
             Op::ZeroExtend(m) if l.len() == 1 => match l[0].clone() {
-                Bitvec { n } => Some(Bitvec { n: (n + m) }),
+                Bitvec { n } => Some(Bitvec {
+                    n: n.checked_add(m).expect("width will not overflow u32"),
+                }),
                 _ => None,
             },
             #[expect(

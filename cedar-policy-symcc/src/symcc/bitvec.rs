@@ -42,9 +42,6 @@ pub enum BitVecError {
     /// Extract out of bounds.
     #[error("extract out of bounds")]
     ExtractOutOfBounds,
-    /// Attempting to create a bit-vector with zero width.
-    #[error("cannot create a bit-vector with zero width")]
-    ZeroWidthBitVec,
     /// Mismatched bit-vector widths in various operations.
     #[error("mismatched bit-vector widths in {0}")]
     MismatchedWidths(String),
@@ -57,39 +54,49 @@ type Result<T> = std::result::Result<T, BitVecError>;
 
 impl BitVec {
     /// Converts an (unsigned) [`Nat`] into a [`BitVec`] of the given width.
-    pub fn of_nat(width: Width, v: Nat) -> Result<Self> {
+    ///
+    /// Silently wraps if `v` does not fit.
+    pub fn of_nat(width: Width, v: Nat) -> Self {
         BitVec::new(width, v)
     }
 
     /// Converts a (signed) [`Int`] into a [`BitVec`] of the given width.
-    pub fn of_int(width: Width, v: Int) -> Result<Self> {
+    ///
+    /// Silently wraps if `v` does not fit.
+    pub fn of_int(width: Width, v: Int) -> Self {
         if v >= BigInt::ZERO {
             #[expect(
                 clippy::unwrap_used,
-                reason = "to_biguint only panicks if the value is negative so unwrap is safe here."
+                reason = "already checked that `v` is nonnegative, so `to_biguint()` will return `Some`."
             )]
             BitVec::new(width, v.to_biguint().unwrap())
         } else {
             // Do 2's complement encoding for the given bit-width.
             #[expect(
                 clippy::unwrap_used,
-                reason = "Ssafe because -v is guaranteed to be positive now."
+                reason = "Safe because -v is guaranteed to be positive now."
             )]
-            let pos = BitVec::new(width, (-v).to_biguint().unwrap())?;
-            Ok(BitVec::add(
-                &pos.not(),
-                &BitVec::of_nat(width, BigUint::from(1u128))?,
-            )?)
+            let pos = BitVec::new(width, (-v).to_biguint().unwrap());
+            #[expect(
+                clippy::expect_used,
+                reason = "Both arguments have width equal to `width`"
+            )]
+            BitVec::add(&pos.not(), &BitVec::of_nat(width, BigUint::from(1u128)))
+                .expect("both arguments have width equal to `width`")
         }
     }
 
     /// Converts a [`u128`] into a [`BitVec`] of the given width.
-    pub fn of_u128(width: Width, val: u128) -> Result<Self> {
+    ///
+    /// Silently wraps if `val` does not fit.
+    pub fn of_u128(width: Width, val: u128) -> Self {
         BitVec::of_nat(width, BigUint::from(val))
     }
 
     /// Converts an [`i128`] into a [`BitVec`] of the given width.
-    pub fn of_i128(width: Width, val: i128) -> Result<Self> {
+    ///
+    /// Silently wraps if `val` does not fit.
+    pub fn of_i128(width: Width, val: i128) -> Self {
         BitVec::of_int(width, BigInt::from(val))
     }
 
@@ -106,7 +113,7 @@ impl BitVec {
     /// Interprets a [`BitVec`] as an [`Int`].
     pub fn to_int(&self) -> Int {
         let sign_bit = self.msb();
-        if self.width < 2 {
+        if self.width.get() < 2 {
             if sign_bit {
                 BigInt::from(-1)
             } else {
@@ -115,11 +122,8 @@ impl BitVec {
         } else {
             // extract_bits follows the SMT-LIB semantics of returning bits from [i:j].
             // Val returns the 2's complement value without the sign bit.
-            #[expect(
-                clippy::unwrap_used,
-                reason = "If condition ensures extract is within bounds."
-            )]
-            let val = self.extract_bits(0, self.width - 2).unwrap();
+            #[expect(clippy::unwrap_used, reason = "Already checked that width is not < 2")]
+            let val = self.extract_bits(0, self.width.get() - 2).unwrap();
             #[expect(
                 clippy::unwrap_used,
                 reason = "The implementation of BigUint::to_bigint always returns Some"
@@ -132,47 +136,60 @@ impl BitVec {
                     clippy::unwrap_used,
                     reason = "The implementation of BigUint::to_bigint always returns Some"
                 )]
-                let res = -1 * BigUint::to_bigint(&TWO.pow(self.width - 1)).unwrap() + val_bigint;
+                let res =
+                    -1 * BigUint::to_bigint(&TWO.pow(self.width.get() - 1)).unwrap() + val_bigint;
                 res
             }
         }
     }
 
     /// Returns an integer representing the extracted bits from low to high, inclusive.
-    pub fn extract_bits(&self, low: Width, high: Width) -> Result<Self> {
-        if high >= self.width || low > high {
-            Err(BitVecError::ExtractOutOfBounds)
-        } else {
+    ///
+    /// `low` and/or `high` may be 0 without causing errors. However, we must
+    /// have `low <= high < self.width`, else we'll get `Err` (not panic).
+    pub fn extract_bits(&self, low: u32, high: u32) -> Result<Self> {
+        if low <= high && high < self.width.get() {
             let rem = &self.v % TWO.pow(high + 1);
             let quotient = rem / TWO.pow(low);
-            BitVec::of_nat(high - low + 1, quotient)
+            #[expect(
+                clippy::expect_used,
+                reason = "Because we add 1, the value cannot be 0"
+            )]
+            Ok(BitVec::of_nat(
+                Width::new(high - low + 1).expect("because we add 1, the value cannot be 0"),
+                quotient,
+            ))
+        } else {
+            Err(BitVecError::ExtractOutOfBounds)
         }
     }
 
     //// Helper functions
 
-    fn new(width: Width, val: Nat) -> Result<Self> {
-        if width == 0 {
-            Err(BitVecError::ZeroWidthBitVec)
-        } else {
-            let v = val % TWO.pow(width);
-            Ok(BitVec { width, v })
-        }
+    /// Synonym for `of_nat()`
+    fn new(width: Width, val: Nat) -> Self {
+        // Unlike in Lean, we do not need to check if `width` is 0 because `width` is a `NonZeroU32` and thus cannot be 0 by construction
+        let v = val % TWO.pow(width.get());
+        BitVec { width, v }
     }
 
-    // Returns a bit-vector with all bits set to 1 of the given width
-    fn all_ones(width: Width) -> Result<Self> {
-        let all_ones = TWO.pow(width + 1) - 1u32;
+    /// Returns a bit-vector with all bits set to 1 of the given width
+    fn all_ones(width: Width) -> Self {
+        let all_ones = TWO.pow(width.get() + 1) - 1u32;
         BitVec::of_nat(width, all_ones)
     }
 
-    #[expect(
-        clippy::unwrap_used,
-        reason = "BitVec constructors enforce the invariant that width is always > 0."
-    )]
-    // Returns whether the most significant bit is set
+    /// Returns whether the most significant bit is set
     fn msb(&self) -> bool {
-        self.extract_bits(self.width - 1, self.width - 1).unwrap().v != BigUint::ZERO
+        #[expect(
+            clippy::unwrap_used,
+            reason = "these arguments to extract_bits must always satisfy low <= high < self.width. note that self.width is a NonZeroU32 and thus cannot be 0"
+        )]
+        let bit = self
+            .extract_bits(self.width.get() - 1, self.width.get() - 1)
+            .unwrap()
+            .v;
+        bit != BigUint::ZERO
     }
 
     /// Returns whether the bit-vector is zero.
@@ -189,35 +206,33 @@ impl BitVec {
         self.width
     }
 
-    /// Returns the minimum signed value that fits in the given bit-width.
-    pub fn signed_min(n: Width) -> Result<Int> {
-        if n == 0 {
-            Err(BitVecError::ZeroWidthBitVec)
-        } else {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "The implementation of BigUint::to_bigint always returns Some"
-            )]
-            Ok(-(BigUint::to_bigint(&TWO.pow(n - 1)).unwrap()))
-        }
+    /// Returns (as Int) the minimum signed value that fits in the given bit-width.
+    ///
+    /// Compare to `int_min()`, which returns the minimum signed value as a `BitVec`.
+    pub fn signed_min(n: Width) -> Int {
+        // Unlike in Lean, we do not need to check if `width` is 0 because `width` is a `NonZeroU32` and thus cannot be 0 by construction
+        #[expect(
+            clippy::unwrap_used,
+            reason = "The implementation of BigUint::to_bigint always returns Some"
+        )]
+        let two_to_n_minus_1 = BigUint::to_bigint(&TWO.pow(n.get() - 1)).unwrap();
+        -two_to_n_minus_1
     }
 
     /// Returns the maximum signed value that fits in the given bit-width.
-    pub fn signed_max(n: Width) -> Result<Int> {
-        if n == 0 {
-            Err(BitVecError::ZeroWidthBitVec)
-        } else {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "The implementation of BigUint::to_bigint always returns Some"
-            )]
-            Ok(BigUint::to_bigint(&TWO.pow(n - 1)).unwrap() - 1)
-        }
+    pub fn signed_max(n: Width) -> Int {
+        // Unlike in Lean, we do not need to check if `width` is 0 because `width` is a `NonZeroU32` and thus cannot be 0 by construction
+        #[expect(
+            clippy::unwrap_used,
+            reason = "The implementation of BigUint::to_bigint always returns Some"
+        )]
+        let two_to_n_minus_1 = BigUint::to_bigint(&TWO.pow(n.get() - 1)).unwrap();
+        two_to_n_minus_1 - 1
     }
 
     /// Checks if the given [`Int`] fits in the bit-width.
-    pub fn overflows(n: Width, i: &Int) -> Result<bool> {
-        Ok(i < &BitVec::signed_min(n)? || i > &BitVec::signed_max(n)?)
+    pub fn overflows(n: Width, i: &Int) -> bool {
+        i < &BitVec::signed_min(n) || i > &BitVec::signed_max(n)
     }
 
     ////
@@ -226,21 +241,12 @@ impl BitVec {
 
     /// Bitwise not.
     pub fn not(&self) -> Self {
-        #[expect(clippy::unwrap_used, reason = "`self.width > 0` by invariant")]
-        BitVec::of_nat(
-            self.width,
-            &self.v ^ BitVec::all_ones(self.width).unwrap().v,
-        )
-        .unwrap()
+        BitVec::of_nat(self.width, &self.v ^ BitVec::all_ones(self.width).v)
     }
 
     /// Bit-vector negation.
     pub fn neg(&self) -> Self {
-        #[expect(
-            clippy::unwrap_used,
-            reason = "BitVec construction cannot fail: bitwidth is non-zero by invariant."
-        )]
-        let one = BitVec::of_u128(self.width, 1).unwrap();
+        let one = BitVec::of_u128(self.width, 1);
         #[expect(
             clippy::unwrap_used,
             reason = "`self.not()` and `one` have width equal to `self.width`"
@@ -249,8 +255,10 @@ impl BitVec {
     }
 
     /// Minimum signed value of the given bit-width, encoded as a [`BitVec`].
-    pub fn int_min(width: Width) -> Result<Self> {
-        BitVec::of_nat(width, TWO.pow(width - 1))
+    ///
+    /// Compare to `signed_min()`, which returns the minimum signed value as an `Int`.
+    pub fn int_min(width: Width) -> Self {
+        BitVec::of_nat(width, TWO.pow(width.get() - 1))
     }
 
     /// Bit-vector signed less-than.
@@ -290,15 +298,21 @@ impl BitVec {
     }
 
     /// Bit-vector addition.
+    ///
+    /// Only returns `Err` if the `lhs` and `rhs` widths mismatch.
+    /// In particular, overflow is not an `Err`.
     pub fn add(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             Err(BitVecError::MismatchedWidths("add".into()))
         } else {
-            BitVec::of_nat(lhs.width, &lhs.v + &rhs.v)
+            Ok(BitVec::of_nat(lhs.width, &lhs.v + &rhs.v))
         }
     }
 
     /// Bit-vector subtraction.
+    ///
+    /// Only returns `Err` if the `lhs` and `rhs` widths mismatch.
+    /// In particular, overflow is not an `Err`.
     pub fn sub(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             Err(BitVecError::MismatchedWidths("sub".into()))
@@ -308,31 +322,40 @@ impl BitVec {
     }
 
     /// Bit-vector multiplication.
+    ///
+    /// Only returns `Err` if the `lhs` and `rhs` widths mismatch.
+    /// In particular, overflow is not an `Err`.
     pub fn mul(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             Err(BitVecError::MismatchedWidths("mul".into()))
         } else {
-            BitVec::of_nat(lhs.width, &lhs.v * &rhs.v)
+            Ok(BitVec::of_nat(lhs.width, &lhs.v * &rhs.v))
         }
     }
 
     /// Bit-vector unsigned division.
     ///
     /// Semantics to match SMT bit-vector theory here: <https://smt-lib.org/theories-FixedSizeBitVectors.shtml>
+    ///
+    /// Only returns `Err` if the `lhs` and `rhs` widths mismatch.
+    /// In particular, overflow is not an `Err`.
     pub fn udiv(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("udiv".into()));
         };
         if rhs.v == BigUint::ZERO {
-            BitVec::all_ones(lhs.width)
+            Ok(BitVec::all_ones(lhs.width))
         } else {
-            BitVec::of_nat(lhs.width, &lhs.v / &rhs.v)
+            Ok(BitVec::of_nat(lhs.width, &lhs.v / &rhs.v))
         }
     }
 
     /// Bit-vector unsigned remainder.
     ///
     /// Semantics to match SMT bit-vector theory here: <https://smt-lib.org/theories-FixedSizeBitVectors.shtml>
+    ///
+    /// Only returns `Err` if the `lhs` and `rhs` widths mismatch.
+    /// In particular, overflow is not an `Err`.
     pub fn urem(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("urem".into()));
@@ -340,13 +363,16 @@ impl BitVec {
         if rhs.v == BigUint::ZERO {
             Ok(lhs.clone())
         } else {
-            BitVec::of_nat(lhs.width, &lhs.v % &rhs.v)
+            Ok(BitVec::of_nat(lhs.width, &lhs.v % &rhs.v))
         }
     }
 
     /// Bit-vector signed division.
     ///
     /// Semantics to match SMT bit-vector logic here: <https://smt-lib.org/logics-all.shtml>
+    ///
+    /// Only returns `Err` if the `lhs` and `rhs` widths mismatch.
+    /// In particular, overflow is not an `Err`.
     pub fn sdiv(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("sdiv".into()));
@@ -368,6 +394,9 @@ impl BitVec {
     /// Bit-vector signed remainder.
     ///
     /// Semantics to match SMT bit-vector logic here: <https://smt-lib.org/logics-all.shtml>
+    ///
+    /// Only returns `Err` if the `lhs` and `rhs` widths mismatch.
+    /// In particular, overflow is not an `Err`.
     pub fn srem(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("srem".into()));
@@ -392,6 +421,9 @@ impl BitVec {
     /// Bit-vector signed modulus.
     ///
     /// Semantics to match SMT bit-vector logic here: <https://smt-lib.org/logics-all.shtml>
+    ///
+    /// Only returns `Err` if the `lhs` and `rhs` widths mismatch.
+    /// In particular, overflow is not an `Err`.
     pub fn smod(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("smod".into()));
@@ -416,30 +448,47 @@ impl BitVec {
     }
 
     /// Bit-vector left shift.
+    ///
+    /// Returns `Err` if the `lhs` and `rhs` widths mismatch, or if the shift
+    /// amount does not fit in a `u32`.
     pub fn shl(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("shl".into()));
         };
         let shift_amount = rhs.v.to_u32().ok_or(BitVecError::ShiftAmountTooLarge)?;
         let val = &lhs.v * TWO.pow(shift_amount);
-        BitVec::of_nat(lhs.width, val)
+        Ok(BitVec::of_nat(lhs.width, val))
     }
 
     /// Bit-vector logical right shift.
+    ///
+    /// Returns `Err` if the `lhs` and `rhs` widths mismatch, or if the shift
+    /// amount does not fit in a `u32`.
     pub fn lshr(lhs: &Self, rhs: &Self) -> Result<Self> {
         if lhs.width != rhs.width {
             return Err(BitVecError::MismatchedWidths("lshr".into()));
         };
         let shift_amount = rhs.v.to_u32().ok_or(BitVecError::ShiftAmountTooLarge)?;
         let val = &lhs.v / TWO.pow(shift_amount);
-        BitVec::of_nat(lhs.width, val)
+        Ok(BitVec::of_nat(lhs.width, val))
     }
 
     /// Bit-vector concatenation.
+    ///
+    /// Panics if the total width exceeds u32::MAX.
+    /// As of this writing, we shouldn't ever construct any bitvector longer than 128,
+    /// which is an extremely long way from u32::MAX.
     pub fn concat(lhs: &Self, rhs: &Self) -> Result<Self> {
-        let width = lhs.width + rhs.width;
-        let new_val = (&lhs.v << rhs.width()) + &rhs.v;
-        BitVec::of_nat(width, new_val)
+        #[expect(
+            clippy::expect_used,
+            reason = "Function is documented to panic if total width exceeds u32::MAX"
+        )]
+        let width = lhs
+            .width
+            .checked_add(rhs.width.get())
+            .expect("width will not overflow u32");
+        let new_val = (&lhs.v << rhs.width().get()) + &rhs.v;
+        Ok(BitVec::of_nat(width, new_val))
     }
 
     /// Bit-vector unsigned (zero) extension.
@@ -448,7 +497,7 @@ impl BitVec {
     /// bit-vector to match n (and not the SMT-LIB implementation that zero extends
     /// the bit-vector by n bits). If n is less than the current bit-width it will
     /// truncate
-    pub fn zero_extend(bv: &Self, n: Width) -> Result<Self> {
+    pub fn zero_extend(bv: &Self, n: Width) -> Self {
         BitVec::of_nat(n, bv.to_nat())
     }
 }
@@ -471,21 +520,31 @@ mod tests {
 
         // Parse the binary string into a BigInt
         let val = BigUint::parse_bytes(s.as_bytes(), 2).unwrap();
-        BitVec::of_nat(Width::try_from(s.len()).unwrap(), val).unwrap()
+        BitVec::of_nat(
+            Width::new(s.len().try_into().unwrap())
+                .expect("already checked that the string length is not 0"),
+            val,
+        )
     }
 
+    /// Panics if `width` is 0
+    #[track_caller]
     fn bitvec(width: u32, val: u128) -> BitVec {
-        BitVec::of_u128(width, val).unwrap()
+        BitVec::of_u128(Width::new(width).unwrap(), val)
     }
 
+    /// Panics if `width` is 0
+    #[track_caller]
     fn bitvec_i(width: u32, val: i128) -> BitVec {
-        BitVec::of_i128(width, val).unwrap()
+        BitVec::of_i128(Width::new(width).unwrap(), val)
     }
 
+    #[track_caller]
     fn assert_eq_int(rhs: BigInt, lhs: i32) {
         assert_eq!(rhs, BigInt::from(lhs));
     }
 
+    #[track_caller]
     fn assert_eq_nat(rhs: BigUint, lhs: u32) {
         assert_eq!(rhs, BigUint::from(lhs));
     }
@@ -494,7 +553,7 @@ mod tests {
     fn test_from_bin_str() {
         // Test basic binary string conversion
         let bv = from_bin_str("0010");
-        assert_eq!(bv.width(), 4);
+        assert_eq!(bv.width().get(), 4);
         assert_eq_nat(bv.to_nat(), 2);
 
         // Test different values
@@ -508,27 +567,27 @@ mod tests {
     fn test_constructors() {
         // Test regular constructor
         let bv1 = bitvec(4, 2);
-        assert_eq!(bv1.width(), 4);
+        assert_eq!(bv1.width().get(), 4);
         assert_eq_nat(bv1.to_nat(), 2);
 
         // Test value overflow wrapping
         let bv2 = bitvec(3, 10); // 10 in binary is 1010, truncated to 3 bits: 010
-        assert_eq!(bv2.width(), 3);
+        assert_eq!(bv2.width().get(), 3);
         assert_eq_nat(bv2.to_nat(), 2);
 
         // Test of_nat
         let bv3 = bitvec(5, 10);
-        assert_eq!(bv3.width(), 5);
+        assert_eq!(bv3.width().get(), 5);
         assert_eq_nat(bv3.to_nat(), 10);
 
         // Test of_int
         let bv4 = bitvec_i(6, -1); // -1 in two's complement 6-bit is 111111
-        assert_eq!(bv4.width(), 6);
+        assert_eq!(bv4.width().get(), 6);
         // A negative number will be represented as its two's complement form
         assert_eq_nat(bv4.to_nat(), 63); // 111111 in binary is 63 as a natural number
         assert_eq_int(bv4.to_int(), -1); // 111111 in binary is -1 as a signed number
 
-        assert_eq!(bv4, BitVec::all_ones(bv4.width()).unwrap());
+        assert_eq!(bv4, BitVec::all_ones(bv4.width()));
     }
 
     #[test]
@@ -537,17 +596,17 @@ mod tests {
 
         // Extract middle bits
         let extracted = bv.extract_bits(1, 3).unwrap(); // Extract bits 1,2,3 (010)
-        assert_eq!(extracted.width(), 3);
+        assert_eq!(extracted.width().get(), 3);
         assert_eq_nat(extracted.to_nat(), 2);
 
         // Extract single bit
         let bit = bv.extract_bits(5, 5).unwrap(); // Extract the most significant bit
-        assert_eq!(bit.width(), 1);
+        assert_eq!(bit.width().get(), 1);
         assert_eq_nat(bit.to_nat(), 1);
 
         // Extract all bits
         let all = bv.extract_bits(0, 5).unwrap(); // Extract all bits
-        assert_eq!(all.width(), 6);
+        assert_eq!(all.width().get(), 6);
         assert_eq_nat(all.to_nat(), 53); // 110101 = 53
     }
 
@@ -793,11 +852,11 @@ mod tests {
         let bv2 = from_bin_str("11"); // 3
 
         let concat1 = BitVec::concat(&bv1, &bv2).unwrap(); // 10111 (binary) = 23
-        assert_eq!(concat1.width(), 5); // 3 + 2 = 5 bits
+        assert_eq!(concat1.width().get(), 5); // 3 + 2 = 5 bits
         assert_eq_nat(concat1.to_nat(), 23);
 
         let concat2 = BitVec::concat(&bv2, &bv1).unwrap(); // 11101 (binary) = 29
-        assert_eq!(concat2.width(), 5); // 2 + 3 = 5 bits
+        assert_eq!(concat2.width().get(), 5); // 2 + 3 = 5 bits
         assert_eq_nat(concat2.to_nat(), 29);
     }
 
@@ -806,31 +865,34 @@ mod tests {
         let bv = from_bin_str("101"); // 5
 
         // Extending to the same width should return the same value
-        let extended1 = BitVec::zero_extend(&bv, 3).unwrap();
-        assert_eq!(extended1.width(), 3);
+        let extended1 = BitVec::zero_extend(&bv, Width::new(3).unwrap());
+        assert_eq!(extended1.width().get(), 3);
         assert_eq_nat(extended1.to_nat(), 5);
 
         // Testing with a smaller width (allowed by implementation)
-        let extended2 = BitVec::zero_extend(&bv, 2).unwrap();
-        assert_eq!(extended2.width(), 2);
+        let extended2 = BitVec::zero_extend(&bv, Width::new(2).unwrap());
+        assert_eq!(extended2.width().get(), 2);
         assert_eq_nat(extended2.to_nat(), 1); // 101 truncated to 2 bits is 01 = 1
     }
 
     #[test]
     fn test_overflow() {
         // Test signed_min and signed_max
-        assert_eq!(BitVec::signed_min(4).unwrap(), BigInt::from(-8)); // -2^(4-1)
-        assert_eq!(BitVec::signed_max(4).unwrap(), BigInt::from(7)); // 2^(4-1) - 1
+        assert_eq!(BitVec::signed_min(Width::new(4).unwrap()), BigInt::from(-8)); // -2^(4-1)
+        assert_eq!(BitVec::signed_max(Width::new(4).unwrap()), BigInt::from(7)); // 2^(4-1) - 1
 
         // Test overflow detection
-        assert!(BitVec::overflows(4, &BigInt::from(8)).unwrap()); // 8 overflows 4-bit signed
-        assert!(BitVec::overflows(4, &BigInt::from(-9)).unwrap()); // -9 overflows 4-bit signed
-        assert!(!BitVec::overflows(4, &BigInt::from(7)).unwrap()); // 7 doesn't overflow
-        assert!(!BitVec::overflows(4, &BigInt::from(-8)).unwrap()); // -8 doesn't overflow
+        assert!(BitVec::overflows(Width::new(4).unwrap(), &BigInt::from(8))); // 8 overflows 4-bit signed
+        assert!(BitVec::overflows(Width::new(4).unwrap(), &BigInt::from(-9))); // -9 overflows 4-bit signed
+        assert!(!BitVec::overflows(Width::new(4).unwrap(), &BigInt::from(7))); // 7 doesn't overflow
+        assert!(!BitVec::overflows(
+            Width::new(4).unwrap(),
+            &BigInt::from(-8)
+        )); // -8 doesn't overflow
 
         // Test int_min
-        let min = BitVec::int_min(4).unwrap();
-        assert_eq!(min.width(), 4);
+        let min = BitVec::int_min(Width::new(4).unwrap());
+        assert_eq!(min.width().get(), 4);
         assert_eq_nat(min.to_nat(), 8); // -8 in 4-bit two's complement is 1000 (8)
     }
 }
