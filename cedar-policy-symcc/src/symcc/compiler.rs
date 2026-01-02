@@ -26,14 +26,11 @@
 
 use std::sync::Arc;
 
-use cedar_policy_core::ast::Var;
-use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp};
-
-use crate::ext::ExtError;
+use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp, Var};
 
 use super::bitvec::BitVec;
 use super::env::{SymEntities, SymEnv, SymRequest};
-use super::ext::Ext;
+use super::ext::{Ext, ExtError};
 use super::extfun;
 use super::factory::{
     self, if_all_some, if_some, is_some, ite, option_get, record_get, record_of, some_of,
@@ -45,7 +42,7 @@ use super::term::{Term, TermPrim};
 use super::term_type::TermType;
 use super::type_abbrevs::*;
 
-type Result<T> = std::result::Result<T, CompileError>;
+pub type Result<T> = std::result::Result<T, CompileError>;
 
 fn compile_prim(p: &Prim, es: &SymEntities) -> Result<Term> {
     match p {
@@ -136,9 +133,9 @@ fn compile_is(t: &Term, ety1: &EntityType) -> Result<Term> {
 /// types, to match validator behavior.  We can make this determination more often
 /// if needed. In general, we cannot decide if two terms of different set types are
 /// never equal because they could both evaluate to the empty set and would be
-/// considered equal under Cedar's dynamic semantics. Returns a type error if we
+/// considered equal under Cedar's dynamic semantics. Returns a type error if the
 /// types are unequal and not known to be always unequal.
-fn reducible_eq(ty1: &TermType, ty2: &TermType) -> Result<bool> {
+pub(crate) fn reducible_eq(ty1: &TermType, ty2: &TermType) -> Result<bool> {
     if ty1 == ty2 {
         Ok(true)
     } else if ty1.is_prim_type() && ty2.is_prim_type() {
@@ -162,10 +159,7 @@ pub fn compile_in_ent(t1: Term, t2: Term, ancs: Option<UnaryFunction>) -> Term {
 }
 
 pub fn compile_in_set(t: Term, ts: Term, ancs: Option<UnaryFunction>) -> Term {
-    let is_in1 = if (ts.type_of()
-        == TermType::Set {
-            ty: Arc::new(t.type_of()),
-        }) {
+    let is_in1 = if ts.type_of() == TermType::set_of(t.type_of()) {
         factory::set_member(t.clone(), ts.clone())
     } else {
         false.into()
@@ -444,9 +438,7 @@ pub fn compile_call0(
 
 // Use directly for encoding calls that can error
 pub fn compile_call1_error(xty: ExtType, enc: impl Fn(Term) -> Term, t1: Term) -> Result<Term> {
-    let ty = TermType::Option {
-        ty: Arc::new(TermType::Ext { xty }),
-    };
+    let ty = TermType::option_of(TermType::Ext { xty });
     if t1.type_of() == ty {
         Ok(if_some(t1.clone(), enc(option_get(t1))))
     } else {
@@ -468,12 +460,8 @@ pub fn compile_call2_error(
     t1: Term,
     t2: Term,
 ) -> Result<Term> {
-    let ty1 = TermType::Option {
-        ty: Arc::new(TermType::Ext { xty: xty1 }),
-    };
-    let ty2 = TermType::Option {
-        ty: Arc::new(TermType::Ext { xty: xty2 }),
-    };
+    let ty1 = TermType::option_of(TermType::Ext { xty: xty1 });
+    let ty2 = TermType::option_of(TermType::Ext { xty: xty2 });
     if t1.type_of() == ty1 && t2.type_of() == ty2 {
         Ok(if_some(
             t1.clone(),
@@ -497,7 +485,7 @@ pub fn compile_call2(
 
 /// Extract the first item from a `Vec`, consuming the `Vec`.
 /// Panics if there is less than one element.
-fn extract_first<T>(v: Vec<T>) -> T {
+pub(crate) fn extract_first<T>(v: Vec<T>) -> T {
     #[expect(
         clippy::unwrap_used,
         reason = "This function is only called from contexts where v has length >= 1"
@@ -507,7 +495,7 @@ fn extract_first<T>(v: Vec<T>) -> T {
 
 /// Extract the first two items from a `Vec`, consuming the `Vec`.
 /// Panics if there are less than two elements.
-fn extract_first2<T>(v: Vec<T>) -> (T, T) {
+pub(crate) fn extract_first2<T>(v: Vec<T>) -> (T, T) {
     let mut it = v.into_iter();
     #[expect(
         clippy::unwrap_used,

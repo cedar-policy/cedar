@@ -19,7 +19,7 @@ use cedar_policy_core::ast::{Policy, PolicySet};
 use crate::symcc::{
     compiler::compile,
     env::SymEnv,
-    factory::{and, eq, not, or, some_of},
+    factory::{and, any_true, eq, not, some_of},
     result::CompileError,
     term::Term,
 };
@@ -36,11 +36,6 @@ pub fn satisfied_with_effect(
     }
 }
 
-pub fn any_satisfied(terms: impl Iterator<Item = Term>) -> Term {
-    let satisfied = |t: Term| eq(t, some_of(Term::from(true)));
-    terms.fold(Term::from(false), |acc, t| or(acc, satisfied(t)))
-}
-
 pub fn satisfied_policies(
     effect: Effect,
     policies: &PolicySet,
@@ -49,9 +44,8 @@ pub fn satisfied_policies(
     let terms = policies
         .policies()
         .filter_map(|p| satisfied_with_effect(effect, p, env).transpose())
-        .collect::<Result<Vec<Term>, CompileError>>()?
-        .into_iter();
-    Ok(any_satisfied(terms))
+        .collect::<Result<Vec<Term>, CompileError>>()?;
+    Ok(any_true(|t: Term| eq(t, some_of(true.into())), terms))
 }
 
 pub fn is_authorized(policies: &PolicySet, env: &SymEnv) -> Result<Term, CompileError> {

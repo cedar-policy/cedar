@@ -13,7 +13,7 @@ Cedar Language Version: TBD
 - `matches_equivalent`, `matches_implies`, and `matches_disjoint` primitives
 for single policies (#2047)
 - `.effect()` for `CompiledPolicy` (#2047)
-- Performance optimization (#2073)
+- Performance optimizations (#2070, #2073)
 
 ## [0.2.0] - 2025-12-12
 Cedar Language Version: 4.4
