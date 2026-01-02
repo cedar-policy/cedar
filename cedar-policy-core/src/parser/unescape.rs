@@ -18,7 +18,7 @@ use crate::ast::PatternElem;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
-use rustc_lexer::unescape::{unescape_str, EscapeError};
+use rustc_literal_escaper::{unescape_str, EscapeError};
 use smol_str::{SmolStr, SmolStrBuilder};
 use std::ops::Range;
 use thiserror::Error;
@@ -27,13 +27,15 @@ use thiserror::Error;
 pub fn to_unescaped_string(s: &str) -> Result<SmolStr, NonEmpty<UnescapeError>> {
     let mut unescaped_str = SmolStrBuilder::new();
     let mut errs = Vec::new();
-    let mut callback = |range, r| match r {
+    let mut callback = |range, r: Result<char, EscapeError>| match r {
         Ok(c) => unescaped_str.push(c),
-        Err(err) => errs.push(UnescapeError {
+        // `EscapeError` includes two not-fatal warnings: `UnskippedWhitespaceWarning` and `MultipleSkippedLinesWarning`
+        Err(err) if err.is_fatal() => errs.push(UnescapeError {
             err,
             input: s.to_owned(),
             range,
         }),
+        Err(_) => (),
     };
     unescape_str(s, &mut callback);
     if let Some((head, tails)) = errs.split_first() {
@@ -61,7 +63,9 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, NonEmpty<UnescapeE
         {
             unescaped_str.push(PatternElem::Char('*'))
         }
-        Err(err) => errs.push(UnescapeError { err, input: s.to_owned(), range }),
+        // `EscapeError` includes two not-fatal warnings: `UnskippedWhitespaceWarning` and `MultipleSkippedLinesWarning`
+        Err(err) if err.is_fatal() => errs.push(UnescapeError { err, input: s.to_owned(), range }),
+        Err(_) => (),
     };
     unescape_str(s, &mut callback);
     if let Some((head, tails)) = errs.split_first() {
@@ -121,7 +125,9 @@ fn clone_escape_error(e: &EscapeError) -> EscapeError {
         EscapeError::OutOfRangeUnicodeEscape => EscapeError::OutOfRangeUnicodeEscape,
         EscapeError::UnicodeEscapeInByte => EscapeError::UnicodeEscapeInByte,
         EscapeError::NonAsciiCharInByte => EscapeError::NonAsciiCharInByte,
-        EscapeError::NonAsciiCharInByteString => EscapeError::NonAsciiCharInByteString,
+        EscapeError::NulInCStr => EscapeError::NulInCStr,
+        EscapeError::UnskippedWhitespaceWarning => EscapeError::UnskippedWhitespaceWarning,
+        EscapeError::MultipleSkippedLinesWarning => EscapeError::MultipleSkippedLinesWarning,
     }
 }
 
@@ -143,11 +149,13 @@ impl std::fmt::Display for UnescapeError {
 #[expect(clippy::indexing_slicing, reason = "testing")]
 mod test {
     use cool_asserts::assert_matches;
+    use rustc_literal_escaper::{unescape_str, EscapeError};
 
     use super::to_unescaped_string;
     use crate::ast;
     use crate::parser::err::{ParseError, ToASTErrorKind};
     use crate::parser::text_to_cst;
+    use crate::parser::unescape::to_pattern;
 
     #[test]
     fn test_string_escape() {
@@ -178,6 +186,48 @@ mod test {
         // invalid escapes
         let errs = to_unescaped_string(r"abc\*\bdef").expect_err("should be invalid escapes");
         assert_eq!(errs.len(), 2);
+    }
+
+    #[test]
+    fn multiple_skipped_warning() {
+        let str = r"lines\
+
+
+skipped";
+
+        let mut saw_warning = false;
+        unescape_str(str, |_, r: Result<char, EscapeError>| match r {
+            Err(EscapeError::MultipleSkippedLinesWarning) => {
+                saw_warning = true;
+            }
+            _ => (),
+        });
+        assert!(saw_warning, "test string should warning");
+
+        assert_eq!(
+            to_unescaped_string(str).expect("valid string"),
+            r"linesskipped"
+        );
+        to_pattern(str).unwrap();
+    }
+
+    #[test]
+    fn unskipped_whitespace_warning() {
+        let str = "unicode space\\\n\u{2001}\nnot skipped";
+        let mut saw_warning = false;
+        unescape_str(str, |_, r: Result<char, EscapeError>| match r {
+            Err(EscapeError::UnskippedWhitespaceWarning) => {
+                saw_warning = true;
+            }
+            _ => (),
+        });
+        assert!(saw_warning, "test string should trigger warning");
+
+        assert_eq!(
+            to_unescaped_string(str).expect("valid string"),
+            "unicode space\u{2001}\nnot skipped",
+        );
+        to_pattern(str).unwrap();
     }
 
     #[test]
