@@ -14,6 +14,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Added
+
+- `Entity::attrs()` and `Entity::tags()` to iterate over all attributes/tags of an `Entity` (#2084)
+
 ## [4.8.2] - 2025-12-09
 
 Cedar Language Version: 4.4
