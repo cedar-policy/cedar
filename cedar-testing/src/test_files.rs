@@ -35,6 +35,7 @@ fn corpus_test_folder() -> &'static Path {
 pub fn get_integration_tests() -> impl Iterator<Item = PathBuf> {
     let tests_folder = resolve_integration_test_path(integration_test_folder());
     // find all `*.json` files in the integration tests folder
+    #[expect(clippy::expect_used, reason = "test utility function")]
     WalkDir::new(&tests_folder)
         .into_iter()
         .map(|e| e.expect("failed to access file in tests").into_path())
@@ -54,10 +55,12 @@ pub fn get_corpus_tests(prefix: &str) -> impl Iterator<Item = PathBuf> + '_ {
     WalkDir::new(&tests_folder)
         .into_iter()
         .map(|e| {
+            #[expect(clippy::expect_used, reason = "test utility function")]
             e.expect("failed to access file in corpus_tests. Maybe you haven't unpacked `corpus-tests.tar.gz`")
                 .into_path()
         })
         .filter(move |p| {
+            #[expect(clippy::expect_used, reason = "test utility function")]
             let filename = p
                 .file_name()
                 .expect("didn't expect subdirectories in corpus-tests")
