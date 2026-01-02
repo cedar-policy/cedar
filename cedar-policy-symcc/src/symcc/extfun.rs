@@ -28,14 +28,6 @@
 //! See `compiler.rs` to see how the symbolic compiler uses this API. See also
 //! `factory.rs`.
 
-use crate::symcc::{
-    factory::{
-        bvmul, bvsaddo, bvsmulo, bvsrem, bvssubo, eq, ext_datetime_of_bitvec, ext_datetime_val,
-        ext_duration_of_bitvec, if_false, some_of,
-    },
-    type_abbrevs::{nat, Width},
-};
-
 use super::{
     bitvec::BitVec,
     ext::Ext,
@@ -43,11 +35,14 @@ use super::{
         IPNet, LOOP_BACK_CIDR_V4, LOOP_BACK_CIDR_V6, MULTICAST_CIDR_V4, MULTICAST_CIDR_V6,
     },
     factory::{
-        and, bvadd, bvlshr, bvsdiv, bvshl, bvsle, bvslt, bvsub, bvule, ext_decimal_val,
-        ext_duration_val, ext_ipaddr_addr_v4, ext_ipaddr_addr_v6, ext_ipaddr_is_v4,
-        ext_ipaddr_prefix_v4, ext_ipaddr_prefix_v6, is_none, ite, not, option_get, or, zero_extend,
+        and, bvadd, bvlshr, bvmul, bvsaddo, bvsdiv, bvshl, bvsle, bvslt, bvsmulo, bvsrem, bvssubo,
+        bvsub, bvule, eq, ext_datetime_of_bitvec, ext_datetime_val, ext_decimal_val,
+        ext_duration_of_bitvec, ext_duration_val, ext_ipaddr_addr_v4, ext_ipaddr_addr_v6,
+        ext_ipaddr_is_v4, ext_ipaddr_prefix_v4, ext_ipaddr_prefix_v6, if_false, is_none, ite, not,
+        option_get, or, some_of, zero_extend,
     },
     term::{Term, TermPrim},
+    type_abbrevs::*,
 };
 
 pub fn less_than(t1: Term, t2: Term) -> Term {
@@ -74,45 +69,47 @@ pub fn is_ipv6(t: Term) -> Term {
     not(is_ipv4(t))
 }
 
+/// Panics if `2^w` exceeds `u32::MAX`, i.e., if `w` exceeds 32. Currently, callers do not use `w` exceeding 7.
 pub fn subnet_width(w: Width, prefix: Term) -> Term {
-    let n = 2_u32.pow(w);
+    #[expect(
+        clippy::expect_used,
+        reason = "Function is documented to panic if 2^w exceeds u32::MAX"
+    )]
+    let n = TWO.checked_pow(w.get()).expect("will not exceed u32::MAX");
     ite(
         is_none(prefix.clone()),
-        #[expect(
-            clippy::unwrap_used,
-            reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
-        )]
-        BitVec::of_nat(n, nat(0)).unwrap().into(),
+        BitVec::of_nat(n, nat(0)).into(),
         bvsub(
-            #[expect(
-                clippy::unwrap_used,
-                reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
-            )]
-            BitVec::of_nat(n, nat(n)).unwrap().into(),
-            zero_extend(n - w, option_get(prefix)),
+            BitVec::of_nat(n, nat(n.get())).into(),
+            zero_extend(n.get() - w.get(), option_get(prefix)),
         ),
     )
 }
 
+/// Panics if `2^w` exceeds `u32::MAX`, i.e., if `w` exceeds 32. Currently, callers do not use `w` exceeding 7.
 pub fn range(w: Width, ip_addr: Term, prefix: Term) -> (Term, Term) {
-    let n = 2_u32.pow(w);
-    let width = subnet_width(w, prefix);
     #[expect(
-        clippy::unwrap_used,
-        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
+        clippy::expect_used,
+        reason = "Function is documented to panic if 2^w exceeds u32::MAX"
     )]
-    let one: Term = BitVec::of_nat(n, nat(1)).unwrap().into();
+    let n = TWO.checked_pow(w.get()).expect("will not exceed u32::MAX");
+    let width = subnet_width(w, prefix);
+    let one: Term = BitVec::of_nat(n, nat(1)).into();
     let lo = bvshl(bvlshr(ip_addr, width.clone()), width.clone());
     let hi = bvsub(bvadd(lo.clone(), bvshl(one.clone(), width)), one);
     (lo, hi)
 }
 
 pub fn range_v4(t: Term) -> (Term, Term) {
-    range(5, ext_ipaddr_addr_v4(t.clone()), ext_ipaddr_prefix_v4(t))
+    range(FIVE, ext_ipaddr_addr_v4(t.clone()), ext_ipaddr_prefix_v4(t))
 }
 
 pub fn range_v6(t: Term) -> (Term, Term) {
-    range(7, ext_ipaddr_addr_v6(t.clone()), ext_ipaddr_prefix_v6(t))
+    range(
+        SEVEN,
+        ext_ipaddr_addr_v6(t.clone()),
+        ext_ipaddr_prefix_v6(t),
+    )
 }
 
 pub fn in_range(range: impl Fn(Term) -> (Term, Term), t1: Term, t2: Term) -> Term {
@@ -199,21 +196,9 @@ pub fn duration_since(dt1: Term, dt2: Term) -> Term {
 }
 
 pub fn to_date(dt: Term) -> Term {
-    #[expect(
-        clippy::unwrap_used,
-        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
-    )]
-    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0).unwrap()));
-    #[expect(
-        clippy::unwrap_used,
-        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
-    )]
-    let one = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 1).unwrap()));
-    #[expect(
-        clippy::unwrap_used,
-        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
-    )]
-    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000).unwrap()));
+    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(SIXTY_FOUR, 0)));
+    let one = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(SIXTY_FOUR, 1)));
+    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(SIXTY_FOUR, 86400000)));
     let dt_val = ext_datetime_val(dt.clone());
     ite(
         bvsle(zero.clone(), dt_val.clone()),
@@ -239,16 +224,8 @@ pub fn to_date(dt: Term) -> Term {
 }
 
 pub fn to_time(dt: Term) -> Term {
-    #[expect(
-        clippy::unwrap_used,
-        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
-    )]
-    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 0).unwrap()));
-    #[expect(
-        clippy::unwrap_used,
-        reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
-    )]
-    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(64, 86400000).unwrap()));
+    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(SIXTY_FOUR, 0)));
+    let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(SIXTY_FOUR, 86400000)));
     let dt_val = ext_datetime_val(dt);
     ext_duration_of_bitvec(ite(
         bvsle(zero.clone(), dt_val.clone()),

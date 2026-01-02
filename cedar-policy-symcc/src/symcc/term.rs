@@ -107,14 +107,7 @@ impl From<bool> for Term {
 
 impl From<i64> for Term {
     fn from(i: i64) -> Self {
-        #[expect(
-            clippy::expect_used,
-            reason = "Cannot panic because bitwidth passed in is non-zero."
-        )]
-        Term::Prim(TermPrim::Bitvec(
-            BitVec::of_int(64, i.into())
-                .expect("Cannot panic because bitwidth passed in is non-zero."),
-        ))
+        Term::Prim(TermPrim::Bitvec(BitVec::of_int(SIXTY_FOUR, i.into())))
     }
 }
 

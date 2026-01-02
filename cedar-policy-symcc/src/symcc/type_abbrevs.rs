@@ -19,7 +19,7 @@
 use num_bigint::{BigInt, BigUint};
 use ref_cast::RefCast;
 use smol_str::SmolStr;
-use std::{cmp::Ordering, ops::Deref};
+use std::{cmp::Ordering, num::NonZeroU32, ops::Deref};
 
 #[expect(missing_docs, reason = "existing code")]
 pub type EntityType = cedar_policy::EntityTypeName;
@@ -36,8 +36,32 @@ pub type Prim = cedar_policy_core::ast::Literal;
 pub type Nat = BigUint;
 #[expect(missing_docs, reason = "existing code")]
 pub type Int = BigInt;
-#[expect(missing_docs, reason = "existing code")]
-pub type Width = u32;
+/// In our code, widths are not allowed to be 0.
+///
+/// In Lean, we do not enforce this at the type level, as our proofs ensure things all work properly.
+/// Here in Rust, we enforce this at the type level using the standard library's `NonZeroU32`.
+pub type Width = NonZeroU32;
+
+/// Width of one bit
+pub const ONE: Width = NonZeroU32::new(1).expect("1 is not 0"); // this `expect()` is evaluated at compile-time because this is a `const`. Clippy is smart enough not to require `expect_used` for this.
+/// Width of two bits
+pub const TWO: Width = NonZeroU32::new(2).expect("2 is not 0"); // this `expect()` is evaluated at compile-time because this is a `const`. Clippy is smart enough not to require `expect_used` for this.
+/// Width of five bits
+pub const FIVE: Width = NonZeroU32::new(5).expect("5 is not 0"); // this `expect()` is evaluated at compile-time because this is a `const`. Clippy is smart enough not to require `expect_used` for this.
+/// Width of seven bits
+pub const SEVEN: Width = NonZeroU32::new(7).expect("7 is not 0"); // this `expect()` is evaluated at compile-time because this is a `const`. Clippy is smart enough not to require `expect_used` for this.
+/// Width of eight bits
+pub const EIGHT: Width = NonZeroU32::new(8).expect("8 is not 0"); // this `expect()` is evaluated at compile-time because this is a `const`. Clippy is smart enough not to require `expect_used` for this.
+/// Width of 16 bits
+pub const SIXTEEN: Width = NonZeroU32::new(16).expect("16 is not 0"); // this `expect()` is evaluated at compile-time because this is a `const`. Clippy is smart enough not to require `expect_used` for this.
+/// Width of 32 bits
+pub const THIRTY_TWO: Width = NonZeroU32::new(32).expect("32 is not 0"); // this `expect()` is evaluated at compile-time because this is a `const`. Clippy is smart enough not to require `expect_used` for this.
+/// Width of 64 bits
+pub const SIXTY_FOUR: Width = NonZeroU32::new(64).expect("64 is not 0"); // this `expect()` is evaluated at compile-time because this is a `const`. Clippy is smart enough not to require `expect_used` for this.
+/// Width of 120 bits
+pub const HUNDRED_TWENTY: Width = NonZeroU32::new(120).expect("120 is not 0"); // this `expect()` is evaluated at compile-time because this is a `const`. Clippy is smart enough not to require `expect_used` for this.
+/// Width of 128 bits
+pub const HUNDRED_TWENTY_EIGHT: Width = NonZeroU32::new(128).expect("128 is not 0"); // this `expect()` is evaluated at compile-time because this is a `const`. Clippy is smart enough not to require `expect_used` for this.
 
 /// Convert `ast::EntityType` into `EntityType` in O(1)
 pub fn core_entity_type_into_entity_type(

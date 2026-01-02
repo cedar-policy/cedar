@@ -24,7 +24,6 @@ use std::sync::Arc;
 use cedar_policy::{EntityId, EntityUid};
 use itertools::Itertools;
 use miette::Diagnostic;
-use num_bigint::BigUint;
 use smol_str::{SmolStr, SmolStrBuilder};
 use thiserror::Error;
 
@@ -34,7 +33,7 @@ use crate::symcc::env::SymEntityData;
 use crate::symcc::extension_types::ipaddr::{
     CIDRv4, CIDRv6, IPv4Addr, IPv4Prefix, IPv6Addr, IPv6Prefix,
 };
-use crate::symcc::type_abbrevs::{ExtType, Width};
+use crate::symcc::type_abbrevs::{ExtType, Width, SIXTY_FOUR};
 use crate::SymEnv;
 
 use super::bitvec::BitVec;
@@ -114,6 +113,9 @@ pub enum DecodeError {
     /// Bit-vector error.
     #[error("Bit-vector error")]
     BitVecError(#[from] BitVecError),
+    /// Bitvector of a zero width, which we do not support.
+    #[error("Bitvector of zero width")]
+    ZeroWidthBitVec,
 }
 
 /// Types of tokens
@@ -391,13 +393,15 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                                     num as i128
                                 };
 
-                                let width = Width::try_from(width)
+                                let width = u32::try_from(width)
                                     .map_err(|_| DecodeError::IntegerOverflow)?;
+                                let width =
+                                    Width::new(width).ok_or(DecodeError::ZeroWidthBitVec)?;
 
                                 tokens.push(Token::Atom(SExpr::BitVec(BitVec::of_int(
                                     width,
                                     num.into(),
-                                )?)));
+                                ))));
                             }
 
                             // TODO: support #x...
@@ -592,14 +596,7 @@ impl TermType {
     pub fn default_literal(&self, env: &SymEnv) -> Term {
         match self {
             TermType::Bool => Term::Prim(TermPrim::Bool(false)),
-            TermType::Bitvec { n } =>
-            {
-                #[expect(
-                    clippy::unwrap_used,
-                    reason = "Assume the bit-vectors have the same width by construction for now."
-                )]
-                Term::Prim(TermPrim::Bitvec(BitVec::of_nat(*n, BigUint::ZERO).unwrap()))
-            }
+            TermType::Bitvec { n } => Term::Prim(TermPrim::Bitvec(BitVec::of_u128(*n, 0))),
             TermType::String => Term::Prim(TermPrim::String(SmolStr::new_static(""))),
 
             TermType::Entity { ety } => {
@@ -668,7 +665,7 @@ impl Uuf {
 }
 
 impl SExpr {
-    /// Checks if the [`SExpr`] is a symbol.
+    /// Checks if the [`SExpr`] is the given symbol.
     fn is_symbol(&self, s: &str) -> bool {
         match self {
             SExpr::Symbol(sym) => sym == s,
@@ -714,7 +711,8 @@ impl SExpr {
                     [SExpr::Symbol(app), SExpr::Symbol(bit_vec), SExpr::Numeral(n)]
                         if app == "_" && bit_vec == "BitVec" =>
                     {
-                        let n = Width::try_from(*n).map_err(|_| DecodeError::IntegerOverflow)?;
+                        let n = u32::try_from(*n).map_err(|_| DecodeError::IntegerOverflow)?;
+                        let n = Width::new(n).ok_or(DecodeError::ZeroWidthBitVec)?;
                         Ok(TermType::Bitvec { n })
                     }
 
@@ -928,7 +926,7 @@ impl SExpr {
 
             // Decimal
             [SExpr::Symbol(decimal), SExpr::BitVec(bv)]
-                if decimal == "Decimal" && bv.width() == 64 =>
+                if decimal == "Decimal" && bv.width() == SIXTY_FOUR =>
             {
                 Ok(Term::Prim(TermPrim::Ext(Ext::Decimal {
                     d: Decimal(
@@ -941,7 +939,7 @@ impl SExpr {
 
             // Datetime
             [SExpr::Symbol(datetime), SExpr::BitVec(bv)]
-                if datetime == "Datetime" && bv.width() == 64 =>
+                if datetime == "Datetime" && bv.width() == SIXTY_FOUR =>
             {
                 let dt: i64 = bv
                     .to_int()
@@ -952,7 +950,7 @@ impl SExpr {
 
             // Duration
             [SExpr::Symbol(duration), SExpr::BitVec(bv)]
-                if duration == "Duration" && bv.width() == 64 =>
+                if duration == "Duration" && bv.width() == SIXTY_FOUR =>
             {
                 let d: i64 = bv
                     .to_int()

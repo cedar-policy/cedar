@@ -108,7 +108,7 @@ impl TermType {
         match ty {
             Type::Primitive { primitive_type } => match primitive_type {
                 Primitive::Bool => Ok(TermType::Bool),
-                Primitive::Long => Ok(TermType::Bitvec { n: 64 }),
+                Primitive::Long => Ok(TermType::Bitvec { n: SIXTY_FOUR }),
                 Primitive::String => Ok(TermType::String),
             },
             Type::ExtensionType { name } => match name.basename().to_string().as_str() {

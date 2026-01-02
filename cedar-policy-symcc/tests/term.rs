@@ -21,7 +21,8 @@ use std::{str::FromStr, sync::Arc};
 use cedar_policy::{Authorizer, Schema, Validator};
 use cedar_policy_symcc::{
     compile_always_allows, compile_always_denies, solver::LocalSolver, term::*, term_factory,
-    term_type::*, CedarSymCompiler, SymEnv, WellFormedAsserts, WellTypedPolicies,
+    term_type::*, type_abbrevs::SIXTY_FOUR, CedarSymCompiler, SymEnv, WellFormedAsserts,
+    WellTypedPolicies,
 };
 
 use crate::utils::{assert_always_allows_ok, assert_always_denies_ok, Environments, Pathway};
@@ -65,12 +66,12 @@ async fn term_basic_arith_unsat() {
                 Arc::new(vec![term_factory::not(term_factory::eq(
                     TermVar {
                         id: "x".into(),
-                        ty: TermType::Bitvec { n: 64 }
+                        ty: TermType::Bitvec { n: SIXTY_FOUR }
                     }
                     .into(),
                     TermVar {
                         id: "x".into(),
-                        ty: TermType::Bitvec { n: 64 }
+                        ty: TermType::Bitvec { n: SIXTY_FOUR }
                     }
                     .into(),
                 ))]),
@@ -87,12 +88,12 @@ async fn term_basic_arith_unsat() {
                 Arc::new(vec![term_factory::not(term_factory::eq(
                     TermVar {
                         id: "x".into(),
-                        ty: TermType::Bitvec { n: 64 }
+                        ty: TermType::Bitvec { n: SIXTY_FOUR }
                     }
                     .into(),
                     TermVar {
                         id: "y".into(),
-                        ty: TermType::Bitvec { n: 64 }
+                        ty: TermType::Bitvec { n: SIXTY_FOUR }
                     }
                     .into(),
                 ))]),
@@ -111,24 +112,24 @@ async fn term_basic_arith_unsat() {
                         term_factory::bvsle(
                             TermVar {
                                 id: "x".into(),
-                                ty: TermType::Bitvec { n: 64 }
+                                ty: TermType::Bitvec { n: SIXTY_FOUR }
                             }
                             .into(),
                             TermVar {
                                 id: "y".into(),
-                                ty: TermType::Bitvec { n: 64 }
+                                ty: TermType::Bitvec { n: SIXTY_FOUR }
                             }
                             .into(),
                         ),
                         term_factory::bvsle(
                             TermVar {
                                 id: "y".into(),
-                                ty: TermType::Bitvec { n: 64 }
+                                ty: TermType::Bitvec { n: SIXTY_FOUR }
                             }
                             .into(),
                             TermVar {
                                 id: "z".into(),
-                                ty: TermType::Bitvec { n: 64 }
+                                ty: TermType::Bitvec { n: SIXTY_FOUR }
                             }
                             .into(),
                         ),
@@ -136,12 +137,12 @@ async fn term_basic_arith_unsat() {
                     term_factory::bvsle(
                         TermVar {
                             id: "x".into(),
-                            ty: TermType::Bitvec { n: 64 }
+                            ty: TermType::Bitvec { n: SIXTY_FOUR }
                         }
                         .into(),
                         TermVar {
                             id: "z".into(),
-                            ty: TermType::Bitvec { n: 64 }
+                            ty: TermType::Bitvec { n: SIXTY_FOUR }
                         }
                         .into(),
                     ),

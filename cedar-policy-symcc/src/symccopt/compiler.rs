@@ -172,7 +172,7 @@ fn compile_var(v: &Var, req: &SymRequest) -> Result<CompileResult> {
 fn compile_app1(op1: UnaryOp, arg: CompileResult) -> Result<CompileResult> {
     match (op1, arg.term.type_of()) {
         (UnaryOp::Not, TermType::Bool) => Ok(arg.map_term(|term| some_of(not(term)))),
-        (UnaryOp::Neg, TermType::Bitvec { n: 64 }) => {
+        (UnaryOp::Neg, TermType::Bitvec { n: SIXTY_FOUR }) => {
             Ok(arg.map_term(|term| if_false(bvnego(term.clone()), bvneg(term))))
         }
         (UnaryOp::IsEmpty, TermType::Set { .. }) => {
@@ -240,7 +240,7 @@ fn compile_app2(
                 term,
             })
         }
-        (Less, Bitvec { n: 64 }, Bitvec { n: 64 }) => {
+        (Less, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = some_of(bvslt(t1, t2));
             Ok(CompileResult {
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
@@ -276,7 +276,7 @@ fn compile_app2(
                 term,
             })
         }
-        (LessEq, Bitvec { n: 64 }, Bitvec { n: 64 }) => {
+        (LessEq, Bitvec { n: SIXTY_FOUR  }, Bitvec { n: SIXTY_FOUR }) => {
             let term = some_of(bvsle(t1, t2));
             Ok(CompileResult {
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
@@ -312,7 +312,7 @@ fn compile_app2(
                 term,
             })
         }
-        (Add, Bitvec { n: 64 }, Bitvec { n: 64 }) => {
+        (Add, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = if_false(bvsaddo(t1.clone(), t2.clone()), bvadd(t1, t2));
             Ok(CompileResult {
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
@@ -324,7 +324,7 @@ fn compile_app2(
                 term,
             })
         }
-        (Sub, Bitvec { n: 64 }, Bitvec { n: 64 }) => {
+        (Sub, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = if_false(bvssubo(t1.clone(), t2.clone()), bvsub(t1, t2));
             Ok(CompileResult {
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
@@ -336,7 +336,7 @@ fn compile_app2(
                 term,
             })
         }
-        (Mul, Bitvec { n: 64 }, Bitvec { n: 64 }) => {
+        (Mul, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = if_false(bvsmulo(t1.clone(), t2.clone()), bvmul(t1, t2));
             Ok(CompileResult {
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,

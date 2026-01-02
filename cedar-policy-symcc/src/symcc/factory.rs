@@ -378,14 +378,7 @@ pub fn bvule(t1: Term, t2: Term) -> Term {
 /// Does negation overflow
 pub fn bvnego(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(bv)) =>
-        {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "By construction bit-vectors have non-zero width."
-            )]
-            BitVec::overflows(bv.width(), &-bv.to_int()).unwrap().into()
-        }
+        Term::Prim(TermPrim::Bitvec(bv)) => BitVec::overflows(bv.width(), &-bv.to_int()).into(),
         t => Term::App {
             op: Op::Bvnego,
             args: Arc::new(vec![t]),
@@ -398,13 +391,7 @@ pub fn bvso(op: Op, f: &dyn Fn(&Int, &Int) -> Int, t1: Term, t2: Term) -> Term {
     match (t1, t2) {
         (Term::Prim(TermPrim::Bitvec(bv1)), Term::Prim(TermPrim::Bitvec(bv2))) => {
             assert!(bv1.width() == bv2.width());
-            #[expect(
-                clippy::unwrap_used,
-                reason = "Assert above guarantees same bit-vector width."
-            )]
-            BitVec::overflows(bv1.width(), &f(&bv1.to_int(), &bv2.to_int()))
-                .unwrap()
-                .into()
+            BitVec::overflows(bv1.width(), &f(&bv1.to_int(), &bv2.to_int())).into()
         }
         (t1, t2) => Term::App {
             op,
@@ -430,23 +417,41 @@ pub fn bvsmulo(t1: Term, t2: Term) -> Term {
 /// so we compensate for the difference in partial evaluation.
 ///
 /// This function adds `n` to the existing width. It does not pad the width to `n`.
-pub fn zero_extend(n: Width, t: Term) -> Term {
+///
+/// `n` is allowed to be 0, and this function will perform correctly.
+///
+/// Panics if the new width exceeds u32::MAX.
+/// As of this writing, we shouldn't ever construct any bitvector longer than 128,
+/// which is an extremely long way from u32::MAX.
+pub fn zero_extend(n: u32, t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(bv)) =>
-        {
+        Term::Prim(TermPrim::Bitvec(bv)) => {
             #[expect(
-                clippy::unwrap_used,
-                reason = "By construction bit-vectors have non-zero width."
+                clippy::expect_used,
+                reason = "Function is documented to panic if the new width exceeds u32::MAX"
             )]
-            BitVec::zero_extend(&bv, n + bv.width()).unwrap().into()
+            let new_width = bv
+                .width()
+                .checked_add(n)
+                .expect("width will not overflow u32");
+            BitVec::zero_extend(&bv, new_width).into()
         }
         t => {
             match t.type_of() {
-                TermType::Bitvec { n: cur_width } => Term::App {
-                    op: Op::ZeroExtend(n),
-                    args: Arc::new(vec![t]),
-                    ret_ty: TermType::Bitvec { n: cur_width + n },
-                },
+                TermType::Bitvec { n: cur_width } => {
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "Function is documented to panic if the new width exceeds u32::MAX"
+                    )]
+                    let new_width = cur_width
+                        .checked_add(n)
+                        .expect("width will not overflow u32");
+                    Term::App {
+                        op: Op::ZeroExtend(n),
+                        args: Arc::new(vec![t]),
+                        ret_ty: TermType::Bitvec { n: new_width },
+                    }
+                }
                 _ => t, // should be ruled out by callers
             }
         }
@@ -589,18 +594,13 @@ pub fn string_like(t: Term, p: OrdPattern) -> Term {
 
 pub fn ext_decimal_val(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Ext(Ext::Decimal { d })) =>
-        {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
-            )]
-            Term::Prim(TermPrim::Bitvec(BitVec::of_int(64, d.0.into()).unwrap()))
+        Term::Prim(TermPrim::Ext(Ext::Decimal { d })) => {
+            Term::Prim(TermPrim::Bitvec(BitVec::of_int(SIXTY_FOUR, d.0.into())))
         }
         t => Term::App {
             op: Op::Ext(ExtOp::DecimalVal),
             args: Arc::new(vec![t]),
-            ret_ty: TermType::Bitvec { n: 64 },
+            ret_ty: TermType::Bitvec { n: SIXTY_FOUR },
         },
     }
 }
@@ -622,7 +622,7 @@ pub fn ext_ipaddr_addr_v4(t: Term) -> Term {
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrAddrV4),
             args: Arc::new(vec![t]),
-            ret_ty: TermType::Bitvec { n: 32 },
+            ret_ty: TermType::Bitvec { n: THIRTY_TWO },
         },
     }
 }
@@ -630,13 +630,13 @@ pub fn ext_ipaddr_addr_v4(t: Term) -> Term {
 pub fn ext_ipaddr_prefix_v4(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V4(v4) })) => match v4.prefix.val {
-            None => Term::None(TermType::Bitvec { n: 5 }),
+            None => Term::None(TermType::Bitvec { n: FIVE }),
             Some(p) => some_of(p.into()),
         },
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV4),
             args: Arc::new(vec![t]),
-            ret_ty: TermType::option_of(TermType::Bitvec { n: 5 }),
+            ret_ty: TermType::option_of(TermType::Bitvec { n: FIVE }),
         },
     }
 }
@@ -647,7 +647,9 @@ pub fn ext_ipaddr_addr_v6(t: Term) -> Term {
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrAddrV6),
             args: Arc::new(vec![t]),
-            ret_ty: TermType::Bitvec { n: 128 },
+            ret_ty: TermType::Bitvec {
+                n: HUNDRED_TWENTY_EIGHT,
+            },
         },
     }
 }
@@ -655,40 +657,33 @@ pub fn ext_ipaddr_addr_v6(t: Term) -> Term {
 pub fn ext_ipaddr_prefix_v6(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V6(v6) })) => match v6.prefix.val {
-            None => Term::None(TermType::Bitvec { n: 7 }),
+            None => Term::None(TermType::Bitvec { n: SEVEN }),
             Some(p) => some_of(p.into()),
         },
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV6),
             args: Arc::new(vec![t]),
-            ret_ty: TermType::option_of(TermType::Bitvec { n: 7 }),
+            ret_ty: TermType::option_of(TermType::Bitvec { n: SEVEN }),
         },
     }
 }
 
 pub fn ext_datetime_val(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Ext(Ext::Datetime { dt })) =>
-        {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
-            )]
-            Term::Prim(TermPrim::Bitvec(
-                BitVec::of_i128(64, i64::from(dt).into()).unwrap(),
-            ))
-        }
+        Term::Prim(TermPrim::Ext(Ext::Datetime { dt })) => Term::Prim(TermPrim::Bitvec(
+            BitVec::of_i128(SIXTY_FOUR, i64::from(dt).into()),
+        )),
         t => Term::App {
             op: Op::Ext(ExtOp::DatetimeVal),
             args: Arc::new(vec![t]),
-            ret_ty: TermType::Bitvec { n: 64 },
+            ret_ty: TermType::Bitvec { n: SIXTY_FOUR },
         },
     }
 }
 
 pub fn ext_datetime_of_bitvec(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 =>
+        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == SIXTY_FOUR =>
         {
             #[expect(
                 clippy::unwrap_used,
@@ -710,24 +705,20 @@ pub fn ext_datetime_of_bitvec(t: Term) -> Term {
 
 pub fn ext_duration_val(t: Term) -> Term {
     match t {
-        #[expect(
-            clippy::unwrap_used,
-            reason = "Cannot panic because bitwidth is guaranteed to be non-zero."
-        )]
         Term::Prim(TermPrim::Ext(Ext::Duration { d })) => Term::Prim(TermPrim::Bitvec(
-            BitVec::of_i128(64, d.to_milliseconds().into()).unwrap(),
+            BitVec::of_i128(SIXTY_FOUR, d.to_milliseconds().into()),
         )),
         t => Term::App {
             op: Op::Ext(ExtOp::DurationVal),
             args: Arc::new(vec![t]),
-            ret_ty: TermType::Bitvec { n: 64 },
+            ret_ty: TermType::Bitvec { n: SIXTY_FOUR },
         },
     }
 }
 
 pub fn ext_duration_of_bitvec(t: Term) -> Term {
     match t {
-        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == 64 =>
+        Term::Prim(TermPrim::Bitvec(bv)) if bv.width() == SIXTY_FOUR =>
         {
             #[expect(
                 clippy::unwrap_used,

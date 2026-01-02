@@ -545,8 +545,8 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                         self.define_app(
                             &ty_enc,
                             &Op::Eq,
-                            [t_enc, encode_bitvec(&BitVec::int_min(n)?)],
-                            [t, &BitVec::int_min(n)?.into()],
+                            [t_enc, encode_bitvec(&BitVec::int_min(n))],
+                            [t, &BitVec::int_min(n).into()],
                         )
                         .await?
                     }
@@ -658,11 +658,7 @@ fn encode_ipaddr_prefix_v6(pre: &IPv6Prefix) -> SmolStr {
 fn encode_ext(e: &Ext) -> SmolStr {
     match e {
         Ext::Decimal { d } => {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "Cannot panic because bitwidth is non-zero."
-            )]
-            let bv_enc = encode_bitvec(&BitVec::of_int(64, d.0.into()).unwrap());
+            let bv_enc = encode_bitvec(&BitVec::of_int(SIXTY_FOUR, d.0.into()));
             format_smolstr!("(Decimal {bv_enc})")
         }
         Ext::Ipaddr {
@@ -680,19 +676,11 @@ fn encode_ext(e: &Ext) -> SmolStr {
             format_smolstr!("(V6 {addr} {pre})")
         }
         Ext::Duration { d } => {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "Cannot panic because bitwidth is non-zero."
-            )]
-            let bv_enc = encode_bitvec(&BitVec::of_int(64, d.to_milliseconds().into()).unwrap());
+            let bv_enc = encode_bitvec(&BitVec::of_int(SIXTY_FOUR, d.to_milliseconds().into()));
             format_smolstr!("(Duration {bv_enc})")
         }
         Ext::Datetime { dt } => {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "Cannot panic because bitwidth is non-zero."
-            )]
-            let bv_enc = encode_bitvec(&BitVec::of_i128(64, i64::from(dt).into()).unwrap());
+            let bv_enc = encode_bitvec(&BitVec::of_i128(SIXTY_FOUR, i64::from(dt).into()));
             format_smolstr!("(Datetime {bv_enc})")
         }
     }

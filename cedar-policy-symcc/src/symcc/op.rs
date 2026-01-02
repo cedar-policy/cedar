@@ -89,7 +89,7 @@ pub enum Op {
     Bvssubo,
     /// Bit-vector signed multiplication overflow predicate.
     Bvsmulo,
-    ZeroExtend(Width),
+    ZeroExtend(u32), // allowed to be 0
     //   ---------- CVC theory of finite sets (`FS`) ----------
     SetMember,
     SetSubset,
