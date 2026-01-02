@@ -480,7 +480,7 @@ pub fn compile_call2(
     t2: Term,
 ) -> Result<Term> {
     let enc = |t1: Term, t2: Term| -> Term { some_of(enc(t1, t2)) };
-    compile_call2_error(xty.clone(), xty, enc, t1, t2)
+    compile_call2_error(xty, xty, enc, t1, t2)
 }
 
 /// Extract the first item from a `Vec`, consuming the `Vec`.

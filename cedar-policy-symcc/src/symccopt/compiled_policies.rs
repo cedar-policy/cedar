@@ -62,6 +62,7 @@ impl CompiledPolicy {
         let env = symcc::SymEnv::new(schema, env)?;
         let CompileResult { term, footprint } =
             symccopt::compiler::compile(&policy.condition(), &env)?;
+        let footprint: BTreeSet<Term> = footprint.collect(); // important step that removes duplicates, prior to passing to `acyclicity`
         let acyclicity = footprint
             .iter()
             .map(|term| symcc::enforcer::acyclicity(term, &env.entities))
@@ -144,6 +145,7 @@ impl CompiledPolicies {
         let env = symcc::SymEnv::new(schema, env)?;
         let CompileResult { term, footprint } =
             symccopt::authorizer::is_authorized(&policies, &env)?;
+        let footprint: BTreeSet<Term> = footprint.collect(); // important step that removes duplicates, prior to passing to `acyclicity`
         let acyclicity = footprint
             .iter()
             .map(|term| symcc::enforcer::acyclicity(term, &env.entities))

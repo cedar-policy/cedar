@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp, Var};
 
@@ -41,6 +41,49 @@ use crate::{
     type_abbrevs::*,
 };
 
+/// Not present in the Lean, but serves Rust-specific performance optimizations;
+/// see notes where this is used
+pub struct Footprint {
+    terms: Arc<dyn Iterator<Item = Term>>,
+}
+
+impl Iterator for Footprint {
+    type Item = Term;
+
+    fn next(&mut self) -> Option<Term> {
+        // Since `Footprint` does not implement `Clone`, and `terms` is a
+        // private field, there is no way that anyone else could have cloned
+        // the inner `Arc` and gotten a reference to it.
+        // So, we know we definitively have the only reference to this `Arc`,
+        // and `get_mut()` will succeed.
+        let terms = Arc::get_mut(&mut self.terms);
+        debug_assert!(terms.is_some());
+        // When debug assertions are disabled, we avoid panicking if the `get_mut()`
+        // assumption is violated, and instead just return `None`.
+        terms?.next()
+    }
+}
+
+impl Footprint {
+    pub fn empty() -> Self {
+        Self {
+            terms: Arc::new(std::iter::empty()),
+        }
+    }
+
+    pub fn singleton(term: Term) -> Self {
+        Self {
+            terms: Arc::new(std::iter::once(term)),
+        }
+    }
+
+    pub fn from_iter(it: impl Iterator<Item = Term> + 'static) -> Self {
+        Self {
+            terms: Arc::new(it),
+        }
+    }
+}
+
 /// Structure returned by the optimized compiler, as opposed to the unoptimized
 /// compiler which just produces a `Term`
 pub struct CompileResult {
@@ -61,7 +104,12 @@ pub struct CompileResult {
     /// basic expressions.
     ///
     /// All terms in the `footprint` are of type `TermType::Option(TermType::Entity)`.
-    pub footprint: BTreeSet<Term>,
+    ///
+    /// In the Lean, this is a Set. In Rust, we avoid repeatedly collecting into
+    /// a `BTreeSet` for each compiled subexpression, by using a `dyn Iterator`
+    /// internally rather than `BTreeSet` here. Ultimately, the caller of
+    /// `compile` will collect into a `BTreeSet` to remove duplicates.
+    pub footprint: Footprint,
 }
 
 impl CompileResult {
@@ -96,22 +144,22 @@ fn compile_prim(p: &Prim, es: &SymEntities) -> Result<CompileResult> {
     match p {
         Prim::Bool(b) => Ok(CompileResult {
             term: some_of((*b).into()),
-            footprint: BTreeSet::new(),
+            footprint: Footprint::empty(),
         }),
         Prim::Long(i) => Ok(CompileResult {
             term: some_of((*i).into()),
-            footprint: BTreeSet::new(),
+            footprint: Footprint::empty(),
         }),
         Prim::String(s) => Ok(CompileResult {
             term: some_of(s.clone().into()),
-            footprint: BTreeSet::new(),
+            footprint: Footprint::empty(),
         }),
         Prim::EntityUID(uid) => {
             let uid = core_uid_into_uid(uid);
             if es.is_valid_entity_uid(uid) {
                 let term = some_of(uid.clone().into());
                 Ok(CompileResult {
-                    footprint: std::iter::once(term.clone()).collect(),
+                    footprint: Footprint::singleton(term.clone()),
                     term,
                 })
             } else {
@@ -127,7 +175,7 @@ fn compile_var(v: &Var, req: &SymRequest) -> Result<CompileResult> {
             if req.principal.type_of().is_entity_type() {
                 let term = some_of(req.principal.clone());
                 Ok(CompileResult {
-                    footprint: std::iter::once(term.clone()).collect(),
+                    footprint: Footprint::singleton(term.clone()),
                     term,
                 })
             } else {
@@ -138,7 +186,7 @@ fn compile_var(v: &Var, req: &SymRequest) -> Result<CompileResult> {
             if req.action.type_of().is_entity_type() {
                 let term = some_of(req.action.clone());
                 Ok(CompileResult {
-                    footprint: std::iter::once(term.clone()).collect(),
+                    footprint: Footprint::singleton(term.clone()),
                     term,
                 })
             } else {
@@ -149,7 +197,7 @@ fn compile_var(v: &Var, req: &SymRequest) -> Result<CompileResult> {
             if req.resource.type_of().is_entity_type() {
                 let term = some_of(req.resource.clone());
                 Ok(CompileResult {
-                    footprint: std::iter::once(term.clone()).collect(),
+                    footprint: Footprint::singleton(term.clone()),
                     term,
                 })
             } else {
@@ -160,7 +208,7 @@ fn compile_var(v: &Var, req: &SymRequest) -> Result<CompileResult> {
             if req.context.type_of().is_record_type() {
                 Ok(CompileResult {
                     term: some_of(req.context.clone()),
-                    footprint: BTreeSet::new(),
+                    footprint: Footprint::empty(),
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -214,7 +262,7 @@ fn compile_app2(
     use TermType::*;
     // compute the footprint of the arguments, not counting the contribution of the `direct_footprint` of the
     // `BinaryOp` term (if any) (particularly relevant for `getTag`)
-    let args_footprint = arg1.footprint.into_iter().chain(arg2.footprint);
+    let args_footprint = arg1.footprint.chain(arg2.footprint);
     // mimicking the behavior of the unoptimized compiler in how the direct footprint for the binaryOp term
     // itself is computed
     let binary_op_footprint =
@@ -234,9 +282,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -246,9 +294,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -258,9 +306,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -270,9 +318,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -282,9 +330,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -294,9 +342,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -306,9 +354,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -318,9 +366,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -330,9 +378,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -342,9 +390,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -355,9 +403,9 @@ fn compile_app2(
                     // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                     // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                     // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                    footprint: args_footprint
-                        .chain(binary_op_footprint(term.clone()))
-                        .collect(),
+                    footprint: Footprint::from_iter(
+                        args_footprint.chain(binary_op_footprint(term.clone())),
+                    ),
                     term,
                 })
             } else {
@@ -371,9 +419,9 @@ fn compile_app2(
                     // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                     // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                     // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                    footprint: args_footprint
-                        .chain(binary_op_footprint(term.clone()))
-                        .collect(),
+                    footprint: Footprint::from_iter(
+                        args_footprint.chain(binary_op_footprint(term.clone())),
+                    ),
                     term,
                 })
             } else {
@@ -387,9 +435,9 @@ fn compile_app2(
                     // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                     // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                     // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                    footprint: args_footprint
-                        .chain(binary_op_footprint(term.clone()))
-                        .collect(),
+                    footprint: Footprint::from_iter(
+                        args_footprint.chain(binary_op_footprint(term.clone())),
+                    ),
                     term,
                 })
             } else {
@@ -406,9 +454,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -424,9 +472,9 @@ fn compile_app2(
                         // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                         // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                         // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                        footprint: args_footprint
-                            .chain(binary_op_footprint(term.clone()))
-                            .collect(),
+                        footprint: Footprint::from_iter(
+                            args_footprint.chain(binary_op_footprint(term.clone())),
+                        ),
                         term,
                     })
                 }
@@ -443,9 +491,9 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -454,9 +502,9 @@ fn compile_app2(
             Ok(CompileResult {
                 // in this `GetTag` case, the `binary_op_footprint` term could actually be nonempty,
                 // in the case where the tags are entity-typed
-                footprint: args_footprint
-                    .chain(binary_op_footprint(term.clone()))
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    args_footprint.chain(binary_op_footprint(term.clone())),
+                ),
                 term,
             })
         }
@@ -501,10 +549,11 @@ pub fn compile_get_attr(arg: CompileResult, a: &Attr, es: &SymEntities) -> Resul
                 None => Err(CompileError::NoSuchAttribute(a.to_string())),
             }?;
             Ok(CompileResult {
-                footprint: get_attr_footprint(term.clone())
-                    .into_iter()
-                    .chain(arg.footprint)
-                    .collect(),
+                footprint: Footprint::from_iter(
+                    get_attr_footprint(term.clone())
+                        .into_iter()
+                        .chain(arg.footprint),
+                ),
                 term,
             })
         }
@@ -529,12 +578,9 @@ pub fn compile_if(
                         arg1.term.clone(),
                         ite(option_get(arg1.term), arg2.term, arg3.term),
                     ),
-                    footprint: arg1
-                        .footprint
-                        .into_iter()
-                        .chain(arg2.footprint)
-                        .chain(arg3.footprint)
-                        .collect(),
+                    footprint: Footprint::from_iter(
+                        arg1.footprint.chain(arg2.footprint).chain(arg3.footprint),
+                    ),
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -551,7 +597,7 @@ pub fn compile_and(arg1: CompileResult, arg2: Result<CompileResult>) -> Result<C
             // footprint in this case, which is also sound (as our Lean proofs show)
             Ok(CompileResult {
                 term: arg1.term,
-                footprint: BTreeSet::new(),
+                footprint: Footprint::empty(),
             })
         }
         (_, TermType::Option { ty: ity }) if matches!(*ity, TermType::Bool) => {
@@ -564,7 +610,7 @@ pub fn compile_and(arg1: CompileResult, arg2: Result<CompileResult>) -> Result<C
                     // and our Lean proofs show it's sound
                     arg2.footprint
                 } else {
-                    arg1.footprint.into_iter().chain(arg2.footprint).collect()
+                    Footprint::from_iter(arg1.footprint.chain(arg2.footprint))
                 };
                 Ok(CompileResult {
                     term: if_some(
@@ -588,7 +634,7 @@ pub fn compile_or(arg1: CompileResult, arg2: Result<CompileResult>) -> Result<Co
             // footprint in this case, which is also sound (as our Lean proofs show)
             Ok(CompileResult {
                 term: arg1.term,
-                footprint: BTreeSet::new(),
+                footprint: Footprint::empty(),
             })
         }
         (_, TermType::Option { ty: ity }) if matches!(*ity, TermType::Bool) => {
@@ -601,7 +647,7 @@ pub fn compile_or(arg1: CompileResult, arg2: Result<CompileResult>) -> Result<Co
                     // and our Lean proofs show it's sound
                     arg2.footprint
                 } else {
-                    arg1.footprint.into_iter().chain(arg2.footprint).collect()
+                    Footprint::from_iter(arg1.footprint.chain(arg2.footprint))
                 };
                 Ok(CompileResult {
                     term: if_some(
@@ -637,10 +683,9 @@ pub fn compile_set(args: Vec<CompileResult>) -> Result<CompileResult> {
                             terms.clone(),
                             some_of(set_of(terms.map(option_get), TermType::clone(ity))),
                         ),
-                        footprint: args
-                            .into_iter()
-                            .flat_map(|arg| arg.footprint.into_iter())
-                            .collect(),
+                        footprint: Footprint::from_iter(
+                            args.into_iter().flat_map(|arg| arg.footprint),
+                        ),
                     })
                 } else {
                     Err(CompileError::TypeError)
@@ -665,10 +710,7 @@ pub fn compile_record(ats: Vec<(Attr, CompileResult)>) -> CompileResult {
                     .map(|(a, res)| (a.clone(), option_get(res.term.clone()))),
             )),
         ),
-        footprint: ats
-            .into_iter()
-            .flat_map(|(_, res)| res.footprint.into_iter())
-            .collect(),
+        footprint: Footprint::from_iter(ats.into_iter().flat_map(|(_, res)| res.footprint)),
     }
 }
 
@@ -696,11 +738,11 @@ pub fn compile_call0(
 
 // Use directly for encoding calls that can error
 pub fn compile_call1_error(
-    xty: &ExtType,
+    xty: ExtType,
     enc: impl Fn(Term) -> Term,
     arg1: CompileResult,
 ) -> Result<CompileResult> {
-    if matches!(arg1.term.type_of(), TermType::Option { ty } if matches!(&*ty, TermType::Ext { xty: other } if xty == other))
+    if matches!(arg1.term.type_of(), TermType::Option { ty } if matches!(&*ty, TermType::Ext { xty: other } if xty == *other))
     {
         Ok(CompileResult {
             term: if_some(arg1.term.clone(), enc(option_get(arg1.term))),
@@ -713,7 +755,7 @@ pub fn compile_call1_error(
 
 // Use directly for encoding calls that cannot error
 pub fn compile_call1(
-    xty: &ExtType,
+    xty: ExtType,
     enc: impl Fn(Term) -> Term,
     arg1: CompileResult,
 ) -> Result<CompileResult> {
@@ -739,7 +781,7 @@ pub fn compile_call2_error(
                     enc(option_get(arg1.term), option_get(arg2.term)),
                 ),
             ),
-            footprint: arg1.footprint.into_iter().chain(arg2.footprint).collect(),
+            footprint: Footprint::from_iter(arg1.footprint.chain(arg2.footprint)),
         })
     } else {
         Err(CompileError::TypeError)
@@ -753,7 +795,7 @@ pub fn compile_call2(
     arg1: CompileResult,
     arg2: CompileResult,
 ) -> Result<CompileResult> {
-    compile_call2_error(xty.clone(), xty, |t1, t2| some_of(enc(t1, t2)), arg1, arg2)
+    compile_call2_error(xty, xty, |t1, t2| some_of(enc(t1, t2)), arg1, arg2)
 }
 
 pub fn compile_call(
@@ -787,19 +829,19 @@ pub fn compile_call(
         }
         ("isIpv4", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::IpAddr, extfun::is_ipv4, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_ipv4, t1)
         }
         ("isIpv6", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::IpAddr, extfun::is_ipv6, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_ipv6, t1)
         }
         ("isLoopback", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::IpAddr, extfun::is_loopback, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_loopback, t1)
         }
         ("isMulticast", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::IpAddr, extfun::is_multicast, t1)
+            compile_call1(ExtType::IpAddr, extfun::is_multicast, t1)
         }
         ("isInRange", 2) => {
             let (t1, t2) = extract_first2(args);
@@ -829,31 +871,31 @@ pub fn compile_call(
         }
         ("toDate", 1) => {
             let t1 = extract_first(args);
-            compile_call1_error(&ExtType::DateTime, extfun::to_date, t1)
+            compile_call1_error(ExtType::DateTime, extfun::to_date, t1)
         }
         ("toTime", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::DateTime, extfun::to_time, t1)
+            compile_call1(ExtType::DateTime, extfun::to_time, t1)
         }
         ("toMilliseconds", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::Duration, extfun::to_milliseconds, t1)
+            compile_call1(ExtType::Duration, extfun::to_milliseconds, t1)
         }
         ("toSeconds", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::Duration, extfun::to_seconds, t1)
+            compile_call1(ExtType::Duration, extfun::to_seconds, t1)
         }
         ("toMinutes", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::Duration, extfun::to_minutes, t1)
+            compile_call1(ExtType::Duration, extfun::to_minutes, t1)
         }
         ("toHours", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::Duration, extfun::to_hours, t1)
+            compile_call1(ExtType::Duration, extfun::to_hours, t1)
         }
         ("toDays", 1) => {
             let t1 = extract_first(args);
-            compile_call1(&ExtType::Duration, extfun::to_days, t1)
+            compile_call1(ExtType::Duration, extfun::to_days, t1)
         }
         (_, _) => Err(CompileError::TypeError),
     }

@@ -17,7 +17,7 @@
 use cedar_policy::Effect;
 use cedar_policy_core::ast::{Policy, PolicySet};
 
-use super::compiler::{compile, CompileResult, Result};
+use super::compiler::{compile, CompileResult, Footprint, Result};
 use crate::{
     term_factory::{and, any_true, eq, not, some_of},
     SymEnv,
@@ -49,10 +49,7 @@ pub fn satisfied_policies(
             |term| eq(term, some_of(true.into())),
             ress.iter().map(|res| res.term.clone()),
         ),
-        footprint: ress
-            .into_iter()
-            .flat_map(|res| res.footprint.into_iter())
-            .collect(),
+        footprint: Footprint::from_iter(ress.into_iter().flat_map(|res| res.footprint.into_iter())),
     })
 }
 
@@ -61,10 +58,6 @@ pub fn is_authorized(policies: &PolicySet, env: &SymEnv) -> Result<CompileResult
     let permits = satisfied_policies(Effect::Permit, policies, env)?;
     Ok(CompileResult {
         term: and(permits.term, not(forbids.term)),
-        footprint: permits
-            .footprint
-            .into_iter()
-            .chain(forbids.footprint)
-            .collect(),
+        footprint: Footprint::from_iter(permits.footprint.into_iter().chain(forbids.footprint)),
     })
 }
