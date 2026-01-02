@@ -30,7 +30,7 @@ use std::fmt;
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Hash)]
 pub struct JsonValueWithNoDuplicateKeys(serde_json::Value);
 
 impl std::ops::Deref for JsonValueWithNoDuplicateKeys {
