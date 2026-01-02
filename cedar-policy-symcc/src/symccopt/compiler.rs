@@ -276,7 +276,7 @@ fn compile_app2(
                 term,
             })
         }
-        (LessEq, Bitvec { n: SIXTY_FOUR  }, Bitvec { n: SIXTY_FOUR }) => {
+        (LessEq, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = some_of(bvsle(t1, t2));
             Ok(CompileResult {
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
