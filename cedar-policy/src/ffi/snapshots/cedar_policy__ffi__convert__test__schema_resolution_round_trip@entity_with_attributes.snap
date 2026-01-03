@@ -1,0 +1,28 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/entity_with_attributes.cedarschema
+---
+{
+  "": {
+    "actions": {},
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "active": {
+              "type": "__cedar::Bool"
+            },
+            "age": {
+              "type": "__cedar::Long"
+            },
+            "name": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

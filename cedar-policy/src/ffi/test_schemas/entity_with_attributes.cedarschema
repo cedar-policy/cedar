@@ -1,0 +1,5 @@
+entity User = {
+    "name": __cedar::String,
+    "age": __cedar::Long,
+    "active": __cedar::Bool
+};

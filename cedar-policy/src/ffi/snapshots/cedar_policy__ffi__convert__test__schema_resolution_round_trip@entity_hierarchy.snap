@@ -1,0 +1,23 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/entity_hierarchy.cedarschema
+---
+{
+  "": {
+    "actions": {},
+    "entityTypes": {
+      "Admin": {
+        "memberOfTypes": [
+          "User"
+        ]
+      },
+      "SuperAdmin": {
+        "memberOfTypes": [
+          "Admin"
+        ]
+      },
+      "User": {}
+    }
+  }
+}

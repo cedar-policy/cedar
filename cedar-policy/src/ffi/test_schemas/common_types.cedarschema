@@ -1,0 +1,16 @@
+type UserId = __cedar::String;
+type UserProfile = {
+    "name": __cedar::String,
+    "age": __cedar::Long
+};
+
+entity User = {
+    "id": UserId,
+    "profile": UserProfile
+};
+
+action view appliesTo {
+    principal: [User],
+    resource: [User],
+    context: {}
+};

@@ -1,0 +1,58 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/deeply_nested_records.cedarschema
+---
+{
+  "": {
+    "actions": {},
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "profile": {
+              "attributes": {
+                "personal": {
+                  "attributes": {
+                    "contacts": {
+                      "attributes": {
+                        "email": {
+                          "type": "__cedar::String"
+                        },
+                        "phone": {
+                          "required": false,
+                          "type": "__cedar::String"
+                        }
+                      },
+                      "type": "Record"
+                    },
+                    "name": {
+                      "type": "__cedar::String"
+                    }
+                  },
+                  "type": "Record"
+                },
+                "preferences": {
+                  "attributes": {
+                    "notifications": {
+                      "element": {
+                        "type": "__cedar::String"
+                      },
+                      "type": "Set"
+                    },
+                    "theme": {
+                      "type": "__cedar::String"
+                    }
+                  },
+                  "type": "Record"
+                }
+              },
+              "type": "Record"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

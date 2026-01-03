@@ -1,0 +1,30 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/optional_attributes.cedarschema
+---
+{
+  "": {
+    "actions": {},
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "email": {
+              "required": false,
+              "type": "__cedar::String"
+            },
+            "name": {
+              "type": "__cedar::String"
+            },
+            "phone": {
+              "required": false,
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

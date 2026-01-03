@@ -1,0 +1,42 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/app_document.cedarschema
+---
+{
+  "App": {
+    "actions": {
+      "edit": {
+        "appliesTo": {
+          "principalTypes": [
+            "App::User"
+          ],
+          "resourceTypes": [
+            "App::Document"
+          ]
+        }
+      }
+    },
+    "entityTypes": {
+      "Document": {
+        "shape": {
+          "attributes": {
+            "editors": {
+              "element": {
+                "name": "App::User",
+                "type": "Entity"
+              },
+              "type": "Set"
+            },
+            "owner": {
+              "name": "App::User",
+              "type": "Entity"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "User": {}
+    }
+  }
+}

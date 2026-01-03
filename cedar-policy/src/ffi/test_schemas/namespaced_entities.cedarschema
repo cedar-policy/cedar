@@ -1,0 +1,11 @@
+namespace MyApp {
+    entity User = {
+        "name": __cedar::String
+    };
+
+    action view appliesTo {
+        principal: [User],
+        resource: [User],
+        context: {}
+    };
+}

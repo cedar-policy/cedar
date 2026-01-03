@@ -2,6 +2,7 @@
 .DS_Store
 .idea
 
+.kiro
 # Don't check in the Emacs temp files
 *~
 

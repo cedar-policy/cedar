@@ -1,0 +1,12 @@
+entity User;
+action readWrite;
+action read in [readWrite] appliesTo {
+    principal: [User],
+    resource: [User],
+    context: {}
+};
+action write in [readWrite] appliesTo {
+    principal: [User],
+    resource: [User],
+    context: {}
+};

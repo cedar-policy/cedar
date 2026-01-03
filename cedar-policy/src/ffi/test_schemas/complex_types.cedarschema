@@ -1,0 +1,7 @@
+entity User = {
+    "profile": {
+        "name": __cedar::String,
+        "settings": Set<__cedar::String>
+    },
+    "permissions": Set<__cedar::String>
+};

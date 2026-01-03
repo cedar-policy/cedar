@@ -1,0 +1,46 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/entity_tags.cedarschema
+---
+{
+  "": {
+    "actions": {},
+    "entityTypes": {
+      "Document": {
+        "shape": {
+          "attributes": {
+            "title": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        },
+        "tags": {
+          "attributes": {
+            "classification": {
+              "type": "__cedar::String"
+            },
+            "department": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "User": {
+        "shape": {
+          "attributes": {
+            "name": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        },
+        "tags": {
+          "type": "__cedar::String"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+entity User = {
+    "name": __cedar::String
+} tags __cedar::String;
+
+entity Document = {
+    "title": __cedar::String
+} tags {
+    "classification": __cedar::String,
+    "department": __cedar::String
+};

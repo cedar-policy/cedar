@@ -1,0 +1,75 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/multiple_actions_declared_together.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "admin_read": {
+        "appliesTo": {
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "Document"
+          ]
+        },
+        "memberOf": [
+          {
+            "id": "read",
+            "type": "Action"
+          },
+          {
+            "id": "write",
+            "type": "Action"
+          }
+        ]
+      },
+      "admin_write": {
+        "appliesTo": {
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "Document"
+          ]
+        },
+        "memberOf": [
+          {
+            "id": "read",
+            "type": "Action"
+          },
+          {
+            "id": "write",
+            "type": "Action"
+          }
+        ]
+      },
+      "read": {
+        "appliesTo": {
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "Document"
+          ]
+        }
+      },
+      "write": {
+        "appliesTo": {
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "Document"
+          ]
+        }
+      }
+    },
+    "entityTypes": {
+      "Document": {},
+      "User": {}
+    }
+  }
+}
