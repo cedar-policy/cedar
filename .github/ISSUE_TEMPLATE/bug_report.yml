@@ -39,10 +39,10 @@ body:
     attributes:
       label: Reproduction steps
       description: |
-      Please walk us through exactly how to reproduce this bug.
-      Please provide a code snippet or a link to sample code of the issue you are experiencing to help us reproduce the issue. Please also include relevant Cedar policies, Schemas, or Entity Data.
+        Please walk us through exactly how to reproduce this bug.
+        Please provide a code snippet or a link to sample code of the issue you are experiencing to help us reproduce the issue. Please also include relevant Cedar policies, Schemas, or Entity Data.
 
-      **Be sure to remove any sensitive data.**
+        **Be sure to remove any sensitive data.**
       value: |
         ```rust
         // Put your code below this line.
