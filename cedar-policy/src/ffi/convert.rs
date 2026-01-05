@@ -22,15 +22,10 @@ use super::utils::JsonValueWithNoDuplicateKeys;
 use super::{DetailedError, Policy, Schema, Template};
 use crate::api::{PolicySet, StringifiedPolicySet};
 use cedar_policy_core::{
-    ast::InternalName,
     extensions::Extensions,
-    validator::{
-        cedar_schema::parser::parse_cedar_schema_fragment, json_schema, AllDefs,
-        ValidatorSchemaFragment,
-    },
+    validator::cedar_schema::parser::parse_cedar_schema_fragment,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::str::FromStr;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -209,101 +204,15 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
 
     let warnings_as_detailed_errs: Vec<DetailedError> = warnings.map(|w| (&w).into()).collect();
 
-    let validator_fragment =
-        match ValidatorSchemaFragment::from_schema_fragment(json_schema_fragment.clone()) {
-            Ok(fragment) => fragment,
-            Err(e) => {
-                return SchemaToJsonWithResolvedTypesAnswer::Failure {
-                    errors: vec![miette::Report::new(e).into()],
-                };
-            }
-        };
-
-    let mut all_defs = AllDefs::single_fragment(&validator_fragment);
-
-    // Add built-in primitive types in the __cedar namespace
-    let cedar_namespace = InternalName::__cedar();
-    all_defs.mark_as_defined_as_common_type(
-        InternalName::parse_unqualified_name("Bool")
-            .unwrap()
-            .qualify_with(Some(&cedar_namespace)),
-    );
-    all_defs.mark_as_defined_as_common_type(
-        InternalName::parse_unqualified_name("Long")
-            .unwrap()
-            .qualify_with(Some(&cedar_namespace)),
-    );
-    all_defs.mark_as_defined_as_common_type(
-        InternalName::parse_unqualified_name("String")
-            .unwrap()
-            .qualify_with(Some(&cedar_namespace)),
-    );
-
-    // Add extension types in __cedar namespace and also without
-    // namespace (if they're not already defined as commonTypes)
-    for ext_type in Extensions::all_available().ext_types() {
-        all_defs
-            .mark_as_defined_as_common_type(ext_type.as_ref().qualify_with(Some(&cedar_namespace)));
-        if !all_defs.is_defined_as_common(ext_type.as_ref())
-            && !all_defs.is_defined_as_entity(ext_type.as_ref())
-        {
-            all_defs.mark_as_defined_as_common_type(ext_type.as_ref().qualify_with(None));
-        }
-    }
-
-    // Add aliases for primitive types in the empty namespace (so "String" resolves to "__cedar::String")
-    all_defs.mark_as_defined_as_common_type(InternalName::parse_unqualified_name("Bool").unwrap());
-    all_defs.mark_as_defined_as_common_type(InternalName::parse_unqualified_name("Long").unwrap());
-    all_defs
-        .mark_as_defined_as_common_type(InternalName::parse_unqualified_name("String").unwrap());
-
-    // Now convert the json_schema::Fragment<RawName> to Fragment<ConditionalName> and then to Fragment<InternalName>
-    // Step 1: Convert each namespace definition using conditionally_qualify_type_references
-    let conditional_fragment = json_schema::Fragment(
-        json_schema_fragment
-            .0
-            .into_iter()
-            .map(|(ns_name, ns_def)| {
-                let internal_ns_name = ns_name.as_ref().map(|name| name.clone().into());
-                let conditional_ns_def =
-                    ns_def.conditionally_qualify_type_references(internal_ns_name.as_ref());
-                (ns_name, conditional_ns_def)
-            })
-            .collect(),
-    );
-
-    // Step 2: Convert Fragment<ConditionalName> to Fragment<InternalName> using fully_qualify_type_references
-    let internal_name_fragment_result: std::result::Result<BTreeMap<_, _>, _> =
-        conditional_fragment
-            .0
-            .into_iter()
-            .map(|(ns_name, ns_def)| {
-                ns_def
-                    .fully_qualify_type_references(&all_defs)
-                    .map(|resolved_ns_def| (ns_name, resolved_ns_def))
-            })
-            .collect();
-
-    let internal_name_fragment = match internal_name_fragment_result {
-        Ok(map) => json_schema::Fragment(map),
+    // Use the new method from json_schema.rs to get the resolved fragment
+    let fully_resolved_fragment = match json_schema_fragment.to_internal_name_fragment_with_resolved_types() {
+        Ok(fragment) => fragment,
         Err(e) => {
-            println!("@@@@@@ ERROR HERE {:?}", e);
             return SchemaToJsonWithResolvedTypesAnswer::Failure {
                 errors: vec![miette::Report::new(e).into()],
             };
         }
     };
-
-    // Step 3: Convert EntityOrCommon types to specific Entity or CommonType designations
-    let fully_resolved_fragment =
-        match internal_name_fragment.resolve_entity_or_common_types(&all_defs) {
-            Ok(fragment) => fragment,
-            Err(e) => {
-                return SchemaToJsonWithResolvedTypesAnswer::Failure {
-                    errors: vec![miette::Report::new(e).into()],
-                };
-            }
-        };
 
     // Serialize the resolved Fragment<InternalName> to JSON
     match serde_json::to_value(&fully_resolved_fragment) {
