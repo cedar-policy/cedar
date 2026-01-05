@@ -22,8 +22,7 @@ use super::utils::JsonValueWithNoDuplicateKeys;
 use super::{DetailedError, Policy, Schema, Template};
 use crate::api::{PolicySet, StringifiedPolicySet};
 use cedar_policy_core::{
-    extensions::Extensions,
-    validator::cedar_schema::parser::parse_cedar_schema_fragment,
+    extensions::Extensions, validator::cedar_schema::parser::parse_cedar_schema_fragment,
 };
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -183,8 +182,8 @@ pub fn schema_to_json(schema: Schema) -> SchemaToJsonAnswer {
 }
 
 /// Convert a Cedar schema string to JSON format with resolved types.
-/// This function resolves ambiguous "EntityOrCommon" types to their specific
-/// Entity or CommonType classifications using the schema's type definitions.
+/// This function resolves ambiguous "`EntityOrCommon`" types to their specific
+/// Entity or `CommonType` classifications using the schema's type definitions.
 /// This is primarily meant to be used when working with schemas programmatically,
 /// for example when creating a schema building UI.
 #[cfg_attr(
@@ -193,7 +192,7 @@ pub fn schema_to_json(schema: Schema) -> SchemaToJsonAnswer {
 )]
 pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithResolvedTypesAnswer {
     let (json_schema_fragment, warnings) =
-        match parse_cedar_schema_fragment(schema_str, &Extensions::all_available()) {
+        match parse_cedar_schema_fragment(schema_str, Extensions::all_available()) {
             Ok((json_schema, warnings)) => (json_schema, warnings),
             Err(e) => {
                 return SchemaToJsonWithResolvedTypesAnswer::Failure {
@@ -205,14 +204,15 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
     let warnings_as_detailed_errs: Vec<DetailedError> = warnings.map(|w| (&w).into()).collect();
 
     // Use the new method from json_schema.rs to get the resolved fragment
-    let fully_resolved_fragment = match json_schema_fragment.to_internal_name_fragment_with_resolved_types() {
-        Ok(fragment) => fragment,
-        Err(e) => {
-            return SchemaToJsonWithResolvedTypesAnswer::Failure {
-                errors: vec![miette::Report::new(e).into()],
-            };
-        }
-    };
+    let fully_resolved_fragment =
+        match json_schema_fragment.to_internal_name_fragment_with_resolved_types() {
+            Ok(fragment) => fragment,
+            Err(e) => {
+                return SchemaToJsonWithResolvedTypesAnswer::Failure {
+                    errors: vec![miette::Report::new(e).into()],
+                };
+            }
+        };
 
     // Serialize the resolved Fragment<InternalName> to JSON
     match serde_json::to_value(&fully_resolved_fragment) {
@@ -222,7 +222,7 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
         },
         Err(e) => SchemaToJsonWithResolvedTypesAnswer::Failure {
             errors: vec![
-                DetailedError::from_str(&format!("JSON serialization failed: {}", e))
+                DetailedError::from_str(&format!("JSON serialization failed: {e}"))
                     .unwrap_or_default(),
             ],
         },
@@ -360,9 +360,9 @@ mod test {
     use super::*;
 
     use crate::ffi::test_utils::*;
+    use assert_json_diff::assert_json_eq;
     use cool_asserts::assert_matches;
     use serde_json::json;
-    use assert_json_diff::assert_json_eq;
 
     #[test]
     fn test_policy_to_json() {

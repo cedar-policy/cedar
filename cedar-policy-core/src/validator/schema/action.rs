@@ -58,7 +58,6 @@ pub struct ValidatorActionId {
     pub(crate) loc: Option<Loc>,
 }
 
-
 impl ValidatorActionId {
     /// Construct a new `ValidatorActionId`.
     ///

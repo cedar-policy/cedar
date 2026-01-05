@@ -17,7 +17,13 @@
 //! Structures defining the JSON syntax for Cedar schemas
 
 use crate::{
-    FromNormalizedStr, ast::{Eid, EntityUID, InternalName, Name, UnreservedId}, entities::CedarValueJson, est::Annotations, extensions::Extensions, parser::Loc, validator::{SchemaError, ValidatorSchemaFragment}
+    ast::{Eid, EntityUID, InternalName, Name, UnreservedId},
+    entities::CedarValueJson,
+    est::Annotations,
+    extensions::Extensions,
+    parser::Loc,
+    validator::{SchemaError, ValidatorSchemaFragment},
+    FromNormalizedStr,
 };
 use educe::Educe;
 use itertools::Itertools;
@@ -191,7 +197,7 @@ impl Fragment<RawName> {
         Self::from_cedarschema_str(&src, extensions)
     }
 
-    /// Convert this Fragment<RawName> to a Fragment<InternalName> where all the
+    /// Convert this `Fragment<RawName>` to a `Fragment<InternalName>` where all the
     /// entity or common type references have been resolved
     pub fn to_internal_name_fragment_with_resolved_types(
         &self,
@@ -202,27 +208,25 @@ impl Fragment<RawName> {
 
         // Add built-in primitive types in the __cedar namespace
         let cedar_namespace = InternalName::__cedar();
-        all_defs.mark_as_defined_as_common_type(
-            InternalName::parse_unqualified_name("Bool")
-                .unwrap()
-                .qualify_with(Some(&cedar_namespace)),
-        );
-        all_defs.mark_as_defined_as_common_type(
-            InternalName::parse_unqualified_name("Long")
-                .unwrap()
-                .qualify_with(Some(&cedar_namespace)),
-        );
-        all_defs.mark_as_defined_as_common_type(
-            InternalName::parse_unqualified_name("String")
-                .unwrap()
-                .qualify_with(Some(&cedar_namespace)),
-        );
+
+        let primitives_as_internal_names: Vec<InternalName> = ["Bool", "Long", "String"]
+            .into_iter()
+            .map(|n| {
+                #[expect(clippy::unwrap_used, reason = "these are all valid InternalName's")]
+                InternalName::parse_unqualified_name(n).unwrap()
+            })
+            .collect();
+
+        for tyname in &primitives_as_internal_names {
+            all_defs.mark_as_defined_as_common_type(tyname.qualify_with(Some(&cedar_namespace)));
+        }
 
         // Add extension types in __cedar namespace and also without
         // namespace (if they're not already defined as commonTypes)
         for ext_type in Extensions::all_available().ext_types() {
-            all_defs
-                .mark_as_defined_as_common_type(ext_type.as_ref().qualify_with(Some(&cedar_namespace)));
+            all_defs.mark_as_defined_as_common_type(
+                ext_type.as_ref().qualify_with(Some(&cedar_namespace)),
+            );
             if !all_defs.is_defined_as_common(ext_type.as_ref())
                 && !all_defs.is_defined_as_entity(ext_type.as_ref())
             {
@@ -231,10 +235,9 @@ impl Fragment<RawName> {
         }
 
         // Add aliases for primitive types in the empty namespace (so "String" resolves to "__cedar::String")
-        all_defs.mark_as_defined_as_common_type(InternalName::parse_unqualified_name("Bool").unwrap());
-        all_defs.mark_as_defined_as_common_type(InternalName::parse_unqualified_name("Long").unwrap());
-        all_defs
-            .mark_as_defined_as_common_type(InternalName::parse_unqualified_name("String").unwrap());
+        for tyname in primitives_as_internal_names {
+            all_defs.mark_as_defined_as_common_type(tyname);
+        }
 
         // Step 1: Convert Fragment<RawName> to Fragment<ConditionalName>
         let conditional_fragment = Fragment(
@@ -242,8 +245,9 @@ impl Fragment<RawName> {
                 .iter()
                 .map(|(ns_name, ns_def)| {
                     let internal_ns_name = ns_name.as_ref().map(|name| name.clone().into());
-                    let conditional_ns_def =
-                        ns_def.clone().conditionally_qualify_type_references(internal_ns_name.as_ref());
+                    let conditional_ns_def = ns_def
+                        .clone()
+                        .conditionally_qualify_type_references(internal_ns_name.as_ref());
                     (ns_name.clone(), conditional_ns_def)
                 })
                 .collect(),
@@ -276,7 +280,7 @@ impl<N: Display> Fragment<N> {
 }
 
 impl Fragment<InternalName> {
-    /// Resolve EntityOrCommon types to specific Entity or CommonType designations
+    /// Resolve `EntityOrCommon` types to specific Entity or `CommonType` designations
     pub fn resolve_entity_or_common_types(
         self,
         all_defs: &AllDefs,
@@ -285,10 +289,7 @@ impl Fragment<InternalName> {
             self.0
                 .into_iter()
                 .map(|(ns_name, ns_def)| {
-                    Ok((
-                        ns_name,
-                        ns_def.resolve_entity_or_common_types(all_defs)?,
-                    ))
+                    Ok((ns_name, ns_def.resolve_entity_or_common_types(all_defs)?))
                 })
                 .collect::<Result<_>>()?,
         ))
@@ -538,14 +539,14 @@ impl NamespaceDefinition<ConditionalName> {
     }
 }
 
-/// Helper enum to handle the case where EntityOrCommon resolves to a CommonTypeRef
+/// Helper enum to handle the case where `EntityOrCommon` resolves to a `CommonTypeRef`
 enum ResolvedTypeVariant {
     TypeVariant(TypeVariant<InternalName>),
     CommonTypeRef(InternalName),
 }
 
 impl NamespaceDefinition<InternalName> {
-    /// Resolve EntityOrCommon types to specific Entity or CommonType designations
+    /// Resolve `EntityOrCommon` types to specific Entity or `CommonType` designations
     pub fn resolve_entity_or_common_types(
         self,
         all_defs: &AllDefs,
@@ -1534,7 +1535,7 @@ impl Type<ConditionalName> {
 }
 
 impl Type<InternalName> {
-    /// Resolve EntityOrCommon types to specific Entity or CommonType designations
+    /// Resolve `EntityOrCommon` types to specific Entity or `CommonType` designations
     pub fn resolve_entity_or_common_type(
         self,
         all_defs: &AllDefs,
@@ -1555,7 +1556,7 @@ impl Type<InternalName> {
 }
 
 impl TypeVariant<InternalName> {
-    /// Resolve EntityOrCommon types in a TypeVariant
+    /// Resolve `EntityOrCommon` types in a `TypeVariant`
     fn resolve_type_variant_entity_or_common(
         self,
         all_defs: &AllDefs,
@@ -1597,7 +1598,7 @@ impl TypeVariant<InternalName> {
 }
 
 impl RecordType<InternalName> {
-    /// Resolve EntityOrCommon types in a RecordType
+    /// Resolve `EntityOrCommon` types in a `RecordType`
     fn resolve_record_type_entity_or_common(
         self,
         all_defs: &AllDefs,
@@ -1614,7 +1615,7 @@ impl RecordType<InternalName> {
 }
 
 impl TypeOfAttribute<InternalName> {
-    /// Resolve EntityOrCommon types in a TypeOfAttribute
+    /// Resolve `EntityOrCommon` types in a `TypeOfAttribute`
     fn resolve_type_of_attribute_entity_or_common(
         self,
         all_defs: &AllDefs,
@@ -1630,7 +1631,7 @@ impl TypeOfAttribute<InternalName> {
 }
 
 impl EntityType<InternalName> {
-    /// Resolve EntityOrCommon types in an EntityType
+    /// Resolve `EntityOrCommon` types in an `EntityType`
     fn resolve_entity_type_entity_or_common(
         self,
         all_defs: &AllDefs,
@@ -1658,7 +1659,7 @@ impl EntityType<InternalName> {
 }
 
 impl ActionType<InternalName> {
-    /// Resolve EntityOrCommon types in an ActionType
+    /// Resolve `EntityOrCommon` types in an `ActionType`
     fn resolve_action_type_entity_or_common(
         self,
         all_defs: &AllDefs,
@@ -1676,7 +1677,7 @@ impl ActionType<InternalName> {
 }
 
 impl ApplySpec<InternalName> {
-    /// Resolve EntityOrCommon types in an ApplySpec
+    /// Resolve `EntityOrCommon` types in an `ApplySpec`
     fn resolve_apply_spec_entity_or_common(
         self,
         all_defs: &AllDefs,
@@ -1692,7 +1693,7 @@ impl ApplySpec<InternalName> {
 }
 
 impl AttributesOrContext<InternalName> {
-    /// Resolve EntityOrCommon types in AttributesOrContext
+    /// Resolve `EntityOrCommon` types in `AttributesOrContext`
     fn resolve_attributes_or_context_entity_or_common(
         self,
         all_defs: &AllDefs,

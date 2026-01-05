@@ -409,7 +409,7 @@ impl Entities {
         // adding edges
         for entity in self.iter() {
             for ancestor in entity.ancestors() {
-                if entity.is_child_of(&ancestor) {
+                if entity.is_child_of(ancestor) {
                     write!(f, "\t")?;
                     to_dot_id(f, &entity.uid())?;
                     write!(f, " -> ")?;

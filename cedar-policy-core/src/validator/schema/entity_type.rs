@@ -53,8 +53,6 @@ pub struct ValidatorEntityType {
     pub loc: Option<Loc>,
 }
 
-
-
 /// The kind of validator entity types.
 ///
 /// It can either be a standard (non-enum) entity type, or

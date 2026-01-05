@@ -672,7 +672,7 @@ impl AttributeAccess {
         leading_dot: bool,
     ) -> std::fmt::Result {
         for (idx, a) in attrs.iter().rev().enumerate() {
-            if is_normalized_ident(&a) {
+            if is_normalized_ident(a) {
                 if idx != 0 || leading_dot {
                     write!(w, ".")?;
                 }
