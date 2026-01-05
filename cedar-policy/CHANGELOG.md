@@ -17,6 +17,10 @@ Cedar Language Version: TBD
 ### Added
 
 - `Entity::attrs()` and `Entity::tags()` to iterate over all attributes/tags of an `Entity` (#2084)
+- `to_json_value()` methods on `Entities`, `Context`, and `EntityUid` (matching the existing one on `Entity`) (#2085)
+- Methods for converting public types into their corresponding FFI versions in
+the `ffi` module (`ffi::EntityUid::from_entityuid()` and similar for `ffi::Context`,
+`ffi::Entities`, `ffi::Policy`, `ffi::Template`, and `ffi::StaticPolicySet`) (#2085)
 
 ## [4.8.2] - 2025-12-09
 

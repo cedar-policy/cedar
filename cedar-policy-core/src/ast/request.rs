@@ -15,8 +15,10 @@
  */
 
 use crate::entities::json::{
-    ContextJsonDeserializationError, ContextJsonParser, NullContextSchema,
+    err::JsonSerializationError, ContextJsonDeserializationError, ContextJsonParser,
+    NullContextSchema,
 };
+use crate::entities::CedarValueJson;
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
@@ -418,6 +420,28 @@ impl Context {
     ) -> Result<Self, ContextJsonDeserializationError> {
         ContextJsonParser::new(None::<&NullContextSchema>, Extensions::all_available())
             .from_json_file(json)
+    }
+
+    /// Convert this `Context` to a JSON value
+    pub fn to_json_value(&self) -> Result<serde_json::Value, JsonSerializationError> {
+        match self {
+            Self::Value(record) => record
+                .iter()
+                .map(|(k, v)| {
+                    let cjson = CedarValueJson::from_value(v.clone())?;
+                    Ok((k.to_string(), serde_json::to_value(cjson)?))
+                })
+                .collect(),
+            Self::RestrictedResidual(record) => record
+                .iter()
+                .map(|(k, v)| {
+                    // By INVARIANT(restricted), all the expressions here are restricted expressions
+                    let cjson =
+                        CedarValueJson::from_expr(BorrowedRestrictedExpr::new_unchecked(v))?;
+                    Ok((k.to_string(), serde_json::to_value(cjson)?))
+                })
+                .collect(),
+        }
     }
 
     /// Get the number of keys in this `Context`.

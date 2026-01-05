@@ -60,9 +60,9 @@ pub mod entities_errors {
 pub mod entities_json_errors {
     pub use cedar_policy_core::entities::json::err::{
         ActionParentIsNotAction, DuplicateKey, ExpectedExtnValue, ExpectedLiteralEntityRef,
-        ExtnCall0Arguments, JsonDeserializationError, JsonError, JsonSerializationError,
-        MissingImpliedConstructor, MissingRequiredRecordAttr, ParseEscape, ReservedKey, Residual,
-        TypeMismatch, UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
+        ExtnCall0Arguments, ExtnCall2OrMoreArguments, JsonDeserializationError, JsonError,
+        JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr, ParseEscape,
+        ReservedKey, Residual, TypeMismatch, UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
     };
 }
 

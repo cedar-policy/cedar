@@ -200,6 +200,11 @@ impl EntityUid {
         crate::EntityUid::from_json(self.0.into())
             .wrap_err_with(|| format!("failed to parse {}", category.unwrap_or("entity uid")))
     }
+
+    /// Create an `EntityUid` from the given [`crate::EntityUid`], ready to serialize
+    pub fn from_entityuid(euid: &crate::EntityUid) -> Result<Self, miette::Report> {
+        Ok(Self(euid.to_json_value()?.into()))
+    }
 }
 
 #[doc(hidden)]
@@ -242,6 +247,11 @@ impl Context {
         )
         .map_err(Into::into)
     }
+
+    /// Create a `Context` from the given [`crate::Context`], ready to serialize
+    pub fn from_context(context: &crate::Context) -> Result<Self, miette::Report> {
+        Ok(Self(context.to_json_value()?.into()))
+    }
 }
 
 #[doc(hidden)]
@@ -274,6 +284,11 @@ impl Entities {
         opt_schema: Option<&crate::Schema>,
     ) -> Result<crate::Entities, miette::Report> {
         crate::Entities::from_json_value(self.0.into(), opt_schema).map_err(Into::into)
+    }
+
+    /// Create an [`Entities`] from the given [`crate::Entities`], ready to serialize
+    pub fn from_entities(entities: &crate::Entities) -> Result<Self, miette::Report> {
+        Ok(Self(entities.to_json_value()?.into()))
     }
 }
 
@@ -313,6 +328,11 @@ impl Policy {
             Self::Json(json) => crate::Policy::from_json(id, json.into())
                 .wrap_err(format!("failed to parse policy{msg} from JSON")),
         }
+    }
+
+    /// Create a [`Policy`] from the given [`crate::Policy`], ready to serialize
+    pub fn from_policy(policy: &crate::Policy) -> Self {
+        Self::Cedar(policy.to_string())
     }
 
     /// Get valid principals, actions, and resources.
@@ -397,6 +417,11 @@ impl Template {
         policies
             .add_template(template)
             .wrap_err(format!("failed to add template{msg} to policy set"))
+    }
+
+    ///  Create a [`Template`] from the given [`crate::Template`], ready to serialize
+    pub fn from_template(template: &crate::Template) -> Self {
+        Self::Cedar(template.to_string())
     }
 
     /// Get valid principals, actions, and resources.
@@ -495,6 +520,11 @@ impl StaticPolicySet {
                 }
             }
         }
+    }
+
+    /// Create a [`StaticPolicySet`] from the given [`crate::PolicySet`], ready to serialize
+    pub fn from_policyset(pset: &crate::PolicySet) -> Self {
+        Self::Set(pset.policies().map(Policy::from_policy).collect())
     }
 }
 

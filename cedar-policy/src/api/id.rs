@@ -17,7 +17,7 @@
 //! This module defines the publicly exported identifier types including
 //! `EntityUid` and `PolicyId`.
 
-use crate::entities_json_errors::JsonDeserializationError;
+use crate::entities_json_errors::{JsonDeserializationError, JsonSerializationError};
 use crate::ParseErrors;
 use cedar_policy_core::ast;
 use cedar_policy_core::entities::json::err::JsonDeserializationErrorContext;
@@ -262,6 +262,12 @@ impl EntityUid {
         Ok(parsed
             .into_euid(&|| JsonDeserializationErrorContext::EntityUid)?
             .into())
+    }
+
+    /// Convert this `EntityUid` into a JSON value
+    pub fn to_json_value(&self) -> Result<serde_json::Value, JsonSerializationError> {
+        let json: cedar_policy_core::entities::EntityUidJson = (&self.0).into();
+        serde_json::to_value(json).map_err(Into::into)
     }
 }
 
