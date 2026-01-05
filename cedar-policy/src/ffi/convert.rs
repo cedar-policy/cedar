@@ -287,6 +287,7 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
     let internal_name_fragment = match internal_name_fragment_result {
         Ok(map) => json_schema::Fragment(map),
         Err(e) => {
+            println!("@@@@@@ ERROR HERE {:?}", e);
             return SchemaToJsonWithResolvedTypesAnswer::Failure {
                 errors: vec![miette::Report::new(e).into()],
             };

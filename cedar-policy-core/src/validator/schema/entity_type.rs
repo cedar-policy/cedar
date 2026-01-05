@@ -16,6 +16,7 @@
 
 //! This module contains the definition of `ValidatorEntityType`
 
+use educe::Educe;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::collections::HashSet;
@@ -27,7 +28,8 @@ use crate::validator::types::{AttributeType, Attributes, OpenTag, Type};
 /// Contains entity type information for use by the validator. The contents of
 /// the struct are the same as the schema entity type structure, but the
 /// `member_of` relation is reversed to instead be `descendants`.
-#[derive(Clone, Debug)]
+#[derive(Educe, Clone, Debug)]
+#[educe(PartialEq, Eq)]
 pub struct ValidatorEntityType {
     /// The name of the entity type.
     pub(crate) name: EntityType,
@@ -47,23 +49,11 @@ pub struct ValidatorEntityType {
     pub(crate) attributes: Attributes,
 
     /// Source location - if available
+    #[educe(PartialEq(ignore))]
     pub loc: Option<Loc>,
 }
 
-/// PartialEq implementation for ValidatorEntityType, assumes that location
-/// information is irrelevant to the comparison
-impl PartialEq for ValidatorEntityType {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-            && self.kind == other.kind
-            && self.descendants == other.descendants
-            && self.attributes == other.attributes
-    }
-}
 
-/// There's no ValidatorEntityType's which are non comparable to one another
-/// if we assume location is irrelevant
-impl Eq for ValidatorEntityType {}
 
 /// The kind of validator entity types.
 ///

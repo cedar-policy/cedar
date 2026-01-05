@@ -217,7 +217,7 @@ impl Fragment<InternalName> {
                 .map(|(ns_name, ns_def)| {
                     Ok((
                         ns_name,
-                        ns_def.fully_resolve_common_and_entity_types(all_defs)?,
+                        ns_def.resolve_entity_or_common_types(all_defs)?,
                     ))
                 })
                 .collect::<Result<_>>()?,
@@ -476,7 +476,7 @@ enum ResolvedTypeVariant {
 
 impl NamespaceDefinition<InternalName> {
     /// Resolve EntityOrCommon types to specific Entity or CommonType designations
-    pub fn fully_resolve_common_and_entity_types(
+    pub fn resolve_entity_or_common_types(
         self,
         all_defs: &AllDefs,
     ) -> Result<NamespaceDefinition<InternalName>> {
@@ -488,7 +488,7 @@ impl NamespaceDefinition<InternalName> {
                     Ok((
                         k,
                         CommonType {
-                            ty: v.ty.resolve_type_entity_or_common(all_defs)?,
+                            ty: v.ty.resolve_entity_or_common_type(all_defs)?,
                             annotations: v.annotations,
                             loc: v.loc,
                         },
@@ -893,26 +893,6 @@ pub struct ActionType<N> {
     #[serde(skip)]
     #[educe(PartialEq(ignore))]
     pub(crate) defn_loc: Option<Loc>,
-}
-
-impl ActionType<InternalName> {
-    /// Function that consumes an ActionType<InternalName> and returns a new definition with
-    /// a new apply spec
-    #[must_use]
-    pub fn new_with_apply_spec(
-        old: ActionType<InternalName>,
-        new_apply_spec: Option<ApplySpec<InternalName>>,
-    ) -> Self {
-        Self {
-            attributes: old.attributes,
-            applies_to: new_apply_spec,
-            member_of: old.member_of,
-            annotations: old.annotations,
-            loc: old.loc,
-            #[cfg(feature = "extended-schema")]
-            defn_loc: old.defn_loc,
-        }
-    }
 }
 
 impl ActionType<RawName> {
@@ -1485,7 +1465,7 @@ impl Type<ConditionalName> {
 
 impl Type<InternalName> {
     /// Resolve EntityOrCommon types to specific Entity or CommonType designations
-    pub fn resolve_type_entity_or_common(
+    pub fn resolve_entity_or_common_type(
         self,
         all_defs: &AllDefs,
     ) -> std::result::Result<Type<InternalName>, TypeNotDefinedError> {
@@ -1534,7 +1514,7 @@ impl TypeVariant<InternalName> {
             }
             TypeVariant::Set { element } => {
                 Ok(ResolvedTypeVariant::TypeVariant(TypeVariant::Set {
-                    element: Box::new(element.resolve_type_entity_or_common(all_defs)?),
+                    element: Box::new(element.resolve_entity_or_common_type(all_defs)?),
                 }))
             }
             TypeVariant::Record(record_type) => Ok(ResolvedTypeVariant::TypeVariant(
@@ -1570,7 +1550,7 @@ impl TypeOfAttribute<InternalName> {
         all_defs: &AllDefs,
     ) -> std::result::Result<TypeOfAttribute<InternalName>, TypeNotDefinedError> {
         Ok(TypeOfAttribute {
-            ty: self.ty.resolve_type_entity_or_common(all_defs)?,
+            ty: self.ty.resolve_entity_or_common_type(all_defs)?,
             required: self.required,
             annotations: self.annotations,
             #[cfg(feature = "extended-schema")]
@@ -1595,7 +1575,7 @@ impl EntityType<InternalName> {
                             .resolve_attributes_or_context_entity_or_common(all_defs)?,
                         tags: standard
                             .tags
-                            .map(|tags| tags.resolve_type_entity_or_common(all_defs))
+                            .map(|tags| tags.resolve_entity_or_common_type(all_defs))
                             .transpose()?,
                     })
                 }
@@ -1618,10 +1598,10 @@ impl ActionType<InternalName> {
             .clone()
             .map(|apply_spec| apply_spec.resolve_apply_spec_entity_or_common(all_defs))
             .transpose()?;
-        Ok(ActionType::<InternalName>::new_with_apply_spec(
-            self,
-            new_apply_spec,
-        ))
+        Ok(ActionType::<InternalName> {
+            applies_to: new_apply_spec,
+            ..self
+        })
     }
 }
 
@@ -1648,7 +1628,7 @@ impl AttributesOrContext<InternalName> {
         all_defs: &AllDefs,
     ) -> std::result::Result<AttributesOrContext<InternalName>, TypeNotDefinedError> {
         Ok(AttributesOrContext(
-            self.0.resolve_type_entity_or_common(all_defs)?,
+            self.0.resolve_entity_or_common_type(all_defs)?,
         ))
     }
 }

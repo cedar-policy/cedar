@@ -21,6 +21,7 @@ use crate::{
     parser::Loc,
     transitive_closure::TCNode,
 };
+use educe::Educe;
 use std::collections::HashSet;
 
 use super::internal_name_to_entity_type;
@@ -34,7 +35,8 @@ use crate::validator::{
 /// Contains information about actions used by the validator.  The contents of
 /// the struct are the same as the schema entity type structure, but the
 /// `member_of` relation is reversed to instead be `descendants`.
-#[derive(Clone, Debug)]
+#[derive(Educe, Clone, Debug)]
+#[educe(PartialEq, Eq)]
 pub struct ValidatorActionId {
     /// The name of the action.
     pub(crate) name: EntityUID,
@@ -52,23 +54,10 @@ pub struct ValidatorActionId {
     pub(crate) context: Type,
 
     /// Source location - if available
+    #[educe(PartialEq(ignore))]
     pub(crate) loc: Option<Loc>,
 }
 
-/// PartialEq implementation for ValidatorActionId, assumes that location
-/// information is irrelevant to the comparison
-impl PartialEq for ValidatorActionId {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-            && self.applies_to == other.applies_to
-            && self.descendants == other.descendants
-            && self.context == other.context
-    }
-}
-
-/// There's no ValidatorActionId's which are non comparable to one another
-/// if we assume location is irrelevant
-impl Eq for ValidatorActionId {}
 
 impl ValidatorActionId {
     /// Construct a new `ValidatorActionId`.
