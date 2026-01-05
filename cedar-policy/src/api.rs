@@ -245,6 +245,21 @@ impl Entity {
         }
     }
 
+    /// Iterate over all attributes of the entity, as (name, value) pairs
+    ///
+    /// The value for any individual attribute may be `Err` if the attribute is
+    /// not a value (i.e., is unknown due to partial evaluation).
+    pub fn attrs(
+        &self,
+    ) -> impl Iterator<Item = (&str, Result<EvalResult, PartialValueToValueError>)> {
+        self.0.attrs().map(|(k, v)| {
+            (
+                k.as_ref(),
+                ast::Value::try_from(v.clone()).map(EvalResult::from),
+            )
+        })
+    }
+
     /// Get the value for the given tag, or `None` if not present.
     ///
     /// This can also return Some(Err) if the tag is not a value (i.e., is
@@ -254,6 +269,21 @@ impl Entity {
             Ok(v) => Some(Ok(EvalResult::from(v))),
             Err(e) => Some(Err(e)),
         }
+    }
+
+    /// Iterate over all tags of the entity, as (name, value) pairs
+    ///
+    /// The value for any individual tag may be `Err` if the tag is not a value
+    /// (i.e., is unknown due to partial evaluation).
+    pub fn tags(
+        &self,
+    ) -> impl Iterator<Item = (&str, Result<EvalResult, PartialValueToValueError>)> {
+        self.0.tags().map(|(k, v)| {
+            (
+                k.as_ref(),
+                ast::Value::try_from(v.clone()).map(EvalResult::from),
+            )
+        })
     }
 
     /// Consume the entity and return the entity's owned Uid, attributes and parents.

@@ -222,7 +222,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         }
     }
 
-    pub async fn declare_ext_type(&mut self, ext_ty: &ExtType) -> Result<&'static str> {
+    pub async fn declare_ext_type(&mut self, ext_ty: ExtType) -> Result<&'static str> {
         match ext_ty {
             ExtType::Decimal => {
                 self.declare_type("Decimal", ["(Decimal (decimalVal (_ BitVec 64)))"])
@@ -294,7 +294,9 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                         return Ok(format_smolstr!("(Set {})", self.encode_type(ty).await?));
                     }
                     TermType::Entity { ety } => self.declare_entity_type(ety).await?,
-                    TermType::Ext { xty } => SmolStr::new_static(self.declare_ext_type(xty).await?),
+                    TermType::Ext { xty } => {
+                        SmolStr::new_static(self.declare_ext_type(*xty).await?)
+                    }
                     TermType::Record { rty } => {
                         let mut record_type = Vec::with_capacity(rty.len());
                         for (k, v) in rty.iter() {

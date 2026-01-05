@@ -17,8 +17,10 @@
 //! This module is as straightforward a translation as possible of
 //! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/SymCCOpt.lean>.
 
+mod authorizer;
 mod compiled_policies;
 pub use compiled_policies::{CompiledPolicies, CompiledPolicy};
+mod compiler;
 mod enforcer;
 mod verifier;
 

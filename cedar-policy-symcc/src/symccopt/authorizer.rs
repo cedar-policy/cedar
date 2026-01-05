@@ -13,24 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 use cedar_policy::Effect;
 use cedar_policy_core::ast::{Policy, PolicySet};
 
-use crate::symcc::{
-    compiler::compile,
-    env::SymEnv,
-    factory::{and, any_true, eq, not, some_of},
-    result::CompileError,
-    term::Term,
+use super::compiler::{compile, CompileResult, Footprint, Result};
+use crate::{
+    term_factory::{and, any_true, eq, not, some_of},
+    SymEnv,
 };
 
-pub fn satisfied_with_effect(
+pub fn compile_with_effect(
     effect: Effect,
     policy: &Policy,
-    env: &SymEnv,
-) -> Result<Option<Term>, CompileError> {
+    symenv: &SymEnv,
+) -> Result<Option<CompileResult>> {
     if policy.effect() == effect {
-        Ok(Some(compile(&policy.condition(), env)?))
+        Ok(Some(compile(&policy.condition(), symenv)?))
     } else {
         Ok(None)
     }
@@ -40,16 +39,25 @@ pub fn satisfied_policies(
     effect: Effect,
     policies: &PolicySet,
     env: &SymEnv,
-) -> Result<Term, CompileError> {
-    let terms = policies
+) -> Result<CompileResult> {
+    let ress = policies
         .policies()
-        .filter_map(|p| satisfied_with_effect(effect, p, env).transpose())
-        .collect::<Result<Vec<Term>, CompileError>>()?;
-    Ok(any_true(|t: Term| eq(t, some_of(true.into())), terms))
+        .filter_map(|p| compile_with_effect(effect, p, env).transpose())
+        .collect::<Result<Vec<CompileResult>>>()?;
+    Ok(CompileResult {
+        term: any_true(
+            |term| eq(term, some_of(true.into())),
+            ress.iter().map(|res| res.term.clone()),
+        ),
+        footprint: Footprint::from_iter(ress.into_iter().flat_map(|res| res.footprint.into_iter())),
+    })
 }
 
-pub fn is_authorized(policies: &PolicySet, env: &SymEnv) -> Result<Term, CompileError> {
+pub fn is_authorized(policies: &PolicySet, env: &SymEnv) -> Result<CompileResult> {
     let forbids = satisfied_policies(Effect::Forbid, policies, env)?;
     let permits = satisfied_policies(Effect::Permit, policies, env)?;
-    Ok(and(permits, not(forbids)))
+    Ok(CompileResult {
+        term: and(permits.term, not(forbids.term)),
+        footprint: Footprint::from_iter(permits.footprint.into_iter().chain(forbids.footprint)),
+    })
 }

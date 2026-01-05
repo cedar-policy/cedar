@@ -719,13 +719,13 @@ impl SExpr {
                     // (Option x)
                     [SExpr::Symbol(option), param] if option == "Option" => {
                         let ty = param.decode_type(id_maps)?;
-                        Ok(TermType::Option { ty: Arc::new(ty) })
+                        Ok(TermType::option_of(ty))
                     }
 
                     // (Set x)
                     [SExpr::Symbol(set), param] if set == "Set" => {
                         let ty = param.decode_type(id_maps)?;
-                        Ok(TermType::Set { ty: Arc::new(ty) })
+                        Ok(TermType::set_of(ty))
                     }
 
                     _ => Err(DecodeError::UnknownType(self.clone())),

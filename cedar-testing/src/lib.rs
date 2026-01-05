@@ -16,3 +16,4 @@
 
 pub mod cedar_test_impl;
 pub mod integration_testing;
+pub mod test_files;

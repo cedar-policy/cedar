@@ -23,6 +23,7 @@ use cedar_policy::{Effect, RequestEnv, Schema};
 use cedar_policy_core::ast::{Policy, PolicySet};
 
 use crate::symcc::{self, factory, term::Term, SymEnv};
+use crate::symccopt::{self, compiler::CompileResult};
 use crate::Result;
 
 // Unlike the Lean version, here in the Rust version we don't define our own
@@ -59,9 +60,9 @@ impl CompiledPolicy {
     pub fn compile(policy: &Policy, env: &RequestEnv, schema: &Schema) -> Result<Self> {
         let policy = symcc::well_typed_policy(policy, env, schema)?;
         let env = symcc::SymEnv::new(schema, env)?;
-        let term = symcc::compiler::compile(&policy.condition(), &env)?;
-        let footprint: BTreeSet<Term> =
-            symcc::enforcer::footprint(&policy.condition(), &env).collect();
+        let CompileResult { term, footprint } =
+            symccopt::compiler::compile(&policy.condition(), &env)?;
+        let footprint: BTreeSet<Term> = footprint.collect(); // important step that removes duplicates, prior to passing to `acyclicity`
         let acyclicity = footprint
             .iter()
             .map(|term| symcc::enforcer::acyclicity(term, &env.entities))
@@ -142,11 +143,9 @@ impl CompiledPolicies {
     pub fn compile(pset: &PolicySet, env: &RequestEnv, schema: &Schema) -> Result<Self> {
         let policies = symcc::well_typed_policies(pset, env, schema)?;
         let env = symcc::SymEnv::new(schema, env)?;
-        let term = symcc::authorizer::is_authorized(&policies, &env)?;
-        let footprint = {
-            let conditions: Vec<_> = policies.policies().map(Policy::condition).collect();
-            symcc::enforcer::footprints(conditions.iter(), &env)
-        };
+        let CompileResult { term, footprint } =
+            symccopt::authorizer::is_authorized(&policies, &env)?;
+        let footprint: BTreeSet<Term> = footprint.collect(); // important step that removes duplicates, prior to passing to `acyclicity`
         let acyclicity = footprint
             .iter()
             .map(|term| symcc::enforcer::acyclicity(term, &env.entities))

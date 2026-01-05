@@ -21,13 +21,13 @@ use crate::parser::Loc;
 use miette::Diagnostic;
 use thiserror::Error;
 
-use std::fmt::Display;
+use std::fmt::{Display, Write};
 
 use crate::fuzzy_match::fuzzy_search;
 
 use std::collections::BTreeSet;
 
-use crate::ast::{Eid, EntityType, EntityUID, Expr, ExprKind, PolicyID, Var};
+use crate::ast::{is_normalized_ident, Eid, EntityType, EntityUID, Expr, ExprKind, PolicyID, Var};
 use crate::parser::join_with_conjunction;
 
 use crate::validator::level_validate::EntityDerefLevel;
@@ -643,8 +643,8 @@ impl AttributeAccess {
         // We know if this is an access directly on `context`, so we can suggest
         // specifically `context has ..`. Otherwise, we just use a generic `e`.
         let base_expr = match self {
-            AttributeAccess::Context(_, _) => "context".into(),
-            _ => "e".into(),
+            AttributeAccess::Context(_, _) => "context",
+            _ => "e",
         };
 
         let (safe_attrs, err_attr) = match self.attrs().split_first() {
@@ -655,29 +655,54 @@ impl AttributeAccess {
             None => (&[] as &[SmolStr], "f".into()),
         };
 
-        let full_expr = std::iter::once(&base_expr)
-            .chain(safe_attrs.iter().rev())
-            .join(".");
-        format!("{full_expr} has {err_attr}")
+        let mut suggested_guard = base_expr.to_string();
+        let _ = Self::format_attr_chain(&mut suggested_guard, safe_attrs, true);
+        suggested_guard.push_str(" has ");
+        if is_normalized_ident(&err_attr) {
+            suggested_guard.push_str(&err_attr)
+        } else {
+            let _ = write!(suggested_guard, "\"{}\"", err_attr.escape_debug());
+        }
+        suggested_guard
+    }
+
+    fn format_attr_chain(
+        w: &mut impl Write,
+        attrs: &[SmolStr],
+        leading_dot: bool,
+    ) -> std::fmt::Result {
+        for (idx, a) in attrs.iter().rev().enumerate() {
+            if is_normalized_ident(&a) {
+                if idx != 0 || leading_dot {
+                    write!(w, ".")?;
+                }
+                write!(w, "{a}")?;
+            } else {
+                write!(w, "[\"{}\"]", a.escape_debug())?;
+            }
+        }
+        Ok(())
     }
 }
 
 impl Display for AttributeAccess {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let attrs_str = self.attrs().iter().rev().join(".");
+        write!(f, "`")?;
+        Self::format_attr_chain(f, self.attrs(), false)?;
+        write!(f, "`")?;
         match self {
             AttributeAccess::EntityLUB(lub, _) => write!(
                 f,
-                "`{attrs_str}` on entity type{}",
+                " on entity type{}",
                 match lub.get_single_entity() {
                     Some(single) => format!(" `{single}`"),
                     _ => format!("s {}", lub.iter().map(|ety| format!("`{ety}`")).join(", ")),
                 },
             ),
             AttributeAccess::Context(action, _) => {
-                write!(f, "`{attrs_str}` in context for {action}",)
+                write!(f, " in context for {action}",)
             }
-            AttributeAccess::Other(_) => write!(f, "`{attrs_str}`"),
+            AttributeAccess::Other(_) => Ok(()),
         }
     }
 }
@@ -823,5 +848,22 @@ mod test_attr_access {
         assert_message_and_help(&e, "`foo.bar`", "e.foo has bar");
         let e = ExprBuilder::new().get_attr(e, "baz".into());
         assert_message_and_help(&e, "`foo.bar.baz`", "e.foo.bar has baz");
+    }
+
+    #[test]
+    fn non_normalized_access() {
+        let e = ExprBuilder::new().get_attr(
+            ExprBuilder::new().ite(
+                ExprBuilder::new().val(true),
+                ExprBuilder::new().record([]).unwrap(),
+                ExprBuilder::new().record([]).unwrap(),
+            ),
+            "foo ".into(),
+        );
+        assert_message_and_help(&e, "`[\"foo \"]`", "e has \"foo \"");
+        let e = ExprBuilder::new().get_attr(e, "bar".into());
+        assert_message_and_help(&e, "`[\"foo \"].bar`", "e[\"foo \"] has bar");
+        let e = ExprBuilder::new().get_attr(e, "@".into());
+        assert_message_and_help(&e, "`[\"foo \"].bar[\"@\"]`", "e[\"foo \"].bar has \"@\"");
     }
 }
