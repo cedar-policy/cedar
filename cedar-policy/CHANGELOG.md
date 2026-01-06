@@ -21,6 +21,7 @@ Cedar Language Version: TBD
 - Methods for converting public types into their corresponding FFI versions in
 the `ffi` module (`ffi::EntityUid::from_entityuid()` and similar for `ffi::Context`,
 `ffi::Entities`, `ffi::Policy`, `ffi::Template`, and `ffi::StaticPolicySet`) (#2085)
+- More derives (`PartialEq`, `Clone`, etc) for a number of types in the `ffi` module (#2083)
 
 ## [4.8.2] - 2025-12-09
 

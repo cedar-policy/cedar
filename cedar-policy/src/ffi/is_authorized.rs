@@ -214,7 +214,7 @@ pub fn is_authorized_partial_json_str(json: &str) -> Result<String, serde_json::
 }
 
 /// Interface version of a `Response` that uses the interface version of `Diagnostics`
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
@@ -349,7 +349,7 @@ impl From<cedar_policy_core::authorizer::AuthorizationError> for AuthorizationEr
 /// FFI version of a [`crate::PartialResponse`]
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
@@ -456,7 +456,7 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
 }
 
 /// Answer struct from authorization call
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -487,7 +487,7 @@ pub enum AuthorizationAnswer {
 
 /// Answer struct from partial-authorization call
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -517,7 +517,7 @@ pub enum PartialAuthorizationAnswer {
 
 /// Struct containing the input data for authorization
 #[serde_as]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
@@ -551,7 +551,7 @@ pub struct AuthorizationCall {
 
 /// Struct containing the input data for stateful authorization using preparsed schemas and policy sets
 #[serde_as]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
@@ -586,7 +586,7 @@ pub struct StatefulAuthorizationCall {
 /// Struct containing the input data for partial authorization
 #[cfg(feature = "partial-eval")]
 #[serde_as]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]

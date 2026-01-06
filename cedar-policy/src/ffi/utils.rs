@@ -35,7 +35,7 @@ extern crate tsify;
     reason = "cedar-wasm build will fail until wasm-bindgen fixes a bug that doesn't translsate `Self` to `this`."
 )]
 /// Structure of the JSON output representing one `miette` error
-#[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize, Default)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Deserialize, Serialize, Default)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
@@ -103,7 +103,7 @@ impl From<miette::Severity> for Severity {
 }
 
 /// Structure of the JSON output representing a `miette` source label (range)
-#[derive(Debug, PartialEq, Eq, Clone, Hash, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Deserialize, Serialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
@@ -179,7 +179,7 @@ impl From<miette::Report> for DetailedError {
 
 /// Wrapper around a JSON value describing an entity uid in either explicit or
 /// implicit `__entity` form. Expects the same format as [`crate::EntityUid::from_json`].
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -217,7 +217,7 @@ impl From<serde_json::Value> for EntityUid {
 /// Wrapper around a JSON value describing a context. Expects the same format
 /// as [`crate::Context::from_json_value`].
 /// See <https://docs.cedarpolicy.com/auth/entities-syntax.html>
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -264,7 +264,7 @@ impl From<serde_json::Value> for Context {
 /// Wrapper around a JSON value describing a set of entities. Expects the same
 /// format as [`crate::Entities::from_json_value`].
 /// See <https://docs.cedarpolicy.com/auth/entities-syntax.html>
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -300,7 +300,7 @@ impl From<serde_json::Value> for Entities {
 }
 
 /// Represents a static policy in either the Cedar or JSON policy format
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone, Hash)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(untagged)]
@@ -371,7 +371,7 @@ impl Policy {
 }
 
 /// Represents a policy template in either the Cedar or JSON policy format.
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone, Hash)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(untagged)]
@@ -460,7 +460,7 @@ impl Template {
 }
 
 /// Represents a set of static policies
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(untagged)]
@@ -535,7 +535,7 @@ impl Default for StaticPolicySet {
 }
 
 /// Represents a template-linked policy
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
@@ -569,7 +569,7 @@ impl TemplateLink {
 }
 
 /// Represents a policy set, including static policies, templates, and template links
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
@@ -633,7 +633,7 @@ impl PolicySet {
 }
 
 /// Represents a schema in either the Cedar or JSON schema format
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(untagged)]
