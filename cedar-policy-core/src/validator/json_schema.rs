@@ -235,8 +235,10 @@ impl Fragment<RawName> {
         }
 
         // Add aliases for primitive types in the empty namespace (so "String" resolves to "__cedar::String")
-        for tyname in primitives_as_internal_names {
-            all_defs.mark_as_defined_as_common_type(tyname);
+        for tyname in &primitives_as_internal_names {
+            if !all_defs.is_defined_as_common(tyname) && !all_defs.is_defined_as_entity(tyname) {
+                all_defs.mark_as_defined_as_common_type(tyname.clone());
+            }
         }
 
         // Step 1: Convert Fragment<RawName> to Fragment<ConditionalName>
@@ -1564,12 +1566,12 @@ impl TypeVariant<InternalName> {
         match self {
             TypeVariant::EntityOrCommon { type_name } => {
                 // Check if this is an entity type or common type
-                if all_defs.is_defined_as_entity(&type_name) {
+                if all_defs.is_defined_as_common(&type_name) {
+                    Ok(ResolvedTypeVariant::CommonTypeRef(type_name))
+                } else if all_defs.is_defined_as_entity(&type_name) {
                     Ok(ResolvedTypeVariant::TypeVariant(TypeVariant::Entity {
                         name: type_name,
                     }))
-                } else if all_defs.is_defined_as_common(&type_name) {
-                    Ok(ResolvedTypeVariant::CommonTypeRef(type_name))
                 } else {
                     // If it's neither, this means that the json_schema::Fragment wasn't complete
                     Err(TypeNotDefinedError {
