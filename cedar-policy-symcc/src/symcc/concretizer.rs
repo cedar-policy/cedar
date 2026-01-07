@@ -234,6 +234,7 @@ impl SymRequest {
 
 impl Term {
     /// Tries to convert a term into a record
+    ///
     /// Corresponds to `Term.recordValue?` in `Concretize.lean`
     fn try_into_record(&self) -> Result<Arc<BTreeMap<SmolStr, Value>>, ConcretizeError> {
         if let Value {
@@ -248,6 +249,8 @@ impl Term {
     }
 
     /// Collect all entity UIDs occurring in the term
+    ///
+    /// Corresponds to `Term.entityUIDs` in `Concretizer.lean`
     pub(crate) fn get_all_entity_uids(&self, uids: &mut BTreeSet<EntityUid>) {
         match self {
             Term::Prim(TermPrim::Entity(uid)) => {

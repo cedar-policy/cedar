@@ -1369,6 +1369,27 @@ async fn transitivity_and_in() {
     assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
     assert_does_not_imply(&mut compiler, &pset2, &pset1, &envs).await;
 
+    // pset1 implies pset2, but not vice versa, because of how `in` is defined
+    let pset1 = utils::pset_from_text(
+        r#"
+        permit(principal, action, resource) when {
+            context.depts.contains(context.dept)
+        };
+    "#,
+        &validator,
+    );
+    let pset2 = utils::pset_from_text(
+        r#"
+        permit(principal, action, resource)
+        when {
+            context.dept in context.depts
+        };
+    "#,
+        &validator,
+    );
+    assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
+    assert_does_not_imply(&mut compiler, &pset2, &pset1, &envs).await;
+
     // always allows because of how `in` and `containsAll` interact
     let pset = utils::pset_from_text(
         r#"
