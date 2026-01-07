@@ -1,0 +1,59 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/multiple_entities_declared_together.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "delete": {
+        "appliesTo": {
+          "principalTypes": [
+            "User",
+            "Admin"
+          ],
+          "resourceTypes": [
+            "Document"
+          ]
+        }
+      },
+      "read": {
+        "appliesTo": {
+          "principalTypes": [
+            "User",
+            "Admin"
+          ],
+          "resourceTypes": [
+            "Document"
+          ]
+        }
+      },
+      "write": {
+        "appliesTo": {
+          "principalTypes": [
+            "User",
+            "Admin"
+          ],
+          "resourceTypes": [
+            "Document"
+          ]
+        }
+      }
+    },
+    "entityTypes": {
+      "Admin": {},
+      "Document": {
+        "shape": {
+          "attributes": {
+            "title": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "Guest": {},
+      "User": {}
+    }
+  }
+}

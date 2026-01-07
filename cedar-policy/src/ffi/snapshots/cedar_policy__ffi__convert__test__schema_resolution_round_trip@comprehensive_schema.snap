@@ -1,0 +1,305 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/comprehensive_schema.cedarschema
+---
+{
+  "": {
+    "actions": {},
+    "commonTypes": {
+      "Email": {
+        "type": "__cedar::String"
+      },
+      "PhoneNumber": {
+        "type": "__cedar::String"
+      }
+    },
+    "entityTypes": {}
+  },
+  "Documents": {
+    "actions": {
+      "approve": {
+        "appliesTo": {
+          "principalTypes": [
+            "Organization::Executive"
+          ],
+          "resourceTypes": [
+            "Documents::Report"
+          ]
+        },
+        "memberOf": [
+          {
+            "id": "review",
+            "type": "Documents::Action"
+          }
+        ]
+      },
+      "read": {
+        "appliesTo": {
+          "context": {
+            "attributes": {
+              "ip_address": {
+                "type": "__cedar::String"
+              },
+              "timestamp": {
+                "type": "__cedar::Long"
+              }
+            },
+            "type": "Record"
+          },
+          "principalTypes": [
+            "Organization::Employee",
+            "Organization::Manager"
+          ],
+          "resourceTypes": [
+            "Documents::Document",
+            "Documents::Report",
+            "Documents::Memo"
+          ]
+        }
+      },
+      "review": {
+        "appliesTo": {
+          "context": {
+            "attributes": {
+              "ip_address": {
+                "type": "__cedar::String"
+              },
+              "timestamp": {
+                "type": "__cedar::Long"
+              }
+            },
+            "type": "Record"
+          },
+          "principalTypes": [
+            "Organization::Employee",
+            "Organization::Manager"
+          ],
+          "resourceTypes": [
+            "Documents::Document",
+            "Documents::Report",
+            "Documents::Memo"
+          ]
+        }
+      },
+      "write": {
+        "appliesTo": {
+          "context": {
+            "attributes": {
+              "ip_address": {
+                "type": "__cedar::String"
+              },
+              "timestamp": {
+                "type": "__cedar::Long"
+              }
+            },
+            "type": "Record"
+          },
+          "principalTypes": [
+            "Organization::Employee",
+            "Organization::Manager"
+          ],
+          "resourceTypes": [
+            "Documents::Document",
+            "Documents::Report",
+            "Documents::Memo"
+          ]
+        }
+      }
+    },
+    "entityTypes": {
+      "Document": {
+        "memberOfTypes": [
+          "Documents::Document"
+        ],
+        "shape": {
+          "attributes": {
+            "author": {
+              "name": "Organization::Employee",
+              "type": "Entity"
+            },
+            "reviewers": {
+              "element": {
+                "name": "Organization::Manager",
+                "type": "Entity"
+              },
+              "type": "Set"
+            },
+            "title": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        },
+        "tags": {
+          "attributes": {
+            "classification": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "Memo": {
+        "memberOfTypes": [
+          "Documents::Document"
+        ],
+        "shape": {
+          "attributes": {
+            "author": {
+              "name": "Organization::Employee",
+              "type": "Entity"
+            },
+            "reviewers": {
+              "element": {
+                "name": "Organization::Manager",
+                "type": "Entity"
+              },
+              "type": "Set"
+            },
+            "title": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        },
+        "tags": {
+          "attributes": {
+            "classification": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "Report": {
+        "memberOfTypes": [
+          "Documents::Document"
+        ],
+        "shape": {
+          "attributes": {
+            "author": {
+              "name": "Organization::Employee",
+              "type": "Entity"
+            },
+            "reviewers": {
+              "element": {
+                "name": "Organization::Manager",
+                "type": "Entity"
+              },
+              "type": "Set"
+            },
+            "title": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        },
+        "tags": {
+          "attributes": {
+            "classification": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  },
+  "Organization": {
+    "actions": {},
+    "commonTypes": {
+      "DepartmentId": {
+        "type": "__cedar::String"
+      }
+    },
+    "entityTypes": {
+      "Department": {
+        "shape": {
+          "attributes": {
+            "budget": {
+              "type": "__cedar::Long"
+            },
+            "id": {
+              "type": "Organization::DepartmentId"
+            },
+            "name": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "Employee": {
+        "memberOfTypes": [
+          "Organization::Employee"
+        ],
+        "shape": {
+          "attributes": {
+            "department": {
+              "name": "Organization::Department",
+              "type": "Entity"
+            },
+            "email": {
+              "type": "Email"
+            },
+            "phone": {
+              "required": false,
+              "type": "PhoneNumber"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "Executive": {
+        "memberOfTypes": [
+          "Organization::Employee"
+        ],
+        "shape": {
+          "attributes": {
+            "department": {
+              "name": "Organization::Department",
+              "type": "Entity"
+            },
+            "email": {
+              "type": "Email"
+            },
+            "phone": {
+              "required": false,
+              "type": "PhoneNumber"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "Manager": {
+        "memberOfTypes": [
+          "Organization::Employee"
+        ],
+        "shape": {
+          "attributes": {
+            "department": {
+              "name": "Organization::Department",
+              "type": "Entity"
+            },
+            "email": {
+              "type": "Email"
+            },
+            "phone": {
+              "required": false,
+              "type": "PhoneNumber"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "Status": {
+        "enum": [
+          "active",
+          "inactive",
+          "on_leave"
+        ]
+      }
+    }
+  }
+}

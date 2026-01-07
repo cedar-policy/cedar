@@ -1,0 +1,31 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/extension_types.cedarschema
+---
+{
+  "": {
+    "actions": {},
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "a": {
+              "type": "String"
+            },
+            "balance": {
+              "type": "decimal"
+            },
+            "id": {
+              "type": "Long"
+            },
+            "ip": {
+              "type": "ipaddr"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

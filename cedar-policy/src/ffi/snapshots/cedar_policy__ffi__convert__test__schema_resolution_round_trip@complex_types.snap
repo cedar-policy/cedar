@@ -1,0 +1,39 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/complex_types.cedarschema
+---
+{
+  "": {
+    "actions": {},
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "permissions": {
+              "element": {
+                "type": "__cedar::String"
+              },
+              "type": "Set"
+            },
+            "profile": {
+              "attributes": {
+                "name": {
+                  "type": "__cedar::String"
+                },
+                "settings": {
+                  "element": {
+                    "type": "__cedar::String"
+                  },
+                  "type": "Set"
+                }
+              },
+              "type": "Record"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

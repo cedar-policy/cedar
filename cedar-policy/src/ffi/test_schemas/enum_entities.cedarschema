@@ -1,0 +1,8 @@
+entity Status enum ["active", "inactive", "pending"];
+entity Priority enum ["low", "medium", "high"];
+
+entity Task = {
+    "status": Status,
+    "priority": Priority,
+    "title": __cedar::String
+};
