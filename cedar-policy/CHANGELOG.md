@@ -17,7 +17,11 @@ Cedar Language Version: TBD
 ### Added
 
 - `Entity::attrs()` and `Entity::tags()` to iterate over all attributes/tags of an `Entity` (#2084)
-- Added a new `schema_to_json_with_resolved_types` function, which takes in a Cedar schema and returns a json schema without any instances of EntityOrCommon; they're all either Entity or CommonType (#2058).
+- `to_json_value()` methods on `Entities`, `Context`, and `EntityUid` (matching the existing one on `Entity`) (#2085)
+- `From` or `TryFrom` impls for converting public types into their corresponding FFI versions in
+the `ffi` module (new impls on `ffi::EntityUid`, `ffi::Context`, `ffi::Entities`, `ffi::Policy`,
+`ffi::Template`, and `ffi::StaticPolicySet`) (#2085)
+- `schema_to_json_with_resolved_types()` function, which takes in a Cedar schema and returns a json schema without any instances of EntityOrCommon; they're all either Entity or CommonType (#2058)
 - More derives (`PartialEq`, `Clone`, etc) for a number of types in the `ffi` module (#2083)
 
 

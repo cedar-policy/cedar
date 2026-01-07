@@ -432,25 +432,31 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
     }
 }
 
+pub(crate) fn serialize_pvalue(
+    pvalue: &PartialValue,
+) -> Result<JsonValueWithNoDuplicateKeys, JsonSerializationError> {
+    match pvalue {
+        PartialValue::Value(value) => {
+            let cedarvaluejson = CedarValueJson::from_value(value.clone())?;
+            Ok(serde_json::to_value(cedarvaluejson)?.into())
+        }
+        PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
+            Ok(expr) => {
+                let cedarvaluejson = CedarValueJson::from_expr(expr)?;
+                Ok(serde_json::to_value(cedarvaluejson)?.into())
+            }
+            Err(_) => Err(JsonSerializationError::residual(expr.clone())),
+        },
+    }
+}
+
 impl EntityJson {
     /// Convert an `Entity` into an `EntityJson`
     ///
     /// (for the reverse transformation, use `EntityJsonParser`)
     pub fn from_entity(entity: &Entity) -> Result<Self, JsonSerializationError> {
         let serialize_kpvalue = |(k, pvalue): (&SmolStr, &PartialValue)| -> Result<_, _> {
-            match pvalue {
-                PartialValue::Value(value) => {
-                    let cedarvaluejson = CedarValueJson::from_value(value.clone())?;
-                    Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
-                }
-                PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
-                    Ok(expr) => {
-                        let cedarvaluejson = CedarValueJson::from_expr(expr)?;
-                        Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
-                    }
-                    Err(_) => Err(JsonSerializationError::residual(expr.clone())),
-                },
-            }
+            Ok((k.clone(), serialize_pvalue(pvalue)?))
         };
         Ok(Self {
             // for now, we encode `uid` and `parents` using an implied `__entity` escape

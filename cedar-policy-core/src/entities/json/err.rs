@@ -367,9 +367,13 @@ pub struct ExpectedExtnValue {
     got: Box<Either<serde_json::Value, Expr>>,
 }
 
+/// Wrapper type for errors from `serde_json`
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error(transparent)]
-/// Wrapper type for errors from `serde_json`
 pub struct JsonError(#[from] serde_json::Error);
 
 impl From<serde_json::Error> for JsonDeserializationError {
@@ -385,6 +389,10 @@ impl From<serde_json::Error> for JsonSerializationError {
 }
 
 /// Errors thrown during serialization to JSON
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum JsonSerializationError {
@@ -440,6 +448,10 @@ impl JsonSerializationError {
 }
 
 /// Error type for extension functions called w/ 0 arguments
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("unsupported call to `{}` with 0 arguments", .func)]
 #[diagnostic(help(
@@ -452,6 +464,10 @@ pub struct ExtnCall0Arguments {
 
 /// Error type for extension functions called w/ 2+ arguments
 /// Cedar should not throw this error after #1697
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("unsupported call to `{}` with 2 or more arguments", .func)]
 #[diagnostic(help("extension function calls with 2 or more arguments are not currently supported in our JSON format"))]
@@ -461,6 +477,10 @@ pub struct ExtnCall2OrMoreArguments {
 }
 
 /// Error type for using a reserved key in a record
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("record uses reserved key `{}`", .key)]
 pub struct ReservedKey {
@@ -476,6 +496,10 @@ impl ReservedKey {
 }
 
 /// Error type for a restricted expression containing a non-restricted expression
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("unexpected restricted expression `{:?}`", .kind)]
 pub struct UnexpectedRestrictedExprKind {
@@ -484,6 +508,10 @@ pub struct UnexpectedRestrictedExprKind {
 }
 
 /// Error type for residuals that can't be serialized
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("cannot encode residual as JSON: {}", .residual)]
 pub struct Residual {

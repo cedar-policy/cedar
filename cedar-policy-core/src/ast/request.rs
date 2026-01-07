@@ -15,8 +15,10 @@
  */
 
 use crate::entities::json::{
-    ContextJsonDeserializationError, ContextJsonParser, NullContextSchema,
+    err::JsonSerializationError, ContextJsonDeserializationError, ContextJsonParser,
+    NullContextSchema,
 };
+use crate::entities::CedarValueJson;
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
@@ -420,6 +422,28 @@ impl Context {
             .from_json_file(json)
     }
 
+    /// Convert this `Context` to a JSON value
+    pub fn to_json_value(&self) -> Result<serde_json::Value, JsonSerializationError> {
+        match self {
+            Self::Value(record) => record
+                .iter()
+                .map(|(k, v)| {
+                    let cjson = CedarValueJson::from_value(v.clone())?;
+                    Ok((k.to_string(), serde_json::to_value(cjson)?))
+                })
+                .collect(),
+            Self::RestrictedResidual(record) => record
+                .iter()
+                .map(|(k, v)| {
+                    // By INVARIANT(restricted), all the expressions here are restricted expressions
+                    let cjson =
+                        CedarValueJson::from_expr(BorrowedRestrictedExpr::new_unchecked(v))?;
+                    Ok((k.to_string(), serde_json::to_value(cjson)?))
+                })
+                .collect(),
+        }
+    }
+
     /// Get the number of keys in this `Context`.
     pub fn num_keys(&self) -> usize {
         match self {
@@ -683,8 +707,15 @@ pub struct Infallible(pub std::convert::Infallible);
 
 #[cfg(test)]
 mod test {
+    use super::super::Name;
     use super::*;
     use cool_asserts::assert_matches;
+    use std::str::FromStr;
+
+    #[track_caller]
+    fn roundtrip_json(context: &Context) -> Context {
+        Context::from_json_value(context.to_json_value().unwrap()).unwrap()
+    }
 
     #[test]
     fn test_json_from_str_non_record() {
@@ -698,5 +729,79 @@ mod test {
                 ContextCreationError::NotARecord { .. }
             ))
         );
+    }
+
+    #[test]
+    fn test_roundtrip_empty() {
+        let context = Context::empty();
+        assert_eq!(context, roundtrip_json(&context));
+    }
+
+    #[test]
+    fn test_roundtrip_complex() {
+        let context = Context::from_pairs(
+            [
+                ("b".into(), RestrictedExpr::val(false)),
+                ("i".into(), RestrictedExpr::val(32)),
+                (
+                    "s".into(),
+                    RestrictedExpr::val("hi I have spaces and \" special ch@ract&rs: !{} \""),
+                ),
+                (
+                    "uid".into(),
+                    RestrictedExpr::val(EntityUID::from_str("Group::\"admins\"").unwrap()),
+                ),
+                (
+                    "multi".into(),
+                    RestrictedExpr::set([
+                        RestrictedExpr::val(0),
+                        RestrictedExpr::val(22),
+                        RestrictedExpr::val(-310),
+                    ]),
+                ),
+                (
+                    "record".into(),
+                    RestrictedExpr::record([
+                        ("inner".into(), RestrictedExpr::val(-210)),
+                        (
+                            "inner_uid".into(),
+                            RestrictedExpr::val(EntityUID::from_str("Group::\"interns\"").unwrap()),
+                        ),
+                        (
+                            "inner_set".into(),
+                            RestrictedExpr::set([
+                                RestrictedExpr::val("my name is"),
+                                RestrictedExpr::val("inigo montoya"),
+                            ]),
+                        ),
+                    ])
+                    .unwrap(),
+                ),
+                (
+                    "dec".into(),
+                    RestrictedExpr::call_extension_fn(
+                        Name::parse_unqualified_name("decimal").unwrap(),
+                        [RestrictedExpr::val("-1.111")],
+                    ),
+                ),
+                (
+                    "ipv6".into(),
+                    RestrictedExpr::call_extension_fn(
+                        Name::parse_unqualified_name("ip").unwrap(),
+                        [RestrictedExpr::val("ffff::1/16")],
+                    ),
+                ),
+                (
+                    "dt".into(),
+                    RestrictedExpr::call_extension_fn(
+                        Name::parse_unqualified_name("datetime").unwrap(),
+                        [RestrictedExpr::val("2026-01-01T03:04:05Z")],
+                    ),
+                ),
+            ],
+            &Extensions::all_available(),
+        )
+        .unwrap();
+        assert_eq!(context, roundtrip_json(&context));
     }
 }

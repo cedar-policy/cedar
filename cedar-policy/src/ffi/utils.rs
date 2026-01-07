@@ -202,6 +202,14 @@ impl EntityUid {
     }
 }
 
+impl TryFrom<&crate::EntityUid> for EntityUid {
+    type Error = miette::Report;
+
+    fn try_from(euid: &crate::EntityUid) -> Result<Self, miette::Report> {
+        Ok(Self(euid.to_json_value()?.into()))
+    }
+}
+
 #[doc(hidden)]
 impl From<serde_json::Value> for EntityUid {
     fn from(json: serde_json::Value) -> Self {
@@ -244,6 +252,14 @@ impl Context {
     }
 }
 
+impl TryFrom<&crate::Context> for Context {
+    type Error = miette::Report;
+
+    fn try_from(context: &crate::Context) -> Result<Self, miette::Report> {
+        Ok(Self(context.to_json_value()?.into()))
+    }
+}
+
 #[doc(hidden)]
 impl From<serde_json::Value> for Context {
     fn from(json: serde_json::Value) -> Self {
@@ -274,6 +290,14 @@ impl Entities {
         opt_schema: Option<&crate::Schema>,
     ) -> Result<crate::Entities, miette::Report> {
         crate::Entities::from_json_value(self.0.into(), opt_schema).map_err(Into::into)
+    }
+}
+
+impl TryFrom<&crate::Entities> for Entities {
+    type Error = miette::Report;
+
+    fn try_from(entities: &crate::Entities) -> Result<Self, miette::Report> {
+        Ok(Self(entities.to_json_value()?.into()))
     }
 }
 
@@ -347,6 +371,12 @@ impl Policy {
             actions.into_iter(),
             resources.into_iter(),
         ))
+    }
+}
+
+impl From<&crate::Policy> for Policy {
+    fn from(policy: &crate::Policy) -> Self {
+        Self::Cedar(policy.to_string())
     }
 }
 
@@ -434,6 +464,12 @@ impl Template {
     }
 }
 
+impl From<&crate::Template> for Template {
+    fn from(template: &crate::Template) -> Self {
+        Self::Cedar(template.to_string())
+    }
+}
+
 /// Represents a set of static policies
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -501,6 +537,12 @@ impl StaticPolicySet {
 impl Default for StaticPolicySet {
     fn default() -> Self {
         Self::Set(Vec::new())
+    }
+}
+
+impl From<&crate::PolicySet> for StaticPolicySet {
+    fn from(pset: &crate::PolicySet) -> Self {
+        Self::Set(pset.policies().map(Policy::from).collect())
     }
 }
 
