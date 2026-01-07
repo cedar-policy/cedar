@@ -1,0 +1,14 @@
+entity User;
+entity Document;
+
+action read, write appliesTo {
+    principal: [User],
+    resource: [Document],
+    context: {}
+};
+
+action admin_read, admin_write in [read, write] appliesTo {
+    principal: [User],
+    resource: [Document],
+    context: {}
+};

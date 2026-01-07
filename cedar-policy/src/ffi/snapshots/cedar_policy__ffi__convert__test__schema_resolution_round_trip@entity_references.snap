@@ -1,0 +1,36 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/entity_references.cedarschema
+---
+{
+  "": {
+    "actions": {},
+    "entityTypes": {
+      "Document": {
+        "shape": {
+          "attributes": {
+            "editors": {
+              "element": {
+                "name": "User",
+                "type": "Entity"
+              },
+              "type": "Set"
+            },
+            "group": {
+              "name": "Group",
+              "type": "Entity"
+            },
+            "owner": {
+              "name": "User",
+              "type": "Entity"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "Group": {},
+      "User": {}
+    }
+  }
+}

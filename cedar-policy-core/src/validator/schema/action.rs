@@ -21,6 +21,7 @@ use crate::{
     parser::Loc,
     transitive_closure::TCNode,
 };
+use educe::Educe;
 use std::collections::HashSet;
 
 use super::internal_name_to_entity_type;
@@ -34,7 +35,8 @@ use crate::validator::{
 /// Contains information about actions used by the validator.  The contents of
 /// the struct are the same as the schema entity type structure, but the
 /// `member_of` relation is reversed to instead be `descendants`.
-#[derive(Clone, Debug)]
+#[derive(Educe, Clone, Debug)]
+#[educe(PartialEq, Eq)]
 pub struct ValidatorActionId {
     /// The name of the action.
     pub(crate) name: EntityUID,
@@ -52,6 +54,7 @@ pub struct ValidatorActionId {
     pub(crate) context: Type,
 
     /// Source location - if available
+    #[educe(PartialEq(ignore))]
     pub(crate) loc: Option<Loc>,
 }
 
@@ -177,6 +180,15 @@ pub(crate) struct ValidatorApplySpec<N> {
     /// The resource entity types the action can be applied to.
     resource_apply_spec: HashSet<N>,
 }
+
+impl<N: PartialEq + Eq + std::hash::Hash> PartialEq for ValidatorApplySpec<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.principal_apply_spec == other.principal_apply_spec
+            && self.resource_apply_spec == other.resource_apply_spec
+    }
+}
+
+impl<N: PartialEq + Eq + std::hash::Hash> Eq for ValidatorApplySpec<N> {}
 
 impl<N> ValidatorApplySpec<N> {
     /// Create an apply spec for an action that can only be applied to some

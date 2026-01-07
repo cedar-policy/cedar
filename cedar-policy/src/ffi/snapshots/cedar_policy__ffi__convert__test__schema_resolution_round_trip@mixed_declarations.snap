@@ -1,0 +1,108 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/mixed_declarations.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "manage": {
+        "appliesTo": {
+          "principalTypes": [],
+          "resourceTypes": []
+        },
+        "memberOf": [
+          {
+            "id": "read",
+            "type": "Action"
+          },
+          {
+            "id": "write",
+            "type": "Action"
+          }
+        ]
+      },
+      "read": {
+        "appliesTo": {
+          "principalTypes": [
+            "User",
+            "Admin"
+          ],
+          "resourceTypes": [
+            "Group"
+          ]
+        }
+      },
+      "write": {
+        "appliesTo": {
+          "principalTypes": [
+            "User",
+            "Admin"
+          ],
+          "resourceTypes": [
+            "Group"
+          ]
+        }
+      }
+    },
+    "commonTypes": {
+      "GroupId": {
+        "type": "__cedar::String"
+      },
+      "UserId": {
+        "type": "__cedar::String"
+      }
+    },
+    "entityTypes": {
+      "Admin": {
+        "shape": {
+          "attributes": {
+            "id": {
+              "type": "UserId"
+            },
+            "name": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "Group": {
+        "shape": {
+          "attributes": {
+            "id": {
+              "type": "GroupId"
+            },
+            "members": {
+              "element": {
+                "name": "User",
+                "type": "Entity"
+              },
+              "type": "Set"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "Status": {
+        "enum": [
+          "active",
+          "inactive"
+        ]
+      },
+      "User": {
+        "shape": {
+          "attributes": {
+            "id": {
+              "type": "UserId"
+            },
+            "name": {
+              "type": "__cedar::String"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+type Address = {
+    "street": String,
+    "city": String,
+    "zipcode": String
+};
+
+entity Address = {
+    "e_street": String,
+    "e_city": String,
+    "e_zipcode": String
+};
+
+entity User = {
+    "address": Address,
+    "active": Bool
+};
+
+action updateContact appliesTo {
+    principal: [User],
+    resource: [User],
+    context: {
+        addy: Address
+    }
+};

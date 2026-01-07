@@ -140,6 +140,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "assert-json-diff"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47e4f2b81832e72834d7518d8487a0396a28cc408186a2e8854c0f98011faf12"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "assert_cmd"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -339,12 +349,14 @@ dependencies = [
 name = "cedar-policy"
 version = "4.8.2"
 dependencies = [
+ "assert-json-diff",
  "cedar-policy-core",
  "cedar-policy-formatter",
  "cool_asserts",
  "criterion",
  "dhat",
  "globset",
+ "insta",
  "itertools 0.14.0",
  "linked-hash-map",
  "miette",
@@ -1241,6 +1253,7 @@ dependencies = [
  "console",
  "globset",
  "once_cell",
+ "serde",
  "similar",
  "tempfile",
  "walkdir",

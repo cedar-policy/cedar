@@ -22,6 +22,7 @@ use crate::{
     est::Annotations,
     extensions::Extensions,
     parser::Loc,
+    validator::{SchemaError, ValidatorSchemaFragment},
     FromNormalizedStr,
 };
 use educe::Educe;
@@ -195,6 +196,81 @@ impl Fragment<RawName> {
         file.read_to_string(&mut src)?;
         Self::from_cedarschema_str(&src, extensions)
     }
+
+    /// Convert this `Fragment<RawName>` to a `Fragment<InternalName>` where all the
+    /// entity or common type references have been resolved
+    pub fn to_internal_name_fragment_with_resolved_types(
+        &self,
+    ) -> std::result::Result<Fragment<InternalName>, SchemaError> {
+        let validator_fragment = ValidatorSchemaFragment::from_schema_fragment(self.clone())?;
+
+        let mut all_defs = AllDefs::single_fragment(&validator_fragment);
+
+        // Add built-in primitive types in the __cedar namespace
+        let cedar_namespace = InternalName::__cedar();
+
+        let primitives_as_internal_names: Vec<InternalName> = ["Bool", "Long", "String"]
+            .into_iter()
+            .map(|n| {
+                #[expect(clippy::unwrap_used, reason = "these are all valid InternalName's")]
+                InternalName::parse_unqualified_name(n).unwrap()
+            })
+            .collect();
+
+        for tyname in &primitives_as_internal_names {
+            all_defs.mark_as_defined_as_common_type(tyname.qualify_with(Some(&cedar_namespace)));
+        }
+
+        // Add extension types in __cedar namespace and also without
+        // namespace (if they're not already defined as commonTypes)
+        for ext_type in Extensions::all_available().ext_types() {
+            all_defs.mark_as_defined_as_common_type(
+                ext_type.as_ref().qualify_with(Some(&cedar_namespace)),
+            );
+            if !all_defs.is_defined_as_common(ext_type.as_ref())
+                && !all_defs.is_defined_as_entity(ext_type.as_ref())
+            {
+                all_defs.mark_as_defined_as_common_type(ext_type.as_ref().qualify_with(None));
+            }
+        }
+
+        // Add aliases for primitive types in the empty namespace (so "String" resolves to "__cedar::String")
+        for tyname in &primitives_as_internal_names {
+            if !all_defs.is_defined_as_common(tyname) && !all_defs.is_defined_as_entity(tyname) {
+                all_defs.mark_as_defined_as_common_type(tyname.clone());
+            }
+        }
+
+        // Step 1: Convert Fragment<RawName> to Fragment<ConditionalName>
+        let conditional_fragment = Fragment(
+            self.0
+                .iter()
+                .map(|(ns_name, ns_def)| {
+                    let internal_ns_name = ns_name.as_ref().map(|name| name.clone().into());
+                    let conditional_ns_def = ns_def
+                        .clone()
+                        .conditionally_qualify_type_references(internal_ns_name.as_ref());
+                    (ns_name.clone(), conditional_ns_def)
+                })
+                .collect(),
+        );
+
+        // Step 2: Convert Fragment<ConditionalName> to Fragment<InternalName>
+        let internal_name_fragment = Fragment(
+            conditional_fragment
+                .0
+                .into_iter()
+                .map(|(ns_name, ns_def)| {
+                    ns_def
+                        .fully_qualify_type_references(&all_defs)
+                        .map(|resolved_ns_def| (ns_name, resolved_ns_def))
+                })
+                .collect::<Result<BTreeMap<_, _>>>()?,
+        );
+
+        // Step 3: Convert EntityOrCommon types to specific Entity or CommonType designations
+        internal_name_fragment.resolve_entity_or_common_types(&all_defs)
+    }
 }
 
 impl<N: Display> Fragment<N> {
@@ -202,6 +278,23 @@ impl<N: Display> Fragment<N> {
     pub fn to_cedarschema(&self) -> std::result::Result<String, ToCedarSchemaSyntaxError> {
         let src = cedar_schema::fmt::json_schema_to_cedar_schema_str(self)?;
         Ok(src)
+    }
+}
+
+impl Fragment<InternalName> {
+    /// Resolve `EntityOrCommon` types to specific Entity or `CommonType` designations
+    pub fn resolve_entity_or_common_types(
+        self,
+        all_defs: &AllDefs,
+    ) -> Result<Fragment<InternalName>> {
+        Ok(Fragment(
+            self.0
+                .into_iter()
+                .map(|(ns_name, ns_def)| {
+                    Ok((ns_name, ns_def.resolve_entity_or_common_types(all_defs)?))
+                })
+                .collect::<Result<_>>()?,
+        ))
     }
 }
 
@@ -440,6 +533,50 @@ impl NamespaceDefinition<ConditionalName> {
                 .actions
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
+                .collect::<Result<_>>()?,
+            annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
+        })
+    }
+}
+
+/// Helper enum to handle the case where `EntityOrCommon` resolves to a `CommonTypeRef`
+enum ResolvedTypeVariant {
+    TypeVariant(TypeVariant<InternalName>),
+    CommonTypeRef(InternalName),
+}
+
+impl NamespaceDefinition<InternalName> {
+    /// Resolve `EntityOrCommon` types to specific Entity or `CommonType` designations
+    pub fn resolve_entity_or_common_types(
+        self,
+        all_defs: &AllDefs,
+    ) -> Result<NamespaceDefinition<InternalName>> {
+        Ok(NamespaceDefinition {
+            common_types: self
+                .common_types
+                .into_iter()
+                .map(|(k, v)| {
+                    Ok((
+                        k,
+                        CommonType {
+                            ty: v.ty.resolve_entity_or_common_type(all_defs)?,
+                            annotations: v.annotations,
+                            loc: v.loc,
+                        },
+                    ))
+                })
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
+            entity_types: self
+                .entity_types
+                .into_iter()
+                .map(|(k, v)| Ok((k, v.resolve_entity_type_entity_or_common(all_defs)?)))
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
+            actions: self
+                .actions
+                .into_iter()
+                .map(|(k, v)| Ok((k, v.resolve_action_type_entity_or_common(all_defs)?)))
                 .collect::<Result<_>>()?,
             annotations: self.annotations,
             #[cfg(feature = "extended-schema")]
@@ -1396,6 +1533,176 @@ impl Type<ConditionalName> {
                 loc,
             }),
         }
+    }
+}
+
+impl Type<InternalName> {
+    /// Resolve `EntityOrCommon` types to specific Entity or `CommonType` designations
+    pub fn resolve_entity_or_common_type(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<Type<InternalName>, TypeNotDefinedError> {
+        match self {
+            Type::Type { ty, loc } => match ty.resolve_type_variant_entity_or_common(all_defs)? {
+                ResolvedTypeVariant::TypeVariant(resolved_ty) => Ok(Type::Type {
+                    ty: resolved_ty,
+                    loc,
+                }),
+                ResolvedTypeVariant::CommonTypeRef(type_name) => {
+                    Ok(Type::CommonTypeRef { type_name, loc })
+                }
+            },
+            Type::CommonTypeRef { type_name, loc } => Ok(Type::CommonTypeRef { type_name, loc }),
+        }
+    }
+}
+
+impl TypeVariant<InternalName> {
+    /// Resolve `EntityOrCommon` types in a `TypeVariant`
+    fn resolve_type_variant_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<ResolvedTypeVariant, TypeNotDefinedError> {
+        match self {
+            TypeVariant::EntityOrCommon { type_name } => {
+                // Check if this is an entity type or common type
+                if all_defs.is_defined_as_common(&type_name) {
+                    Ok(ResolvedTypeVariant::CommonTypeRef(type_name))
+                } else if all_defs.is_defined_as_entity(&type_name) {
+                    Ok(ResolvedTypeVariant::TypeVariant(TypeVariant::Entity {
+                        name: type_name,
+                    }))
+                } else {
+                    // If it's neither, this means that the json_schema::Fragment wasn't complete
+                    Err(TypeNotDefinedError {
+                        undefined_types: NonEmpty {
+                            head: ConditionalName::unconditional(
+                                type_name,
+                                ReferenceType::CommonOrEntity,
+                            ),
+                            tail: vec![],
+                        },
+                    })
+                }
+            }
+            TypeVariant::Set { element } => {
+                Ok(ResolvedTypeVariant::TypeVariant(TypeVariant::Set {
+                    element: Box::new(element.resolve_entity_or_common_type(all_defs)?),
+                }))
+            }
+            TypeVariant::Record(record_type) => Ok(ResolvedTypeVariant::TypeVariant(
+                TypeVariant::Record(record_type.resolve_record_type_entity_or_common(all_defs)?),
+            )),
+            // Other variants don't contain EntityOrCommon types
+            other => Ok(ResolvedTypeVariant::TypeVariant(other)),
+        }
+    }
+}
+
+impl RecordType<InternalName> {
+    /// Resolve `EntityOrCommon` types in a `RecordType`
+    fn resolve_record_type_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<RecordType<InternalName>, TypeNotDefinedError> {
+        Ok(RecordType {
+            attributes: self
+                .attributes
+                .into_iter()
+                .map(|(k, v)| Ok((k, v.resolve_type_of_attribute_entity_or_common(all_defs)?)))
+                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
+            additional_attributes: self.additional_attributes,
+        })
+    }
+}
+
+impl TypeOfAttribute<InternalName> {
+    /// Resolve `EntityOrCommon` types in a `TypeOfAttribute`
+    fn resolve_type_of_attribute_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<TypeOfAttribute<InternalName>, TypeNotDefinedError> {
+        Ok(TypeOfAttribute {
+            ty: self.ty.resolve_entity_or_common_type(all_defs)?,
+            required: self.required,
+            annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
+        })
+    }
+}
+
+impl EntityType<InternalName> {
+    /// Resolve `EntityOrCommon` types in an `EntityType`
+    fn resolve_entity_type_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<EntityType<InternalName>, TypeNotDefinedError> {
+        Ok(EntityType {
+            kind: match self.kind {
+                EntityTypeKind::Standard(standard) => {
+                    EntityTypeKind::Standard(StandardEntityType {
+                        member_of_types: standard.member_of_types, // These are already resolved InternalNames
+                        shape: standard
+                            .shape
+                            .resolve_attributes_or_context_entity_or_common(all_defs)?,
+                        tags: standard
+                            .tags
+                            .map(|tags| tags.resolve_entity_or_common_type(all_defs))
+                            .transpose()?,
+                    })
+                }
+                EntityTypeKind::Enum { choices } => EntityTypeKind::Enum { choices },
+            },
+            annotations: self.annotations,
+            loc: self.loc,
+        })
+    }
+}
+
+impl ActionType<InternalName> {
+    /// Resolve `EntityOrCommon` types in an `ActionType`
+    fn resolve_action_type_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<ActionType<InternalName>, TypeNotDefinedError> {
+        let new_apply_spec = self
+            .applies_to
+            .clone()
+            .map(|apply_spec| apply_spec.resolve_apply_spec_entity_or_common(all_defs))
+            .transpose()?;
+        Ok(ActionType::<InternalName> {
+            applies_to: new_apply_spec,
+            ..self
+        })
+    }
+}
+
+impl ApplySpec<InternalName> {
+    /// Resolve `EntityOrCommon` types in an `ApplySpec`
+    fn resolve_apply_spec_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<ApplySpec<InternalName>, TypeNotDefinedError> {
+        Ok(ApplySpec {
+            resource_types: self.resource_types, // These are already resolved InternalNames
+            principal_types: self.principal_types, // These are already resolved InternalNames
+            context: self
+                .context
+                .resolve_attributes_or_context_entity_or_common(all_defs)?,
+        })
+    }
+}
+
+impl AttributesOrContext<InternalName> {
+    /// Resolve `EntityOrCommon` types in `AttributesOrContext`
+    fn resolve_attributes_or_context_entity_or_common(
+        self,
+        all_defs: &AllDefs,
+    ) -> std::result::Result<AttributesOrContext<InternalName>, TypeNotDefinedError> {
+        Ok(AttributesOrContext(
+            self.0.resolve_entity_or_common_type(all_defs)?,
+        ))
     }
 }
 
@@ -2658,6 +2965,28 @@ mod test {
                 &ExpectedErrorMessageBuilder::error(r#"unknown field `User`, expected one of `commonTypes`, `entityTypes`, `actions`, `annotations` at line 3 column 35"#)
                     .help("JSON formatted schema must specify a namespace. If you want to use the empty namespace, explicitly specify it with `{ \"\": {..} }`")
                     .build());
+        });
+    }
+
+    #[test]
+    fn test_to_internal_name_fragment_with_resolved_types() {
+        let schema_str = r#"
+            entity User = { "name": String };
+            action sendMessage appliesTo {principal: User, resource: User};
+        "#;
+
+        let (json_schema_fragment, _warnings) =
+            parse_cedar_schema_fragment(schema_str, &Extensions::all_available()).unwrap();
+
+        let result = json_schema_fragment.to_internal_name_fragment_with_resolved_types();
+        assert_matches!(result, Ok(resolved_fragment) => {
+            let json_value = serde_json::to_value(&resolved_fragment).unwrap();
+            let json_str = serde_json::to_string(&json_value).unwrap();
+            // Verify that EntityOrCommon types have been resolved
+            assert!(!json_str.contains("EntityOrCommon"));
+            // Verify that the structure is preserved
+            assert!(json_str.contains("User"));
+            assert!(json_str.contains("sendMessage"));
         });
     }
 }

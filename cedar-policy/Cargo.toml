@@ -72,11 +72,13 @@ cool_asserts = "2.0"
 similar-asserts = "1.7.0"
 criterion = "0.8"
 globset = "0.4"
+insta = { version = "1.44.3", features = ["glob", "json"] }
 cedar-policy-core = { version = "=4.8.2", features = [
     "test-util",
 ], path = "../cedar-policy-core" }
 # NON-CRYPTOGRAPHIC random number generators
 oorandom = "11.1"
+assert-json-diff = "2.0"
 
 proptest = "1.9.0"
 

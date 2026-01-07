@@ -1,0 +1,76 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/shadowed_entity_and_common.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "updateContact": {
+        "appliesTo": {
+          "context": {
+            "attributes": {
+              "addy": {
+                "type": "Address"
+              }
+            },
+            "type": "Record"
+          },
+          "principalTypes": [
+            "User"
+          ],
+          "resourceTypes": [
+            "User"
+          ]
+        }
+      }
+    },
+    "commonTypes": {
+      "Address": {
+        "attributes": {
+          "city": {
+            "type": "String"
+          },
+          "street": {
+            "type": "String"
+          },
+          "zipcode": {
+            "type": "String"
+          }
+        },
+        "type": "Record"
+      }
+    },
+    "entityTypes": {
+      "Address": {
+        "shape": {
+          "attributes": {
+            "e_city": {
+              "type": "String"
+            },
+            "e_street": {
+              "type": "String"
+            },
+            "e_zipcode": {
+              "type": "String"
+            }
+          },
+          "type": "Record"
+        }
+      },
+      "User": {
+        "shape": {
+          "attributes": {
+            "active": {
+              "type": "Bool"
+            },
+            "address": {
+              "type": "Address"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}
