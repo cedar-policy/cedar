@@ -16,6 +16,7 @@ permissions: read-all
 jobs:
     publish:
         runs-on: ubuntu-latest
+        environment: release # See https://github.com/cedar-policy/cedar/settings/environments
         permissions:
             id-token: write # Required for OIDC token exchange
         steps:
