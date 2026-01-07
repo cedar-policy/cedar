@@ -1,6 +1,6 @@
 # Note: This workflow is intended to always be run from the 'main' branch to
 # ensure that the latest version of this workflow is used.
-name: Publish to crates.io
+name: Publish base Cedar crates to crates.io
 on:
     # This workflow must be triggered manually.
     workflow_dispatch:
