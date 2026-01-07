@@ -1,0 +1,69 @@
+# Note: This workflow is intended to always be run from the 'main' branch to
+# ensure that the latest version of this workflow is used.
+name: Publish to crates.io
+on:
+    # This workflow must be triggered manually.
+    workflow_dispatch:
+        inputs:
+            tag:
+                required: true
+                type: string
+                description: "The GitHub tag to be released. Must be of the form 'v<MAJOR>.<MINOR>.<PATCH>'"
+
+# Declare default permissions as read only.
+permissions: read-all
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        permissions:
+            id-token: write # Required for OIDC token exchange
+        steps:
+            - name: Validate branch
+              if: github.ref != 'refs/heads/main'
+              uses: actions/github-script@ffc2c79a5b2490bd33e0a41c1de74b877714d736 # v3.2.0
+              with:
+                  script: core.setFailed('This workflow must be triggered from the "main" branch.')
+            - name: Validate tag
+              run: |
+                  REGEX_PATTERN="^v[0-9]+\.[0-9]+\.[0-9]+$"
+                  if [[ ! "$TAG_NAME" =~ $REGEX_PATTERN ]]; then 
+                      echo 'Specified tag must match "^v[0-9]+.[0-9]+.[0-9]$"'
+                      exit 1
+                  fi
+              env:
+                  TAG_NAME: ${{ inputs.tag }}
+            - name: Checkout tag
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+              with:
+                  ref: refs/tags/${{ inputs.tag }}
+            - name: Configure rust toolchain
+              run: rustup update stable && rustup default stable
+            - name: Install toml-cli
+              run: cargo install toml-cli --locked
+            # Check that the tag matches the cargo workspace version.
+            - name: Validate workspace version
+              run: test "v$(toml get --raw Cargo.toml workspace.package.version)" = "$TAG_NAME"
+              env:
+                  TAG_NAME: ${{ inputs.tag }}
+            - name: Authenticate with crates.io
+              id: auth
+              uses: rust-lang/crates-io-auth-action@b7e9a28eded4986ec6b1fa40eeee8f8f165559ec # v1.0.3
+            - name: Publish to crates.io
+              run: |
+                  if [ -f "cedar-policy-validator/Cargo.toml" ]; then
+                    cargo publish \
+                        -p cedar-policy-core \
+                        -p cedar-policy-validator \
+                        -p cedar-policy-formatter \
+                        -p cedar-policy \
+                        -p cedar-policy-cli
+                  else 
+                    cargo publish \
+                        -p cedar-policy-core \
+                        -p cedar-policy-formatter \
+                        -p cedar-policy \
+                        -p cedar-policy-cli
+                  fi
+              env:
+                  CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
