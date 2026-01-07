@@ -1,5 +1,7 @@
-# Note: This workflow is intended to always be run from the 'main' branch to
+# Note: This workflow can only be run from the 'main' branch to
 # ensure that the latest version of this workflow is used.
+# However, the release will not necessarily be performed from the 'main' branch 
+# as the input `tag` is used to determine which GitHub tag will be checked out for the release.
 name: Publish base Cedar crates to crates.io
 on:
     # This workflow must be triggered manually.
