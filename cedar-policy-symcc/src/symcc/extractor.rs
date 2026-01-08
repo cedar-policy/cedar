@@ -26,53 +26,86 @@
 //! constraints are satisfied for the footprint).
 
 use std::borrow::Borrow;
+use std::collections::BTreeMap;
 use std::{collections::BTreeSet, sync::Arc};
 
 use cedar_policy_core::ast::Expr;
 
 use super::concretizer::{ConcretizeError, Env};
-use super::enforcer::footprint;
-use super::env::SymEnv;
+use super::enforcer::footprints;
+use super::env::{SymEntities, SymEntityData, SymEnv};
 use super::factory;
 use super::function::{Udf, UnaryFunction};
 use super::interpretation::Interpretation;
 use super::op::Uuf;
 use super::term::{Term, TermPrim};
-use super::type_abbrevs::{EntityType, EntityUID};
+use super::term_type::TermType;
+use super::type_abbrevs::EntityUID;
+
+impl UnaryFunction {
+    /// Corresponds to `UnaryFunction.uuf?` in `Extractor.lean`.
+    fn uuf(&self) -> Option<&Uuf> {
+        match self {
+            UnaryFunction::Uuf(u) => Some(u),
+            UnaryFunction::Udf(_) => None,
+        }
+    }
+}
+
+impl SymEntityData {
+    /// Corresponds to `SymEntityData.uufAncestors` in `Extractor.lean`.
+    ///
+    /// Returns an iterator, rather than a Set as in the Lean, but the caller
+    /// (`SymEntities::uuf_ancestors()`) will eliminate duplicates.
+    fn uuf_ancestors(&self) -> impl Iterator<Item = &Uuf> {
+        self.ancestors.values().filter_map(|f| f.uuf())
+    }
+}
+
+impl SymEntities {
+    /// Corresponds to `SymEntities.uufAncestors` in `Extractor.lean`.
+    fn uuf_ancestors(&self) -> BTreeSet<&Uuf> {
+        self.values()
+            .flat_map(|edata| edata.uuf_ancestors())
+            .collect()
+    }
+}
 
 impl Uuf {
     /// Corresponds to `UUF.repairAncestors` in `Extractor.lean`.
     fn repair_as_counterexample(
         &self,
-        arg_ety: &EntityType,
         footprints: &BTreeSet<EntityUID>,
         interp: &Interpretation<'_>,
     ) -> Udf {
         // Get the current, potentially incorrect interpretation
         let udf = interp.interpret_fun(self);
 
+        let entry = |udf: &Udf, uid| -> Option<(Term, Term)> {
+            let t = Term::Prim(TermPrim::Entity(uid));
+            if &t.type_of() == &udf.arg {
+                Some((
+                    t.clone(),
+                    factory::app(UnaryFunction::Udf(Arc::new(udf.clone())), t),
+                ))
+            } else {
+                None
+            }
+        };
+
         // Generate a new look-up table only including the footprints (of the right type)
         let new_table = footprints
             .iter()
-            .filter_map(|uid| {
-                if uid.type_name() == arg_ety {
-                    let t = Term::Prim(TermPrim::Entity(uid.clone()));
-                    // In the domain of this ancestor function
-                    Some((
-                        t.clone(),
-                        factory::app(UnaryFunction::Udf(Arc::new(udf.clone())), t),
-                    ))
-                } else {
-                    None
-                }
-            })
+            .filter_map(|uid| entry(&udf, uid.clone()))
             .collect();
 
         Udf {
             table: Arc::new(new_table),
-            default: udf.default.clone(),
-            arg: udf.arg.clone(),
-            out: udf.out,
+            default: match &udf.out {
+                TermType::Set { ty } => factory::set_of([], (**ty).clone()),
+                _ => udf.default,
+            },
+            ..udf
         }
     }
 }
@@ -82,7 +115,7 @@ impl Interpretation<'_> {
     /// but SMT solver may choose to add additional elements
     /// that introduce cycles in the ancestor functions.
     ///
-    /// This function repairs that by mappinng all inputs in the
+    /// This function repairs that by mapping all inputs in the
     /// ancestor functions that are not in the footprint to empty sets
     ///
     /// Corresponds to `Interpretation.repair` in `Extractor.lean`
@@ -91,23 +124,24 @@ impl Interpretation<'_> {
 
         // Interpret every term in the footprint to collect concrete EUIDs
         // occurring in them
-        for term in exprs.flat_map(|e| footprint(e, self.env).collect::<Vec<_>>()) {
+        for term in footprints(exprs, self.env) {
             term.interpret(self)
                 .get_all_entity_uids(&mut footprint_uids);
         }
+        // At this point, `footprint_uids` corresponds to `footprintUIDs` in the Lean
 
+        let footprint_ancestors: BTreeMap<&Uuf, Udf> = self
+            .env
+            .entities
+            .uuf_ancestors()
+            .into_iter()
+            .map(|f| (f, f.repair_as_counterexample(&footprint_uids, self)))
+            .collect();
+
+        // `funs` will be the existing `self.funs` for all entries except ones in `footprint_ancestors`
         let mut funs = self.funs.clone();
-
-        // Repair all ancestor functions
-        for (ety, ent_data) in self.env.entities.iter() {
-            for fun in ent_data.ancestors.values() {
-                if let UnaryFunction::Uuf(uuf) = fun {
-                    funs.insert(
-                        uuf.as_ref().clone(),
-                        uuf.repair_as_counterexample(ety, &footprint_uids, self),
-                    );
-                }
-            }
+        for (uuf, udf) in footprint_ancestors {
+            funs.insert(uuf.clone(), udf);
         }
 
         Self {

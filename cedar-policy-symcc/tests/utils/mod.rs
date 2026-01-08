@@ -127,12 +127,12 @@ fn assert_cex_valid(schema: &Schema, cex: &Env) {
     schema
         .as_ref()
         .validate_request(cex.request.as_ref(), Extensions::all_available())
-        .unwrap();
-    Entities::from_entities(cex.entities.clone(), Some(schema)).unwrap();
+        .unwrap_or_else(|e| panic!("{e:?}", e = miette::Report::new(e)));
+    Entities::from_entities(cex.entities.clone(), Some(schema))
+        .unwrap_or_else(|e| panic!("{e:?}", e = miette::Report::new(e)));
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-
 pub enum Pathway {
     /// Use only the unoptimized pathway; still run the optimized one, but just check that it doesn't error
     UnoptOnly,

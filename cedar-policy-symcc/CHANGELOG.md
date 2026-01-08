@@ -15,6 +15,10 @@ for single policies (#2047)
 - `.effect()` for `CompiledPolicy` (#2047)
 - Performance optimizations (#2070, #2073, #2079)
 
+### Fixed
+- Bug where returned counterexamples could occasionally be invalid by containing
+cycles in the entity data for entities irrelevant to the given policies (#2089)
+
 ## [0.2.0] - 2025-12-12
 Cedar Language Version: 4.4
 

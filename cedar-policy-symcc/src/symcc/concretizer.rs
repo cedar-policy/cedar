@@ -31,7 +31,6 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use num_bigint::{BigInt, TryFromBigIntError};
-use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -234,6 +233,7 @@ impl SymRequest {
 
 impl Term {
     /// Tries to convert a term into a record
+    ///
     /// Corresponds to `Term.recordValue?` in `Concretize.lean`
     fn try_into_record(&self) -> Result<Arc<BTreeMap<SmolStr, Value>>, ConcretizeError> {
         if let Value {
@@ -248,6 +248,8 @@ impl Term {
     }
 
     /// Collect all entity UIDs occurring in the term
+    ///
+    /// Corresponds to `Term.entityUIDs` in `Concretizer.lean`
     pub(crate) fn get_all_entity_uids(&self, uids: &mut BTreeSet<EntityUid>) {
         match self {
             Term::Prim(TermPrim::Entity(uid)) => {
@@ -402,13 +404,14 @@ impl SymEntities {
         let internal_entities = cedar_policy_core::entities::Entities::from_entities(
             entities.into_iter(),
             None::<&NoEntitiesSchema>,
-            // We already put all ancestors into parents
-            // and leave indirect_ancestors empty
+            #[cfg(debug_assertions)]
+            TCComputation::EnforceAlreadyComputed,
+            #[cfg(not(debug_assertions))]
             TCComputation::AssumeAlreadyComputed,
             Extensions::all_available(),
         )?;
 
-        Ok(Entities::ref_cast(&internal_entities).clone())
+        Ok(Entities::from(internal_entities))
     }
 
     /// Corresponds to `SymEntities.entityUIDs` in `Concretize.lean`
