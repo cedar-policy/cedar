@@ -1580,6 +1580,10 @@ fn test_run_tests_samples(
             template_linked_file: None,
         },
         tests: test_file,
+        schema: OptionalSchemaArgs {
+            schema_file: None,
+            schema_format: SchemaFormat::Json,
+        },
     };
     let output = run_tests(&cmd);
     assert_eq!(exit_code, output, "{cmd:#?}")

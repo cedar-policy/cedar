@@ -783,6 +783,8 @@ pub struct RunTestsArgs {
     /// Tests in JSON format
     #[arg(long, value_name = "FILE")]
     pub tests: String,
+    #[command(flatten)]
+    pub schema: OptionalSchemaArgs,
 }
 
 #[derive(Args, Debug)]
