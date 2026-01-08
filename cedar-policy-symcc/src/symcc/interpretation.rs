@@ -366,10 +366,12 @@ mod interpret_test {
         SymEnv::new(&test_schema(), &request_env()).expect("Malformed sym env.")
     }
 
+    #[track_caller]
     fn parse_expr(str: &str) -> Expr {
         Expr::from_str(str).unwrap_or_else(|e| panic!("Could not parse expression: {str}: {e}"))
     }
 
+    #[track_caller]
     fn test_valid_bool_interp_expr(str: &str, interp: &Interpretation<'_>, res: bool) {
         let term = compile(&parse_expr(str), &sym_env()).unwrap();
         let term_interp = term.interpret(interp);

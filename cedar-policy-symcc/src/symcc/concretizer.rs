@@ -405,13 +405,14 @@ impl SymEntities {
         let internal_entities = cedar_policy_core::entities::Entities::from_entities(
             entities.into_iter(),
             None::<&NoEntitiesSchema>,
-            // We already put all ancestors into parents
-            // and leave indirect_ancestors empty
+            #[cfg(debug_assertions)]
+            TCComputation::EnforceAlreadyComputed,
+            #[cfg(not(debug_assertions))]
             TCComputation::AssumeAlreadyComputed,
             Extensions::all_available(),
         )?;
 
-        Ok(Entities::ref_cast(&internal_entities).clone())
+        Ok(Entities::from(internal_entities))
     }
 
     /// Corresponds to `SymEntities.entityUIDs` in `Concretize.lean`
