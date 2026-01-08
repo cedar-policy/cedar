@@ -1807,7 +1807,7 @@ fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
 /// Parse the test, validate against schema,
 /// and then check the authorization decision
 fn run_one_test(policies: &PolicySet, test: &serde_json::Value) -> Result<TestResult> {
-    let test = TestCase::deserialize(test.clone()).into_diagnostic()?;
+    let test = TestCase::deserialize(test).into_diagnostic()?;
     let ans = Authorizer::new().is_authorized(&test.request, policies, &test.entities);
     Ok(compare_test_decisions(&test, &ans))
 }
