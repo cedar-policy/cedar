@@ -170,6 +170,8 @@ pub enum SchemaTranslationDirection {
     JsonToCedar,
     /// Cedar schema syntax -> JSON
     CedarToJson,
+    /// Cedar schema syntax -> JSON with all types resolved to entity or common
+    CedarToJsonWithResolvedTypes,
 }
 
 #[derive(Debug, Default, Clone, Copy, ValueEnum)]
@@ -1251,10 +1253,49 @@ fn translate_schema_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
     Ok(output)
 }
 
+fn translate_schema_to_json_with_resolved_types(cedar_src: impl AsRef<str>) -> Result<String> {
+    match cedar_policy::schema_str_to_resolved_fragment(cedar_src.as_ref()) {
+        Ok((fully_resolved_fragment, warnings)) => {
+            // Output warnings to stderr
+            for warning in &warnings {
+                eprintln!("{warning:?}");
+            }
+
+            // Serialize to JSON with pretty formatting
+            let json_value = serde_json::to_value(&fully_resolved_fragment)
+                .into_diagnostic()
+                .wrap_err("Failed to serialize resolved schema to JSON")?;
+
+            serde_json::to_string_pretty(&json_value).into_diagnostic()
+        }
+        Err(reports) => {
+            // Output errors to stderr
+            for report in &reports {
+                eprintln!("{report:?}");
+            }
+
+            // Check if this is a parsing error by looking at the error messages
+            let has_parse_error = reports.iter().any(|r| {
+                let error_str = format!("{r:?}");
+                error_str.contains("parse") || error_str.contains("unexpected token")
+            });
+
+            if has_parse_error {
+                Err(miette::miette!("Failed to parse Cedar schema"))
+            } else {
+                Err(miette::miette!("Failed to resolve schema types"))
+            }
+        }
+    }
+}
+
 fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     let translate = match args.direction {
         SchemaTranslationDirection::JsonToCedar => translate_schema_to_cedar,
         SchemaTranslationDirection::CedarToJson => translate_schema_to_json,
+        SchemaTranslationDirection::CedarToJsonWithResolvedTypes => {
+            translate_schema_to_json_with_resolved_types
+        }
     };
     read_from_file_or_stdin(args.input_file.as_ref(), "schema").and_then(translate)
 }

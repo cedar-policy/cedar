@@ -2137,6 +2137,50 @@ impl Schema {
     }
 }
 
+/// Convert a Cedar schema string to a resolved fragment with types resolved.
+///
+/// This function resolves ambiguous "`EntityOrCommon`" types to their specific
+/// Entity or `CommonType` classifications using the schema's type definitions.
+/// This is primarily meant to be used when working with schemas programmatically,
+/// for example when creating a schema building UI.
+///
+/// Returns Ok((fragment, warnings)) on success, or Err(errors) on failure.
+/// Fails if there are any types in the schema that are unresolved.
+pub fn schema_str_to_resolved_fragment(
+    schema_str: &str,
+) -> Result<
+    (
+        json_schema::Fragment<cedar_policy_core::ast::InternalName>,
+        Vec<miette::Report>,
+    ),
+    Vec<miette::Report>,
+> {
+    use cedar_policy_core::validator::cedar_schema::parser::parse_cedar_schema_fragment;
+
+    let (json_schema_fragment, warnings) =
+        match parse_cedar_schema_fragment(schema_str, Extensions::all_available()) {
+            Ok((json_schema, warnings)) => (json_schema, warnings),
+            Err(e) => {
+                return Err(vec![miette::Report::new(e)]);
+            }
+        };
+
+    let warnings_as_reports: Vec<miette::Report> = warnings.map(miette::Report::new).collect();
+
+    // Use the new method from json_schema.rs to get the resolved fragment
+    let fully_resolved_fragment =
+        match json_schema_fragment.to_internal_name_fragment_with_resolved_types() {
+            Ok(fragment) => fragment,
+            Err(e) => {
+                let mut errors = warnings_as_reports;
+                errors.push(miette::Report::new(e));
+                return Err(errors);
+            }
+        };
+
+    Ok((fully_resolved_fragment, warnings_as_reports))
+}
+
 /// Contains the result of policy validation.
 ///
 /// The result includes the list of issues found by validation and whether validation succeeds or fails.

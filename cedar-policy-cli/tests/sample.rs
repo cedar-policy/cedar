@@ -1274,6 +1274,187 @@ fn test_translate_schema() {
         .code(0);
 }
 
+#[test]
+fn test_translate_schema_with_resolved_types() {
+    let cedar_filename = "sample-data/tiny_sandboxes/translate-schema/tinytodo.cedarschema";
+
+    // Test cedar -> json with resolved types
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .arg("-s")
+        .arg(cedar_filename)
+        .assert()
+        .code(0);
+
+    let json_output =
+        std::str::from_utf8(&output.get_output().stdout).expect("output should be decodable");
+
+    // Parse the JSON to ensure it's valid
+    let parsed_json: serde_json::Value =
+        serde_json::from_str(json_output).expect("output should be valid JSON");
+
+    // Verify that the output contains resolved types (no "EntityOrCommon" strings)
+    let json_str = serde_json::to_string(&parsed_json).unwrap();
+    assert!(
+        !json_str.contains("EntityOrCommon"),
+        "Output should not contain unresolved EntityOrCommon types: {}",
+        json_str
+    );
+
+    // Verify that the output contains expected entity types
+    assert!(
+        json_str.contains("List"),
+        "Output should contain List entity type"
+    );
+    assert!(
+        json_str.contains("User"),
+        "Output should contain User entity type"
+    );
+    assert!(
+        json_str.contains("Team"),
+        "Output should contain Team entity type"
+    );
+    assert!(
+        json_str.contains("Application"),
+        "Output should contain Application entity type"
+    );
+}
+#[test]
+
+fn test_translate_schema_with_resolved_types_stdin() {
+    // Test with stdin input
+    let stdin_output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .write_stdin("entity User; action \"view\";")
+        .assert()
+        .code(0);
+
+    let stdin_json = std::str::from_utf8(&stdin_output.get_output().stdout)
+        .expect("stdin output should be decodable");
+
+    // Parse and verify stdin JSON
+    let stdin_parsed: serde_json::Value =
+        serde_json::from_str(stdin_json).expect("stdin output should be valid JSON");
+
+    let stdin_json_str = serde_json::to_string(&stdin_parsed).unwrap();
+    assert!(
+        !stdin_json_str.contains("EntityOrCommon"),
+        "Stdin output should not contain unresolved EntityOrCommon types"
+    );
+    assert!(
+        stdin_json_str.contains("User"),
+        "Stdin output should contain User entity type"
+    );
+}
+
+#[test]
+fn test_translate_schema_with_resolved_types_invalid_input() {
+    // Test with invalid Cedar schema syntax
+    let invalid_output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .write_stdin("invalid cedar syntax {")
+        .assert()
+        .code(1); // Should fail with non-zero exit code
+
+    let stderr = std::str::from_utf8(&invalid_output.get_output().stderr)
+        .expect("stderr should be decodable");
+
+    // Should contain error message about parsing failure
+    assert!(
+        stderr.contains("Failed to parse Cedar schema") || stderr.contains("parse"),
+        "Error message should indicate parsing failure: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_translate_schema_with_resolved_types_warnings() {
+    // Create a schema that generates warnings (Shadowing a primitive type with an entity)
+    let schema_with_warnings = r#"
+        entity String;
+    "#;
+
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .write_stdin(schema_with_warnings)
+        .assert()
+        .code(0); // Should succeed despite warnings
+
+    let json_output =
+        std::str::from_utf8(&output.get_output().stdout).expect("output should be decodable");
+
+    // Should produce valid JSON
+    let _parsed_json: serde_json::Value =
+        serde_json::from_str(json_output).expect("output should be valid JSON");
+
+    // Warnings should be output to stderr (if any)
+    let _stderr =
+        std::str::from_utf8(&output.get_output().stderr).expect("stderr should be decodable");
+
+    assert!(_stderr.contains("The name `String` shadows a builtin Cedar name"));
+}
+
+#[test]
+fn test_translate_schema_with_resolved_types_file_errors() {
+    // Test with non-existent input file
+    let nonexistent_output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .arg("-s")
+        .arg("nonexistent-file.cedarschema")
+        .assert()
+        .code(1); // Should fail with non-zero exit code
+
+    let stderr = std::str::from_utf8(&nonexistent_output.get_output().stderr)
+        .expect("stderr should be decodable");
+
+    // Should contain error message about file not found
+    assert!(
+        stderr.contains("nonexistent-file.cedarschema") || stderr.contains("No such file"),
+        "Error message should indicate file not found: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_translate_schema_with_resolved_types_unresolvable_references() {
+    // Test with schema that has unresolvable type references
+    let unresolvable_schema = r#"
+        entity User = { "manager": Manager };
+        // Manager entity type is not defined
+        action "view";
+    "#;
+
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json-with-resolved-types")
+        .write_stdin(unresolvable_schema)
+        .assert()
+        .code(1); // Should fail with non-zero exit code
+
+    let stderr =
+        std::str::from_utf8(&output.get_output().stderr).expect("stderr should be decodable");
+
+    // Should contain error message about unresolvable references
+    assert!(
+        stderr.contains("Failed to resolve schema types")
+            || stderr.contains("Manager")
+            || stderr.contains("resolve"),
+        "Error message should indicate unresolvable type reference: {}",
+        stderr
+    );
+}
+
 #[rstest]
 fn visualize_entities_parses_as_dot(
     #[files("sample-data/**/entities.json")]

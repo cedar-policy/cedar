@@ -21,9 +21,6 @@
 use super::utils::JsonValueWithNoDuplicateKeys;
 use super::{DetailedError, Policy, Schema, Template};
 use crate::api::{PolicySet, StringifiedPolicySet};
-use cedar_policy_core::{
-    extensions::Extensions, validator::cedar_schema::parser::parse_cedar_schema_fragment,
-};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 #[cfg(feature = "wasm")]
@@ -191,41 +188,28 @@ pub fn schema_to_json(schema: Schema) -> SchemaToJsonAnswer {
     wasm_bindgen(js_name = "schemaToJsonWithResolvedTypes")
 )]
 pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithResolvedTypesAnswer {
-    let (json_schema_fragment, warnings) =
-        match parse_cedar_schema_fragment(schema_str, Extensions::all_available()) {
-            Ok((json_schema, warnings)) => (json_schema, warnings),
-            Err(e) => {
-                return SchemaToJsonWithResolvedTypesAnswer::Failure {
-                    errors: vec![miette::Report::new(e).into()],
-                };
+    match crate::api::schema_str_to_resolved_fragment(schema_str) {
+        Ok((fully_resolved_fragment, warnings)) => {
+            // Serialize the resolved Fragment<InternalName> to JSON
+            match serde_json::to_value(&fully_resolved_fragment) {
+                Ok(json) => SchemaToJsonWithResolvedTypesAnswer::Success {
+                    json: json.into(),
+                    warnings: warnings.into_iter().map(std::convert::Into::into).collect(),
+                },
+                Err(e) => SchemaToJsonWithResolvedTypesAnswer::Failure {
+                    errors: vec![DetailedError::from_str(&format!(
+                        "JSON serialization failed: {e}"
+                    ))
+                    .unwrap_or_default()],
+                },
             }
-        };
-
-    let warnings_as_detailed_errs: Vec<DetailedError> = warnings.map(|w| (&w).into()).collect();
-
-    // Use the new method from json_schema.rs to get the resolved fragment
-    let fully_resolved_fragment =
-        match json_schema_fragment.to_internal_name_fragment_with_resolved_types() {
-            Ok(fragment) => fragment,
-            Err(e) => {
-                return SchemaToJsonWithResolvedTypesAnswer::Failure {
-                    errors: vec![miette::Report::new(e).into()],
-                };
+        }
+        Err(reports) => {
+            // Convert miette::Report to DetailedError
+            SchemaToJsonWithResolvedTypesAnswer::Failure {
+                errors: reports.into_iter().map(std::convert::Into::into).collect(),
             }
-        };
-
-    // Serialize the resolved Fragment<InternalName> to JSON
-    match serde_json::to_value(&fully_resolved_fragment) {
-        Ok(json) => SchemaToJsonWithResolvedTypesAnswer::Success {
-            json: json.into(),
-            warnings: warnings_as_detailed_errs,
-        },
-        Err(e) => SchemaToJsonWithResolvedTypesAnswer::Failure {
-            errors: vec![
-                DetailedError::from_str(&format!("JSON serialization failed: {e}"))
-                    .unwrap_or_default(),
-            ],
-        },
+        }
     }
 }
 
