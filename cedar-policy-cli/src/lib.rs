@@ -1823,7 +1823,7 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
         if let Some(name) = test["name"].as_str() {
             print!("  test {name} ... ");
         } else {
-            print!("  test (unamed) ... ");
+            print!("  test (unnamed) ... ");
         }
         std::io::stdout().flush().into_diagnostic()?;
 
