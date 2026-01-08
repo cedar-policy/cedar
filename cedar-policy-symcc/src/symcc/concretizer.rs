@@ -31,7 +31,6 @@ use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser::Loc;
 use miette::Diagnostic;
 use num_bigint::{BigInt, TryFromBigIntError};
-use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 
