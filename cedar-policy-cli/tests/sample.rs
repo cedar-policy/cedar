@@ -1367,7 +1367,7 @@ fn test_translate_schema_with_resolved_types_invalid_input() {
 
     // Should contain error message about parsing failure
     assert!(
-        stderr.contains("Failed to parse Cedar schema") || stderr.contains("parse"),
+        stderr.contains("error parsing schema"),
         "Error message should indicate parsing failure: {}",
         stderr
     );

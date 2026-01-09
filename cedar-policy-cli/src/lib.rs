@@ -1254,37 +1254,19 @@ fn translate_schema_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
 }
 
 fn translate_schema_to_json_with_resolved_types(cedar_src: impl AsRef<str>) -> Result<String> {
-    match cedar_policy::schema_str_to_resolved_fragment(cedar_src.as_ref()) {
-        Ok((fully_resolved_fragment, warnings)) => {
+    match cedar_policy::schema_str_to_json_with_resolved_types(cedar_src.as_ref()) {
+        Ok((json_value, warnings)) => {
             // Output warnings to stderr
             for warning in &warnings {
-                eprintln!("{warning:?}");
+                eprintln!("{warning}");
             }
 
             // Serialize to JSON with pretty formatting
-            let json_value = serde_json::to_value(&fully_resolved_fragment)
-                .into_diagnostic()
-                .wrap_err("Failed to serialize resolved schema to JSON")?;
-
             serde_json::to_string_pretty(&json_value).into_diagnostic()
         }
-        Err(reports) => {
-            // Output errors to stderr
-            for report in &reports {
-                eprintln!("{report:?}");
-            }
-
-            // Check if this is a parsing error by looking at the error messages
-            let has_parse_error = reports.iter().any(|r| {
-                let error_str = format!("{r:?}");
-                error_str.contains("parse") || error_str.contains("unexpected token")
-            });
-
-            if has_parse_error {
-                Err(miette::miette!("Failed to parse Cedar schema"))
-            } else {
-                Err(miette::miette!("Failed to resolve schema types"))
-            }
+        Err(error) => {
+            // Convert CedarSchemaError to miette::Report to preserve all diagnostic information
+            Err(miette::Report::new(error))
         }
     }
 }

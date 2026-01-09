@@ -188,26 +188,15 @@ pub fn schema_to_json(schema: Schema) -> SchemaToJsonAnswer {
     wasm_bindgen(js_name = "schemaToJsonWithResolvedTypes")
 )]
 pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithResolvedTypesAnswer {
-    match crate::api::schema_str_to_resolved_fragment(schema_str) {
-        Ok((fully_resolved_fragment, warnings)) => {
-            // Serialize the resolved Fragment<InternalName> to JSON
-            match serde_json::to_value(&fully_resolved_fragment) {
-                Ok(json) => SchemaToJsonWithResolvedTypesAnswer::Success {
-                    json: json.into(),
-                    warnings: warnings.into_iter().map(std::convert::Into::into).collect(),
-                },
-                Err(e) => SchemaToJsonWithResolvedTypesAnswer::Failure {
-                    errors: vec![DetailedError::from_str(&format!(
-                        "JSON serialization failed: {e}"
-                    ))
-                    .unwrap_or_default()],
-                },
-            }
-        }
-        Err(reports) => {
-            // Convert miette::Report to DetailedError
+    match crate::api::schema_str_to_json_with_resolved_types(schema_str) {
+        Ok((json_value, warnings)) => SchemaToJsonWithResolvedTypesAnswer::Success {
+            json: json_value.into(),
+            warnings: warnings.iter().map(std::convert::Into::into).collect(),
+        },
+        Err(error) => {
+            // Convert CedarSchemaError to DetailedError
             SchemaToJsonWithResolvedTypesAnswer::Failure {
-                errors: reports.into_iter().map(std::convert::Into::into).collect(),
+                errors: vec![(&error).into()],
             }
         }
     }
