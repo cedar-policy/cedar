@@ -19,6 +19,7 @@
     reason = "not actually dead, but cargo issues warnings per test file"
 )]
 #![expect(clippy::panic, clippy::unwrap_used, reason = "unit test code")]
+#![expect(deprecated, reason = "this file intentionally tests deprecated functions (along with undeprecated ones)")]
 
 //! Utilities shared by various tests throughout the package
 use std::str::FromStr;
