@@ -170,7 +170,10 @@ pub enum SchemaTranslationDirection {
     JsonToCedar,
     /// Cedar schema syntax -> JSON
     CedarToJson,
-    /// Cedar schema syntax -> JSON with all types resolved to entity or common
+    /// Cedar schema syntax -> JSON with all types resolved to entity or common.
+    ///
+    /// In contrast to `cedar-to-json`, this option requires that every type
+    /// referenced in the schema is also defined.
     CedarToJsonWithResolvedTypes,
 }
 

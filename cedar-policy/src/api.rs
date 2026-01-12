@@ -2144,7 +2144,7 @@ impl Schema {
 /// This is primarily meant to be used when working with schemas programmatically,
 /// for example when creating a schema building UI.
 ///
-/// Returns `Ok((json_value`, warnings)) on success, or Err(error) on failure.
+/// Returns `Ok((json_value, warnings))` on success, or `Err(error)` on failure.
 /// Fails if there are any types in the schema that are unresolved.
 pub fn schema_str_to_json_with_resolved_types(
     schema_str: &str,
