@@ -154,25 +154,22 @@ impl<S: Solver> SymCompiler<S> {
     /// calls the SMT solver (if necessary) on an SMTLib encoding of `asserts` and
     /// returns `None` if the result is unsatisfiable. Otherwise returns `Some` with
     /// a counterexample interpretation. The `asserts` are expected to be well-formed
-    /// with respect to `symenv`. This call resets the solver.
+    /// with respect to `symenv` (see notes in the Lean). This call resets the solver.
     ///
-    /// For soundness, `footprint` must include all expressions used for generating `asserts`.
-    ///
-    /// This function corresponds to `satAsserts?` (not `checkSatAsserts`) in the Lean.
-    /// The `footprint` argument here corresponds to the `ps` argument in the Lean.
-    pub async fn check_sat_asserts<E: Borrow<Expr>>(
+    /// This function corresponds to `checkSatAsserts` in the Lean.
+    pub async fn check_sat_asserts<'a>(
         &mut self,
         asserts: &Asserts,
-        symenv: &SymEnv,
-        footprint: impl IntoIterator<Item = E>,
-    ) -> Result<Option<Env>> {
+        symenv: &'a SymEnv,
+    ) -> Result<Option<Interpretation<'a>>> {
         if asserts.iter().any(|assert| *assert == false.into()) {
             // some assert has been reduced to constant-false by the symcc process.
             // skip encoding and calling the solver.
             Ok(None)
         } else if asserts.iter().all(|assert| *assert == true.into()) {
-            let interp = Interpretation::default(symenv);
-            Ok(Some(symenv.interpret(&interp).concretize(footprint)?))
+            // all aserts have been reduced to constant-true by the symcc process.
+            // skip encoding and calling the solver.
+            Ok(Some(Interpretation::default(symenv)))
         } else {
             self.solver
                 .smtlib_input()
@@ -205,10 +202,45 @@ impl<S: Solver> SymCompiler<S> {
                     };
                     let model = parse_sexpr(model_str.as_bytes())?;
                     let interp = model.decode_model(symenv, &id_maps)?;
-                    Ok(Some(symenv.extract(footprint, &interp)?))
+                    #[cfg(debug_assertions)]
+                    {
+                        // validate the model
+                        for assert in asserts.iter() {
+                            if assert.interpret(&interp) != true.into() {
+                                return Err(Error::ModelInvalid {
+                                    assert: assert.clone(),
+                                });
+                            }
+                        }
+                    }
+                    Ok(Some(interp))
                 }
                 Decision::Unknown => Err(Error::SolverUnknown),
             }
+        }
+    }
+
+    /// Given some `asserts`, the policies' `footprint`, and the corresponding
+    /// symbolic environment `symenv`, calls the SMT solver (if necessary) on an
+    /// SMTLib encoding of `asserts` and returns `None` if the result is
+    /// unsatisfiable. Otherwise returns `Some` with a counterexample
+    /// interpretation. The `asserts` are expected to be well-formed with
+    /// respect to `symenv` (see notes in the Lean). This call resets the
+    /// solver.
+    ///
+    /// For soundness, `footprint` must include all expressions used for generating `asserts`.
+    ///
+    /// This function corresponds to `satAsserts?` in the Lean.
+    /// The `footprint` argument here corresponds to the `ps` argument in the Lean.
+    pub async fn sat_asserts<E: Borrow<Expr>>(
+        &mut self,
+        asserts: &Asserts,
+        symenv: &SymEnv,
+        footprint: impl IntoIterator<Item = E>,
+    ) -> Result<Option<Env>> {
+        match self.check_sat_asserts(asserts, symenv).await? {
+            None => Ok(None),
+            Some(interp) => Ok(Some(symenv.extract(footprint, &interp)?)),
         }
     }
 
@@ -226,7 +258,7 @@ impl<S: Solver> SymCompiler<S> {
         policy: &Policy,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        self.check_sat_asserts(
+        self.sat_asserts(
             &verify_never_errors(policy, symenv)?,
             symenv,
             std::iter::once(&policy.condition()),
@@ -260,7 +292,7 @@ impl<S: Solver> SymCompiler<S> {
         policy: &Policy,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        self.check_sat_asserts(
+        self.sat_asserts(
             &verify_always_matches(policy, symenv)?,
             symenv,
             std::iter::once(&policy.condition()),
@@ -292,7 +324,7 @@ impl<S: Solver> SymCompiler<S> {
         policy: &Policy,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        self.check_sat_asserts(
+        self.sat_asserts(
             &verify_never_matches(policy, symenv)?,
             symenv,
             std::iter::once(&policy.condition()),
@@ -335,7 +367,7 @@ impl<S: Solver> SymCompiler<S> {
         policy2: &Policy,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        self.check_sat_asserts(
+        self.sat_asserts(
             &verify_matches_equivalent(policy1, policy2, symenv)?,
             symenv,
             [&policy1.condition(), &policy2.condition()],
@@ -377,7 +409,7 @@ impl<S: Solver> SymCompiler<S> {
         policy2: &Policy,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        self.check_sat_asserts(
+        self.sat_asserts(
             &verify_matches_implies(policy1, policy2, symenv)?,
             symenv,
             [&policy1.condition(), &policy2.condition()],
@@ -419,7 +451,7 @@ impl<S: Solver> SymCompiler<S> {
         policy2: &Policy,
         symenv: &SymEnv,
     ) -> Result<Option<Env>> {
-        self.check_sat_asserts(
+        self.sat_asserts(
             &verify_matches_disjoint(policy1, policy2, symenv)?,
             symenv,
             [&policy1.condition(), &policy2.condition()],
@@ -457,7 +489,7 @@ impl<S: Solver> SymCompiler<S> {
             .policies()
             .chain(policies2.policies())
             .map(|p| p.condition());
-        self.check_sat_asserts(
+        self.sat_asserts(
             &verify_implies(policies1, policies2, symenv)?,
             symenv,
             footprint,
@@ -487,7 +519,7 @@ impl<S: Solver> SymCompiler<S> {
             .policies()
             .map(|p| p.condition())
             .collect::<Vec<_>>();
-        self.check_sat_asserts(
+        self.sat_asserts(
             &verify_always_allows(policies, symenv)?,
             symenv,
             footprint.iter(),
@@ -517,7 +549,7 @@ impl<S: Solver> SymCompiler<S> {
             .policies()
             .map(|p| p.condition())
             .collect::<Vec<_>>();
-        self.check_sat_asserts(
+        self.sat_asserts(
             &verify_always_denies(policies, symenv)?,
             symenv,
             footprint.iter(),
@@ -554,7 +586,7 @@ impl<S: Solver> SymCompiler<S> {
             .chain(policies2.policies())
             .map(|p| p.condition())
             .collect::<Vec<_>>();
-        self.check_sat_asserts(
+        self.sat_asserts(
             &verify_equivalent(policies1, policies2, symenv)?,
             symenv,
             footprint.iter(),
@@ -592,7 +624,7 @@ impl<S: Solver> SymCompiler<S> {
             .chain(policies2.policies())
             .map(|p| p.condition())
             .collect::<Vec<_>>();
-        self.check_sat_asserts(
+        self.sat_asserts(
             &verify_disjoint(policies1, policies2, symenv)?,
             symenv,
             footprint.iter(),

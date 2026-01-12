@@ -47,6 +47,9 @@ use super::SymEnv;
 /// [`cedar_policy`]/[`cedar_policy_core`].
 #[derive(Debug, Diagnostic, Error)]
 pub enum ConcretizeError {
+    /// Got no policies, expected to have at least one.
+    #[error("expected to have at least one policy")]
+    NoPolicies,
     /// Expecting a literal entity.
     #[error("Not a literal entity: {0:?}")]
     NotLiteralEntity(Term),
