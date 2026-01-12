@@ -1,0 +1,148 @@
+# Note: This workflow can only be run from the 'main' branch to
+# ensure that the latest version of this workflow is used.
+# However, the release will not necessarily be performed from the 'main' branch
+# as the input `tag` is used to determine which GitHub tag will be checked out for the release.
+name: Publish cedar-wasm to NPM
+on:
+    # This workflow must be triggered manually.
+    workflow_dispatch:
+        inputs:
+            tag:
+                required: true
+                type: string
+                description: "The GitHub tag to be released. Must be of the form 'v<MAJOR>.<MINOR>.<PATCH>'"
+
+# Declare default permissions as read only.
+permissions: read-all
+
+jobs:
+    validate:
+        runs-on: ubuntu-latest
+        steps:
+            # Check that this workflow was triggered from the 'main' branch.
+            - name: Validate branch
+              if: github.ref != 'refs/heads/main'
+              uses: actions/github-script@ffc2c79a5b2490bd33e0a41c1de74b877714d736 # v3.2.0
+              with:
+                  script: core.setFailed('This workflow must be triggered from the "main" branch.')
+
+            # Check that the input tag is welformed.
+            - name: Validate tag
+              run: |
+                  REGEX_PATTERN="^v[0-9]+\.[0-9]+\.[0-9]+$"
+                  if [[ ! "$TAG_NAME" =~ $REGEX_PATTERN ]]; then 
+                      echo 'Specified tag must match "$REGEX_PATTERN"'
+                      exit 1
+                  fi
+              env:
+                  TAG_NAME: ${{ inputs.tag }}
+
+            # Check that the cargo workspace's version matches the input tag.
+            - name: Checkout tag
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+              with:
+                  ref: refs/tags/${{ inputs.tag }}
+            - name: Configure rust toolchain
+              run: rustup update stable && rustup default stable
+            - name: Install toml-cli
+              run: cargo install toml-cli --locked
+            - name: Validate workspace version
+              run: test "v$(toml get --raw Cargo.toml workspace.package.version)" = "$TAG_NAME"
+              env:
+                  TAG_NAME: ${{ inputs.tag }}
+
+    compute-values:
+        runs-on: ubuntu-latest
+        outputs:
+            release_branch: ${{ steps.compute_release_branch.outputs.release_branch }}
+            npm_tag: ${{ steps.compute_npm_tag.outputs.npm_tag }}
+        steps:
+            - name: Set up Node.js
+              uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+              with:
+                  node-version: "latest"
+                  registry-url: "https://registry.npmjs.org"
+            # Compute the name of the release branch associated with the specified tag.
+            - name: Compute release branch.
+              id: compute_release_branch
+              uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+              with:
+                  script: |
+                      const tag = '${{ inputs.tag }}';
+                      const version = tag.replace('v', '');
+                      const [major, minor, _] = version.split('.');
+                      const releaseBranch = `release/${major}.${minor}.x`;
+                      core.setOutput('branch_name', releaseBranch);
+
+            # Compute the tag that should be used for the NPM release by comparing the latest NPM release's
+            # version against the version to be released by this workflow.
+            - name: Install NPM dependencies
+              run: npm install compare-versions@6.1.1
+            - name: Get latest NPM version
+              id: latest_npm_version
+              run: echo "latest_npm_version=$(npm view @cedar-policy/cedar-wasm version)" >> "$GITHUB_OUTPUT"
+            - name: Compute NPM tag
+              id: compute_npm_tag
+              uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+              with:
+                  script: |
+                      const compareVersions = require('compare-versions');
+                      const tag = '${{ inputs.tag }}';
+                      const version = tag.replace('v', '');
+                      const [major, minor, _] = version.split('.');
+                      const latestRelease = '${{ steps.latest_npm_version.outputs.latest_npm_version }}'
+                      console.log(`Latest version found on NPM: ${latestRelease}`);
+                      let npmTag;
+                      if (compareVersions.compare(version, latestRelease, '<=')) {
+                        npmTag = `v${major}.${minor}-lts`;
+                      }  else {
+                        npmTag = 'latest';
+                      }
+                      console.log(`Using NPM tag: ${npmTag}`);
+                      core.setOutput('npm_tag', npmTag);
+
+    build-wasm-example:
+        needs: [compute-values]
+        uses: cedar-policy/cedar-examples/.github/workflows/build_wasm_example_reusable.yml@main
+        with:
+            cedar_policy_ref: refs/tags/${{ inputs.tag }}
+            cedar_examples_ref: ${{ needs.compute-values.outputs.release_branch }}
+
+    publish-npm:
+        # Only publish if everything else succeeds.
+        needs: [build-wasm-example, validate, compute-values]
+        runs-on: ubuntu-latest
+        environment: release # See https://github.com/cedar-policy/cedar/settings/environments
+        permissions:
+            id-token: write # Required for OIDC token exchange
+        steps:
+            - name: Checkout tag
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+              with:
+                  ref: refs/tags/${{ inputs.tag }}
+            - name: Configure rust toolchain
+              run: rustup update stable && rustup default stable
+            - name: Set up Node.js
+              uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+              with:
+                  node-version: "latest"
+                  registry-url: "https://registry.npmjs.org"
+            - name: Install typescript
+              run: npm install --global typescript
+            - name: Install wasm-pack
+              run: cargo install wasm-pack --locked
+            - name: Build and test cedar-wasm
+              working-directory: ./cedar-wasm
+              run: TEST_TS=1 ./build-wasm.sh
+            # Check that the tag matches the generated node package version.
+            - name: Check package version
+              run: test "v$(jq --raw-output .version ./cedar-wasm/pkg/package.json)" = "$TAG_NAME"
+              env:
+                  TAG_NAME: ${{ inputs.tag }}
+            - name: Publish to NPM
+              # Note: npm will implicitly apply the "latest" tag if the `--tag` option is not specified,
+              # so for other releases we use the tag v<MAJOR>.<MINORR>-lts
+              run: npm publish --access=public --tag "$NPM_TAG"
+              working-directory: ./cedar-wasm/pkg/
+              env:
+                  NPM_TAG: ${{ needs.compute-values.outputs.npm_tag }}
