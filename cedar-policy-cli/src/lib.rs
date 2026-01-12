@@ -26,6 +26,7 @@
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use owo_colors::OwoColorize;
+use serde::de::{DeserializeSeed, IntoDeserializer};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeSet;
 use std::io::{BufReader, Write};
@@ -1808,8 +1809,14 @@ fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
 
 /// Parse the test, validate against schema,
 /// and then check the authorization decision
-fn run_one_test(policies: &PolicySet, test: &serde_json::Value) -> Result<TestResult> {
-    let test = TestCase::deserialize(test).into_diagnostic()?;
+fn run_one_test(
+    policies: &PolicySet,
+    test: &serde_json::Value,
+    schema: Option<&Schema>,
+) -> Result<TestResult> {
+    let test = CheckedTestCaseSeed(schema)
+        .deserialize(test.into_deserializer())
+        .into_diagnostic()?;
     let ans = Authorizer::new().is_authorized(&test.request, policies, &test.entities);
     Ok(compare_test_decisions(&test, &ans))
 }
@@ -1817,6 +1824,7 @@ fn run_one_test(policies: &PolicySet, test: &serde_json::Value) -> Result<TestRe
 fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
     let policies = args.policies.get_policy_set()?;
     let tests = load_partial_tests(&args.tests)?;
+    let schema = args.schema.get_schema()?;
 
     let mut total_fails: usize = 0;
 
@@ -1829,7 +1837,7 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
         }
         std::io::stdout().flush().into_diagnostic()?;
 
-        match run_one_test(&policies, test) {
+        match run_one_test(&policies, test, schema.as_ref()) {
             Ok(TestResult::Pass) => {
                 println!(
                     "{}",
@@ -1910,60 +1918,82 @@ impl From<ExpectedDecision> for Decision {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+struct UncheckedTestCase {
+    request: RequestJSON,
+    entities: serde_json::Value,
+    decision: ExpectedDecision,
+    reason: Vec<String>,
+    num_errors: usize,
+}
+
+#[derive(Clone, Debug)]
 struct TestCase {
-    #[serde(deserialize_with = "deserialize_request")]
     request: Request,
-    #[serde(deserialize_with = "deserialize_entities")]
     entities: Entities,
     decision: ExpectedDecision,
     reason: Vec<String>,
     num_errors: usize,
 }
 
-/// Helper function to deserialize a `Request` from JSON (without schema)
-fn deserialize_request<'de, D>(data: D) -> Result<Request, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let qjson = RequestJSON::deserialize(data)?;
+struct CheckedTestCaseSeed<'a>(Option<&'a Schema>);
 
-    let principal = qjson.principal.parse().map_err(|e| {
-        serde::de::Error::custom(format!(
-            "failed to parse principal `{}`: {}",
-            qjson.principal, e
-        ))
-    })?;
+impl<'de, 'a> DeserializeSeed<'de> for CheckedTestCaseSeed<'a> {
+    type Value = TestCase;
 
-    let action = qjson.action.parse().map_err(|e| {
-        serde::de::Error::custom(format!("failed to parse action `{}`: {}", qjson.action, e))
-    })?;
+    fn deserialize<D>(self, deserializer: D) -> std::result::Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let UncheckedTestCase {
+            request,
+            entities,
+            decision,
+            reason,
+            num_errors,
+        } = UncheckedTestCase::deserialize(deserializer)?;
 
-    let resource = qjson.resource.parse().map_err(|e| {
-        serde::de::Error::custom(format!(
-            "failed to parse resource `{}`: {}",
-            qjson.resource, e
-        ))
-    })?;
+        let principal = request.principal.parse().map_err(|e| {
+            serde::de::Error::custom(format!(
+                "failed to parse principal `{}`: {}",
+                request.principal, e
+            ))
+        })?;
 
-    let context = Context::from_json_value(qjson.context.clone(), None).map_err(|e| {
-        serde::de::Error::custom(format!(
-            "failed to parse context `{}`: {}",
-            qjson.context, e
-        ))
-    })?;
+        let action = request.action.parse().map_err(|e| {
+            serde::de::Error::custom(format!(
+                "failed to parse action `{}`: {}",
+                request.action, e
+            ))
+        })?;
 
-    Request::new(principal, action, resource, context, None)
-        .map_err(|e| serde::de::Error::custom(format!("failed to create request: {e}")))
-}
+        let resource = request.resource.parse().map_err(|e| {
+            serde::de::Error::custom(format!(
+                "failed to parse resource `{}`: {}",
+                request.resource, e
+            ))
+        })?;
 
-/// Helper function to deserialize an `Entities` from JSON (without schema)
-fn deserialize_entities<'de, D>(data: D) -> Result<Entities, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(data)?;
-    Entities::from_json_value(value, None)
-        .map_err(|e| serde::de::Error::custom(format!("failed to parse entities: {e}")))
+        let context = Context::from_json_value(request.context.clone(), None).map_err(|e| {
+            serde::de::Error::custom(format!(
+                "failed to parse context `{}`: {}",
+                request.context, e
+            ))
+        })?;
+
+        let request = Request::new(principal, action, resource, context, self.0)
+            .map_err(|e| serde::de::Error::custom(format!("failed to create request: {e}")))?;
+
+        let entities = Entities::from_json_value(entities, self.0)
+            .map_err(|e| serde::de::Error::custom(format!("failed to parse entities: {e}")))?;
+
+        Ok(TestCase {
+            request,
+            entities,
+            decision,
+            reason,
+            num_errors,
+        })
+    }
 }
 
 /// Load partially parsed tests from a JSON file
