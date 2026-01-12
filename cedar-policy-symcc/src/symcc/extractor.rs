@@ -26,7 +26,6 @@
 //! constraints are satisfied for the footprint).
 
 use std::borrow::Borrow;
-use std::collections::BTreeMap;
 use std::{collections::BTreeSet, sync::Arc};
 
 use cedar_policy_core::ast::Expr;
@@ -119,24 +118,27 @@ impl Interpretation<'_> {
     /// ancestor functions that are not in the footprint to empty sets
     ///
     /// Corresponds to `Interpretation.repair` in `Extractor.lean`
-    pub fn repair_as_counterexample<'b>(&self, exprs: impl Iterator<Item = &'b Expr>) -> Self {
+    pub fn repair_as_counterexample<T: Borrow<Term>>(
+        &self,
+        footprint: impl IntoIterator<Item = T>,
+    ) -> Self {
         let mut footprint_uids = BTreeSet::new();
 
         // Interpret every term in the footprint to collect concrete EUIDs
         // occurring in them
-        for term in footprints(exprs, self.env) {
-            term.interpret(self)
+        for term in footprint {
+            term.borrow()
+                .interpret(self)
                 .get_all_entity_uids(&mut footprint_uids);
         }
         // At this point, `footprint_uids` corresponds to `footprintUIDs` in the Lean
 
-        let footprint_ancestors: BTreeMap<&Uuf, Udf> = self
+        let footprint_ancestors = self
             .env
             .entities
             .uuf_ancestors()
             .into_iter()
-            .map(|f| (f, f.repair_as_counterexample(&footprint_uids, self)))
-            .collect();
+            .map(|f| (f, f.repair_as_counterexample(&footprint_uids, self)));
 
         // `funs` will be the existing `self.funs` for all entries except ones in `footprint_ancestors`
         let mut funs = self.funs.clone();
@@ -164,7 +166,8 @@ impl SymEnv {
         interp: &Interpretation<'_>,
     ) -> Result<Env, ConcretizeError> {
         let exprs = exprs.into_iter().collect::<Vec<_>>();
-        let interp = interp.repair_as_counterexample(exprs.iter().map(Borrow::borrow));
+        let interp =
+            interp.repair_as_counterexample(footprints(exprs.iter().map(Borrow::borrow), self));
         self.interpret(&interp).concretize(exprs)
     }
 }

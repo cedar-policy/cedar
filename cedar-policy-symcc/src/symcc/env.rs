@@ -87,12 +87,21 @@ impl SymRequest {
 // `entityIn` relation on entities. The symbolic store partitions this relation
 // into multiple maps, one for each pair of an entity type and its ancestor type.
 
+/// Represents the entity data for _all entities_ of a _single type_
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct SymEntityData {
     pub attrs: UnaryFunction,
+    /// Let `t1` be the entity type which this `SymEntityData` represents the data for.
+    /// Let `t2` be an entity type in this map's keys.
+    /// The `UnaryFunction` here maps entities of type `t1` to the set of
+    /// entities of type `t2` which are ancestors of that entity.
+    /// (Of course, the `UnaryFunction` is on SMT-level values, so the domain is
+    /// essentially `t1`-typed `Term`s, and the output is essentially a
+    /// `Set<t2>`-typed `Term`.)
     pub ancestors: BTreeMap<EntityType, UnaryFunction>,
-    /// Specifies EIDs of enum members, if applicable
+    /// Specifies EIDs of enum members for this entity type, if applicable
     pub members: Option<BTreeSet<SmolStr>>,
+    /// `None` means this entity type has no tags
     pub tags: Option<SymTags>,
 }
 

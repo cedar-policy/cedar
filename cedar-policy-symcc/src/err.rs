@@ -22,8 +22,8 @@ use thiserror::Error;
 
 pub use crate::symcc::{
     ext::ExtError, extension_types::datetime::DatetimeError,
-    extension_types::decimal::DecimalError, extension_types::ipaddr::IPError, BitVecError,
-    CompileError, ConcretizeError, DecodeError, EncodeError, SolverError,
+    extension_types::decimal::DecimalError, extension_types::ipaddr::IPError, term::Term,
+    BitVecError, CompileError, ConcretizeError, DecodeError, EncodeError, SolverError,
 };
 
 /// Top-level errors from the whole `cedar-policy-symcc` crate.
@@ -56,6 +56,15 @@ pub enum Error {
     /// Errors during concretization.
     #[error("failed to recover a concrete counterexample: {0}")]
     ConcretizeError(#[from] ConcretizeError),
+    /// Model successfully decoded and concretized, but the resulting model is invalid.
+    #[error("model is invalid: violates assertion {assert:?}")]
+    ModelInvalid {
+        /// Assertion that was violated
+        assert: Term,
+    },
+    /// Empty-list of policies was passed to a function that expects at least one policy
+    #[error("expected to have at least one policy")]
+    NoPolicies,
 }
 
 /// A result type that potentially returns a SymCC [`enum@Error`].
