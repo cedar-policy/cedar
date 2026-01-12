@@ -140,8 +140,13 @@ jobs:
               env:
                   TAG_NAME: ${{ inputs.tag }}
             - name: Publish to NPM
-              # Note: npm will implicitly apply the "latest" tag if the `--tag` option is not specified,
-              # so for other releases we use the tag v<MAJOR>.<MINORR>-lts
+              # Note: npm will implicitly apply the "latest" tag if the `--tag` option is not specified.
+              # If the version to be released is less than the previously published "latest" version and 
+              # implicitly tagged as the "latest", NPM will produce an error.
+              # 
+              # We explicitly set the tag to "latest", if the version being released is the latest
+              # version according to semantic versioning.
+              # Otherwise, we use the tag "v<MAJOR>.<MINOR>-lts".
               run: npm publish --access=public --tag "$NPM_TAG"
               working-directory: ./cedar-wasm/pkg/
               env:
