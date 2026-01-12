@@ -170,6 +170,11 @@ pub enum SchemaTranslationDirection {
     JsonToCedar,
     /// Cedar schema syntax -> JSON
     CedarToJson,
+    /// Cedar schema syntax -> JSON with all types resolved to entity or common.
+    ///
+    /// In contrast to `cedar-to-json`, this option requires that every type
+    /// referenced in the schema is also defined.
+    CedarToJsonWithResolvedTypes,
 }
 
 #[derive(Debug, Default, Clone, Copy, ValueEnum)]
@@ -1251,10 +1256,31 @@ fn translate_schema_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
     Ok(output)
 }
 
+fn translate_schema_to_json_with_resolved_types(cedar_src: impl AsRef<str>) -> Result<String> {
+    match cedar_policy::schema_str_to_json_with_resolved_types(cedar_src.as_ref()) {
+        Ok((json_value, warnings)) => {
+            // Output warnings to stderr
+            for warning in &warnings {
+                eprintln!("{warning}");
+            }
+
+            // Serialize to JSON with pretty formatting
+            serde_json::to_string_pretty(&json_value).into_diagnostic()
+        }
+        Err(error) => {
+            // Convert CedarSchemaError to miette::Report to preserve all diagnostic information
+            Err(miette::Report::new(error))
+        }
+    }
+}
+
 fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
     let translate = match args.direction {
         SchemaTranslationDirection::JsonToCedar => translate_schema_to_cedar,
         SchemaTranslationDirection::CedarToJson => translate_schema_to_json,
+        SchemaTranslationDirection::CedarToJsonWithResolvedTypes => {
+            translate_schema_to_json_with_resolved_types
+        }
     };
     read_from_file_or_stdin(args.input_file.as_ref(), "schema").and_then(translate)
 }

@@ -2137,9 +2137,140 @@ impl Schema {
     }
 }
 
+/// Convert a Cedar schema string to JSON format with resolved types.
+///
+/// This function resolves ambiguous "`EntityOrCommon`" types to their specific
+/// Entity or `CommonType` classifications using the schema's type definitions.
+/// This is primarily meant to be used when working with schemas programmatically,
+/// for example when creating a schema building UI.
+///
+/// Returns `Ok((json_value, warnings))` on success, or `Err(error)` on failure.
+/// Fails if there are any types in the schema that are unresolved.
+pub fn schema_str_to_json_with_resolved_types(
+    schema_str: &str,
+) -> Result<(serde_json::Value, Vec<SchemaWarning>), CedarSchemaError> {
+    // Parse the Cedar schema string into a fragment
+    let (json_schema_fragment, warnings) =
+        json_schema::Fragment::from_cedarschema_str(schema_str, Extensions::all_available())
+            .map_err(
+                |e: cedar_policy_core::validator::CedarSchemaError| -> CedarSchemaError {
+                    e.into()
+                },
+            )?;
+
+    let warnings_as_schema_warnings: Vec<SchemaWarning> = warnings.collect();
+
+    // Use the new method from json_schema.rs to get the resolved fragment
+    let fully_resolved_fragment =
+        match json_schema_fragment.to_internal_name_fragment_with_resolved_types() {
+            Ok(fragment) => fragment,
+            Err(e) => {
+                // SchemaError can be directly converted to CedarSchemaError
+                return Err(e.into());
+            }
+        };
+
+    // Serialize the resolved fragment to JSON
+    let json_value = serde_json::to_value(&fully_resolved_fragment).map_err(|e| {
+        let schema_error = SchemaError::JsonSerialization(
+            cedar_policy_core::validator::schema_errors::JsonSerializationError::from(e),
+        );
+        CedarSchemaError::Schema(schema_error)
+    })?;
+
+    Ok((json_value, warnings_as_schema_warnings))
+}
+
 /// Contains the result of policy validation.
 ///
 /// The result includes the list of issues found by validation and whether validation succeeds or fails.
+
+#[cfg(test)]
+mod test_schema_str_to_json_with_resolved_types {
+    use super::*;
+
+    #[test]
+    fn test_unresolved_type_error() {
+        let schema_str = r#"entity User = { "name": MyName };"#;
+
+        let result = schema_str_to_json_with_resolved_types(schema_str);
+
+        // Should return an error because MyName is not defined
+        match result {
+            Ok(_) => panic!("Expected error but got success - MyName should not be resolved"),
+            Err(CedarSchemaError::Schema(SchemaError::TypeNotDefined(type_not_defined_error))) => {
+                // Verify that the error message contains information about the undefined type "MyName"
+                let error_message = format!("{}", type_not_defined_error);
+                assert!(
+                    error_message.contains("MyName"),
+                    "Expected error message to contain 'MyName', but got: {}",
+                    error_message
+                );
+
+                // Verify it's specifically about failing to resolve types
+                assert!(
+                    error_message.contains("failed to resolve type"),
+                    "Expected error message to mention 'failed to resolve type', but got: {}",
+                    error_message
+                );
+            }
+            Err(CedarSchemaError::Schema(other_schema_error)) => {
+                panic!(
+                    "Expected TypeNotDefined error, but got different SchemaError: {:?}",
+                    other_schema_error
+                );
+            }
+            Err(CedarSchemaError::Parse(parse_error)) => {
+                panic!(
+                    "Expected TypeNotDefined error, but got parse error: {:?}",
+                    parse_error
+                );
+            }
+            Err(CedarSchemaError::Io(io_error)) => {
+                panic!(
+                    "Expected TypeNotDefined error, but got IO error: {:?}",
+                    io_error
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_successful_resolution() {
+        let schema_str = r#"
+            type MyName = String;
+            entity User = { "name": MyName };
+        "#;
+
+        let result = schema_str_to_json_with_resolved_types(schema_str);
+
+        match result {
+            Ok((json_value, warnings)) => {
+                // Verify we got a JSON value
+                assert!(json_value.is_object(), "Expected JSON object");
+
+                // Verify the JSON doesn't contain "EntityOrCommon" (should be resolved)
+                let json_str = serde_json::to_string(&json_value).unwrap();
+                assert!(
+                    !json_str.contains("EntityOrCommon"),
+                    "JSON should not contain unresolved EntityOrCommon types: {}",
+                    json_str
+                );
+
+                // Verify MyName is resolved to a reference to the common type
+                assert!(
+                    json_str.contains("MyName"),
+                    "JSON should contain resolved MyName type reference: {}",
+                    json_str
+                );
+
+                // Should have no warnings for this simple valid schema
+                assert_eq!(warnings.len(), 0, "Expected no warnings for valid schema");
+            }
+            Err(e) => panic!("Expected success but got error: {:?}", e),
+        }
+    }
+}
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
 #[derive(Debug, Clone)]

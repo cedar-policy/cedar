@@ -198,7 +198,8 @@ impl Fragment<RawName> {
     }
 
     /// Convert this `Fragment<RawName>` to a `Fragment<InternalName>` where all the
-    /// entity or common type references have been resolved
+    /// entity or common type references have been resolved. If the fragment contains any type
+    /// references that are not defined, this will return Err.
     pub fn to_internal_name_fragment_with_resolved_types(
         &self,
     ) -> std::result::Result<Fragment<InternalName>, SchemaError> {
@@ -218,7 +219,12 @@ impl Fragment<RawName> {
             .collect();
 
         for tyname in &primitives_as_internal_names {
+            // Add __cedar-prefixed primitives as commontypes
             all_defs.mark_as_defined_as_common_type(tyname.qualify_with(Some(&cedar_namespace)));
+            // Add aliases for primitive types in the empty namespace (so "String" resolves to "__cedar::String")
+            if !all_defs.is_defined_as_common(tyname) && !all_defs.is_defined_as_entity(tyname) {
+                all_defs.mark_as_defined_as_common_type(tyname.clone());
+            }
         }
 
         // Add extension types in __cedar namespace and also without
@@ -231,13 +237,6 @@ impl Fragment<RawName> {
                 && !all_defs.is_defined_as_entity(ext_type.as_ref())
             {
                 all_defs.mark_as_defined_as_common_type(ext_type.as_ref().qualify_with(None));
-            }
-        }
-
-        // Add aliases for primitive types in the empty namespace (so "String" resolves to "__cedar::String")
-        for tyname in &primitives_as_internal_names {
-            if !all_defs.is_defined_as_common(tyname) && !all_defs.is_defined_as_entity(tyname) {
-                all_defs.mark_as_defined_as_common_type(tyname.clone());
             }
         }
 
