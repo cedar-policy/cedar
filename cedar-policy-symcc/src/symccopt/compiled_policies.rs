@@ -162,18 +162,12 @@ impl CompiledPolicies {
     /// A `CompiledPolicies` that represents the policyset that allows all
     /// requests in the `SymEnv`.
     pub fn allow_all(symenv: SymEnv) -> Self {
-        let footprint: BTreeSet<Term> =
-            symcc::enforcer::footprint(&symcc::verifier::allow_all().condition(), &symenv)
-                .collect();
         Self {
             term: Term::from(true),
             policies: symcc::verifier::allow_all_pset(),
-            acyclicity: footprint
-                .iter()
-                .map(|term| symcc::enforcer::acyclicity(term, &symenv.entities))
-                .collect(),
+            footprint: BTreeSet::new(),
+            acyclicity: BTreeSet::new(),
             symenv,
-            footprint,
         }
     }
 
