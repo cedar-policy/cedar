@@ -268,7 +268,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Consider using the optimized version `check_never_errors_with_counterexample_opt()`
     /// instead, which will allow you to reuse a `CompiledPolicy` across many
     /// queries.
-    #[deprecated(since = "0.3.0", note = "use `check_never_errors_with_counterexample_opt()` instead")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "use `check_never_errors_with_counterexample_opt()` instead"
+    )]
     pub async fn check_never_errors_with_counterexample(
         &mut self,
         policy: &WellTypedPolicy,
@@ -320,7 +323,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Consider using the optimized version `check_always_matches_with_counterexample_opt()`
     /// instead, which will allow you to reuse a `CompiledPolicy` across many
     /// queries.
-    #[deprecated(since = "0.3.0", note = "use `check_always_matches_with_counterexample_opt()` instead")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "use `check_always_matches_with_counterexample_opt()` instead"
+    )]
     pub async fn check_always_matches_with_counterexample(
         &mut self,
         policy: &WellTypedPolicy,
@@ -368,7 +374,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Consider using the optimized version `check_never_matches_with_counterexample_opt()`
     /// instead, which will allow you to reuse a `CompiledPolicy` across many
     /// queries.
-    #[deprecated(since = "0.3.0", note = "use `check_never_matches_with_counterexample_opt()` instead")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "use `check_never_matches_with_counterexample_opt()` instead"
+    )]
     pub async fn check_never_matches_with_counterexample(
         &mut self,
         policy: &WellTypedPolicy,
@@ -451,7 +460,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     ///
     /// Consider using the optimized version `check_matches_equivalent_with_counterexample_opt()`
     /// instead, which will allow you to reuse a `CompiledPolicy` across many queries.
-    #[deprecated(since = "0.3.0", note = "use `check_matches_equivalent_with_counterexample_opt()` instead")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "use `check_matches_equivalent_with_counterexample_opt()` instead"
+    )]
     pub async fn check_matches_equivalent_with_counterexample(
         &mut self,
         policy1: &WellTypedPolicy,
@@ -534,7 +546,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     ///
     /// Consider using the optimized version `check_matches_implies_with_counterexample_opt()`
     /// instead, which will allow you to reuse a `CompiledPolicy` across many queries.
-    #[deprecated(since = "0.3.0", note = "use `check_matches_implies_with_counterexample_opt()` instead")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "use `check_matches_implies_with_counterexample_opt()` instead"
+    )]
     pub async fn check_matches_implies_with_counterexample(
         &mut self,
         policy1: &WellTypedPolicy,
@@ -617,7 +632,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     ///
     /// Consider using the optimized version `check_matches_disjoint_with_counterexample_opt()`
     /// instead, which will allow you to reuse a `CompiledPolicy` across many queries.
-    #[deprecated(since = "0.3.0", note = "use `check_matches_disjoint_with_counterexample_opt()` instead")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "use `check_matches_disjoint_with_counterexample_opt()` instead"
+    )]
     pub async fn check_matches_disjoint_with_counterexample(
         &mut self,
         policy1: &WellTypedPolicy,
@@ -684,7 +702,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Consider using the optimized version `check_implies_with_counterexample_opt()`
     /// instead, which will allow you to reuse a `CompiledPolicies` across many
     /// queries.
-    #[deprecated(since = "0.3.0", note = "use `check_implies_with_counterexample_opt()` instead")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "use `check_implies_with_counterexample_opt()` instead"
+    )]
     pub async fn check_implies_with_counterexample(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -733,7 +754,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Consider using the optimized version `check_always_allows_with_counterexample_opt()`
     /// instead, which will allow you to reuse a `CompiledPolicies` across many
     /// queries.
-    #[deprecated(since = "0.3.0", note = "use `check_always_allows_with_counterexample_opt()` instead")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "use `check_always_allows_with_counterexample_opt()` instead"
+    )]
     pub async fn check_always_allows_with_counterexample(
         &mut self,
         pset: &WellTypedPolicies,
@@ -780,7 +804,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Consider using the optimized version `check_always_denies_with_counterexample_opt()`
     /// instead, which will allow you to reuse a `CompiledPolicies` across many
     /// queries.
-    #[deprecated(since = "0.3.0", note = "use `check_always_denies_with_counterexample_opt()` instead")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "use `check_always_denies_with_counterexample_opt()` instead"
+    )]
     pub async fn check_always_denies_with_counterexample(
         &mut self,
         pset: &WellTypedPolicies,
@@ -839,7 +866,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Consider using the optimized version `check_equivalent_with_counterexample_opt()`
     /// instead, which will allow you to reuse a `CompiledPolicies` across many
     /// queries.
-    #[deprecated(since = "0.3.0", note = "use `check_equivalent_with_counterexample_opt()` instead")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "use `check_equivalent_with_counterexample_opt()` instead"
+    )]
     pub async fn check_equivalent_with_counterexample(
         &mut self,
         pset1: &WellTypedPolicies,
@@ -902,7 +932,10 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Consider using the optimized version `check_disjoint_with_counterexample_opt()`
     /// instead, which will allow you to reuse a `CompiledPolicies` across many
     /// queries.
-    #[deprecated(since = "0.3.0", note = "use `check_disjoint_with_counterexample_opt()` instead")]
+    #[deprecated(
+        since = "0.3.0",
+        note = "use `check_disjoint_with_counterexample_opt()` instead"
+    )]
     pub async fn check_disjoint_with_counterexample(
         &mut self,
         pset1: &WellTypedPolicies,
