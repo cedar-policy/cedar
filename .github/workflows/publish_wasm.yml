@@ -94,7 +94,7 @@ jobs:
                       console.log(`Latest version found on NPM: ${latestRelease}`);
                       let npmTag;
                       if (compareVersions.compare(version, latestRelease, '<=')) {
-                        npmTag = `v${major}.${minor}-lts`;
+                        npmTag = `v${major}.${minor}-x`;
                       }  else {
                         npmTag = 'latest';
                       }
@@ -146,7 +146,7 @@ jobs:
               # 
               # We explicitly set the tag to "latest", if the version being released is the latest
               # version according to semantic versioning.
-              # Otherwise, we use the tag "v<MAJOR>.<MINOR>-lts".
+              # Otherwise, we use the tag "v<MAJOR>.<MINOR>-x".
               run: npm publish --access=public --tag "$NPM_TAG"
               working-directory: ./cedar-wasm/pkg/
               env:
