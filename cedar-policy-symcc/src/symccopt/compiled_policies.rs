@@ -183,3 +183,33 @@ impl CompiledPolicies {
         }
     }
 }
+
+/// Represents a `CompiledPolicy` or a `CompiledPolicies`, for APIs that don't care
+/// which one they get.
+pub enum CompiledPolicys<'a> {
+    Policy(&'a CompiledPolicy),
+    Policies(&'a CompiledPolicies),
+}
+
+impl<'a> CompiledPolicys<'a> {
+    pub fn all_policies(&'a self) -> Box<dyn Iterator<Item = &'a Policy> + 'a> {
+        match self {
+            CompiledPolicys::Policy(cp) => Box::new(std::iter::once(&cp.policy)),
+            CompiledPolicys::Policies(cps) => Box::new(cps.policies.policies()),
+        }
+    }
+
+    pub fn footprint(&self) -> &BTreeSet<Term> {
+        match self {
+            CompiledPolicys::Policy(cp) => &cp.footprint,
+            CompiledPolicys::Policies(cps) => &cps.footprint,
+        }
+    }
+
+    pub fn symenv(&self) -> &SymEnv {
+        match self {
+            CompiledPolicys::Policy(cp) => &cp.symenv,
+            CompiledPolicys::Policies(cps) => &cps.symenv,
+        }
+    }
+}
