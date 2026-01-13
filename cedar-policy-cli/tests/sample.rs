@@ -1565,7 +1565,7 @@ fn visualize_entities_parses_as_dot(
 #[track_caller]
 fn test_run_tests_samples(
     #[case] policies_file: impl Into<String>,
-    #[case] _schema_file: impl AsRef<Path>,
+    #[case] schema_file: impl Into<PathBuf>,
     #[case] test_file: impl Into<String>,
     #[case] exit_code: CedarExitCode,
 ) {
@@ -1581,7 +1581,7 @@ fn test_run_tests_samples(
         },
         tests: test_file,
         schema: OptionalSchemaArgs {
-            schema_file: None,
+            schema_file: Some(schema_file.into()),
             schema_format: SchemaFormat::Json,
         },
     };
