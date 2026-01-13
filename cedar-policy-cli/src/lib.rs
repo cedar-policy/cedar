@@ -1891,13 +1891,10 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
 }
 
 pub fn run_tests(args: &RunTestsArgs) -> CedarExitCode {
-    match run_tests_inner(args) {
-        Ok(status) => status,
-        Err(e) => {
-            println!("{e:?}");
-            CedarExitCode::Failure
-        }
-    }
+    run_tests_inner(args).unwrap_or_else(|e| {
+        println!("{e:?}");
+        CedarExitCode::Failure
+    })
 }
 
 #[derive(Copy, Clone, Debug, Deserialize)]
