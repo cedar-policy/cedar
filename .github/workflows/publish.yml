@@ -1,6 +1,6 @@
 # Note: This workflow can only be run from the 'main' branch to
 # ensure that the latest version of this workflow is used.
-# However, the release will not necessarily be performed from the 'main' branch 
+# However, the release will not necessarily be performed from the 'main' branch
 # as the input `tag` is used to determine which GitHub tag will be checked out for the release.
 name: Publish base Cedar crates to crates.io
 on:
@@ -16,26 +16,28 @@ on:
 permissions: read-all
 
 jobs:
-    publish:
+    validate:
         runs-on: ubuntu-latest
-        environment: release # See https://github.com/cedar-policy/cedar/settings/environments
-        permissions:
-            id-token: write # Required for OIDC token exchange
         steps:
+            # Check that this workflow was triggered from the 'main' branch.
             - name: Validate branch
               if: github.ref != 'refs/heads/main'
               uses: actions/github-script@ffc2c79a5b2490bd33e0a41c1de74b877714d736 # v3.2.0
               with:
                   script: core.setFailed('This workflow must be triggered from the "main" branch.')
+
+            # Check that the input tag is welformed.
             - name: Validate tag
               run: |
                   REGEX_PATTERN="^v[0-9]+\.[0-9]+\.[0-9]+$"
                   if [[ ! "$TAG_NAME" =~ $REGEX_PATTERN ]]; then 
-                      echo 'Specified tag must match "$REGEX_PATTERN"'
+                      echo "Specified tag must match $REGEX_PATTERN"
                       exit 1
                   fi
               env:
                   TAG_NAME: ${{ inputs.tag }}
+
+            # Check that the cargo workspace's version matches the input tag.
             - name: Checkout tag
               uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
               with:
@@ -44,11 +46,25 @@ jobs:
               run: rustup update stable && rustup default stable
             - name: Install toml-cli
               run: cargo install toml-cli --locked
-            # Check that the tag matches the cargo workspace version.
             - name: Validate workspace version
               run: test "v$(toml get --raw Cargo.toml workspace.package.version)" = "$TAG_NAME"
               env:
                   TAG_NAME: ${{ inputs.tag }}
+
+    publish-crates:
+        # Only publish if validation succeeds.
+        needs: [validate]
+        runs-on: ubuntu-latest
+        environment: release # See https://github.com/cedar-policy/cedar/settings/environments
+        permissions:
+            id-token: write # Required for OIDC token exchange
+        steps:
+            - name: Checkout tag
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+              with:
+                  ref: refs/tags/${{ inputs.tag }}
+            - name: Configure rust toolchain
+              run: rustup update stable && rustup default stable
             - name: Authenticate with crates.io
               id: auth
               uses: rust-lang/crates-io-auth-action@b7e9a28eded4986ec6b1fa40eeee8f8f165559ec # v1.0.3
