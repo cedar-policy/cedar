@@ -23,7 +23,7 @@ the `ffi` module (new impls on `ffi::EntityUid`, `ffi::Context`, `ffi::Entities`
 `ffi::Template`, and `ffi::StaticPolicySet`) (#2085)
 - `schema_to_json_with_resolved_types()` function, which takes in a Cedar schema and returns a json schema without any instances of EntityOrCommon; they're all either Entity or CommonType (#2058)
 - More derives (`PartialEq`, `Clone`, etc) for a number of types in the `ffi` module (#2083)
-
+- TPE: Simplify `<residual> && false` to `false` and `<residual> || true` to `true` when `<residual>` is error-free. (#2091)
 
 ## [4.8.2] - 2025-12-09
 
