@@ -21,7 +21,8 @@
 #![expect(clippy::panic, clippy::unwrap_used, reason = "unit test code")]
 
 //! Utilities shared by various tests throughout the package
-use std::str::FromStr;
+
+use std::{fmt::Debug, str::FromStr};
 
 use cedar_policy::{
     Authorizer, Decision, Entities, Policy, PolicyId, PolicySet, RequestEnv, Schema,
@@ -199,6 +200,20 @@ pub enum Pathway {
     Both,
 }
 
+impl Pathway {
+    /// Given the unoptimized and optimized results, apply the `Pathway` operation (see notes on `Pathway`)
+    fn resolve<T: PartialEq + Debug>(self, unopt: T, opt: T) -> T {
+        match self {
+            Self::UnoptOnly => unopt,
+            Self::OptOnly => opt,
+            Self::Both => {
+                assert_eq!(unopt, opt);
+                unopt
+            }
+        }
+    }
+}
+
 /// Returns `true` if the policy never-errors in the `req_env`.
 ///
 /// Panics if any call fails or if other invariants are violated.
@@ -219,14 +234,7 @@ pub async fn assert_never_errors_ok<S: Solver>(
             .check_never_errors_opt(&compiled_policy)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_res,
-            Pathway::OptOnly => opt_res,
-            Pathway::Both => {
-                assert_eq!(unopt_res, opt_res);
-                unopt_res
-            }
-        }
+        pathway.resolve(unopt_res, opt_res)
     };
     let cex = {
         let unopt_cex = compiler
@@ -237,14 +245,7 @@ pub async fn assert_never_errors_ok<S: Solver>(
             .check_never_errors_with_counterexample_opt(&compiled_policy)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_cex,
-            Pathway::OptOnly => opt_cex,
-            Pathway::Both => {
-                assert_eq!(unopt_cex, opt_cex);
-                unopt_cex
-            }
-        }
+        pathway.resolve(unopt_cex, opt_cex)
     };
     assert_eq!(res, cex.is_none());
 
@@ -321,14 +322,7 @@ pub async fn assert_always_matches_ok<S: Solver>(
             .check_always_matches_opt(&compiled_policy)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_res,
-            Pathway::OptOnly => opt_res,
-            Pathway::Both => {
-                assert_eq!(unopt_res, opt_res);
-                unopt_res
-            }
-        }
+        pathway.resolve(unopt_res, opt_res)
     };
     let cex = {
         let unopt_cex = compiler
@@ -339,14 +333,7 @@ pub async fn assert_always_matches_ok<S: Solver>(
             .check_always_matches_with_counterexample_opt(&compiled_policy)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_cex,
-            Pathway::OptOnly => opt_cex,
-            Pathway::Both => {
-                assert_eq!(unopt_cex, opt_cex);
-                unopt_cex
-            }
-        }
+        pathway.resolve(unopt_cex, opt_cex)
     };
     assert_eq!(res, cex.is_none());
 
@@ -442,14 +429,7 @@ pub async fn assert_never_matches_ok<S: Solver>(
             .check_never_matches_opt(&compiled_policy)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_res,
-            Pathway::OptOnly => opt_res,
-            Pathway::Both => {
-                assert_eq!(unopt_res, opt_res);
-                unopt_res
-            }
-        }
+        pathway.resolve(unopt_res, opt_res)
     };
     let cex = {
         let unopt_cex = compiler
@@ -460,14 +440,7 @@ pub async fn assert_never_matches_ok<S: Solver>(
             .check_never_matches_with_counterexample_opt(&compiled_policy)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_cex,
-            Pathway::OptOnly => opt_cex,
-            Pathway::Both => {
-                assert_eq!(unopt_cex, opt_cex);
-                unopt_cex
-            }
-        }
+        pathway.resolve(unopt_cex, opt_cex)
     };
     assert_eq!(res, cex.is_none());
 
@@ -566,14 +539,7 @@ pub async fn assert_matches_equivalent_ok<S: Solver>(
             .check_matches_equivalent_opt(&compiled_policy1, &compiled_policy2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_res,
-            Pathway::OptOnly => opt_res,
-            Pathway::Both => {
-                assert_eq!(unopt_res, opt_res);
-                unopt_res
-            }
-        }
+        pathway.resolve(unopt_res, opt_res)
     };
     let cex = {
         let unopt_cex = compiler
@@ -588,14 +554,7 @@ pub async fn assert_matches_equivalent_ok<S: Solver>(
             .check_matches_equivalent_with_counterexample_opt(&compiled_policy1, &compiled_policy2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_cex,
-            Pathway::OptOnly => opt_cex,
-            Pathway::Both => {
-                assert_eq!(unopt_cex, opt_cex);
-                unopt_cex
-            }
-        }
+        pathway.resolve(unopt_cex, opt_cex)
     };
     assert_eq!(res, cex.is_none());
 
@@ -706,14 +665,7 @@ pub async fn assert_matches_implies_ok<S: Solver>(
             .check_matches_implies_opt(&compiled_policy1, &compiled_policy2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_res,
-            Pathway::OptOnly => opt_res,
-            Pathway::Both => {
-                assert_eq!(unopt_res, opt_res);
-                unopt_res
-            }
-        }
+        pathway.resolve(unopt_res, opt_res)
     };
     let cex = {
         let unopt_cex = compiler
@@ -724,14 +676,7 @@ pub async fn assert_matches_implies_ok<S: Solver>(
             .check_matches_implies_with_counterexample_opt(&compiled_policy1, &compiled_policy2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_cex,
-            Pathway::OptOnly => opt_cex,
-            Pathway::Both => {
-                assert_eq!(unopt_cex, opt_cex);
-                unopt_cex
-            }
-        }
+        pathway.resolve(unopt_cex, opt_cex)
     };
     assert_eq!(res, cex.is_none());
 
@@ -842,14 +787,7 @@ pub async fn assert_matches_disjoint_ok<S: Solver>(
             .check_matches_disjoint_opt(&compiled_policy1, &compiled_policy2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_res,
-            Pathway::OptOnly => opt_res,
-            Pathway::Both => {
-                assert_eq!(unopt_res, opt_res);
-                unopt_res
-            }
-        }
+        pathway.resolve(unopt_res, opt_res)
     };
     let cex = {
         let unopt_cex = compiler
@@ -864,14 +802,7 @@ pub async fn assert_matches_disjoint_ok<S: Solver>(
             .check_matches_disjoint_with_counterexample_opt(&compiled_policy1, &compiled_policy2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_cex,
-            Pathway::OptOnly => opt_cex,
-            Pathway::Both => {
-                assert_eq!(unopt_cex, opt_cex);
-                unopt_cex
-            }
-        }
+        pathway.resolve(unopt_cex, opt_cex)
     };
     assert_eq!(res, cex.is_none());
 
@@ -979,14 +910,7 @@ pub async fn assert_always_allows_ok<S: Solver>(
             .check_always_allows_opt(&compiled_pset)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_res,
-            Pathway::OptOnly => opt_res,
-            Pathway::Both => {
-                assert_eq!(unopt_res, opt_res);
-                unopt_res
-            }
-        }
+        pathway.resolve(unopt_res, opt_res)
     };
     let cex = {
         let unopt_cex = compiler
@@ -997,14 +921,7 @@ pub async fn assert_always_allows_ok<S: Solver>(
             .check_always_allows_with_counterexample_opt(&compiled_pset)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_cex,
-            Pathway::OptOnly => opt_cex,
-            Pathway::Both => {
-                assert_eq!(unopt_cex, opt_cex);
-                unopt_cex
-            }
-        }
+        pathway.resolve(unopt_cex, opt_cex)
     };
     assert_eq!(res, cex.is_none());
 
@@ -1092,14 +1009,7 @@ pub async fn assert_always_denies_ok<S: Solver>(
             .check_always_denies_opt(&compiled_pset)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_res,
-            Pathway::OptOnly => opt_res,
-            Pathway::Both => {
-                assert_eq!(unopt_res, opt_res);
-                unopt_res
-            }
-        }
+        pathway.resolve(unopt_res, opt_res)
     };
     let cex = {
         let unopt_cex = compiler
@@ -1110,14 +1020,7 @@ pub async fn assert_always_denies_ok<S: Solver>(
             .check_always_denies_with_counterexample_opt(&compiled_pset)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_cex,
-            Pathway::OptOnly => opt_cex,
-            Pathway::Both => {
-                assert_eq!(unopt_cex, opt_cex);
-                unopt_cex
-            }
-        }
+        pathway.resolve(unopt_cex, opt_cex)
     };
     assert_eq!(res, cex.is_none());
 
@@ -1208,14 +1111,7 @@ pub async fn assert_equivalent_ok<S: Solver>(
             .check_equivalent_opt(&compiled_pset1, &compiled_pset2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_res,
-            Pathway::OptOnly => opt_res,
-            Pathway::Both => {
-                assert_eq!(unopt_res, opt_res);
-                unopt_res
-            }
-        }
+        pathway.resolve(unopt_res, opt_res)
     };
     let cex = {
         let unopt_cex = compiler
@@ -1226,14 +1122,7 @@ pub async fn assert_equivalent_ok<S: Solver>(
             .check_equivalent_with_counterexample_opt(&compiled_pset1, &compiled_pset2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_cex,
-            Pathway::OptOnly => opt_cex,
-            Pathway::Both => {
-                assert_eq!(unopt_cex, opt_cex);
-                unopt_cex
-            }
-        }
+        pathway.resolve(unopt_cex, opt_cex)
     };
     assert_eq!(res, cex.is_none());
 
@@ -1341,14 +1230,7 @@ pub async fn assert_implies_ok<S: Solver>(
             .check_implies_opt(&compiled_pset1, &compiled_pset2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_res,
-            Pathway::OptOnly => opt_res,
-            Pathway::Both => {
-                assert_eq!(unopt_res, opt_res);
-                unopt_res
-            }
-        }
+        pathway.resolve(unopt_res, opt_res)
     };
     let cex = {
         let unopt_cex = compiler
@@ -1359,14 +1241,7 @@ pub async fn assert_implies_ok<S: Solver>(
             .check_implies_with_counterexample_opt(&compiled_pset1, &compiled_pset2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_cex,
-            Pathway::OptOnly => opt_cex,
-            Pathway::Both => {
-                assert_eq!(unopt_cex, opt_cex);
-                unopt_cex
-            }
-        }
+        pathway.resolve(unopt_cex, opt_cex)
     };
     assert_eq!(res, cex.is_none());
 
@@ -1473,14 +1348,7 @@ pub async fn assert_disjoint_ok<S: Solver>(
             .check_disjoint_opt(&compiled_pset1, &compiled_pset2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_res,
-            Pathway::OptOnly => opt_res,
-            Pathway::Both => {
-                assert_eq!(unopt_res, opt_res);
-                unopt_res
-            }
-        }
+        pathway.resolve(unopt_res, opt_res)
     };
     let cex = {
         let unopt_cex = compiler
@@ -1491,14 +1359,7 @@ pub async fn assert_disjoint_ok<S: Solver>(
             .check_disjoint_with_counterexample_opt(&compiled_pset1, &compiled_pset2)
             .await
             .unwrap();
-        match pathway {
-            Pathway::UnoptOnly => unopt_cex,
-            Pathway::OptOnly => opt_cex,
-            Pathway::Both => {
-                assert_eq!(unopt_cex, opt_cex);
-                unopt_cex
-            }
-        }
+        pathway.resolve(unopt_cex, opt_cex)
     };
     assert_eq!(res, cex.is_none());
 
