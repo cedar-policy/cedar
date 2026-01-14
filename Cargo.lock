@@ -455,6 +455,7 @@ dependencies = [
  "cool_asserts",
  "itertools 0.14.0",
  "miette",
+ "nonempty",
  "num-bigint",
  "num-traits",
  "ref-cast",
