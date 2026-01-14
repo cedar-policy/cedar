@@ -186,6 +186,7 @@ impl CompiledPolicies {
 
 /// Represents a `CompiledPolicy` or a `CompiledPolicies`, for APIs that don't care
 /// which one they get.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompiledPolicys<'a> {
     Policy(&'a CompiledPolicy),
     Policies(&'a CompiledPolicies),

@@ -31,14 +31,14 @@ use crate::{err::ConcretizeError, Env, Interpretation};
 ///
 /// Caller guarantees that all of the `CompiledPolicys` were compiled for the same `symenv`.
 pub fn extract_opt<'a>(
-    cps: impl Iterator<Item = &'a CompiledPolicys<'a>> + Clone,
+    cps: impl IntoIterator<Item = &'a CompiledPolicys<'a>> + Clone,
     interp: &Interpretation<'_>,
 ) -> Result<Env, ConcretizeError> {
-    match cps.clone().peekable().peek() {
+    match cps.clone().into_iter().next() {
         None => Err(ConcretizeError::NoPolicies),
         Some(cp_s) => {
-            let ps = cps.clone().flat_map(|cp_s| cp_s.all_policies());
-            let footprint = cps.flat_map(|cp_s| cp_s.footprint().iter());
+            let ps = cps.clone().into_iter().flat_map(|cp_s| cp_s.all_policies());
+            let footprint = cps.into_iter().flat_map(|cp_s| cp_s.footprint().iter());
             cp_s.symenv()
                 .interpret(&interp.repair_as_counterexample(footprint))
                 .concretize(ps.map(Policy::condition))

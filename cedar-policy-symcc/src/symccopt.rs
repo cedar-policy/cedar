@@ -40,13 +40,12 @@ impl<S: Solver> SymCompiler<S> {
     /// Optimized version of `sat_asserts()`.
     ///
     /// Corresponds to `satAssertsOpt?` in the Lean.
-    pub async fn sat_asserts_opt<'a, I: Iterator<Item = &'a CompiledPolicys<'a>> + Clone>(
+    pub async fn sat_asserts_opt<'a>(
         &mut self,
         asserts: &Asserts,
-        cps: impl IntoIterator<Item = &'a CompiledPolicys<'a>, IntoIter = I>,
+        cps: impl IntoIterator<Item = &'a CompiledPolicys<'a>> + Clone,
     ) -> Result<Option<Env>> {
-        let mut cps = cps.into_iter().peekable();
-        match cps.peek() {
+        match cps.clone().into_iter().next() {
             None => Err(Error::NoPolicies),
             Some(cp_s) => match self.check_sat_asserts(asserts, cp_s.symenv()).await? {
                 None => Ok(None),
