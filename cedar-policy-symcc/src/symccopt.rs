@@ -29,7 +29,7 @@ use crate::err::{Error, Result};
 use crate::symcc::{concretizer::Env, solver::Solver, SymCompiler};
 use crate::Asserts;
 use extractor::extract_opt;
-use verifier::{
+pub use verifier::{
     verify_always_allows_opt, verify_always_denies_opt, verify_always_matches_opt,
     verify_disjoint_opt, verify_equivalent_opt, verify_implies_opt, verify_matches_disjoint_opt,
     verify_matches_equivalent_opt, verify_matches_implies_opt, verify_never_errors_opt,

@@ -29,9 +29,9 @@ use cedar_policy::{
 };
 use cedar_policy_core::{ast::RequestSchema, extensions::Extensions};
 use cedar_policy_symcc::{
-    compile_always_allows, compile_always_denies, compile_always_matches, compile_disjoint,
-    compile_equivalent, compile_implies, compile_matches_disjoint, compile_matches_equivalent,
-    compile_matches_implies, compile_never_errors, compile_never_matches, solver::Solver,
+    always_allows_asserts, always_denies_asserts, always_matches_asserts, disjoint_asserts,
+    equivalent_asserts, implies_asserts, matches_disjoint_asserts, matches_equivalent_asserts,
+    matches_implies_asserts, never_errors_asserts, never_matches_asserts, solver::Solver,
     CedarSymCompiler, CompiledPolicies, CompiledPolicy, Env, Interpretation, SymEnv,
     WellTypedPolicies, WellTypedPolicy,
 };
@@ -91,10 +91,13 @@ pub struct Environments<'a> {
     pub schema: &'a Schema,
     pub req_env: RequestEnv,
     pub symenv: SymEnv,
+    has_custom_symenv: bool,
 }
 
 impl<'a> Environments<'a> {
-    /// Create a new Environments instance from a schema and principal, action, and resource strings
+    /// Create a new `Environments` instance from a schema and principal, action, and resource strings
+    ///
+    /// Uses the default `SymEnv`, which is the stable/default behavior
     #[track_caller]
     pub fn new(schema: &'a Schema, principal_ty: &str, action: &str, resource_ty: &str) -> Self {
         let req_env = req_env_from_strs(principal_ty, action, resource_ty);
@@ -103,10 +106,30 @@ impl<'a> Environments<'a> {
             schema,
             req_env,
             symenv,
+            has_custom_symenv: false,
         }
     }
 
-    /// Gets all possible request environments from a schema.
+    /// Create a new `Environments` instance from a schema and principal, action, and resource strings,
+    /// along with a custom `SymEnv` to use instead of the default. See warnings on `CompiledPolicy::compile_with_custom_symenv()`.
+    #[track_caller]
+    pub fn new_with_custom_symenv(
+        schema: &'a Schema,
+        principal_ty: &str,
+        action: &str,
+        resource_ty: &str,
+        symenv: SymEnv,
+    ) -> Self {
+        let req_env = req_env_from_strs(principal_ty, action, resource_ty);
+        Self {
+            schema,
+            req_env,
+            symenv,
+            has_custom_symenv: true,
+        }
+    }
+
+    /// Gets all possible `Environments` from a schema (with default symenvs).
     pub fn get_all_from_schema(schema: &'a Schema) -> Vec<Self> {
         schema
             .request_envs()
@@ -116,9 +139,42 @@ impl<'a> Environments<'a> {
                     schema,
                     req_env,
                     symenv,
+                    has_custom_symenv: false,
                 }
             })
             .collect()
+    }
+
+    #[track_caller]
+    pub fn compile_policy(&self, policy: &Policy) -> CompiledPolicy {
+        if self.has_custom_symenv {
+            CompiledPolicy::compile_with_custom_symenv(
+                policy,
+                &self.req_env,
+                self.schema,
+                self.symenv.clone(),
+            )
+            .unwrap()
+        } else {
+            // in the common case, where the symenv wasn't created custom, test the standard `CompiledPolicy::compile()` API
+            CompiledPolicy::compile(policy, &self.req_env, self.schema).unwrap()
+        }
+    }
+
+    #[track_caller]
+    pub fn compile_policies(&self, pset: &PolicySet) -> CompiledPolicies {
+        if self.has_custom_symenv {
+            CompiledPolicies::compile_with_custom_symenv(
+                pset,
+                &self.req_env,
+                self.schema,
+                self.symenv.clone(),
+            )
+            .unwrap()
+        } else {
+            // in the common case, where the symenv wasn't created custom, test the standard `CompiledPolicies::compile()` API
+            CompiledPolicies::compile(pset, &self.req_env, self.schema).unwrap()
+        }
     }
 }
 
@@ -143,6 +199,9 @@ pub enum Pathway {
     Both,
 }
 
+/// Returns `true` if the policy never-errors in the `req_env`.
+///
+/// Panics if any call fails or if other invariants are violated.
 pub async fn assert_never_errors_ok<S: Solver>(
     compiler: &mut CedarSymCompiler<S>,
     policy: &Policy,
@@ -150,7 +209,7 @@ pub async fn assert_never_errors_ok<S: Solver>(
     pathway: Pathway,
 ) -> bool {
     let typed_policy = WellTypedPolicy::from_policy(policy, &envs.req_env, envs.schema).unwrap();
-    let compiled_policy = CompiledPolicy::compile(policy, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy = envs.compile_policy(policy);
     let res = {
         let unopt_res = compiler
             .check_never_errors(&typed_policy, &envs.symenv)
@@ -200,7 +259,14 @@ pub async fn assert_never_errors_ok<S: Solver>(
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let asserts = compile_never_errors(&typed_policy, &literal_symenv).unwrap();
+        let custom_compiled = CompiledPolicy::compile_with_custom_symenv(
+            policy,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = never_errors_asserts(&custom_compiled);
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     } else {
@@ -208,7 +274,14 @@ pub async fn assert_never_errors_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let asserts = compile_never_errors(&typed_policy, &literal_symenv).unwrap();
+        let custom_compiled = CompiledPolicy::compile_with_custom_symenv(
+            policy,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = never_errors_asserts(&custom_compiled);
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
         assert!(asserts.asserts().iter().any(|t| t == &false.into()));
@@ -228,6 +301,9 @@ pub async fn assert_never_errors<S: Solver>(
     );
 }
 
+/// Returns `true` if the policy always-matches in the `req_env`.
+///
+/// Panics if any call fails or if other invariants are violated.
 pub async fn assert_always_matches_ok<S: Solver>(
     compiler: &mut CedarSymCompiler<S>,
     policy: &Policy,
@@ -235,7 +311,7 @@ pub async fn assert_always_matches_ok<S: Solver>(
     pathway: Pathway,
 ) -> bool {
     let typed_policy = WellTypedPolicy::from_policy(policy, &envs.req_env, envs.schema).unwrap();
-    let compiled_policy = CompiledPolicy::compile(policy, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy = envs.compile_policy(policy);
     let res = {
         let unopt_res = compiler
             .check_always_matches(&typed_policy, &envs.symenv)
@@ -285,14 +361,22 @@ pub async fn assert_always_matches_ok<S: Solver>(
         } else {
             Decision::Allow
         };
-        assert!(
-            resp.decision() == expected_decision,
+        assert_eq!(
+            resp.decision(),
+            expected_decision,
             "check_always_matches_with_counterexample returned an invalid counterexample"
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let asserts = compile_always_matches(&typed_policy, &literal_symenv).unwrap();
+        let custom_compiled = CompiledPolicy::compile_with_custom_symenv(
+            policy,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = always_matches_asserts(&custom_compiled);
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     } else {
@@ -300,7 +384,14 @@ pub async fn assert_always_matches_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let asserts = compile_always_matches(&typed_policy, &literal_symenv).unwrap();
+        let custom_compiled = CompiledPolicy::compile_with_custom_symenv(
+            policy,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = always_matches_asserts(&custom_compiled);
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
         assert!(asserts.asserts().iter().any(|t| t == &false.into()));
@@ -331,6 +422,9 @@ pub async fn assert_does_not_always_match<S: Solver>(
     );
 }
 
+/// Returns `true` if the policy never-matches in the `req_env`.
+///
+/// Panics if any call fails or if other invariants are violated.
 pub async fn assert_never_matches_ok<S: Solver>(
     compiler: &mut CedarSymCompiler<S>,
     policy: &Policy,
@@ -338,7 +432,7 @@ pub async fn assert_never_matches_ok<S: Solver>(
     pathway: Pathway,
 ) -> bool {
     let typed_policy = WellTypedPolicy::from_policy(policy, &envs.req_env, envs.schema).unwrap();
-    let compiled_policy = CompiledPolicy::compile(policy, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy = envs.compile_policy(policy);
     let res = {
         let unopt_res = compiler
             .check_never_matches(&typed_policy, &envs.symenv)
@@ -388,14 +482,22 @@ pub async fn assert_never_matches_ok<S: Solver>(
         } else {
             Decision::Deny
         };
-        assert!(
-            resp.decision() == expected_decision,
+        assert_eq!(
+            resp.decision(),
+            expected_decision,
             "check_never_matches_with_counterexample returned an invalid counterexample"
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let asserts = compile_never_matches(&typed_policy, &literal_symenv).unwrap();
+        let custom_compiled = CompiledPolicy::compile_with_custom_symenv(
+            policy,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = never_matches_asserts(&custom_compiled);
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     } else {
@@ -403,7 +505,14 @@ pub async fn assert_never_matches_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let asserts = compile_never_matches(&typed_policy, &literal_symenv).unwrap();
+        let custom_compiled = CompiledPolicy::compile_with_custom_symenv(
+            policy,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = never_matches_asserts(&custom_compiled);
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
         assert!(asserts.asserts().iter().any(|t| t == &false.into()));
@@ -434,6 +543,9 @@ pub async fn assert_does_not_never_match<S: Solver>(
     );
 }
 
+/// Returns `true` if the policies matches-equivalent in the `req_env`.
+///
+/// Panics if any call fails or if other invariants are violated.
 pub async fn assert_matches_equivalent_ok<S: Solver>(
     compiler: &mut CedarSymCompiler<S>,
     policy1: &Policy,
@@ -443,8 +555,8 @@ pub async fn assert_matches_equivalent_ok<S: Solver>(
 ) -> bool {
     let typed_policy1 = WellTypedPolicy::from_policy(policy1, &envs.req_env, envs.schema).unwrap();
     let typed_policy2 = WellTypedPolicy::from_policy(policy2, &envs.req_env, envs.schema).unwrap();
-    let compiled_policy1 = CompiledPolicy::compile(policy1, &envs.req_env, envs.schema).unwrap();
-    let compiled_policy2 = CompiledPolicy::compile(policy2, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy1 = envs.compile_policy(policy1);
+    let compiled_policy2 = envs.compile_policy(policy2);
     let res = {
         let unopt_res = compiler
             .check_matches_equivalent(&typed_policy1, &typed_policy2, &envs.symenv)
@@ -495,15 +607,28 @@ pub async fn assert_matches_equivalent_ok<S: Solver>(
         let resp2 = Authorizer::new().is_authorized(&cex.request, &pset2, &cex.entities);
         let policy1_matches = resp1.diagnostics().reason().next().is_some();
         let policy2_matches = resp2.diagnostics().reason().next().is_some();
-        assert!(
-            policy1_matches != policy2_matches,
+        assert_ne!(
+            policy1_matches, policy2_matches,
             "check_matches_equivalent_with_counterexample returned an invalid counterexample"
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let asserts =
-            compile_matches_equivalent(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicy::compile_with_custom_symenv(
+            policy1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicy::compile_with_custom_symenv(
+            policy2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = matches_equivalent_asserts(&custom_compiled_1, &custom_compiled_2);
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     } else {
@@ -511,8 +636,21 @@ pub async fn assert_matches_equivalent_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let asserts =
-            compile_matches_equivalent(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicy::compile_with_custom_symenv(
+            policy1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicy::compile_with_custom_symenv(
+            policy2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = matches_equivalent_asserts(&custom_compiled_1, &custom_compiled_2);
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
         assert!(asserts.asserts().iter().any(|t| t == &false.into()));
@@ -545,6 +683,9 @@ pub async fn assert_not_matches_equivalent<S: Solver>(
     );
 }
 
+/// Returns `true` if the policies matches-implies in the `req_env`.
+///
+/// Panics if any call fails or if other invariants are violated.
 pub async fn assert_matches_implies_ok<S: Solver>(
     compiler: &mut CedarSymCompiler<S>,
     policy1: &Policy,
@@ -554,8 +695,8 @@ pub async fn assert_matches_implies_ok<S: Solver>(
 ) -> bool {
     let typed_policy1 = WellTypedPolicy::from_policy(policy1, &envs.req_env, envs.schema).unwrap();
     let typed_policy2 = WellTypedPolicy::from_policy(policy2, &envs.req_env, envs.schema).unwrap();
-    let compiled_policy1 = CompiledPolicy::compile(policy1, &envs.req_env, envs.schema).unwrap();
-    let compiled_policy2 = CompiledPolicy::compile(policy2, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy1 = envs.compile_policy(policy1);
+    let compiled_policy2 = envs.compile_policy(policy2);
     let res = {
         let unopt_res = compiler
             .check_matches_implies(&typed_policy1, &typed_policy2, &envs.symenv)
@@ -609,8 +750,21 @@ pub async fn assert_matches_implies_ok<S: Solver>(
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let asserts =
-            compile_matches_implies(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicy::compile_with_custom_symenv(
+            policy1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicy::compile_with_custom_symenv(
+            policy2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = matches_implies_asserts(&custom_compiled_1, &custom_compiled_2);
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     } else {
@@ -618,8 +772,21 @@ pub async fn assert_matches_implies_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let asserts =
-            compile_matches_implies(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicy::compile_with_custom_symenv(
+            policy1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicy::compile_with_custom_symenv(
+            policy2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = matches_implies_asserts(&custom_compiled_1, &custom_compiled_2);
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
         assert!(asserts.asserts().iter().any(|t| t == &false.into()));
@@ -652,6 +819,9 @@ pub async fn assert_does_not_matches_imply<S: Solver>(
     );
 }
 
+/// Returns `true` if the policies matches-disjoint in the `req_env`.
+///
+/// Panics if any call fails or if other invariants are violated.
 pub async fn assert_matches_disjoint_ok<S: Solver>(
     compiler: &mut CedarSymCompiler<S>,
     policy1: &Policy,
@@ -661,8 +831,8 @@ pub async fn assert_matches_disjoint_ok<S: Solver>(
 ) -> bool {
     let typed_policy1 = WellTypedPolicy::from_policy(policy1, &envs.req_env, envs.schema).unwrap();
     let typed_policy2 = WellTypedPolicy::from_policy(policy2, &envs.req_env, envs.schema).unwrap();
-    let compiled_policy1 = CompiledPolicy::compile(policy1, &envs.req_env, envs.schema).unwrap();
-    let compiled_policy2 = CompiledPolicy::compile(policy2, &envs.req_env, envs.schema).unwrap();
+    let compiled_policy1 = envs.compile_policy(policy1);
+    let compiled_policy2 = envs.compile_policy(policy2);
     let res = {
         let unopt_res = compiler
             .check_matches_disjoint(&typed_policy1, &typed_policy2, &envs.symenv)
@@ -720,8 +890,21 @@ pub async fn assert_matches_disjoint_ok<S: Solver>(
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let asserts =
-            compile_matches_disjoint(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicy::compile_with_custom_symenv(
+            policy1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicy::compile_with_custom_symenv(
+            policy2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = matches_disjoint_asserts(&custom_compiled_1, &custom_compiled_2);
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     } else {
@@ -729,8 +912,21 @@ pub async fn assert_matches_disjoint_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let asserts =
-            compile_matches_disjoint(&typed_policy1, &typed_policy2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicy::compile_with_custom_symenv(
+            policy1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicy::compile_with_custom_symenv(
+            policy2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = matches_disjoint_asserts(&custom_compiled_1, &custom_compiled_2);
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
         assert!(asserts.asserts().iter().any(|t| t == &false.into()));
@@ -763,6 +959,9 @@ pub async fn assert_not_matches_disjoint<S: Solver>(
     );
 }
 
+/// Returns `true` if the policyset always-allows in the `req_env`.
+///
+/// Panics if any call fails or if other invariants are violated.
 pub async fn assert_always_allows_ok<S: Solver>(
     compiler: &mut CedarSymCompiler<S>,
     pset: &PolicySet,
@@ -770,7 +969,7 @@ pub async fn assert_always_allows_ok<S: Solver>(
     pathway: Pathway,
 ) -> bool {
     let typed_pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    let compiled_pset = CompiledPolicies::compile(pset, &envs.req_env, envs.schema).unwrap();
+    let compiled_pset = envs.compile_policies(pset);
     let res = {
         let unopt_res = compiler
             .check_always_allows(&typed_pset, &envs.symenv)
@@ -812,14 +1011,22 @@ pub async fn assert_always_allows_ok<S: Solver>(
     if let Some(cex) = cex {
         assert_cex_valid(envs.schema, &cex);
         let resp = Authorizer::new().is_authorized(&cex.request, pset, &cex.entities);
-        assert!(
-            resp.decision() == Decision::Deny,
+        assert_eq!(
+            resp.decision(),
+            Decision::Deny,
             "check_always_allows_with_counterexample returned an invalid counterexample"
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let asserts = compile_always_allows(&typed_pset, &literal_symenv).unwrap();
+        let custom_compiled = CompiledPolicies::compile_with_custom_symenv(
+            pset,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = always_allows_asserts(&custom_compiled);
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     } else {
@@ -827,7 +1034,14 @@ pub async fn assert_always_allows_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let asserts = compile_always_allows(&typed_pset, &literal_symenv).unwrap();
+        let custom_compiled = CompiledPolicies::compile_with_custom_symenv(
+            pset,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = always_allows_asserts(&custom_compiled);
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
         assert!(asserts.asserts().iter().any(|t| t == &false.into()));
@@ -858,6 +1072,9 @@ pub async fn assert_does_not_always_allow<S: Solver>(
     );
 }
 
+/// Returns `true` if the policyset always-denies in the `req_env`.
+///
+/// Panics if any call fails or if other invariants are violated.
 pub async fn assert_always_denies_ok<S: Solver>(
     compiler: &mut CedarSymCompiler<S>,
     pset: &PolicySet,
@@ -865,7 +1082,7 @@ pub async fn assert_always_denies_ok<S: Solver>(
     pathway: Pathway,
 ) -> bool {
     let typed_pset = WellTypedPolicies::from_policies(pset, &envs.req_env, envs.schema).unwrap();
-    let compiled_pset = CompiledPolicies::compile(pset, &envs.req_env, envs.schema).unwrap();
+    let compiled_pset = envs.compile_policies(pset);
     let res = {
         let unopt_res = compiler
             .check_always_denies(&typed_pset, &envs.symenv)
@@ -907,14 +1124,22 @@ pub async fn assert_always_denies_ok<S: Solver>(
     if let Some(cex) = cex {
         assert_cex_valid(envs.schema, &cex);
         let resp = Authorizer::new().is_authorized(&cex.request, pset, &cex.entities);
-        assert!(
-            resp.decision() == Decision::Allow,
+        assert_eq!(
+            resp.decision(),
+            Decision::Allow,
             "check_always_denies_with_counterexample returned an invalid counterexample"
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let asserts = compile_always_denies(&typed_pset, &literal_symenv).unwrap();
+        let custom_compiled = CompiledPolicies::compile_with_custom_symenv(
+            pset,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = always_denies_asserts(&custom_compiled);
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     } else {
@@ -922,7 +1147,14 @@ pub async fn assert_always_denies_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let asserts = compile_always_denies(&typed_pset, &literal_symenv).unwrap();
+        let custom_compiled = CompiledPolicies::compile_with_custom_symenv(
+            pset,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = always_denies_asserts(&custom_compiled);
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
         assert!(asserts.asserts().iter().any(|t| t == &false.into()));
@@ -953,6 +1185,9 @@ pub async fn assert_does_not_always_deny<S: Solver>(
     );
 }
 
+/// Returns `true` if the policysets are equivalent in the `req_env`.
+///
+/// Panics if any call fails or if other invariants are violated.
 pub async fn assert_equivalent_ok<S: Solver>(
     compiler: &mut CedarSymCompiler<S>,
     pset1: &PolicySet,
@@ -962,8 +1197,8 @@ pub async fn assert_equivalent_ok<S: Solver>(
 ) -> bool {
     let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
     let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    let compiled_pset1 = CompiledPolicies::compile(pset1, &envs.req_env, envs.schema).unwrap();
-    let compiled_pset2 = CompiledPolicies::compile(pset2, &envs.req_env, envs.schema).unwrap();
+    let compiled_pset1 = envs.compile_policies(pset1);
+    let compiled_pset2 = envs.compile_policies(pset2);
     let res = {
         let unopt_res = compiler
             .check_equivalent(&typed_pset1, &typed_pset2, &envs.symenv)
@@ -1006,14 +1241,29 @@ pub async fn assert_equivalent_ok<S: Solver>(
         assert_cex_valid(envs.schema, &cex);
         let resp1 = Authorizer::new().is_authorized(&cex.request, pset1, &cex.entities);
         let resp2 = Authorizer::new().is_authorized(&cex.request, pset2, &cex.entities);
-        assert!(
-            resp1.decision() != resp2.decision(),
+        assert_ne!(
+            resp1.decision(),
+            resp2.decision(),
             "check_equivalent_with_counterexample returned an invalid counterexample"
         );
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let asserts = compile_equivalent(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+            pset1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+            pset2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = equivalent_asserts(&custom_compiled_1, &custom_compiled_2);
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     } else {
@@ -1021,7 +1271,21 @@ pub async fn assert_equivalent_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let asserts = compile_equivalent(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+            pset1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+            pset2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = equivalent_asserts(&custom_compiled_1, &custom_compiled_2);
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
         assert!(asserts.asserts().iter().any(|t| t == &false.into()));
@@ -1054,6 +1318,9 @@ pub async fn assert_not_equivalent<S: Solver>(
     );
 }
 
+/// Returns `true` if `pset1` implies `pset2` in the `req_env`.
+///
+/// Panics if any call fails or if other invariants are violated.
 pub async fn assert_implies_ok<S: Solver>(
     compiler: &mut CedarSymCompiler<S>,
     pset1: &PolicySet,
@@ -1063,8 +1330,8 @@ pub async fn assert_implies_ok<S: Solver>(
 ) -> bool {
     let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
     let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    let compiled_pset1 = CompiledPolicies::compile(pset1, &envs.req_env, envs.schema).unwrap();
-    let compiled_pset2 = CompiledPolicies::compile(pset2, &envs.req_env, envs.schema).unwrap();
+    let compiled_pset1 = envs.compile_policies(pset1);
+    let compiled_pset2 = envs.compile_policies(pset2);
     let res = {
         let unopt_res = compiler
             .check_implies(&typed_pset1, &typed_pset2, &envs.symenv)
@@ -1114,7 +1381,21 @@ pub async fn assert_implies_ok<S: Solver>(
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let asserts = compile_implies(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+            pset1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+            pset2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = implies_asserts(&custom_compiled_1, &custom_compiled_2);
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     } else {
@@ -1122,7 +1403,21 @@ pub async fn assert_implies_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let asserts = compile_implies(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+            pset1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+            pset2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = implies_asserts(&custom_compiled_1, &custom_compiled_2);
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
         assert!(asserts.asserts().iter().any(|t| t == &false.into()));
@@ -1155,6 +1450,9 @@ pub async fn assert_does_not_imply<S: Solver>(
     );
 }
 
+/// Returns `true` if the psets are disjoint in the `req_env`.
+///
+/// Panics if any call fails or if other invariants are violated.
 pub async fn assert_disjoint_ok<S: Solver>(
     compiler: &mut CedarSymCompiler<S>,
     pset1: &PolicySet,
@@ -1164,8 +1462,8 @@ pub async fn assert_disjoint_ok<S: Solver>(
 ) -> bool {
     let typed_pset1 = WellTypedPolicies::from_policies(pset1, &envs.req_env, envs.schema).unwrap();
     let typed_pset2 = WellTypedPolicies::from_policies(pset2, &envs.req_env, envs.schema).unwrap();
-    let compiled_pset1 = CompiledPolicies::compile(pset1, &envs.req_env, envs.schema).unwrap();
-    let compiled_pset2 = CompiledPolicies::compile(pset2, &envs.req_env, envs.schema).unwrap();
+    let compiled_pset1 = envs.compile_policies(pset1);
+    let compiled_pset2 = envs.compile_policies(pset2);
     let res = {
         let unopt_res = compiler
             .check_disjoint(&typed_pset1, &typed_pset2, &envs.symenv)
@@ -1215,7 +1513,21 @@ pub async fn assert_disjoint_ok<S: Solver>(
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let asserts = compile_disjoint(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+            pset1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+            pset2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = disjoint_asserts(&custom_compiled_1, &custom_compiled_2);
         // All asserts should be simplified to literal true's
         assert!(asserts.asserts().iter().all(|t| t == &true.into()));
     } else {
@@ -1223,7 +1535,21 @@ pub async fn assert_disjoint_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let asserts = compile_disjoint(&typed_pset1, &typed_pset2, &literal_symenv).unwrap();
+        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+            pset1,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv.clone(),
+        )
+        .unwrap();
+        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+            pset2,
+            &envs.req_env,
+            envs.schema,
+            literal_symenv,
+        )
+        .unwrap();
+        let asserts = disjoint_asserts(&custom_compiled_1, &custom_compiled_2);
         // There should be some literal false in the assertions
         assert!(asserts.asserts().iter().all(|t| t.is_literal()));
         assert!(asserts.asserts().iter().any(|t| t == &false.into()));
