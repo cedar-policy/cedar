@@ -19,7 +19,7 @@
 
 mod authorizer;
 mod compiled_policies;
-pub use compiled_policies::{CompiledPolicies, CompiledPolicy};
+pub use compiled_policies::{CompiledPolicies, CompiledPolicy, CompiledPolicys};
 mod compiler;
 mod enforcer;
 mod extractor;
@@ -28,6 +28,7 @@ mod verifier;
 use crate::err::{Error, Result};
 use crate::symcc::{concretizer::Env, solver::Solver, SymCompiler};
 use crate::Asserts;
+use extractor::extract_opt;
 use verifier::{
     verify_always_allows_opt, verify_always_denies_opt, verify_always_matches_opt,
     verify_disjoint_opt, verify_equivalent_opt, verify_implies_opt, verify_matches_disjoint_opt,
@@ -42,36 +43,14 @@ impl<S: Solver> SymCompiler<S> {
     pub async fn sat_asserts_opt<'a>(
         &mut self,
         asserts: &Asserts,
-        cps: impl IntoIterator<Item = &'a CompiledPolicies> + Clone,
+        cps: impl IntoIterator<Item = &'a CompiledPolicys<'a>> + Clone,
     ) -> Result<Option<Env>> {
-        match cps.clone().into_iter().peekable().peek() {
+        match cps.clone().into_iter().next() {
             None => Err(Error::NoPolicies),
-            Some(CompiledPolicies { symenv, .. }) => {
-                match self.check_sat_asserts(asserts, symenv).await? {
-                    None => Ok(None),
-                    Some(interp) => Ok(Some(CompiledPolicies::extract_opt(cps, &interp)?)),
-                }
-            }
-        }
-    }
-
-    /// Alternate version of `sat_asserts_opt()` which accepts a list of `CompiledPolicy`
-    /// instead of `CompiledPolicies`
-    ///
-    /// Corresponds to `satAssertsOpt?'` in the Lean.
-    pub async fn sat_asserts_opt_alt<'a>(
-        &mut self,
-        asserts: &Asserts,
-        cps: impl IntoIterator<Item = &'a CompiledPolicy> + Clone,
-    ) -> Result<Option<Env>> {
-        match cps.clone().into_iter().peekable().peek() {
-            None => Err(Error::NoPolicies),
-            Some(CompiledPolicy { symenv, .. }) => {
-                match self.check_sat_asserts(asserts, symenv).await? {
-                    None => Ok(None),
-                    Some(interp) => Ok(Some(CompiledPolicy::extract_opt(cps, &interp)?)),
-                }
-            }
+            Some(cp_s) => match self.check_sat_asserts(asserts, cp_s.symenv()).await? {
+                None => Ok(None),
+                Some(interp) => Ok(Some(extract_opt(cps, &interp)?)),
+            },
         }
     }
 
@@ -90,8 +69,11 @@ impl<S: Solver> SymCompiler<S> {
         &mut self,
         policy: &CompiledPolicy,
     ) -> Result<Option<Env>> {
-        self.sat_asserts_opt_alt(&verify_never_errors_opt(policy), std::iter::once(policy))
-            .await
+        self.sat_asserts_opt(
+            &verify_never_errors_opt(policy),
+            std::iter::once(&CompiledPolicys::Policy(policy)),
+        )
+        .await
     }
 
     /// Optimized version of `check_always_matches()`.
@@ -109,8 +91,11 @@ impl<S: Solver> SymCompiler<S> {
         &mut self,
         policy: &CompiledPolicy,
     ) -> Result<Option<Env>> {
-        self.sat_asserts_opt_alt(&verify_always_matches_opt(policy), std::iter::once(policy))
-            .await
+        self.sat_asserts_opt(
+            &verify_always_matches_opt(policy),
+            std::iter::once(&CompiledPolicys::Policy(policy)),
+        )
+        .await
     }
 
     /// Optimized version of `check_never_matches()`.
@@ -128,8 +113,11 @@ impl<S: Solver> SymCompiler<S> {
         &mut self,
         policy: &CompiledPolicy,
     ) -> Result<Option<Env>> {
-        self.sat_asserts_opt_alt(&verify_never_matches_opt(policy), std::iter::once(policy))
-            .await
+        self.sat_asserts_opt(
+            &verify_never_matches_opt(policy),
+            std::iter::once(&CompiledPolicys::Policy(policy)),
+        )
+        .await
     }
 
     /// Optimized version of `check_matches_equivalent()`.
@@ -155,9 +143,12 @@ impl<S: Solver> SymCompiler<S> {
         policy1: &CompiledPolicy,
         policy2: &CompiledPolicy,
     ) -> Result<Option<Env>> {
-        self.sat_asserts_opt_alt(
+        self.sat_asserts_opt(
             &verify_matches_equivalent_opt(policy1, policy2),
-            [policy1, policy2],
+            [
+                &CompiledPolicys::Policy(policy1),
+                &CompiledPolicys::Policy(policy2),
+            ],
         )
         .await
     }
@@ -185,9 +176,12 @@ impl<S: Solver> SymCompiler<S> {
         policy1: &CompiledPolicy,
         policy2: &CompiledPolicy,
     ) -> Result<Option<Env>> {
-        self.sat_asserts_opt_alt(
+        self.sat_asserts_opt(
             &verify_matches_implies_opt(policy1, policy2),
-            [policy1, policy2],
+            [
+                &CompiledPolicys::Policy(policy1),
+                &CompiledPolicys::Policy(policy2),
+            ],
         )
         .await
     }
@@ -215,9 +209,12 @@ impl<S: Solver> SymCompiler<S> {
         policy1: &CompiledPolicy,
         policy2: &CompiledPolicy,
     ) -> Result<Option<Env>> {
-        self.sat_asserts_opt_alt(
+        self.sat_asserts_opt(
             &verify_matches_disjoint_opt(policy1, policy2),
-            [policy1, policy2],
+            [
+                &CompiledPolicys::Policy(policy1),
+                &CompiledPolicys::Policy(policy2),
+            ],
         )
         .await
     }
@@ -244,7 +241,10 @@ impl<S: Solver> SymCompiler<S> {
     ) -> Result<Option<Env>> {
         self.sat_asserts_opt(
             &verify_implies_opt(policies1, policies2),
-            [policies1, policies2],
+            [
+                &CompiledPolicys::Policies(policies1),
+                &CompiledPolicys::Policies(policies2),
+            ],
         )
         .await
     }
@@ -266,7 +266,7 @@ impl<S: Solver> SymCompiler<S> {
     ) -> Result<Option<Env>> {
         self.sat_asserts_opt(
             &verify_always_allows_opt(policies),
-            std::iter::once(policies),
+            std::iter::once(&CompiledPolicys::Policies(policies)),
         )
         .await
     }
@@ -288,7 +288,7 @@ impl<S: Solver> SymCompiler<S> {
     ) -> Result<Option<Env>> {
         self.sat_asserts_opt(
             &verify_always_denies_opt(policies),
-            std::iter::once(policies),
+            std::iter::once(&CompiledPolicys::Policies(policies)),
         )
         .await
     }
@@ -318,7 +318,10 @@ impl<S: Solver> SymCompiler<S> {
     ) -> Result<Option<Env>> {
         self.sat_asserts_opt(
             &verify_equivalent_opt(policies1, policies2),
-            [policies1, policies2],
+            [
+                &CompiledPolicys::Policies(policies1),
+                &CompiledPolicys::Policies(policies2),
+            ],
         )
         .await
     }
@@ -348,7 +351,10 @@ impl<S: Solver> SymCompiler<S> {
     ) -> Result<Option<Env>> {
         self.sat_asserts_opt(
             &verify_disjoint_opt(policies1, policies2),
-            [policies1, policies2],
+            [
+                &CompiledPolicys::Policies(policies1),
+                &CompiledPolicys::Policies(policies2),
+            ],
         )
         .await
     }
