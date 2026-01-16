@@ -21,12 +21,6 @@
 //! This benchmark measures:
 //! - Parsing performance (wall time) for various input sizes and structures
 //! - Memory usage (RSS) to identify amplification issues
-//!
-//! For detailed heap allocation profiling, use:
-//! ```bash
-//! cargo bench --bench context_json_parsing --features heap-profiling
-//! ```
-//! This will use dhat-rs to track all heap allocations and produce detailed reports.
 
 use std::hint::black_box;
 
@@ -34,13 +28,6 @@ use cedar_policy_core::entities::json::{ContextJsonParser, NullContextSchema};
 use cedar_policy_core::extensions::Extensions;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use serde_json::json;
-
-#[cfg(feature = "heap-profiling")]
-use dhat::DhatAllocator;
-
-#[cfg(feature = "heap-profiling")]
-#[global_allocator]
-static ALLOCATOR: DhatAllocator = DhatAllocator;
 
 /// Generate a large context JSON with a single large string value
 fn generate_large_context_string(size_mb: usize) -> serde_json::Value {
@@ -129,7 +116,6 @@ fn get_memory_rss() -> Option<usize> {
 
 /// Benchmark context parsing with memory measurement
 /// Uses RSS (Resident Set Size) for memory tracking
-/// For more detailed heap allocation tracking, use dhat-rs with --features heap-profiling
 fn bench_context_parsing_memory(c: &mut Criterion) {
     let mut group = c.benchmark_group("context_json_parsing_memory");
 
