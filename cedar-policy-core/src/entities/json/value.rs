@@ -399,9 +399,14 @@ impl CedarValueJson {
                     use std::io;
                     let io_err = io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!("invalid number: expected a 64-bit signed integer, got {}", n),
+                        format!(
+                            "invalid number: expected a 64-bit signed integer, got {}",
+                            n
+                        ),
                     );
-                    Err(JsonDeserializationError::from(serde_json::Error::io(io_err)))
+                    Err(JsonDeserializationError::from(serde_json::Error::io(
+                        io_err,
+                    )))
                 }
             }
 
@@ -424,67 +429,61 @@ impl CedarValueJson {
                 // This matches the logic in From<RawCedarValueJson>
                 if obj.len() == 1 {
                     // Check for __expr escape
-                    if let Some(expr_val) = obj.get("__expr") {
-                        if let serde_json::Value::String(s) = expr_val {
-                            return Ok(CedarValueJson::ExprEscape {
-                                __expr: SmolStr::new(s),
-                            });
-                        }
+                    if let Some(serde_json::Value::String(s)) = obj.get("__expr") {
+                        return Ok(CedarValueJson::ExprEscape {
+                            __expr: SmolStr::new(s),
+                        });
                     }
 
                     // Check for __entity escape
-                    if let Some(entity_val) = obj.get("__entity") {
-                        if let serde_json::Value::Object(entity_obj) = entity_val {
-                            if entity_obj.len() >= 2 {
-                                if let (
-                                    Some(serde_json::Value::String(ty)),
-                                    Some(serde_json::Value::String(id)),
-                                ) = (entity_obj.get("type"), entity_obj.get("id"))
-                                {
-                                    return Ok(CedarValueJson::EntityEscape {
-                                        __entity: TypeAndId {
-                                            entity_type: SmolStr::new(ty),
-                                            id: SmolStr::new(id),
-                                        },
-                                    });
-                                }
+                    if let Some(serde_json::Value::Object(entity_obj)) = obj.get("__entity") {
+                        if entity_obj.len() >= 2 {
+                            if let (
+                                Some(serde_json::Value::String(ty)),
+                                Some(serde_json::Value::String(id)),
+                            ) = (entity_obj.get("type"), entity_obj.get("id"))
+                            {
+                                return Ok(CedarValueJson::EntityEscape {
+                                    __entity: TypeAndId {
+                                        entity_type: SmolStr::new(ty),
+                                        id: SmolStr::new(id),
+                                    },
+                                });
                             }
                         }
                     }
 
                     // Check for __extn escape
-                    if let Some(extn_val) = obj.get("__extn") {
-                        if let serde_json::Value::Object(extn_obj) = extn_val {
-                            if extn_obj.len() >= 2 {
-                                if let Some(serde_json::Value::String(fn_name)) =
-                                    extn_obj.get("fn")
+                    if let Some(serde_json::Value::Object(extn_obj)) = obj.get("__extn") {
+                        if extn_obj.len() >= 2 {
+                            if let Some(serde_json::Value::String(fn_name)) = extn_obj.get("fn") {
+                                // Single argument
+                                if let Some(arg) = extn_obj.get("arg") {
+                                    return Ok(CedarValueJson::ExtnEscape {
+                                        __extn: FnAndArgs::Single {
+                                            ext_fn: SmolStr::new(fn_name),
+                                            arg: Box::new(Self::from_serde_value_direct(
+                                                arg.clone(),
+                                                ctx,
+                                            )?),
+                                        },
+                                    });
+                                }
+                                // Multiple arguments
+                                if let Some(serde_json::Value::Array(args_arr)) =
+                                    extn_obj.get("args")
                                 {
-                                    // Single argument
-                                    if let Some(arg) = extn_obj.get("arg") {
-                                        return Ok(CedarValueJson::ExtnEscape {
-                                            __extn: FnAndArgs::Single {
-                                                ext_fn: SmolStr::new(fn_name),
-                                                arg: Box::new(Self::from_serde_value_direct(
-                                                    arg.clone(),
-                                                    ctx,
-                                                )?),
-                                            },
-                                        });
-                                    }
-                                    // Multiple arguments
-                                    if let Some(serde_json::Value::Array(args_arr)) =
-                                        extn_obj.get("args")
-                                    {
-                                        return Ok(CedarValueJson::ExtnEscape {
-                                            __extn: FnAndArgs::Multi {
-                                                ext_fn: SmolStr::new(fn_name),
-                                                args: args_arr
-                                                    .iter()
-                                                    .map(|v| Self::from_serde_value_direct(v.clone(), ctx))
-                                                    .collect::<Result<Vec<_>, _>>()?,
-                                            },
-                                        });
-                                    }
+                                    return Ok(CedarValueJson::ExtnEscape {
+                                        __extn: FnAndArgs::Multi {
+                                            ext_fn: SmolStr::new(fn_name),
+                                            args: args_arr
+                                                .iter()
+                                                .map(|v| {
+                                                    Self::from_serde_value_direct(v.clone(), ctx)
+                                                })
+                                                .collect::<Result<Vec<_>, _>>()?,
+                                        },
+                                    });
                                 }
                             }
                         }
@@ -494,17 +493,12 @@ impl CedarValueJson {
                 // Regular record - convert all key-value pairs
                 let mut map = BTreeMap::new();
                 for (k, v) in obj {
-                    map.insert(
-                        SmolStr::new(k),
-                        Self::from_serde_value_direct(v, ctx)?,
-                    );
+                    map.insert(SmolStr::new(k), Self::from_serde_value_direct(v, ctx)?);
                 }
                 Ok(CedarValueJson::Record(JsonRecord { values: map }))
             }
 
-            serde_json::Value::Null => {
-                Err(JsonDeserializationError::Null(Box::new(ctx())))
-            }
+            serde_json::Value::Null => Err(JsonDeserializationError::Null(Box::new(ctx()))),
         }
     }
 
