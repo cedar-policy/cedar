@@ -932,7 +932,6 @@ impl<'e> ValueParser<'e> {
                 )),
                 val => {
                     let actual_val = {
-                        // Use direct conversion for consistency and performance
                         let jvalue = CedarValueJson::from_serde_value_direct(val, ctx)?;
                         jvalue.into_expr(ctx)?
                     };
@@ -1006,7 +1005,6 @@ impl<'e> ValueParser<'e> {
                 }
                 val => {
                     let actual_val = {
-                        // Use direct conversion for consistency and performance
                         let jvalue = CedarValueJson::from_serde_value_direct(val, ctx)?;
                         jvalue.into_expr(ctx)?
                     };
