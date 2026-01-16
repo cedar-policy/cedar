@@ -376,6 +376,138 @@ impl CedarValueJson {
         }
     }
 
+    /// Convert directly from `serde_json::Value` without re-parsing via serde.
+    /// This avoids the double parsing overhead when we already have a parsed Value.
+    ///
+    /// This is more efficient than `serde_json::from_value()` because it doesn't
+    /// go through serde's deserialization machinery, which creates intermediate copies.
+    ///
+    /// `ctx` is a function that provides error context when errors occur.
+    pub fn from_serde_value_direct(
+        val: serde_json::Value,
+        ctx: &dyn Fn() -> JsonDeserializationErrorContext,
+    ) -> Result<Self, JsonDeserializationError> {
+        match val {
+            serde_json::Value::Bool(b) => Ok(CedarValueJson::Bool(b)),
+
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Ok(CedarValueJson::Long(i))
+                } else {
+                    // Number is not a valid i64 (could be float, too large, etc.)
+                    // Create a serde error with an appropriate message
+                    use std::io;
+                    let io_err = io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("invalid number: expected a 64-bit signed integer, got {}", n),
+                    );
+                    Err(JsonDeserializationError::from(serde_json::Error::io(io_err)))
+                }
+            }
+
+            serde_json::Value::String(s) => {
+                // Direct conversion: String -> SmolStr (no intermediate parsing)
+                Ok(CedarValueJson::String(SmolStr::new(s)))
+            }
+
+            serde_json::Value::Array(arr) => {
+                // Recursively convert array elements
+                Ok(CedarValueJson::Set(
+                    arr.into_iter()
+                        .map(|v| Self::from_serde_value_direct(v, ctx))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ))
+            }
+
+            serde_json::Value::Object(obj) => {
+                // Check for escapes first (__expr, __entity, __extn)
+                // This matches the logic in From<RawCedarValueJson>
+                if obj.len() == 1 {
+                    // Check for __expr escape
+                    if let Some(expr_val) = obj.get("__expr") {
+                        if let serde_json::Value::String(s) = expr_val {
+                            return Ok(CedarValueJson::ExprEscape {
+                                __expr: SmolStr::new(s),
+                            });
+                        }
+                    }
+
+                    // Check for __entity escape
+                    if let Some(entity_val) = obj.get("__entity") {
+                        if let serde_json::Value::Object(entity_obj) = entity_val {
+                            if entity_obj.len() >= 2 {
+                                if let (
+                                    Some(serde_json::Value::String(ty)),
+                                    Some(serde_json::Value::String(id)),
+                                ) = (entity_obj.get("type"), entity_obj.get("id"))
+                                {
+                                    return Ok(CedarValueJson::EntityEscape {
+                                        __entity: TypeAndId {
+                                            entity_type: SmolStr::new(ty),
+                                            id: SmolStr::new(id),
+                                        },
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    // Check for __extn escape
+                    if let Some(extn_val) = obj.get("__extn") {
+                        if let serde_json::Value::Object(extn_obj) = extn_val {
+                            if extn_obj.len() >= 2 {
+                                if let Some(serde_json::Value::String(fn_name)) =
+                                    extn_obj.get("fn")
+                                {
+                                    // Single argument
+                                    if let Some(arg) = extn_obj.get("arg") {
+                                        return Ok(CedarValueJson::ExtnEscape {
+                                            __extn: FnAndArgs::Single {
+                                                ext_fn: SmolStr::new(fn_name),
+                                                arg: Box::new(Self::from_serde_value_direct(
+                                                    arg.clone(),
+                                                    ctx,
+                                                )?),
+                                            },
+                                        });
+                                    }
+                                    // Multiple arguments
+                                    if let Some(serde_json::Value::Array(args_arr)) =
+                                        extn_obj.get("args")
+                                    {
+                                        return Ok(CedarValueJson::ExtnEscape {
+                                            __extn: FnAndArgs::Multi {
+                                                ext_fn: SmolStr::new(fn_name),
+                                                args: args_arr
+                                                    .iter()
+                                                    .map(|v| Self::from_serde_value_direct(v.clone(), ctx))
+                                                    .collect::<Result<Vec<_>, _>>()?,
+                                            },
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Regular record - convert all key-value pairs
+                let mut map = BTreeMap::new();
+                for (k, v) in obj {
+                    map.insert(
+                        SmolStr::new(k),
+                        Self::from_serde_value_direct(v, ctx)?,
+                    );
+                }
+                Ok(CedarValueJson::Record(JsonRecord { values: map }))
+            }
+
+            serde_json::Value::Null => {
+                Err(JsonDeserializationError::Null(Box::new(ctx())))
+            }
+        }
+    }
+
     /// Convert this `CedarValueJson` into a Cedar "restricted expression"
     pub fn into_expr(
         self,
@@ -900,9 +1032,10 @@ impl<'e> ValueParser<'e> {
             // The expected type is any other type, or we don't have an expected type.
             // No special parsing rules apply; we do ordinary, non-schema-based parsing.
             Some(_) | None => {
-                // Everything is parsed as `CedarValueJson`, and converted into
-                // `RestrictedExpr` from that.
-                let jvalue: CedarValueJson = serde_json::from_value(val)?;
+                // Use direct conversion instead of double parsing via serde
+                // This avoids the overhead of serde_json::from_value() which re-parses
+                // an already-parsed serde_json::Value
+                let jvalue = CedarValueJson::from_serde_value_direct(val, ctx)?;
                 Ok(jvalue.into_expr(ctx)?)
             }
         }

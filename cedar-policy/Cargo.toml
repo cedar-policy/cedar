@@ -107,6 +107,10 @@ harness = false
 name = "deeply_nested_est"
 harness = false
 
+[[bench]]
+name = "context_json_parsing"
+harness = false
+
 [package.metadata.docs.rs]
 features = ["experimental"]
 rustdoc-args = ["--cfg", "docsrs"]
