@@ -1619,7 +1619,7 @@ mod tests {
         let ctx = || JsonDeserializationErrorContext::Context;
 
         // Deeply nested structure
-        let nested = serde_json::json!({
+        let _nested = serde_json::json!({
             "level1": {
                 "level2": {
                     "level3": {
