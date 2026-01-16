@@ -933,7 +933,8 @@ impl<'e> ValueParser<'e> {
                 )),
                 val => {
                     let actual_val = {
-                        let jvalue: CedarValueJson = serde_json::from_value(val)?;
+                        // Use direct conversion for consistency and performance
+                        let jvalue = CedarValueJson::from_serde_value_direct(val, ctx)?;
                         jvalue.into_expr(ctx)?
                     };
                     let err = TypeMismatchError::type_mismatch(
@@ -1006,7 +1007,8 @@ impl<'e> ValueParser<'e> {
                 }
                 val => {
                     let actual_val = {
-                        let jvalue: CedarValueJson = serde_json::from_value(val)?;
+                        // Use direct conversion for consistency and performance
+                        let jvalue = CedarValueJson::from_serde_value_direct(val, ctx)?;
                         jvalue.into_expr(ctx)?
                     };
                     let err = TypeMismatchError::type_mismatch(
