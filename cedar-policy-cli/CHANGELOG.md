@@ -5,6 +5,9 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 - Added a new option when converting cedar schemas to JSON that allows the caller to get back a JSON schema where all types are resolved to commontype or entity (never entityOrCommon).
+- Added an option to provide a schema to the `run-tests`
+command so that the request, entities and policies are
+checked against the schema, tests fail should schema validation fail.
 
 ## 4.8.2
 

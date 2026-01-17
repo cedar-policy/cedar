@@ -1,0 +1,26 @@
+{
+  "": {
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
+      "Photo": {
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      }
+    },
+    "actions": {
+      "Edit": {
+        "appliesTo": {
+          "principalTypes": ["User"],
+          "resourceTypes": ["Photo"]
+        }
+      }
+    }
+  }
+}
