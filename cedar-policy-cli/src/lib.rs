@@ -1817,6 +1817,13 @@ fn run_one_test(
     let test = CheckedTestCaseSeed(schema)
         .deserialize(test.into_deserializer())
         .into_diagnostic()?;
+    if let Some(schema) = schema {
+        let validator = Validator::new(schema.clone());
+        let val_res = validator.validate(policies, cedar_policy::ValidationMode::Strict);
+        if !val_res.validation_passed_without_warnings() {
+            return Err(Report::new(val_res).wrap_err("policy set validation failed"));
+        }
+    }
     let ans = Authorizer::new().is_authorized(&test.request, policies, &test.entities);
     Ok(compare_test_decisions(&test, &ans))
 }
@@ -1836,7 +1843,6 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
             print!("  test (unnamed) ... ");
         }
         std::io::stdout().flush().into_diagnostic()?;
-
         match run_one_test(&policies, test, schema.as_ref()) {
             Ok(TestResult::Pass) => {
                 println!(
