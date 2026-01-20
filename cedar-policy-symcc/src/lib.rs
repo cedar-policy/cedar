@@ -1106,6 +1106,10 @@ pub fn matches_equivalent_asserts<'a>(
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_matches_equivalent_opt(&policy1.policy, &policy2.policy),
+        #[expect(
+            clippy::expect_used,
+            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
+        )]
         policies: NonEmpty::collect(
             [&policy1.policy, &policy2.policy]
                 .into_iter()
@@ -1138,6 +1142,10 @@ pub fn matches_implies_asserts<'a>(
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_matches_implies_opt(&policy1.policy, &policy2.policy),
+        #[expect(
+            clippy::expect_used,
+            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
+        )]
         policies: NonEmpty::collect(
             [&policy1.policy, &policy2.policy]
                 .into_iter()
@@ -1170,6 +1178,10 @@ pub fn matches_disjoint_asserts<'a>(
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_matches_disjoint_opt(&policy1.policy, &policy2.policy),
+        #[expect(
+            clippy::expect_used,
+            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
+        )]
         policies: NonEmpty::collect(
             [&policy1.policy, &policy2.policy]
                 .into_iter()
@@ -1250,6 +1262,10 @@ pub fn implies_asserts<'a>(
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_implies_opt(&policies1.policies, &policies2.policies),
+        #[expect(
+            clippy::expect_used,
+            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
+        )]
         policies: NonEmpty::collect(
             [&policies1.policies, &policies2.policies]
                 .into_iter()
@@ -1282,6 +1298,10 @@ pub fn equivalent_asserts<'a>(
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_equivalent_opt(&policies1.policies, &policies2.policies),
+        #[expect(
+            clippy::expect_used,
+            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
+        )]
         policies: NonEmpty::collect(
             [&policies1.policies, &policies2.policies]
                 .into_iter()
@@ -1314,6 +1334,10 @@ pub fn disjoint_asserts<'a>(
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_disjoint_opt(&policies1.policies, &policies2.policies),
+        #[expect(
+            clippy::expect_used,
+            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
+        )]
         policies: NonEmpty::collect(
             [&policies1.policies, &policies2.policies]
                 .into_iter()
