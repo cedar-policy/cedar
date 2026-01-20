@@ -24,47 +24,24 @@
 
 use cedar_policy_core::ast::Policy;
 
-use super::{CompiledPolicies, CompiledPolicy};
+use super::CompiledPolicys;
 use crate::{err::ConcretizeError, Env, Interpretation};
 
-impl CompiledPolicies {
-    /// Caller guarantees that all of the `CompiledPolicies` were compiled for the same `env`.
-    pub fn extract_opt<'a>(
-        cps: impl IntoIterator<Item = &'a Self> + Clone,
-        interp: &Interpretation<'_>,
-    ) -> Result<Env, ConcretizeError> {
-        let mut cps2 = cps.clone().into_iter().peekable();
-        match cps2.peek() {
-            None => Err(ConcretizeError::NoPolicies),
-            Some(Self { symenv, .. }) => {
-                let ps = cps2.flat_map(|cps| cps.policies.policies().map(Policy::condition));
-                let footprint = cps.into_iter().flat_map(|cps| cps.footprint.iter());
-                symenv
-                    .interpret(&interp.repair_as_counterexample(footprint))
-                    .concretize(ps)
-            }
-        }
-    }
-}
-
-impl CompiledPolicy {
-    /// Like `CompiledPolicies::extract_opt()`, but takes a list of `CompiledPolicy` rather than `CompiledPolicies`.
-    ///
-    /// Caller guarantees that all of the `CompiledPolicy`s were compiled for the same `env`.
-    pub fn extract_opt<'a>(
-        cps: impl IntoIterator<Item = &'a Self> + Clone,
-        interp: &Interpretation<'_>,
-    ) -> Result<Env, ConcretizeError> {
-        let mut cps2 = cps.clone().into_iter().peekable();
-        match cps2.peek() {
-            None => Err(ConcretizeError::NoPolicies),
-            Some(Self { symenv, .. }) => {
-                let ps = cps2.map(|cp| cp.policy.condition());
-                let footprint = cps.into_iter().flat_map(|cps| cps.footprint.iter());
-                symenv
-                    .interpret(&interp.repair_as_counterexample(footprint))
-                    .concretize(ps)
-            }
+/// Optimized version of `SymEnv::extract()`.
+///
+/// Caller guarantees that all of the `CompiledPolicys` were compiled for the same `symenv`.
+pub fn extract_opt<'a>(
+    cps: impl IntoIterator<Item = &'a CompiledPolicys<'a>> + Clone,
+    interp: &Interpretation<'_>,
+) -> Result<Env, ConcretizeError> {
+    match cps.clone().into_iter().next() {
+        None => Err(ConcretizeError::NoPolicies),
+        Some(cp_s) => {
+            let ps = cps.clone().into_iter().flat_map(|cp_s| cp_s.all_policies());
+            let footprint = cps.into_iter().flat_map(|cp_s| cp_s.footprint().iter());
+            cp_s.symenv()
+                .interpret(&interp.repair_as_counterexample(footprint))
+                .concretize(ps.map(Policy::condition))
         }
     }
 }
