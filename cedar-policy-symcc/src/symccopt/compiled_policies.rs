@@ -37,9 +37,9 @@ pub struct CompiledPolicy {
     /// typechecked policy compiled to a `Term` of type Option<bool>
     pub(super) term: Term,
     /// `SymEnv` representing the environment this policy was compiled for
-    pub(super) symenv: symcc::SymEnv,
+    pub(crate) symenv: symcc::SymEnv,
     /// typechecked policy
-    pub(super) policy: Policy,
+    pub(crate) policy: Policy,
     /// footprint of the policy
     pub(super) footprint: BTreeSet<Term>,
     /// acyclicity constraints for this policy
@@ -120,9 +120,9 @@ pub struct CompiledPolicies {
     /// representing the authorization decision
     pub(super) term: Term,
     /// `SymEnv` representing the environment these policies were compiled for
-    pub(super) symenv: symcc::SymEnv,
+    pub(crate) symenv: symcc::SymEnv,
     /// typechecked policies
-    pub(super) policies: PolicySet,
+    pub(crate) policies: PolicySet,
     /// footprint of the policies
     pub(super) footprint: BTreeSet<Term>,
     /// acyclicity constraints for these policies
