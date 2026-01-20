@@ -22,7 +22,7 @@ mod symcc;
 mod symccopt;
 
 use cedar_policy::{Effect, Policy, PolicySet, RequestEnv, Schema};
-use nonempty::NonEmpty;
+use nonempty::{nonempty, NonEmpty};
 use std::fmt;
 
 use err::{Error, Result};
@@ -1031,7 +1031,7 @@ impl<'a> WellFormedAsserts<'a> {
 pub fn never_errors_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_never_errors_opt(&policy.policy),
-        policies: NonEmpty::singleton(CompiledPolicys::Policy(&policy.policy)),
+        policies: nonempty![CompiledPolicys::Policy(&policy.policy)],
     }
 }
 
@@ -1055,7 +1055,7 @@ pub fn never_errors_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsserts
 pub fn always_matches_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_always_matches_opt(&policy.policy),
-        policies: NonEmpty::singleton(CompiledPolicys::Policy(&policy.policy)),
+        policies: nonempty![CompiledPolicys::Policy(&policy.policy)],
     }
 }
 
@@ -1079,7 +1079,7 @@ pub fn always_matches_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsser
 pub fn never_matches_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_never_matches_opt(&policy.policy),
-        policies: NonEmpty::singleton(CompiledPolicys::Policy(&policy.policy)),
+        policies: nonempty![CompiledPolicys::Policy(&policy.policy)],
     }
 }
 
@@ -1106,16 +1106,10 @@ pub fn matches_equivalent_asserts<'a>(
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_matches_equivalent_opt(&policy1.policy, &policy2.policy),
-        #[expect(
-            clippy::expect_used,
-            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
-        )]
-        policies: NonEmpty::collect(
-            [&policy1.policy, &policy2.policy]
-                .into_iter()
-                .map(CompiledPolicys::Policy),
-        )
-        .expect("not an empty iterator"),
+        policies: nonempty![
+            CompiledPolicys::Policy(&policy1.policy),
+            CompiledPolicys::Policy(&policy2.policy)
+        ],
     }
 }
 
@@ -1146,12 +1140,10 @@ pub fn matches_implies_asserts<'a>(
             clippy::expect_used,
             reason = "NonEmpty::collect() will not fail on a nonempty iterator"
         )]
-        policies: NonEmpty::collect(
-            [&policy1.policy, &policy2.policy]
-                .into_iter()
-                .map(CompiledPolicys::Policy),
-        )
-        .expect("not an empty iterator"),
+        policies: nonempty![
+            CompiledPolicys::Policy(&policy1.policy),
+            CompiledPolicys::Policy(&policy2.policy)
+        ],
     }
 }
 
@@ -1182,12 +1174,10 @@ pub fn matches_disjoint_asserts<'a>(
             clippy::expect_used,
             reason = "NonEmpty::collect() will not fail on a nonempty iterator"
         )]
-        policies: NonEmpty::collect(
-            [&policy1.policy, &policy2.policy]
-                .into_iter()
-                .map(CompiledPolicys::Policy),
-        )
-        .expect("not an empty iterator"),
+        policies: nonempty![
+            CompiledPolicys::Policy(&policy1.policy),
+            CompiledPolicys::Policy(&policy2.policy)
+        ],
     }
 }
 
@@ -1211,7 +1201,7 @@ pub fn matches_disjoint_asserts<'a>(
 pub fn always_allows_asserts<'a>(policies: &'a CompiledPolicies) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_always_allows_opt(&policies.policies),
-        policies: NonEmpty::singleton(CompiledPolicys::Policies(&policies.policies)),
+        policies: nonempty![CompiledPolicys::Policies(&policies.policies)],
     }
 }
 
@@ -1235,7 +1225,7 @@ pub fn always_allows_asserts<'a>(policies: &'a CompiledPolicies) -> WellFormedAs
 pub fn always_denies_asserts<'a>(policies: &'a CompiledPolicies) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_always_denies_opt(&policies.policies),
-        policies: NonEmpty::singleton(CompiledPolicys::Policies(&policies.policies)),
+        policies: nonempty![CompiledPolicys::Policies(&policies.policies)],
     }
 }
 
@@ -1266,12 +1256,10 @@ pub fn implies_asserts<'a>(
             clippy::expect_used,
             reason = "NonEmpty::collect() will not fail on a nonempty iterator"
         )]
-        policies: NonEmpty::collect(
-            [&policies1.policies, &policies2.policies]
-                .into_iter()
-                .map(CompiledPolicys::Policies),
-        )
-        .expect("not an empty iterator"),
+        policies: nonempty![
+            CompiledPolicys::Policies(&policies1.policies),
+            CompiledPolicys::Policies(&policies2.policies)
+        ],
     }
 }
 
@@ -1302,12 +1290,10 @@ pub fn equivalent_asserts<'a>(
             clippy::expect_used,
             reason = "NonEmpty::collect() will not fail on a nonempty iterator"
         )]
-        policies: NonEmpty::collect(
-            [&policies1.policies, &policies2.policies]
-                .into_iter()
-                .map(CompiledPolicys::Policies),
-        )
-        .expect("not an empty iterator"),
+        policies: nonempty![
+            CompiledPolicys::Policies(&policies1.policies),
+            CompiledPolicys::Policies(&policies2.policies)
+        ],
     }
 }
 
@@ -1338,11 +1324,9 @@ pub fn disjoint_asserts<'a>(
             clippy::expect_used,
             reason = "NonEmpty::collect() will not fail on a nonempty iterator"
         )]
-        policies: NonEmpty::collect(
-            [&policies1.policies, &policies2.policies]
-                .into_iter()
-                .map(CompiledPolicys::Policies),
-        )
-        .expect("not an empty iterator"),
+        policies: nonempty![
+            CompiledPolicys::Policies(&policies1.policies),
+            CompiledPolicys::Policies(&policies2.policies)
+        ],
     }
 }
