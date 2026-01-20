@@ -23,7 +23,6 @@ use super::{
 };
 use crate::{
     symcc::{
-        env::SymEnv,
         factory,
         term::{Term, TermPrim},
         verifier::Asserts,
