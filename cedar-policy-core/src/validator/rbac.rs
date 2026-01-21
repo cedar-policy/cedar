@@ -23,7 +23,10 @@ use crate::{
     },
     entities::conformance::is_valid_enumerated_entity,
     parser::Loc,
-    validator::validation_errors::get_suggested_entity_type,
+    validator::{
+        validation_errors::{get_suggested_entity_type, InvalidActionApplicationHelp},
+        ValidationMode,
+    },
 };
 
 use std::{collections::HashSet, sync::Arc};
@@ -269,27 +272,54 @@ impl Validator {
             .get_principals_satisfying_constraint(principal_constraint)
             .collect();
 
-        let would_in_fix_principal =
-            self.check_if_in_fixes_principal(principal_constraint, action_constraint);
-        let would_in_fix_resource =
-            self.check_if_in_fixes_resource(resource_constraint, action_constraint);
+        let any_applicable_action = apply_specs.any(|spec| {
+            let action_principals = spec.applicable_principal_types().collect::<HashSet<_>>();
+            let action_resources = spec.applicable_resource_types().collect::<HashSet<_>>();
+            let matching_principal = !principals_for_scope.is_disjoint(&action_principals);
+            let matching_resource = !resources_for_scope.is_disjoint(&action_resources);
+            matching_principal && matching_resource
+        });
 
-        Some(ValidationError::invalid_action_application(
-            source_loc.cloned(),
-            policy_id.clone(),
-            would_in_fix_principal,
-            would_in_fix_resource,
-        ))
-        .filter(|_| {
-            !apply_specs.any(|spec| {
-                let action_principals = spec.applicable_principal_types().collect::<HashSet<_>>();
-                let action_resources = spec.applicable_resource_types().collect::<HashSet<_>>();
-                let matching_principal = !principals_for_scope.is_disjoint(&action_principals);
-                let matching_resource = !resources_for_scope.is_disjoint(&action_resources);
-                matching_principal && matching_resource
-            })
-        })
-        .into_iter()
+        if !any_applicable_action {
+            let would_in_fix_principal =
+                self.check_if_in_fixes_principal(principal_constraint, action_constraint);
+            let would_in_fix_resource =
+                self.check_if_in_fixes_resource(resource_constraint, action_constraint);
+
+            let any_declared_action = !self.schema.actions.is_empty();
+            // The behavior of `unlinked_request_envs` only depends on whether
+            // validation mode is partial or not, but `validate_action_application`
+            // is never called in partial mode. Worse case if this changes is a
+            // misleading help message.
+            let any_non_empty_actions = self
+                .schema
+                .unlinked_request_envs(ValidationMode::Strict)
+                .next()
+                .is_some();
+
+            let help = if would_in_fix_principal && would_in_fix_resource {
+                Some(InvalidActionApplicationHelp::MakePrincipalResourceIn)
+            } else if would_in_fix_principal {
+                Some(InvalidActionApplicationHelp::MakePrincipalIn)
+            } else if would_in_fix_resource {
+                Some(InvalidActionApplicationHelp::MakeResourceIn)
+            } else if !any_declared_action {
+                Some(InvalidActionApplicationHelp::DefineActions)
+            } else if !any_non_empty_actions {
+                Some(InvalidActionApplicationHelp::DefineActionAppliesTo)
+            } else {
+                None
+            };
+
+            Some(ValidationError::invalid_action_application(
+                source_loc.cloned(),
+                policy_id.clone(),
+                help,
+            ))
+            .into_iter()
+        } else {
+            None.into_iter()
+        }
     }
 
     /// Gather all `ApplySpec` objects for all actions in the schema.
@@ -404,9 +434,11 @@ mod test {
     use crate::{
         ast::{Effect, Eid, EntityUID, PolicyID, PrincipalConstraint, ResourceConstraint},
         est::Annotations,
+        extensions::Extensions,
         parser::{parse_policy, parse_policy_or_template},
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
     };
+    use cool_asserts::assert_matches;
     use miette::Report;
 
     use super::*;
@@ -1306,8 +1338,7 @@ mod test {
             &[ValidationError::invalid_action_application(
                 Some(Loc::new(0..43, Arc::from(src))),
                 PolicyID::from_string("policy0"),
-                false,
-                false,
+                None,
             )],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
@@ -1334,8 +1365,7 @@ mod test {
                 ValidationError::invalid_action_application(
                     Some(Loc::new(0..55, Arc::from(src))),
                     PolicyID::from_string("policy0"),
-                    false,
-                    false,
+                    None,
                 ),
             ],
         );
@@ -1350,8 +1380,7 @@ mod test {
             &[ValidationError::invalid_action_application(
                 Some(Loc::new(0..57, Arc::from(src))),
                 PolicyID::from_string("policy0"),
-                false,
-                false,
+                None,
             )],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
@@ -1390,8 +1419,7 @@ mod test {
             &[ValidationError::invalid_action_application(
                 Some(Loc::new(0..43, Arc::from(src))),
                 PolicyID::from_string("policy0"),
-                false,
-                false,
+                None,
             )],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
@@ -1405,8 +1433,7 @@ mod test {
             &[ValidationError::invalid_action_application(
                 Some(Loc::new(0..57, Arc::from(src))),
                 PolicyID::from_string("policy0"),
-                false,
-                false,
+                None,
             )],
         );
         assert_validate_policy_flags_impossible_policy(&validator, &policy);
@@ -1433,8 +1460,7 @@ mod test {
                 ValidationError::invalid_action_application(
                     Some(Loc::new(0..55, Arc::from(src))),
                     PolicyID::from_string("policy0"),
-                    false,
-                    false,
+                    None,
                 ),
             ],
         );
@@ -1614,6 +1640,44 @@ mod test {
         let validator = Validator::new(schema);
         let (template, _) = Template::link_static_policy(policy);
         assert_validate_policy_flags_impossible_policy(&validator, &template);
+    }
+
+    #[test]
+    fn validate_action_application_help_define_actions() {
+        let (schema, _) =
+            ValidatorSchema::from_cedarschema_str("entity User;", &Extensions::all_available())
+                .unwrap();
+
+        let src = r#"permit(principal == User::"alice", action == Action::"view", resource);"#;
+        let policy = parse_policy_or_template(None, src).unwrap();
+
+        let validator = Validator::new(schema);
+        let errors: Vec<ValidationError> = validator
+            .validate_template_action_application(&policy)
+            .collect();
+
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_matches!(errors[0], ValidationError::InvalidActionApplication(ref err) if err.help == Some(InvalidActionApplicationHelp::DefineActions));
+    }
+
+    #[test]
+    fn validate_action_application_help_define_action_applies_to() {
+        let (schema, _) = ValidatorSchema::from_cedarschema_str(
+            "entity User; action view;",
+            &Extensions::all_available(),
+        )
+        .unwrap();
+
+        let src = r#"permit(principal == User::"alice", action == Action::"view", resource);"#;
+        let policy = parse_policy_or_template(None, src).unwrap();
+
+        let validator = Validator::new(schema);
+        let errors: Vec<ValidationError> = validator
+            .validate_template_action_application(&policy)
+            .collect();
+
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_matches!(errors[0], ValidationError::InvalidActionApplication(ref err) if err.help == Some(InvalidActionApplicationHelp::DefineActionAppliesTo));
     }
 }
 

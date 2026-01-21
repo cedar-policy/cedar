@@ -208,14 +208,12 @@ impl ValidationError {
     pub(crate) fn invalid_action_application(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
-        would_in_fix_principal: bool,
-        would_in_fix_resource: bool,
+        help: Option<validation_errors::InvalidActionApplicationHelp>,
     ) -> Self {
         validation_errors::InvalidActionApplication {
             source_loc,
             policy_id,
-            would_in_fix_principal,
-            would_in_fix_resource,
+            help,
         }
         .into()
     }

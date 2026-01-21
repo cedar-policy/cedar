@@ -145,27 +145,46 @@ pub struct InvalidActionApplication {
     pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
-    /// `true` if changing `==` to `in` would fix the principal clause
-    pub would_in_fix_principal: bool,
-    /// `true` if changing `==` to `in` would fix the resource clause
-    pub would_in_fix_resource: bool,
+    /// Suggestion for fixing the error
+    pub help: Option<InvalidActionApplicationHelp>,
+}
+
+/// Enum defining possible suggestions for fixing an invalid action application error.
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub enum InvalidActionApplicationHelp {
+    /// No actions are defined, so suggest defining one
+    DefineActions,
+    /// No actions apply to any entity types, so suggest adding `appliesTo` spec
+    DefineActionAppliesTo,
+    /// Suggest changing `==` to `in` to fix the principal clause
+    MakePrincipalIn,
+    /// Suggest changing `==` to `in` to fix the resource clause
+    MakeResourceIn,
+    /// Suggest changing `==` to `in` to fix the principal and resource clause
+    MakePrincipalResourceIn,
 }
 
 impl Diagnostic for InvalidActionApplication {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        match (self.would_in_fix_principal, self.would_in_fix_resource) {
-            (true, false) => Some(Box::new(
+        match self.help {
+            Some(InvalidActionApplicationHelp::DefineActions) => Some(Box::new(
+                "the schema does not define any actions. A schema must define at least one action to validate any policies"
+            )),
+            Some(InvalidActionApplicationHelp::DefineActionAppliesTo) => Some(Box::new(
+                "no defined actions apply to any entity types. At least one action must apply to some principal and resource type to validate any policies"
+            )),
+            Some(InvalidActionApplicationHelp::MakePrincipalIn) => Some(Box::new(
                 "try replacing `==` with `in` in the principal clause",
             )),
-            (false, true) => Some(Box::new(
+            Some(InvalidActionApplicationHelp::MakeResourceIn) => Some(Box::new(
                 "try replacing `==` with `in` in the resource clause",
             )),
-            (true, true) => Some(Box::new(
+            Some(InvalidActionApplicationHelp::MakePrincipalResourceIn) => Some(Box::new(
                 "try replacing `==` with `in` in the principal clause and the resource clause",
             )),
-            (false, false) => None,
+            None => None,
         }
     }
 }

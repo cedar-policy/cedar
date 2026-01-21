@@ -482,8 +482,7 @@ mod test {
         let invalid_action_err = ValidationError::invalid_action_application(
             loc.clone(),
             PolicyID::from_string("link2"),
-            false,
-            false,
+            None,
         );
 
         let actual_undef_error = result
@@ -518,12 +517,8 @@ mod test {
         assert!(!result.validation_passed());
         // `result` contains the two prior error messages plus one new one
         assert_eq!(result.validation_errors().count(), 3);
-        let invalid_action_err = ValidationError::invalid_action_application(
-            loc,
-            PolicyID::from_string("link3"),
-            false,
-            false,
-        );
+        let invalid_action_err =
+            ValidationError::invalid_action_application(loc, PolicyID::from_string("link3"), None);
         assert!(result.validation_errors().contains(&invalid_action_err));
 
         Ok(())
