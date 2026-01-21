@@ -18,8 +18,8 @@
 //! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/SymCCOpt/Verifier.lean>.
 
 use super::{
-    enforcer::{enforce_compiled_policy, enforce_pair_compiled_policies},
-    CompiledPolicies, CompiledPolicy,
+    enforcer::{enforce_compiled_policy, enforce_pair_compiled_policyset},
+    CompiledPolicy, CompiledPolicySet,
 };
 use crate::{
     symcc::{
@@ -98,8 +98,8 @@ pub fn verify_evaluate_pair_opt(
 /// `verify_disjoint_opt()`.
 pub fn verify_is_authorized_opt(
     phi: impl FnOnce(&Term, &Term) -> Term,
-    policies1: &CompiledPolicies,
-    policies2: &CompiledPolicies,
+    policies1: &CompiledPolicySet,
+    policies2: &CompiledPolicySet,
 ) -> Asserts {
     assert_eq!(&policies1.symenv, &policies2.symenv);
     // As an optimization here in `symccopt`:
@@ -111,7 +111,7 @@ pub fn verify_is_authorized_opt(
     match factory::not(phi(&policies1.term, &policies2.term)) {
         Term::Prim(TermPrim::Bool(false)) => Arc::new(vec![false.into()]),
         assert => Arc::new(
-            enforce_pair_compiled_policies(policies1, policies2)
+            enforce_pair_compiled_policyset(policies1, policies2)
                 .into_iter()
                 .chain(std::iter::once(assert))
                 .collect(),
@@ -208,7 +208,7 @@ pub fn verify_matches_disjoint_opt(policy1: &CompiledPolicy, policy2: &CompiledP
 /// the policysets were compiled for.
 /// (Caller guarantees that `policies1` and `policies2` were compiled for the same `SymEnv`.)
 /// In other words, every input allowed by `policies1` is allowed by `policies2`.
-pub fn verify_implies_opt(policies1: &CompiledPolicies, policies2: &CompiledPolicies) -> Asserts {
+pub fn verify_implies_opt(policies1: &CompiledPolicySet, policies2: &CompiledPolicySet) -> Asserts {
     verify_is_authorized_opt(
         |term1, term2| factory::implies(term1.clone(), term2.clone()),
         policies1,
@@ -218,19 +218,19 @@ pub fn verify_implies_opt(policies1: &CompiledPolicies, policies2: &CompiledPoli
 
 /// Returns asserts that are unsatisfiable iff `policies` allows all inputs in
 /// the `SymEnv` it was compiled for.
-pub fn verify_always_allows_opt(policies: &CompiledPolicies) -> Asserts {
+pub fn verify_always_allows_opt(policies: &CompiledPolicySet) -> Asserts {
     verify_implies_opt(
-        &CompiledPolicies::allow_all(policies.symenv.clone()),
+        &CompiledPolicySet::allow_all(policies.symenv.clone()),
         policies,
     )
 }
 
 /// Returns asserts that are unsatisfiable iff `policies` denies all inputs in
 /// the `SymEnv` it was compiled for.
-pub fn verify_always_denies_opt(policies: &CompiledPolicies) -> Asserts {
+pub fn verify_always_denies_opt(policies: &CompiledPolicySet) -> Asserts {
     verify_implies_opt(
         policies,
-        &CompiledPolicies::deny_all(policies.symenv.clone()),
+        &CompiledPolicySet::deny_all(policies.symenv.clone()),
     )
 }
 
@@ -239,8 +239,8 @@ pub fn verify_always_denies_opt(policies: &CompiledPolicies) -> Asserts {
 /// the policysets were compiled for.
 /// (Caller guarantees that `policies1` and `policies2` were compiled for the same `SymEnv`.)
 pub fn verify_equivalent_opt(
-    policies1: &CompiledPolicies,
-    policies2: &CompiledPolicies,
+    policies1: &CompiledPolicySet,
+    policies2: &CompiledPolicySet,
 ) -> Asserts {
     verify_is_authorized_opt(
         |term1, term2| factory::eq(term1.clone(), term2.clone()),
@@ -255,7 +255,10 @@ pub fn verify_equivalent_opt(
 /// This checks that the authorization semantics of `policies1` and `policies2`
 /// are disjoint.  If this query is satisfiable, then there is at least one
 /// input in this `SymEnv` that is allowed by both `policies1` and `policies2`.
-pub fn verify_disjoint_opt(policies1: &CompiledPolicies, policies2: &CompiledPolicies) -> Asserts {
+pub fn verify_disjoint_opt(
+    policies1: &CompiledPolicySet,
+    policies2: &CompiledPolicySet,
+) -> Asserts {
     let disjoint = |t1: &Term, t2: &Term| factory::not(factory::and(t1.clone(), t2.clone()));
     verify_is_authorized_opt(disjoint, policies1, policies2)
 }

@@ -37,7 +37,7 @@ use cedar_policy_symcc::{
     always_allows_asserts, always_denies_asserts, always_matches_asserts, disjoint_asserts,
     equivalent_asserts, implies_asserts, matches_disjoint_asserts, matches_equivalent_asserts,
     matches_implies_asserts, never_errors_asserts, never_matches_asserts, solver::Solver,
-    CedarSymCompiler, CompiledPolicies, CompiledPolicy, Env, Interpretation, SymEnv,
+    CedarSymCompiler, CompiledPolicy, CompiledPolicySet, Env, Interpretation, SymEnv,
     WellTypedPolicies, WellTypedPolicy,
 };
 
@@ -167,9 +167,9 @@ impl<'a> Environments<'a> {
     }
 
     #[track_caller]
-    pub fn compile_policies(&self, pset: &PolicySet) -> CompiledPolicies {
+    pub fn compile_policies(&self, pset: &PolicySet) -> CompiledPolicySet {
         if self.has_custom_symenv {
-            CompiledPolicies::compile_with_custom_symenv(
+            CompiledPolicySet::compile_with_custom_symenv(
                 pset,
                 &self.req_env,
                 self.schema,
@@ -177,8 +177,8 @@ impl<'a> Environments<'a> {
             )
             .unwrap()
         } else {
-            // in the common case, where the symenv wasn't created custom, test the standard `CompiledPolicies::compile()` API
-            CompiledPolicies::compile(pset, &self.req_env, self.schema).unwrap()
+            // in the common case, where the symenv wasn't created custom, test the standard `CompiledPolicySet::compile()` API
+            CompiledPolicySet::compile(pset, &self.req_env, self.schema).unwrap()
         }
     }
 }
@@ -940,7 +940,7 @@ pub async fn assert_always_allows_ok<S: Solver>(
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let custom_compiled = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled = CompiledPolicySet::compile_with_custom_symenv(
             pset,
             &envs.req_env,
             envs.schema,
@@ -955,7 +955,7 @@ pub async fn assert_always_allows_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let custom_compiled = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled = CompiledPolicySet::compile_with_custom_symenv(
             pset,
             &envs.req_env,
             envs.schema,
@@ -1039,7 +1039,7 @@ pub async fn assert_always_denies_ok<S: Solver>(
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let custom_compiled = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled = CompiledPolicySet::compile_with_custom_symenv(
             pset,
             &envs.req_env,
             envs.schema,
@@ -1054,7 +1054,7 @@ pub async fn assert_always_denies_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let custom_compiled = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled = CompiledPolicySet::compile_with_custom_symenv(
             pset,
             &envs.req_env,
             envs.schema,
@@ -1142,14 +1142,14 @@ pub async fn assert_equivalent_ok<S: Solver>(
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_1 = CompiledPolicySet::compile_with_custom_symenv(
             pset1,
             &envs.req_env,
             envs.schema,
             literal_symenv.clone(),
         )
         .unwrap();
-        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_2 = CompiledPolicySet::compile_with_custom_symenv(
             pset2,
             &envs.req_env,
             envs.schema,
@@ -1164,14 +1164,14 @@ pub async fn assert_equivalent_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_1 = CompiledPolicySet::compile_with_custom_symenv(
             pset1,
             &envs.req_env,
             envs.schema,
             literal_symenv.clone(),
         )
         .unwrap();
-        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_2 = CompiledPolicySet::compile_with_custom_symenv(
             pset2,
             &envs.req_env,
             envs.schema,
@@ -1260,14 +1260,14 @@ pub async fn assert_implies_ok<S: Solver>(
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_1 = CompiledPolicySet::compile_with_custom_symenv(
             pset1,
             &envs.req_env,
             envs.schema,
             literal_symenv.clone(),
         )
         .unwrap();
-        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_2 = CompiledPolicySet::compile_with_custom_symenv(
             pset2,
             &envs.req_env,
             envs.schema,
@@ -1282,14 +1282,14 @@ pub async fn assert_implies_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_1 = CompiledPolicySet::compile_with_custom_symenv(
             pset1,
             &envs.req_env,
             envs.schema,
             literal_symenv.clone(),
         )
         .unwrap();
-        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_2 = CompiledPolicySet::compile_with_custom_symenv(
             pset2,
             &envs.req_env,
             envs.schema,
@@ -1378,14 +1378,14 @@ pub async fn assert_disjoint_ok<S: Solver>(
         // Re-perform the check with a symbolized concrete `Env`
         let literal_symenv = SymEnv::from_concrete_env(&envs.req_env, envs.schema, &cex).unwrap();
         assert!(literal_symenv.is_literal());
-        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_1 = CompiledPolicySet::compile_with_custom_symenv(
             pset1,
             &envs.req_env,
             envs.schema,
             literal_symenv.clone(),
         )
         .unwrap();
-        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_2 = CompiledPolicySet::compile_with_custom_symenv(
             pset2,
             &envs.req_env,
             envs.schema,
@@ -1400,14 +1400,14 @@ pub async fn assert_disjoint_ok<S: Solver>(
         let interp = Interpretation::default(&envs.symenv);
         let literal_symenv = envs.symenv.interpret(&interp);
         assert!(literal_symenv.is_literal());
-        let custom_compiled_1 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_1 = CompiledPolicySet::compile_with_custom_symenv(
             pset1,
             &envs.req_env,
             envs.schema,
             literal_symenv.clone(),
         )
         .unwrap();
-        let custom_compiled_2 = CompiledPolicies::compile_with_custom_symenv(
+        let custom_compiled_2 = CompiledPolicySet::compile_with_custom_symenv(
             pset2,
             &envs.req_env,
             envs.schema,
