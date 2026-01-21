@@ -58,7 +58,7 @@ jobs:
             npm_tag: ${{ steps.compute_npm_tag.outputs.npm_tag }}
         steps:
             - name: Set up Node.js
-              uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+              uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
               with:
                   node-version: "latest"
                   registry-url: "https://registry.npmjs.org"
@@ -123,7 +123,7 @@ jobs:
             - name: Configure rust toolchain
               run: rustup update stable && rustup default stable
             - name: Set up Node.js
-              uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
+              uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
               with:
                   node-version: "latest"
                   registry-url: "https://registry.npmjs.org"
