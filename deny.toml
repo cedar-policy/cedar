@@ -25,7 +25,7 @@ allow = [
     "UPL-1.0",
     "X11",
     "Zlib",
-    # TODO: These licenses are not in the CNCF allow-list, but were approved for use by AWS and are the licenses for current dependencies.
+    # TODO #2107: These licenses are not in the CNCF allow-list, but were approved for use by AWS and are the licenses for current dependencies.
     "Unicode-DFS-2016",
     "Unicode-3.0",
 ]
