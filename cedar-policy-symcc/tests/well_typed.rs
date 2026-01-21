@@ -164,6 +164,10 @@ fn policy_b(validator: &Validator) -> Policy {
     )
 }
 
+#[expect(
+    deprecated,
+    reason = "testing compilation of an ill-typed policy, which is an operation only supported in the unoptimized (deprecated) interface"
+)]
 async fn test_fail_on_ill_typed(
     p: &Policy,
     symenv: &SymEnv,
@@ -178,6 +182,10 @@ async fn test_fail_on_ill_typed(
     );
 }
 
+#[expect(
+    deprecated,
+    reason = "uses the unoptimized (deprecated) interface for clearer correspondence to the `test_fail_on_ill_typed()` helper which also does"
+)]
 async fn test_succeeds_on_well_typed(
     p: &Policy,
     env: &Environments<'_>,

@@ -20,9 +20,8 @@ use std::{str::FromStr, sync::Arc};
 
 use cedar_policy::{Authorizer, Schema, Validator};
 use cedar_policy_symcc::{
-    compile_always_allows, compile_always_denies, solver::LocalSolver, term::*, term_factory,
-    term_type::*, type_abbrevs::SIXTY_FOUR, CedarSymCompiler, SymEnv, WellFormedAsserts,
-    WellTypedPolicies,
+    always_denies_asserts, solver::LocalSolver, term::*, term_factory, term_type::*,
+    type_abbrevs::SIXTY_FOUR, CedarSymCompiler, CompiledPolicies,
 };
 
 use crate::utils::{assert_always_allows_ok, assert_always_denies_ok, Environments, Pathway};
@@ -61,8 +60,7 @@ async fn term_basic_arith_unsat() {
 
     assert_eq!(
         compiler
-            .check_unsat(&WellFormedAsserts::from_asserts_unchecked(
-                &envs.symenv,
+            .check_unsat_raw(
                 Arc::new(vec![term_factory::not(term_factory::eq(
                     TermVar {
                         id: "x".into(),
@@ -75,16 +73,15 @@ async fn term_basic_arith_unsat() {
                     }
                     .into(),
                 ))]),
-                std::iter::empty()
-            ),)
+                &envs.symenv,
+            )
             .await
             .unwrap(),
         true
     );
     assert_eq!(
         compiler
-            .check_unsat(&WellFormedAsserts::from_asserts_unchecked(
-                &envs.symenv,
+            .check_unsat_raw(
                 Arc::new(vec![term_factory::not(term_factory::eq(
                     TermVar {
                         id: "x".into(),
@@ -97,16 +94,15 @@ async fn term_basic_arith_unsat() {
                     }
                     .into(),
                 ))]),
-                std::iter::empty()
-            ),)
+                &envs.symenv,
+            )
             .await
             .unwrap(),
         false
     );
     assert_eq!(
         compiler
-            .check_unsat(&WellFormedAsserts::from_asserts_unchecked(
-                &envs.symenv,
+            .check_unsat_raw(
                 Arc::new(vec![term_factory::not(term_factory::implies(
                     term_factory::and(
                         term_factory::bvsle(
@@ -147,8 +143,8 @@ async fn term_basic_arith_unsat() {
                         .into(),
                     ),
                 ))]),
-                std::iter::empty(),
-            ),)
+                &envs.symenv,
+            )
             .await
             .unwrap(),
         true
@@ -165,8 +161,8 @@ async fn term_always_denies_cex() {
         r#"permit(principal, action, resource) when { context.x >= context.y };"#,
         &validator,
     );
-    let typed_pset = WellTypedPolicies::from_policies(&pset, &envs.req_env, envs.schema).unwrap();
-    let asserts = compile_always_denies(&typed_pset, &envs.symenv).unwrap();
+    let compiled_pset = CompiledPolicies::compile(&pset, &envs.req_env, envs.schema).unwrap();
+    let asserts = always_denies_asserts(&compiled_pset);
     let cex = compiler.check_sat(&asserts).await.unwrap().unwrap();
     let resp = Authorizer::new().is_authorized(&cex.request, &pset, &cex.entities);
     assert_eq!(resp.decision(), cedar_policy::Decision::Allow);
@@ -195,21 +191,27 @@ async fn term_cex_custom_symenv() {
     );
 
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let mut envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
 
     // Fix `context.user` to be the same as `principal`
-    envs.symenv.request.context = Term::Record(Arc::new(
-        std::iter::once(("user".into(), envs.symenv.request.principal.clone())).collect(),
+    let default_envs =
+        Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+    let mut symenv = default_envs.symenv.clone();
+    symenv.request.context = Term::Record(Arc::new(
+        std::iter::once(("user".into(), default_envs.symenv.request.principal.clone())).collect(),
     ));
+    let envs = Environments::new_with_custom_symenv(
+        validator.schema(),
+        "User",
+        "Action::\"view\"",
+        "Document",
+        symenv,
+    );
 
-    // As of this writing, the optimized pathway assumes you only use the
-    // `SymEnv` that is derived from `envs.req_env` in the ordinary way; so for
-    // these tests, we need to use the unoptimized pathway only
     let always_denies =
-        assert_always_denies_ok(&mut compiler, &pset, &envs, Pathway::UnoptOnly).await;
+        assert_always_denies_ok(&mut compiler, &pset, &envs, Pathway::default()).await;
     assert!(!always_denies);
     let always_allows =
-        assert_always_allows_ok(&mut compiler, &pset, &envs, Pathway::UnoptOnly).await;
+        assert_always_allows_ok(&mut compiler, &pset, &envs, Pathway::default()).await;
     assert!(always_allows);
 }
 
@@ -236,28 +238,36 @@ async fn term_cex_custom_symenv_set() {
     );
 
     let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
-    let mut envs = Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
 
     // Fix `context.users` to be `[principal]`
-    envs.symenv.request.context = Term::Record(Arc::new(
+    let default_envs =
+        Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
+    let mut symenv = default_envs.symenv.clone();
+    symenv.request.context = Term::Record(Arc::new(
         std::iter::once((
             "users".into(),
             Term::Set {
-                elts: Arc::new(std::iter::once(envs.symenv.request.principal.clone()).collect()),
-                elts_ty: envs.symenv.request.principal.type_of(),
+                elts: Arc::new(
+                    std::iter::once(default_envs.symenv.request.principal.clone()).collect(),
+                ),
+                elts_ty: default_envs.symenv.request.principal.type_of(),
             },
         ))
         .collect(),
     ));
+    let envs = Environments::new_with_custom_symenv(
+        validator.schema(),
+        "User",
+        "Action::\"view\"",
+        "Document",
+        symenv,
+    );
 
-    // As of this writing, the optimized pathway assumes you only use the
-    // `SymEnv` that is derived from `envs.req_env` in the ordinary way; so for
-    // these tests, we need to use the unoptimized pathway only
     let always_denies =
-        assert_always_denies_ok(&mut compiler, &pset, &envs, Pathway::UnoptOnly).await;
+        assert_always_denies_ok(&mut compiler, &pset, &envs, Pathway::default()).await;
     assert!(!always_denies);
     let always_allows =
-        assert_always_allows_ok(&mut compiler, &pset, &envs, Pathway::UnoptOnly).await;
+        assert_always_allows_ok(&mut compiler, &pset, &envs, Pathway::default()).await;
     assert!(always_allows);
 }
 
@@ -287,9 +297,7 @@ fn duration() {
     );
 
     for req_env in schema.request_envs() {
-        let ps = WellTypedPolicies::from_policies(&policies, &req_env, &schema).unwrap();
-        let sym_env = SymEnv::new(&schema, &req_env).unwrap();
-        let terms = compile_always_allows(&ps, &sym_env);
-        assert!(terms.is_ok(), "terms: {terms:?}");
+        // just test that compiling works
+        CompiledPolicies::compile(&policies, &req_env, &schema).unwrap();
     }
 }

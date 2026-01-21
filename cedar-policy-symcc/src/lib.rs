@@ -22,15 +22,17 @@ mod symcc;
 mod symccopt;
 
 use cedar_policy::{Effect, Policy, PolicySet, RequestEnv, Schema};
+use nonempty::{nonempty, NonEmpty};
 use std::fmt;
 
 use err::{Error, Result};
 use solver::Solver;
-use symcc::{
-    verify_always_allows, verify_always_denies, verify_always_matches, verify_disjoint,
-    verify_equivalent, verify_implies, verify_matches_disjoint, verify_matches_equivalent,
-    verify_matches_implies, verify_never_errors, verify_never_matches, well_typed_policies,
-    well_typed_policy, Environment, SymCompiler,
+use symcc::{well_typed_policies, well_typed_policy, Environment, SymCompiler};
+use symccopt::{
+    verify_always_allows_opt, verify_always_denies_opt, verify_always_matches_opt,
+    verify_disjoint_opt, verify_equivalent_opt, verify_implies_opt, verify_matches_disjoint_opt,
+    verify_matches_equivalent_opt, verify_matches_implies_opt, verify_never_errors_opt,
+    verify_never_matches_opt,
 };
 
 pub use symcc::bitvec;
@@ -45,6 +47,8 @@ pub use symcc::type_abbrevs;
 pub use symcc::verifier::Asserts;
 pub use symcc::Interpretation;
 pub use symcc::{Env, SmtLibScript, SymEnv};
+
+use crate::symccopt::CompiledPolicys;
 
 impl SymEnv {
     /// Constructs a new [`SymEnv`] from the given [`Schema`] and [`RequestEnv`].
@@ -152,6 +156,36 @@ impl CompiledPolicy {
         })
     }
 
+    /// Compile a policy for the given `RequestEnv`, using a custom `SymEnv`
+    /// rather than the one that would naturally be derived from this
+    /// `RequestEnv`.
+    ///
+    /// Most often, you want `compile()` instead.
+    /// `compile_with_custom_symenv()` is generally used to compile with
+    /// `SymEnv`s that are more concrete than the default `SymEnv`s, with
+    /// constraints/concretizations of the entity hierarchy or request
+    /// variables.
+    ///
+    /// Caller is responsible for some currently-undocumented invariants about
+    /// the relationship between the `RequestEnv` and the `SymEnv`.
+    /// This function has no analogue in the Lean (as of this writing).
+    /// Use at your own risk.
+    pub fn compile_with_custom_symenv(
+        policy: &Policy,
+        env: &RequestEnv,
+        schema: &Schema,
+        symenv: SymEnv,
+    ) -> Result<Self> {
+        Ok(Self {
+            policy: symccopt::CompiledPolicy::compile_with_custom_symenv(
+                policy.as_ref(),
+                env,
+                schema,
+                symenv,
+            )?,
+        })
+    }
+
     /// Get the `Effect` of this `CompiledPolicy`
     pub fn effect(&self) -> Effect {
         self.policy.effect()
@@ -194,6 +228,36 @@ impl CompiledPolicies {
         })
     }
 
+    /// Compile a set of policies for the given `RequestEnv`, using a custom
+    /// `SymEnv` rather than the one that would naturally be derived from this
+    /// `RequestEnv`.
+    ///
+    /// Most often, you want `compile()` instead.
+    /// `compile_with_custom_symenv()` is generally used to compile with
+    /// `SymEnv`s that are more concrete than the default `SymEnv`s, with
+    /// constraints/concretizations of the entity hierarchy or request
+    /// variables.
+    ///
+    /// Caller is responsible for some currently-undocumented invariants about
+    /// the relationship between the `RequestEnv` and the `SymEnv`.
+    /// This function has no analogue in the Lean (as of this writing).
+    /// Use at your own risk.
+    pub fn compile_with_custom_symenv(
+        pset: &PolicySet,
+        env: &RequestEnv,
+        schema: &Schema,
+        symenv: SymEnv,
+    ) -> Result<Self> {
+        Ok(Self {
+            policies: symccopt::CompiledPolicies::compile_with_custom_symenv(
+                pset.as_ref(),
+                env,
+                schema,
+                symenv,
+            )?,
+        })
+    }
+
     /// Get the (post-typecheck) `PolicySet` that this `CompiledPolicies` represents
     pub fn policies(&self) -> &cedar_policy_core::ast::PolicySet {
         &self.policies.policies
@@ -231,24 +295,37 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
     /// Returns `true` iff the asserts are unsatisfiable.
     ///
-    /// NOTE: This is an experimental feature that may break or change in the future.
+    /// NOTE: This API is an experimental feature that may break or change in the future.
     pub async fn check_unsat(&mut self, asserts: &WellFormedAsserts<'_>) -> Result<bool> {
         self.symcc
             .check_unsat(|_| Ok(asserts.asserts().clone()), asserts.symenv())
             .await
     }
 
+    /// Calls the underlying solver with given raw `Asserts` and corresponding `SymEnv`,
+    /// returning `true` iff the asserts are unsatisfiable.
+    ///
+    /// Caller is responsible for ensuring that the `Asserts` and `SymEnv` are
+    /// well-formed and valid with respect to each other.
+    ///
+    /// NOTE: This API is an experimental feature that may break or change in the future.
+    pub async fn check_unsat_raw(&mut self, asserts: Asserts, symenv: &SymEnv) -> Result<bool> {
+        self.symcc.check_unsat(|_| Ok(asserts), symenv).await
+    }
+
     /// Calls the underlying solver to check if the given `asserts` are unsatisfiable.
     /// Returns some counterexample to the given symbolic assertions iff they are satisfiable.
     ///
-    /// NOTE: This is an experimental feature that may break or change in the future.
+    /// NOTE: This API is an experimental feature that may break or change in the future.
     pub async fn check_sat(&mut self, asserts: &WellFormedAsserts<'_>) -> Result<Option<Env>> {
+        // since `asserts.policies()` doesn't itself produce a clone-able
+        // iterator, we create this iterator which is indeed (cheaply)
+        // clone-able
+        let policies: Vec<&CompiledPolicys<'_>> = asserts.policies().collect();
+        let policies_iter = policies.iter().copied();
+
         self.symcc
-            .sat_asserts(
-                asserts.asserts(),
-                asserts.symenv(),
-                asserts.footprint.iter(),
-            )
+            .sat_asserts_opt(asserts.asserts(), policies_iter)
             .await
     }
 
@@ -973,16 +1050,19 @@ impl<S: Solver> CedarSymCompiler<S> {
 /// Well-formed assertions generated by the symbolic compiler.
 #[derive(Clone, Debug)]
 pub struct WellFormedAsserts<'a> {
-    symenv: &'a SymEnv,
     asserts: Asserts,
-    /// All [`cedar_policy_core::ast::Expr`]s that have been compiled when generating the asserts.
-    footprint: Vec<cedar_policy_core::ast::Expr>,
+    /// All `CompiledPolicy`s or `CompiledPolicies` that were used to generate the asserts.
+    ///
+    /// INVARIANT: All of these are for the same `symenv`.
+    policies: NonEmpty<CompiledPolicys<'a>>,
 }
 
 impl<'a> WellFormedAsserts<'a> {
     /// Returns the symbolic environment these asserts were generated in.
     pub fn symenv(&self) -> &SymEnv {
-        self.symenv
+        // Relying on the INVARIANT that all the items in `self.policies` have
+        // the same `symenv`
+        self.policies.first().symenv()
     }
 
     /// Returns the underlying raw [`Asserts`].
@@ -990,245 +1070,328 @@ impl<'a> WellFormedAsserts<'a> {
         &self.asserts
     }
 
-    /// Creates a new [`WellFormedAsserts`] from the given [`Asserts`]
-    /// without checking if it is well-formed.
-    ///
-    /// NOTE: This is an experimental feature that allows manipulating/customizing
-    /// the underlying raw [`Asserts`] directly.
-    ///
-    /// The inputs should satisfy the following conditions for the query to be sound:
-    /// - `asserts` should be well-formed with respect to the `symenv`, in the
-    ///   sense of the definition in the Lean model:
-    ///   <https://github.com/cedar-policy/cedar-spec/blob/7650a698e2a796b8c5b4118ac93d9e2874bc0807/cedar-lean/Cedar/Thm/SymCC/Data/Basic.lean#L463>
-    ///   For example, if the variable `principal` is used in `asserts`,
-    ///   it should have the same type as `symenv.request.principal`.
-    /// - `policies` should include all policies ever compiled in the `asserts`,
-    ///   otherwise if a counterexample is generated from the query, it may not
-    ///   be well-formed (in particular, having an acyclic and transitive
-    ///   entity hierarchy).
-    pub fn from_asserts_unchecked<'b>(
-        symenv: &'a SymEnv,
-        asserts: Asserts,
-        policies: impl Iterator<Item = &'b cedar_policy_core::ast::Policy>,
-    ) -> Self {
-        WellFormedAsserts {
-            symenv,
-            asserts,
-            footprint: policies.map(|p| p.condition()).collect(),
-        }
+    /// Returns the `CompiledPolicys` that were used to generate the asserts
+    fn policies(&self) -> impl Iterator<Item = &CompiledPolicys<'a>> {
+        self.policies.iter()
     }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_never_errors`] to
-/// the unsatisfiability of the returned [`WellFormedAsserts`] without calling the solver.
+/// Generate the [`WellFormedAsserts`] for the `check_never_errors()`
+/// operation, without actually calling a solver.
 ///
-/// For any `compiler: CedarSymCompiler` and `symenv: &SymvEnv`, the result of
+/// That is, the result of
 /// ```no_compile
-/// compiler.check_unsat(compiler.compile_never_errors(policy, symenv))
+/// compiler.check_unsat(never_errors_asserts(policy))
 /// ```
-/// should be the same as `compiler.check_never_errors(policy, symenv)`.
+/// should be the same as `compiler.check_never_errors_opt(policy)`.
 ///
-/// Similarly, the result of
+/// Likewise, the result of
 /// ```no_compile
-/// compiler.check_sat(compiler.compile_never_errors(policy, symenv))
+/// compiler.check_sat(asserts_for_never_errors(policy))
 /// ```
-/// should be the same as `compiler.check_never_errors_with_counterexample(policy, symenv)`.
+/// should be the same as `compiler.check_never_errors_with_counterexample_opt(policy)`.
 ///
-/// NOTE: This is an experimental feature that may break or change in the future.
-pub fn compile_never_errors<'a>(
-    policy: &WellTypedPolicy,
-    symenv: &'a SymEnv,
-) -> Result<WellFormedAsserts<'a>> {
-    Ok(WellFormedAsserts::from_asserts_unchecked(
-        symenv,
-        verify_never_errors(policy.policy(), symenv)?,
-        std::iter::once(policy.policy()),
-    ))
+/// NOTE: This API is an experimental feature, and the API may change
+/// or break in the future.
+pub fn never_errors_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsserts<'a> {
+    WellFormedAsserts {
+        asserts: verify_never_errors_opt(&policy.policy),
+        policies: nonempty![CompiledPolicys::Policy(&policy.policy)],
+    }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_always_matches`]
-/// to the unsatisfiability of the returned [`WellFormedAsserts`] without
-/// calling the solver.
+/// Generate the [`WellFormedAsserts`] for the `check_always_matches()`
+/// operation, without actually calling a solver.
 ///
-/// Similar to [`compile_never_errors`].
+/// That is, the result of
+/// ```no_compile
+/// compiler.check_unsat(always_matches_asserts(policy))
+/// ```
+/// should be the same as `compiler.check_always_matches_opt(policy)`.
 ///
-/// NOTE: This is an experimental feature that may break or change in the future.
-pub fn compile_always_matches<'a>(
-    policy: &WellTypedPolicy,
-    symenv: &'a SymEnv,
-) -> Result<WellFormedAsserts<'a>> {
-    Ok(WellFormedAsserts::from_asserts_unchecked(
-        symenv,
-        verify_always_matches(policy.policy(), symenv)?,
-        std::iter::once(policy.policy()),
-    ))
+/// Likewise, the result of
+/// ```no_compile
+/// compiler.check_sat(always_matches_asserts(policy))
+/// ```
+/// should be the same as `compiler.check_always_matches_opt(policy)`.
+///
+/// NOTE: This API is an experimental feature, and the API may change
+/// or break in the future.
+pub fn always_matches_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsserts<'a> {
+    WellFormedAsserts {
+        asserts: verify_always_matches_opt(&policy.policy),
+        policies: nonempty![CompiledPolicys::Policy(&policy.policy)],
+    }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_never_matches`]
-/// to the unsatisfiability of the returned [`WellFormedAsserts`] without
-/// calling the solver.
+/// Generate the [`WellFormedAsserts`] for the `check_never_matches()`
+/// operation, without actually calling a solver.
 ///
-/// Similar to [`compile_never_errors`].
+/// That is, the result of
+/// ```no_compile
+/// compiler.check_unsat(never_matches_asserts(policy))
+/// ```
+/// should be the same as `compiler.check_never_matches_opt(policy)`.
 ///
-/// NOTE: This is an experimental feature that may break or change in the future.
-pub fn compile_never_matches<'a>(
-    policy: &WellTypedPolicy,
-    symenv: &'a SymEnv,
-) -> Result<WellFormedAsserts<'a>> {
-    Ok(WellFormedAsserts::from_asserts_unchecked(
-        symenv,
-        verify_never_matches(policy.policy(), symenv)?,
-        std::iter::once(policy.policy()),
-    ))
+/// Likewise, the result of
+/// ```no_compile
+/// compiler.check_sat(never_matches_asserts(policy))
+/// ```
+/// should be the same as `compiler.check_never_matches_opt(policy)`.
+///
+/// NOTE: This API is an experimental feature, and the API may change
+/// or break in the future.
+pub fn never_matches_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsserts<'a> {
+    WellFormedAsserts {
+        asserts: verify_never_matches_opt(&policy.policy),
+        policies: nonempty![CompiledPolicys::Policy(&policy.policy)],
+    }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_matches_equivalent`] to the unsatisfiability
-/// of the returned [`WellFormedAsserts`] without calling the solver.
+/// Generate the [`WellFormedAsserts`] for the `check_matches_equivalent()`
+/// operation, without actually calling a solver.
 ///
-/// Similar to [`compile_never_errors`].
+/// That is, the result of
+/// ```no_compile
+/// compiler.check_unsat(matches_equivalent_asserts(policy1, policy2))
+/// ```
+/// should be the same as `compiler.check_matches_equivalent(policy1, policy2)`.
 ///
-/// NOTE: This is an experimental feature that may break or change in the future.
-pub fn compile_matches_equivalent<'a>(
-    policy1: &WellTypedPolicy,
-    policy2: &WellTypedPolicy,
-    symenv: &'a SymEnv,
-) -> Result<WellFormedAsserts<'a>> {
-    Ok(WellFormedAsserts::from_asserts_unchecked(
-        symenv,
-        verify_matches_equivalent(policy1.policy(), policy2.policy(), symenv)?,
-        [policy1.policy(), policy2.policy()].into_iter(),
-    ))
+/// Likewise, the result of
+/// ```no_compile
+/// compiler.check_sat(matches_equivalent_asserts(policy1, policy2))
+/// ```
+/// should be the same as `compiler.check_matches_equivalent_opt(policy1, policy2)`.
+///
+/// NOTE: This API is an experimental feature, and the API may change
+/// or break in the future.
+pub fn matches_equivalent_asserts<'a>(
+    policy1: &'a CompiledPolicy,
+    policy2: &'a CompiledPolicy,
+) -> WellFormedAsserts<'a> {
+    WellFormedAsserts {
+        asserts: verify_matches_equivalent_opt(&policy1.policy, &policy2.policy),
+        policies: nonempty![
+            CompiledPolicys::Policy(&policy1.policy),
+            CompiledPolicys::Policy(&policy2.policy)
+        ],
+    }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_matches_implies`] to the unsatisfiability
-/// of the returned [`WellFormedAsserts`] without calling the solver.
+/// Generate the [`WellFormedAsserts`] for the `check_matches_implies()`
+/// operation, without actually calling a solver.
 ///
-/// Similar to [`compile_never_errors`].
+/// That is, the result of
+/// ```no_compile
+/// compiler.check_unsat(matches_implies_asserts(policy1, policy2))
+/// ```
+/// should be the same as `compiler.check_matches_implies(policy1, policy2)`.
 ///
-/// NOTE: This is an experimental feature that may break or change in the future.
-pub fn compile_matches_implies<'a>(
-    policy1: &WellTypedPolicy,
-    policy2: &WellTypedPolicy,
-    symenv: &'a SymEnv,
-) -> Result<WellFormedAsserts<'a>> {
-    Ok(WellFormedAsserts::from_asserts_unchecked(
-        symenv,
-        verify_matches_implies(policy1.policy(), policy2.policy(), symenv)?,
-        [policy1.policy(), policy2.policy()].into_iter(),
-    ))
+/// Likewise, the result of
+/// ```no_compile
+/// compiler.check_sat(matches_implies_asserts(policy1, policy2))
+/// ```
+/// should be the same as `compiler.check_matches_implies_opt(policy1, policy2)`.
+///
+/// NOTE: This API is an experimental feature, and the API may change
+/// or break in the future.
+pub fn matches_implies_asserts<'a>(
+    policy1: &'a CompiledPolicy,
+    policy2: &'a CompiledPolicy,
+) -> WellFormedAsserts<'a> {
+    WellFormedAsserts {
+        asserts: verify_matches_implies_opt(&policy1.policy, &policy2.policy),
+        #[expect(
+            clippy::expect_used,
+            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
+        )]
+        policies: nonempty![
+            CompiledPolicys::Policy(&policy1.policy),
+            CompiledPolicys::Policy(&policy2.policy)
+        ],
+    }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_matches_disjoint`] to the unsatisfiability
-/// of the returned [`WellFormedAsserts`] without calling the solver.
+/// Generate the [`WellFormedAsserts`] for the `check_matches_disjoint()`
+/// operation, without actually calling a solver.
 ///
-/// Similar to [`compile_never_errors`].
+/// That is, the result of
+/// ```no_compile
+/// compiler.check_unsat(matches_disjoint_asserts(policy1, policy2))
+/// ```
+/// should be the same as `compiler.check_matches_disjoint(policy1, policy2)`.
 ///
-/// NOTE: This is an experimental feature that may break or change in the future.
-pub fn compile_matches_disjoint<'a>(
-    policy1: &WellTypedPolicy,
-    policy2: &WellTypedPolicy,
-    symenv: &'a SymEnv,
-) -> Result<WellFormedAsserts<'a>> {
-    Ok(WellFormedAsserts::from_asserts_unchecked(
-        symenv,
-        verify_matches_disjoint(policy1.policy(), policy2.policy(), symenv)?,
-        [policy1.policy(), policy2.policy()].into_iter(),
-    ))
+/// Likewise, the result of
+/// ```no_compile
+/// compiler.check_sat(matches_disjoint_asserts(policy1, policy2))
+/// ```
+/// should be the same as `compiler.check_matches_disjoint_opt(policy1, policy2)`.
+///
+/// NOTE: This API is an experimental feature, and the API may change
+/// or break in the future.
+pub fn matches_disjoint_asserts<'a>(
+    policy1: &'a CompiledPolicy,
+    policy2: &'a CompiledPolicy,
+) -> WellFormedAsserts<'a> {
+    WellFormedAsserts {
+        asserts: verify_matches_disjoint_opt(&policy1.policy, &policy2.policy),
+        #[expect(
+            clippy::expect_used,
+            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
+        )]
+        policies: nonempty![
+            CompiledPolicys::Policy(&policy1.policy),
+            CompiledPolicys::Policy(&policy2.policy)
+        ],
+    }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_implies`] to the unsatisfiability
-/// of the returned [`WellFormedAsserts`] without calling the solver.
+/// Generate the [`WellFormedAsserts`] for the `check_always_allows()`
+/// operation, without actually calling a solver.
 ///
-/// Similar to [`compile_never_errors`].
+/// That is, the result of
+/// ```no_compile
+/// compiler.check_unsat(always_allows_asserts(policies))
+/// ```
+/// should be the same as `compiler.check_always_allows(policies)`.
 ///
-/// NOTE: This is an experimental feature that may break or change in the future.
-pub fn compile_implies<'a>(
-    pset1: &WellTypedPolicies,
-    pset2: &WellTypedPolicies,
-    symenv: &'a SymEnv,
-) -> Result<WellFormedAsserts<'a>> {
-    Ok(WellFormedAsserts::from_asserts_unchecked(
-        symenv,
-        verify_implies(pset1.policy_set(), pset2.policy_set(), symenv)?,
-        pset1
-            .policy_set()
-            .policies()
-            .chain(pset2.policy_set().policies()),
-    ))
+/// Likewise, the result of
+/// ```no_compile
+/// compiler.check_sat(always_allows_asserts(policies))
+/// ```
+/// should be the same as `compiler.check_always_allows_opt(policies)`.
+///
+/// NOTE: This API is an experimental feature, and the API may change
+/// or break in the future.
+pub fn always_allows_asserts<'a>(policies: &'a CompiledPolicies) -> WellFormedAsserts<'a> {
+    WellFormedAsserts {
+        asserts: verify_always_allows_opt(&policies.policies),
+        policies: nonempty![CompiledPolicys::Policies(&policies.policies)],
+    }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_always_allows`] to the unsatisfiability
-/// of the returned [`WellFormedAsserts`] without calling the solver.
+/// Generate the [`WellFormedAsserts`] for the `check_always_denies()`
+/// operation, without actually calling a solver.
 ///
-/// Similar to [`compile_never_errors`].
+/// That is, the result of
+/// ```no_compile
+/// compiler.check_unsat(always_denies_asserts(policies))
+/// ```
+/// should be the same as `compiler.check_always_denies(policies)`.
 ///
-/// NOTE: This is an experimental feature that may break or change in the future.
-pub fn compile_always_allows<'a>(
-    pset: &WellTypedPolicies,
-    symenv: &'a SymEnv,
-) -> Result<WellFormedAsserts<'a>> {
-    Ok(WellFormedAsserts::from_asserts_unchecked(
-        symenv,
-        verify_always_allows(pset.policy_set(), symenv)?,
-        pset.policy_set().policies(),
-    ))
+/// Likewise, the result of
+/// ```no_compile
+/// compiler.check_sat(always_denies_asserts(policies))
+/// ```
+/// should be the same as `compiler.check_always_denies_opt(policies)`.
+///
+/// NOTE: This API is an experimental feature, and the API may change
+/// or break in the future.
+pub fn always_denies_asserts<'a>(policies: &'a CompiledPolicies) -> WellFormedAsserts<'a> {
+    WellFormedAsserts {
+        asserts: verify_always_denies_opt(&policies.policies),
+        policies: nonempty![CompiledPolicys::Policies(&policies.policies)],
+    }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_always_denies`] to the unsatisfiability
-/// of the returned [`WellFormedAsserts`] without calling the solver.
+/// Generate the [`WellFormedAsserts`] for the `check_implies()`
+/// operation, without actually calling a solver.
 ///
-/// Similar to [`compile_never_errors`].
+/// That is, the result of
+/// ```no_compile
+/// compiler.check_unsat(implies_asserts(policies1, policies2))
+/// ```
+/// should be the same as `compiler.check_implies(policies1, policies2)`.
 ///
-/// NOTE: This is an experimental feature that may break or change in the future.
-pub fn compile_always_denies<'a>(
-    pset: &WellTypedPolicies,
-    symenv: &'a SymEnv,
-) -> Result<WellFormedAsserts<'a>> {
-    Ok(WellFormedAsserts::from_asserts_unchecked(
-        symenv,
-        verify_always_denies(pset.policy_set(), symenv)?,
-        pset.policy_set().policies(),
-    ))
+/// Likewise, the result of
+/// ```no_compile
+/// compiler.check_sat(implies_asserts(policies1, policies2))
+/// ```
+/// should be the same as `compiler.check_implies_opt(policies1, policies2)`.
+///
+/// NOTE: This API is an experimental feature, and the API may change
+/// or break in the future.
+pub fn implies_asserts<'a>(
+    policies1: &'a CompiledPolicies,
+    policies2: &'a CompiledPolicies,
+) -> WellFormedAsserts<'a> {
+    WellFormedAsserts {
+        asserts: verify_implies_opt(&policies1.policies, &policies2.policies),
+        #[expect(
+            clippy::expect_used,
+            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
+        )]
+        policies: nonempty![
+            CompiledPolicys::Policies(&policies1.policies),
+            CompiledPolicys::Policies(&policies2.policies)
+        ],
+    }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_equivalent`] to the unsatisfiability
-/// of the returned [`WellFormedAsserts`] without calling the solver.
+/// Generate the [`WellFormedAsserts`] for the `check_equivalent()`
+/// operation, without actually calling a solver.
 ///
-/// Similar to [`compile_never_errors`].
+/// That is, the result of
+/// ```no_compile
+/// compiler.check_unsat(equivalent_asserts(policies1, policies2))
+/// ```
+/// should be the same as `compiler.check_equivalent(policies1, policies2)`.
 ///
-/// NOTE: This is an experimental feature that may break or change in the future.
-pub fn compile_equivalent<'a>(
-    pset1: &WellTypedPolicies,
-    pset2: &WellTypedPolicies,
-    symenv: &'a SymEnv,
-) -> Result<WellFormedAsserts<'a>> {
-    Ok(WellFormedAsserts::from_asserts_unchecked(
-        symenv,
-        verify_equivalent(pset1.policy_set(), pset2.policy_set(), symenv)?,
-        pset1
-            .policy_set()
-            .policies()
-            .chain(pset2.policy_set().policies()),
-    ))
+/// Likewise, the result of
+/// ```no_compile
+/// compiler.check_sat(equivalent_asserts(policies1, policies2))
+/// ```
+/// should be the same as `compiler.check_equivalent_opt(policies1, policies2)`.
+///
+/// NOTE: This API is an experimental feature, and the API may change
+/// or break in the future.
+pub fn equivalent_asserts<'a>(
+    policies1: &'a CompiledPolicies,
+    policies2: &'a CompiledPolicies,
+) -> WellFormedAsserts<'a> {
+    WellFormedAsserts {
+        asserts: verify_equivalent_opt(&policies1.policies, &policies2.policies),
+        #[expect(
+            clippy::expect_used,
+            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
+        )]
+        policies: nonempty![
+            CompiledPolicys::Policies(&policies1.policies),
+            CompiledPolicys::Policies(&policies2.policies)
+        ],
+    }
 }
 
-/// Compiles the verification task of [`CedarSymCompiler::check_disjoint`] to the unsatisfiability
-/// of the returned [`WellFormedAsserts`] without calling the solver.
+/// Generate the [`WellFormedAsserts`] for the `check_disjoint()`
+/// operation, without actually calling a solver.
 ///
-/// Similar to [`compile_never_errors`].
+/// That is, the result of
+/// ```no_compile
+/// compiler.check_unsat(disjoint_asserts(policies1, policies2))
+/// ```
+/// should be the same as `compiler.check_disjoint(policies1, policies2)`.
 ///
-/// NOTE: This is an experimental feature that may break or change in the future.
-pub fn compile_disjoint<'a>(
-    pset1: &WellTypedPolicies,
-    pset2: &WellTypedPolicies,
-    symenv: &'a SymEnv,
-) -> Result<WellFormedAsserts<'a>> {
-    Ok(WellFormedAsserts::from_asserts_unchecked(
-        symenv,
-        verify_disjoint(pset1.policy_set(), pset2.policy_set(), symenv)?,
-        pset1
-            .policy_set()
-            .policies()
-            .chain(pset2.policy_set().policies()),
-    ))
+/// Likewise, the result of
+/// ```no_compile
+/// compiler.check_sat(disjoint_asserts(policies1, policies2))
+/// ```
+/// should be the same as `compiler.check_disjoint_opt(policies1, policies2)`.
+///
+/// NOTE: This API is an experimental feature, and the API may change
+/// or break in the future.
+pub fn disjoint_asserts<'a>(
+    policies1: &'a CompiledPolicies,
+    policies2: &'a CompiledPolicies,
+) -> WellFormedAsserts<'a> {
+    WellFormedAsserts {
+        asserts: verify_disjoint_opt(&policies1.policies, &policies2.policies),
+        #[expect(
+            clippy::expect_used,
+            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
+        )]
+        policies: nonempty![
+            CompiledPolicys::Policies(&policies1.policies),
+            CompiledPolicys::Policies(&policies2.policies)
+        ],
+    }
 }

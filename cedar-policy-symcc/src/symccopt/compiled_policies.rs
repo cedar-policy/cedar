@@ -35,15 +35,15 @@ use crate::Result;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompiledPolicy {
     /// typechecked policy compiled to a `Term` of type Option<bool>
-    pub(super) term: Term,
+    pub(crate) term: Term,
     /// `SymEnv` representing the environment this policy was compiled for
     pub(crate) symenv: symcc::SymEnv,
     /// typechecked policy
     pub(crate) policy: Policy,
     /// footprint of the policy
-    pub(super) footprint: BTreeSet<Term>,
+    pub(crate) footprint: BTreeSet<Term>,
     /// acyclicity constraints for this policy
-    pub(super) acyclicity: BTreeSet<Term>,
+    pub(crate) acyclicity: BTreeSet<Term>,
 }
 
 impl CompiledPolicy {
@@ -58,18 +58,42 @@ impl CompiledPolicy {
     /// not) call `well_typed_policy()` or `WellTypedPolicy::from_policy()`
     /// prior to calling this.
     pub fn compile(policy: &Policy, env: &RequestEnv, schema: &Schema) -> Result<Self> {
+        // In Lean, `compile_with_custom_symenv()` does not exist, and is
+        // instead inlined here, as of this writing.
+        Self::compile_with_custom_symenv(policy, env, schema, SymEnv::new(schema, env)?)
+    }
+
+    /// Compile a policy for the given `RequestEnv`, using a custom `SymEnv`
+    /// rather than the one that would naturally be derived from this
+    /// `RequestEnv`.
+    ///
+    /// Most often, you want `compile()` instead.
+    /// `compile_with_custom_symenv()` is generally used to compile with
+    /// `SymEnv`s that are more concrete than the default `SymEnv`s, with
+    /// constraints/concretizations of the entity hierarchy or request
+    /// variables.
+    ///
+    /// Caller is responsible for some currently-undocumented invariants about
+    /// the relationship between the `RequestEnv` and the `SymEnv`.
+    /// This function has no analogue in the Lean (as of this writing).
+    /// Use at your own risk.
+    pub fn compile_with_custom_symenv(
+        policy: &Policy,
+        env: &RequestEnv,
+        schema: &Schema,
+        symenv: SymEnv,
+    ) -> Result<Self> {
         let policy = symcc::well_typed_policy(policy, env, schema)?;
-        let env = symcc::SymEnv::new(schema, env)?;
         let CompileResult { term, footprint } =
-            symccopt::compiler::compile(&policy.condition(), &env)?;
+            symccopt::compiler::compile(&policy.condition(), &symenv)?;
         let footprint: BTreeSet<Term> = footprint.collect(); // important step that removes duplicates, prior to passing to `acyclicity`
         let acyclicity = footprint
             .iter()
-            .map(|term| symcc::enforcer::acyclicity(term, &env.entities))
+            .map(|term| symcc::enforcer::acyclicity(term, &symenv.entities))
             .collect();
         Ok(Self {
             term,
-            symenv: env,
+            symenv,
             policy,
             footprint,
             acyclicity,
@@ -118,15 +142,15 @@ impl CompiledPolicy {
 pub struct CompiledPolicies {
     /// typechecked policies compiled to a single `Term` of type bool
     /// representing the authorization decision
-    pub(super) term: Term,
+    pub(crate) term: Term,
     /// `SymEnv` representing the environment these policies were compiled for
     pub(crate) symenv: symcc::SymEnv,
     /// typechecked policies
     pub(crate) policies: PolicySet,
     /// footprint of the policies
-    pub(super) footprint: BTreeSet<Term>,
+    pub(crate) footprint: BTreeSet<Term>,
     /// acyclicity constraints for these policies
-    pub(super) acyclicity: BTreeSet<Term>,
+    pub(crate) acyclicity: BTreeSet<Term>,
 }
 
 impl CompiledPolicies {
@@ -141,18 +165,42 @@ impl CompiledPolicies {
     /// not) call `well_typed_policies()` or `WellTypedPolicies::from_policies()`
     /// prior to calling this.
     pub fn compile(pset: &PolicySet, env: &RequestEnv, schema: &Schema) -> Result<Self> {
+        // In Lean, `compile_with_custom_symenv()` does not exist, and is
+        // instead inlined here, as of this writing.
+        Self::compile_with_custom_symenv(pset, env, schema, SymEnv::new(schema, env)?)
+    }
+
+    /// Compile a set of policies for the given `RequestEnv`, using a custom
+    /// `SymEnv` rather than the one that would naturally be derived from this
+    /// `RequestEnv`.
+    ///
+    /// Most often, you want `compile()` instead.
+    /// `compile_with_custom_symenv()` is generally used to compile with
+    /// `SymEnv`s that are more concrete than the default `SymEnv`s, with
+    /// constraints/concretizations of the entity hierarchy or request
+    /// variables.
+    ///
+    /// Caller is responsible for some currently-undocumented invariants about
+    /// the relationship between the `RequestEnv` and the `SymEnv`.
+    /// This function has no analogue in the Lean (as of this writing).
+    /// Use at your own risk.
+    pub fn compile_with_custom_symenv(
+        pset: &PolicySet,
+        env: &RequestEnv,
+        schema: &Schema,
+        symenv: SymEnv,
+    ) -> Result<Self> {
         let policies = symcc::well_typed_policies(pset, env, schema)?;
-        let env = symcc::SymEnv::new(schema, env)?;
         let CompileResult { term, footprint } =
-            symccopt::authorizer::is_authorized(&policies, &env)?;
+            symccopt::authorizer::is_authorized(&policies, &symenv)?;
         let footprint: BTreeSet<Term> = footprint.collect(); // important step that removes duplicates, prior to passing to `acyclicity`
         let acyclicity = footprint
             .iter()
-            .map(|term| symcc::enforcer::acyclicity(term, &env.entities))
+            .map(|term| symcc::enforcer::acyclicity(term, &symenv.entities))
             .collect();
         Ok(Self {
             term,
-            symenv: env,
+            symenv,
             policies,
             footprint,
             acyclicity,
