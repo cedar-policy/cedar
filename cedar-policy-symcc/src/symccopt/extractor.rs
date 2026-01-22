@@ -24,22 +24,22 @@
 
 use cedar_policy_core::ast::Policy;
 
-use super::CompiledPolicys;
+use super::CompiledPolicies;
 use crate::{err::ConcretizeError, Env, Interpretation};
 
 /// Optimized version of `SymEnv::extract()`.
 ///
-/// Caller guarantees that all of the `CompiledPolicys` were compiled for the same `symenv`.
+/// Caller guarantees that all of the `CompiledPolicies` were compiled for the same `symenv`.
 pub fn extract_opt<'a>(
-    cps: impl IntoIterator<Item = &'a CompiledPolicys<'a>> + Clone,
+    cpss: impl IntoIterator<Item = &'a CompiledPolicies<'a>> + Clone,
     interp: &Interpretation<'_>,
 ) -> Result<Env, ConcretizeError> {
-    match cps.clone().into_iter().next() {
+    match cpss.clone().into_iter().next() {
         None => Err(ConcretizeError::NoPolicies),
-        Some(cp_s) => {
-            let ps = cps.clone().into_iter().flat_map(|cp_s| cp_s.all_policies());
-            let footprint = cps.into_iter().flat_map(|cp_s| cp_s.footprint().iter());
-            cp_s.symenv()
+        Some(cps) => {
+            let ps = cpss.clone().into_iter().flat_map(|cps| cps.all_policies());
+            let footprint = cpss.into_iter().flat_map(|cps| cps.footprint().iter());
+            cps.symenv()
                 .interpret(&interp.repair_as_counterexample(footprint))
                 .concretize(ps.map(Policy::condition))
         }

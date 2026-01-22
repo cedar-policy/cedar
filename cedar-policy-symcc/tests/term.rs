@@ -21,7 +21,7 @@ use std::{str::FromStr, sync::Arc};
 use cedar_policy::{Authorizer, Schema, Validator};
 use cedar_policy_symcc::{
     always_denies_asserts, solver::LocalSolver, term::*, term_factory, term_type::*,
-    type_abbrevs::SIXTY_FOUR, CedarSymCompiler, CompiledPolicies,
+    type_abbrevs::SIXTY_FOUR, CedarSymCompiler, CompiledPolicySet,
 };
 
 use crate::utils::{assert_always_allows_ok, assert_always_denies_ok, Environments, Pathway};
@@ -161,7 +161,7 @@ async fn term_always_denies_cex() {
         r#"permit(principal, action, resource) when { context.x >= context.y };"#,
         &validator,
     );
-    let compiled_pset = CompiledPolicies::compile(&pset, &envs.req_env, envs.schema).unwrap();
+    let compiled_pset = CompiledPolicySet::compile(&pset, &envs.req_env, envs.schema).unwrap();
     let asserts = always_denies_asserts(&compiled_pset);
     let cex = compiler.check_sat(&asserts).await.unwrap().unwrap();
     let resp = Authorizer::new().is_authorized(&cex.request, &pset, &cex.entities);
@@ -298,6 +298,6 @@ fn duration() {
 
     for req_env in schema.request_envs() {
         // just test that compiling works
-        CompiledPolicies::compile(&policies, &req_env, &schema).unwrap();
+        CompiledPolicySet::compile(&policies, &req_env, &schema).unwrap();
     }
 }

@@ -21,7 +21,7 @@ use std::collections::BTreeSet;
 
 use crate::symcc::{self, term::Term};
 
-use super::{CompiledPolicies, CompiledPolicy};
+use super::{CompiledPolicy, CompiledPolicySet};
 
 pub fn enforce_compiled_policy(cp: &CompiledPolicy) -> BTreeSet<Term> {
     let tr = cp.footprint.iter().flat_map(|term1| {
@@ -33,13 +33,14 @@ pub fn enforce_compiled_policy(cp: &CompiledPolicy) -> BTreeSet<Term> {
 }
 
 #[expect(dead_code, reason = "exists in the Lean")]
-pub fn enforce_compiled_policies(cps: &CompiledPolicies) -> BTreeSet<Term> {
-    let tr = cps.footprint.iter().flat_map(|term1| {
-        cps.footprint
+pub fn enforce_compiled_policyset(cpset: &CompiledPolicySet) -> BTreeSet<Term> {
+    let tr = cpset.footprint.iter().flat_map(|term1| {
+        cpset
+            .footprint
             .iter()
-            .map(|term2| symcc::enforcer::transitivity(term1, term2, &cps.symenv.entities))
+            .map(|term2| symcc::enforcer::transitivity(term1, term2, &cpset.symenv.entities))
     });
-    cps.acyclicity.iter().cloned().chain(tr).collect()
+    cpset.acyclicity.iter().cloned().chain(tr).collect()
 }
 
 pub fn enforce_pair_compiled_policy(cp1: &CompiledPolicy, cp2: &CompiledPolicy) -> BTreeSet<Term> {
@@ -58,21 +59,22 @@ pub fn enforce_pair_compiled_policy(cp1: &CompiledPolicy, cp2: &CompiledPolicy) 
         .collect()
 }
 
-pub fn enforce_pair_compiled_policies(
-    cps1: &CompiledPolicies,
-    cps2: &CompiledPolicies,
+pub fn enforce_pair_compiled_policyset(
+    cpset1: &CompiledPolicySet,
+    cpset2: &CompiledPolicySet,
 ) -> BTreeSet<Term> {
-    assert_eq!(&cps1.symenv, &cps2.symenv);
-    let footprint = cps1.footprint.iter().chain(cps2.footprint.iter()); // since `footprint` is just an iterator, it is cheap to clone
+    assert_eq!(&cpset1.symenv, &cpset2.symenv);
+    let footprint = cpset1.footprint.iter().chain(cpset2.footprint.iter()); // since `footprint` is just an iterator, it is cheap to clone
     let tr = footprint.clone().flat_map(|term1| {
         footprint
             .clone()
-            .map(|term2| symcc::enforcer::transitivity(term1, term2, &cps1.symenv.entities))
+            .map(|term2| symcc::enforcer::transitivity(term1, term2, &cpset1.symenv.entities))
     });
-    cps1.acyclicity
+    cpset1
+        .acyclicity
         .iter()
         .cloned()
-        .chain(cps2.acyclicity.iter().cloned())
+        .chain(cpset2.acyclicity.iter().cloned())
         .chain(tr)
         .collect()
 }

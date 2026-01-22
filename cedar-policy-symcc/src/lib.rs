@@ -32,7 +32,7 @@ use symccopt::{
     verify_always_allows_opt, verify_always_denies_opt, verify_always_matches_opt,
     verify_disjoint_opt, verify_equivalent_opt, verify_implies_opt, verify_matches_disjoint_opt,
     verify_matches_equivalent_opt, verify_matches_implies_opt, verify_never_errors_opt,
-    verify_never_matches_opt,
+    verify_never_matches_opt, CompiledPolicies,
 };
 
 pub use symcc::bitvec;
@@ -47,8 +47,6 @@ pub use symcc::type_abbrevs;
 pub use symcc::verifier::Asserts;
 pub use symcc::Interpretation;
 pub use symcc::{Env, SmtLibScript, SymEnv};
-
-use crate::symccopt::CompiledPolicys;
 
 impl SymEnv {
     /// Constructs a new [`SymEnv`] from the given [`Schema`] and [`RequestEnv`].
@@ -196,14 +194,14 @@ impl CompiledPolicy {
         &self.policy.policy
     }
 
-    /// Convert a `CompiledPolicy` to a `CompiledPolicies` representing a
+    /// Convert a `CompiledPolicy` to a `CompiledPolicySet` representing a
     /// singleton policyset with just that policy.
     ///
     /// This function is intended to be much more efficient than re-compiling
-    /// with `CompiledPolicies::compile()`.
-    pub fn into_compiled_policies(self) -> CompiledPolicies {
-        CompiledPolicies {
-            policies: self.policy.into_compiled_policies(),
+    /// with `CompiledPolicySet::compile()`.
+    pub fn into_compiled_policyset(self) -> CompiledPolicySet {
+        CompiledPolicySet {
+            policies: self.policy.into_compiled_policyset(),
         }
     }
 }
@@ -212,11 +210,11 @@ impl CompiledPolicy {
 /// functions on [`CedarSymCompiler`] for efficient solver queries (that don't
 /// have to repeat symbolic compilation).
 #[derive(Debug, Clone)]
-pub struct CompiledPolicies {
-    policies: symccopt::CompiledPolicies,
+pub struct CompiledPolicySet {
+    policies: symccopt::CompiledPolicySet,
 }
 
-impl CompiledPolicies {
+impl CompiledPolicySet {
     /// Compile a policyset for the given `RequestEnv`.
     ///
     /// This does all the validating and well-typing that you need; you need not
@@ -224,7 +222,7 @@ impl CompiledPolicies {
     /// calling this.
     pub fn compile(pset: &PolicySet, env: &RequestEnv, schema: &Schema) -> Result<Self> {
         Ok(Self {
-            policies: symccopt::CompiledPolicies::compile(pset.as_ref(), env, schema)?,
+            policies: symccopt::CompiledPolicySet::compile(pset.as_ref(), env, schema)?,
         })
     }
 
@@ -249,7 +247,7 @@ impl CompiledPolicies {
         symenv: SymEnv,
     ) -> Result<Self> {
         Ok(Self {
-            policies: symccopt::CompiledPolicies::compile_with_custom_symenv(
+            policies: symccopt::CompiledPolicySet::compile_with_custom_symenv(
                 pset.as_ref(),
                 env,
                 schema,
@@ -258,7 +256,7 @@ impl CompiledPolicies {
         })
     }
 
-    /// Get the (post-typecheck) `PolicySet` that this `CompiledPolicies` represents
+    /// Get the (post-typecheck) `PolicySet` that this `CompiledPolicySet` represents
     pub fn policies(&self) -> &cedar_policy_core::ast::PolicySet {
         &self.policies.policies
     }
@@ -321,7 +319,7 @@ impl<S: Solver> CedarSymCompiler<S> {
         // since `asserts.policies()` doesn't itself produce a clone-able
         // iterator, we create this iterator which is indeed (cheaply)
         // clone-able
-        let policies: Vec<&CompiledPolicys<'_>> = asserts.policies().collect();
+        let policies: Vec<&CompiledPolicies<'_>> = asserts.policies().collect();
         let policies_iter = policies.iter().copied();
 
         self.symcc
@@ -754,7 +752,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// permissive than, or equivalent to, `pset1`.
     ///
     /// Consider using the optimized version `check_implies_opt()` instead,
-    /// which will allow you to reuse a `CompiledPolicies` across many queries.
+    /// which will allow you to reuse a `CompiledPolicySet` across many queries.
     #[deprecated(since = "0.3.0", note = "use `check_implies_opt()` instead")]
     pub async fn check_implies(
         &mut self,
@@ -775,8 +773,8 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// than, or equivalent to, `pset1`.
     pub async fn check_implies_opt(
         &mut self,
-        pset1: &CompiledPolicies,
-        pset2: &CompiledPolicies,
+        pset1: &CompiledPolicySet,
+        pset2: &CompiledPolicySet,
     ) -> Result<bool> {
         self.symcc
             .check_implies_opt(&pset1.policies, &pset2.policies)
@@ -787,7 +785,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// that is allowed by `pset1` but not by `pset2` if it exists.
     ///
     /// Consider using the optimized version `check_implies_with_counterexample_opt()`
-    /// instead, which will allow you to reuse a `CompiledPolicies` across many
+    /// instead, which will allow you to reuse a `CompiledPolicySet` across many
     /// queries.
     #[deprecated(
         since = "0.3.0",
@@ -808,8 +806,8 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// that is allowed by `pset1` but not by `pset2` if it exists.
     pub async fn check_implies_with_counterexample_opt(
         &mut self,
-        pset1: &CompiledPolicies,
-        pset2: &CompiledPolicies,
+        pset1: &CompiledPolicySet,
+        pset2: &CompiledPolicySet,
     ) -> Result<Option<Env>> {
         self.symcc
             .check_implies_with_counterexample_opt(&pset1.policies, &pset2.policies)
@@ -819,7 +817,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Returns true iff `pset` allows all well-formed inputs in the `symenv`.
     ///
     /// Consider using the optimized version `check_always_allows_opt()` instead,
-    /// which will allow you to reuse a `CompiledPolicies` across many queries.
+    /// which will allow you to reuse a `CompiledPolicySet` across many queries.
     #[deprecated(since = "0.3.0", note = "use `check_always_allows_opt()` instead")]
     pub async fn check_always_allows(
         &mut self,
@@ -831,7 +829,7 @@ impl<S: Solver> CedarSymCompiler<S> {
 
     /// Returns true iff `pset` allows all well-formed inputs in the
     /// `RequestEnv` which it was compiled for.
-    pub async fn check_always_allows_opt(&mut self, pset: &CompiledPolicies) -> Result<bool> {
+    pub async fn check_always_allows_opt(&mut self, pset: &CompiledPolicySet) -> Result<bool> {
         self.symcc.check_always_allows_opt(&pset.policies).await
     }
 
@@ -839,7 +837,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// that is denied by `pset` if it exists.
     ///
     /// Consider using the optimized version `check_always_allows_with_counterexample_opt()`
-    /// instead, which will allow you to reuse a `CompiledPolicies` across many
+    /// instead, which will allow you to reuse a `CompiledPolicySet` across many
     /// queries.
     #[deprecated(
         since = "0.3.0",
@@ -859,7 +857,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// that is denied by `pset` if it exists.
     pub async fn check_always_allows_with_counterexample_opt(
         &mut self,
-        pset: &CompiledPolicies,
+        pset: &CompiledPolicySet,
     ) -> Result<Option<Env>> {
         self.symcc
             .check_always_allows_with_counterexample_opt(&pset.policies)
@@ -869,7 +867,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// Returns true iff `pset` denies all well-formed inputs in the `symenv`.
     ///
     /// Consider using the optimized version `check_always_denies_opt()` instead,
-    /// which will allow you to reuse a `CompiledPolicies` across many queries.
+    /// which will allow you to reuse a `CompiledPolicySet` across many queries.
     #[deprecated(since = "0.3.0", note = "use `check_always_denies_opt()` instead")]
     pub async fn check_always_denies(
         &mut self,
@@ -881,7 +879,7 @@ impl<S: Solver> CedarSymCompiler<S> {
 
     /// Returns true iff `pset` denies all well-formed inputs in the
     /// `RequestEnv` which it was compiled for.
-    pub async fn check_always_denies_opt(&mut self, pset: &CompiledPolicies) -> Result<bool> {
+    pub async fn check_always_denies_opt(&mut self, pset: &CompiledPolicySet) -> Result<bool> {
         self.symcc.check_always_denies_opt(&pset.policies).await
     }
 
@@ -889,7 +887,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// that is allowed by `pset` if it exists.
     ///
     /// Consider using the optimized version `check_always_denies_with_counterexample_opt()`
-    /// instead, which will allow you to reuse a `CompiledPolicies` across many
+    /// instead, which will allow you to reuse a `CompiledPolicySet` across many
     /// queries.
     #[deprecated(
         since = "0.3.0",
@@ -909,7 +907,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// that is denied by `pset` if it exists.
     pub async fn check_always_denies_with_counterexample_opt(
         &mut self,
-        pset: &CompiledPolicies,
+        pset: &CompiledPolicySet,
     ) -> Result<Option<Env>> {
         self.symcc
             .check_always_denies_with_counterexample_opt(&pset.policies)
@@ -920,7 +918,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// decision on all well-formed inputs in the `symenv`.
     ///
     /// Consider using the optimized version `check_equivalent_opt()` instead,
-    /// which will allow you to reuse a `CompiledPolicies` across many queries.
+    /// which will allow you to reuse a `CompiledPolicySet` across many queries.
     #[deprecated(since = "0.3.0", note = "use `check_equivalent_opt()` instead")]
     pub async fn check_equivalent(
         &mut self,
@@ -939,8 +937,8 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// were compiled for the same `RequestEnv`.)
     pub async fn check_equivalent_opt(
         &mut self,
-        pset1: &CompiledPolicies,
-        pset2: &CompiledPolicies,
+        pset1: &CompiledPolicySet,
+        pset2: &CompiledPolicySet,
     ) -> Result<bool> {
         self.symcc
             .check_equivalent_opt(&pset1.policies, &pset2.policies)
@@ -951,7 +949,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// on which the authorization decisions of `pset1` and `pset2` differ.
     ///
     /// Consider using the optimized version `check_equivalent_with_counterexample_opt()`
-    /// instead, which will allow you to reuse a `CompiledPolicies` across many
+    /// instead, which will allow you to reuse a `CompiledPolicySet` across many
     /// queries.
     #[deprecated(
         since = "0.3.0",
@@ -972,8 +970,8 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// on which the authorization decisions of `pset1` and `pset2` differ.
     pub async fn check_equivalent_with_counterexample_opt(
         &mut self,
-        pset1: &CompiledPolicies,
-        pset2: &CompiledPolicies,
+        pset1: &CompiledPolicySet,
+        pset2: &CompiledPolicySet,
     ) -> Result<Option<Env>> {
         self.symcc
             .check_equivalent_with_counterexample_opt(&pset1.policies, &pset2.policies)
@@ -986,7 +984,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// `pset2`.
     ///
     /// Consider using the optimized version `check_disjoint_opt()` instead,
-    /// which will allow you to reuse a `CompiledPolicies` across many queries.
+    /// which will allow you to reuse a `CompiledPolicySet` across many queries.
     #[deprecated(since = "0.3.0", note = "use `check_disjoint_opt()` instead")]
     pub async fn check_disjoint(
         &mut self,
@@ -1005,8 +1003,8 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// the same `RequestEnv`.)
     pub async fn check_disjoint_opt(
         &mut self,
-        pset1: &CompiledPolicies,
-        pset2: &CompiledPolicies,
+        pset1: &CompiledPolicySet,
+        pset2: &CompiledPolicySet,
     ) -> Result<bool> {
         self.symcc
             .check_disjoint_opt(&pset1.policies, &pset2.policies)
@@ -1017,7 +1015,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// that is allowed by both `pset1` and `pset2`.
     ///
     /// Consider using the optimized version `check_disjoint_with_counterexample_opt()`
-    /// instead, which will allow you to reuse a `CompiledPolicies` across many
+    /// instead, which will allow you to reuse a `CompiledPolicySet` across many
     /// queries.
     #[deprecated(
         since = "0.3.0",
@@ -1038,8 +1036,8 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// that is allowed by both `pset1` and `pset2`.
     pub async fn check_disjoint_with_counterexample_opt(
         &mut self,
-        pset1: &CompiledPolicies,
-        pset2: &CompiledPolicies,
+        pset1: &CompiledPolicySet,
+        pset2: &CompiledPolicySet,
     ) -> Result<Option<Env>> {
         self.symcc
             .check_disjoint_with_counterexample_opt(&pset1.policies, &pset2.policies)
@@ -1051,10 +1049,10 @@ impl<S: Solver> CedarSymCompiler<S> {
 #[derive(Clone, Debug)]
 pub struct WellFormedAsserts<'a> {
     asserts: Asserts,
-    /// All `CompiledPolicy`s or `CompiledPolicies` that were used to generate the asserts.
+    /// All `CompiledPolicy`s or `CompiledPolicySet`s that were used to generate the asserts.
     ///
     /// INVARIANT: All of these are for the same `symenv`.
-    policies: NonEmpty<CompiledPolicys<'a>>,
+    policies: NonEmpty<CompiledPolicies<'a>>,
 }
 
 impl<'a> WellFormedAsserts<'a> {
@@ -1070,8 +1068,10 @@ impl<'a> WellFormedAsserts<'a> {
         &self.asserts
     }
 
-    /// Returns the `CompiledPolicys` that were used to generate the asserts
-    fn policies(&self) -> impl Iterator<Item = &CompiledPolicys<'a>> {
+    /// Returns the `CompiledPolicies` that were used to generate the asserts
+    //
+    // This is not a public function because the `CompiledPolicies` type is not public
+    fn policies<'s>(&'s self) -> impl Iterator<Item = &'s CompiledPolicies<'a>> + 's {
         self.policies.iter()
     }
 }
@@ -1096,7 +1096,7 @@ impl<'a> WellFormedAsserts<'a> {
 pub fn never_errors_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_never_errors_opt(&policy.policy),
-        policies: nonempty![CompiledPolicys::Policy(&policy.policy)],
+        policies: nonempty![CompiledPolicies::Policy(&policy.policy)],
     }
 }
 
@@ -1120,7 +1120,7 @@ pub fn never_errors_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsserts
 pub fn always_matches_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_always_matches_opt(&policy.policy),
-        policies: nonempty![CompiledPolicys::Policy(&policy.policy)],
+        policies: nonempty![CompiledPolicies::Policy(&policy.policy)],
     }
 }
 
@@ -1144,7 +1144,7 @@ pub fn always_matches_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsser
 pub fn never_matches_asserts<'a>(policy: &'a CompiledPolicy) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_never_matches_opt(&policy.policy),
-        policies: nonempty![CompiledPolicys::Policy(&policy.policy)],
+        policies: nonempty![CompiledPolicies::Policy(&policy.policy)],
     }
 }
 
@@ -1172,8 +1172,8 @@ pub fn matches_equivalent_asserts<'a>(
     WellFormedAsserts {
         asserts: verify_matches_equivalent_opt(&policy1.policy, &policy2.policy),
         policies: nonempty![
-            CompiledPolicys::Policy(&policy1.policy),
-            CompiledPolicys::Policy(&policy2.policy)
+            CompiledPolicies::Policy(&policy1.policy),
+            CompiledPolicies::Policy(&policy2.policy)
         ],
     }
 }
@@ -1201,13 +1201,9 @@ pub fn matches_implies_asserts<'a>(
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_matches_implies_opt(&policy1.policy, &policy2.policy),
-        #[expect(
-            clippy::expect_used,
-            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
-        )]
         policies: nonempty![
-            CompiledPolicys::Policy(&policy1.policy),
-            CompiledPolicys::Policy(&policy2.policy)
+            CompiledPolicies::Policy(&policy1.policy),
+            CompiledPolicies::Policy(&policy2.policy)
         ],
     }
 }
@@ -1235,13 +1231,9 @@ pub fn matches_disjoint_asserts<'a>(
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_matches_disjoint_opt(&policy1.policy, &policy2.policy),
-        #[expect(
-            clippy::expect_used,
-            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
-        )]
         policies: nonempty![
-            CompiledPolicys::Policy(&policy1.policy),
-            CompiledPolicys::Policy(&policy2.policy)
+            CompiledPolicies::Policy(&policy1.policy),
+            CompiledPolicies::Policy(&policy2.policy)
         ],
     }
 }
@@ -1263,10 +1255,10 @@ pub fn matches_disjoint_asserts<'a>(
 ///
 /// NOTE: This API is an experimental feature, and the API may change
 /// or break in the future.
-pub fn always_allows_asserts<'a>(policies: &'a CompiledPolicies) -> WellFormedAsserts<'a> {
+pub fn always_allows_asserts<'a>(policies: &'a CompiledPolicySet) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_always_allows_opt(&policies.policies),
-        policies: nonempty![CompiledPolicys::Policies(&policies.policies)],
+        policies: nonempty![CompiledPolicies::PolicySet(&policies.policies)],
     }
 }
 
@@ -1287,10 +1279,10 @@ pub fn always_allows_asserts<'a>(policies: &'a CompiledPolicies) -> WellFormedAs
 ///
 /// NOTE: This API is an experimental feature, and the API may change
 /// or break in the future.
-pub fn always_denies_asserts<'a>(policies: &'a CompiledPolicies) -> WellFormedAsserts<'a> {
+pub fn always_denies_asserts<'a>(policies: &'a CompiledPolicySet) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_always_denies_opt(&policies.policies),
-        policies: nonempty![CompiledPolicys::Policies(&policies.policies)],
+        policies: nonempty![CompiledPolicies::PolicySet(&policies.policies)],
     }
 }
 
@@ -1312,18 +1304,14 @@ pub fn always_denies_asserts<'a>(policies: &'a CompiledPolicies) -> WellFormedAs
 /// NOTE: This API is an experimental feature, and the API may change
 /// or break in the future.
 pub fn implies_asserts<'a>(
-    policies1: &'a CompiledPolicies,
-    policies2: &'a CompiledPolicies,
+    policies1: &'a CompiledPolicySet,
+    policies2: &'a CompiledPolicySet,
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_implies_opt(&policies1.policies, &policies2.policies),
-        #[expect(
-            clippy::expect_used,
-            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
-        )]
         policies: nonempty![
-            CompiledPolicys::Policies(&policies1.policies),
-            CompiledPolicys::Policies(&policies2.policies)
+            CompiledPolicies::PolicySet(&policies1.policies),
+            CompiledPolicies::PolicySet(&policies2.policies)
         ],
     }
 }
@@ -1346,18 +1334,14 @@ pub fn implies_asserts<'a>(
 /// NOTE: This API is an experimental feature, and the API may change
 /// or break in the future.
 pub fn equivalent_asserts<'a>(
-    policies1: &'a CompiledPolicies,
-    policies2: &'a CompiledPolicies,
+    policies1: &'a CompiledPolicySet,
+    policies2: &'a CompiledPolicySet,
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_equivalent_opt(&policies1.policies, &policies2.policies),
-        #[expect(
-            clippy::expect_used,
-            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
-        )]
         policies: nonempty![
-            CompiledPolicys::Policies(&policies1.policies),
-            CompiledPolicys::Policies(&policies2.policies)
+            CompiledPolicies::PolicySet(&policies1.policies),
+            CompiledPolicies::PolicySet(&policies2.policies)
         ],
     }
 }
@@ -1380,18 +1364,14 @@ pub fn equivalent_asserts<'a>(
 /// NOTE: This API is an experimental feature, and the API may change
 /// or break in the future.
 pub fn disjoint_asserts<'a>(
-    policies1: &'a CompiledPolicies,
-    policies2: &'a CompiledPolicies,
+    policies1: &'a CompiledPolicySet,
+    policies2: &'a CompiledPolicySet,
 ) -> WellFormedAsserts<'a> {
     WellFormedAsserts {
         asserts: verify_disjoint_opt(&policies1.policies, &policies2.policies),
-        #[expect(
-            clippy::expect_used,
-            reason = "NonEmpty::collect() will not fail on a nonempty iterator"
-        )]
         policies: nonempty![
-            CompiledPolicys::Policies(&policies1.policies),
-            CompiledPolicys::Policies(&policies2.policies)
+            CompiledPolicies::PolicySet(&policies1.policies),
+            CompiledPolicies::PolicySet(&policies2.policies)
         ],
     }
 }

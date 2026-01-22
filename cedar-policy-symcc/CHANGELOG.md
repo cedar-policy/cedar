@@ -15,12 +15,13 @@ for single policies (#2047)
 - `.effect()` for `CompiledPolicy` (#2047)
 - `CompiledPolicy::policy()` and `CompiledPolicies::policies()` (#2103)
 - `CompiledPolicy::compile_with_custom_symenv()` and
-`CompiledPolicies::compile_with_custom_symenv()` experimental APIs -- note the
+`CompiledPolicySet::compile_with_custom_symenv()` experimental APIs -- note the
 documented caveats and use at your own risk (#2102)
 - Performance optimizations (#2070, #2073, #2079, #2093, #2094)
 
 ### Changed
 
+- Renamed `CompiledPolicies` to `CompiledPolicySet`
 - Deprecated the unoptimized interface on `CedarSymCompiler` in favor of the
 optimized interface (`*_opt` methods) introduced in 0.2.0 (#2095)
 - Experimental functions `compile_always_matches()` and friends were refactored

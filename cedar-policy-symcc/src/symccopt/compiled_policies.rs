@@ -105,13 +105,13 @@ impl CompiledPolicy {
         self.policy.effect()
     }
 
-    /// Convert a `CompiledPolicy` to a `CompiledPolicies` representing a
+    /// Convert a `CompiledPolicy` to a `CompiledPolicySet` representing a
     /// singleton policyset with just that policy.
     ///
     /// This function is intended to be much more efficient than re-compiling
-    /// with `CompiledPolicies::compile()`.
-    pub fn into_compiled_policies(self) -> CompiledPolicies {
-        CompiledPolicies {
+    /// with `CompiledPolicySet::compile()`.
+    pub fn into_compiled_policyset(self) -> CompiledPolicySet {
+        CompiledPolicySet {
             term: match self.policy.effect() {
                 Effect::Forbid => {
                     // a singleton pset with only a forbid policy, always denies everything
@@ -139,7 +139,7 @@ impl CompiledPolicy {
 /// various functions in symccopt.rs for efficient solver queries (that don't
 /// have to repeat symbolic compilation).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompiledPolicies {
+pub struct CompiledPolicySet {
     /// typechecked policies compiled to a single `Term` of type bool
     /// representing the authorization decision
     pub(crate) term: Term,
@@ -153,7 +153,7 @@ pub struct CompiledPolicies {
     pub(crate) acyclicity: BTreeSet<Term>,
 }
 
-impl CompiledPolicies {
+impl CompiledPolicySet {
     /// Compile a set of policies for the given `RequestEnv`.
     ///
     /// This function calls the Cedar typechecker on each policy to obtain a
@@ -207,7 +207,7 @@ impl CompiledPolicies {
         })
     }
 
-    /// A `CompiledPolicies` that represents the policyset that allows all
+    /// A `CompiledPolicySet` that represents the policyset that allows all
     /// requests in the `SymEnv`.
     pub fn allow_all(symenv: SymEnv) -> Self {
         Self {
@@ -219,7 +219,7 @@ impl CompiledPolicies {
         }
     }
 
-    /// A `CompiledPolicies` that represents the policyset that denies all
+    /// A `CompiledPolicySet` that represents the policyset that denies all
     /// requests in the `SymEnv`.
     pub fn deny_all(symenv: SymEnv) -> Self {
         Self {
@@ -232,33 +232,35 @@ impl CompiledPolicies {
     }
 }
 
-/// Represents a `CompiledPolicy` or a `CompiledPolicies`, for APIs that don't care
+/// Represents a `CompiledPolicy` or a `CompiledPolicySet`, for APIs that don't care
 /// which one they get.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CompiledPolicys<'a> {
+///
+/// `Copy` because this is a 16-byte type, just an enum over references
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompiledPolicies<'a> {
     Policy(&'a CompiledPolicy),
-    Policies(&'a CompiledPolicies),
+    PolicySet(&'a CompiledPolicySet),
 }
 
-impl<'a> CompiledPolicys<'a> {
-    pub fn all_policies(&'a self) -> Box<dyn Iterator<Item = &'a Policy> + 'a> {
+impl<'a> CompiledPolicies<'a> {
+    pub fn all_policies<'s>(&'s self) -> Box<dyn Iterator<Item = &'a Policy> + 's> {
         match self {
-            CompiledPolicys::Policy(cp) => Box::new(std::iter::once(&cp.policy)),
-            CompiledPolicys::Policies(cps) => Box::new(cps.policies.policies()),
+            CompiledPolicies::Policy(cp) => Box::new(std::iter::once(&cp.policy)),
+            CompiledPolicies::PolicySet(cpset) => Box::new(cpset.policies.policies()),
         }
     }
 
     pub fn footprint(&self) -> &BTreeSet<Term> {
         match self {
-            CompiledPolicys::Policy(cp) => &cp.footprint,
-            CompiledPolicys::Policies(cps) => &cps.footprint,
+            CompiledPolicies::Policy(cp) => &cp.footprint,
+            CompiledPolicies::PolicySet(cpset) => &cpset.footprint,
         }
     }
 
     pub fn symenv(&self) -> &SymEnv {
         match self {
-            CompiledPolicys::Policy(cp) => &cp.symenv,
-            CompiledPolicys::Policies(cps) => &cps.symenv,
+            CompiledPolicies::Policy(cp) => &cp.symenv,
+            CompiledPolicies::PolicySet(cpset) => &cpset.symenv,
         }
     }
 }
