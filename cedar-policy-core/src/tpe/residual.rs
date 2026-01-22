@@ -85,6 +85,81 @@ impl Residual {
             Residual::Error(ty) => ty,
         }
     }
+
+    /// Whether this residual can result in a runtime error, assuming that self is well-formed, that is, has been validated against a schema.
+    pub fn can_error_assuming_well_formed(&self) -> bool {
+        match self {
+            Residual::Concrete { .. } => false,
+            Residual::Error(_) => true,
+            Residual::Partial { kind, .. } => match kind {
+                // Keep the same order of cases here as in tpe::Evaluator::interpret
+                ResidualKind::Var(_) => false,
+                // The general rule here is that an expression can only error if any child expression can error.
+                ResidualKind::And { left, right } => {
+                    left.can_error_assuming_well_formed() || right.can_error_assuming_well_formed()
+                }
+                ResidualKind::Or { left, right } => {
+                    left.can_error_assuming_well_formed() || right.can_error_assuming_well_formed()
+                }
+                ResidualKind::If {
+                    test_expr,
+                    then_expr,
+                    else_expr,
+                } => {
+                    test_expr.can_error_assuming_well_formed()
+                        || then_expr.can_error_assuming_well_formed()
+                        || else_expr.can_error_assuming_well_formed()
+                }
+                ResidualKind::Is { expr, .. } => expr.can_error_assuming_well_formed(),
+                ResidualKind::Like { expr, .. } => expr.can_error_assuming_well_formed(),
+
+                ResidualKind::BinaryApp { op, arg1, arg2 } => match op {
+                    // Arithmetic operations could error due to integer overflow
+                    ast::BinaryOp::Add => true,
+                    ast::BinaryOp::Mul => true,
+                    ast::BinaryOp::Sub => true,
+
+                    // <entityUID>.getTag possibly errors during reauthorization if <entityUID> does not exist in the entity store
+                    ast::BinaryOp::GetTag => true,
+
+                    // Other binary operations follow the general rule. They are all enumerated here for clarity, although
+                    // a _ case could be used.
+                    ast::BinaryOp::Contains
+                    | ast::BinaryOp::ContainsAll
+                    | ast::BinaryOp::ContainsAny
+                    | ast::BinaryOp::Eq
+                    | ast::BinaryOp::HasTag
+                    | ast::BinaryOp::In
+                    | ast::BinaryOp::Less
+                    | ast::BinaryOp::LessEq => {
+                        arg1.can_error_assuming_well_formed()
+                            || arg2.can_error_assuming_well_formed()
+                    }
+                },
+
+                // Extension function invocations can error at runtime.
+                ResidualKind::ExtensionFunctionApp { .. } => true,
+                // <entityUID>.<attr> possibly errors during reauthorization if <entityUID> does not exist in the entity store
+                ResidualKind::GetAttr { .. } => true,
+
+                ResidualKind::HasAttr { expr, .. } => expr.can_error_assuming_well_formed(),
+
+                ResidualKind::UnaryApp { op, arg } => match op {
+                    // Integer negation can error due to integer overflow
+                    ast::UnaryOp::Neg => true,
+
+                    // General rule for the rest of the unary operations.
+                    ast::UnaryOp::IsEmpty | ast::UnaryOp::Not => {
+                        arg.can_error_assuming_well_formed()
+                    }
+                },
+                ResidualKind::Set(items) => items.iter().any(Self::can_error_assuming_well_formed),
+                ResidualKind::Record(attrs) => attrs
+                    .iter()
+                    .any(|(_, e)| e.can_error_assuming_well_formed()),
+            },
+        }
+    }
 }
 
 impl TryFrom<Residual> for Value {
@@ -456,40 +531,197 @@ mod test {
     use super::*;
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
-    use crate::validator::typecheck::{TypecheckAnswer, Typechecker};
+    use crate::tpe::request::{PartialEntityUID, PartialRequest};
+    use crate::validator::typecheck::{PolicyCheck, Typechecker};
+    use crate::validator::types::Primitive;
     use crate::validator::{ValidationMode, Validator, ValidatorSchema};
     use similar_asserts::assert_eq;
 
     #[track_caller]
     fn parse_residual(expr_str: &str) -> Residual {
         let expr = parse_expr(expr_str).unwrap();
+        let policy_id = crate::ast::PolicyID::from_string("test");
+        let policy = Policy::from_when_clause(Effect::Permit, expr, policy_id, None);
+        let t = policy.template();
 
-        let schema = ValidatorSchema::from_cedarschema_str(
-            "entity User { foo: Bool };",
+        let schema = ValidatorSchema::from_cedarschema_str(r#"
+            entity User in Organization { foo: Bool, str: String, num: Long, period: __cedar::duration, set: Set<String> } tags String;
+            entity Organization;
+            entity Document in Organization; 
+            action get appliesTo { principal: [User], resource: [Document] };"#,
             &Extensions::all_available(),
         )
         .unwrap()
         .0;
-        let validator = Validator::new(schema);
 
-        let typechecker = Typechecker::new(validator.schema(), ValidationMode::Strict);
-        let mut type_errors = std::collections::HashSet::new();
-        let policy_id = crate::ast::PolicyID::from_string("test");
+        let typechecker = Typechecker::new(&schema, ValidationMode::Strict);
 
-        let typecheck_result = typechecker.typecheck_expr(&expr, &policy_id, &mut type_errors);
+        let request = PartialRequest::new(
+            PartialEntityUID {
+                ty: "User".parse().unwrap(),
+                eid: None,
+            },
+            r#"Action::"get""#.parse().unwrap(),
+            PartialEntityUID {
+                ty: "Document".parse().unwrap(),
+                eid: None,
+            },
+            None,
+            &schema,
+        )
+        .unwrap();
+        let env = request.find_request_env(&schema).unwrap();
 
-        match typecheck_result {
-            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
-                Residual::try_from(&expr_type).unwrap()
-            }
-            _ => {
-                println!("got {} type errors", type_errors.len());
-                for e in type_errors {
+        let errs: Vec<_> = Validator::validate_entity_types_and_literals(&schema, t).collect();
+        if !errs.is_empty() {
+            panic!("unexpected type error in expression");
+        }
+        match typechecker.typecheck_by_single_request_env(t, &env) {
+            PolicyCheck::Success(expr) => Residual::try_from(&expr).unwrap(),
+            PolicyCheck::Fail(errs) => {
+                println!("got {} type errors", errs.len());
+                for e in errs {
                     println!("{:?}", miette::Report::new(e));
                 }
-                panic!("unexpected type error in expression");
+                panic!("unexpected type error in expression")
+            }
+            PolicyCheck::Irrelevant(errs, expr) => {
+                if errs.is_empty() {
+                    Residual::try_from(&expr).unwrap()
+                } else {
+                    println!("got {} type errors", errs.len());
+                    for e in errs {
+                        println!("{:?}", miette::Report::new(e));
+                    }
+                    panic!("unexpected type error in expression")
+                }
             }
         }
+    }
+
+    #[test]
+    fn test_can_error_assuming_well_formed() {
+        // Most common LHS, the policy header
+        assert_eq!(
+            parse_residual(
+                r#"
+                principal is User &&
+                principal in Organization::"foo" && 
+                action == Action::"get" && 
+                resource is Document && 
+                resource in Organization::"foo"
+                "#
+            )
+            .can_error_assuming_well_formed(),
+            false
+        );
+        assert_eq!(
+            parse_residual(r#"User::"jane" in [User::"foo", User::"jane"]"#)
+                .can_error_assuming_well_formed(),
+            false
+        );
+        assert_eq!(
+            parse_residual(r#"principal has foo || principal.hasTag("foo")"#)
+                .can_error_assuming_well_formed(),
+            false
+        );
+        assert_eq!(
+            parse_residual(r#"principal == resource && !(principal in Organization::"foo")"#)
+                .can_error_assuming_well_formed(),
+            false
+        );
+        assert_eq!(
+            parse_residual(
+                r#"
+                if principal.hasTag("foo") then 
+                    principal in Organization::"foo" 
+                else principal in Organization::"bar"
+                "#
+            )
+            .can_error_assuming_well_formed(),
+            false
+        );
+        assert_eq!(
+            parse_residual(
+                r#"
+                1 == 2 || 
+                !("a" == "b") && 
+                ["a", "b"].contains("a") && 
+                !["a", "b"].containsAll(["a"]) && 
+                ["a", "b"].containsAny(["a"])
+                "#
+            )
+            .can_error_assuming_well_formed(),
+            false
+        );
+        assert_eq!(
+            parse_residual(r#"{a: true, b: false}["a"] && false"#).can_error_assuming_well_formed(),
+            true
+        );
+        assert_eq!(
+            parse_residual(r#"User::"jane".str like "jane-*""#).can_error_assuming_well_formed(),
+            true
+        );
+        assert_eq!(
+            parse_residual(
+                r#"if principal.num > 0 then User::"jane".num >= 100 else User::"foo".num == 1"#
+            )
+            .can_error_assuming_well_formed(),
+            true
+        );
+        assert_eq!(
+            parse_residual(r#"principal.hasTag("foo") && principal.getTag("foo") == "bar""#)
+                .can_error_assuming_well_formed(),
+            true
+        );
+        assert_eq!(
+            parse_residual(
+                r#"
+                !principal.set.isEmpty() && (
+                    principal.set.contains("foo") || 
+                    principal.set.containsAll(["foo", "bar"]) || 
+                    principal.set.containsAny(["foo", "bar"])
+                )"#
+            )
+            .can_error_assuming_well_formed(),
+            true
+        );
+        assert_eq!(
+            parse_residual(r#"principal.num + 1 == 100 || true"#).can_error_assuming_well_formed(),
+            true
+        );
+        assert_eq!(
+            parse_residual(r#"if principal.foo then principal.num - 1 == 100 else true"#)
+                .can_error_assuming_well_formed(),
+            true
+        );
+        assert_eq!(
+            parse_residual(r#"principal.foo && principal.num * 2 == 100"#)
+                .can_error_assuming_well_formed(),
+            true
+        );
+        assert_eq!(
+            parse_residual(r#"principal.foo || -principal.num == 100"#)
+                .can_error_assuming_well_formed(),
+            true
+        );
+        assert_eq!(
+            parse_residual(r#"principal.num == 1 && principal.period < (if principal.foo then duration("1d") else duration("2d"))"#).can_error_assuming_well_formed(),
+            true
+        );
+        // in reality, this specific function could most likely never error
+        // in the future, we might want to be more precise about exactly what functions could produce errors
+        assert_eq!(
+            parse_residual(r#"principal.period.toDays() == 365"#).can_error_assuming_well_formed(),
+            true
+        );
+        assert_eq!(
+            Residual::Error(Type::Primitive {
+                primitive_type: Primitive::Bool
+            })
+            .can_error_assuming_well_formed(),
+            true
+        );
     }
 
     mod literal_uids {
@@ -501,7 +733,7 @@ mod test {
         #[test]
         fn var() {
             assert_eq!(
-                parse_residual("principal").all_literal_uids(),
+                parse_residual("principal.foo").all_literal_uids(),
                 HashSet::new()
             );
         }
@@ -509,8 +741,10 @@ mod test {
         #[test]
         fn r#if() {
             assert_eq!(
-                parse_residual(r#"if User::"alice".foo then User::"bob" else User::"jane""#)
-                    .all_literal_uids(),
+                parse_residual(
+                    r#"if User::"alice".foo then User::"bob".foo else User::"jane".foo"#
+                )
+                .all_literal_uids(),
                 HashSet::from([
                     r#"User::"alice""#.parse().unwrap(),
                     r#"User::"bob""#.parse().unwrap(),
@@ -533,7 +767,7 @@ mod test {
         #[test]
         fn set() {
             assert_eq!(
-                parse_residual(r#"[User::"alice", User::"jane"]"#).all_literal_uids(),
+                parse_residual(r#"principal in [User::"alice", User::"jane"]"#).all_literal_uids(),
                 HashSet::from([
                     r#"User::"alice""#.parse().unwrap(),
                     r#"User::"jane""#.parse().unwrap(),
@@ -544,7 +778,7 @@ mod test {
         #[test]
         fn record() {
             assert_eq!(
-                parse_residual(r#"{a: User::"alice", b: User::"jane"}"#).all_literal_uids(),
+                parse_residual(r#"(if principal.foo then {a: User::"alice", b: true} else {a: User::"jane", b: false}).a.foo"#).all_literal_uids(),
                 HashSet::from([
                     r#"User::"alice""#.parse().unwrap(),
                     r#"User::"jane""#.parse().unwrap(),
@@ -554,9 +788,15 @@ mod test {
     }
 
     fn assert_eq_expr(expr_str: &str) {
-        let e: Expr = expr_str.parse().unwrap();
+        // The unconstrained
+        let e: Expr = format!("true && (true && (true && ({})))", expr_str)
+            .parse()
+            .unwrap();
         let residual = parse_residual(expr_str);
-        assert_eq!(Expr::from(residual), e);
+        let e2 = Expr::from(residual);
+        println!("e: {}", e);
+        println!("e2: {}", e2);
+        assert_eq!(e, e2);
     }
 
     #[test]
@@ -565,9 +805,11 @@ mod test {
         assert_eq_expr(r#"User::"alice".foo || User::"jane".foo"#);
         assert_eq_expr(r#"[User::"jane".foo].contains(User::"jane".foo)"#);
         assert_eq_expr(r#"User::"alice" has foo"#);
-        assert_eq_expr(r#"if User::"alice".foo then User::"bob" else User::"jane""#);
+        assert_eq_expr(r#"(if User::"alice".foo then User::"bob" else User::"jane").foo"#);
         assert_eq_expr(r#""foo" like "bar""#);
-        assert_eq_expr(r#"[User::"alice", User::"jane"]"#);
-        assert_eq_expr(r#"{a: User::"alice", b: User::"jane"}"#);
+        assert_eq_expr(r#"principal in [User::"alice", User::"jane"]"#);
+        assert_eq_expr(
+            r#"(if principal.foo then {a: User::"alice", b: true} else {a: User::"jane", b: false}).a.foo"#,
+        );
     }
 }

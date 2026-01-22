@@ -136,6 +136,34 @@ impl Evaluator<'_> {
                                 },
                             ..
                         } => left,
+                        Residual::Concrete {
+                            value:
+                                Value {
+                                    value: ValueKind::Lit(ast::Literal::Bool(false)),
+                                    ..
+                                },
+                            ..
+                        } => {
+                            if !left.can_error_assuming_well_formed() {
+                                // simplify <error-free> && false == false
+                                Residual::Concrete {
+                                    value: false.into(),
+                                    ty,
+                                }
+                            } else {
+                                // cannot simplify <non-error-free> && false
+                                Residual::Partial {
+                                    kind: ResidualKind::And {
+                                        left: Arc::new(left),
+                                        right: Arc::new(Residual::Concrete {
+                                            value: false.into(),
+                                            ty: ty.clone(),
+                                        }),
+                                    },
+                                    ty,
+                                }
+                            }
+                        }
                         right => Residual::Partial {
                             kind: ResidualKind::And {
                                 left: Arc::new(left),
@@ -179,6 +207,34 @@ impl Evaluator<'_> {
                                 },
                             ..
                         } => left,
+                        Residual::Concrete {
+                            value:
+                                Value {
+                                    value: ValueKind::Lit(ast::Literal::Bool(true)),
+                                    ..
+                                },
+                            ..
+                        } => {
+                            if !left.can_error_assuming_well_formed() {
+                                // simplify <error-free> || true == true
+                                Residual::Concrete {
+                                    value: true.into(),
+                                    ty,
+                                }
+                            } else {
+                                // cannot simplify <non-error-free> || true
+                                Residual::Partial {
+                                    kind: ResidualKind::Or {
+                                        left: Arc::new(left),
+                                        right: Arc::new(Residual::Concrete {
+                                            value: true.into(),
+                                            ty: ty.clone(),
+                                        }),
+                                    },
+                                    ty,
+                                }
+                            }
+                        }
                         right => Residual::Partial {
                             kind: ResidualKind::Or {
                                 left: Arc::new(left),
@@ -843,6 +899,47 @@ mod tests {
                 ..
             }
         );
+        // <error-free> && false => false
+        // principal in Organization::"foo" && 41 == 42 => false
+        assert_matches!(
+            eval.interpret_expr(&builder().and(
+                builder().is_in(
+                    builder().var(Var::Principal),
+                    builder().val(EntityUID::with_eid_and_type("Organization", "foo").unwrap())
+                ),
+                builder().is_eq(builder().val(41), builder().val(42))
+            ))
+            .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(false)),
+                    ..
+                },
+                ..
+            },
+        );
+        // <non-error-free> && false cannot be simplified, e.g.
+        // principal.foo + 1 == 100 && 41 == 42
+        assert_matches!(
+            eval.interpret_expr(&builder().and(
+                builder().is_eq(
+                    builder().add(
+                        builder().get_attr(builder().var(Var::Principal), "foo".parse().unwrap()),
+                        builder().val(1)
+                    ),
+                    builder().val(100)
+                ),
+                builder().is_eq(builder().val(41), builder().val(42))
+            ))
+            .unwrap(),
+            // cannot match against the full residual, because of the Arc in the And enum variant,
+            // and due to Residual not implementing the Eq trait, but this shows that the evaluator
+            // kept the residual partial and with an And clause.
+            Residual::Partial {
+                kind: ResidualKind::And { .. },
+                ..
+            }
+        );
     }
 
     #[test]
@@ -914,6 +1011,44 @@ mod tests {
                     value: ValueKind::Lit(Literal::Long(42)),
                     ..
                 },
+                ..
+            }
+        );
+        // <error-free> || true => true
+        // principal || 42 == 42 => true
+        assert_matches!(
+            eval.interpret_expr(&builder().or(
+                builder().has_attr(builder().var(Var::Principal), "foo".into()),
+                builder().is_eq(builder().val(42), builder().val(42))
+            ))
+            .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            },
+        );
+        // <non-error-free> || true cannot be simplified, e.g.
+        // principal.foo + 1 == 100 || 42 == 42
+        assert_matches!(
+            eval.interpret_expr(&builder().or(
+                builder().is_eq(
+                    builder().add(
+                        builder().get_attr(builder().var(Var::Principal), "foo".parse().unwrap()),
+                        builder().val(1)
+                    ),
+                    builder().val(100)
+                ),
+                builder().is_eq(builder().val(42), builder().val(42))
+            ))
+            .unwrap(),
+            // cannot match against the full residual, because of the Arc in the Or enum variant,
+            // and due to Residual not implementing the Eq trait, but this shows that the evaluator
+            // kept the residual partial and with an Or clause.
+            Residual::Partial {
+                kind: ResidualKind::Or { .. },
                 ..
             }
         );
