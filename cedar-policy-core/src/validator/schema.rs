@@ -163,13 +163,11 @@ impl LocatedType {
     /// is defined. If `extend-schema` is not enabled, then the location
     /// returned by this function is always `None`.
     pub fn into_type_and_loc(self) -> (Type, Option<Loc>) {
-        (
-            self.ty,
-            #[cfg(feature = "extended-schema")]
-            self.loc,
-            #[cfg(not(feature = "extended-schema"))]
-            None,
-        )
+        #[cfg(feature = "extended-schema")]
+        let loc = self.loc;
+        #[cfg(not(feature = "extended-schema"))]
+        let loc = None;
+        (self.ty, loc)
     }
 }
 
