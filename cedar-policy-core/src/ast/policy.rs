@@ -63,7 +63,6 @@ cfg_tolerant_ast! {
     static DEFAULT_ACTION_CONSTRAINT: std::sync::LazyLock<ActionConstraint> =
         std::sync::LazyLock::new(ActionConstraint::any);
 
-    #[cfg_attr(feature = "tolerant-ast", expect(clippy::unwrap_used, reason = "Infallible error type - can never fail"))]
     static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> = std::sync::LazyLock::new(|| {
         // Non scope constraint expression of an Error policy should also be an error
         // This const represents an error expression that is part of an Error policy

@@ -33,16 +33,17 @@ extern crate tsify;
 
 /// Apply the Cedar policy formatter to a policy set in the Cedar policy format
 #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "formatPolicies"))]
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "FFI function which conventionally takes owned arguments"
-)]
 pub fn format(call: FormattingCall) -> FormattingAnswer {
+    let FormattingCall {
+        policy_text,
+        line_width,
+        indent_width,
+    } = call;
     let config = Config {
-        line_width: call.line_width,
-        indent_width: call.indent_width,
+        line_width,
+        indent_width,
     };
-    match policies_str_to_pretty(&call.policy_text, &config) {
+    match policies_str_to_pretty(&policy_text, &config) {
         Ok(prettified_policy) => FormattingAnswer::Success {
             formatted_policy: prettified_policy,
         },

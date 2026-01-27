@@ -82,7 +82,7 @@ impl Uuf {
 
         let entry = |udf: &Udf, uid| -> Option<(Term, Term)> {
             let t = Term::Prim(TermPrim::Entity(uid));
-            if &t.type_of() == &udf.arg {
+            if t.type_of() == udf.arg {
                 Some((
                     t.clone(),
                     factory::app(UnaryFunction::Udf(Arc::new(udf.clone())), t),

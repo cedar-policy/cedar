@@ -169,7 +169,7 @@ fn compile_prim(p: &Prim, es: &SymEntities) -> Result<CompileResult> {
     }
 }
 
-fn compile_var(v: &Var, req: &SymRequest) -> Result<CompileResult> {
+fn compile_var(v: Var, req: &SymRequest) -> Result<CompileResult> {
     match v {
         Var::Principal => {
             if req.principal.type_of().is_entity_type() {
@@ -907,7 +907,7 @@ pub fn compile_call(
 pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
     match x.expr_kind() {
         ExprKind::Lit(l) => compile_prim(l, &env.entities),
-        ExprKind::Var(v) => compile_var(v, &env.request),
+        ExprKind::Var(v) => compile_var(*v, &env.request),
         ExprKind::If {
             test_expr: x1,
             then_expr: x2,
