@@ -18,6 +18,7 @@ for single policies (#2047)
 `CompiledPolicySet::compile_with_custom_symenv()` experimental APIs -- note the
 documented caveats and use at your own risk (#2102)
 - Performance optimizations (#2070, #2073, #2079, #2093, #2094)
+- Add `SolverPool` for query pooling (#2111)
 
 ### Changed
 
