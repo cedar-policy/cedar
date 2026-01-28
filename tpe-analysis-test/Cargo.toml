@@ -1,0 +1,21 @@
+[package]
+name = "tpe-analysis-test"
+rust-version.workspace = true
+version.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+cedar-policy-core = { path = "../cedar-policy-core", version = "=4.8.2" }
+cedar-policy = { path = "../cedar-policy", version = "=4.8.2", features = ["tpe"]}
+cedar-policy-symcc = { path = "../cedar-policy-symcc", version = "=0.2.0" }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+
+[lints]
+workspace = true

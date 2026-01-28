@@ -7,7 +7,7 @@ members = [
 	"cedar-policy-symcc",
 	"cedar-testing",
 	"cedar-wasm",
-	"cedar-language-server",
+	"cedar-language-server", "tpe-analysis-test",
 ]
 
 resolver = "2"
