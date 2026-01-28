@@ -1,0 +1,10 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-cli/sample-data/tiny_sandboxes/sample11/valid_policy.cedar
+---
+permit (
+  principal == User::"Alice",
+  action == Action::"Edit",
+  resource
+);

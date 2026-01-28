@@ -1,0 +1,7 @@
+entity User;
+entity Photo;
+
+action Edit appliesTo {
+    principal: [User],
+    resource: [Photo]
+};
