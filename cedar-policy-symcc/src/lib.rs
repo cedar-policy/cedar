@@ -41,6 +41,7 @@ pub use symcc::extension_types;
 pub use symcc::factory as term_factory;
 pub use symcc::op;
 pub use symcc::solver;
+pub use symcc::solver_pool;
 pub use symcc::term;
 pub use symcc::term_type;
 pub use symcc::type_abbrevs;

@@ -37,6 +37,7 @@ pub mod op;
 mod result;
 mod smtlib_script;
 pub mod solver;
+pub mod solver_pool;
 mod symbolizer;
 mod tags;
 pub mod term;
