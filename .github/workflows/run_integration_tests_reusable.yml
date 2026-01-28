@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout cedar
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: cedar-policy/cedar
           ref: ${{ inputs.cedar_policy_ref }}
@@ -40,7 +40,7 @@ jobs:
         working-directory: ./cedar
         run: rm -rf cedar-integration-tests # blast the current content
       - name: Checkout cedar-integration-tests
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: cedar-policy/cedar-integration-tests
           ref: ${{ inputs.cedar_integration_tests_ref }}
