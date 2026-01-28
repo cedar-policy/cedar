@@ -39,7 +39,7 @@ jobs:
 
             # Check that the cargo workspace's version matches the input tag.
             - name: Checkout tag
-              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+              uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
               with:
                   ref: refs/tags/${{ inputs.tag }}
             - name: Configure rust toolchain
@@ -60,7 +60,7 @@ jobs:
             id-token: write # Required for OIDC token exchange
         steps:
             - name: Checkout tag
-              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+              uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
               with:
                   ref: refs/tags/${{ inputs.tag }}
             - name: Configure rust toolchain
