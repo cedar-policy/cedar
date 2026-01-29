@@ -25,7 +25,7 @@ use crate::{
     symcc::{
         compiler::{
             compile_attrs_of, compile_get_tag, compile_has_tag, compile_in_ent, compile_in_set,
-            extract_first, extract_first2, reducible_eq,
+            extract_first, extract_first2, extract_first_n, reducible_eq,
         },
         env::{SymEntities, SymEnv, SymRequest},
         extfun,
@@ -798,6 +798,70 @@ pub fn compile_call2(
     compile_call2_error(xty, xty, |t1, t2| some_of(enc(t1, t2)), arg1, arg2)
 }
 
+// Use directly for encoding calls that can error with n arguments
+pub fn compile_call_n_error(
+    xty: ExtType,
+    xtys: Vec<ExtType>,
+    enc: impl Fn(Term, Vec<Term>) -> Term,
+    arg: CompileResult,
+    args: Vec<CompileResult>,
+) -> Result<CompileResult> {
+    let ty = TermType::option_of(TermType::Ext { xty });
+    if arg.term.type_of() != ty {
+        return Err(CompileError::TypeError);
+    }
+    if args.len() != xtys.len() {
+        return Err(CompileError::TypeError);
+    }
+
+    let expected_types: Vec<_> = xtys
+        .iter()
+        .map(|xty| TermType::option_of(TermType::Ext { xty: *xty }))
+        .collect();
+
+    // Check all types match
+    if args
+        .iter()
+        .zip(&expected_types)
+        .all(|(arg, ty)| arg.term.type_of() == *ty)
+    {
+        // Build nested if_some calls
+        let mut result = enc(
+            option_get(arg.term.clone()),
+            args.iter().map(|arg| option_get(arg.term.clone())).collect(),
+        );
+        for arg in args.iter().rev() {
+            result = if_some(arg.term.clone(), result);
+        }
+        result = if_some(arg.term.clone(), result);
+
+        // Combine all footprints
+        let footprint = Footprint::from_iter(
+            arg.footprint
+                .chain(args.into_iter().flat_map(|arg| arg.footprint)),
+        );
+
+        Ok(CompileResult {
+            term: result,
+            footprint,
+        })
+    } else {
+        Err(CompileError::TypeError)
+    }
+}
+
+// Use directly for encoding calls that cannot error with n arguments
+pub fn compile_call_n(
+    xty: ExtType,
+    n: usize,
+    enc: impl Fn(Term, Vec<Term>) -> Term,
+    arg: CompileResult,
+    args: Vec<CompileResult>,
+) -> Result<CompileResult> {
+    let enc = |t: Term, ts: Vec<Term>| -> Term { some_of(enc(t, ts)) };
+    compile_call_n_error(xty, vec![xty; n], enc, arg, args)
+}
+
 pub fn compile_call(
     xfn: &cedar_policy_core::ast::Name,
     args: Vec<CompileResult>,
@@ -843,9 +907,22 @@ pub fn compile_call(
             let t1 = extract_first(args);
             compile_call1(ExtType::IpAddr, extfun::is_multicast, t1)
         }
-        ("isInRange", 2) => {
-            let (t1, t2) = extract_first2(args);
-            compile_call2(ExtType::IpAddr, extfun::is_in_range, t1, t2)
+        ("isInRange", n) => {
+            #[cfg(feature = "variadic-is-in-range")]
+            if n < 2 {
+                Err(CompileError::TypeError)
+            } else {
+                let (t, tn) = extract_first_n(ts, n);
+                compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, tn)            
+            }
+
+            #[cfg(not(feature = "variadic-is-in-range"))]
+            if n != 2 {
+                Err(CompileError::TypeError)
+            } else {
+                let (t1, t2) = extract_first2(ts);
+                compile_call2(ExtType::IpAddr, |t1, t2| extfun::is_in_range(t1, vec![t2]), t1, t2)
+            }
         }
         ("datetime", 1) => {
             let t1 = extract_first(args);
