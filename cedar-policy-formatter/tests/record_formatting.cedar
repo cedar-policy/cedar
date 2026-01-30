@@ -1,0 +1,65 @@
+// Empty record
+permit(principal, action, resource) when {
+  resource.config == {}
+};
+
+// Single attr record
+permit(principal, action, resource) when {
+  resource.config == {key: "value"}
+};
+
+// Multi-attr record
+permit(principal, action, resource) when {
+  resource.config == {
+    organization: principal.owner.organization,
+    serviceline: principal.serviceline,
+    location: principal.location
+  }
+};
+
+// Simple nested
+permit(principal, action, resource) when {
+  resource.config == {
+    metadata: {
+      owner: "admin",
+    },
+    settings: {
+      enabled: true,
+      timeout: 30
+    }
+  }
+};
+
+// Deeply nested
+permit(principal, action, resource) when {
+  resource.config == {
+    level1: {
+      level2: {
+        level3: {
+          level4: {
+            level5: {
+              deeply_nested_key: "deeply_nested_value",
+              another_deep_key: {
+                even_deeper: {
+                  final_level: "maximum_depth"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+// Large flat record
+permit(principal, action, resource) when {
+  resource.config == {
+    key1: "value1", key2: "value2", key3: "value3", key4: "value4", key5: "value5",
+    key6: "value6", key7: "value7", key8: "value8", key9: "value9", key10: "value10",
+  }
+};
+
+permit(principal, action, resource) when {
+  resource.configs.containsAny([{}, {foo: "bar"}, {key1: "value1", key2: "value2", key3: "value3", key4: "value4", key5: "value5"},])
+};

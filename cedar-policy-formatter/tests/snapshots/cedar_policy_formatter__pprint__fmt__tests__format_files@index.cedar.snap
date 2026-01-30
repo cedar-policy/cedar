@@ -13,10 +13,6 @@ permit (principal, action, resource)
 when
 {
   principal // principal
-  [
-    "roles"
-    ] // get roles
-    [
-    "admin"
-    ] // get the admin role
+  ["roles"] // get roles
+    ["admin"] // get the admin role
 };
