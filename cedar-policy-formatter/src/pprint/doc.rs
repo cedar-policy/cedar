@@ -645,7 +645,7 @@ impl Doc for Node<Option<Primary>> {
                     RcDoc::nil(),
                 )
                 .append(RcDoc::nil())
-                .append(e.to_doc(context)?.nest(1))
+                .append(e.to_doc(context)?.nest(context.config.indent_width))
                 .append(RcDoc::nil())
                 .append(add_comment(
                     RcDoc::text(")"),
@@ -658,7 +658,8 @@ impl Doc for Node<Option<Primary>> {
                 if el.is_empty() {
                     RcDoc::nil()
                 } else {
-                    el.get(1..)?
+                    let el = el
+                        .get(1..)?
                         .iter()
                         .try_fold((el.first()?.to_doc(context)?, el.first()?), |pair, v| {
                             let (d, e) = pair;
@@ -676,7 +677,8 @@ impl Doc for Node<Option<Primary>> {
                                 v,
                             ))
                         })?
-                        .0
+                        .0;
+                    RcDoc::line_().append(el).append(RcDoc::line_()).group()
                 },
                 add_comment(
                     RcDoc::text("["),
@@ -691,6 +693,7 @@ impl Doc for Node<Option<Primary>> {
                     get_comment_at_end(self.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
                     RcDoc::nil(),
                 ),
+                context.config.indent_width,
             )),
             Primary::RInits(ri) => Some(add_brackets(
                 if ri.is_empty() {
@@ -716,11 +719,7 @@ impl Doc for Node<Option<Primary>> {
                             ))
                         })?
                         .0;
-                    RcDoc::line_()
-                        .append(inits)
-                        .nest(context.config.indent_width)
-                        .append(RcDoc::line_())
-                        .group()
+                    RcDoc::line().append(inits).append(RcDoc::line()).group()
                 },
                 add_comment(
                     RcDoc::text("{"),
@@ -735,6 +734,7 @@ impl Doc for Node<Option<Primary>> {
                     get_comment_at_end(self.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
                     RcDoc::nil(),
                 ),
+                context.config.indent_width,
             )),
             Primary::Slot(slot) => slot.to_doc(context),
         }
