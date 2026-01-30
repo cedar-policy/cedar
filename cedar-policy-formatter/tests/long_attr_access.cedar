@@ -1,0 +1,48 @@
+// Index access formatting tests
+
+// Simple index access
+permit(principal, action, resource) when {
+  principal["is_admin"]
+};
+
+// Chained index access
+permit(principal, action, resource) when {
+  principal["roles"]["admin"]
+};
+
+// Index access with comments
+permit(principal, action, resource) when {
+  principal // principal
+    ["roles"] // get roles
+    ["admin"] // get the admin role
+};
+
+// Mixed member and index access
+permit(principal, action, resource) when {
+  principal.profile["settings"]["theme"] == "dark"
+};
+
+// Complex expressions in index
+permit(principal, action, resource) when {
+  resource.data["user_config"]["enabled"]
+};
+
+// Very long mixed access chains
+permit(principal, action, resource) when {
+  principal.organization.departments["engineering"].teams["backend"].members["alice"].permissions["read"] == true
+};
+
+// Long index-only chains
+permit(principal, action, resource) when {
+  resource["metadata"]["security"]["permissions"]["roles"]["admin"]["capabilities"]["delete"]
+};
+
+// Extremely long mixed chains
+permit(principal, action, resource) when {
+  principal.company.divisions["technology"].departments["software"].teams["platform"].projects["auth"].settings["security"]["encryption"]["algorithms"]["aes256"]["keySize"] == 256
+};
+
+// Long chains with method calls
+permit(principal, action, resource) when {
+  resource.config["services"]["database"]["connections"]["primary"]["timeout"] > 30
+};

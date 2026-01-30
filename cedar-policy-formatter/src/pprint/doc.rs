@@ -516,7 +516,6 @@ impl Doc for Node<Option<RecInit>> {
         let value_doc = e.1.to_doc(context)?;
         Some(
             key_doc
-                .append(RcDoc::line_())
                 .append(add_comment(
                     RcDoc::text(":"),
                     get_comment_after_end(
@@ -525,6 +524,7 @@ impl Doc for Node<Option<RecInit>> {
                     )?,
                     RcDoc::nil(),
                 ))
+                .append(RcDoc::space())
                 .append(value_doc),
         )
     }
@@ -645,7 +645,7 @@ impl Doc for Node<Option<Primary>> {
                     RcDoc::nil(),
                 )
                 .append(RcDoc::nil())
-                .append(e.to_doc(context)?.nest(1))
+                .append(e.to_doc(context)?.nest(context.config.indent_width))
                 .append(RcDoc::nil())
                 .append(add_comment(
                     RcDoc::text(")"),
@@ -658,7 +658,8 @@ impl Doc for Node<Option<Primary>> {
                 if el.is_empty() {
                     RcDoc::nil()
                 } else {
-                    el.get(1..)?
+                    let el = el
+                        .get(1..)?
                         .iter()
                         .try_fold((el.first()?.to_doc(context)?, el.first()?), |pair, v| {
                             let (d, e) = pair;
@@ -676,7 +677,8 @@ impl Doc for Node<Option<Primary>> {
                                 v,
                             ))
                         })?
-                        .0
+                        .0;
+                    RcDoc::line_().append(el).append(RcDoc::line_()).group()
                 },
                 add_comment(
                     RcDoc::text("["),
@@ -691,12 +693,14 @@ impl Doc for Node<Option<Primary>> {
                     get_comment_at_end(self.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
                     RcDoc::nil(),
                 ),
+                context.config.indent_width,
             )),
             Primary::RInits(ri) => Some(add_brackets(
                 if ri.is_empty() {
                     RcDoc::nil()
                 } else {
-                    ri.get(1..)?
+                    let inits = ri
+                        .get(1..)?
                         .iter()
                         .try_fold((ri.first()?.to_doc(context)?, ri.first()?), |pair, v| {
                             let (d, e) = pair;
@@ -714,7 +718,8 @@ impl Doc for Node<Option<Primary>> {
                                 v,
                             ))
                         })?
-                        .0
+                        .0;
+                    RcDoc::line().append(inits).append(RcDoc::line()).group()
                 },
                 add_comment(
                     RcDoc::text("{"),
@@ -729,6 +734,7 @@ impl Doc for Node<Option<Primary>> {
                     get_comment_at_end(self.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
                     RcDoc::nil(),
                 ),
+                context.config.indent_width,
             )),
             Primary::Slot(slot) => slot.to_doc(context),
         }
@@ -759,11 +765,11 @@ impl Doc for Node<Option<MemAccess>> {
                     )?,
                     RcDoc::nil(),
                 )
-                .append(RcDoc::line_())
                 .append(if args.is_empty() {
                     RcDoc::nil()
                 } else {
-                    args.get(1..)?
+                    let args = args
+                        .get(1..)?
                         .iter()
                         .try_fold(
                             (args.first()?.to_doc(context)?, args.first()?),
@@ -784,10 +790,12 @@ impl Doc for Node<Option<MemAccess>> {
                                 ))
                             },
                         )?
-                        .0
+                        .0;
+                    RcDoc::line_()
+                        .append(args)
+                        .nest(context.config.indent_width)
+                        .append(RcDoc::line_())
                 })
-                .nest(context.config.indent_width)
-                .append(RcDoc::line_())
                 .append(add_comment(
                     RcDoc::text(")"),
                     get_comment_at_end(self.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
@@ -803,9 +811,7 @@ impl Doc for Node<Option<MemAccess>> {
                     )?,
                     RcDoc::nil(),
                 )
-                .append(RcDoc::line_())
                 .append(idx.to_doc(context))
-                .append(RcDoc::line_())
                 .append(add_comment(
                     RcDoc::text("]"),
                     get_comment_at_end(self.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,

@@ -13,5 +13,5 @@ when
   context.role.contains("admin") &&
   context.person.age > 17 &&
   context.addr.city == "DC" ||
-  context.addr == {city:"DC", street:"main"}
+  context.addr == {city: "DC", street: "main"}
 };
