@@ -828,7 +828,9 @@ pub fn compile_call_n_error(
         // Build nested if_some calls
         let mut result = enc(
             option_get(arg.term.clone()),
-            args.iter().map(|arg| option_get(arg.term.clone())).collect(),
+            args.iter()
+                .map(|arg| option_get(arg.term.clone()))
+                .collect(),
         );
         for arg in args.iter().rev() {
             result = if_some(arg.term.clone(), result);
@@ -913,7 +915,7 @@ pub fn compile_call(
                 Err(CompileError::TypeError)
             } else {
                 let (t, tn) = extract_first_n(ts, n);
-                compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, tn)            
+                compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, tn)
             }
 
             #[cfg(not(feature = "variadic-is-in-range"))]
@@ -921,7 +923,12 @@ pub fn compile_call(
                 Err(CompileError::TypeError)
             } else {
                 let (t1, t2) = extract_first2(ts);
-                compile_call2(ExtType::IpAddr, |t1, t2| extfun::is_in_range(t1, vec![t2]), t1, t2)
+                compile_call2(
+                    ExtType::IpAddr,
+                    |t1, t2| extfun::is_in_range(t1, vec![t2]),
+                    t1,
+                    t2,
+                )
             }
         }
         ("datetime", 1) => {

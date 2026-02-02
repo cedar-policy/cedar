@@ -485,14 +485,13 @@ pub fn compile_call2(
 
 // Use directly for encoding calls that can error with n arguments
 pub fn compile_call_n_error(
-    xty : ExtType,
+    xty: ExtType,
     xtys: Vec<ExtType>,
     enc: impl Fn(Term, Vec<Term>) -> Term,
     t: Term,
     ts: Vec<Term>,
 ) -> Result<Term> {
-
-    let ty = TermType::option_of(TermType::Ext {xty});
+    let ty = TermType::option_of(TermType::Ext { xty });
     if t.type_of() != ty {
         return Err(CompileError::TypeError);
     }
@@ -503,11 +502,18 @@ pub fn compile_call_n_error(
         .iter()
         .map(|xty| TermType::option_of(TermType::Ext { xty: *xty }))
         .collect();
-    
+
     // Check all types match
-    if ts.iter().zip(&expected_types).all(|(t, ty)| t.type_of() == *ty) {
+    if ts
+        .iter()
+        .zip(&expected_types)
+        .all(|(t, ty)| t.type_of() == *ty)
+    {
         // Call option_get before encoding the terms.
-        let mut result = enc(option_get(t.clone()), ts.iter().map(|tx| option_get(tx.clone())).collect());
+        let mut result = enc(
+            option_get(t.clone()),
+            ts.iter().map(|tx| option_get(tx.clone())).collect(),
+        );
         // Build nested if_some calls
         for tx in ts.into_iter().rev() {
             result = if_some(tx, result);
@@ -523,10 +529,10 @@ pub fn compile_call_n(
     xty: ExtType,
     n: usize,
     enc: impl Fn(Term, Vec<Term>) -> Term,
-    t : Term,
+    t: Term,
     ts: Vec<Term>,
 ) -> Result<Term> {
-    let enc = |t : Term, ts: Vec<Term>| -> Term { some_of(enc(t, ts)) };
+    let enc = |t: Term, ts: Vec<Term>| -> Term { some_of(enc(t, ts)) };
     compile_call_n_error(xty, vec![xty; n], enc, t, ts)
 }
 
@@ -617,7 +623,7 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
                 Err(CompileError::TypeError)
             } else {
                 let (t, tn) = extract_first_n(ts, n);
-                compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, tn)            
+                compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, tn)
             }
 
             #[cfg(not(feature = "variadic-is-in-range"))]
@@ -625,7 +631,12 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
                 Err(CompileError::TypeError)
             } else {
                 let (t1, t2) = extract_first2(ts);
-                compile_call2(ExtType::IpAddr, |t1, t2| extfun::is_in_range(t1, vec![t2]), t1, t2)
+                compile_call2(
+                    ExtType::IpAddr,
+                    |t1, t2| extfun::is_in_range(t1, vec![t2]),
+                    t1,
+                    t2,
+                )
             }
         }
         ("datetime", 1) => {
@@ -1404,10 +1415,7 @@ mod datetime_tests {
     #[cfg(feature = "variadic-is-in-range")]
     fn test_ipaddr_simpl_comp_expr_variadic_is_in_range() {
         // Basic single range test (already working)
-        test_valid_bool_simpl_expr(
-            r#"ip("192.168.0.1").isInRange(ip("192.168.0.1/24"))"#,
-            true,
-        );
+        test_valid_bool_simpl_expr(r#"ip("192.168.0.1").isInRange(ip("192.168.0.1/24"))"#, true);
 
         // Test with multiple ranges - first one matches
         test_valid_bool_simpl_expr(
@@ -1478,4 +1486,3 @@ mod datetime_tests {
         );
     }
 }
-
