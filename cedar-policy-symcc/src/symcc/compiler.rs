@@ -557,7 +557,7 @@ pub(crate) fn extract_first2<T>(v: Vec<T>) -> (T, T) {
     (it.next().unwrap(), it.next().unwrap())
 }
 
-pub fn compile_call(xfn: &cedar_policy_core::ast::Name, mut ts: Vec<Term>) -> Result<Term> {
+pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result<Term> {
     match (xfn.to_string().as_str(), ts.len()) {
         ("decimal", 1) => {
             let t1 = extract_first(ts);
@@ -604,6 +604,7 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, mut ts: Vec<Term>) -> Re
             if n < 2 {
                 Err(CompileError::TypeError)
             } else {
+                let mut ts = ts;
                 let t = ts.remove(0);
                 compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, ts)
             }

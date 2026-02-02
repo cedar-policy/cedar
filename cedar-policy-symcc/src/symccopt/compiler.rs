@@ -866,7 +866,7 @@ pub fn compile_call_n(
 
 pub fn compile_call(
     xfn: &cedar_policy_core::ast::Name,
-    mut args: Vec<CompileResult>,
+    args: Vec<CompileResult>,
 ) -> Result<CompileResult> {
     match (xfn.to_string().as_str(), args.len()) {
         ("decimal", 1) => {
@@ -914,6 +914,7 @@ pub fn compile_call(
             if n < 2 {
                 Err(CompileError::TypeError)
             } else {
+                let mut args = args;
                 let t = args.remove(0);
                 compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, args)
             }
