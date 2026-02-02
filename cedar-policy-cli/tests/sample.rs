@@ -1562,10 +1562,22 @@ fn visualize_entities_parses_as_dot(
     "sample-data/tiny_sandboxes/sample10/tests-error.json",
     CedarExitCode::Failure
 )]
+#[case(
+    "sample-data/tiny_sandboxes/sample11/valid_policy.cedar",
+    "sample-data/tiny_sandboxes/sample11/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample11/test-schema-error.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample11/invalid_policy.cedar",
+    "sample-data/tiny_sandboxes/sample11/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample11/test-policy-error.json",
+    CedarExitCode::Failure
+)]
 #[track_caller]
 fn test_run_tests_samples(
     #[case] policies_file: impl Into<String>,
-    #[case] _schema_file: impl AsRef<Path>,
+    #[case] schema_file: impl Into<PathBuf>,
     #[case] test_file: impl Into<String>,
     #[case] exit_code: CedarExitCode,
 ) {
@@ -1580,6 +1592,10 @@ fn test_run_tests_samples(
             template_linked_file: None,
         },
         tests: test_file,
+        schema: OptionalSchemaArgs {
+            schema_file: Some(schema_file.into()),
+            schema_format: SchemaFormat::Json,
+        },
     };
     let output = run_tests(&cmd);
     assert_eq!(exit_code, output, "{cmd:#?}")

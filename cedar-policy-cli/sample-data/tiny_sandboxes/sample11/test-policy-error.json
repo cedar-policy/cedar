@@ -1,0 +1,14 @@
+[
+  {
+    "request": {
+      "principal": "User::\"Alice\"",
+      "action": "Action::\"Edit\"",
+      "resource": "Photo::\"Spätzle\"",
+      "context": {}
+    },
+    "entities": [],
+    "decision": "deny",
+    "reason": [],
+    "num_errors": 1
+  }
+]
