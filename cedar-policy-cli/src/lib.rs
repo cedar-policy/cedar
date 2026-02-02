@@ -1812,13 +1812,12 @@ fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
 fn run_one_test(
     policies: &PolicySet,
     test: &serde_json::Value,
-    schema: Option<&Schema>,
+    validator: Option<&Validator>,
 ) -> Result<TestResult> {
-    let test = CheckedTestCaseSeed(schema)
+    let test = CheckedTestCaseSeed(validator.map(Validator::schema))
         .deserialize(test.into_deserializer())
         .into_diagnostic()?;
-    if let Some(schema) = schema {
-        let validator = Validator::new(schema.clone());
+    if let Some(validator) = validator {
         let val_res = validator.validate(policies, cedar_policy::ValidationMode::Strict);
         if !val_res.validation_passed_without_warnings() {
             return Err(Report::new(val_res).wrap_err("policy set validation failed"));
@@ -1831,7 +1830,7 @@ fn run_one_test(
 fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
     let policies = args.policies.get_policy_set()?;
     let tests = load_partial_tests(&args.tests)?;
-    let schema = args.schema.get_schema()?;
+    let validator = args.schema.get_schema()?.map(Validator::new);
 
     let mut total_fails: usize = 0;
 
@@ -1843,7 +1842,7 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
             print!("  test (unnamed) ... ");
         }
         std::io::stdout().flush().into_diagnostic()?;
-        match run_one_test(&policies, test, schema.as_ref()) {
+        match run_one_test(&policies, test, validator.as_ref()) {
             Ok(TestResult::Pass) => {
                 println!(
                     "{}",
