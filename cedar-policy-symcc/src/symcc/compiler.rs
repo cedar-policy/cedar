@@ -557,25 +557,7 @@ pub(crate) fn extract_first2<T>(v: Vec<T>) -> (T, T) {
     (it.next().unwrap(), it.next().unwrap())
 }
 
-/// Extract the first element and the next `n-1` items from a `Vec`, consuming the `Vec`.
-/// Returns a tuple of (first element, Vec of next n-1 elements).
-/// Panics if there are less than `n` elements.
-pub(crate) fn extract_first_n<T>(v: Vec<T>, n: usize) -> (T, Vec<T>) {
-    let mut it = v.into_iter();
-    #[expect(
-        clippy::unwrap_used,
-        reason = "This function is only called from contexts where v has length >= n"
-    )]
-    let first = it.next().unwrap();
-    #[expect(
-        clippy::unwrap_used,
-        reason = "This function is only called from contexts where v has length >= n"
-    )]
-    let rest = (0..n - 1).map(|_| it.next().unwrap()).collect();
-    (first, rest)
-}
-
-pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result<Term> {
+pub fn compile_call(xfn: &cedar_policy_core::ast::Name, mut ts: Vec<Term>) -> Result<Term> {
     match (xfn.to_string().as_str(), ts.len()) {
         ("decimal", 1) => {
             let t1 = extract_first(ts);
@@ -622,8 +604,8 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
             if n < 2 {
                 Err(CompileError::TypeError)
             } else {
-                let (t, tn) = extract_first_n(ts, n);
-                compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, tn)
+                let t = ts.remove(0);
+                compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, ts)
             }
 
             #[cfg(not(feature = "variadic-is-in-range"))]

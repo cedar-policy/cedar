@@ -25,7 +25,7 @@ use crate::{
     symcc::{
         compiler::{
             compile_attrs_of, compile_get_tag, compile_has_tag, compile_in_ent, compile_in_set,
-            extract_first, extract_first2, extract_first_n, reducible_eq,
+            extract_first, extract_first2, reducible_eq,
         },
         env::{SymEntities, SymEnv, SymRequest},
         extfun,
@@ -866,7 +866,7 @@ pub fn compile_call_n(
 
 pub fn compile_call(
     xfn: &cedar_policy_core::ast::Name,
-    args: Vec<CompileResult>,
+    mut args: Vec<CompileResult>,
 ) -> Result<CompileResult> {
     match (xfn.to_string().as_str(), args.len()) {
         ("decimal", 1) => {
@@ -914,15 +914,15 @@ pub fn compile_call(
             if n < 2 {
                 Err(CompileError::TypeError)
             } else {
-                let (t, tn) = extract_first_n(ts, n);
-                compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, tn)
+                let t = args.remove(0);
+                compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, args)
             }
 
             #[cfg(not(feature = "variadic-is-in-range"))]
             if n != 2 {
                 Err(CompileError::TypeError)
             } else {
-                let (t1, t2) = extract_first2(ts);
+                let (t1, t2) = extract_first2(args);
                 compile_call2(
                     ExtType::IpAddr,
                     |t1, t2| extfun::is_in_range(t1, vec![t2]),
