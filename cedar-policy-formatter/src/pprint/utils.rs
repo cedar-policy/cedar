@@ -24,8 +24,13 @@ use crate::token::regex_constants;
 use super::token::{Comment, WrappedToken};
 
 // Add brackets
-pub fn add_brackets<'a>(d: RcDoc<'a>, leftp: RcDoc<'a>, rightp: RcDoc<'a>) -> RcDoc<'a> {
-    leftp.append(d.nest(1)).append(rightp)
+pub fn add_brackets<'a>(
+    d: RcDoc<'a>,
+    leftp: RcDoc<'a>,
+    rightp: RcDoc<'a>,
+    offset: isize,
+) -> RcDoc<'a> {
+    leftp.append(d.nest(offset)).append(rightp)
 }
 
 /// Convert a leading comment to an `RcDoc`, adding leading and trailing newlines.
