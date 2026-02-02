@@ -645,7 +645,10 @@ impl Doc for Node<Option<Primary>> {
                     RcDoc::nil(),
                 )
                 .append(RcDoc::nil())
-                .append(e.to_doc(context)?.nest(context.config.indent_width))
+                // Offset by 1 rather than `context.config.indent_width` so that
+                // expressions wrapped onto the next line are aligned with the
+                // start of the first expression (past the opening parentheses).
+                .append(e.to_doc(context)?.nest(1))
                 .append(RcDoc::nil())
                 .append(add_comment(
                     RcDoc::text(")"),
@@ -658,8 +661,7 @@ impl Doc for Node<Option<Primary>> {
                 if el.is_empty() {
                     RcDoc::nil()
                 } else {
-                    let el = el
-                        .get(1..)?
+                    el.get(1..)?
                         .iter()
                         .try_fold((el.first()?.to_doc(context)?, el.first()?), |pair, v| {
                             let (d, e) = pair;
@@ -677,8 +679,7 @@ impl Doc for Node<Option<Primary>> {
                                 v,
                             ))
                         })?
-                        .0;
-                    RcDoc::line_().append(el).append(RcDoc::line_()).group()
+                        .0
                 },
                 add_comment(
                     RcDoc::text("["),
@@ -693,7 +694,10 @@ impl Doc for Node<Option<Primary>> {
                     get_comment_at_end(self.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
                     RcDoc::nil(),
                 ),
-                context.config.indent_width,
+                // Offset by 1 rather than `context.config.indent_width` so that
+                // list elements on a new line indent once to align with the
+                // first element instead of indenting everything.
+                1,
             )),
             Primary::RInits(ri) => Some(add_brackets(
                 if ri.is_empty() {

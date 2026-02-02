@@ -18,13 +18,11 @@ permit (
 permit (
   principal,
   action in
-    [
-      Action // 4
-      // 5
-      ::
-      // 6
-      ""
-    ],
+    [Action // 4
+     // 5
+     ::
+     // 6
+     ""],
   resource
 );
 
