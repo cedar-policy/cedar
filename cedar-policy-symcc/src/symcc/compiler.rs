@@ -483,6 +483,60 @@ pub fn compile_call2(
     compile_call2_error(xty, xty, enc, t1, t2)
 }
 
+#[cfg(feature = "variadic-is-in-range")]
+// Use directly for encoding calls that can error with n arguments
+pub fn compile_call_n_error(
+    xty: ExtType,
+    xtys: Vec<ExtType>,
+    enc: impl Fn(Term, Vec<Term>) -> Term,
+    t: Term,
+    ts: Vec<Term>,
+) -> Result<Term> {
+    let ty = TermType::option_of(TermType::Ext { xty });
+    if t.type_of() != ty {
+        return Err(CompileError::TypeError);
+    }
+    if ts.len() != xtys.len() {
+        return Err(CompileError::TypeError);
+    }
+    let expected_types = xtys
+        .iter()
+        .map(|xty| TermType::option_of(TermType::Ext { xty: *xty }));
+
+    // Check all types match
+    if ts
+        .iter()
+        .zip(expected_types)
+        .all(|(t, ty)| t.type_of() == ty)
+    {
+        // Call option_get before encoding the terms.
+        let mut result = enc(
+            option_get(t.clone()),
+            ts.iter().map(|tx| option_get(tx.clone())).collect(),
+        );
+        // Build nested if_some calls
+        for tx in ts.into_iter().rev() {
+            result = if_some(tx, result);
+        }
+        Ok(if_some(t, result))
+    } else {
+        Err(CompileError::TypeError)
+    }
+}
+
+#[cfg(feature = "variadic-is-in-range")]
+// Use directly for encoding calls that cannot error with n arguments
+pub fn compile_call_n(
+    xty: ExtType,
+    n: usize,
+    enc: impl Fn(Term, Vec<Term>) -> Term,
+    t: Term,
+    ts: Vec<Term>,
+) -> Result<Term> {
+    let enc = |t: Term, ts: Vec<Term>| -> Term { some_of(enc(t, ts)) };
+    compile_call_n_error(xty, vec![xty; n], enc, t, ts)
+}
+
 /// Extract the first item from a `Vec`, consuming the `Vec`.
 /// Panics if there is less than one element.
 pub(crate) fn extract_first<T>(v: Vec<T>) -> T {
@@ -546,9 +600,28 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
             let t1 = extract_first(ts);
             compile_call1(ExtType::IpAddr, extfun::is_multicast, t1)
         }
-        ("isInRange", 2) => {
-            let (t1, t2) = extract_first2(ts);
-            compile_call2(ExtType::IpAddr, extfun::is_in_range, t1, t2)
+        ("isInRange", n) => {
+            #[cfg(feature = "variadic-is-in-range")]
+            if n < 2 {
+                Err(CompileError::TypeError)
+            } else {
+                let mut ts = ts;
+                let t = ts.remove(0);
+                compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, ts)
+            }
+
+            #[cfg(not(feature = "variadic-is-in-range"))]
+            if n != 2 {
+                Err(CompileError::TypeError)
+            } else {
+                let (t1, t2) = extract_first2(ts);
+                compile_call2(
+                    ExtType::IpAddr,
+                    |t1, t2| extfun::is_in_range(t1, vec![t2]),
+                    t1,
+                    t2,
+                )
+            }
         }
         ("datetime", 1) => {
             let t1 = extract_first(ts);
@@ -1293,6 +1366,7 @@ mod datetime_tests {
     #[test]
     fn test_ipaddr_simpl_comp_expr() {
         test_valid_bool_simpl_expr(r#"ip("192.168.0.1").isInRange(ip("192.168.0.1/24"))"#, true);
+        test_valid_bool_simpl_expr(r#"ip("1:2:3:4::").isInRange(ip("192.168.0.1/24"))"#, false);
         test_valid_bool_simpl_expr(r#"ip("192.168.0.1").isInRange(ip("192.168.0.1/28"))"#, true);
         test_valid_bool_simpl_expr(
             r#"ip("192.168.0.75").isInRange(ip("192.168.0.1/24"))"#,
@@ -1319,5 +1393,80 @@ mod datetime_tests {
         test_valid_bool_simpl_expr(r#"ip("127.0.0.1").isIpv4()"#, true);
         test_valid_bool_simpl_expr(r#"ip("::1").isIpv4()"#, false);
         test_valid_bool_simpl_expr(r#"ip("127.0.0.1/24").isIpv4()"#, true);
+    }
+
+    #[test]
+    #[cfg(feature = "variadic-is-in-range")]
+    fn test_ipaddr_simpl_comp_expr_variadic_is_in_range() {
+        // Basic single range test (already working)
+        test_valid_bool_simpl_expr(r#"ip("192.168.0.1").isInRange(ip("192.168.0.1/24"))"#, true);
+
+        // Test with multiple ranges - first one matches
+        test_valid_bool_simpl_expr(
+            r#"ip("192.168.0.1").isInRange(ip("192.168.0.0/24"), ip("10.0.0.0/8"))"#,
+            true,
+        );
+
+        // Test with multiple ranges - last one matches
+        test_valid_bool_simpl_expr(
+            r#"ip("10.0.0.50").isInRange(ip("192.168.0.0/24"), ip("172.16.0.0/12"), ip("10.0.0.0/8"))"#,
+            true,
+        );
+
+        // Test with multiple ranges - none match
+        test_valid_bool_simpl_expr(
+            r#"ip("8.8.8.8").isInRange(ip("192.168.0.0/24"), ip("10.0.0.0/8"))"#,
+            false,
+        );
+
+        // Test with multiple ranges - middle one matches
+        test_valid_bool_simpl_expr(
+            r#"ip("172.16.5.10").isInRange(ip("192.168.0.0/24"), ip("172.16.0.0/12"), ip("10.0.0.0/8"))"#,
+            true,
+        );
+
+        // Test where first is IPv4 type mismatch (error) but last one matches
+        // IPv6 address tested against IPv4 range first, then correct IPv6 range
+        test_valid_bool_simpl_expr(
+            r#"ip("1:2:3:4::").isInRange(ip("192.168.0.0/24"), ip("1:2:3:4::/48"))"#,
+            false,
+        );
+
+        // Test where first matches but last is IPv4/IPv6 type mismatch (error)
+        // IPv4 address in range, followed by IPv6 range that doesn't apply
+        test_valid_bool_simpl_expr(
+            r#"ip("192.168.0.1").isInRange(ip("192.168.0.0/24"), ip("1:2:3:4::/48"))"#,
+            false,
+        );
+
+        // Test with three ranges where only the last matches
+        test_valid_bool_simpl_expr(
+            r#"ip("192.168.1.100").isInRange(ip("10.0.0.0/8"), ip("172.16.0.0/12"), ip("192.168.1.0/24"))"#,
+            true,
+        );
+
+        // Test with exact IP match (no CIDR) in multiple ranges
+        test_valid_bool_simpl_expr(
+            r#"ip("192.168.0.1").isInRange(ip("10.0.0.1"), ip("192.168.0.1"))"#,
+            true,
+        );
+
+        // Test with no matches across multiple exact IPs
+        test_valid_bool_simpl_expr(
+            r#"ip("192.168.0.1").isInRange(ip("10.0.0.1"), ip("172.16.0.1"))"#,
+            false,
+        );
+
+        // Test IPv6 with multiple ranges - last one matches
+        test_valid_bool_simpl_expr(
+            r#"ip("fe80::1").isInRange(ip("1:2:3:4::/48"), ip("fe80::/10"))"#,
+            true,
+        );
+
+        // Test IPv6 with multiple ranges - none match
+        test_valid_bool_simpl_expr(
+            r#"ip("2001:db8::1").isInRange(ip("1:2:3:4::/48"), ip("fe80::/10"))"#,
+            false,
+        );
     }
 }
