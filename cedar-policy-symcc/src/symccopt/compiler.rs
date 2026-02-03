@@ -798,6 +798,7 @@ pub fn compile_call2(
     compile_call2_error(xty, xty, |t1, t2| some_of(enc(t1, t2)), arg1, arg2)
 }
 
+#[cfg(feature = "variadic-is-in-range")]
 // Use directly for encoding calls that can error with n arguments
 pub fn compile_call_n_error(
     xty: ExtType,
@@ -814,16 +815,15 @@ pub fn compile_call_n_error(
         return Err(CompileError::TypeError);
     }
 
-    let expected_types: Vec<_> = xtys
+    let expected_types = xtys
         .iter()
-        .map(|xty| TermType::option_of(TermType::Ext { xty: *xty }))
-        .collect();
+        .map(|xty| TermType::option_of(TermType::Ext { xty: *xty }));
 
     // Check all types match
     if args
         .iter()
-        .zip(&expected_types)
-        .all(|(arg, ty)| arg.term.type_of() == *ty)
+        .zip(expected_types)
+        .all(|(arg, ty)| arg.term.type_of() == ty)
     {
         // Build nested if_some calls
         let mut result = enc(
@@ -852,6 +852,7 @@ pub fn compile_call_n_error(
     }
 }
 
+#[cfg(feature = "variadic-is-in-range")]
 // Use directly for encoding calls that cannot error with n arguments
 pub fn compile_call_n(
     xty: ExtType,

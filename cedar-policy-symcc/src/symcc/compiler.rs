@@ -483,6 +483,7 @@ pub fn compile_call2(
     compile_call2_error(xty, xty, enc, t1, t2)
 }
 
+#[cfg(feature = "variadic-is-in-range")]
 // Use directly for encoding calls that can error with n arguments
 pub fn compile_call_n_error(
     xty: ExtType,
@@ -523,6 +524,7 @@ pub fn compile_call_n_error(
     }
 }
 
+#[cfg(feature = "variadic-is-in-range")]
 // Use directly for encoding calls that cannot error with n arguments
 pub fn compile_call_n(
     xty: ExtType,
