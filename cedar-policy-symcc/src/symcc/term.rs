@@ -35,7 +35,9 @@ use super::op::Op;
 use super::term_type::TermType;
 use super::type_abbrevs::*;
 use std::{
-    collections::{BTreeMap, BTreeSet}, ops::Deref, sync::Arc
+    collections::{BTreeMap, BTreeSet},
+    ops::Deref,
+    sync::Arc,
 };
 
 /// A typed variable.
@@ -239,7 +241,8 @@ impl std::fmt::Display for Term {
                         Op::Ext(ext) => SmolStr::new(ext.mk_name()),
                         Op::Uuf(uuf) => uuf.id.clone(),
                         Op::RecordGet(attr) => format_smolstr!("getattr[\"{attr}\"]"),
-                        Op::StringLike(pat) => format_smolstr!("like[\"{pat}\"]", pat = pat.deref()),
+                        Op::StringLike(pat) =>
+                            format_smolstr!("like[\"{pat}\"]", pat = pat.deref()),
                         _ => SmolStr::new(op.mk_name()),
                     }
                 )?;
@@ -275,8 +278,8 @@ impl std::fmt::Display for TermPrim {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use super::super::factory;
+    use super::*;
 
     use cedar_policy::EntityTypeName;
     use std::str::FromStr;
@@ -305,7 +308,9 @@ mod test {
 
         let term = Term::from(TermVar {
             id: SmolStr::new_static("principal"),
-            ty: TermType::Entity { ety: EntityTypeName::from_str("A::B::CDEFG").unwrap() },
+            ty: TermType::Entity {
+                ety: EntityTypeName::from_str("A::B::CDEFG").unwrap(),
+            },
         });
         insta::with_settings!({ description => format!("{term:?}") }, {
             insta::assert_snapshot!(term.to_string(), @"principal");
@@ -343,7 +348,7 @@ mod test {
         insta::with_settings!({ description => format!("{term:?}") }, {
             insta::assert_snapshot!(term.to_string(), @r#"duration("86476111ms")"#);
         });
-        
+
         let term = Term::from(Ext::parse_datetime("2001-07-07").unwrap());
         insta::with_settings!({ description => format!("{term:?}") }, {
             // TODO: not pretty
@@ -368,7 +373,10 @@ mod test {
             insta::assert_snapshot!(term.to_string(), @r#"(datetime("1970-01-01")).offset(duration("1293755159777ms"))"#);
         });
 
-        let term = Term::Some(Arc::new(factory::set_of([Term::from(36), Term::from(-1240)], TermType::Bitvec { n: SIXTY_FOUR })));
+        let term = Term::Some(Arc::new(factory::set_of(
+            [Term::from(36), Term::from(-1240)],
+            TermType::Bitvec { n: SIXTY_FOUR },
+        )));
         insta::with_settings!({ description => format!("{term:?}") }, {
             insta::assert_snapshot!(term.to_string(), @"Some([(bv64 36), (bv64 18446744073709550376)])");
         });
@@ -376,7 +384,10 @@ mod test {
         let term = factory::record_of([
             ("foo".into(), Term::from(-321)),
             ("bar".into(), Term::from(SmolStr::new_static("a string"))),
-            ("weird key!".into(), Term::from(Ext::parse_decimal("2.222").unwrap())),
+            (
+                "weird key!".into(),
+                Term::from(Ext::parse_decimal("2.222").unwrap()),
+            ),
         ]);
         insta::with_settings!({ description => format!("{term:?}") }, {
             insta::assert_snapshot!(term.to_string(), @r#"{ bar: "a string", foo: (bv64 18446744073709551295), weird key!: decimal("2.2220") }"#);
@@ -384,32 +395,57 @@ mod test {
 
         let context = Term::from(TermVar {
             id: SmolStr::new_static("context"),
-            ty: TermType::Record { rty: Arc::new([
-                (SmolStr::new("foo"), TermType::Bitvec { n: SIXTY_FOUR }),
-                (SmolStr::new("abc"), TermType::Bool),
-                (SmolStr::new("def"), TermType::Bool),
-                (SmolStr::new("zyx"), TermType::Bool),
-                (SmolStr::new("path"), TermType::String),
-            ].into_iter().collect()) },
+            ty: TermType::Record {
+                rty: Arc::new(
+                    [
+                        (SmolStr::new("foo"), TermType::Bitvec { n: SIXTY_FOUR }),
+                        (SmolStr::new("abc"), TermType::Bool),
+                        (SmolStr::new("def"), TermType::Bool),
+                        (SmolStr::new("zyx"), TermType::Bool),
+                        (SmolStr::new("path"), TermType::String),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+            },
         });
-        let term = factory::bvslt(factory::record_get(context.clone(), &SmolStr::new("foo")), Term::from(12));
+        let term = factory::bvslt(
+            factory::record_get(context.clone(), &SmolStr::new("foo")),
+            Term::from(12),
+        );
         insta::with_settings!({ description => format!("{term:?}") }, {
             insta::assert_snapshot!(term.to_string(), @r#"bvslt(getattr["foo"](context), (bv64 12))"#);
         });
 
-        let term = factory::and(factory::or(factory::record_get(context.clone(), &SmolStr::new("abc")), factory::record_get(context.clone(), &SmolStr::new("def"))), factory::record_get(context.clone(), &SmolStr::new("zyx")));
+        let term = factory::and(
+            factory::or(
+                factory::record_get(context.clone(), &SmolStr::new("abc")),
+                factory::record_get(context.clone(), &SmolStr::new("def")),
+            ),
+            factory::record_get(context.clone(), &SmolStr::new("zyx")),
+        );
         insta::with_settings!({ description => format!("{term:?}") }, {
             insta::assert_snapshot!(term.to_string(), @r#"and(or(getattr["abc"](context), getattr["def"](context)), getattr["zyx"](context))"#);
         });
 
-        let term = factory::ite(factory::record_get(context.clone(), &SmolStr::new("abc")), Term::from(777), Term::from(888));
+        let term = factory::ite(
+            factory::record_get(context.clone(), &SmolStr::new("abc")),
+            Term::from(777),
+            Term::from(888),
+        );
         insta::with_settings!({ description => format!("{term:?}") }, {
             insta::assert_snapshot!(term.to_string(), @r#"ite(getattr["abc"](context), (bv64 777), (bv64 888))"#);
         });
 
-        let term = factory::string_like(factory::record_get(context, &SmolStr::new("path")), cedar_policy_core::ast::Pattern::from_iter([
-            cedar_policy_core::ast::PatternElem::Char('a'), cedar_policy_core::ast::PatternElem::Wildcard, cedar_policy_core::ast::PatternElem::Char('z'),
-        ]).into());
+        let term = factory::string_like(
+            factory::record_get(context, &SmolStr::new("path")),
+            cedar_policy_core::ast::Pattern::from_iter([
+                cedar_policy_core::ast::PatternElem::Char('a'),
+                cedar_policy_core::ast::PatternElem::Wildcard,
+                cedar_policy_core::ast::PatternElem::Char('z'),
+            ])
+            .into(),
+        );
         insta::with_settings!({ description => format!("{term:?}") }, {
             insta::assert_snapshot!(term.to_string(), @r#"like["a*z"](getattr["path"](context))"#);
         });
