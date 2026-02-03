@@ -196,3 +196,78 @@ impl Term {
         }
     }
 }
+
+impl std::fmt::Display for Term {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Term::Prim(prim) => write!(f, "{prim}"),
+            Term::Var(var) => write!(f, "{}", var.id),
+            Term::None(_) => write!(f, "None"),
+            Term::Some(t) => write!(f, "Some({t})"),
+            Term::Set { elts, .. } => {
+                write!(f, "[")?;
+                let mut first = true;
+                for elt in elts.iter() {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{elt}")?;
+                    first = false;
+                }
+                write!(f, "]")
+            }
+            Term::Record(map) => {
+                if map.is_empty() {
+                    write!(f, "{{}}")
+                } else {
+                    write!(f, "{{ ")?;
+                    let mut first = true;
+                    for (k, v) in map.iter() {
+                        if !first {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{k}: {v}")?;
+                        first = false;
+                    }
+                    write!(f, " }}")
+                }
+            }
+            Term::App { op, args, .. } => {
+                write!(
+                    f,
+                    "{op}(",
+                    op = match op {
+                        Op::Ext(ext) => ext.mk_name(),
+                        Op::Uuf(uuf) => &uuf.id,
+                        _ => op.mk_name(),
+                    }
+                )?;
+                let mut first = true;
+                for arg in args.iter() {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{arg}")?;
+                    first = false;
+                }
+                write!(f, ")")
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for TermPrim {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TermPrim::Bool(b) => write!(f, "{b}"),
+            TermPrim::Bitvec(bv) => write!(f, "{bv}"),
+            TermPrim::String(s) => write!(f, "\"{s}\""),
+            TermPrim::Entity(e) => write!(f, "{e}"),
+            TermPrim::Ext(ext) => write!(
+                f,
+                "{}",
+                cedar_policy_core::ast::Value::try_from(ext).unwrap()
+            ),
+        }
+    }
+}
