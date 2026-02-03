@@ -145,12 +145,7 @@ pub fn is_in_range(t: Term, ts: Vec<Term>) -> Term {
             t.clone(),
             ts.iter().map(|t| t.clone()).collect(),
         ),
-        in_range_v(
-            is_ipv6,
-            range_v6,
-            t,
-            ts.iter().map(|t| t.clone()).collect(),
-        ),
+        in_range_v(is_ipv6, range_v6, t, ts.iter().map(|t| t.clone()).collect()),
     )
 }
 
