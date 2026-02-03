@@ -261,6 +261,7 @@ impl std::fmt::Display for Term {
 }
 
 impl std::fmt::Display for TermPrim {
+    #[expect(clippy::unwrap_used, reason = "for now, allowing panics in this Display impl intended for debugging")]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TermPrim::Bool(b) => write!(f, "{b}"),
