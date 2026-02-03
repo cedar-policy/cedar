@@ -17,6 +17,7 @@
 #![expect(clippy::unwrap_used, reason = "unit test code")]
 
 use cedar_policy::{Policy, Schema, Validator};
+#[expect(deprecated, reason = "specifically testing deprecated functionality")]
 use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler, SymEnv, WellTypedPolicy};
 use cool_asserts::assert_matches;
 use std::str::FromStr;
@@ -229,6 +230,7 @@ async fn tests_for_well_typed() {
 }
 
 #[test]
+#[expect(deprecated, reason = "specifically testing deprecated functionality")]
 fn undeclared_entity_type() {
     let schema = Schema::from_str(
         r#"
@@ -258,6 +260,7 @@ fn undeclared_entity_type() {
 }
 
 #[test]
+#[expect(deprecated, reason = "specifically testing deprecated functionality")]
 fn undeclared_action_id() {
     let schema = Schema::from_str(
         r#"
@@ -287,6 +290,7 @@ fn undeclared_action_id() {
 }
 
 #[test]
+#[expect(deprecated, reason = "specifically testing deprecated functionality")]
 fn invalid_enum_entity() {
     let schema = Schema::from_str(
         r#"
