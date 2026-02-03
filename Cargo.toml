@@ -20,6 +20,11 @@ overflow-checks = true
 overflow-checks = true
 debug = "line-tables-only"  # this adds more debug symbols/info to the binary than the default for `release` (which is `none`)
 
+# https://insta.rs/docs/quickstart/ recommends compiling `insta` and `similar` in release mode, even for dev dependency
+[profile.dev.package]
+insta.opt-level = 3
+similar.opt-level = 3
+
 # Keys that packages can inherit
 [workspace.package]
 # Check the minimum supported Rust version with `cargo install cargo-msrv && cargo msrv --min 1.X.0` where `X` is something lower than the version noted here (to confirm that versions lower than the one noted here _don't_ work)

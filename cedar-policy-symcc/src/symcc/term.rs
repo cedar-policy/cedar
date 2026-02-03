@@ -27,7 +27,7 @@
 //!
 //! See `term_type.rs` and `op.rs` for definitions of Term types and operators.
 
-use smol_str::SmolStr;
+use smol_str::{format_smolstr, SmolStr};
 
 use super::bitvec::BitVec;
 use super::ext::Ext;
@@ -35,8 +35,7 @@ use super::op::Op;
 use super::term_type::TermType;
 use super::type_abbrevs::*;
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+    collections::{BTreeMap, BTreeSet}, ops::Deref, sync::Arc
 };
 
 /// A typed variable.
@@ -237,9 +236,11 @@ impl std::fmt::Display for Term {
                     f,
                     "{op}(",
                     op = match op {
-                        Op::Ext(ext) => ext.mk_name(),
-                        Op::Uuf(uuf) => &uuf.id,
-                        _ => op.mk_name(),
+                        Op::Ext(ext) => SmolStr::new(ext.mk_name()),
+                        Op::Uuf(uuf) => uuf.id.clone(),
+                        Op::RecordGet(attr) => format_smolstr!("getattr[\"{attr}\"]"),
+                        Op::StringLike(pat) => format_smolstr!("like[\"{pat}\"]", pat = pat.deref()),
+                        _ => SmolStr::new(op.mk_name()),
                     }
                 )?;
                 let mut first = true;
@@ -269,5 +270,148 @@ impl std::fmt::Display for TermPrim {
                 cedar_policy_core::ast::Value::try_from(ext).unwrap()
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use super::super::factory;
+
+    use cedar_policy::EntityTypeName;
+    use std::str::FromStr;
+
+    #[test]
+    fn term_display() {
+        let term = Term::from(false);
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @"false");
+        });
+
+        let term = Term::from(334);
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @"(bv64 334)");
+        });
+
+        let term = Term::from(SmolStr::new_static("hello I am a string"));
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#""hello I am a string""#);
+        });
+
+        let term = Term::from(EntityUID::from_str("App::Domain::\"Component\"").unwrap());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#"App::Domain::"Component""#);
+        });
+
+        let term = Term::from(TermVar {
+            id: SmolStr::new_static("principal"),
+            ty: TermType::Entity { ety: EntityTypeName::from_str("A::B::CDEFG").unwrap() },
+        });
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @"principal");
+        });
+
+        let term = Term::from(Ext::parse_decimal("-0.11").unwrap());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#"decimal("-0.1100")"#);
+        });
+
+        let term = Term::from(Ext::parse_decimal("34567.8901").unwrap());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#"decimal("34567.8901")"#);
+        });
+
+        let term = Term::from(Ext::parse_ip("192.168.0.0/24").unwrap());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#"ip("192.168.0.0/24")"#);
+        });
+
+        let term = Term::from(Ext::parse_ip("ffee::1").unwrap());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#"ip("ffee:0000:0000:0000:0000:0000:0000:0001/128")"#);
+        });
+
+        let term = Term::from(Ext::parse_duration("3m7s").unwrap());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            // TODO: this one isn't the prettiest, but could be that this
+            // representation is helpful for someone debugging at the Term
+            // level; not sure what's optimal here
+            insta::assert_snapshot!(term.to_string(), @r#"duration("187000ms")"#);
+        });
+
+        let term = Term::from(Ext::parse_duration("1d0m76s111ms").unwrap());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#"duration("86476111ms")"#);
+        });
+        
+        let term = Term::from(Ext::parse_datetime("2001-07-07").unwrap());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            // TODO: not pretty
+            insta::assert_snapshot!(term.to_string(), @r#"(datetime("1970-01-01")).offset(duration("994464000000ms"))"#);
+        });
+
+        let term = Term::from(Ext::parse_datetime("2010-12-31T11:59:59Z").unwrap());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            // TODO: not pretty
+            insta::assert_snapshot!(term.to_string(), @r#"(datetime("1970-01-01")).offset(duration("1293796799000ms"))"#);
+        });
+
+        let term = Term::from(Ext::parse_datetime("2010-12-31T11:59:59.777Z").unwrap());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            // TODO: not pretty
+            insta::assert_snapshot!(term.to_string(), @r#"(datetime("1970-01-01")).offset(duration("1293796799777ms"))"#);
+        });
+
+        let term = Term::from(Ext::parse_datetime("2010-12-31T11:59:59.777+1134").unwrap());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            // TODO: not pretty
+            insta::assert_snapshot!(term.to_string(), @r#"(datetime("1970-01-01")).offset(duration("1293755159777ms"))"#);
+        });
+
+        let term = Term::Some(Arc::new(factory::set_of([Term::from(36), Term::from(-1240)], TermType::Bitvec { n: SIXTY_FOUR })));
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @"Some([(bv64 36), (bv64 18446744073709550376)])");
+        });
+
+        let term = factory::record_of([
+            ("foo".into(), Term::from(-321)),
+            ("bar".into(), Term::from(SmolStr::new_static("a string"))),
+            ("weird key!".into(), Term::from(Ext::parse_decimal("2.222").unwrap())),
+        ]);
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#"{ bar: "a string", foo: (bv64 18446744073709551295), weird key!: decimal("2.2220") }"#);
+        });
+
+        let context = Term::from(TermVar {
+            id: SmolStr::new_static("context"),
+            ty: TermType::Record { rty: Arc::new([
+                (SmolStr::new("foo"), TermType::Bitvec { n: SIXTY_FOUR }),
+                (SmolStr::new("abc"), TermType::Bool),
+                (SmolStr::new("def"), TermType::Bool),
+                (SmolStr::new("zyx"), TermType::Bool),
+                (SmolStr::new("path"), TermType::String),
+            ].into_iter().collect()) },
+        });
+        let term = factory::bvslt(factory::record_get(context.clone(), &SmolStr::new("foo")), Term::from(12));
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#"bvslt(getattr["foo"](context), (bv64 12))"#);
+        });
+
+        let term = factory::and(factory::or(factory::record_get(context.clone(), &SmolStr::new("abc")), factory::record_get(context.clone(), &SmolStr::new("def"))), factory::record_get(context.clone(), &SmolStr::new("zyx")));
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#"and(or(getattr["abc"](context), getattr["def"](context)), getattr["zyx"](context))"#);
+        });
+
+        let term = factory::ite(factory::record_get(context.clone(), &SmolStr::new("abc")), Term::from(777), Term::from(888));
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#"ite(getattr["abc"](context), (bv64 777), (bv64 888))"#);
+        });
+
+        let term = factory::string_like(factory::record_get(context, &SmolStr::new("path")), cedar_policy_core::ast::Pattern::from_iter([
+            cedar_policy_core::ast::PatternElem::Char('a'), cedar_policy_core::ast::PatternElem::Wildcard, cedar_policy_core::ast::PatternElem::Char('z'),
+        ]).into());
+        insta::with_settings!({ description => format!("{term:?}") }, {
+            insta::assert_snapshot!(term.to_string(), @r#"like["a*z"](getattr["path"](context))"#);
+        });
     }
 }
