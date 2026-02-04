@@ -179,6 +179,7 @@ pub fn schema_to_json(schema: Schema) -> SchemaToJsonAnswer {
 }
 
 /// Convert a Cedar schema string to JSON format with resolved types.
+///
 /// This function resolves ambiguous "`EntityOrCommon`" types to their specific
 /// Entity or `CommonType` classifications using the schema's type definitions.
 /// This is primarily meant to be used when working with schemas programmatically,

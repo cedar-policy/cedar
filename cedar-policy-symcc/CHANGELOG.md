@@ -17,6 +17,7 @@ for single policies (#2047)
 - `CompiledPolicy::compile_with_custom_symenv()` and
 `CompiledPolicySet::compile_with_custom_symenv()` experimental APIs -- note the
 documented caveats and use at your own risk (#2102)
+- `Display` impl for `Term` (#2125)
 - Performance optimizations (#2070, #2073, #2079, #2093, #2094)
 
 ### Changed

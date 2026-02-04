@@ -502,6 +502,12 @@ impl BitVec {
     }
 }
 
+impl std::fmt::Display for BitVec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(bv{} {})", self.width(), self.as_nat())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -31,6 +31,7 @@ miette = { version = "7.6.0", features = ["fancy"] }
 tokio = { version = "1.49", features = ["full"] } # for `tokio::test` unit tests
 rstest = "0.26.1"
 cool_asserts = "2.0"
+insta = "1.46"
 
 [features]
 experimental = ["variadic-is-in-range"]
@@ -38,4 +39,3 @@ variadic-is-in-range = []
 
 [lints]
 workspace = true
-

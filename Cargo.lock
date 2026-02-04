@@ -447,6 +447,7 @@ dependencies = [
  "cedar-policy-core",
  "chrono",
  "cool_asserts",
+ "insta",
  "itertools 0.14.0",
  "miette",
  "nonempty",

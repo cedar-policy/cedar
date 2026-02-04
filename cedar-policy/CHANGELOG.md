@@ -25,7 +25,6 @@ the `ffi` module (new impls on `ffi::EntityUid`, `ffi::Context`, `ffi::Entities`
 - More derives (`PartialEq`, `Clone`, etc) for a number of types in the `ffi` module (#2083)
 - TPE: Simplify `<residual> && false` to `false` and `<residual> || true` to `true` when `<residual>` is error-free. (#2091)
 
-
 ### Fixed
 
 - Policy formatting for record literals and index-style attribute access. (#2117, fixing #959 and #1005)
