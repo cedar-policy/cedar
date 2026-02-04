@@ -4,6 +4,11 @@ All notable changes to Cedar CLI tool will be documented in this file.
 Changes to the Cedar language, which are likely to affect users of the CLI, are documented separately in the [primary changelog](../cedar-policy/CHANGELOG.md).
 
 ## Unreleased
+
+## 4.9.0
+
+### Added
+
 - Added a new option when converting cedar schemas to JSON that allows the caller to get back a JSON schema where all types are resolved to commontype or entity (never entityOrCommon).
 - Added an option to provide a schema to the `run-tests`
 command so that the request, entities and policies are
