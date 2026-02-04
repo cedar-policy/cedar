@@ -13,7 +13,6 @@ Cedar Language Version: TBD
 - `matches_equivalent`, `matches_implies`, and `matches_disjoint` primitives
 for single policies (#2047)
 - `.effect()` for `CompiledPolicy` (#2047)
-- `CompiledPolicy::policy()` and `CompiledPolicies::policies()` (#2103)
 - `CompiledPolicy::compile_with_custom_symenv()` and
 `CompiledPolicySet::compile_with_custom_symenv()` experimental APIs -- note the
 documented caveats and use at your own risk (#2102)
