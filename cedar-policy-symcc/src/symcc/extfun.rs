@@ -124,28 +124,23 @@ pub fn in_range_v(
     t: Term,
     ts: Vec<Term>,
 ) -> Term {
-    // Apply is_ip to t and all terms in ts, folding with and
-    let is_ip_checks = ts
-        .iter()
-        .fold(is_ip(t.clone()), |acc, term| and(acc, is_ip(term.clone())));
-
     // Apply in_range between t and each term in ts, folding with or
     let range_checks = ts.iter().fold(false.into(), |acc, term| {
         or(acc, in_range(&range, t.clone(), term.clone()))
     });
+
+    // Apply is_ip to t and all terms in ts, folding with and
+    let is_ip_checks = ts
+        .into_iter()
+        .fold(is_ip(t), |acc, term| and(acc, is_ip(term)));
 
     and(is_ip_checks, range_checks)
 }
 
 pub fn is_in_range(t: Term, ts: Vec<Term>) -> Term {
     or(
-        in_range_v(
-            is_ipv4,
-            range_v4,
-            t.clone(),
-            ts.iter().map(|t| t.clone()).collect(),
-        ),
-        in_range_v(is_ipv6, range_v6, t, ts.iter().map(|t| t.clone()).collect()),
+        in_range_v(is_ipv4, range_v4, t.clone(), ts.clone()),
+        in_range_v(is_ipv6, range_v6, t, ts),
     )
 }
 
