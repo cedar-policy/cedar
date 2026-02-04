@@ -195,11 +195,6 @@ impl CompiledPolicy {
         self.policy.effect()
     }
 
-    /// Get the (post-typecheck) `Policy` that this `CompiledPolicy` represents
-    pub fn policy(&self) -> &cedar_policy_core::ast::Policy {
-        &self.policy.policy
-    }
-
     /// Convert a `CompiledPolicy` to a `CompiledPolicySet` representing a
     /// singleton policyset with just that policy.
     ///
@@ -260,11 +255,6 @@ impl CompiledPolicySet {
                 symenv,
             )?,
         })
-    }
-
-    /// Get the (post-typecheck) `PolicySet` that this `CompiledPolicySet` represents
-    pub fn policies(&self) -> &cedar_policy_core::ast::PolicySet {
-        &self.policies.policies
     }
 }
 
