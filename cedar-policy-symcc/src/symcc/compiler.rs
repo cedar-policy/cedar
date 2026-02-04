@@ -487,7 +487,7 @@ pub fn compile_call2(
 // Use directly for encoding calls that can error with n arguments
 pub fn compile_call_n_error(
     xty: ExtType,
-    xtys: Vec<ExtType>,
+    xtys: impl ExactSizeIterator<Item = ExtType>,
     enc: impl Fn(Term, Vec<Term>) -> Term,
     t: Term,
     ts: Vec<Term>,
@@ -499,9 +499,7 @@ pub fn compile_call_n_error(
     if ts.len() != xtys.len() {
         return Err(CompileError::TypeError);
     }
-    let expected_types = xtys
-        .iter()
-        .map(|xty| TermType::option_of(TermType::Ext { xty: *xty }));
+    let expected_types = xtys.map(|xty| TermType::option_of(TermType::Ext { xty }));
 
     // Check all types match
     if ts
@@ -534,7 +532,7 @@ pub fn compile_call_n(
     ts: Vec<Term>,
 ) -> Result<Term> {
     let enc = |t: Term, ts: Vec<Term>| -> Term { some_of(enc(t, ts)) };
-    compile_call_n_error(xty, vec![xty; n], enc, t, ts)
+    compile_call_n_error(xty, std::iter::repeat_n(xty, n), enc, t, ts)
 }
 
 /// Extract the first item from a `Vec`, consuming the `Vec`.

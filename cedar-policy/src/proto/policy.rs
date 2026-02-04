@@ -21,33 +21,22 @@ use cedar_policy_core::{ast, FromNormalizedStr};
 use std::collections::HashMap;
 
 impl From<&models::Policy> for ast::LiteralPolicy {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: &models::Policy) -> Self {
         let mut values: ast::SlotEnv = HashMap::new();
-        if v.principal_euid.is_some() {
+        if let Some(principal_euid) = v.principal_euid.as_ref() {
             values.insert(
                 ast::SlotId::principal(),
-                ast::EntityUID::from(
-                    v.principal_euid
-                        .as_ref()
-                        .expect("principal_euid field should exist"),
-                ),
+                ast::EntityUID::from(principal_euid),
             );
         }
-        if v.resource_euid.is_some() {
-            values.insert(
-                ast::SlotId::resource(),
-                ast::EntityUID::from(
-                    v.resource_euid
-                        .as_ref()
-                        .expect("resource_euid field should exist"),
-                ),
-            );
+        if let Some(resource_euid) = v.resource_euid.as_ref() {
+            values.insert(ast::SlotId::resource(), ast::EntityUID::from(resource_euid));
         }
 
         let template_id = ast::PolicyID::from_string(v.template_id.clone());
 
         if v.is_template_link {
+            #[expect(clippy::expect_used, reason = "experimental feature")]
             Self::template_linked_policy(
                 template_id,
                 ast::PolicyID::from_string(v.link_id.as_ref().expect("link_id field should exist")),

@@ -169,7 +169,7 @@ fn compile_prim(p: &Prim, es: &SymEntities) -> Result<CompileResult> {
     }
 }
 
-fn compile_var(v: &Var, req: &SymRequest) -> Result<CompileResult> {
+fn compile_var(v: Var, req: &SymRequest) -> Result<CompileResult> {
     match v {
         Var::Principal => {
             if req.principal.type_of().is_entity_type() {
@@ -802,7 +802,7 @@ pub fn compile_call2(
 // Use directly for encoding calls that can error with n arguments
 pub fn compile_call_n_error(
     xty: ExtType,
-    xtys: Vec<ExtType>,
+    xtys: impl ExactSizeIterator<Item = ExtType>,
     enc: impl Fn(Term, Vec<Term>) -> Term,
     arg: CompileResult,
     args: Vec<CompileResult>,
@@ -815,9 +815,7 @@ pub fn compile_call_n_error(
         return Err(CompileError::TypeError);
     }
 
-    let expected_types = xtys
-        .iter()
-        .map(|xty| TermType::option_of(TermType::Ext { xty: *xty }));
+    let expected_types = xtys.map(|xty| TermType::option_of(TermType::Ext { xty }));
 
     // Check all types match
     if args
@@ -862,7 +860,7 @@ pub fn compile_call_n(
     args: Vec<CompileResult>,
 ) -> Result<CompileResult> {
     let enc = |t: Term, ts: Vec<Term>| -> Term { some_of(enc(t, ts)) };
-    compile_call_n_error(xty, vec![xty; n], enc, arg, args)
+    compile_call_n_error(xty, std::iter::repeat_n(xty, n), enc, arg, args)
 }
 
 pub fn compile_call(
@@ -993,7 +991,7 @@ pub fn compile_call(
 pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
     match x.expr_kind() {
         ExprKind::Lit(l) => compile_prim(l, &env.entities),
-        ExprKind::Var(v) => compile_var(v, &env.request),
+        ExprKind::Var(v) => compile_var(*v, &env.request),
         ExprKind::If {
             test_expr: x1,
             then_expr: x2,
