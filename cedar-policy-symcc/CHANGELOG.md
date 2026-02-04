@@ -24,6 +24,8 @@ documented caveats and use at your own risk (#2102)
 - Renamed `CompiledPolicies` to `CompiledPolicySet`
 - Deprecated the unoptimized interface on `CedarSymCompiler` in favor of the
 optimized interface (`*_opt` methods) introduced in 0.2.0 (#2095)
+- Also deprecated the `WellTypedPolicy` and `WellTypedPolicies` types associated
+with the unoptimized `CedarSymCompiler` interface (#2129)
 - Experimental functions `compile_always_matches()` and friends were refactored
 and renamed to `always_matches_asserts()` and friends. Under the hood, these now
 use the performance-optimized primitives introduced in 0.2.0. (#2102)
