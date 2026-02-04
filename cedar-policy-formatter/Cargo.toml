@@ -11,7 +11,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy-core = { version = "=4.8.2", path = "../cedar-policy-core" }
+cedar-policy-core = { version = "=4.9.0", path = "../cedar-policy-core" }
 pretty = "0.12.5"
 logos = "0.16.0"
 itertools = "0.14"
