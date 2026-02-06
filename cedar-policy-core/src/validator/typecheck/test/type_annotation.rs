@@ -15,17 +15,25 @@
  */
 
 use cool_asserts::assert_matches;
+use itertools::Itertools;
 use serde_json::json;
 use similar_asserts::assert_eq;
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{
-    ast::{EntityUID, Expr, ExprBuilder, PolicyID},
+    ast::{EntityUID, Expr, ExprBuilder, Policy, PolicyID, Template},
     expr_builder::ExprBuilder as _,
+    extensions::Extensions,
+    parser::parse_policy,
+    validator::{
+        json_schema,
+        typecheck::{PolicyCheck, TypecheckAnswer, Typechecker},
+        types::Type,
+        ValidationMode, ValidatorSchema,
+    },
 };
 
 use super::test_utils::{empty_schema_file, expr_id_placeholder};
-use crate::validator::{json_schema, typecheck::Typechecker, types::Type, ValidationMode};
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_expr_has_annotated_ast(e: &Expr, annotated: &Expr<Option<Type>>) {
@@ -34,7 +42,7 @@ fn assert_expr_has_annotated_ast(e: &Expr, annotated: &Expr<Option<Type>>) {
         .expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::default());
     let mut errs = HashSet::new();
-    assert_matches!(typechecker.typecheck_expr(e, &PolicyID::from_string("0"), &mut errs), crate::validator::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
+    assert_matches!(typechecker.typecheck_expr(e, &PolicyID::from_string("0"), &mut errs), TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
         assert_eq!(&expr_type, annotated);
     });
 }
@@ -199,4 +207,81 @@ fn expr_typechecks_with_correct_annotation() {
             panic!("Should not type check an AST with an error node")
         }
     }
+}
+
+// we discovered this input that is not idempotent when being typechecked twice
+#[test]
+fn non_idempotent() {
+    let (schema, _) = ValidatorSchema::from_cedarschema_str(
+        r#"
+        entity a tags Set<__cedar::ipaddr>;
+
+        action "action" appliesTo {
+        principal: [a],
+        resource: [a],
+        context: {}
+        };
+    "#,
+        Extensions::all_available(),
+    )
+    .unwrap();
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(
+        principal,
+        action in [Action::"action"],
+        resource is a
+    ) when {
+        ((true && (if (
+            if (if true then true else true)
+            then (if true then true else true)
+            else (if true then false else true)
+        )
+            then (a::"".hasTag(if true then "" else ""))
+            else (
+                if (if true then true else true)
+                then (if true then true else false)
+                else false
+            )
+        )) && (
+            if (a::"".hasTag(if true then "" else ")"))
+            then (
+                if (if true then true else true)
+                then (if true then true else false)
+                else true
+            )
+            else (principal in a::"")
+        )) && (a::"".hasTag(""))
+    };
+    "#,
+    )
+    .unwrap();
+    let typechecker = Typechecker::new(&schema, ValidationMode::Strict);
+    let req_env = schema
+        .unlinked_request_envs(ValidationMode::Strict)
+        .exactly_one()
+        .unwrap_or_else(|e| panic!("expected exactly one request env: {e}"));
+    let template: Arc<Template> = policy.into();
+
+    assert_matches!(typechecker.typecheck_by_single_request_env(&template, &req_env), PolicyCheck::Success(transformed) => {
+        // after typechecking, the policy is transformed into this:
+        assert_eq!(transformed.to_string(), r#"true && ((action in [Action::"action"]) && ((resource is a) && (((true && (if (if (if true then true else true) then (if true then true else true) else (if true then true else true)) then (a::"".hasTag(if true then "" else "")) else (a::"".hasTag(if true then "" else "")))) && (if (a::"".hasTag(if true then "" else "")) then (if (if true then true else true) then (if true then true else true) else (if true then true else true)) else (principal in a::""))) && (a::"".hasTag("")))))"#);
+        // in particular, note that it still contains the `principal in a::""` term
+        assert!(transformed.to_string().contains(r#"principal in a::"""#));
+
+        // now we typecheck the transformed policy:
+        let transformed = Policy::from_when_clause(
+            template.effect(),
+            transformed.into_expr::<ExprBuilder<()>>(),
+            template.id().clone(),
+            template.loc().cloned(),
+        );
+        assert_matches!(typechecker.typecheck_by_single_request_env(&transformed.template(), &req_env), PolicyCheck::Success(retransformed) => {
+            // after re-typechecking, the policy is transformed into this:
+            assert_eq!(retransformed.to_string(), r#"true && (true && (true && (true && ((action in [Action::"action"]) && ((resource is a) && (((true && (if (if (if true then true else true) then (if true then true else true) else (if true then true else true)) then (a::"".hasTag(if true then "" else "")) else (a::"".hasTag(if true then "" else "")))) && (if (a::"".hasTag(if true then "" else "")) then (if (if true then true else true) then (if true then true else true) else (if true then true else true)) else (if (if true then true else true) then (if true then true else true) else (if true then true else true)))) && (a::"".hasTag(""))))))))"#);
+            // in particular, note that it no longer contains the `principal in a::""` term
+            assert!(!retransformed.to_string().contains(r#"principal in a::"""#));
+        });
+    });
 }
