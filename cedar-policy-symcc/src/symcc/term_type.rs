@@ -17,6 +17,7 @@
 //! Definitions of term types.
 
 use cedar_policy_core::validator::types::{OpenTag, Type};
+use strum::IntoStaticStr;
 
 use super::result::CompileError;
 
@@ -25,7 +26,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// Types of the intermediate [`super::term::Term`] representation.
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Eq, IntoStaticStr)]
 #[expect(missing_docs, reason = "fields are self explanatory")]
 pub enum TermType {
     /// Bool type
@@ -190,5 +191,42 @@ impl TermType {
                 "singleton Bool type is not supported".into(),
             )),
         }
+    }
+}
+
+impl Ord for TermType {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (TermType::Bool, TermType::Bool) => std::cmp::Ordering::Equal,
+            (TermType::Bitvec { n: a_n }, TermType::Bitvec { n: b_n }) => a_n.cmp(b_n),
+            (TermType::String, TermType::String) => std::cmp::Ordering::Equal,
+            (TermType::Option { ty: a_ty }, TermType::Option { ty: b_ty }) => a_ty.cmp(b_ty),
+            (TermType::Entity { ety: a_ety }, TermType::Entity { ety: b_ety }) => a_ety.cmp(b_ety),
+            (TermType::Set { ty: a_ty }, TermType::Set { ty: b_ty }) => a_ty.cmp(b_ty),
+            (TermType::Record { rty: a_rty }, TermType::Record { rty: b_rty }) => a_rty.cmp(b_rty),
+            (TermType::Ext { xty: a_xty }, TermType::Ext { xty: b_xty }) => a_xty.cmp(b_xty),
+            _ => {
+                // If the variants don't match, compare the string variant names.
+                // Use "Prim" for primitive types when comparing against non-primitive types.
+                // This is necesarry to maintain consistency with the Lean.
+                let a_name: &'static str = if self.is_prim_type() && !other.is_prim_type() {
+                    "Prim"
+                } else {
+                    self.into()
+                };
+                let b_name: &'static str = if other.is_prim_type() && !self.is_prim_type() {
+                    "Prim"
+                } else {
+                    other.into()
+                };
+                a_name.cmp(b_name)
+            }
+        }
+    }
+}
+
+impl PartialOrd for TermType {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }

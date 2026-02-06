@@ -25,6 +25,7 @@ num-traits = "0.2"
 chrono = "0.4.43"
 miette = "7.6.0"
 nonempty = "0.12.0"
+strum = { version = "0.27.2", features = ["derive"] }
 
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }
