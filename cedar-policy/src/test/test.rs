@@ -8014,7 +8014,7 @@ mod policy_manipulation_functions_tests {
         );
         assert_entity_sub(
             r#"permit(principal, action, resource) when { {a: User::"Alice", b: User::"Alice"} };"#,
-            r#"permit(principal, action, resource) when { {"a": User::"Bob", "b": User::"Bob"} };"#,
+            r#"permit(principal, action, resource) when { {a: User::"Bob", b: User::"Bob"} };"#,
             mapping.clone(),
         );
         assert_entity_sub(

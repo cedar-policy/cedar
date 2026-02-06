@@ -1451,7 +1451,11 @@ impl BoundedDisplay for ExprNoExt {
                         // truncate to n key-value pairs
                         write!(f, "{{")?;
                         for (k, v) in m.iter().take(n) {
-                            write!(f, "\"{}\": ", k.escape_debug())?;
+                            if is_normalized_ident(k) {
+                                write!(f, "{k}: ")?;
+                            } else {
+                                write!(f, "\"{}\": ", k.escape_debug())?;
+                            }
                             BoundedDisplay::fmt(v, f, Some(n))?;
                             write!(f, ", ")?;
                         }
@@ -1462,7 +1466,11 @@ impl BoundedDisplay for ExprNoExt {
                         // no truncation
                         write!(f, "{{")?;
                         for (i, (k, v)) in m.iter().enumerate() {
-                            write!(f, "\"{}\": ", k.escape_debug())?;
+                            if is_normalized_ident(k) {
+                                write!(f, "{k}: ")?;
+                            } else {
+                                write!(f, "\"{}\": ", k.escape_debug())?;
+                            }
                             BoundedDisplay::fmt(v, f, n)?;
                             if i < m.len() - 1 {
                                 write!(f, ", ")?;
@@ -1641,28 +1649,25 @@ mod test {
         .into_expr::<Builder>();
         assert_eq!(
             format!("{expr}"),
-            r#"{"a": 12, "b": [3, 4, true], "c": (-20), "hello ∞ world": "∂µß≈¥"}"#
+            r#"{a: 12, b: [3, 4, true], c: (-20), "hello ∞ world": "∂µß≈¥"}"#
         );
         assert_eq!(
             BoundedToString::to_string(&expr, None),
-            r#"{"a": 12, "b": [3, 4, true], "c": (-20), "hello ∞ world": "∂µß≈¥"}"#
+            r#"{a: 12, b: [3, 4, true], c: (-20), "hello ∞ world": "∂µß≈¥"}"#
         );
         assert_eq!(
             BoundedToString::to_string(&expr, Some(4)),
-            r#"{"a": 12, "b": [3, 4, true], "c": (-20), "hello ∞ world": "∂µß≈¥"}"#
+            r#"{a: 12, b: [3, 4, true], c: (-20), "hello ∞ world": "∂µß≈¥"}"#
         );
         assert_eq!(
             BoundedToString::to_string(&expr, Some(3)),
-            r#"{"a": 12, "b": [3, 4, true], "c": (-20), ..}"#
+            r#"{a: 12, b: [3, 4, true], c: (-20), ..}"#
         );
         assert_eq!(
             BoundedToString::to_string(&expr, Some(2)),
-            r#"{"a": 12, "b": [3, 4, ..], ..}"#
+            r#"{a: 12, b: [3, 4, ..], ..}"#
         );
-        assert_eq!(
-            BoundedToString::to_string(&expr, Some(1)),
-            r#"{"a": 12, ..}"#
-        );
+        assert_eq!(BoundedToString::to_string(&expr, Some(1)), r#"{a: 12, ..}"#);
         assert_eq!(BoundedToString::to_string(&expr, Some(0)), r#"{..}"#);
     }
 
