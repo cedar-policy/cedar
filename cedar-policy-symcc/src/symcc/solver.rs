@@ -64,6 +64,9 @@ pub enum SolverError {
     /// Unrecognized solver output.
     #[error("unrecognized solver output: {0}")]
     UnrecognizedSolverOutput(String),
+    /// The solver was marked as failed and can no longer be used.
+    #[error("solver was marked as failed")]
+    SolverMarkedFailed,
 }
 type Result<T> = std::result::Result<T, SolverError>;
 

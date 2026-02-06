@@ -18,6 +18,7 @@ for single policies (#2047)
 documented caveats and use at your own risk (#2102)
 - `Display` impl for `Term` (#2125)
 - Performance optimizations (#2070, #2073, #2079, #2093, #2094)
+- Add `SolverPool` for query pooling (#2111)
 
 ### Changed
 
