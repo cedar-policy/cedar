@@ -50,40 +50,25 @@ pub struct TermVar {
 }
 
 /// Primitive terms.
+/// Variants must be defined in alphabetical order.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub enum TermPrim {
-    /// Literal bool
-    Bool(bool),
     /// Literal bitvec
     Bitvec(BitVec),
-    /// Literal string
-    String(SmolStr),
+    /// Literal bool
+    Bool(bool),
     /// Literal EntityUID
     Entity(EntityUID),
     /// Literal extension value
     Ext(Ext),
+    /// Literal string
+    String(SmolStr),
 }
 
 /// Intermediate representation of [`Term`]s.
+/// Variants must be defined in alphabetical order.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub enum Term {
-    /// Literal
-    Prim(TermPrim),
-    /// Variable
-    Var(TermVar),
-    /// None
-    None(TermType),
-    /// Some
-    Some(Arc<Term>),
-    /// Sets
-    Set {
-        /// Elements of the set (as `Term`)
-        elts: Arc<BTreeSet<Term>>,
-        /// Type shared by all elements of the set
-        elts_ty: TermType,
-    },
-    /// Records
-    Record(Arc<BTreeMap<Attr, Term>>),
     /// Function calls
     App {
         /// Function being called
@@ -93,6 +78,23 @@ pub enum Term {
         /// Return type of the function
         ret_ty: TermType,
     },
+    /// None
+    None(TermType),
+    /// Literal
+    Prim(TermPrim),
+    /// Records
+    Record(Arc<BTreeMap<Attr, Term>>),
+    /// Sets
+    Set {
+        /// Elements of the set (as `Term`)
+        elts: Arc<BTreeSet<Term>>,
+        /// Type shared by all elements of the set
+        elts_ty: TermType,
+    },
+    /// Some
+    Some(Arc<Term>),
+    /// Variable
+    Var(TermVar),
 }
 
 // Corresponding to the `Coe` instances in Lean
