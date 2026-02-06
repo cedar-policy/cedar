@@ -1667,10 +1667,7 @@ mod test {
             BoundedToString::to_string(&expr, Some(2)),
             r#"{a: 12, b: [3, 4, ..], ..}"#
         );
-        assert_eq!(
-            BoundedToString::to_string(&expr, Some(1)),
-            r#"{a: 12, ..}"#
-        );
+        assert_eq!(BoundedToString::to_string(&expr, Some(1)), r#"{a: 12, ..}"#);
         assert_eq!(BoundedToString::to_string(&expr, Some(0)), r#"{..}"#);
     }
 
