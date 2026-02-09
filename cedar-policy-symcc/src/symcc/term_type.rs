@@ -25,9 +25,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// Types of the intermediate [`super::term::Term`] representation.
-//  Note: The declaration order of variants for this enum affects the derived definition of `Ord`
+//  Note: The declaration order of variants for this enum affects the derived definitions of `Ord`
 //  and `PartialOrd` which must be consistent with the Lean.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 #[expect(missing_docs, reason = "fields are self explanatory")]
 pub enum TermType {
     /// Option type
