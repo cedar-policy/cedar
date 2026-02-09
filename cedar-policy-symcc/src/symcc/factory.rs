@@ -248,7 +248,6 @@ pub fn app(f: UnaryFunction, t: Term) -> Term {
 pub fn bvneg(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Bitvec(b)) => b.neg().into(),
-        // this optimization is not present in the Lean
         #[expect(
             clippy::unwrap_used,
             reason = "List of length 1 should not panic when unwrapping first element"
