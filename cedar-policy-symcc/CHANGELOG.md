@@ -30,8 +30,7 @@ with the unoptimized `CedarSymCompiler` interface (#2129)
 - Experimental functions `compile_always_matches()` and friends were refactored
 and renamed to `always_matches_asserts()` and friends. Under the hood, these now
 use the performance-optimized primitives introduced in 0.2.0. (#2102)
-- Changed the implementation of `Ord` and `PartialOrd` for `TermType` to change the ordering of variants (#2139).
-- Changed the declaration order of variants for `Term` and `TermPrim` to be alphabetical (#2139).
+- Changed the declaration order of variants for `Term`, `TermPrim`, and `TermType` (#2139).
 
 ### Fixed
 
