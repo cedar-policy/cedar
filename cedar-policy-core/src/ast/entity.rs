@@ -33,8 +33,11 @@ use std::sync::Arc;
 use thiserror::Error;
 
 #[cfg(feature = "tolerant-ast")]
-static ERROR_NAME: std::sync::LazyLock<Name> =
-    std::sync::LazyLock::new(|| Name(InternalName::from(Id::new_unchecked("EntityTypeError"))));
+static ERROR_NAME: std::sync::LazyLock<Name> = std::sync::LazyLock::new(|| {
+    Name(InternalName::from(Id::new_unchecked_const(
+        "EntityTypeError",
+    )))
+});
 
 #[cfg(feature = "tolerant-ast")]
 static EID_ERROR_STR: &str = "Eid::Error";
@@ -90,7 +93,7 @@ impl EntityType {
     pub fn is_action(&self) -> bool {
         match self {
             EntityType::EntityType(name) => {
-                name.as_ref().basename() == &Id::new_unchecked(ACTION_ENTITY_TYPE)
+                name.as_ref().basename() == &Id::new_unchecked_const(ACTION_ENTITY_TYPE)
             }
             #[cfg(feature = "tolerant-ast")]
             EntityType::ErrorEntityType => false,
@@ -920,7 +923,7 @@ mod test {
         assert!(!error_type.is_action());
         assert_eq!(error_type.qualify_with(None), EntityType::ErrorEntityType);
         assert_eq!(
-            error_type.qualify_with(Some(&Name(InternalName::from(Id::new_unchecked(
+            error_type.qualify_with(Some(&Name(InternalName::from(Id::new_unchecked_const(
                 "EntityTypeError"
             ))))),
             EntityType::ErrorEntityType
@@ -928,7 +931,9 @@ mod test {
 
         assert_eq!(
             error_type.name(),
-            &Name(InternalName::from(Id::new_unchecked("EntityTypeError")))
+            &Name(InternalName::from(Id::new_unchecked_const(
+                "EntityTypeError"
+            )))
         );
         assert_eq!(error_type.loc(), None)
     }
@@ -945,9 +950,9 @@ mod test {
 
     #[test]
     fn entity_type_serialization() {
-        let entity_type = EntityType::EntityType(Name(InternalName::from(Id::new_unchecked(
-            "some_entity_type",
-        ))));
+        let entity_type = EntityType::EntityType(Name(InternalName::from(
+            Id::new_unchecked_const("some_entity_type"),
+        )));
         let serialized = serde_json::to_string(&entity_type).unwrap();
 
         assert_eq!(serialized, r#""some_entity_type""#);
