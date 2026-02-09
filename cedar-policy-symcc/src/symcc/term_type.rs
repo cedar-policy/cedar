@@ -25,25 +25,27 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// Types of the intermediate [`super::term::Term`] representation.
+//  Note: The declaration order of variants for this enum affects the derived definitions of `Ord`
+//  and `PartialOrd` which must be consistent with the Lean.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 #[expect(missing_docs, reason = "fields are self explanatory")]
 pub enum TermType {
-    /// Bool type
-    Bool,
-    /// Bitvec type
-    Bitvec { n: Width },
-    /// String type
-    String,
     /// Option type
     Option { ty: Arc<TermType> },
+    /// Bitvec type
+    Bitvec { n: Width },
+    /// Bool type
+    Bool,
     /// Entity type
     Entity { ety: EntityType },
-    /// (Finite) set type
-    Set { ty: Arc<TermType> },
-    /// Record type
-    Record { rty: Arc<BTreeMap<Attr, TermType>> },
     /// Extension type
     Ext { xty: ExtType },
+    /// String type
+    String,
+    /// Record type
+    Record { rty: Arc<BTreeMap<Attr, TermType>> },
+    /// (Finite) set type
+    Set { ty: Arc<TermType> },
 }
 
 impl TermType {
