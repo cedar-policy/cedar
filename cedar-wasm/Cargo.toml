@@ -3,6 +3,7 @@ name = "cedar-wasm"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+repository.workspace = true
 description = "Wasm bindings and typescript types for Cedar lib"
 license.workspace = true
 
