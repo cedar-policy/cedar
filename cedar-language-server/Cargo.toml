@@ -14,7 +14,7 @@ repository.workspace = true
 cedar-policy-core = { version = "=4.9.0", path = "../cedar-policy-core", features = ["tolerant-ast", "extended-schema"] }
 cedar-policy-formatter = { version = "=4.9.0", path = "../cedar-policy-formatter", features = ["tolerant-ast"] }
 cedar-policy = { version = "=4.9.0", path = "../cedar-policy", features = ["tolerant-ast"]}
-anyhow = "1.0.100"
+anyhow = "1.0.101"
 itertools = "0.14.0"
 miette = "7.4.0"
 ropey = "1.6.1"
@@ -39,12 +39,12 @@ tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
 
 [dev-dependencies]
-tracing-test = "0.2.5"
+tracing-test = "0.2.6"
 cool_asserts = "2.0.4"
 similar-asserts = "1.7.0"
 insta = "1.46.1"
-tempfile = "3.24.0"
-proptest = "1.5"
+tempfile = "3.25.0"
+proptest = "1.10"
 
 [features]
 default = ["bin"]
