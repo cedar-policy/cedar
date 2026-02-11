@@ -80,7 +80,7 @@ cedar-policy-core = { version = "=4.9.0", features = [
 oorandom = "11.1"
 assert-json-diff = "2.0"
 
-proptest = "1.9.0"
+proptest = "1.10.0"
 
 [[bench]]
 name = "cedar_benchmarks"
