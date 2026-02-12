@@ -73,9 +73,11 @@ fn of_branch<'a>(
 ///
 /// All returned terms are of type `TermType.option .entity`.
 //
-// TODO: this essentially calls `compile()` on every subexpression, which is
+// NOTE: this essentially calls `compile()` on every subexpression, which is
 // redundant by itself, and also potentially redundant with other `compile()`
-// calls in verifier.rs
+// calls in verifier.rs. For a much more optimized version, use functionality
+// in the `symccopt` module.
+#[allow(unreachable_patterns, reason = "pattern may or may not be unreachable depending on whether `tolerant-ast` feature of cedar-policy-core is enabled")]
 pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<Item = Term> + 'a> {
     let of_entity = |x: &Expr| -> Box<dyn Iterator<Item = Term>> {
         match compile(x, env) {

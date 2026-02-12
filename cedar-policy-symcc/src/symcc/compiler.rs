@@ -678,6 +678,7 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
 /// Given an expression `x` that has type `τ` with respect to a type environment
 /// `Γ`, and given a well-formed symbolic environment `env` that conforms to `Γ`,
 /// `compile x env` succeeds and produces a well-formed term of type `.option τ.toTermType`.
+#[allow(unreachable_patterns, reason = "pattern may or may not be unreachable depending on whether `tolerant-ast` feature of cedar-policy-core is enabled")]
 pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
     match x.expr_kind() {
         ExprKind::Lit(l) => compile_prim(l, &env.entities),
