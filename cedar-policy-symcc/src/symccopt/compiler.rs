@@ -988,7 +988,7 @@ pub fn compile_call(
 /// Given an expression `x` that has type `τ` with respect to a type environment
 /// `Γ`, and given a well-formed symbolic environment `env` that conforms to `Γ`,
 /// `compile x env` succeeds and produces a well-formed term of type `.option τ.toTermType`.
-#[allow(
+#[expect(
     unreachable_patterns,
     reason = "pattern may or may not be unreachable depending on whether `tolerant-ast` feature of cedar-policy-core is enabled"
 )]

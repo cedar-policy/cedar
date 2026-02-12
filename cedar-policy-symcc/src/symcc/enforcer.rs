@@ -77,7 +77,7 @@ fn of_branch<'a>(
 // redundant by itself, and also potentially redundant with other `compile()`
 // calls in verifier.rs. For a much more optimized version, use functionality
 // in the `symccopt` module.
-#[allow(
+#[expect(
     unreachable_patterns,
     reason = "pattern may or may not be unreachable depending on whether `tolerant-ast` feature of cedar-policy-core is enabled"
 )]
