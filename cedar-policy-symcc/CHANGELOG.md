@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
+## [0.3.0] - Coming soon
+Cedar Language Version: 4.4
+
 ### Added
 
 - `matches_equivalent`, `matches_implies`, and `matches_disjoint` primitives
