@@ -31,7 +31,7 @@ jobs:
     # Set `RUSTFLAGS` once for all cargo commands so that changing these flags
     # doesn't trigger a fresh build.
     env:
-      RUSTFLAGS: '-D warnings -F unsafe-code -W unfulfilled_lint_expectations' # deny rustc warnings, except only warn on unfulfilled_lint_expectations
+      RUSTFLAGS: '-D warnings -F unsafe-code -A unfulfilled_lint_expectations' # deny rustc warnings, except allow on unfulfilled_lint_expectations. note that none of this line affects _clippy_ warnings, only _rustc_ warnings
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
