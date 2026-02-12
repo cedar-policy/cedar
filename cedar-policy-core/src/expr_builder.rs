@@ -186,6 +186,8 @@ pub trait ExprBuilder: Clone {
     /// Create an `Expr` which tests for the existence of a given
     /// non-empty list of attributes on a given `Entity` or record.
     fn extended_has_attr(self, expr: Self::Expr, attrs: &NonEmpty<SmolStr>) -> Self::Expr {
+        // TODO: might move this to the trait implementers, since it will be a particular
+        // representation's choice on whether to desugar or not
         let (first, rest) = attrs.split_first();
         let has_expr = Self::new()
             .with_maybe_source_loc(self.loc())

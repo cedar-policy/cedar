@@ -8836,6 +8836,82 @@ permit(
     }
 
     #[test]
+    fn json_to_cedar_with_extended_has_desugars() {
+        // The policy with the extended has relation
+        let extended_json = serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [{
+                "kind": "when",
+                "body": {
+                    "has": {
+                        "left": { "Var": "context" },
+                        "attr": ["user", "profile", "email"]
+                    }
+                }
+            }]
+        });
+        // The equivalent policy without the extended has relation
+        let desugared_json = serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [{
+                "kind": "when",
+                "body": {
+                    "&&": {
+                        "left": {
+                            "&&": {
+                                "left": {
+                                    "has": {
+                                        "left": { "Var": "context" },
+                                        "attr": "user"
+                                    }
+                                },
+                                "right": {
+                                    "has": {
+                                        "left": { ".": { "left": { "Var": "context" }, "attr": "user" } },
+                                        "attr": "profile"
+                                    }
+                                }
+                            }
+                        },
+                        "right": {
+                            "has": {
+                                "left": { ".": { "left": { ".": { "left": { "Var": "context" }, "attr": "user" } }, "attr": "profile" } },
+                                "attr": "email"
+                            }
+                        }
+                    }
+                }
+            }]
+        });
+
+        let extended_pset = PolicySet::from_json_value(serde_json::json!({
+            "staticPolicies": { "p1": extended_json },
+            "templates": {},
+            "templateLinks": []
+        }))
+        .unwrap();
+
+        let desugared_pset = PolicySet::from_json_value(serde_json::json!({
+            "staticPolicies": { "p1": desugared_json },
+            "templates": {},
+            "templateLinks": []
+        }))
+        .unwrap();
+
+        // Currently, to_cedar() desugars the extended has. Both policies result in the same text
+        assert_eq!(
+            extended_pset.to_cedar().unwrap(),
+            desugared_pset.to_cedar().unwrap()
+        );
+    }
+
+    #[test]
     fn cedar_to_cedar_is_lossless() {
         let policy_cedar = "permit ( principal, action, resource );";
         let policy = Policy::parse(None, policy_cedar).unwrap();
@@ -8866,6 +8942,22 @@ permit(
 
         // Neither can the whole policy set containing the linked policy
         assert_eq!(pset.to_cedar(), None);
+    }
+}
+
+mod to_json {
+    use crate::Policy;
+
+    #[test]
+    fn extended_has_not_in_to_json() {
+        let policy_cedar =
+            r#"permit(principal, action, resource) when { context has user.profile };"#;
+        let policy = Policy::parse(None, policy_cedar).unwrap();
+        let json = policy.to_json().unwrap();
+        let json_str = json.to_string();
+        // Should not contain array form of extended has
+        assert!(!json_str.contains(r#""attr":["#));
+        assert!(!json_str.contains(r#"["user","profile","email"]"#));
     }
 }
 

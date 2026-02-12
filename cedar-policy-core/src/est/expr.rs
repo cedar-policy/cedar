@@ -32,6 +32,7 @@ use crate::parser::{cst, Loc};
 use crate::parser::{cst_to_ast, Node};
 use crate::FromNormalizedStr;
 use itertools::Itertools;
+use nonempty::NonEmpty;
 use serde::{de::Visitor, Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::{SmolStr, ToSmolStr};
@@ -155,6 +156,29 @@ impl From<crate::ast::Pattern> for Vec<PatternElem> {
     fn from(value: crate::ast::Pattern) -> Self {
         value.iter().map(|elem| (*elem).into()).collect()
     }
+}
+
+/// Represents the variants of the `has` operation, either a simple operation or
+/// the extended has operation
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum HasAttrRepr {
+    /// Simple has test with a single attribute :
+    /// { "has": { "left": ..., "attr": <string>}}
+    Simple {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Atribute tested
+        attr: SmolStr,
+    },
+    /// Extended has test with a sequence of attributes :
+    /// { "has": { "left": ..., "attr": [<string>, ..]}}
+    Extended {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Sequence of attributes tested
+        attr: NonEmpty<SmolStr>,
+    },
 }
 
 /// Serde JSON structure for [any Cedar expression other than an extension
@@ -336,12 +360,7 @@ pub enum ExprNoExt {
     },
     /// `has`
     #[serde(rename = "has")]
-    HasAttr {
-        /// Left-hand argument
-        left: Arc<Expr>,
-        /// Attribute name
-        attr: SmolStr,
-    },
+    HasAttr(HasAttrRepr),
     /// `like`
     #[serde(rename = "like")]
     Like {
@@ -624,10 +643,10 @@ impl ExprBuilder for Builder {
 
     /// `left has attr`
     fn has_attr(self, expr: Expr, attr: SmolStr) -> Expr {
-        Expr::ExprNoExt(ExprNoExt::HasAttr {
+        Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
             left: Arc::new(expr),
             attr,
-        })
+        }))
     }
 
     /// `left like pattern`
@@ -806,10 +825,24 @@ impl Expr {
                     left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
                     attr,
                 })),
-                ExprNoExt::HasAttr { left, attr } => Ok(Expr::ExprNoExt(ExprNoExt::HasAttr {
-                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
-                    attr,
-                })),
+                ExprNoExt::HasAttr(repr) => match repr {
+                    HasAttrRepr::Simple { left, attr } => {
+                        Ok(Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
+                            left: Arc::new(
+                                Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?,
+                            ),
+                            attr,
+                        })))
+                    }
+                    HasAttrRepr::Extended { left, attr } => {
+                        Ok(Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+                            left: Arc::new(
+                                Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?,
+                            ),
+                            attr,
+                        })))
+                    }
+                },
                 ExprNoExt::Like { left, pattern } => Ok(Expr::ExprNoExt(ExprNoExt::Like {
                     left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
                     pattern,
@@ -972,10 +1005,15 @@ impl Expr {
                 Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 attr,
             )),
-            Expr::ExprNoExt(ExprNoExt::HasAttr { left, attr }) => Ok(ast::Expr::has_attr(
-                Arc::unwrap_or_clone(left).try_into_ast(id)?,
-                attr,
-            )),
+            Expr::ExprNoExt(ExprNoExt::HasAttr(repr)) => match repr {
+                HasAttrRepr::Simple { left, attr } => Ok(ast::Expr::has_attr(
+                    Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                    attr,
+                )),
+                // Should the try_into_ast use a builder anyway?
+                HasAttrRepr::Extended { left, attr } => Ok(ast::ExprBuilder::new()
+                    .extended_has_attr(Arc::unwrap_or_clone(left).try_into_ast(id)?, &attr)),
+            },
             Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => Ok(ast::Expr::like(
                 Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 crate::ast::Pattern::from(pattern.as_slice()),
@@ -1376,14 +1414,33 @@ impl BoundedDisplay for ExprNoExt {
                     write!(f, "[\"{}\"]", attr.escape_debug())
                 }
             }
-            ExprNoExt::HasAttr { left, attr } => {
-                maybe_with_parens(f, left, n)?;
-                if is_normalized_ident(attr) {
-                    write!(f, " has {}", attr)
-                } else {
-                    write!(f, " has \"{}\"", attr.escape_debug())
+            ExprNoExt::HasAttr(repr) => match repr {
+                HasAttrRepr::Simple { left, attr } => {
+                    maybe_with_parens(f, left, n)?;
+                    if is_normalized_ident(attr) {
+                        write!(f, " has {}", attr)
+                    } else {
+                        write!(f, " has \"{}\"", attr.escape_debug())
+                    }
                 }
-            }
+                HasAttrRepr::Extended { left, attr } => {
+                    maybe_with_parens(f, left, n)?;
+                    if is_normalized_ident(&attr.head) {
+                        write!(f, " has {}", attr.head)?;
+                    } else {
+                        write!(f, " has \"{}\"", attr.head.escape_debug())?;
+                    }
+                    for attr in attr.iter() {
+                        // TODO: validation, we shouldn't have non-idents here
+                        if is_normalized_ident(attr) {
+                            write!(f, ".{}", attr)?;
+                        } else {
+                            write!(f, ".\"{}\"", attr.escape_debug())?;
+                        }
+                    }
+                    Ok(())
+                }
+            },
             ExprNoExt::Like { left, pattern } => {
                 maybe_with_parens(f, left, n)?;
                 write!(
@@ -1734,5 +1791,46 @@ mod test {
             format!("{expr}"),
             r#"if (context has "foo-baz") then false else true"#
         );
+    }
+
+    #[test]
+    fn has_attr_serde() {
+        use nonempty::nonempty;
+
+        // Simple has - serialize
+        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+            attr: "department".into(),
+        }));
+        let json = serde_json::to_value(&expr).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"has": {"left": {"Var": "principal"}, "attr": "department"}})
+        );
+
+        // Simple has - deserialize
+        let deserialized: Expr = serde_json::from_value(
+            serde_json::json!({"has": {"left": {"Var": "principal"}, "attr": "department"}}),
+        )
+        .unwrap();
+        assert_eq!(expr, deserialized);
+
+        // Extended has - serialize
+        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+            attr: nonempty!["user".into(), "profile".into(), "email".into()],
+        }));
+        let json = serde_json::to_value(&expr).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"has": {"left": {"Var": "context"}, "attr": ["user", "profile", "email"]}})
+        );
+
+        // Extended has - deserialize
+        let deserialized: Expr = serde_json::from_value(serde_json::json!(
+            {"has": {"left": {"Var": "context"}, "attr": ["user", "profile", "email"]}}
+        ))
+        .unwrap();
+        assert_eq!(expr, deserialized);
     }
 }
