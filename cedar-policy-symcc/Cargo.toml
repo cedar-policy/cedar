@@ -2,8 +2,7 @@
 name = "cedar-policy-symcc"
 edition.workspace = true
 rust-version.workspace = true
-
-version = "0.2.0"
+version = "0.3.0"
 license.workspace = true
 categories.workspace = true
 description = "Symbolic Cedar Compiler (SymCC): translates queries about Cedar policies to SMT"
@@ -12,8 +11,8 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy = { path = "../cedar-policy", version = "=4.9.0" }
-cedar-policy-core = { path = "../cedar-policy-core", version = "=4.9.0" }
+cedar-policy = "=4.9.0"
+cedar-policy-core = "=4.9.0"
 async-recursion = "1.1"
 itertools = "0.14"
 ref-cast = "1.0"
