@@ -162,13 +162,15 @@ impl From<crate::ast::Pattern> for Vec<PatternElem> {
 /// the extended has operation
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi,))]
 pub enum HasAttrRepr {
     /// Simple has test with a single attribute :
     /// { "has": { "left": ..., "attr": <string>}}
     Simple {
         /// Left-hand argument
         left: Arc<Expr>,
-        /// Atribute tested
+        /// Attribute tested
         attr: SmolStr,
     },
     /// Extended has test with a sequence of attributes :
@@ -1796,41 +1798,44 @@ mod test {
     #[test]
     fn has_attr_serde() {
         use nonempty::nonempty;
+        let test_cases = vec![
+            // Has can have a single string argument.
+            (
+                Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
+                    left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+                    attr: "department".into(),
+                })),
+                serde_json::json!({"has": {"left": {"Var": "principal"}, "attr": "department"}}),
+            ),
+            // Has can have a singleton list as argument
+            (
+                Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+                    left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+                    attr: nonempty!["user".into()],
+                })),
+                serde_json::json!({"has": {"left": {"Var": "context"}, "attr": ["user"]}}),
+            ),
+            // Has can have a list of strings as argument
+            (
+                Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+                    left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+                    attr: nonempty!["user".into(), "profile".into(), "email".into()],
+                })),
+                serde_json::json!({"has": {"left": {"Var": "context"}, "attr": ["user", "profile", "email"]}}),
+            ),
+        ];
+        for (expr, json_repr) in test_cases {
+            // Serialize = json_repr
+            assert_eq!(serde_json::to_value(&expr).unwrap(), json_repr);
+            // expr = Deserialize
+            assert_eq!(expr, serde_json::from_value(json_repr).unwrap());
+        }
+    }
 
-        // Simple has - serialize
-        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
-            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
-            attr: "department".into(),
-        }));
-        let json = serde_json::to_value(&expr).unwrap();
-        assert_eq!(
-            json,
-            serde_json::json!({"has": {"left": {"Var": "principal"}, "attr": "department"}})
-        );
-
-        // Simple has - deserialize
-        let deserialized: Expr = serde_json::from_value(
-            serde_json::json!({"has": {"left": {"Var": "principal"}, "attr": "department"}}),
-        )
-        .unwrap();
-        assert_eq!(expr, deserialized);
-
-        // Extended has - serialize
-        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
-            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
-            attr: nonempty!["user".into(), "profile".into(), "email".into()],
-        }));
-        let json = serde_json::to_value(&expr).unwrap();
-        assert_eq!(
-            json,
-            serde_json::json!({"has": {"left": {"Var": "context"}, "attr": ["user", "profile", "email"]}})
-        );
-
-        // Extended has - deserialize
-        let deserialized: Expr = serde_json::from_value(serde_json::json!(
-            {"has": {"left": {"Var": "context"}, "attr": ["user", "profile", "email"]}}
-        ))
-        .unwrap();
-        assert_eq!(expr, deserialized);
+    #[test]
+    fn deserialize_has_attr_empty_errors() {
+        let json = serde_json::json!({"has": {"left": {"Var": "context"}, "attr": []}});
+        let expr_result: Result<Expr, _> = serde_json::from_value(json);
+        assert!(expr_result.is_err())
     }
 }
