@@ -7778,6 +7778,19 @@ mod policy_manipulation_functions_tests {
         assert_eq!(new_policy.to_string(), expected_policy_str);
     }
 
+    #[track_caller]
+    fn assert_entity_sub_from_json(
+        policy_json: serde_json::Value,
+        expected_policy_json: serde_json::Value,
+        mapping: impl IntoIterator<Item = (EntityUid, EntityUid)>,
+    ) {
+        let policy = Policy::from_json(None, policy_json).unwrap();
+        let new_policy = policy
+            .sub_entity_literals(mapping.into_iter().collect())
+            .unwrap();
+        assert_eq!(new_policy.to_json().unwrap(), expected_policy_json);
+    }
+
     #[test]
     fn test_entity_sub_principal() {
         let mapping = [(
@@ -7985,6 +7998,50 @@ mod policy_manipulation_functions_tests {
         assert_entity_sub(
             r#"permit(principal, action, resource) when { User::"Alice" has attr };"#,
             r#"permit(principal, action, resource) when { User::"Bob" has attr };"#,
+            mapping.clone(),
+        );
+        // Since there's no extended has in AST, the result of the substitution has the desugared has
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" has attr.andNested };"#,
+            r#"permit(principal, action, resource) when { (User::"Bob" has attr) && ((User::"Bob".attr) has andNested) };"#,
+            mapping.clone(),
+        );
+        // But staying in the EST doesn't result in desugaring
+        assert_entity_sub_from_json(
+            serde_json::json!({
+              "effect": "permit",
+              "principal": { "op": "All" },
+              "action": { "op": "All" },
+              "resource": { "op": "All" },
+              "conditions": [
+                {
+                  "kind": "when",
+                  "body": {
+                    "has": {
+                      "left": {"Value": {"__entity": {"type": "User","id": "Alice"}}},
+                      "attr": ["attr", "andNested"]
+                    }
+                  }
+                }
+              ]
+            }),
+            serde_json::json!({
+              "effect": "permit",
+              "principal": { "op": "All" },
+              "action": { "op": "All" },
+              "resource": { "op": "All" },
+              "conditions": [
+                {
+                  "kind": "when",
+                  "body": {
+                    "has": {
+                      "left": {"Value": {"__entity": {"type": "User","id": "Bob"}}},
+                      "attr": ["attr", "andNested"]
+                    }
+                  }
+                }
+              ]
+            }),
             mapping.clone(),
         );
         assert_entity_sub(

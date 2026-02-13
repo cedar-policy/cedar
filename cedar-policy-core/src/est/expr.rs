@@ -1432,7 +1432,7 @@ impl BoundedDisplay for ExprNoExt {
                     } else {
                         write!(f, " has \"{}\"", attr.head.escape_debug())?;
                     }
-                    for attr in attr.iter() {
+                    for attr in attr.tail.iter() {
                         // TODO: validation, we shouldn't have non-idents here
                         if is_normalized_ident(attr) {
                             write!(f, ".{}", attr)?;
@@ -1837,5 +1837,33 @@ mod test {
         let json = serde_json::json!({"has": {"left": {"Var": "context"}, "attr": []}});
         let expr_result: Result<Expr, _> = serde_json::from_value(json);
         assert!(expr_result.is_err())
+    }
+
+    #[test]
+    fn extended_has_display() {
+        // Other display functions are tested from the ast, but we can't curretly do that for the
+        // extended has operator
+        use nonempty::nonempty;
+
+        // Simple has
+        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Principal))),
+            attr: "department".into(),
+        }));
+        assert_eq!(format!("{expr}"), "principal has department");
+
+        // Extended has with single attribute
+        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+            attr: nonempty!["user".into()],
+        }));
+        assert_eq!(format!("{expr}"), "context has user");
+
+        // Extended has with multiple attributes
+        let expr = Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+            left: Arc::new(Expr::ExprNoExt(ExprNoExt::Var(ast::Var::Context))),
+            attr: nonempty!["user".into(), "profile".into(), "email".into()],
+        }));
+        assert_eq!(format!("{expr}"), "context has user.profile.email");
     }
 }
