@@ -1012,7 +1012,6 @@ impl Expr {
                     Arc::unwrap_or_clone(left).try_into_ast(id)?,
                     attr,
                 )),
-                // Should the try_into_ast use a builder anyway?
                 HasAttrRepr::Extended { left, attr } => Ok(ast::ExprBuilder::new()
                     .extended_has_attr(Arc::unwrap_or_clone(left).try_into_ast(id)?, &attr)),
             },
@@ -1433,7 +1432,8 @@ impl BoundedDisplay for ExprNoExt {
                         write!(f, " has \"{}\"", attr.head.escape_debug())?;
                     }
                     for attr in attr.tail.iter() {
-                        // TODO: validation, we shouldn't have non-idents here
+                        // TODO: validation, we shouldn't have non-idents here because
+                        // `principal has "foo".bar` doesn't parse
                         if is_normalized_ident(attr) {
                             write!(f, ".{}", attr)?;
                         } else {
