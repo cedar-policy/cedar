@@ -43,6 +43,7 @@ pub mod extensions;
 pub mod fuzzy_match;
 pub mod jsonvalue;
 pub mod parser;
+pub mod pst;
 #[cfg(feature = "tpe")]
 pub mod tpe;
 pub mod transitive_closure;
