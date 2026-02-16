@@ -267,9 +267,9 @@ fn type_to_access_trie(ty: &Type) -> AccessTrie {
         // if it's not an entity or record, slice ends here
         Type::ExtensionType { .. }
         | Type::Never
-        | Type::True
-        | Type::False
-        | Type::Primitive { .. }
+        | Type::Bool(_)
+        | Type::Long
+        | Type::String
         | Type::Set { .. } => AccessTrie::new(),
         Type::Record { attrs, .. } => {
             let mut fields = HashMap::new();

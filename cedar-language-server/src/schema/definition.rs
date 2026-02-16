@@ -196,9 +196,9 @@ impl FindDefinition for Type {
             }
             Self::Entity(EntityKind::AnyEntity)
             | Self::Never
-            | Self::True
-            | Self::False
-            | Self::Primitive { .. }
+            | Self::Bool(_)
+            | Self::String
+            | Self::Long
             | Self::ExtensionType { .. } => None,
         }
     }

@@ -37,9 +37,6 @@ use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
-#[cfg(feature = "extended-schema")]
-use crate::validator::types::Primitive;
-
 use crate::validator::{
     cedar_schema::SchemaWarning,
     json_schema,
@@ -828,7 +825,7 @@ impl ValidatorSchema {
             .filter(|ct| {
                 // Only collect common types that are not primitives and have location data
                 let ct_name = ct.0.clone();
-                ct_name.loc().is_some() && !Primitive::is_primitive(ct_name.basename().as_ref())
+                ct_name.loc().is_some() && !Type::is_primitive(ct_name.basename().as_ref())
             })
             .map(|ct| LocatedCommonType::new(ct.0, ct.1))
             .collect();
@@ -4892,11 +4889,10 @@ mod entity_tags {
     use crate::{
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
+        validator::types::BoolType,
     };
     use cool_asserts::assert_matches;
     use serde_json::json;
-
-    use crate::validator::types::Primitive;
 
     #[test]
     fn cedar_syntax_tags() {
@@ -4913,11 +4909,11 @@ mod entity_tags {
             assert!(warnings.is_empty());
             let user = assert_entity_type_exists(&schema, "User");
             assert_matches!(user.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
-                assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
+                assert_matches!(&**el_ty, Type::String);
             });
             let doc = assert_entity_type_exists(&schema, "Document");
             assert_matches!(doc.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
-                assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
+                assert_matches!(&**el_ty, Type::String);
             });
         });
     }
@@ -4962,11 +4958,11 @@ mod entity_tags {
         assert_matches!(ValidatorSchema::from_json_value(json, Extensions::all_available()), Ok(schema) => {
             let user = assert_entity_type_exists(&schema, "User");
             assert_matches!(user.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
-                assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
+                assert_matches!(&**el_ty, Type::String);
             });
             let doc = assert_entity_type_exists(&schema, "Document");
             assert_matches!(doc.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
-                assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
+                assert_matches!(&**el_ty, Type::String);
             });
         });
     }
@@ -4997,7 +4993,7 @@ mod entity_tags {
             let e = assert_entity_type_exists(&schema, "E");
             assert_matches!(e.tag_type(), None);
             let foo1 = assert_entity_type_exists(&schema, "Foo1");
-            assert_matches!(foo1.tag_type(), Some(Type::Primitive { primitive_type: Primitive::Bool }));
+            assert_matches!(foo1.tag_type(), Some(Type::Bool(BoolType::AnyBool)));
             let foo2 = assert_entity_type_exists(&schema, "Foo2");
             assert_matches!(foo2.tag_type(), Some(Type::Record{ .. }));
             let foo3 = assert_entity_type_exists(&schema, "Foo3");

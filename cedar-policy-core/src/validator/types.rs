@@ -48,22 +48,34 @@ use crate::parser::Loc;
 
 use super::schema::{ValidatorActionId, ValidatorEntityType, ValidatorSchema};
 
+/// Types for boolean values
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone)]
+pub enum BoolType {
+    /// Primitive boolean type.
+    AnyBool,
+    /// Singleton boolean type for `true` values.
+    True,
+    /// Singleton boolean type for `false` values.
+    False,
+}
+
 /// The main type structure.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone)]
 pub enum Type {
     /// Bottom type. Sub-type of all types.
     Never,
 
-    /// Singleton boolean type true
-    True,
-    /// Singleton boolean type false
-    False,
+    /// Type of boolean values.
+    Bool(BoolType),
 
-    /// Primitive types: bool, long, and string.
-    Primitive {
-        /// Which primitive type: bool, long, or string
-        primitive_type: Primitive,
-    },
+    /// Primitive long type.
+    Long,
+
+    /// Primitive string type.
+    String,
+
+    /// Entity types
+    Entity(EntityKind),
 
     /// The type of sets containing some type.
     Set {
@@ -85,9 +97,6 @@ pub enum Type {
         open_attributes: OpenTag,
     },
 
-    /// Entity types
-    Entity(EntityKind),
-
     /// Extension types
     ExtensionType {
         /// Name of the extension type
@@ -99,31 +108,25 @@ impl Type {
     /// Construct a singleton type, either `True` or `False` depending on `val`
     pub fn singleton_boolean(val: bool) -> Type {
         if val {
-            Type::True
+            Type::Bool(BoolType::True)
         } else {
-            Type::False
+            Type::Bool(BoolType::False)
         }
     }
 
     /// The Boolean type
     pub fn primitive_boolean() -> Type {
-        Type::Primitive {
-            primitive_type: Primitive::Bool,
-        }
+        Type::Bool(BoolType::AnyBool)
     }
 
     /// The Long (integer) type
     pub fn primitive_long() -> Type {
-        Type::Primitive {
-            primitive_type: Primitive::Long,
-        }
+        Type::Long
     }
 
     /// The String type
     pub fn primitive_string() -> Type {
-        Type::Primitive {
-            primitive_type: Primitive::String,
-        }
+        Type::String
     }
 
     /// Construct a type for a literal EUID. This type will be a named entity
@@ -209,20 +212,11 @@ impl Type {
             // Never is a subtype of every type.
             (Type::Never, _) => true,
 
-            (
-                Type::True | Type::False,
-                Type::Primitive {
-                    primitive_type: Primitive::Bool,
-                },
-            ) => true,
-            (Type::True, Type::True) => true,
-            (Type::False, Type::False) => true,
+            (Type::Bool(BoolType::True | BoolType::False), Type::Bool(BoolType::AnyBool)) => true,
+            (Type::Bool(b0), Type::Bool(b1)) => b0 == b1,
 
-            // Subtypes between two primitives only occurs when the primitive
-            // types are the same.
-            (Type::Primitive { primitive_type: _ }, Type::Primitive { primitive_type: _ }) => {
-                ty0 == ty1
-            }
+            (Type::Long, Type::Long) => true,
+            (Type::String, Type::String) => true,
 
             // A set type is a subtype other set type when its element type is a subtype.
             (
@@ -287,7 +281,7 @@ impl Type {
             _ if Type::is_subtype(ty0, ty1, mode) => Ok(ty1.clone()),
             _ if Type::is_subtype(ty1, ty0, mode) => Ok(ty0.clone()),
 
-            (Type::True | Type::False, Type::True | Type::False) => Ok(Type::primitive_boolean()),
+            (Type::Bool(_), Type::Bool(_)) => Ok(Type::primitive_boolean()),
 
             // `None` as an element type represents the top type for the set
             // element, so every other set is a subtype of set<None>, making a
@@ -475,26 +469,9 @@ impl Type {
     /// this validator type simultaneously.
     pub(crate) fn is_consistent_with(&self, core_type: &CoreSchemaType) -> bool {
         match core_type {
-            CoreSchemaType::Bool => matches!(
-                self,
-                Type::True
-                    | Type::False
-                    | Type::Primitive {
-                        primitive_type: Primitive::Bool
-                    }
-            ),
-            CoreSchemaType::Long => matches!(
-                self,
-                Type::Primitive {
-                    primitive_type: Primitive::Long
-                }
-            ),
-            CoreSchemaType::String => matches!(
-                self,
-                Type::Primitive {
-                    primitive_type: Primitive::String
-                }
-            ),
+            CoreSchemaType::Bool => matches!(self, Type::Bool(_)),
+            CoreSchemaType::Long => matches!(self, Type::Long),
+            CoreSchemaType::String => matches!(self, Type::String),
             CoreSchemaType::Set { element_ty } => {
                 matches!(self, Type::Set { element_type: Some(element_type) } if element_type.is_consistent_with(element_ty))
             }
@@ -609,17 +586,11 @@ impl Type {
     ) -> Result<bool, ExtensionFunctionLookupError> {
         match self {
             Type::Never => Ok(false), // no expr has type Never
-            Type::Primitive {
-                primitive_type: Primitive::Bool,
-            } => Ok(restricted_expr.as_bool().is_some()),
-            Type::Primitive {
-                primitive_type: Primitive::Long,
-            } => Ok(restricted_expr.as_long().is_some()),
-            Type::Primitive {
-                primitive_type: Primitive::String,
-            } => Ok(restricted_expr.as_string().is_some()),
-            Type::True => Ok(restricted_expr.as_bool() == Some(true)),
-            Type::False => Ok(restricted_expr.as_bool() == Some(false)),
+            Type::Bool(BoolType::AnyBool) => Ok(restricted_expr.as_bool().is_some()),
+            Type::Bool(BoolType::True) => Ok(restricted_expr.as_bool() == Some(true)),
+            Type::Bool(BoolType::False) => Ok(restricted_expr.as_bool() == Some(false)),
+            Type::Long => Ok(restricted_expr.as_long().is_some()),
+            Type::String => Ok(restricted_expr.as_string().is_some()),
             Type::Set { element_type: None } => Ok(restricted_expr.as_set_elements().is_some()),
             Type::Set {
                 element_type: Some(el_type),
@@ -714,23 +685,23 @@ impl Type {
             Type::Entity(EntityKind::Entity(_)) | Type::Entity(EntityKind::AnyEntity)
         )
     }
+
+    /// Check if a string is a primitive
+    #[cfg(feature = "extended-schema")]
+    pub(crate) fn is_primitive(s: &str) -> bool {
+        matches!(s, "Bool" | "Long" | "String")
+    }
 }
 
 impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Never => write!(f, "__cedar::internal::Never"),
-            Type::True => write!(f, "__cedar::internal::True"),
-            Type::False => write!(f, "__cedar::internal::False"),
-            Type::Primitive {
-                primitive_type: Primitive::Long,
-            } => write!(f, "Long"),
-            Type::Primitive {
-                primitive_type: Primitive::Bool,
-            } => write!(f, "Bool"),
-            Type::Primitive {
-                primitive_type: Primitive::String,
-            } => write!(f, "String"),
+            Type::Bool(BoolType::True) => write!(f, "__cedar::internal::True"),
+            Type::Bool(BoolType::False) => write!(f, "__cedar::internal::False"),
+            Type::Bool(BoolType::AnyBool) => write!(f, "Bool"),
+            Type::Long => write!(f, "Long"),
+            Type::String => write!(f, "String"),
             Type::Set { element_type } => match element_type {
                 Some(element_type) => write!(f, "Set<{element_type}>"),
                 None => write!(f, "Set<__cedar::internal::Any>"),
@@ -775,16 +746,9 @@ impl TryFrom<Type> for CoreSchemaType {
     fn try_from(ty: Type) -> Result<CoreSchemaType, String> {
         match ty {
             Type::Never => Err("'Never' type is not representable in core::SchemaType".into()),
-            Type::True | Type::False => Ok(CoreSchemaType::Bool),
-            Type::Primitive {
-                primitive_type: Primitive::Bool,
-            } => Ok(CoreSchemaType::Bool),
-            Type::Primitive {
-                primitive_type: Primitive::Long,
-            } => Ok(CoreSchemaType::Long),
-            Type::Primitive {
-                primitive_type: Primitive::String,
-            } => Ok(CoreSchemaType::String),
+            Type::Bool(_) => Ok(CoreSchemaType::Bool),
+            Type::Long => Ok(CoreSchemaType::Long),
+            Type::String => Ok(CoreSchemaType::String),
             Type::Set {
                 element_type: Some(element_type),
             } => Ok(CoreSchemaType::Set {
@@ -1334,25 +1298,6 @@ impl AttributeType {
     }
 }
 
-/// Represent the possible primitive types.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone)]
-pub enum Primitive {
-    /// Primitive boolean type.
-    Bool,
-    /// Primitive long type.
-    Long,
-    /// Primitive string type.
-    String,
-}
-
-impl Primitive {
-    /// Check if a string is a primitive
-    #[cfg(feature = "extended-schema")]
-    pub(crate) fn is_primitive(s: &str) -> bool {
-        matches!(s, "Bool" | "Long" | "String")
-    }
-}
-
 #[cfg(test)]
 #[expect(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 mod test {
@@ -1490,38 +1435,38 @@ mod test {
     fn test_primitive_lub() {
         assert_least_upper_bound(
             ValidationMode::Strict,
-            Type::False,
-            Type::True,
+            Type::Bool(BoolType::False),
+            Type::Bool(BoolType::True),
             Ok(Type::primitive_boolean()),
         );
         assert_least_upper_bound(
             ValidationMode::Strict,
-            Type::False,
-            Type::False,
-            Ok(Type::False),
+            Type::Bool(BoolType::False),
+            Type::Bool(BoolType::False),
+            Ok(Type::Bool(BoolType::False)),
         );
         assert_least_upper_bound(
             ValidationMode::Strict,
-            Type::False,
+            Type::Bool(BoolType::False),
             Type::primitive_boolean(),
             Ok(Type::primitive_boolean()),
         );
 
         assert_least_upper_bound(
             ValidationMode::Strict,
-            Type::True,
-            Type::True,
-            Ok(Type::True),
+            Type::Bool(BoolType::True),
+            Type::Bool(BoolType::True),
+            Ok(Type::Bool(BoolType::True)),
         );
         assert_least_upper_bound(
             ValidationMode::Strict,
-            Type::True,
-            Type::False,
+            Type::Bool(BoolType::True),
+            Type::Bool(BoolType::False),
             Ok(Type::primitive_boolean()),
         );
         assert_least_upper_bound(
             ValidationMode::Strict,
-            Type::True,
+            Type::Bool(BoolType::True),
             Type::primitive_boolean(),
             Ok(Type::primitive_boolean()),
         );
@@ -1529,13 +1474,13 @@ mod test {
         assert_least_upper_bound(
             ValidationMode::Strict,
             Type::primitive_boolean(),
-            Type::False,
+            Type::Bool(BoolType::False),
             Ok(Type::primitive_boolean()),
         );
         assert_least_upper_bound(
             ValidationMode::Strict,
             Type::primitive_boolean(),
-            Type::True,
+            Type::Bool(BoolType::True),
             Ok(Type::primitive_boolean()),
         );
         assert_least_upper_bound(
@@ -1560,25 +1505,25 @@ mod test {
 
         assert_least_upper_bound(
             ValidationMode::Permissive,
-            Type::False,
+            Type::Bool(BoolType::False),
             Type::primitive_string(),
             Err(LubHelp::None),
         );
         assert_least_upper_bound(
             ValidationMode::Permissive,
-            Type::False,
+            Type::Bool(BoolType::False),
             Type::primitive_long(),
             Err(LubHelp::None),
         );
         assert_least_upper_bound(
             ValidationMode::Permissive,
-            Type::True,
+            Type::Bool(BoolType::True),
             Type::primitive_string(),
             Err(LubHelp::None),
         );
         assert_least_upper_bound(
             ValidationMode::Permissive,
-            Type::True,
+            Type::Bool(BoolType::True),
             Type::primitive_long(),
             Err(LubHelp::None),
         );
@@ -1620,7 +1565,7 @@ mod test {
         assert_least_upper_bound(
             ValidationMode::Permissive,
             Type::extension(ipaddr.clone()),
-            Type::False,
+            Type::Bool(BoolType::False),
             Err(LubHelp::None),
         );
         assert_least_upper_bound(
@@ -1641,14 +1586,14 @@ mod test {
     fn test_set_lub() {
         assert_least_upper_bound(
             ValidationMode::Strict,
-            Type::set(Type::True.into()),
-            Type::set(Type::True.into()),
-            Ok(Type::set(Type::True.into())),
+            Type::set(Type::Bool(BoolType::True).into()),
+            Type::set(Type::Bool(BoolType::True).into()),
+            Ok(Type::set(Type::Bool(BoolType::True).into())),
         );
         assert_least_upper_bound(
             ValidationMode::Strict,
-            Type::set(Type::False.into()),
-            Type::set(Type::True.into()),
+            Type::set(Type::Bool(BoolType::False).into()),
+            Type::set(Type::Bool(BoolType::True).into()),
             Ok(Type::set(Type::primitive_boolean().into())),
         );
 
@@ -1745,7 +1690,7 @@ mod test {
         assert_least_upper_bound(
             ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::False.into()),
+                ("foo".into(), Type::Bool(BoolType::False).into()),
                 ("bar".into(), Type::primitive_long().into()),
             ]),
             Type::closed_record_with_required_attributes([
@@ -1760,7 +1705,7 @@ mod test {
         assert_least_upper_bound(
             ValidationMode::Strict,
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::False.into()),
+                ("foo".into(), Type::Bool(BoolType::False).into()),
                 ("bar".into(), Type::primitive_long().into()),
             ]),
             Type::closed_record_with_required_attributes([
@@ -1800,8 +1745,14 @@ mod test {
 
         assert_least_upper_bound(
             ValidationMode::Strict,
-            Type::closed_record_with_required_attributes([("a".into(), Type::True.into())]),
-            Type::closed_record_with_required_attributes([("a".into(), Type::False.into())]),
+            Type::closed_record_with_required_attributes([(
+                "a".into(),
+                Type::Bool(BoolType::True).into(),
+            )]),
+            Type::closed_record_with_required_attributes([(
+                "a".into(),
+                Type::Bool(BoolType::False).into(),
+            )]),
             Ok(Type::closed_record_with_required_attributes([(
                 "a".into(),
                 Type::primitive_boolean().into(),
@@ -1811,11 +1762,11 @@ mod test {
         assert_least_upper_bound(
             ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::False.into()),
+                ("foo".into(), Type::Bool(BoolType::False).into()),
                 ("bar".into(), Type::primitive_long().into()),
             ]),
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::True.into()),
+                ("foo".into(), Type::Bool(BoolType::True).into()),
                 ("baz".into(), Type::primitive_long().into()),
             ]),
             Ok(Type::open_record_with_required_attributes([(
@@ -1826,11 +1777,11 @@ mod test {
         assert_least_upper_bound(
             ValidationMode::Strict,
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::False.into()),
+                ("foo".into(), Type::Bool(BoolType::False).into()),
                 ("bar".into(), Type::primitive_long().into()),
             ]),
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::True.into()),
+                ("foo".into(), Type::Bool(BoolType::True).into()),
                 ("baz".into(), Type::primitive_long().into()),
             ]),
             Err(LubHelp::RecordWidth),
@@ -1838,8 +1789,14 @@ mod test {
 
         assert_least_upper_bound(
             ValidationMode::Strict,
-            Type::closed_record_with_required_attributes([("foo".into(), Type::False.into())]),
-            Type::closed_record_with_required_attributes([("foo".into(), Type::True.into())]),
+            Type::closed_record_with_required_attributes([(
+                "foo".into(),
+                Type::Bool(BoolType::False).into(),
+            )]),
+            Type::closed_record_with_required_attributes([(
+                "foo".into(),
+                Type::Bool(BoolType::True).into(),
+            )]),
             Ok(Type::closed_record_with_required_attributes([(
                 "foo".into(),
                 Type::primitive_boolean().into(),
@@ -1960,11 +1917,11 @@ mod test {
             ValidationMode::Strict,
             Type::open_record_with_attributes([(
                 "foo".into(),
-                AttributeType::new(Type::False.into(), true),
+                AttributeType::new(Type::Bool(BoolType::False).into(), true),
             )]),
             Type::closed_record_with_attributes([(
                 "foo".into(),
-                AttributeType::new(Type::True.into(), true),
+                AttributeType::new(Type::Bool(BoolType::True).into(), true),
             )]),
             Ok(Type::open_record_with_attributes([(
                 "foo".into(),
@@ -2275,7 +2232,7 @@ mod test {
         assert_least_upper_bound(
             ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([
-                ("foo".into(), Type::False.into()),
+                ("foo".into(), Type::Bool(BoolType::False).into()),
                 ("bar".into(), Type::primitive_long().into()),
             ]),
             Type::any_entity_reference(),
@@ -2467,8 +2424,8 @@ mod test {
 
         // These type aren't representable in a schema.
         assert_displays_as(&Type::Never, "__cedar::internal::Never");
-        assert_displays_as(&Type::True, "__cedar::internal::True");
-        assert_displays_as(&Type::False, "__cedar::internal::False");
+        assert_displays_as(&Type::Bool(BoolType::True), "__cedar::internal::True");
+        assert_displays_as(&Type::Bool(BoolType::False), "__cedar::internal::False");
         assert_displays_as(&Type::any_set(), "Set<__cedar::internal::Any>");
         assert_displays_as(
             &Type::any_entity_reference(),
@@ -2495,6 +2452,6 @@ mod test {
     #[test]
     #[cfg(feature = "extended-schema")]
     fn test_matches_name() {
-        assert!(Primitive::is_primitive("Long"))
+        assert!(Type::is_primitive("Long"))
     }
 }

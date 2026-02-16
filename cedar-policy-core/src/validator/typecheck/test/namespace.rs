@@ -27,6 +27,7 @@ use crate::{
     ast::{Expr, PolicyID, StaticPolicy},
     extensions::Extensions,
     parser::parse_policy,
+    validator::types::BoolType,
 };
 
 use super::test_utils::{
@@ -77,23 +78,23 @@ fn namespaced_entity_eq() {
     assert_typechecks(
         namespaced_entity_type_schema(),
         &Expr::from_str(r#"N::S::Foo::"alice" == N::S::Foo::"alice""#).expect("Expr should parse."),
-        &Type::True,
+        &Type::Bool(BoolType::True),
     );
     assert_typechecks(
         namespaced_entity_type_schema(),
         &Expr::from_str(r#"N::S::Foo::"alice" == N::S::Foo::"bob""#).expect("Expr should parse."),
-        &Type::False,
+        &Type::Bool(BoolType::False),
     );
     assert_typechecks(
         namespaced_entity_type_schema(),
         &Expr::from_str(r#"N::S::Foo::"alice" == N::S::Bar::"bob""#).expect("Expr should parse."),
-        &Type::False,
+        &Type::Bool(BoolType::False),
     );
     assert_typechecks(
         namespaced_entity_type_schema(),
         &Expr::from_str(r#"N::S::Action::"baz" == N::S::Action::"baz""#)
             .expect("Expr should parse."),
-        &Type::True,
+        &Type::Bool(BoolType::True),
     );
 }
 
@@ -107,7 +108,7 @@ fn namespaced_entity_in() {
     assert_typechecks(
         namespaced_entity_type_schema(),
         &Expr::from_str(r#"N::S::Foo::"alice" in N::S::Bar::"bob""#).expect("Expr should parse."),
-        &Type::False,
+        &Type::Bool(BoolType::False),
     );
 }
 
@@ -116,7 +117,7 @@ fn namespaced_entity_has() {
     assert_typechecks(
         namespaced_entity_type_schema(),
         &Expr::from_str(r#"N::S::Foo::"alice" has foo"#).expect("Expr should parse."),
-        &Type::False,
+        &Type::Bool(BoolType::False),
     );
     assert_typechecks(
         namespaced_entity_type_schema(),

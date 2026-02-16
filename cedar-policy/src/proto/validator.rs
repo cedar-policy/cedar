@@ -204,17 +204,15 @@ impl From<&types::Type> for models::Type {
     fn from(v: &types::Type) -> Self {
         match v {
             types::Type::Never => panic!("can't encode Never type in protobuf; Never should never appear in a Schema"),
-            types::Type::True | types::Type::False => panic!("can't encode singleton boolean type in protobuf; singleton boolean types should never appear in a Schema"),
-            types::Type::Primitive { primitive_type } => match primitive_type {
-                types::Primitive::Bool => Self {
-                    data: Some(models::r#type::Data::Prim(models::r#type::Prim::Bool.into())),
-                },
-                types::Primitive::Long => Self {
-                    data: Some(models::r#type::Data::Prim(models::r#type::Prim::Long.into())),
-                },
-                types::Primitive::String => Self {
-                    data: Some(models::r#type::Data::Prim(models::r#type::Prim::String.into())),
-                },
+            types::Type::Bool(types::BoolType::True | types::BoolType::False) => panic!("can't encode singleton boolean type in protobuf; singleton boolean types should never appear in a Schema"),
+            types::Type::Bool(types::BoolType::AnyBool) => Self {
+                data: Some(models::r#type::Data::Prim(models::r#type::Prim::Bool.into())),
+            },
+            types::Type::Long => Self {
+                data: Some(models::r#type::Data::Prim(models::r#type::Prim::Long.into())),
+            },
+            types::Type::String => Self {
+                data: Some(models::r#type::Data::Prim(models::r#type::Prim::String.into())),
             },
             types::Type::Set { element_type } => Self {
                 data: Some(models::r#type::Data::SetElem(Box::new(models::Type::from(

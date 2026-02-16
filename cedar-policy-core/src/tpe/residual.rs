@@ -533,7 +533,7 @@ mod test {
     use crate::parser::parse_expr;
     use crate::tpe::request::{PartialEntityUID, PartialRequest};
     use crate::validator::typecheck::{PolicyCheck, Typechecker};
-    use crate::validator::types::Primitive;
+    use crate::validator::types::BoolType;
     use crate::validator::{ValidationMode, Validator, ValidatorSchema};
     use similar_asserts::assert_eq;
 
@@ -716,10 +716,7 @@ mod test {
             true
         );
         assert_eq!(
-            Residual::Error(Type::Primitive {
-                primitive_type: Primitive::Bool
-            })
-            .can_error_assuming_well_formed(),
+            Residual::Error(Type::Bool(BoolType::AnyBool)).can_error_assuming_well_formed(),
             true
         );
     }

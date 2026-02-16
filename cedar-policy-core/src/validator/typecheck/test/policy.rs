@@ -23,6 +23,7 @@ use crate::{
     ast::{EntityUID, Expr, PolicyID, Template},
     extensions::Extensions,
     parser::{parse_policy, parse_policy_or_template},
+    validator::types::BoolType,
 };
 
 use super::test_utils::{
@@ -837,7 +838,7 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
             get_loc(src, "true"),
             PolicyID::from_string("0"),
             vec![Type::primitive_long()],
-            Type::True,
+            Type::Bool(BoolType::True),
             None,
         )
     );

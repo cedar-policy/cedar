@@ -22,6 +22,7 @@ use std::{str::FromStr, vec};
 use crate::{
     ast::{BinaryOp, EntityUID, Expr, Pattern, PatternElem, SlotId, Var},
     extensions::Extensions,
+    validator::types::BoolType,
 };
 use itertools::Itertools;
 use serde_json::json;
@@ -519,7 +520,7 @@ fn entity_eq_is_false() {
                 "bar".into(),
             ),
         ),
-        &Type::False,
+        &Type::Bool(BoolType::False),
     );
 }
 
@@ -908,7 +909,7 @@ fn action_in_non_action_typechecks_false() {
             ),
             Expr::var(Var::Principal),
         ),
-        &Type::False,
+        &Type::Bool(BoolType::False),
     );
 }
 
