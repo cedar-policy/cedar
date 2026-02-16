@@ -1264,4 +1264,107 @@ mod tests {
         // invalid escape `\a` and empty unicode escape
         test_invalid(r"\aaa\u{}", vec!["\\a", "\\u{}"]);
     }
+
+    #[test]
+    fn test_policy_debug() {
+        let p = super::parse_policy(None, r#"permit(principal is User, action == Action::"view", resource) when { principal.username == "foo" };"#).expect("valid test policy");
+        assert_eq!(
+            format!("{p:#?}"),
+            r#"StaticPolicy(
+    TemplateBody(
+        TemplateBodyImpl {
+            id: PolicyID(
+                "policy0",
+            ),
+            loc: Some(
+                Loc("permit(principal is User, action == Action::"view", resource) when { principal.username == "foo" };"),
+            ),
+            annotations: Annotations(
+                {},
+            ),
+            effect: Permit,
+            principal_constraint: PrincipalConstraint {
+                constraint: Is(
+                    EntityType(
+                        Name(
+                            InternalName {
+                                id: Id(
+                                    "User",
+                                ),
+                                path: [],
+                            },
+                        ),
+                    ),
+                ),
+            },
+            action_constraint: Eq(
+                EntityUID(
+                    EntityUIDImpl {
+                        ty: EntityType(
+                            Name(
+                                InternalName {
+                                    id: Id(
+                                        "Action",
+                                    ),
+                                    path: [],
+                                },
+                            ),
+                        ),
+                        eid: Eid(
+                            "view",
+                        ),
+                        loc: Some(
+                            Loc("Action::"view""),
+                        ),
+                    },
+                ),
+            ),
+            resource_constraint: ResourceConstraint {
+                constraint: Any,
+            },
+            non_scope_constraints: Some(
+                Expr {
+                    expr_kind: BinaryApp {
+                        op: Eq,
+                        arg1: Expr {
+                            expr_kind: GetAttr {
+                                expr: Expr {
+                                    expr_kind: Var(
+                                        Principal,
+                                    ),
+                                    source_loc: Some(
+                                        Loc("principal"),
+                                    ),
+                                    data: (),
+                                },
+                                attr: "username",
+                            },
+                            source_loc: Some(
+                                Loc("principal.username"),
+                            ),
+                            data: (),
+                        },
+                        arg2: Expr {
+                            expr_kind: Lit(
+                                String(
+                                    "foo",
+                                ),
+                            ),
+                            source_loc: Some(
+                                Loc(""foo""),
+                            ),
+                            data: (),
+                        },
+                    },
+                    source_loc: Some(
+                        Loc("principal.username == "foo""),
+                    ),
+                    data: (),
+                },
+            ),
+        },
+    ),
+)"#
+        )
+    }
 }
