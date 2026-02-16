@@ -20,6 +20,8 @@ use std::collections::HashSet;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::ast::{Annotations, Effect, EntityUID, Literal, Policy, PolicyID, ValueKind};
+use crate::evaluator::EvaluationError;
+use crate::parser::Loc;
 #[cfg(feature = "tolerant-ast")]
 use crate::tpe::err::ErrorNotSupportedError;
 use crate::tpe::err::{
@@ -40,7 +42,9 @@ pub enum Residual {
     Partial {
         /// The kind of partial expression
         kind: ResidualKind,
-        /// Type of the partial expression
+        /// The source location of the expression
+        source_loc: Option<Loc>,
+        /// Return type of the partial expression
         ty: Type,
     },
     /// TPE produces a concrete value
@@ -52,8 +56,13 @@ pub enum Residual {
     },
     /// TPE produces a (typed) error
     /// Evaluating the residual of this variant always produces an evaluation
-    /// error. The error kind does not matter for the sake of re-authorization.
-    Error(Type),
+    /// error. The TPE error should equal the error from concrete evaluation.
+    Error {
+        /// The error that occurred during TPE evaluation.
+        err: EvaluationError,
+        /// Return type of the partial expression before the error
+        ty: Type,
+    },
 }
 
 impl Residual {
@@ -73,7 +82,7 @@ impl Residual {
         match self {
             Residual::Partial { kind, .. } => kind.all_literal_uids(),
             Residual::Concrete { value, .. } => value.all_literal_uids(),
-            Residual::Error(_) => HashSet::new(),
+            Residual::Error { .. } => HashSet::new(),
         }
     }
 
@@ -82,7 +91,7 @@ impl Residual {
         match self {
             Residual::Partial { ty, .. } => ty,
             Residual::Concrete { ty, .. } => ty,
-            Residual::Error(ty) => ty,
+            Residual::Error { ty, .. } => ty,
         }
     }
 
@@ -90,7 +99,7 @@ impl Residual {
     pub fn can_error_assuming_well_formed(&self) -> bool {
         match self {
             Residual::Concrete { .. } => false,
-            Residual::Error(_) => true,
+            Residual::Error { .. } => true,
             Residual::Partial { kind, .. } => match kind {
                 // Keep the same order of cases here as in tpe::Evaluator::interpret
                 ResidualKind::Var(_) => false,
@@ -255,7 +264,11 @@ impl TryFrom<&Expr<Option<Type>>> for Residual {
             }
         };
 
-        Ok(Residual::Partial { kind, ty })
+        Ok(Residual::Partial {
+            kind,
+            ty,
+            source_loc: expr.source_loc().cloned(),
+        })
     }
 }
 
@@ -517,7 +530,7 @@ impl From<Residual> for Expr {
                 }
             }
             Residual::Concrete { value, .. } => value.into(),
-            Residual::Error(_) => {
+            Residual::Error { .. } => {
                 let builder: ast::ExprBuilder<()> = ExprBuilder::with_data(());
                 #[expect(clippy::unwrap_used, reason = "`error` is a valid `Name`")]
                 builder.call_extension_fn("error".parse().unwrap(), std::iter::empty())
@@ -528,76 +541,10 @@ impl From<Residual> for Expr {
 
 #[cfg(test)]
 mod test {
+    use super::super::test_utils::parse_residual;
     use super::*;
-    use crate::extensions::Extensions;
-    use crate::parser::parse_expr;
-    use crate::tpe::request::{PartialEntityUID, PartialRequest};
-    use crate::validator::typecheck::{PolicyCheck, Typechecker};
     use crate::validator::types::BoolType;
-    use crate::validator::{ValidationMode, Validator, ValidatorSchema};
     use similar_asserts::assert_eq;
-
-    #[track_caller]
-    fn parse_residual(expr_str: &str) -> Residual {
-        let expr = parse_expr(expr_str).unwrap();
-        let policy_id = crate::ast::PolicyID::from_string("test");
-        let policy = Policy::from_when_clause(Effect::Permit, expr, policy_id, None);
-        let t = policy.template();
-
-        let schema = ValidatorSchema::from_cedarschema_str(r#"
-            entity User in Organization { foo: Bool, str: String, num: Long, period: __cedar::duration, set: Set<String> } tags String;
-            entity Organization;
-            entity Document in Organization; 
-            action get appliesTo { principal: [User], resource: [Document] };"#,
-            &Extensions::all_available(),
-        )
-        .unwrap()
-        .0;
-
-        let typechecker = Typechecker::new(&schema, ValidationMode::Strict);
-
-        let request = PartialRequest::new(
-            PartialEntityUID {
-                ty: "User".parse().unwrap(),
-                eid: None,
-            },
-            r#"Action::"get""#.parse().unwrap(),
-            PartialEntityUID {
-                ty: "Document".parse().unwrap(),
-                eid: None,
-            },
-            None,
-            &schema,
-        )
-        .unwrap();
-        let env = request.find_request_env(&schema).unwrap();
-
-        let errs: Vec<_> = Validator::validate_entity_types_and_literals(&schema, t).collect();
-        if !errs.is_empty() {
-            panic!("unexpected type error in expression");
-        }
-        match typechecker.typecheck_by_single_request_env(t, &env) {
-            PolicyCheck::Success(expr) => Residual::try_from(&expr).unwrap(),
-            PolicyCheck::Fail(errs) => {
-                println!("got {} type errors", errs.len());
-                for e in errs {
-                    println!("{:?}", miette::Report::new(e));
-                }
-                panic!("unexpected type error in expression")
-            }
-            PolicyCheck::Irrelevant(errs, expr) => {
-                if errs.is_empty() {
-                    Residual::try_from(&expr).unwrap()
-                } else {
-                    println!("got {} type errors", errs.len());
-                    for e in errs {
-                        println!("{:?}", miette::Report::new(e));
-                    }
-                    panic!("unexpected type error in expression")
-                }
-            }
-        }
-    }
 
     #[test]
     fn test_can_error_assuming_well_formed() {
@@ -716,7 +663,16 @@ mod test {
             true
         );
         assert_eq!(
-            Residual::Error(Type::Bool(BoolType::AnyBool)).can_error_assuming_well_formed(),
+            Residual::Error {
+                err: EvaluationError::failed_extension_function_application(
+                    "foo".parse().unwrap(),
+                    "failed".into(),
+                    None,
+                    None
+                ),
+                ty: Type::Bool(BoolType::AnyBool),
+            }
+            .can_error_assuming_well_formed(),
             true
         );
     }
