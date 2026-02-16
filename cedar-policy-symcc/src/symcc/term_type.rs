@@ -16,7 +16,8 @@
 
 //! Definitions of term types.
 
-use cedar_policy_core::validator::types::{OpenTag, Type};
+use cedar_policy_core::validator::types::{AttributeType, Attributes, OpenTag, Type};
+use smol_str::SmolStr;
 
 use super::result::CompileError;
 
@@ -103,14 +104,30 @@ impl TermType {
     }
 
     /// Converts a Cedar [`Type`] into a [`TermType`].
-    ///
-    /// This doesn't match the Lean model because [`Type`] doesn't.
     pub fn of_type(ty: &Type) -> Result<Self, CompileError> {
         use cedar_policy_core::validator::types::{BoolType, EntityKind};
         match ty {
             Type::Bool(BoolType::AnyBool) => Ok(TermType::Bool),
+            // Note: These cases are unreachable, but the Lean model treats them
+            // as `AnyBool` while we choose to error in this implementation.
+            Type::Bool(BoolType::True | BoolType::False) => Err(CompileError::UnsupportedFeature(
+                "singleton Bool type is not supported".into(),
+            )),
             Type::Long => Ok(TermType::Bitvec { n: SIXTY_FOUR }),
             Type::String => Ok(TermType::String),
+            Type::Entity(entity_kind) => match entity_kind {
+                EntityKind::AnyEntity => Err(CompileError::UnsupportedFeature(
+                    "AnyEntity is not supported".into(),
+                )),
+                EntityKind::Entity(entity_lub) => match entity_lub.get_single_entity() {
+                    Some(name) => Ok(TermType::Entity {
+                        ety: core_entity_type_into_entity_type(name).clone(),
+                    }),
+                    None => Err(CompileError::UnsupportedFeature(
+                        "EntityLUB has multiple elements".into(),
+                    )),
+                },
+            },
             Type::ExtensionType { name } => match name.basename().to_string().as_str() {
                 "ipaddr" => Ok(TermType::Ext {
                     xty: ExtType::IpAddr,
@@ -128,31 +145,19 @@ impl TermType {
                     "unsupported extension {name}"
                 ))),
             },
+            Type::Set { element_type } => match element_type {
+                Some(element_type) => Ok(TermType::set_of(Self::of_type(element_type)?)),
+                None => Err(CompileError::UnsupportedFeature(
+                    "empty set type is unsupported".into(),
+                )),
+            },
             Type::Record {
                 attrs,
                 open_attributes,
             } => {
                 if *open_attributes == OpenTag::ClosedAttributes {
                     Ok(TermType::Record {
-                        rty: Arc::new(
-                            attrs
-                                .iter()
-                                .map(|(k, v)| {
-                                    match Self::of_type(&v.attr_type) {
-                                        Ok(vt) => Ok((
-                                            k.clone(),
-                                            //Inlining ofRecordType and ofQualifiedType here
-                                            if v.is_required {
-                                                vt
-                                            } else {
-                                                TermType::option_of(vt)
-                                            },
-                                        )),
-                                        Err(e) => Err(e),
-                                    }
-                                })
-                                .collect::<Result<_, _>>()?,
-                        ),
+                        rty: Arc::new(Self::of_record_type(attrs)?),
                     })
                 } else {
                     // Attributes should be closed
@@ -161,31 +166,25 @@ impl TermType {
                     ))
                 }
             }
-            Type::Entity(entity_kind) => match entity_kind {
-                EntityKind::AnyEntity => Err(CompileError::UnsupportedFeature(
-                    "AnyEntity is not supported".into(),
-                )),
-                EntityKind::Entity(entity_lub) => match entity_lub.get_single_entity() {
-                    Some(name) => Ok(TermType::Entity {
-                        ety: core_entity_type_into_entity_type(name).clone(),
-                    }),
-                    None => Err(CompileError::UnsupportedFeature(
-                        "EntityLUB has multiple elements".into(),
-                    )),
-                },
-            },
-            Type::Set { element_type } => match element_type {
-                Some(element_type) => Ok(TermType::set_of(Self::of_type(element_type)?)),
-                None => Err(CompileError::UnsupportedFeature(
-                    "empty set type is unsupported".into(),
-                )),
-            },
             Type::Never => Err(CompileError::UnsupportedFeature(
                 "never type is not supported".into(),
             )),
-            Type::Bool(BoolType::True | BoolType::False) => Err(CompileError::UnsupportedFeature(
-                "singleton Bool type is not supported".into(),
-            )),
         }
+    }
+
+    fn of_record_type(attrs: &Attributes) -> Result<BTreeMap<SmolStr, TermType>, CompileError> {
+        Ok(attrs
+            .iter()
+            .map(|(k, v)| Ok((k.clone(), Self::of_qualified_type(v)?)))
+            .collect::<Result<_, CompileError>>()?)
+    }
+
+    fn of_qualified_type(qty: &AttributeType) -> Result<TermType, CompileError> {
+        let vt = Self::of_type(&qty.attr_type)?;
+        Ok(if qty.is_required {
+            vt
+        } else {
+            TermType::option_of(vt)
+        })
     }
 }
