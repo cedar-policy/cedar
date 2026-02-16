@@ -96,7 +96,7 @@ pub enum Commands {
     Evaluate(EvaluateArgs),
     /// Validate a policy set against a schema
     Validate(ValidateArgs),
-    /// Check that policies, schema, and/or entities successfully parse.
+    /// Check that policies, expressions, schema, and/or entities successfully parse.
     /// (All arguments are optional; this checks that whatever is provided parses)
     ///
     /// If no arguments are provided, reads policies from stdin and checks that they parse.
@@ -224,6 +224,9 @@ pub struct CheckParseArgs {
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: OptionalPoliciesArgs,
+    /// Expression to parse
+    #[arg(long)]
+    pub expression: Option<String>,
     /// Schema args (incorporated by reference)
     #[command(flatten)]
     pub schema: OptionalSchemaArgs,
@@ -978,13 +981,12 @@ impl Termination for CedarExitCode {
 }
 
 pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
-    // for backwards compatibility: if no policies/schema/entities are provided,
-    // read policies from stdin and check that they parse
-    if (
-        &args.policies.policies_file,
-        &args.schema.schema_file,
-        &args.entities_file,
-    ) == (&None, &None, &None)
+    // for backwards compatibility: if no policies/schema/entities/expression
+    // are provided, read policies from stdin and check that they parse
+    if args.policies.policies_file.is_none()
+        && args.schema.schema_file.is_none()
+        && args.entities_file.is_none()
+        && args.expression.is_none()
     {
         let pargs = PoliciesArgs {
             policies_file: None, // read from stdin
@@ -1000,13 +1002,22 @@ pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
         }
     }
 
+    #[expect(
+        clippy::useless_let_if_seq,
+        reason = "exit_code is mutated by later expressions"
+    )]
     let mut exit_code = CedarExitCode::Success;
-    match args.policies.get_policy_set() {
-        Ok(_) => (),
-        Err(e) => {
-            println!("{e:?}");
-            exit_code = CedarExitCode::Failure;
-        }
+    if let Err(e) = args.policies.get_policy_set() {
+        println!("{e:?}");
+        exit_code = CedarExitCode::Failure;
+    }
+    if let Some(e) = args
+        .expression
+        .as_ref()
+        .and_then(|expr| Expression::from_str(expr).err())
+    {
+        println!("{:?}", Report::new(e));
+        exit_code = CedarExitCode::Failure;
     }
     let schema = match args.schema.get_schema() {
         Ok(schema) => schema,
@@ -1016,15 +1027,13 @@ pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
             None
         }
     };
-    match &args.entities_file {
-        None => (),
-        Some(efile) => match load_entities(efile, schema.as_ref()) {
-            Ok(_) => (),
-            Err(e) => {
-                println!("{e:?}");
-                exit_code = CedarExitCode::Failure;
-            }
-        },
+    if let Some(e) = args
+        .entities_file
+        .as_ref()
+        .and_then(|e| load_entities(e, schema.as_ref()).err())
+    {
+        println!("{e:?}");
+        exit_code = CedarExitCode::Failure;
     }
     exit_code
 }

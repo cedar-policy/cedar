@@ -5,6 +5,10 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+### Added
+
+- `--expression` option to `check-parse` command to check if a Cedar expression parses
+
 ## 4.9.0
 
 ### Added

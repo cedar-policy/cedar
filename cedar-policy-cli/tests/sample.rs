@@ -45,6 +45,7 @@ fn run_check_parse_test(
             policy_format: PolicyFormat::Cedar,
             template_linked_file: None,
         },
+        expression: None,
         schema: OptionalSchemaArgs {
             schema_file: Some(schema_file.into()),
             schema_format: SchemaFormat::Cedar,
@@ -1662,4 +1663,28 @@ fn test_tpe() {
         .arg(schema)
         .assert()
         .code(0);
+}
+
+#[rstest]
+#[case("principal")]
+#[case("1 + 1")]
+fn check_parse_expr_ok(#[case] expr: &str) {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--expression")
+        .arg(expr)
+        .assert()
+        .code(0);
+}
+
+#[rstest]
+#[case("")]
+#[case("1+foo")]
+fn check_parse_expr_err(#[case] expr: &str) {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--expression")
+        .arg(expr)
+        .assert()
+        .code(1);
 }
