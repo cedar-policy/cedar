@@ -149,6 +149,18 @@ pub struct PrincipalOrResourceIsConstraint {
     in_entity: Option<PrincipalOrResourceInConstraint>,
 }
 
+impl PrincipalOrResourceIsConstraint {
+    /// Get the entity type
+    pub fn entity_type(&self) -> &SmolStr {
+        &self.entity_type
+    }
+
+    /// Get the optional `in` entity
+    pub fn in_entity(&self) -> Option<&PrincipalOrResourceInConstraint> {
+        self.in_entity.as_ref()
+    }
+}
+
 /// Serde JSON structure for an `in` scope constraint for action in the EST
 /// format
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
