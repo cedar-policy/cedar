@@ -120,9 +120,9 @@ impl AccessTrie {
     ) -> Result<Fields, MismatchedEntityManifestError> {
         let attributes = match ty {
             Type::Never
-            | Type::True
-            | Type::False
-            | Type::Primitive { .. }
+            | Type::Bool(_)
+            | Type::Long
+            | Type::String
             | Type::Set { .. }
             | Type::ExtensionType { .. } => {
                 assert!(self.children.is_empty());

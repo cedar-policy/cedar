@@ -28,14 +28,12 @@ pub(crate) use typecheck_answer::TypecheckAnswer;
 use std::sync::Arc;
 use std::{borrow::Cow, collections::HashSet};
 
-use crate::validator::types::EntityLUB;
+use crate::validator::types::{BoolType, EntityLUB};
 use crate::validator::{
     extension_schema::ExtensionFunctionType,
     extensions::ExtensionSchemas,
     schema::ValidatorSchema,
-    types::{
-        AttributeType, Capability, CapabilitySet, EntityKind, OpenTag, Primitive, RequestEnv, Type,
-    },
+    types::{AttributeType, Capability, CapabilitySet, EntityKind, OpenTag, RequestEnv, Type},
     validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
     ValidationError, ValidationMode, ValidationWarning,
 };
@@ -588,7 +586,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     match typ_left.data() {
                         // LHS argument is false, so short circuit the `&&` to
                         // `False` _without_ typechecking the RHS.
-                        Some(Type::False) => TypecheckAnswer::success(
+                        Some(Type::Bool(BoolType::False)) => TypecheckAnswer::success(
                             typ_left.with_maybe_source_loc(e.source_loc().cloned()),
                         ),
                         _ => {
@@ -614,11 +612,15 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     // is false. The capability is empty for the
                                     // same reason as when the first argument
                                     // was false.
-                                    (Some(_), Some(Type::False)) => TypecheckAnswer::success(
-                                        ExprBuilder::with_data(Some(Type::False))
+                                    (Some(_), Some(Type::Bool(BoolType::False))) => {
+                                        TypecheckAnswer::success(
+                                            ExprBuilder::with_data(Some(Type::Bool(
+                                                BoolType::False,
+                                            )))
                                             .with_same_source_loc(e)
                                             .and(typ_left, typ_right),
-                                    ),
+                                        )
+                                    }
 
                                     // When either argument is true, the result type is
                                     // the type of the other argument. Here, and
@@ -626,7 +628,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     // capability of the `&&` is the union of the
                                     // lhs and rhs because both operands must be
                                     // true for the whole `&&` to be true.
-                                    (Some(_), Some(Type::True)) => {
+                                    (Some(_), Some(Type::Bool(BoolType::True))) => {
                                         TypecheckAnswer::success_with_capability(
                                             ExprBuilder::with_data(typ_left.data().clone())
                                                 .with_same_source_loc(e)
@@ -634,7 +636,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                             capability_left.union(&capability_right),
                                         )
                                     }
-                                    (Some(Type::True), Some(_)) => {
+                                    (Some(Type::Bool(BoolType::True)), Some(_)) => {
                                         TypecheckAnswer::success_with_capability(
                                             ExprBuilder::with_data(typ_right.data().clone())
                                                 .with_same_source_loc(e)
@@ -680,7 +682,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     // LHS argument is true, so short circuit the `|| to `True`
                     // _without_ typechecking the RHS. Contrary to `&&`, we
                     // keep a capability  when short circuiting `||`.
-                    Some(Type::True) => TypecheckAnswer::success_with_capability(
+                    Some(Type::Bool(BoolType::True)) => TypecheckAnswer::success_with_capability(
                         ty_expr_left.with_maybe_source_loc(e.source_loc().cloned()),
                         capability_left,
                     ),
@@ -703,9 +705,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // operand might have been `true` or `false`, but it
                                 // does not affect the value of the `||` if the
                                 // right is always `true`.
-                                (Some(_), Some(Type::True)) => {
+                                (Some(_), Some(Type::Bool(BoolType::True))) => {
                                     TypecheckAnswer::success_with_capability(
-                                        ExprBuilder::with_data(Some(Type::True))
+                                        ExprBuilder::with_data(Some(Type::Bool(BoolType::True)))
                                             .with_same_source_loc(e)
                                             .or(ty_expr_left, ty_expr_right),
                                         capability_right,
@@ -716,7 +718,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 // `true` is if the other operand is `true`. This
                                 // lets us pass the capability of the other operand
                                 // through to the capability of the `||`.
-                                (Some(typ_left), Some(Type::False)) => {
+                                (Some(typ_left), Some(Type::Bool(BoolType::False))) => {
                                     TypecheckAnswer::success_with_capability(
                                         ExprBuilder::with_data(Some(typ_left.clone()))
                                             .with_same_source_loc(e)
@@ -724,7 +726,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                         capability_left,
                                     )
                                 }
-                                (Some(Type::False), Some(typ_right)) => {
+                                (Some(Type::Bool(BoolType::False)), Some(typ_right)) => {
                                     TypecheckAnswer::success_with_capability(
                                         ExprBuilder::with_data(Some(typ_right.clone()))
                                             .with_same_source_loc(e)
@@ -866,9 +868,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     type_errors,
                     |actual| match actual {
                         Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
-                        Type::Primitive {
-                            primitive_type: Primitive::String,
-                        } => Some(UnexpectedTypeHelp::TryUsingLike),
+                        Type::String => Some(UnexpectedTypeHelp::TryUsingLike),
                         _ => None,
                     },
                 );
@@ -1142,9 +1142,7 @@ impl<'a> SingleEnvTypechecker<'a> {
     // Currently, only primitive long and certain extension types are valid
     fn is_valid_comparison_op_type(&self, ty: &Type) -> bool {
         match ty {
-            Type::Primitive {
-                primitive_type: Primitive::Long,
-            } => true,
+            Type::Long => true,
             Type::ExtensionType { name } => {
                 self.extensions.has_type_with_operator_overloading(name)
             }
@@ -1263,12 +1261,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             {
                                 TypecheckAnswer::success(expr)
                             }
-                            (
-                                Some(Type::Primitive {
-                                    primitive_type: Primitive::Long,
-                                }),
-                                Some(other),
-                            ) => {
+                            (Some(Type::Long), Some(other)) => {
                                 type_errors.push(ValidationError::expected_one_of_types(
                                     expr_ty_arg2.source_loc().cloned(),
                                     self.policy_id.clone(),
@@ -1278,12 +1271,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 ));
                                 TypecheckAnswer::fail(expr)
                             }
-                            (
-                                Some(other),
-                                Some(Type::Primitive {
-                                    primitive_type: Primitive::Long,
-                                }),
-                            ) => {
+                            (Some(other), Some(Type::Long)) => {
                                 type_errors.push(ValidationError::expected_one_of_types(
                                     expr_ty_arg1.source_loc().cloned(),
                                     self.policy_id.clone(),
@@ -1339,12 +1327,9 @@ impl<'a> SingleEnvTypechecker<'a> {
 
             BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
                 let help_builder = |actual: &Type| match (op, actual) {
-                    (
-                        BinaryOp::Add,
-                        Type::Primitive {
-                            primitive_type: Primitive::String,
-                        },
-                    ) => Some(UnexpectedTypeHelp::ConcatenationNotSupported),
+                    (BinaryOp::Add, Type::String) => {
+                        Some(UnexpectedTypeHelp::ConcatenationNotSupported)
+                    }
                     (_, Type::Set { .. }) => Some(UnexpectedTypeHelp::SetOperationsNotSupported),
                     _ => None,
                 };
@@ -1387,9 +1372,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             Some(UnexpectedTypeHelp::TryUsingIn)
                         }
                         Type::Record { .. } => Some(UnexpectedTypeHelp::TryUsingHas),
-                        Type::Primitive {
-                            primitive_type: Primitive::String,
-                        } => Some(UnexpectedTypeHelp::TryUsingLike),
+                        Type::String => Some(UnexpectedTypeHelp::TryUsingLike),
                         _ => None,
                     },
                 )
@@ -1442,9 +1425,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             Some(UnexpectedTypeHelp::TryUsingIn)
                         }
                         Type::Record { .. } => Some(UnexpectedTypeHelp::TryUsingHas),
-                        Type::Primitive {
-                            primitive_type: Primitive::String,
-                        } => Some(UnexpectedTypeHelp::TryUsingLike),
+                        Type::String => Some(UnexpectedTypeHelp::TryUsingLike),
                         _ => None,
                     },
                 )
@@ -1666,7 +1647,9 @@ impl<'a> SingleEnvTypechecker<'a> {
         context: LubContext,
     ) -> TypecheckAnswer<'b> {
         match annotated_expr.data() {
-            Some(Type::True | Type::False) => TypecheckAnswer::success(annotated_expr),
+            Some(Type::Bool(BoolType::True) | Type::Bool(BoolType::False)) => {
+                TypecheckAnswer::success(annotated_expr)
+            }
             _ => match (lhs_ty, rhs_ty) {
                 (Some(lhs_ty), Some(rhs_ty)) => {
                     if let Err(lub_hint) = Type::least_upper_bound(lhs_ty, rhs_ty, self.mode) {
@@ -1707,7 +1690,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             _ => false,
         };
         if disjoint_types {
-            Type::False
+            Type::Bool(BoolType::False)
         } else {
             // The types are not disjoint. Check if we can decide the equality
             // from the actual expressions. If both expressions are literals,
@@ -1812,9 +1795,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             type_errors,
             |actual| match actual {
                 Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
-                Type::Primitive {
-                    primitive_type: Primitive::String,
-                } => Some(UnexpectedTypeHelp::TryUsingLike),
+                Type::String => Some(UnexpectedTypeHelp::TryUsingLike),
                 _ => None,
             },
         );
@@ -1868,7 +1849,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 if !self.any_entity_type_decedent_of(lhs_etys, rhs_etys) =>
                             {
                                 TypecheckAnswer::success(
-                                    ExprBuilder::with_data(Some(Type::False))
+                                    ExprBuilder::with_data(Some(Type::Bool(BoolType::False)))
                                         .with_same_source_loc(in_expr)
                                         .is_in(lhs_expr, rhs_expr),
                                 )
@@ -1949,7 +1930,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             // There are no actions on the right, so the LHS action cannot
             // be `in` any of them.
             TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(Type::False))
+                ExprBuilder::with_data(Some(Type::Bool(BoolType::False)))
                     .with_same_source_loc(in_expr)
                     .is_in(lhs_expr, rhs_expr),
             )
@@ -2059,9 +2040,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     Type::any_set(),
                     type_errors,
                     |actual| match actual {
-                        Type::Primitive {
-                            primitive_type: Primitive::String,
-                        } => Some(UnexpectedTypeHelp::TryUsingEqEmptyString),
+                        Type::String => Some(UnexpectedTypeHelp::TryUsingEqEmptyString),
                         _ => None,
                     },
                 );

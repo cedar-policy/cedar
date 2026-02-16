@@ -25,7 +25,7 @@ use std::{
 use cedar_policy_core::{
     ast::EntityUID,
     validator::{
-        types::{EntityKind, Primitive, Type},
+        types::{EntityKind, Type},
         ValidatorSchema,
     },
 };
@@ -215,12 +215,9 @@ impl From<Type> for CedarTypeKind {
     fn from(ty: Type) -> Self {
         match ty {
             Type::Never => Self::Error,
-            Type::True | Type::False => Self::Bool,
-            Type::Primitive { primitive_type } => match primitive_type {
-                Primitive::Bool => Self::Bool,
-                Primitive::Long => Self::Long,
-                Primitive::String => Self::String,
-            },
+            Type::Bool(_) => Self::Bool,
+            Type::Long => Self::Long,
+            Type::String => Self::String,
             Type::Set { element_type } => element_type.map_or(Self::EmptySet, |ty| {
                 Self::Set(Box::new(Self::from(ty.as_ref().clone())))
             }),

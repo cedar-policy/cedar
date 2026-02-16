@@ -106,13 +106,11 @@ impl TermType {
     ///
     /// This doesn't match the Lean model because [`Type`] doesn't.
     pub fn of_type(ty: &Type) -> Result<Self, CompileError> {
-        use cedar_policy_core::validator::types::{EntityKind, Primitive};
+        use cedar_policy_core::validator::types::{BoolType, EntityKind};
         match ty {
-            Type::Primitive { primitive_type } => match primitive_type {
-                Primitive::Bool => Ok(TermType::Bool),
-                Primitive::Long => Ok(TermType::Bitvec { n: SIXTY_FOUR }),
-                Primitive::String => Ok(TermType::String),
-            },
+            Type::Bool(BoolType::AnyBool) => Ok(TermType::Bool),
+            Type::Long => Ok(TermType::Bitvec { n: SIXTY_FOUR }),
+            Type::String => Ok(TermType::String),
             Type::ExtensionType { name } => match name.basename().to_string().as_str() {
                 "ipaddr" => Ok(TermType::Ext {
                     xty: ExtType::IpAddr,
@@ -185,10 +183,7 @@ impl TermType {
             Type::Never => Err(CompileError::UnsupportedFeature(
                 "never type is not supported".into(),
             )),
-            Type::True => Err(CompileError::UnsupportedFeature(
-                "singleton Bool type is not supported".into(),
-            )),
-            Type::False => Err(CompileError::UnsupportedFeature(
+            Type::Bool(BoolType::True | BoolType::False) => Err(CompileError::UnsupportedFeature(
                 "singleton Bool type is not supported".into(),
             )),
         }

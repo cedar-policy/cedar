@@ -28,7 +28,7 @@ use crate::{
     validator::{
         json_schema,
         typecheck::{PolicyCheck, TypecheckAnswer, Typechecker},
-        types::Type,
+        types::{BoolType, Type},
         ValidationMode, ValidatorSchema,
     },
 };
@@ -121,7 +121,7 @@ fn expr_typechecks_with_correct_annotation() {
     assert_expr_has_annotated_ast(
         &Expr::ite(Expr::val(true), Expr::val("bar"), Expr::val("foo")),
         &ExprBuilder::with_data(Some(Type::primitive_string())).ite(
-            ExprBuilder::with_data(Some(Type::True)).val(true),
+            ExprBuilder::with_data(Some(Type::Bool(BoolType::True))).val(true),
             ExprBuilder::with_data(Some(Type::primitive_string())).val("bar"),
             // Contains `bar` instead of `foo` because we didn't typecheck the `else` branch
             ExprBuilder::with_data(Some(Type::primitive_string())).val("bar"),
@@ -130,7 +130,7 @@ fn expr_typechecks_with_correct_annotation() {
     assert_expr_has_annotated_ast(
         &Expr::ite(Expr::val(false), Expr::val("bar"), Expr::val("foo")),
         &ExprBuilder::with_data(Some(Type::primitive_string())).ite(
-            ExprBuilder::with_data(Some(Type::False)).val(false),
+            ExprBuilder::with_data(Some(Type::Bool(BoolType::False))).val(false),
             // Contains `foo` instead of `bar` because we didn't typecheck the `else` branch
             ExprBuilder::with_data(Some(Type::primitive_string())).val("foo"),
             ExprBuilder::with_data(Some(Type::primitive_string())).val("foo"),

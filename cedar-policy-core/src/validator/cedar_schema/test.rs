@@ -1244,6 +1244,7 @@ mod translator_tests {
     use crate::ast as cedar_ast;
     use crate::extensions::Extensions;
     use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use crate::validator::types::BoolType;
     use crate::FromNormalizedStr;
     use cool_asserts::assert_matches;
 
@@ -1255,7 +1256,7 @@ mod translator_tests {
         },
         json_schema,
         schema::test::utils::collect_warnings,
-        types::{EntityKind, EntityLUB, Primitive, Type},
+        types::{EntityKind, EntityLUB, Type},
         ValidatorSchema,
     };
 
@@ -1437,7 +1438,7 @@ mod translator_tests {
                             "groups" => assert_matches!(
                                 attr.attr_type.as_ref(),
                                 Type::Set { element_type: Some(t) } => {
-                                    assert_eq!(**t, Type::Primitive { primitive_type: Primitive::String });
+                                    assert_eq!(**t, Type::String);
                                 }
                             ),
                             _ => panic!("unexpected attr: {attr_name}"),
@@ -1555,12 +1556,7 @@ mod translator_tests {
             ))
             .unwrap();
         let attr = et.attr("foo").unwrap();
-        assert_matches!(
-            attr.attr_type.as_ref(),
-            Type::Primitive {
-                primitive_type: Primitive::Bool
-            },
-        );
+        assert_matches!(attr.attr_type.as_ref(), Type::Bool(BoolType::AnyBool),);
 
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
             r#"namespace A {
