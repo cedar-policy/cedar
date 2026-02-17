@@ -17,7 +17,9 @@
 //! Public builder API for constructing PST expressions
 
 use super::{BinaryOp, Expr, Literal, PatternElem, Var};
+use crate::ast::is_normalized_ident;
 use crate::ast::{EntityType, EntityUID, SlotId};
+use itertools::Itertools;
 use smol_str::SmolStr;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -31,6 +33,9 @@ pub enum ExprBuilderError {
     /// Duplicate key in record literal
     #[error("duplicate key in record: {0}")]
     DuplicateRecordKey(String),
+    /// Invalid attribute path
+    #[error("invalid attribute path: {0}")]
+    InvalidAttributePath(String),
 }
 
 impl Expr {
@@ -220,10 +225,21 @@ impl Expr {
         let attrs_vec: Vec<SmolStr> = attrs.into_iter().map(Into::into).collect();
         let attrs_nonempty =
             nonempty::NonEmpty::from_vec(attrs_vec).ok_or(ExprBuilderError::EmptyAttributePath)?;
-        Ok(Self::HasAttr {
-            expr: Arc::new(expr),
-            attrs: attrs_nonempty,
-        })
+        if attrs_nonempty.len() > 1
+            && attrs_nonempty
+                .iter()
+                .find(|attr| !is_normalized_ident(attr))
+                .is_some()
+        {
+            Err(ExprBuilderError::InvalidAttributePath(
+                attrs_nonempty.iter().join("."),
+            ))
+        } else {
+            Ok(Self::HasAttr {
+                expr: Arc::new(expr),
+                attrs: attrs_nonempty,
+            })
+        }
     }
 
     /// Create a pattern matching expression
@@ -300,6 +316,8 @@ impl Expr {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cool_asserts::assert_matches;
+    use nonempty::nonempty;
 
     #[test]
     fn test_expr_literals() {
@@ -358,6 +376,23 @@ mod tests {
         let expr = Expr::principal();
         let result = Expr::has_attrs(expr, Vec::<SmolStr>::new());
         assert!(matches!(result, Err(ExprBuilderError::EmptyAttributePath)));
+    }
+
+    #[test]
+    fn test_expr_has_attr_multi_nonident() {
+        let expr = Expr::principal();
+        let result = Expr::has_attrs(expr, nonempty!["ok", "oh snap®"]);
+        assert!(matches!(
+            result,
+            Err(ExprBuilderError::InvalidAttributePath(_))
+        ));
+    }
+
+    #[test]
+    fn test_expr_has_attr_single_nonident() {
+        let expr = Expr::principal();
+        let result = Expr::has_attrs(expr, nonempty!["ok ∞ path"]).unwrap();
+        assert_matches!(result, Expr::HasAttr { .. })
     }
 
     #[test]

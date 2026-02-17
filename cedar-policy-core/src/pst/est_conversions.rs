@@ -17,7 +17,7 @@
 //! Conversions between EST and PST representations.
 
 use super::Expr;
-use crate::ast::CallStyle;
+use crate::ast::{is_normalized_ident, CallStyle};
 use crate::est;
 use crate::extensions::Extensions;
 use itertools::Itertools;
@@ -40,7 +40,7 @@ pub enum ConversionError {
     InvalidAttributePath(String),
     #[error("invalid method call {0}")]
     InvalidMethodCall(SmolStr),
-    #[error("{0} is not a known function")]
+    #[error("unknown function {0}")]
     UnknownFunction(SmolStr),
 }
 
@@ -180,8 +180,21 @@ impl TryFrom<est::ExprNoExt> for Expr {
                     Ok(Expr::has_attr(Arc::unwrap_or_clone(left).try_into()?, attr))
                 }
                 est::HasAttrRepr::Extended { left, attr } => {
-                    Expr::has_attrs(Arc::unwrap_or_clone(left).try_into()?, attr)
-                        .map_err(|e| ConversionError::InvalidAttributePath(e.to_string()))
+                    // Validate that if length of attr > 1, all elements are identifiers
+                    if attr.len() > 1
+                        && attr
+                            .iter()
+                            .find(|attr| !is_normalized_ident(attr))
+                            .is_some()
+                    {
+                        Err(ConversionError::InvalidAttributePath(format!(
+                            "attribute sequence .{} contains non-identifiers",
+                            attr.iter().join(".")
+                        )))
+                    } else {
+                        Expr::has_attrs(Arc::unwrap_or_clone(left).try_into()?, attr)
+                            .map_err(|e| ConversionError::InvalidAttributePath(e.to_string()))
+                    }
                 }
             },
             E::Like { left, pattern } => {
@@ -1109,6 +1122,21 @@ mod tests {
                 2,
             ),
             ("no_args", r#"{"datetime": []}"#, "datetime", 0),
+            (
+                "datetime from string",
+                r#"{"datetime": [{"Value": "2025-10-10T10:01:10"}]}"#,
+                "datetime",
+                1,
+            ),
+            (
+                "datetime duration since",
+                r#"{"durationSince": [
+                  {"datetime": [{"Value": "2025-10-10T10:01:10"}]},
+                  {"datetime": [{"Value": "2025-09-10T10:01:10"}]}
+                 ]}"#,
+                "durationSince",
+                2,
+            ),
         ];
         for (test, test_json, expect_funcname, expect_arg_len) in test_cases {
             let pst_expr: est::Expr = serde_json::from_str(test_json).unwrap();
