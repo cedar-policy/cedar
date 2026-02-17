@@ -101,8 +101,13 @@ impl miette::SourceCode for &Loc {
 impl std::fmt::Debug for Loc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.snippet() {
-            Some(snippet) => write!(f, r#"Loc("{snippet}")"#),
-            None => write!(f, r#"Loc(span: {:?}, src: "{}")"#, self.span, self.src),
+            Some(snippet) => write!(f, r#"Loc(`{snippet}`)"#),
+            None => write!(
+                f,
+                r#"Loc(span: {:?}, src: "{}")"#,
+                self.span,
+                self.src.escape_debug()
+            ),
         }
     }
 }
@@ -111,10 +116,10 @@ mod test {
     #[test]
     fn test_loc_debug() {
         let str: std::sync::Arc<str> =
-            "permit(principal, action, resource) when { a == b && b == c }".into();
+            r#"permit(principal, action, resource) when { a == b && b == "c" }"#.into();
         let l = super::Loc::new(43..49, str.clone());
-        let l2 = super::Loc::new(53..59, str);
-        assert_eq!(format!("{l:?}"), r#"Loc("a == b")"#);
-        assert_eq!(format!("{l2:?}"), r#"Loc("b == c")"#);
+        let l2 = super::Loc::new(53..61, str);
+        assert_eq!(format!("{l:?}"), r#"Loc(`a == b`)"#);
+        assert_eq!(format!("{l2:?}"), r#"Loc(`b == "c"`)"#);
     }
 }
