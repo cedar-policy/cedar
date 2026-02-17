@@ -17,33 +17,32 @@
 //! Conversions between EST and PST representations.
 
 use super::Expr;
+use crate::ast::CallStyle;
 use crate::est;
+use crate::extensions::Extensions;
+use itertools::Itertools;
+use miette::Diagnostic;
+use smol_str::{SmolStr, ToSmolStr};
 use std::sync::Arc;
+use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 pub enum ConversionError {
+    #[error("action_constraint_cannot_have_slots")]
     ActionConstraintCannotHaveSlots,
+    #[error("invalid entity uid {0}")]
     InvalidEntityUid(String),
+    #[error("invalid entity type {0}")]
     InvalidEntityType(String),
+    #[error("invalid record {0}")]
     InvalidRecord(String),
+    #[error("invalid attribute path {0}")]
     InvalidAttributePath(String),
+    #[error("invalid method call {0}")]
+    InvalidMethodCall(SmolStr),
+    #[error("{0} is not a known function")]
+    UnknownFunction(SmolStr),
 }
-
-impl std::fmt::Display for ConversionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ActionConstraintCannotHaveSlots => {
-                write!(f, "Action constraint cannot have slots")
-            }
-            Self::InvalidEntityUid(msg) => write!(f, "Invalid entity UID: {}", msg),
-            Self::InvalidEntityType(msg) => write!(f, "Invalid entity type: {}", msg),
-            Self::InvalidRecord(msg) => write!(f, "Invalid record: {}", msg),
-            Self::InvalidAttributePath(msg) => write!(f, "Invalid attribute path: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for ConversionError {}
 
 impl TryFrom<est::Expr> for Expr {
     type Error = ConversionError;
@@ -52,19 +51,31 @@ impl TryFrom<est::Expr> for Expr {
         match est_expr {
             est::Expr::ExprNoExt(e) => e.try_into(),
             est::Expr::ExtFuncCall(e) => {
-                // Convert to JSON and back to access the private field
-                let json = serde_json::to_value(&e).unwrap();
-                let map = json.as_object().unwrap();
-                let (name, args_json) = map.iter().next().unwrap();
-                let args: Vec<est::Expr> = serde_json::from_value(args_json.clone()).unwrap();
-                let args: Result<Vec<Arc<Expr>>, _> = args
+                let (fn_name, est_args) = e.extract_name_and_args();
+                let pst_args: Vec<Expr> = est_args
                     .into_iter()
-                    .map(|a| a.try_into().map(Arc::new))
-                    .collect();
-                Ok(Expr::FuncCall {
-                    name: name.to_string(),
-                    args: args?,
-                })
+                    .map(|a: est::Expr| a.clone().try_into())
+                    .try_collect()?;
+                // search for the name and callstyle
+                let style = Extensions::all_available().all_funcs().find_map(|f| {
+                    if f.name().to_smolstr() == fn_name {
+                        Some(f.style())
+                    } else {
+                        None
+                    }
+                });
+                match style {
+                    Some(CallStyle::MethodStyle) => {
+                        // A method must have at least one argument
+                        if pst_args.is_empty() {
+                            Err(ConversionError::InvalidMethodCall(fn_name))
+                        } else {
+                            Ok(Expr::func_call(fn_name, pst_args))
+                        }
+                    }
+                    Some(CallStyle::FunctionStyle) => Ok(Expr::func_call(fn_name, pst_args)),
+                    None => Err(ConversionError::UnknownFunction(fn_name)),
+                }
             }
         }
     }
@@ -1156,5 +1167,6 @@ mod tests {
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let result: Result<Expr, _> = est_expr.try_into();
         assert!(result.is_err());
+        assert!(matches!(result, Err(ConversionError::InvalidMethodCall(_))));
     }
 }
