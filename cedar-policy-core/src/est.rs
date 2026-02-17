@@ -335,7 +335,7 @@ impl Clause {
         match self {
             Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id)?, true),
             Clause::Unless(expr) => {
-                Self::filter_slots(ast::Expr::not(expr.try_into_ast(id)?), false)
+                Self::filter_slots(ast::ExprBuilder::new().not(expr.try_into_ast(id)?), false)
             }
         }
     }

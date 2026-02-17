@@ -5846,7 +5846,7 @@ mod tests {
         // When we have a malformed policy, it should become an error node but the rest of the policies should parse
         let policyset = text_to_cst::parse_policies_tolerant(
             r#"
-            // POLICY 1 
+            // POLICY 1
             @id("Photo.owner")
             permit (
             principal,
