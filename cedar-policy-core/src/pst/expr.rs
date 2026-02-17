@@ -19,7 +19,7 @@
 use crate::ast::{EntityType, EntityUID, SlotId};
 use crate::expr_builder::ExprBuilder;
 use crate::parser::Loc;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -196,7 +196,7 @@ pub enum Expr {
     /// Function call (builtin or extension)
     FuncCall {
         /// Function name
-        name: String,
+        name: SmolStr,
         /// Arguments
         args: Vec<Arc<Expr>>,
     },
@@ -253,7 +253,7 @@ impl ExprBuilder for Builder {
     fn unknown(self, u: crate::ast::Unknown) -> Expr {
         // Represent unknown as a function call
         Expr::FuncCall {
-            name: "unknown".to_string(),
+            name: "unknown".into(),
             args: vec![Arc::new(Expr::Literal(Literal::String(u.name.to_string())))],
         }
     }
@@ -423,7 +423,7 @@ impl ExprBuilder for Builder {
         args: impl IntoIterator<Item = Expr>,
     ) -> Expr {
         Expr::FuncCall {
-            name: fn_name.to_string(),
+            name: fn_name.to_smolstr(),
             args: args.into_iter().map(Arc::new).collect(),
         }
     }

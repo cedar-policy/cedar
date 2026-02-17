@@ -284,9 +284,9 @@ impl Expr {
     }
 
     /// Create a function call expression
-    pub fn func_call(name: impl Into<String>, args: impl IntoIterator<Item = Self>) -> Self {
+    pub fn func_call(name: SmolStr, args: impl IntoIterator<Item = Self>) -> Self {
         Self::FuncCall {
-            name: name.into(),
+            name: name,
             args: args.into_iter().map(Arc::new).collect(),
         }
     }
