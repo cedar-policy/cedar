@@ -26,14 +26,16 @@ pub mod decimal;
 pub mod datetime;
 pub mod partial_evaluation;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
-use crate::ast::{Extension, ExtensionFunction, Name};
+use crate::ast::{CallStyle, Extension, ExtensionFunction, Name, UnreservedId};
 use crate::entities::SchemaType;
 use crate::extensions::extension_initialization_errors::MultipleConstructorsSameSignatureError;
+use crate::fuzzy_match::fuzzy_search_limited;
 use crate::parser::Loc;
 use miette::Diagnostic;
+use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 use self::extension_function_lookup_errors::FuncDoesNotExistError;
@@ -60,6 +62,8 @@ static EXTENSIONS_NONE: LazyLock<Extensions<'static>> = LazyLock::new(|| Extensi
     functions: HashMap::new(),
     single_arg_constructors: HashMap::new(),
 });
+
+static EXTENSION_STYLES: LazyLock<ExtStyles<'static>> = LazyLock::new(ExtStyles::load);
 
 /// Holds data on all the Extensions which are active for a given evaluation.
 ///
@@ -289,6 +293,92 @@ pub mod extension_function_lookup_errors {
 
 /// Type alias for convenience
 pub type Result<T> = std::result::Result<T, ExtensionFunctionLookupError>;
+
+/// Extension functions have different callstyles. This stores information about the expected
+/// callstyle for each function. Provided static methods can be used to check the expected syntax
+/// of a given function call.
+#[derive(Debug)]
+pub(crate) struct ExtStyles<'a> {
+    /// All extension function names (just functions, not methods), as `Name`s
+    functions: HashSet<&'a Name>,
+    /// All extension function methods. `UnreservedId` is appropriate because methods cannot be namespaced.
+    methods: HashSet<UnreservedId>,
+    /// All extension function and method names (both qualified and unqualified), in their string (`Display`) form
+    functions_and_methods_as_str: HashSet<SmolStr>,
+}
+
+impl ExtStyles<'static> {
+    fn load() -> ExtStyles<'static> {
+        let mut functions = HashSet::new();
+        let mut methods = HashSet::new();
+        let mut functions_and_methods_as_str = HashSet::new();
+        for func in crate::extensions::Extensions::all_available().all_funcs() {
+            functions_and_methods_as_str.insert(func.name().to_smolstr());
+            match func.style() {
+                CallStyle::FunctionStyle => {
+                    functions.insert(func.name());
+                }
+                CallStyle::MethodStyle => {
+                    debug_assert!(func.name().is_unqualified());
+                    methods.insert(func.name().basename());
+                }
+            };
+        }
+        ExtStyles {
+            functions,
+            methods,
+            functions_and_methods_as_str,
+        }
+    }
+
+    /// If this [`UnreservedId`] is a known method name
+    pub(crate) fn is_method(id: &UnreservedId) -> bool {
+        EXTENSION_STYLES.methods.contains(id)
+    }
+
+    /// If this [`Name`] is a known function name
+    pub(crate) fn is_function(id: &Name) -> bool {
+        EXTENSION_STYLES.functions.contains(id)
+    }
+
+    /// If this [`Name`] is a known extension function/method name or not
+    pub(crate) fn is_known_extension_func_name(name: &Name) -> bool {
+        Self::is_function(name) || (name.0.path.is_empty() && Self::is_method(&name.basename()))
+    }
+
+    /// If this [`SmolStr`] is a known extension function/method name or not. Works
+    /// with both qualified and unqualified `s`. (As of this writing, there are no
+    /// qualified extension function/method names, so qualified `s` always results
+    /// in `false`.)
+    pub(crate) fn is_known_extension_func_str(s: &SmolStr) -> bool {
+        EXTENSION_STYLES.functions_and_methods_as_str.contains(s)
+    }
+
+    fn suggest<I, T>(key: &str, choices: I) -> Option<String>
+    where
+        I: IntoIterator<Item = T>,
+        T: ToString,
+    {
+        const SUGGESTION_EXTENSION_MAX_DISTANCE: usize = 3;
+        let choice_strings: Vec<String> = choices.into_iter().map(|c| c.to_string()).collect();
+        let suggestion = fuzzy_search_limited(
+            key,
+            choice_strings.as_slice(),
+            Some(SUGGESTION_EXTENSION_MAX_DISTANCE),
+        );
+        suggestion.map(|m| format!("did you mean `{m}`?"))
+    }
+
+    /// When a method call was expected, suggest a method name matching the provided name
+    pub(crate) fn suggest_method(name: &UnreservedId) -> Option<String> {
+        Self::suggest(name.as_ref(), &EXTENSION_STYLES.methods)
+    }
+
+    /// When a function call was expected, suggest a function name matching the provided name
+    pub(crate) fn suggest_function(name: &Name) -> Option<String> {
+        Self::suggest(&name.to_string(), &EXTENSION_STYLES.functions)
+    }
+}
 
 /// Utilities shared with the `cedar-policy-validator` extensions module.
 pub mod util {

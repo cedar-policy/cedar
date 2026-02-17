@@ -25,11 +25,9 @@ use crate::entities::json::{
     CedarValueJson, FnAndArgs,
 };
 use crate::expr_builder::ExprBuilder;
-use crate::extensions::Extensions;
+use crate::extensions::{ExtStyles, Extensions};
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
-use crate::parser::err::ParseErrors;
-use crate::parser::{cst, Loc};
-use crate::parser::{cst_to_ast, Node};
+use crate::parser::{cst, err::ParseErrors, Loc, Node};
 use crate::FromNormalizedStr;
 use itertools::Itertools;
 use nonempty::NonEmpty;
@@ -92,7 +90,7 @@ impl<'de> Deserialize<'de> for Expr {
                         return Err(serde::de::Error::custom(format!("JSON object representing an `Expr` should have only one key, but found two keys: `{k}` and `{k2}`")));
                     }
                 };
-                if cst_to_ast::is_known_extension_func_str(&k) {
+                if ExtStyles::is_known_extension_func_str(&k) {
                     // `k` is the name of an extension function or method. We assume that
                     // no such keys are valid keys for `ExprNoExt`, so we must parse as an
                     // `ExtFuncCall`.
@@ -1077,7 +1075,7 @@ impl Expr {
                     let fn_name = Name::from_normalized_str(&fn_name).map_err(|errs| {
                         JsonDeserializationError::parse_escape(EscapeKind::Extension, fn_name, errs)
                     })?;
-                    if cst_to_ast::is_known_extension_func_name(&fn_name) {
+                    if ExtStyles::is_known_extension_func_name(&fn_name) {
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
                             args.into_iter()
