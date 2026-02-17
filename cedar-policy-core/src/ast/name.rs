@@ -38,8 +38,8 @@ use crate::FromNormalizedStr;
 ///
 /// This type may contain any name valid for use internally, including names
 /// with reserved `__cedar` components (and also names without `__cedar`).
-#[derive(Educe, Debug, Clone)]
-#[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Educe, Clone)]
+#[educe(Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct InternalName {
     /// Basename
     pub(crate) id: Id,
@@ -49,6 +49,7 @@ pub struct InternalName {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
+    #[educe(Debug(ignore))]
     pub(crate) loc: Option<Loc>,
 }
 
