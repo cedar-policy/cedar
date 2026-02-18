@@ -41,19 +41,19 @@ use super::{cst, Loc};
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
-    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
+    self, ActionConstraint, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
 use crate::expr_builder::ExprBuilder;
-use crate::fuzzy_match::fuzzy_search_limited;
+use crate::extensions::ExtStyles;
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use nonempty::NonEmpty;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::mem;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 /// Defines the function `cst::Expr::to_ref_or_refs` and other similar functions
 /// for converting CST expressions into one or multiple entity UIDS. Used to
@@ -65,43 +65,6 @@ const INVALID_SNIPPET: &str = "<invalid>";
 
 /// Type alias for convenience
 type Result<T> = std::result::Result<T, ParseErrors>;
-
-// for storing extension function names per callstyle
-struct ExtStyles<'a> {
-    /// All extension function names (just functions, not methods), as `Name`s
-    functions: HashSet<&'a ast::Name>,
-    /// All extension function methods. `UnreservedId` is appropriate because methods cannot be namespaced.
-    methods: HashSet<ast::UnreservedId>,
-    /// All extension function and method names (both qualified and unqualified), in their string (`Display`) form
-    functions_and_methods_as_str: HashSet<SmolStr>,
-}
-
-// Store extension function call styles
-
-static EXTENSION_STYLES: LazyLock<ExtStyles<'static>> = LazyLock::new(load_styles);
-
-fn load_styles() -> ExtStyles<'static> {
-    let mut functions = HashSet::new();
-    let mut methods = HashSet::new();
-    let mut functions_and_methods_as_str = HashSet::new();
-    for func in crate::extensions::Extensions::all_available().all_funcs() {
-        functions_and_methods_as_str.insert(func.name().to_smolstr());
-        match func.style() {
-            CallStyle::FunctionStyle => {
-                functions.insert(func.name());
-            }
-            CallStyle::MethodStyle => {
-                debug_assert!(func.name().is_unqualified());
-                methods.insert(func.name().basename());
-            }
-        };
-    }
-    ExtStyles {
-        functions,
-        methods,
-        functions_and_methods_as_str,
-    }
-}
 
 impl Node<Option<cst::Policies>> {
     /// Iterate over the `Policy` nodes in this `cst::Policies`, with
@@ -789,7 +752,7 @@ impl ast::UnreservedId {
             "hasTag" => extract_single_argument(args.into_iter(), "hasTag", loc)
                 .map(|arg| builder.has_tag(e, arg)),
             _ => {
-                if EXTENSION_STYLES.methods.contains(self) {
+                if ExtStyles::is_method(self) {
                     let args = NonEmpty {
                         head: e,
                         tail: args,
@@ -797,33 +760,18 @@ impl ast::UnreservedId {
                     Ok(builder.call_extension_fn(ast::Name::unqualified_name(self.clone()), args))
                 } else {
                     let unqual_name = ast::Name::unqualified_name(self.clone());
-                    if EXTENSION_STYLES.functions.contains(&unqual_name) {
+                    if ExtStyles::is_function(&unqual_name) {
                         Err(ToASTError::new(
                             ToASTErrorKind::MethodCallOnFunction(unqual_name.basename()),
                             loc.cloned(),
                         )
                         .into())
                     } else {
-                        fn suggest_method(
-                            name: &ast::UnreservedId,
-                            methods: &HashSet<ast::UnreservedId>,
-                        ) -> Option<String> {
-                            const SUGGEST_METHOD_MAX_DISTANCE: usize = 3;
-                            let method_names =
-                                methods.iter().map(ToString::to_string).collect::<Vec<_>>();
-                            let suggested_method = fuzzy_search_limited(
-                                name.as_ref(),
-                                method_names.as_slice(),
-                                Some(SUGGEST_METHOD_MAX_DISTANCE),
-                            );
-                            suggested_method.map(|m| format!("did you mean `{m}`?"))
-                        }
-                        let hint = suggest_method(self, &EXTENSION_STYLES.methods);
                         convert_expr_error_to_parse_error::<Build>(
                             ToASTError::new(
                                 ToASTErrorKind::UnknownMethod {
                                     id: self.clone(),
-                                    hint,
+                                    hint: ExtStyles::suggest_method(self),
                                 },
                                 loc.cloned(),
                             )
@@ -2147,20 +2095,6 @@ impl Node<Option<cst::Name>> {
     }
 }
 
-/// If this [`ast::Name`] is a known extension function/method name or not
-pub(crate) fn is_known_extension_func_name(name: &ast::Name) -> bool {
-    EXTENSION_STYLES.functions.contains(name)
-        || (name.0.path.is_empty() && EXTENSION_STYLES.methods.contains(&name.basename()))
-}
-
-/// If this [`SmolStr`] is a known extension function/method name or not. Works
-/// with both qualified and unqualified `s`. (As of this writing, there are no
-/// qualified extension function/method names, so qualified `s` always results
-/// in `false`.)
-pub(crate) fn is_known_extension_func_str(s: &SmolStr) -> bool {
-    EXTENSION_STYLES.functions_and_methods_as_str.contains(s)
-}
-
 impl ast::Name {
     /// Convert the `Name` into a `String` attribute, which fails if it had any namespaces
     fn into_valid_attr(self, loc: Option<Loc>) -> Result<SmolStr> {
@@ -2179,7 +2113,7 @@ impl ast::Name {
         // error on standard methods
         if self.0.path.is_empty() {
             let id = self.basename();
-            if EXTENSION_STYLES.methods.contains(&id)
+            if ExtStyles::is_method(&id)
                 || matches!(
                     id.as_ref(),
                     "contains" | "containsAll" | "containsAny" | "isEmpty" | "getTag" | "hasTag"
@@ -2192,22 +2126,12 @@ impl ast::Name {
                 .into());
             }
         }
-        if EXTENSION_STYLES.functions.contains(&self) {
+        if ExtStyles::is_function(&self) {
             Ok(Build::new()
                 .with_maybe_source_loc(loc.as_ref())
                 .call_extension_fn(self, args))
         } else {
-            fn suggest_function(name: &ast::Name, funs: &HashSet<&ast::Name>) -> Option<String> {
-                const SUGGEST_FUNCTION_MAX_DISTANCE: usize = 3;
-                let fnames = funs.iter().map(ToString::to_string).collect::<Vec<_>>();
-                let suggested_function = fuzzy_search_limited(
-                    &name.to_string(),
-                    fnames.as_slice(),
-                    Some(SUGGEST_FUNCTION_MAX_DISTANCE),
-                );
-                suggested_function.map(|f| format!("did you mean `{f}`?"))
-            }
-            let hint = suggest_function(&self, &EXTENSION_STYLES.functions);
+            let hint = ExtStyles::suggest_function(&self);
             Err(ToASTError::new(ToASTErrorKind::UnknownFunction { id: self, hint }, loc).into())
         }
     }
@@ -5846,7 +5770,7 @@ mod tests {
         // When we have a malformed policy, it should become an error node but the rest of the policies should parse
         let policyset = text_to_cst::parse_policies_tolerant(
             r#"
-            // POLICY 1 
+            // POLICY 1
             @id("Photo.owner")
             permit (
             principal,
