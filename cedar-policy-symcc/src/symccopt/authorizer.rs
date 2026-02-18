@@ -49,7 +49,7 @@ pub fn satisfied_policies(
             |term| eq(term, some_of(true.into())),
             ress.iter().map(|res| res.term.clone()),
         ),
-        footprint: Footprint::from_iter(ress.into_iter().flat_map(|res| res.footprint)),
+        footprint: Footprint::flatten(ress.into_iter().map(|res| res.footprint)),
     })
 }
 
@@ -58,6 +58,6 @@ pub fn is_authorized(policies: &PolicySet, env: &SymEnv) -> Result<CompileResult
     let permits = satisfied_policies(Effect::Permit, policies, env)?;
     Ok(CompileResult {
         term: and(permits.term, not(forbids.term)),
-        footprint: Footprint::from_iter(permits.footprint.chain(forbids.footprint)),
+        footprint: permits.footprint.chain(forbids.footprint),
     })
 }

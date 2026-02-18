@@ -44,42 +44,55 @@ use crate::{
 /// Not present in the Lean, but serves Rust-specific performance optimizations;
 /// see notes where this is used
 pub struct Footprint {
-    terms: Arc<dyn Iterator<Item = Term>>,
+    terms: Option<Box<dyn Iterator<Item = Term>>>,
 }
 
 impl Iterator for Footprint {
     type Item = Term;
 
     fn next(&mut self) -> Option<Term> {
-        // Since `Footprint` does not implement `Clone`, and `terms` is a
-        // private field, there is no way that anyone else could have cloned
-        // the inner `Arc` and gotten a reference to it.
-        // So, we know we definitively have the only reference to this `Arc`,
-        // and `get_mut()` will succeed.
-        let terms = Arc::get_mut(&mut self.terms);
-        debug_assert!(terms.is_some());
-        // When debug assertions are disabled, we avoid panicking if the `get_mut()`
-        // assumption is violated, and instead just return `None`.
-        terms?.next()
+        self.terms.as_mut()?.next()
     }
 }
 
 impl Footprint {
     pub fn empty() -> Self {
-        Self {
-            terms: Arc::new(std::iter::empty()),
-        }
+        Self { terms: None }
     }
 
     pub fn singleton(term: Term) -> Self {
         Self {
-            terms: Arc::new(std::iter::once(term)),
+            terms: Some(Box::new(std::iter::once(term))),
         }
     }
 
-    pub fn from_iter(it: impl Iterator<Item = Term> + 'static) -> Self {
-        Self {
-            terms: Arc::new(it),
+    pub fn flatten(results: impl Iterator<Item = Footprint> + 'static) -> Self {
+        let mut p = results.flatten().peekable();
+        if p.peek().is_some() {
+            Self {
+                terms: Some(Box::new(p)),
+            }
+        } else {
+            Self::empty()
+        }
+    }
+
+    pub fn chain_option(self, other: Option<Term>) -> Self {
+        match (self.terms, other) {
+            (Some(t0), Some(t1)) => Self {
+                terms: Some(Box::new(t0.chain(Some(t1)))),
+            },
+            (terms, None) => Self { terms },
+            (None, Some(term)) => Self::singleton(term),
+        }
+    }
+
+    pub fn chain(self, other: Self) -> Self {
+        match (self.terms, other.terms) {
+            (Some(t0), Some(t1)) => Self {
+                terms: Some(Box::new(t0.chain(t1))),
+            },
+            (terms, None) | (None, terms) => Self { terms },
         }
     }
 }
@@ -282,9 +295,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -294,9 +305,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -306,9 +315,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -318,9 +325,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -330,9 +335,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -342,9 +345,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -354,9 +355,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -366,9 +365,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -378,9 +375,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -390,9 +385,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -403,9 +396,7 @@ fn compile_app2(
                     // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                     // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                     // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                    footprint: Footprint::from_iter(
-                        args_footprint.chain(binary_op_footprint(term.clone())),
-                    ),
+                    footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                     term,
                 })
             } else {
@@ -419,9 +410,7 @@ fn compile_app2(
                     // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                     // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                     // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                    footprint: Footprint::from_iter(
-                        args_footprint.chain(binary_op_footprint(term.clone())),
-                    ),
+                    footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                     term,
                 })
             } else {
@@ -435,9 +424,7 @@ fn compile_app2(
                     // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                     // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                     // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                    footprint: Footprint::from_iter(
-                        args_footprint.chain(binary_op_footprint(term.clone())),
-                    ),
+                    footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                     term,
                 })
             } else {
@@ -454,9 +441,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -472,9 +457,7 @@ fn compile_app2(
                         // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                         // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                         // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                        footprint: Footprint::from_iter(
-                            args_footprint.chain(binary_op_footprint(term.clone())),
-                        ),
+                        footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                         term,
                     })
                 }
@@ -491,9 +474,7 @@ fn compile_app2(
                 // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
                 // but: (1) we want the two compilers to agree even on non-well-typed inputs,
                 // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -502,9 +483,7 @@ fn compile_app2(
             Ok(CompileResult {
                 // in this `GetTag` case, the `binary_op_footprint` term could actually be nonempty,
                 // in the case where the tags are entity-typed
-                footprint: Footprint::from_iter(
-                    args_footprint.chain(binary_op_footprint(term.clone())),
-                ),
+                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
                 term,
             })
         }
@@ -549,11 +528,7 @@ pub fn compile_get_attr(arg: CompileResult, a: &Attr, es: &SymEntities) -> Resul
                 None => Err(CompileError::NoSuchAttribute(a.to_string())),
             }?;
             Ok(CompileResult {
-                footprint: Footprint::from_iter(
-                    get_attr_footprint(term.clone())
-                        .into_iter()
-                        .chain(arg.footprint),
-                ),
+                footprint: arg.footprint.chain_option(get_attr_footprint(term.clone())),
                 term,
             })
         }
@@ -578,9 +553,7 @@ pub fn compile_if(
                         arg1.term.clone(),
                         ite(option_get(arg1.term), arg2.term, arg3.term),
                     ),
-                    footprint: Footprint::from_iter(
-                        arg1.footprint.chain(arg2.footprint).chain(arg3.footprint),
-                    ),
+                    footprint: arg1.footprint.chain(arg2.footprint).chain(arg3.footprint),
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -610,7 +583,7 @@ pub fn compile_and(arg1: CompileResult, arg2: Result<CompileResult>) -> Result<C
                     // and our Lean proofs show it's sound
                     arg2.footprint
                 } else {
-                    Footprint::from_iter(arg1.footprint.chain(arg2.footprint))
+                    arg1.footprint.chain(arg2.footprint)
                 };
                 Ok(CompileResult {
                     term: if_some(
@@ -647,7 +620,7 @@ pub fn compile_or(arg1: CompileResult, arg2: Result<CompileResult>) -> Result<Co
                     // and our Lean proofs show it's sound
                     arg2.footprint
                 } else {
-                    Footprint::from_iter(arg1.footprint.chain(arg2.footprint))
+                    arg1.footprint.chain(arg2.footprint)
                 };
                 Ok(CompileResult {
                     term: if_some(
@@ -683,9 +656,7 @@ pub fn compile_set(args: Vec<CompileResult>) -> Result<CompileResult> {
                             terms.clone(),
                             some_of(set_of(terms.map(option_get), TermType::clone(ity))),
                         ),
-                        footprint: Footprint::from_iter(
-                            args.into_iter().flat_map(|arg| arg.footprint),
-                        ),
+                        footprint: Footprint::flatten(args.into_iter().map(|arg| arg.footprint)),
                     })
                 } else {
                     Err(CompileError::TypeError)
@@ -710,7 +681,7 @@ pub fn compile_record(ats: Vec<(Attr, CompileResult)>) -> CompileResult {
                     .map(|(a, res)| (a.clone(), option_get(res.term.clone()))),
             )),
         ),
-        footprint: Footprint::from_iter(ats.into_iter().flat_map(|(_, res)| res.footprint)),
+        footprint: Footprint::flatten(ats.into_iter().map(|(_, res)| res.footprint)),
     }
 }
 
@@ -781,7 +752,7 @@ pub fn compile_call2_error(
                     enc(option_get(arg1.term), option_get(arg2.term)),
                 ),
             ),
-            footprint: Footprint::from_iter(arg1.footprint.chain(arg2.footprint)),
+            footprint: arg1.footprint.chain(arg2.footprint),
         })
     } else {
         Err(CompileError::TypeError)
@@ -836,10 +807,9 @@ pub fn compile_call_n_error(
         result = if_some(arg.term.clone(), result);
 
         // Combine all footprints
-        let footprint = Footprint::from_iter(
-            arg.footprint
-                .chain(args.into_iter().flat_map(|arg| arg.footprint)),
-        );
+        let footprint = arg.footprint.chain(Footprint::flatten(
+            args.into_iter().map(|arg| arg.footprint),
+        ));
 
         Ok(CompileResult {
             term: result,
