@@ -193,7 +193,8 @@ pub enum Expr {
     Set(Vec<Arc<Expr>>),
     /// Record literal
     Record(BTreeMap<String, Arc<Expr>>),
-    /// Function call (builtin or extension)
+    /// Function call (builtin or extension). Syntactically, this can be either a function-style or
+    /// method-style call depending on the extension.
     FuncCall {
         /// Function name
         name: SmolStr,
@@ -204,11 +205,13 @@ pub enum Expr {
     IsEmpty(Arc<Expr>),
 }
 
-/// Construct a PST [`Expr`].
+/// Builder to construct a PST [`Expr`] that implements the [`ExprBuilder`] interface. Unlike the
+/// expression building functions, this does not perform any validation on the input and is meant
+/// to be used internally.
 #[derive(Clone, Debug)]
-pub struct Builder;
+pub(crate) struct PstBuilder;
 
-impl ExprBuilder for Builder {
+impl ExprBuilder for PstBuilder {
     type Expr = Expr;
     type Data = ();
 
@@ -485,7 +488,7 @@ impl ExprBuilder for Builder {
 impl From<crate::ast::Expr> for Expr {
     fn from(ast_expr: crate::ast::Expr) -> Self {
         use crate::expr_builder::ExprBuilder;
-        let builder = Builder;
+        let builder = PstBuilder;
 
         match ast_expr.into_expr_kind() {
             crate::ast::ExprKind::Lit(lit) => builder.val(lit),
@@ -682,25 +685,25 @@ mod tests {
 
     #[test]
     fn test_builder_literal() {
-        let expr = Builder::new().val(true);
+        let expr = PstBuilder::new().val(true);
         assert!(matches!(expr, Expr::Literal(Literal::Bool(true))));
 
-        let expr = Builder::new().val(42i64);
+        let expr = PstBuilder::new().val(42i64);
         assert!(matches!(expr, Expr::Literal(Literal::Long(42))));
     }
 
     #[test]
     fn test_builder_var() {
-        let expr = Builder::new().var(crate::ast::Var::Principal);
+        let expr = PstBuilder::new().var(crate::ast::Var::Principal);
         assert!(matches!(expr, Expr::Var(Var::Principal)));
     }
 
     #[test]
     fn test_builder_binary_ops() {
-        let left = Builder::new().val(1i64);
-        let right = Builder::new().val(2i64);
+        let left = PstBuilder::new().val(1i64);
+        let right = PstBuilder::new().val(2i64);
 
-        let expr = Builder::new().add(left.clone(), right.clone());
+        let expr = PstBuilder::new().add(left.clone(), right.clone());
         assert!(matches!(
             expr,
             Expr::BinaryOp {
@@ -709,7 +712,7 @@ mod tests {
             }
         ));
 
-        let expr = Builder::new().and(left.clone(), right.clone());
+        let expr = PstBuilder::new().and(left.clone(), right.clone());
         assert!(matches!(
             expr,
             Expr::BinaryOp {
@@ -718,7 +721,7 @@ mod tests {
             }
         ));
 
-        let expr = Builder::new().is_eq(left, right);
+        let expr = PstBuilder::new().is_eq(left, right);
         assert!(matches!(
             expr,
             Expr::BinaryOp {
@@ -730,34 +733,34 @@ mod tests {
 
     #[test]
     fn test_builder_unary_ops() {
-        let inner = Builder::new().val(true);
-        let expr = Builder::new().not(inner);
+        let inner = PstBuilder::new().val(true);
+        let expr = PstBuilder::new().not(inner);
         assert!(matches!(expr, Expr::Not(_)));
 
-        let inner = Builder::new().val(42i64);
-        let expr = Builder::new().neg(inner);
+        let inner = PstBuilder::new().val(42i64);
+        let expr = PstBuilder::new().neg(inner);
         assert!(matches!(expr, Expr::Neg(_)));
     }
 
     #[test]
     fn test_builder_ite() {
-        let cond = Builder::new().val(true);
-        let then_expr = Builder::new().val(1i64);
-        let else_expr = Builder::new().val(2i64);
+        let cond = PstBuilder::new().val(true);
+        let then_expr = PstBuilder::new().val(1i64);
+        let else_expr = PstBuilder::new().val(2i64);
 
-        let expr = Builder::new().ite(cond, then_expr, else_expr);
+        let expr = PstBuilder::new().ite(cond, then_expr, else_expr);
         assert!(matches!(expr, Expr::IfThenElse { .. }));
     }
 
     #[test]
     fn test_builder_set() {
         let exprs = vec![
-            Builder::new().val(1i64),
-            Builder::new().val(2i64),
-            Builder::new().val(3i64),
+            PstBuilder::new().val(1i64),
+            PstBuilder::new().val(2i64),
+            PstBuilder::new().val(3i64),
         ];
 
-        let expr = Builder::new().set(exprs);
+        let expr = PstBuilder::new().set(exprs);
         if let Expr::Set(elements) = expr {
             assert_eq!(elements.len(), 3);
         } else {
@@ -768,11 +771,11 @@ mod tests {
     #[test]
     fn test_builder_record() {
         let pairs = vec![
-            ("a".into(), Builder::new().val(1i64)),
-            ("b".into(), Builder::new().val(2i64)),
+            ("a".into(), PstBuilder::new().val(1i64)),
+            ("b".into(), PstBuilder::new().val(2i64)),
         ];
 
-        let expr = Builder::new().record(pairs).unwrap();
+        let expr = PstBuilder::new().record(pairs).unwrap();
         if let Expr::Record(map) = expr {
             assert_eq!(map.len(), 2);
             assert!(map.contains_key("a"));
@@ -784,8 +787,8 @@ mod tests {
 
     #[test]
     fn test_builder_get_attr() {
-        let base = Builder::new().var(crate::ast::Var::Principal);
-        let expr = Builder::new().get_attr(base, "name".into());
+        let base = PstBuilder::new().var(crate::ast::Var::Principal);
+        let expr = PstBuilder::new().get_attr(base, "name".into());
 
         if let Expr::GetAttr { attr, .. } = expr {
             assert_eq!(attr, "name");
@@ -796,8 +799,8 @@ mod tests {
 
     #[test]
     fn test_builder_has_attr() {
-        let base = Builder::new().var(crate::ast::Var::Principal);
-        let expr = Builder::new().has_attr(base, "name".into());
+        let base = PstBuilder::new().var(crate::ast::Var::Principal);
+        let expr = PstBuilder::new().has_attr(base, "name".into());
 
         if let Expr::HasAttr { attrs, .. } = expr {
             assert_eq!(attrs.len(), 1);
@@ -809,10 +812,10 @@ mod tests {
 
     #[test]
     fn test_builder_is_entity_type() {
-        let base = Builder::new().var(crate::ast::Var::Principal);
+        let base = PstBuilder::new().var(crate::ast::Var::Principal);
         let entity_type =
             EntityType::from(crate::ast::Name::parse_unqualified_name("User").unwrap());
-        let expr = Builder::new().is_entity_type(base, entity_type.clone());
+        let expr = PstBuilder::new().is_entity_type(base, entity_type.clone());
 
         if let Expr::Is {
             entity_type: et,
@@ -829,9 +832,9 @@ mod tests {
 
     #[test]
     fn test_builder_func_call() {
-        let args = vec![Builder::new().val(1i64), Builder::new().val(2i64)];
+        let args = vec![PstBuilder::new().val(1i64), PstBuilder::new().val(2i64)];
         let fn_name = crate::ast::Name::parse_unqualified_name("decimal").unwrap();
-        let expr = Builder::new().call_extension_fn(fn_name, args);
+        let expr = PstBuilder::new().call_extension_fn(fn_name, args);
 
         if let Expr::FuncCall { name, args } = expr {
             assert_eq!(name, "decimal");
@@ -843,8 +846,283 @@ mod tests {
 
     #[test]
     fn test_builder_display() {
-        let expr = Builder::new().val(42i64);
+        let expr = PstBuilder::new().val(42i64);
         let s = expr.to_string();
         assert!(s.contains("42"));
+    }
+
+    mod display_tests {
+        use super::*;
+        use nonempty::nonempty;
+
+        #[test]
+        fn test_literal_bool() {
+            assert_eq!(Expr::Literal(Literal::Bool(true)).to_string(), "Bool(true)");
+            assert_eq!(Expr::Literal(Literal::Bool(false)).to_string(), "Bool(false)");
+        }
+
+        #[test]
+        fn test_literal_long() {
+            assert_eq!(Expr::Literal(Literal::Long(42)).to_string(), "Long(42)");
+            assert_eq!(Expr::Literal(Literal::Long(-123)).to_string(), "Long(-123)");
+        }
+
+        #[test]
+        fn test_literal_string() {
+            assert_eq!(
+                Expr::Literal(Literal::String("hello".into())).to_string(),
+                "String(\"hello\")"
+            );
+        }
+
+        #[test]
+        fn test_literal_entity_uid() {
+            let uid = EntityUID::from_components(
+                EntityType::from(crate::ast::Name::parse_unqualified_name("User").unwrap()),
+                crate::ast::Eid::new("alice"),
+                None,
+            );
+            let s = Expr::Literal(Literal::EntityUid(uid)).to_string();
+            assert!(s.contains("User"));
+            assert!(s.contains("alice"));
+        }
+
+        #[test]
+        fn test_var() {
+            assert_eq!(Expr::Var(Var::Principal).to_string(), "Principal");
+            assert_eq!(Expr::Var(Var::Action).to_string(), "Action");
+            assert_eq!(Expr::Var(Var::Resource).to_string(), "Resource");
+            assert_eq!(Expr::Var(Var::Context).to_string(), "Context");
+        }
+
+        #[test]
+        fn test_slot() {
+            assert!(Expr::Slot(SlotId::principal()).to_string().contains("principal"));
+        }
+
+        #[test]
+        fn test_not() {
+            let expr = Expr::Not(Arc::new(Expr::Literal(Literal::Bool(true))));
+            assert_eq!(expr.to_string(), "!Bool(true)");
+        }
+
+        #[test]
+        fn test_neg() {
+            let expr = Expr::Neg(Arc::new(Expr::Literal(Literal::Long(42))));
+            assert_eq!(expr.to_string(), "-Long(42)");
+        }
+
+        #[test]
+        fn test_binary_ops() {
+            let left = Arc::new(Expr::Literal(Literal::Long(1)));
+            let right = Arc::new(Expr::Literal(Literal::Long(2)));
+
+            let cases = vec![
+                (BinaryOp::Eq, "Eq"),
+                (BinaryOp::NotEq, "NotEq"),
+                (BinaryOp::Less, "Less"),
+                (BinaryOp::LessEq, "LessEq"),
+                (BinaryOp::Greater, "Greater"),
+                (BinaryOp::GreaterEq, "GreaterEq"),
+                (BinaryOp::And, "And"),
+                (BinaryOp::Or, "Or"),
+                (BinaryOp::Add, "Add"),
+                (BinaryOp::Sub, "Sub"),
+                (BinaryOp::Mul, "Mul"),
+                (BinaryOp::In, "In"),
+                (BinaryOp::Contains, "Contains"),
+                (BinaryOp::ContainsAll, "ContainsAll"),
+                (BinaryOp::ContainsAny, "ContainsAny"),
+                (BinaryOp::GetTag, "GetTag"),
+                (BinaryOp::HasTag, "HasTag"),
+            ];
+
+            for (op, name) in cases {
+                let expr = Expr::BinaryOp {
+                    op,
+                    left: left.clone(),
+                    right: right.clone(),
+                };
+                let s = expr.to_string();
+                assert!(s.contains(name), "Expected {} in {}", name, s);
+                assert!(s.starts_with('(') && s.ends_with(')'));
+            }
+        }
+
+        #[test]
+        fn test_get_attr() {
+            let expr = Expr::GetAttr {
+                expr: Arc::new(Expr::Var(Var::Principal)),
+                attr: "name".into(),
+            };
+            assert_eq!(expr.to_string(), "Principal.name");
+        }
+
+        #[test]
+        fn test_has_attr_single() {
+            let expr = Expr::HasAttr {
+                expr: Arc::new(Expr::Var(Var::Principal)),
+                attrs: nonempty!["name".into()],
+            };
+            assert_eq!(expr.to_string(), "Principal has name");
+        }
+
+        #[test]
+        fn test_has_attr_nested() {
+            let expr = Expr::HasAttr {
+                expr: Arc::new(Expr::Var(Var::Context)),
+                attrs: nonempty!["user".into(), "email".into()],
+            };
+            assert_eq!(expr.to_string(), "Context has user.email");
+        }
+
+        #[test]
+        fn test_like() {
+            let expr = Expr::Like {
+                expr: Arc::new(Expr::Var(Var::Principal)),
+                pattern: vec![PatternElem::Char('a'), PatternElem::Wildcard],
+            };
+            assert!(expr.to_string().contains("Principal like"));
+        }
+
+        #[test]
+        fn test_is_without_in() {
+            let expr = Expr::Is {
+                expr: Arc::new(Expr::Var(Var::Principal)),
+                entity_type: EntityType::from(
+                    crate::ast::Name::parse_unqualified_name("User").unwrap(),
+                ),
+                in_expr: None,
+            };
+            assert_eq!(expr.to_string(), "Principal is User");
+        }
+
+        #[test]
+        fn test_is_with_in() {
+            let expr = Expr::Is {
+                expr: Arc::new(Expr::Var(Var::Principal)),
+                entity_type: EntityType::from(
+                    crate::ast::Name::parse_unqualified_name("User").unwrap(),
+                ),
+                in_expr: Some(Arc::new(Expr::Var(Var::Resource))),
+            };
+            assert_eq!(expr.to_string(), "Principal is User in Resource");
+        }
+
+        #[test]
+        fn test_if_then_else() {
+            let expr = Expr::IfThenElse {
+                cond: Arc::new(Expr::Literal(Literal::Bool(true))),
+                then_expr: Arc::new(Expr::Literal(Literal::Long(1))),
+                else_expr: Arc::new(Expr::Literal(Literal::Long(2))),
+            };
+            assert_eq!(expr.to_string(), "if Bool(true) then Long(1) else Long(2)");
+        }
+
+        #[test]
+        fn test_set() {
+            assert_eq!(Expr::Set(vec![]).to_string(), "[]");
+            assert_eq!(
+                Expr::Set(vec![Arc::new(Expr::Literal(Literal::Long(42)))]).to_string(),
+                "[Long(42)]"
+            );
+            assert_eq!(
+                Expr::Set(vec![
+                    Arc::new(Expr::Literal(Literal::Long(1))),
+                    Arc::new(Expr::Literal(Literal::Long(2))),
+                    Arc::new(Expr::Literal(Literal::Long(3))),
+                ])
+                .to_string(),
+                "[Long(1), Long(2), Long(3)]"
+            );
+        }
+
+        #[test]
+        fn test_record() {
+            assert_eq!(Expr::Record(BTreeMap::new()).to_string(), "{}");
+
+            let mut map = BTreeMap::new();
+            map.insert("a".into(), Arc::new(Expr::Literal(Literal::Long(1))));
+            assert_eq!(Expr::Record(map).to_string(), "{a: Long(1)}");
+
+            let mut map = BTreeMap::new();
+            map.insert("a".into(), Arc::new(Expr::Literal(Literal::Long(1))));
+            map.insert("b".into(), Arc::new(Expr::Literal(Literal::Long(2))));
+            assert_eq!(Expr::Record(map).to_string(), "{a: Long(1), b: Long(2)}");
+        }
+
+        #[test]
+        fn test_func_call() {
+            assert_eq!(
+                Expr::FuncCall {
+                    name: "foo".into(),
+                    args: vec![],
+                }
+                .to_string(),
+                "foo()"
+            );
+            assert_eq!(
+                Expr::FuncCall {
+                    name: "decimal".into(),
+                    args: vec![Arc::new(Expr::Literal(Literal::String("1.23".into())))],
+                }
+                .to_string(),
+                "decimal(String(\"1.23\"))"
+            );
+            assert_eq!(
+                Expr::FuncCall {
+                    name: "foo".into(),
+                    args: vec![
+                        Arc::new(Expr::Literal(Literal::Long(1))),
+                        Arc::new(Expr::Literal(Literal::Long(2))),
+                    ],
+                }
+                .to_string(),
+                "foo(Long(1), Long(2))"
+            );
+        }
+
+        #[test]
+        fn test_is_empty() {
+            let expr = Expr::IsEmpty(Arc::new(Expr::Set(vec![])));
+            assert_eq!(expr.to_string(), "[].isEmpty()");
+        }
+
+        #[test]
+        fn test_nested() {
+            let expr = Expr::BinaryOp {
+                op: BinaryOp::Eq,
+                left: Arc::new(Expr::BinaryOp {
+                    op: BinaryOp::Add,
+                    left: Arc::new(Expr::Literal(Literal::Long(1))),
+                    right: Arc::new(Expr::Literal(Literal::Long(2))),
+                }),
+                right: Arc::new(Expr::Literal(Literal::Long(3))),
+            };
+            assert_eq!(expr.to_string(), "((Long(1) Add Long(2)) Eq Long(3))");
+        }
+
+        #[test]
+        fn test_complex() {
+            let expr = Expr::IfThenElse {
+                cond: Arc::new(Expr::BinaryOp {
+                    op: BinaryOp::Greater,
+                    left: Arc::new(Expr::GetAttr {
+                        expr: Arc::new(Expr::Var(Var::Principal)),
+                        attr: "age".into(),
+                    }),
+                    right: Arc::new(Expr::Literal(Literal::Long(18))),
+                }),
+                then_expr: Arc::new(Expr::GetAttr {
+                    expr: Arc::new(Expr::Var(Var::Principal)),
+                    attr: "name".into(),
+                }),
+                else_expr: Arc::new(Expr::Literal(Literal::String("unknown".into()))),
+            };
+            assert_eq!(
+                expr.to_string(),
+                "if (Principal.age Greater Long(18)) then Principal.name else String(\"unknown\")"
+            );
+        }
     }
 }

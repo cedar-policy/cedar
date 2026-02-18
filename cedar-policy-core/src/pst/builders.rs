@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 /// Errors that can occur when building PST expressions
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum ExprBuilderError {
+pub enum ExprConstructionError {
     /// Empty attribute path in `has` expression
     #[error("attribute path cannot be empty")]
     EmptyAttributePath,
@@ -221,17 +221,17 @@ impl Expr {
     pub fn has_attrs(
         expr: Self,
         attrs: impl IntoIterator<Item = impl Into<SmolStr>>,
-    ) -> Result<Self, ExprBuilderError> {
+    ) -> Result<Self, ExprConstructionError> {
         let attrs_vec: Vec<SmolStr> = attrs.into_iter().map(Into::into).collect();
-        let attrs_nonempty =
-            nonempty::NonEmpty::from_vec(attrs_vec).ok_or(ExprBuilderError::EmptyAttributePath)?;
+        let attrs_nonempty = nonempty::NonEmpty::from_vec(attrs_vec)
+            .ok_or(ExprConstructionError::EmptyAttributePath)?;
         if attrs_nonempty.len() > 1
             && attrs_nonempty
                 .iter()
                 .find(|attr| !is_normalized_ident(attr))
                 .is_some()
         {
-            Err(ExprBuilderError::InvalidAttributePath(
+            Err(ExprConstructionError::InvalidAttributePath(
                 attrs_nonempty.iter().join("."),
             ))
         } else {
@@ -288,12 +288,12 @@ impl Expr {
     /// Returns an error if there are duplicate keys
     pub fn record(
         pairs: impl IntoIterator<Item = (impl Into<String>, Self)>,
-    ) -> Result<Self, ExprBuilderError> {
+    ) -> Result<Self, ExprConstructionError> {
         let mut map = BTreeMap::new();
         for (k, v) in pairs {
             let key = k.into();
             if map.insert(key.clone(), Arc::new(v)).is_some() {
-                return Err(ExprBuilderError::DuplicateRecordKey(key));
+                return Err(ExprConstructionError::DuplicateRecordKey(key));
             }
         }
         Ok(Self::Record(map))
@@ -367,7 +367,7 @@ mod tests {
         let result = Expr::record(pairs);
         assert!(matches!(
             result,
-            Err(ExprBuilderError::DuplicateRecordKey(_))
+            Err(ExprConstructionError::DuplicateRecordKey(_))
         ));
     }
 
@@ -375,7 +375,10 @@ mod tests {
     fn test_expr_has_attr_empty() {
         let expr = Expr::principal();
         let result = Expr::has_attrs(expr, Vec::<SmolStr>::new());
-        assert!(matches!(result, Err(ExprBuilderError::EmptyAttributePath)));
+        assert!(matches!(
+            result,
+            Err(ExprConstructionError::EmptyAttributePath)
+        ));
     }
 
     #[test]
@@ -384,7 +387,7 @@ mod tests {
         let result = Expr::has_attrs(expr, nonempty!["ok", "oh snap®"]);
         assert!(matches!(
             result,
-            Err(ExprBuilderError::InvalidAttributePath(_))
+            Err(ExprConstructionError::InvalidAttributePath(_))
         ));
     }
 

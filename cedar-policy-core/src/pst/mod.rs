@@ -26,15 +26,15 @@
 //! - Converts to/from AST and EST at boundaries
 //! - Uses `Arc<Expr>` for cheap cloning during manipulation
 
+mod builders;
 mod constraints;
 mod est_conversions;
 mod expr;
-mod expr_builder;
 mod policy;
 
+pub use builders::ExprConstructionError;
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
-pub use expr::{BinaryOp, Builder, Expr, Literal, PatternElem, Var};
-pub use expr_builder::ExprBuilderError;
+pub use expr::{BinaryOp, Expr, Literal, PatternElem, Var};
 pub use policy::{Clause, Effect, Policy};
 
 // Re-export common types that PST uses
