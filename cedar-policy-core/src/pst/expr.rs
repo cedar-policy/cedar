@@ -74,39 +74,29 @@ pub struct Name {
 }
 
 impl Name {
-    /// Constructs an unqualified name.
-    pub fn unqualified(id: impl Into<SmolStr>) -> Self {
+    /// Constructs a simple (unqualified) name.
+    pub fn simple(id: impl Into<SmolStr>) -> Self {
         Name {
             id: id.into(),
             namespace: Arc::new(vec![]),
         }
     }
 
-    /// Constructs a qualified name.
-    pub fn qualified(namespace: impl Into<Arc<Vec<SmolStr>>>, id: impl Into<SmolStr>) -> Self {
+    /// Constructs a qualified name (i.e. with a possible non-empty namespace)
+    pub fn qualified<I, T>(namespace: I, id: impl Into<SmolStr>) -> Self
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<SmolStr>,
+    {
         Name {
             id: id.into(),
-            namespace: namespace.into(),
+            namespace: Arc::new(namespace.into_iter().map(|x| x.into()).collect()),
         }
     }
 }
 
 impl From<ast::Name> for Name {
     fn from(name: ast::Name) -> Self {
-        Name {
-            id: name.basename().to_smolstr(),
-            namespace: Arc::new(
-                name.as_ref()
-                    .namespace_components()
-                    .map(|id| id.to_smolstr())
-                    .collect(),
-            ),
-        }
-    }
-}
-
-impl From<&ast::Name> for Name {
-    fn from(name: &ast::Name) -> Self {
         Name {
             id: name.basename().to_smolstr(),
             namespace: Arc::new(
@@ -133,25 +123,32 @@ impl TryFrom<Name> for ast::Name {
     }
 }
 
+impl Display for Name {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for elem in self.namespace.as_ref() {
+            write!(f, "{elem}::")?;
+        }
+        write!(f, "{}", self.id)?;
+        Ok(())
+    }
+}
+
 /// Entity type name
 ///
 /// Represents the type of an entity in Cedar (e.g., `User`, `Photo`, `Namespace::Resource`)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum EntityType {
-    /// An entity type with a qualified name
-    EntityType(Name),
-}
+pub struct EntityType(pub Name);
 
 impl EntityType {
     /// Create an entity type from a name
-    pub fn entity_type(name: impl Into<Name>) -> Self {
-        EntityType::EntityType(name.into())
+    pub fn from_name(name: impl Into<Name>) -> Self {
+        EntityType(name.into())
     }
 }
 
 impl From<ast::EntityType> for EntityType {
     fn from(et: ast::EntityType) -> Self {
-        EntityType::EntityType(Name {
+        EntityType(Name {
             id: et.name().basename().to_smolstr(),
             namespace: Arc::new(
                 et.name()
@@ -168,9 +165,7 @@ impl TryFrom<EntityType> for ast::EntityType {
     type Error = crate::parser::err::ParseErrors;
 
     fn try_from(et: EntityType) -> Result<Self, Self::Error> {
-        match et {
-            EntityType::EntityType(name) => Ok(ast::EntityType::EntityType(name.try_into()?)),
-        }
+        Ok(ast::EntityType::EntityType(et.0.try_into()?))
     }
 }
 
@@ -179,7 +174,7 @@ impl Display for EntityType {
         let ast_et: Result<ast::EntityType, _> = self.clone().try_into();
         match ast_et {
             Ok(n) => write!(f, "{}", n),
-            Err(_) => write!(f, "<invalid name {}>", self.to_smolstr()),
+            Err(_) => write!(f, "<invalid entity type>"),
         }
     }
 }
@@ -321,6 +316,18 @@ pub enum PatternElem {
     Wildcard,
 }
 
+impl From<ast::Pattern> for Vec<PatternElem> {
+    fn from(pattern: ast::Pattern) -> Self {
+        pattern
+            .iter()
+            .map(|elem| match elem {
+                ast::PatternElem::Char(c) => PatternElem::Char(*c),
+                ast::PatternElem::Wildcard => PatternElem::Wildcard,
+            })
+            .collect()
+    }
+}
+
 /// PST Expression
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
@@ -348,7 +355,7 @@ pub enum Expr {
         /// Expression to get attribute from
         expr: Arc<Expr>,
         /// Attribute name
-        attr: String,
+        attr: SmolStr,
     },
     /// Attribute existence check (e.g., `principal has name`)
     /// Can check nested attributes (e.g., `principal has address.street`)
@@ -388,15 +395,15 @@ pub enum Expr {
     Set(Vec<Arc<Expr>>),
     /// Record literal
     Record(BTreeMap<String, Arc<Expr>>),
-    /// Function call (builtin or extension). Syntactically, this can be either a function-style or
+    /// Function call. Syntactically, this can be either a function-style or
     /// method-style call depending on the extension.
     FuncCall {
         /// Function name
-        name: SmolStr,
+        name: Name,
         /// Arguments
         args: Vec<Arc<Expr>>,
     },
-    /// Check if set/record is empty
+    /// Check if set is empty
     IsEmpty(Arc<Expr>),
 }
 
@@ -452,7 +459,7 @@ impl ExprBuilder for PstBuilder {
     fn unknown(self, u: crate::ast::Unknown) -> Expr {
         // Represent unknown as a function call
         Expr::FuncCall {
-            name: "unknown".into(),
+            name: Name::simple("unknown"),
             args: vec![Arc::new(Expr::Literal(Literal::String(u.name.to_string())))],
         }
     }
@@ -622,7 +629,7 @@ impl ExprBuilder for PstBuilder {
         args: impl IntoIterator<Item = Expr>,
     ) -> Expr {
         Expr::FuncCall {
-            name: fn_name.to_smolstr(),
+            name: fn_name.into(),
             args: args.into_iter().map(Arc::new).collect(),
         }
     }
@@ -630,7 +637,7 @@ impl ExprBuilder for PstBuilder {
     fn get_attr(self, expr: Expr, attr: SmolStr) -> Expr {
         Expr::GetAttr {
             expr: Arc::new(expr),
-            attr: attr.to_string(),
+            attr,
         }
     }
 
@@ -644,13 +651,7 @@ impl ExprBuilder for PstBuilder {
     fn like(self, expr: Expr, pattern: crate::ast::Pattern) -> Expr {
         Expr::Like {
             expr: Arc::new(expr),
-            pattern: pattern
-                .iter()
-                .map(|elem| match elem {
-                    crate::ast::PatternElem::Char(c) => PatternElem::Char(*c),
-                    crate::ast::PatternElem::Wildcard => PatternElem::Wildcard,
-                })
-                .collect(),
+            pattern: pattern.into(),
         }
     }
 
@@ -912,8 +913,7 @@ mod tests {
     #[test]
     fn test_builder_is_entity_type() {
         let base = PstBuilder::new().var(ast::Var::Principal);
-        let entity_type =
-            EntityType::entity_type(ast::Name::parse_unqualified_name("User").unwrap());
+        let entity_type = EntityType::from_name(ast::Name::parse_unqualified_name("User").unwrap());
         let expr = PstBuilder::new().is_entity_type(base, entity_type.clone().try_into().unwrap());
 
         if let Expr::Is {
@@ -936,7 +936,7 @@ mod tests {
         let expr = PstBuilder::new().call_extension_fn(fn_name, args);
 
         if let Expr::FuncCall { name, args } = expr {
-            assert_eq!(name, "decimal");
+            assert_eq!(name, Name::simple("decimal"));
             assert_eq!(args.len(), 2);
         } else {
             panic!("Expected FuncCall");
@@ -953,6 +953,13 @@ mod tests {
     mod display_tests {
         use super::*;
         use smol_str::SmolStr;
+
+        #[test]
+        fn cant_display_unsparseable_entity_type() {
+            let name = "!__Cedar!";
+            let et = EntityType::from_name(Name::simple(name));
+            assert_eq!(format!("{}", et), "<invalid entity type>");
+        }
 
         // NOTE: These tests verify Display output for expressions constructed via the
         // ExprBuilder trait (internal builder). Some operators are desugared during
@@ -1108,20 +1115,19 @@ mod tests {
                 ),
                 // Function calls
                 (
-                    builder()
-                        .call_extension_fn(Name::unqualified("foo").try_into().unwrap(), vec![]),
+                    builder().call_extension_fn(Name::simple("foo").try_into().unwrap(), vec![]),
                     "foo()",
                 ),
                 (
                     builder().call_extension_fn(
-                        Name::unqualified("decimal").try_into().unwrap(),
+                        Name::simple("decimal").try_into().unwrap(),
                         vec![builder().val("1.23")],
                     ),
                     "decimal(\"1.23\")",
                 ),
                 (
                     builder().call_extension_fn(
-                        Name::unqualified("foo").try_into().unwrap(),
+                        Name::simple("foo").try_into().unwrap(),
                         vec![builder().val(1i64), builder().val(2i64)],
                     ),
                     "foo(1, 2)",
