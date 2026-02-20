@@ -1822,10 +1822,14 @@ fn run_one_test(
     policies: &PolicySet,
     test: &serde_json::Value,
     validator: Option<&Validator>,
+    test_file_dir: &Path,
 ) -> Result<TestResult> {
-    let test = CheckedTestCaseSeed(validator.map(Validator::schema))
-        .deserialize(test.into_deserializer())
-        .into_diagnostic()?;
+    let test = CheckedTestCaseSeed {
+        schema: validator.map(Validator::schema),
+        test_file_dir,
+    }
+    .deserialize(test.into_deserializer())
+    .into_diagnostic()?;
     if let Some(validator) = validator {
         let val_res = validator.validate(policies, cedar_policy::ValidationMode::Strict);
         if !val_res.validation_passed_without_warnings() {
@@ -1841,6 +1845,12 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
     let tests = load_partial_tests(&args.tests)?;
     let validator = args.schema.get_schema()?.map(Validator::new);
 
+    // Get the directory containing the test file for resolving relative entity paths
+    let test_file_path = Path::new(&args.tests);
+    let test_file_dir = test_file_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."));
+
     let mut total_fails: usize = 0;
 
     println!("running {} test(s)", tests.len());
@@ -1851,7 +1861,7 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
             print!("  test (unnamed) ... ");
         }
         std::io::stdout().flush().into_diagnostic()?;
-        match run_one_test(&policies, test, validator.as_ref()) {
+        match run_one_test(&policies, test, validator.as_ref(), test_file_dir) {
             Ok(TestResult::Pass) => {
                 println!(
                     "{}",
@@ -1946,7 +1956,10 @@ struct TestCase {
     num_errors: usize,
 }
 
-struct CheckedTestCaseSeed<'a>(Option<&'a Schema>);
+struct CheckedTestCaseSeed<'a> {
+    schema: Option<&'a Schema>,
+    test_file_dir: &'a Path,
+}
 
 impl<'de, 'a> DeserializeSeed<'de> for CheckedTestCaseSeed<'a> {
     type Value = TestCase;
@@ -1991,11 +2004,20 @@ impl<'de, 'a> DeserializeSeed<'de> for CheckedTestCaseSeed<'a> {
             ))
         })?;
 
-        let request = Request::new(principal, action, resource, context, self.0)
+        let request = Request::new(principal, action, resource, context, self.schema)
             .map_err(|e| serde::de::Error::custom(format!("failed to create request: {e}")))?;
 
-        let entities = Entities::from_json_value(entities, self.0)
-            .map_err(|e| serde::de::Error::custom(format!("failed to parse entities: {e}")))?;
+        // Handle entities: either a string (file path) or inline JSON
+        let entities = if let Some(entities_file) = entities.as_str() {
+            // entities is a string, treat it as a file path
+            let entities_path = self.test_file_dir.join(entities_file);
+            load_entities(entities_path, self.schema)
+                .map_err(|e| serde::de::Error::custom(format!("failed to load entities from file `{}`: {e}", entities_file)))?
+        } else {
+            // entities is inline JSON
+            Entities::from_json_value(entities, self.schema)
+                .map_err(|e| serde::de::Error::custom(format!("failed to parse entities: {e}")))?
+        };
 
         Ok(TestCase {
             request,

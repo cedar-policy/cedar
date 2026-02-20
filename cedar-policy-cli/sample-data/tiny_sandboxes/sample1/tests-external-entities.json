@@ -1,0 +1,27 @@
+[
+  {
+    "request": {
+      "principal": "User::\"alice\"",
+      "action": "Action::\"view\"",
+      "resource": "Photo::\"VacationPhoto94.jpg\"",
+      "context": {}
+    },
+    "entities": "entity.json",
+    "decision": "allow",
+    "reason": ["policy0"],
+    "num_errors": 0
+  },
+  {
+    "name": "test with external entities - deny case",
+    "request": {
+      "principal": "User::\"bob\"",
+      "action": "Action::\"view\"",
+      "resource": "Photo::\"VacationPhoto94.jpg\"",
+      "context": {}
+    },
+    "entities": "entity.json",
+    "decision": "deny",
+    "reason": [],
+    "num_errors": 0
+  }
+]
