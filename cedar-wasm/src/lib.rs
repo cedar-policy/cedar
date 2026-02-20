@@ -20,8 +20,8 @@ mod utils;
 use cedar_policy::ffi;
 pub use cedar_policy::ffi::{
     check_parse_context, check_parse_entities, check_parse_policy_set, check_parse_schema, format,
-    get_lang_version, is_authorized, policy_to_json, policy_to_text, schema_to_json,
-    schema_to_text, validate,
+    get_lang_version, is_authorized, is_authorized_partial, policy_to_json, policy_to_text,
+    schema_to_json, schema_to_text, validate,
 };
 pub use utils::*;
 
