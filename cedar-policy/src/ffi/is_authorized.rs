@@ -361,6 +361,7 @@ pub struct ResidualResponse {
     errored: HashSet<PolicyId>,
     may_be_determining: HashSet<PolicyId>,
     must_be_determining: HashSet<PolicyId>,
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, PolicyJson>"))]
     residuals: HashMap<PolicyId, JsonValueWithNoDuplicateKeys>,
     nontrivial_residuals: HashSet<PolicyId>,
 }
