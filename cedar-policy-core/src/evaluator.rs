@@ -41,7 +41,7 @@ const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 type UnknownsMapper<'e> = Box<dyn Fn(&str) -> Option<Value> + 'e>;
 
 #[expect(clippy::expect_used, reason = "`Name`s in here are valid `Name`s")]
-mod names {
+pub(crate) mod names {
     use super::Name;
     use std::sync::LazyLock;
 
@@ -1159,7 +1159,7 @@ impl Value {
 }
 
 #[inline(always)]
-fn stack_size_check() -> Result<()> {
+pub(crate) fn stack_size_check() -> Result<()> {
     // We assume there's enough space if we cannot determine it with `remaining_stack`
     if stacker::remaining_stack().unwrap_or(REQUIRED_STACK_SPACE) < REQUIRED_STACK_SPACE {
         return Err(EvaluationError::recursion_limit(None));
