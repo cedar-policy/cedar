@@ -45,13 +45,11 @@ pub fn verify_evaluate_opt(phi: impl FnOnce(&Term) -> Term, policy: &CompiledPol
     // constant-false, we can just return constant-false and not compute
     // `enforce_compiled_policy()`; the resulting asserts are equivalent.
     match factory::not(phi(&policy.term)) {
-        Term::Prim(TermPrim::Bool(false)) => Arc::new(vec![false.into()]),
-        assert => Arc::new(
-            enforce_compiled_policy(policy)
-                .into_iter()
-                .chain(std::iter::once(assert))
-                .collect(),
-        ),
+        Term::Prim(TermPrim::Bool(false)) => Arc::new([false.into()]),
+        assert => enforce_compiled_policy(policy)
+            .into_iter()
+            .chain(std::iter::once(assert))
+            .collect(),
     }
 }
 
@@ -76,13 +74,11 @@ pub fn verify_evaluate_pair_opt(
     // constant-false, we can just return constant-false and not compute
     // `enforce_pair_compiled_policy()`; the resulting asserts are equivalent.
     match factory::not(phi(&policy1.term, &policy2.term)) {
-        Term::Prim(TermPrim::Bool(false)) => Arc::new(vec![false.into()]),
-        assert => Arc::new(
-            enforce_pair_compiled_policy(policy1, policy2)
-                .into_iter()
-                .chain(std::iter::once(assert))
-                .collect(),
-        ),
+        Term::Prim(TermPrim::Bool(false)) => Arc::new([false.into()]),
+        assert => enforce_pair_compiled_policy(policy1, policy2)
+            .into_iter()
+            .chain(std::iter::once(assert))
+            .collect(),
     }
 }
 
@@ -109,13 +105,11 @@ pub fn verify_is_authorized_opt(
     // constant-false, we can just return constant-false and not compute
     // `enforce_pair_compiled_policies()`; the resulting asserts are equivalent.
     match factory::not(phi(&policies1.term, &policies2.term)) {
-        Term::Prim(TermPrim::Bool(false)) => Arc::new(vec![false.into()]),
-        assert => Arc::new(
-            enforce_pair_compiled_policyset(policies1, policies2)
-                .into_iter()
-                .chain(std::iter::once(assert))
-                .collect(),
-        ),
+        Term::Prim(TermPrim::Bool(false)) => Arc::new([false.into()]),
+        assert => enforce_pair_compiled_policyset(policies1, policies2)
+            .into_iter()
+            .chain(std::iter::once(assert))
+            .collect(),
     }
 }
 

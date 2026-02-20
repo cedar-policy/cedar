@@ -88,7 +88,7 @@ impl Term {
                     .collect(),
             )),
 
-            Term::App { op, args, ret_ty } => match (op, args.as_slice()) {
+            Term::App { op, args, ret_ty } => match (op, args.as_ref()) {
                 (Op::Not, [arg]) => factory::not(arg.interpret(interp)),
                 (Op::And, [arg1, arg2]) => {
                     factory::and(arg1.interpret(interp), arg2.interpret(interp))
@@ -244,7 +244,7 @@ impl Term {
                     );
                     Term::App {
                         op: op.clone(),
-                        args: Arc::new(args.iter().map(|t| t.interpret(interp)).collect()),
+                        args: args.iter().map(|t| t.interpret(interp)).collect(),
                         ret_ty: ret_ty.clone(),
                     }
                 }
@@ -539,7 +539,7 @@ mod interpret_test {
         fn bv_app_without_folding(op: Op, t1: &Term, t2: &Term, ret_ty: TermType) -> Term {
             Term::App {
                 op,
-                args: Arc::new(vec![t1.clone(), t2.clone()]),
+                args: Arc::new([t1.clone(), t2.clone()]),
                 ret_ty,
             }
         }
