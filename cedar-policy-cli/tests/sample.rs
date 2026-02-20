@@ -1603,6 +1603,25 @@ fn test_run_tests_samples(
 }
 
 #[test]
+fn test_run_tests_with_external_entities() {
+    // Test the new feature from issue #2016: referencing external entity files
+    let cmd = RunTestsArgs {
+        policies: PoliciesArgs {
+            policies_file: Some("sample-data/tiny_sandboxes/sample1/policy.cedar".into()),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        tests: "sample-data/tiny_sandboxes/sample1/tests-external-entities.json".into(),
+        schema: OptionalSchemaArgs {
+            schema_file: Some("sample-data/tiny_sandboxes/sample1/schema.cedarschema.json".into()),
+            schema_format: SchemaFormat::Json,
+        },
+    };
+    let output = run_tests(&cmd);
+    assert_eq!(CedarExitCode::Success, output, "{cmd:#?}");
+}
+
+#[test]
 #[cfg(feature = "tpe")]
 fn test_tpe() {
     let policies: &str = "sample-data/tpe_rfc/policies.cedar";
