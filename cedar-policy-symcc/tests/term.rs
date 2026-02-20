@@ -61,7 +61,7 @@ async fn term_basic_arith_unsat() {
     assert_eq!(
         compiler
             .check_unsat_raw(
-                Arc::new(vec![term_factory::not(term_factory::eq(
+                Arc::new([term_factory::not(term_factory::eq(
                     TermVar {
                         id: "x".into(),
                         ty: TermType::Bitvec { n: SIXTY_FOUR }
@@ -82,7 +82,7 @@ async fn term_basic_arith_unsat() {
     assert_eq!(
         compiler
             .check_unsat_raw(
-                Arc::new(vec![term_factory::not(term_factory::eq(
+                Arc::new([term_factory::not(term_factory::eq(
                     TermVar {
                         id: "x".into(),
                         ty: TermType::Bitvec { n: SIXTY_FOUR }
@@ -103,7 +103,7 @@ async fn term_basic_arith_unsat() {
     assert_eq!(
         compiler
             .check_unsat_raw(
-                Arc::new(vec![term_factory::not(term_factory::implies(
+                Arc::new([term_factory::not(term_factory::implies(
                     term_factory::and(
                         term_factory::bvsle(
                             TermVar {

@@ -33,7 +33,7 @@ use cedar_policy::Effect;
 use cedar_policy_core::ast::{Expr, Policy, PolicyID, PolicySet};
 
 /// Type of assertions (i.e., a list of [`Term`]s).
-pub type Asserts = Arc<Vec<Term>>;
+pub type Asserts = Arc<[Term]>;
 
 type Result<T> = std::result::Result<T, CompileError>;
 
@@ -47,12 +47,10 @@ pub fn verify_evaluate(
 ) -> Result<Asserts> {
     let policy_expr = policy.condition();
     let term = compile(&policy_expr, env)?;
-    Ok(Arc::new(
-        enforce([&policy_expr], env)
-            .into_iter()
-            .chain([not(phi(term))])
-            .collect(),
-    ))
+    Ok(enforce([&policy_expr], env)
+        .into_iter()
+        .chain([not(phi(term))])
+        .collect())
 }
 
 /// Returns asserts that are unsatisfiable iff the evaluation of `policy1` and `policy2`,
@@ -69,12 +67,10 @@ pub fn verify_evaluate_pair(
     let policy2_expr = policy2.condition();
     let term1 = compile(&policy1_expr, env)?;
     let term2 = compile(&policy2_expr, env)?;
-    Ok(Arc::new(
-        enforce([&policy1_expr, &policy2_expr], env)
-            .into_iter()
-            .chain([not(phi(term1, term2))])
-            .collect(),
-    ))
+    Ok(enforce([&policy1_expr, &policy2_expr], env)
+        .into_iter()
+        .chain([not(phi(term1, term2))])
+        .collect())
 }
 
 /// Returns asserts that are unsatisfiable iff the authorization decisions produced
@@ -94,12 +90,10 @@ pub fn verify_is_authorized(
         .chain(policies2.policies())
         .map(|p| p.condition())
         .collect();
-    Ok(Arc::new(
-        enforce(xs.iter(), env)
-            .into_iter()
-            .chain([not(phi(term1, term2))])
-            .collect(),
-    ))
+    Ok(enforce(xs.iter(), env)
+        .into_iter()
+        .chain([not(phi(term1, term2))])
+        .collect())
 }
 
 /// Returns asserts that are unsatisfiable iff `policy` does not error on any input in

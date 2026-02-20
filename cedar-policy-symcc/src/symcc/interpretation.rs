@@ -88,7 +88,7 @@ impl Term {
                     .collect(),
             )),
 
-            Term::App { op, args, ret_ty } => match (op, args.as_slice()) {
+            Term::App { op, args, ret_ty } => match (op, args.as_ref()) {
                 (Op::Not, [arg]) => factory::not(arg.interpret(interp)),
                 (Op::And, [arg1, arg2]) => {
                     factory::and(arg1.interpret(interp), arg2.interpret(interp))
@@ -227,7 +227,7 @@ impl Term {
                 // interpret the arguments
                 (op, args) => Term::App {
                     op: op.clone(),
-                    args: Arc::new(args.iter().map(|t| t.interpret(interp)).collect()),
+                    args: args.iter().map(|t| t.interpret(interp)).collect(),
                     ret_ty: ret_ty.clone(),
                 },
             },

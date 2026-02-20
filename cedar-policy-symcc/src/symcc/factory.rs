@@ -71,14 +71,21 @@ pub fn not(t: Term) -> Term {
         Term::Prim(TermPrim::Bool(b)) => (!b).into(),
         #[expect(
             clippy::unwrap_used,
-            reason = "List of length 1 should not panic when unwrapping first element"
+            reason = "List of length 1 should not panic when indexing for first element"
         )]
         Term::App {
-            op: Op::Not, args, ..
-        } if args.len() == 1 => Arc::unwrap_or_clone(args).into_iter().next().unwrap(),
+            op: Op::Not,
+            mut args,
+            ..
+        } if args.len() == 1 => {
+            // We need to `get_mut` and `replace` instead of `unwrap_or_clone` because `[Term]` is unsized.
+            Arc::get_mut(&mut args)
+                .map(|args| std::mem::replace(&mut args[0], false.into()))
+                .unwrap_or_else(|| args[0].clone())
+        }
         t => Term::App {
             op: Op::Not,
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::Bool,
         },
     }
@@ -120,7 +127,7 @@ pub fn and(t1: Term, t2: Term) -> Term {
     } else {
         Term::App {
             op: Op::And,
-            args: Arc::new(vec![t1, t2]),
+            args: Arc::new([t1, t2]),
             ret_ty: TermType::Bool,
         }
     }
@@ -136,7 +143,7 @@ pub fn or(t1: Term, t2: Term) -> Term {
     } else {
         Term::App {
             op: Op::Or,
-            args: Arc::new(vec![t1, t2]),
+            args: Arc::new([t1, t2]),
             ret_ty: TermType::Bool,
         }
     }
@@ -163,7 +170,7 @@ pub fn eq(t1: Term, t2: Term) -> Term {
         } else {
             Term::App {
                 op: Op::Eq,
-                args: Arc::new(vec![t1, t2]),
+                args: Arc::new([t1, t2]),
                 ret_ty: TermType::Bool,
             }
         }
@@ -193,7 +200,7 @@ pub fn ite(t1: Term, t2: Term, t3: Term) -> Term {
                     let ret_ty = t2.type_of();
                     Term::App {
                         op: Op::Ite,
-                        args: Arc::new(vec![t1, t2, t3]),
+                        args: Arc::new([t1, t2, t3]),
                         ret_ty,
                     }
                 }
@@ -219,7 +226,7 @@ pub fn app(f: UnaryFunction, t: Term) -> Term {
             let ret_ty = f.out.clone();
             Term::App {
                 op: Op::Uuf(f),
-                args: Arc::new(vec![t]),
+                args: Arc::new([t]),
                 ret_ty,
             }
         }
@@ -249,19 +256,24 @@ pub fn bvneg(t: Term) -> Term {
     match t {
         Term::Prim(TermPrim::Bitvec(b)) => b.neg().into(),
         #[expect(
-            clippy::unwrap_used,
-            reason = "List of length 1 should not panic when unwrapping first element"
+            clippy::indexing_slicing,
+            reason = "List of length 1 should not panic when indexing for first element"
         )]
         Term::App {
             op: Op::Bvneg,
-            args,
+            mut args,
             ..
-        } if args.len() == 1 => Arc::unwrap_or_clone(args).into_iter().next().unwrap(),
+        } if args.len() == 1 => {
+            // We need to `get_mut` and `replace` instead of `unwrap_or_clone` because `[Term]` is unsized.
+            Arc::get_mut(&mut args)
+                .map(|args| std::mem::replace(&mut args[0], false.into()))
+                .unwrap_or_else(|| args[0].clone())
+        }
         t => {
             let ret_ty = t.type_of();
             Term::App {
                 op: Op::Bvneg,
-                args: Arc::new(vec![t]),
+                args: Arc::new([t]),
                 ret_ty,
             }
         }
@@ -289,7 +301,7 @@ pub fn bvapp<E: std::fmt::Debug + Into<CompileError>>(
             let ret_ty = t1.type_of();
             Term::App {
                 op,
-                args: Arc::new(vec![t1, t2]),
+                args: Arc::new([t1, t2]),
                 ret_ty,
             }
         }
@@ -352,7 +364,7 @@ fn bvcmp<E: std::fmt::Debug + Into<CompileError>>(
         }
         (t1, t2) => Term::App {
             op,
-            args: Arc::new(vec![t1, t2]),
+            args: Arc::new([t1, t2]),
             ret_ty: TermType::Bool,
         },
     }
@@ -380,7 +392,7 @@ pub fn bvnego(t: Term) -> Term {
         Term::Prim(TermPrim::Bitvec(bv)) => BitVec::overflows(bv.width(), &-bv.to_int()).into(),
         t => Term::App {
             op: Op::Bvnego,
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::Bool,
         },
     }
@@ -394,7 +406,7 @@ pub fn bvso(op: Op, f: &dyn Fn(&Int, &Int) -> Int, t1: Term, t2: Term) -> Term {
         }
         (t1, t2) => Term::App {
             op,
-            args: Arc::new(vec![t1, t2]),
+            args: Arc::new([t1, t2]),
             ret_ty: TermType::Bool,
         },
     }
@@ -447,7 +459,7 @@ pub fn zero_extend(n: u32, t: Term) -> Term {
                         .expect("width will not overflow u32");
                     Term::App {
                         op: Op::ZeroExtend(n),
-                        args: Arc::new(vec![t]),
+                        args: Arc::new([t]),
                         ret_ty: TermType::Bitvec { n: new_width },
                     }
                 }
@@ -465,7 +477,7 @@ pub fn set_member(t: Term, ts: Term) -> Term {
         Term::Set { elts, .. } if t.is_literal() && ts.is_literal() => elts.contains(&t).into(),
         ts => Term::App {
             op: Op::SetMember,
-            args: Arc::new(vec![t, ts]),
+            args: Arc::new([t, ts]),
             ret_ty: TermType::Bool,
         },
     }
@@ -484,7 +496,7 @@ pub fn set_subset(sub: Term, sup: Term) -> Term {
             }
             (_, _) => Term::App {
                 op: Op::SetSubset,
-                args: Arc::new(vec![sub, sup]),
+                args: Arc::new([sub, sup]),
                 ret_ty: TermType::Bool,
             },
         }
@@ -512,7 +524,7 @@ pub fn set_inter(ts1: Term, ts2: Term) -> Term {
                 let ret_ty = ts1.type_of();
                 Term::App {
                     op: Op::SetInter,
-                    args: Arc::new(vec![ts1, ts2]),
+                    args: Arc::new([ts1, ts2]),
                     ret_ty,
                 }
             }
@@ -550,7 +562,7 @@ pub fn option_get(t: Term) -> Term {
         t => match t.type_of() {
             TermType::Option { ty } => Term::App {
                 op: Op::OptionGet,
-                args: Arc::new(vec![t]),
+                args: Arc::new([t]),
                 ret_ty: Arc::unwrap_or_clone(ty),
             },
             _ => t,
@@ -568,7 +580,7 @@ pub fn record_get(t: Term, a: &Attr) -> Term {
             TermType::Record { rty } => match rty.get(a) {
                 Some(ty) => Term::App {
                     op: Op::RecordGet(a.clone()),
-                    args: Arc::new(vec![t]),
+                    args: Arc::new([t]),
                     ret_ty: ty.clone(),
                 },
                 None => t,
@@ -583,7 +595,7 @@ pub fn string_like(t: Term, p: OrdPattern) -> Term {
         Term::Prim(TermPrim::String(s)) => p.wildcard_match(&s).into(),
         _ => Term::App {
             op: Op::StringLike(p),
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::Bool,
         },
     }
@@ -598,7 +610,7 @@ pub fn ext_decimal_val(t: Term) -> Term {
         }
         t => Term::App {
             op: Op::Ext(ExtOp::DecimalVal),
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::Bitvec { n: SIXTY_FOUR },
         },
     }
@@ -609,7 +621,7 @@ pub fn ext_ipaddr_is_v4(t: Term) -> Term {
         Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip })) => ip.is_v4().into(),
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrIsV4),
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::Bool,
         },
     }
@@ -620,7 +632,7 @@ pub fn ext_ipaddr_addr_v4(t: Term) -> Term {
         Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V4(v4) })) => v4.addr.val.into(),
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrAddrV4),
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::Bitvec { n: THIRTY_TWO },
         },
     }
@@ -634,7 +646,7 @@ pub fn ext_ipaddr_prefix_v4(t: Term) -> Term {
         },
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV4),
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::option_of(TermType::Bitvec { n: FIVE }),
         },
     }
@@ -645,7 +657,7 @@ pub fn ext_ipaddr_addr_v6(t: Term) -> Term {
         Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip: IPNet::V6(v6) })) => v6.addr.val.into(),
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrAddrV6),
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::Bitvec {
                 n: HUNDRED_TWENTY_EIGHT,
             },
@@ -661,7 +673,7 @@ pub fn ext_ipaddr_prefix_v6(t: Term) -> Term {
         },
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV6),
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::option_of(TermType::Bitvec { n: SEVEN }),
         },
     }
@@ -674,7 +686,7 @@ pub fn ext_datetime_val(t: Term) -> Term {
         )),
         t => Term::App {
             op: Op::Ext(ExtOp::DatetimeVal),
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::Bitvec { n: SIXTY_FOUR },
         },
     }
@@ -694,7 +706,7 @@ pub fn ext_datetime_of_bitvec(t: Term) -> Term {
         }
         _ => Term::App {
             op: Op::Ext(ExtOp::DatetimeOfBitVec),
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::Ext {
                 xty: ExtType::DateTime,
             },
@@ -709,7 +721,7 @@ pub fn ext_duration_val(t: Term) -> Term {
         )),
         t => Term::App {
             op: Op::Ext(ExtOp::DurationVal),
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::Bitvec { n: SIXTY_FOUR },
         },
     }
@@ -729,7 +741,7 @@ pub fn ext_duration_of_bitvec(t: Term) -> Term {
         }
         _ => Term::App {
             op: Op::Ext(ExtOp::DurationOfBitVec),
-            args: Arc::new(vec![t]),
+            args: Arc::new([t]),
             ret_ty: TermType::Ext {
                 xty: ExtType::Duration,
             },
