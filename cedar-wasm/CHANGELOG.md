@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- `isAuthorizedPartial` binding for partial evaluation (experimental)
+
 ## 4.9.0
 
 ## 4.8.2

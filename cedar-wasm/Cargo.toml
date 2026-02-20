@@ -10,8 +10,8 @@ license.workspace = true
 exclude = ['/build']
 
 [dependencies]
-cedar-policy = { version = "=4.9.0", path = "../cedar-policy", features = ["wasm"] }
-cedar-policy-core = { version = "=4.9.0", path = "../cedar-policy-core", features = ["wasm"] }
+cedar-policy = { version = "=4.9.0", path = "../cedar-policy", features = ["wasm", "partial-eval"] }
+cedar-policy-core = { version = "=4.9.0", path = "../cedar-policy-core", features = ["wasm", "partial-eval"] }
 cedar-policy-formatter = { version = "=4.9.0", path = "../cedar-policy-formatter" }
 
 serde = { version = "1.0", features = ["derive", "rc"] }
