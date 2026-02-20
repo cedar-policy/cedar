@@ -16,9 +16,9 @@
 
 //! Public builder API for constructing PST expressions
 
+use super::expr::{EntityType, EntityUID, Name, SlotId};
 use super::{BinaryOp, Expr, Literal, PatternElem, Var};
 use crate::ast::is_normalized_ident;
-use crate::ast::{EntityType, EntityUID, SlotId};
 use itertools::Itertools;
 use smol_str::SmolStr;
 use std::collections::BTreeMap;
@@ -61,7 +61,7 @@ impl Expr {
 
     /// Create an entity UID literal
     pub fn entity_uid(uid: EntityUID) -> Self {
-        Self::Literal(Literal::EntityUid(uid))
+        Self::Literal(Literal::EntityUID(uid.into()))
     }
 
     /// Create a variable expression
@@ -91,7 +91,7 @@ impl Expr {
 
     /// Create a slot expression
     pub fn slot(slot: SlotId) -> Self {
-        Self::Slot(slot)
+        Self::Slot(slot.into())
     }
 
     /// Create a logical NOT expression
@@ -199,7 +199,7 @@ impl Expr {
     }
 
     /// Create an attribute access expression
-    pub fn get_attr(expr: Self, attr: impl Into<String>) -> Self {
+    pub fn get_attr(expr: Self, attr: impl Into<SmolStr>) -> Self {
         Self::GetAttr {
             expr: Arc::new(expr),
             attr: attr.into(),
@@ -300,7 +300,7 @@ impl Expr {
     }
 
     /// Create a function call expression
-    pub fn func_call(name: SmolStr, args: impl IntoIterator<Item = Self>) -> Self {
+    pub fn func_call(name: Name, args: impl IntoIterator<Item = Self>) -> Self {
         Self::FuncCall {
             name: name,
             args: args.into_iter().map(Arc::new).collect(),

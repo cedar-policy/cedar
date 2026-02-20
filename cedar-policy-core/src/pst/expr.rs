@@ -16,14 +16,197 @@
 
 //! Expression types for PST
 
-use crate::ast::{EntityType, EntityUID, SlotId};
+use crate::ast;
 use crate::expr_builder::ExprBuilder;
-use crate::parser::Loc;
+use itertools::Itertools;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::BTreeMap;
+use std::fmt::Display;
+use std::str::FromStr;
 use std::sync::Arc;
 
-/// Variables available in Cedar policies
+/// Slot identifier for template policies
+///
+/// Cedar supports two slot types: `principal` and `resource`
+#[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
+pub enum SlotId {
+    /// Principal slot
+    Principal,
+    /// Resource slot
+    Resource,
+}
+
+impl From<ast::SlotId> for SlotId {
+    fn from(slot: ast::SlotId) -> Self {
+        match slot.0 {
+            ast::ValidSlotId::Principal => SlotId::Principal,
+            ast::ValidSlotId::Resource => SlotId::Resource,
+        }
+    }
+}
+
+impl From<SlotId> for ast::SlotId {
+    fn from(slot: SlotId) -> Self {
+        match slot {
+            SlotId::Principal => ast::SlotId::principal(),
+            SlotId::Resource => ast::SlotId::resource(),
+        }
+    }
+}
+
+impl Display for SlotId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let b: ast::SlotId = (*self).into();
+        write!(f, "{}", b)
+    }
+}
+
+/// A qualified name (e.g., `Namespace::Type`)
+///
+/// Represents entity types, action names, and other identifiers in Cedar.
+/// Names consist of a basename and optional namespace components.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Name {
+    /// Basename (the final component of the name)
+    pub id: SmolStr,
+    /// Namespace components (empty for unqualified names)
+    pub namespace: Arc<Vec<SmolStr>>,
+}
+
+impl Name {
+    /// Constructs a simple (unqualified) name.
+    pub fn simple(id: impl Into<SmolStr>) -> Self {
+        Name {
+            id: id.into(),
+            namespace: Arc::new(vec![]),
+        }
+    }
+
+    /// Constructs a qualified name (i.e. with a possible non-empty namespace)
+    pub fn qualified<I, T>(namespace: I, id: impl Into<SmolStr>) -> Self
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<SmolStr>,
+    {
+        Name {
+            id: id.into(),
+            namespace: Arc::new(namespace.into_iter().map(|x| x.into()).collect()),
+        }
+    }
+}
+
+impl From<ast::Name> for Name {
+    fn from(name: ast::Name) -> Self {
+        Name {
+            id: name.basename().to_smolstr(),
+            namespace: Arc::new(
+                name.as_ref()
+                    .namespace_components()
+                    .map(|id| id.to_smolstr())
+                    .collect(),
+            ),
+        }
+    }
+}
+
+impl TryFrom<Name> for ast::Name {
+    type Error = crate::parser::err::ParseErrors;
+
+    fn try_from(name: Name) -> Result<Self, Self::Error> {
+        let basename = ast::Id::from_str(&name.id)?;
+        let path: Vec<ast::Id> = name
+            .namespace
+            .iter()
+            .map(|s| ast::Id::from_str(s.as_str()))
+            .try_collect()?;
+        Ok(ast::Name(ast::InternalName::new(basename, path, None)))
+    }
+}
+
+impl Display for Name {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for elem in self.namespace.as_ref() {
+            write!(f, "{elem}::")?;
+        }
+        write!(f, "{}", self.id)?;
+        Ok(())
+    }
+}
+
+/// Entity type name
+///
+/// Represents the type of an entity in Cedar (e.g., `User`, `Photo`, `Namespace::Resource`)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EntityType(pub Name);
+
+impl EntityType {
+    /// Create an entity type from a name
+    pub fn from_name(name: impl Into<Name>) -> Self {
+        EntityType(name.into())
+    }
+}
+
+impl From<ast::EntityType> for EntityType {
+    fn from(et: ast::EntityType) -> Self {
+        EntityType(Name {
+            id: et.name().basename().to_smolstr(),
+            namespace: Arc::new(
+                et.name()
+                    .0
+                    .namespace_components()
+                    .map(|id| id.to_smolstr())
+                    .collect(),
+            ),
+        })
+    }
+}
+
+impl TryFrom<EntityType> for ast::EntityType {
+    type Error = crate::parser::err::ParseErrors;
+
+    fn try_from(et: EntityType) -> Result<Self, Self::Error> {
+        Ok(ast::EntityType::EntityType(et.0.try_into()?))
+    }
+}
+
+impl Display for EntityType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ast_et: Result<ast::EntityType, _> = self.clone().try_into();
+        match ast_et {
+            Ok(n) => write!(f, "{}", n),
+            Err(_) => write!(f, "<invalid entity type>"),
+        }
+    }
+}
+
+/// Entity unique identifier (UID)
+///
+/// Represents a specific entity instance in Cedar (e.g., `User::"alice"`)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EntityUID {
+    /// Type of the entity
+    pub ty: EntityType,
+    /// Entity identifier (EID)
+    pub eid: SmolStr,
+}
+
+impl From<ast::EntityUID> for EntityUID {
+    fn from(uid: ast::EntityUID) -> Self {
+        let (ty, eid) = uid.components();
+        EntityUID {
+            ty: ty.into(),
+            eid: eid.into_smolstr(),
+        }
+    }
+}
+
+impl Display for EntityUID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}::\"{}\"", self.ty, self.eid.as_str().escape_default())
+    }
+}
+
+/// Variables available in Cedar policy expressions
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Var {
     /// The `principal` variable
@@ -36,7 +219,7 @@ pub enum Var {
     Context,
 }
 
-/// Binary operators
+/// Binary operators in Cedar expressions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     // Comparison
@@ -73,34 +256,41 @@ pub enum BinaryOp {
     ContainsAll,
     /// Set contains any element (`containsAny`)
     ContainsAny,
-    // Tags (experimental)
+    // Tags
     /// Get tag value (`getTag`)
     GetTag,
     /// Check tag existence (`hasTag`)
     HasTag,
 }
 
-impl From<BinaryOp> for crate::ast::BinaryOp {
-    fn from(op: BinaryOp) -> Self {
-        match op {
-            BinaryOp::Eq => crate::ast::BinaryOp::Eq,
-            BinaryOp::NotEq => panic!("NotEq should be converted to Not(Eq(...))"),
-            BinaryOp::Less => crate::ast::BinaryOp::Less,
-            BinaryOp::LessEq => crate::ast::BinaryOp::LessEq,
-            BinaryOp::Greater => panic!("Greater should be converted to Not(LessEq(...))"),
-            BinaryOp::GreaterEq => panic!("GreaterEq should be converted to Not(Less(...))"),
-            BinaryOp::And => panic!("And should be converted to If-Then-Else"),
-            BinaryOp::Or => panic!("Or should be converted to If-Then-Else"),
-            BinaryOp::Add => crate::ast::BinaryOp::Add,
-            BinaryOp::Sub => crate::ast::BinaryOp::Sub,
-            BinaryOp::Mul => crate::ast::BinaryOp::Mul,
-            BinaryOp::In => crate::ast::BinaryOp::In,
-            BinaryOp::Contains => crate::ast::BinaryOp::Contains,
-            BinaryOp::ContainsAll => crate::ast::BinaryOp::ContainsAll,
-            BinaryOp::ContainsAny => crate::ast::BinaryOp::ContainsAny,
-            BinaryOp::GetTag => crate::ast::BinaryOp::GetTag,
-            BinaryOp::HasTag => crate::ast::BinaryOp::HasTag,
+impl BinaryOp {
+    /// Get the Cedar syntax representation of this operator
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            BinaryOp::Eq => "==",
+            BinaryOp::NotEq => "!=",
+            BinaryOp::Less => "<",
+            BinaryOp::LessEq => "<=",
+            BinaryOp::Greater => ">",
+            BinaryOp::GreaterEq => ">=",
+            BinaryOp::And => "&&",
+            BinaryOp::Or => "||",
+            BinaryOp::Add => "+",
+            BinaryOp::Sub => "-",
+            BinaryOp::Mul => "*",
+            BinaryOp::In => "in",
+            BinaryOp::Contains => "contains",
+            BinaryOp::ContainsAll => "containsAll",
+            BinaryOp::ContainsAny => "containsAny",
+            BinaryOp::GetTag => "getTag",
+            BinaryOp::HasTag => "hasTag",
         }
+    }
+}
+
+impl Display for BinaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -114,7 +304,7 @@ pub enum Literal {
     /// String literal
     String(String),
     /// Entity UID literal
-    EntityUid(EntityUID),
+    EntityUID(EntityUID),
 }
 
 /// Pattern element for `like` expressions
@@ -124,6 +314,18 @@ pub enum PatternElem {
     Char(char),
     /// A wildcard (`*`)
     Wildcard,
+}
+
+impl From<ast::Pattern> for Vec<PatternElem> {
+    fn from(pattern: ast::Pattern) -> Self {
+        pattern
+            .iter()
+            .map(|elem| match elem {
+                ast::PatternElem::Char(c) => PatternElem::Char(*c),
+                ast::PatternElem::Wildcard => PatternElem::Wildcard,
+            })
+            .collect()
+    }
 }
 
 /// PST Expression
@@ -153,7 +355,7 @@ pub enum Expr {
         /// Expression to get attribute from
         expr: Arc<Expr>,
         /// Attribute name
-        attr: String,
+        attr: SmolStr,
     },
     /// Attribute existence check (e.g., `principal has name`)
     /// Can check nested attributes (e.g., `principal has address.street`)
@@ -193,15 +395,15 @@ pub enum Expr {
     Set(Vec<Arc<Expr>>),
     /// Record literal
     Record(BTreeMap<String, Arc<Expr>>),
-    /// Function call (builtin or extension). Syntactically, this can be either a function-style or
+    /// Function call. Syntactically, this can be either a function-style or
     /// method-style call depending on the extension.
     FuncCall {
         /// Function name
-        name: SmolStr,
+        name: Name,
         /// Arguments
         args: Vec<Arc<Expr>>,
     },
-    /// Check if set/record is empty
+    /// Check if set is empty
     IsEmpty(Arc<Expr>),
 }
 
@@ -209,6 +411,7 @@ pub enum Expr {
 /// expression building functions, this does not perform any validation on the input and is meant
 /// to be used internally.
 #[derive(Clone, Debug)]
+#[expect(dead_code, reason = "PST is under development")]
 pub(crate) struct PstBuilder;
 
 impl ExprBuilder for PstBuilder {
@@ -216,18 +419,18 @@ impl ExprBuilder for PstBuilder {
     type Data = ();
 
     #[cfg(feature = "tolerant-ast")]
-    type ErrorType = std::convert::Infallible;
+    type ErrorType = crate::parser::err::ParseErrors;
 
     fn with_data(_data: Self::Data) -> Self {
         Self
     }
 
-    fn with_maybe_source_loc(self, _: Option<&Loc>) -> Self {
+    fn with_maybe_source_loc(self, _: Option<&crate::parser::Loc>) -> Self {
         // PST doesn't store source locations
         self
     }
 
-    fn loc(&self) -> Option<&Loc> {
+    fn loc(&self) -> Option<&crate::parser::Loc> {
         None
     }
 
@@ -240,7 +443,7 @@ impl ExprBuilder for PstBuilder {
             crate::ast::Literal::Bool(b) => Literal::Bool(b),
             crate::ast::Literal::Long(i) => Literal::Long(i),
             crate::ast::Literal::String(s) => Literal::String(s.to_string()),
-            crate::ast::Literal::EntityUID(e) => Literal::EntityUid(e.as_ref().clone()),
+            crate::ast::Literal::EntityUID(e) => Literal::EntityUID(e.as_ref().clone().into()),
         })
     }
 
@@ -256,13 +459,13 @@ impl ExprBuilder for PstBuilder {
     fn unknown(self, u: crate::ast::Unknown) -> Expr {
         // Represent unknown as a function call
         Expr::FuncCall {
-            name: "unknown".into(),
+            name: Name::simple("unknown"),
             args: vec![Arc::new(Expr::Literal(Literal::String(u.name.to_string())))],
         }
     }
 
-    fn slot(self, s: SlotId) -> Expr {
-        Expr::Slot(s)
+    fn slot(self, s: ast::SlotId) -> Expr {
+        Expr::Slot(s.into())
     }
 
     fn ite(self, test_expr: Expr, then_expr: Expr, else_expr: Expr) -> Expr {
@@ -426,7 +629,7 @@ impl ExprBuilder for PstBuilder {
         args: impl IntoIterator<Item = Expr>,
     ) -> Expr {
         Expr::FuncCall {
-            name: fn_name.to_smolstr(),
+            name: fn_name.into(),
             args: args.into_iter().map(Arc::new).collect(),
         }
     }
@@ -434,7 +637,7 @@ impl ExprBuilder for PstBuilder {
     fn get_attr(self, expr: Expr, attr: SmolStr) -> Expr {
         Expr::GetAttr {
             expr: Arc::new(expr),
-            attr: attr.to_string(),
+            attr,
         }
     }
 
@@ -448,28 +651,22 @@ impl ExprBuilder for PstBuilder {
     fn like(self, expr: Expr, pattern: crate::ast::Pattern) -> Expr {
         Expr::Like {
             expr: Arc::new(expr),
-            pattern: pattern
-                .iter()
-                .map(|elem| match elem {
-                    crate::ast::PatternElem::Char(c) => PatternElem::Char(*c),
-                    crate::ast::PatternElem::Wildcard => PatternElem::Wildcard,
-                })
-                .collect(),
+            pattern: pattern.into(),
         }
     }
 
-    fn is_entity_type(self, expr: Expr, entity_type: EntityType) -> Expr {
+    fn is_entity_type(self, expr: Expr, entity_type: ast::EntityType) -> Expr {
         Expr::Is {
             expr: Arc::new(expr),
-            entity_type,
+            entity_type: entity_type.into(),
             in_expr: None,
         }
     }
 
-    fn is_in_entity_type(self, e1: Expr, entity_type: EntityType, e2: Expr) -> Expr {
+    fn is_in_entity_type(self, e1: Expr, entity_type: ast::EntityType, e2: Expr) -> Expr {
         Expr::Is {
             expr: Arc::new(e1),
-            entity_type,
+            entity_type: entity_type.into(),
             in_expr: Some(Arc::new(e2)),
         }
     }
@@ -477,139 +674,33 @@ impl ExprBuilder for PstBuilder {
     #[cfg(feature = "tolerant-ast")]
     fn error(
         self,
-        _parse_errors: crate::parser::err::ParseErrors,
+        parse_errors: crate::parser::err::ParseErrors,
     ) -> Result<Self::Expr, Self::ErrorType> {
-        // PST doesn't support error nodes, so this is infallible
-        // We could represent errors as a special variant, but for now we don't
-        Ok(Expr::Literal(Literal::Bool(false)))
-    }
-}
-
-impl From<crate::ast::Expr> for Expr {
-    fn from(ast_expr: crate::ast::Expr) -> Self {
-        use crate::expr_builder::ExprBuilder;
-        let builder = PstBuilder;
-
-        match ast_expr.into_expr_kind() {
-            crate::ast::ExprKind::Lit(lit) => builder.val(lit),
-            crate::ast::ExprKind::Var(v) => builder.var(v),
-            crate::ast::ExprKind::Slot(s) => builder.slot(s),
-            crate::ast::ExprKind::Unknown(u) => builder.unknown(u),
-            crate::ast::ExprKind::If {
-                test_expr,
-                then_expr,
-                else_expr,
-            } => builder.ite(
-                Arc::unwrap_or_clone(test_expr).into(),
-                Arc::unwrap_or_clone(then_expr).into(),
-                Arc::unwrap_or_clone(else_expr).into(),
-            ),
-            crate::ast::ExprKind::And { left, right } => builder.and(
-                Arc::unwrap_or_clone(left).into(),
-                Arc::unwrap_or_clone(right).into(),
-            ),
-            crate::ast::ExprKind::Or { left, right } => builder.or(
-                Arc::unwrap_or_clone(left).into(),
-                Arc::unwrap_or_clone(right).into(),
-            ),
-            crate::ast::ExprKind::UnaryApp { op, arg } => match op {
-                crate::ast::UnaryOp::Not => builder.not(Arc::unwrap_or_clone(arg).into()),
-                crate::ast::UnaryOp::Neg => builder.neg(Arc::unwrap_or_clone(arg).into()),
-                crate::ast::UnaryOp::IsEmpty => builder.is_empty(Arc::unwrap_or_clone(arg).into()),
-            },
-            crate::ast::ExprKind::BinaryApp { op, arg1, arg2 } => match op {
-                crate::ast::BinaryOp::Eq => builder.is_eq(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                crate::ast::BinaryOp::Less => builder.less(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                crate::ast::BinaryOp::LessEq => builder.lesseq(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                crate::ast::BinaryOp::Add => builder.add(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                crate::ast::BinaryOp::Sub => builder.sub(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                crate::ast::BinaryOp::Mul => builder.mul(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                crate::ast::BinaryOp::In => builder.is_in(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                crate::ast::BinaryOp::Contains => builder.contains(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                crate::ast::BinaryOp::ContainsAll => builder.contains_all(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                crate::ast::BinaryOp::ContainsAny => builder.contains_any(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                crate::ast::BinaryOp::GetTag => builder.get_tag(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                crate::ast::BinaryOp::HasTag => builder.has_tag(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-            },
-            crate::ast::ExprKind::ExtensionFunctionApp { fn_name, args } => builder
-                .call_extension_fn(
-                    fn_name,
-                    Arc::unwrap_or_clone(args).into_iter().map(|a| a.into()),
-                ),
-            crate::ast::ExprKind::GetAttr { expr, attr } => {
-                builder.get_attr(Arc::unwrap_or_clone(expr).into(), attr.into())
-            }
-            crate::ast::ExprKind::HasAttr { expr, attr } => {
-                builder.has_attr(Arc::unwrap_or_clone(expr).into(), attr.into())
-            }
-            crate::ast::ExprKind::Like { expr, pattern } => {
-                builder.like(Arc::unwrap_or_clone(expr).into(), pattern)
-            }
-            crate::ast::ExprKind::Is { expr, entity_type } => {
-                builder.is_entity_type(Arc::unwrap_or_clone(expr).into(), entity_type)
-            }
-            crate::ast::ExprKind::Set(elems) => {
-                builder.set(Arc::unwrap_or_clone(elems).into_iter().map(|e| e.into()))
-            }
-            crate::ast::ExprKind::Record(map) => builder
-                .record(
-                    Arc::unwrap_or_clone(map)
-                        .into_iter()
-                        .map(|(k, v)| (k.into(), v.into())),
-                )
-                .unwrap(),
-            #[cfg(feature = "tolerant-ast")]
-            crate::ast::ExprKind::Error { .. } => panic!("Cannot convert EST error node to PST"),
-        }
+        // PST doesn't support error nodes for now, it will propagate parse errors
+        Err(parse_errors)
     }
 }
 
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Simple display implementation - can be improved later
+        // This Display implementation is mostly for debugging purposes
         match self {
-            Expr::Literal(lit) => write!(f, "{:?}", lit),
-            Expr::Var(v) => write!(f, "{:?}", v),
+            Expr::Literal(lit) => match lit {
+                Literal::Bool(b) => write!(f, "{}", b),
+                Literal::Long(i) => write!(f, "{}", i),
+                Literal::String(s) => write!(f, "\"{}\"", s.escape_default()),
+                Literal::EntityUID(uid) => write!(f, "{}", uid),
+            },
+            Expr::Var(v) => match v {
+                Var::Principal => write!(f, "principal"),
+                Var::Action => write!(f, "action"),
+                Var::Resource => write!(f, "resource"),
+                Var::Context => write!(f, "context"),
+            },
             Expr::Slot(s) => write!(f, "{}", s),
-            Expr::Not(e) => write!(f, "!{}", e),
-            Expr::Neg(e) => write!(f, "-{}", e),
-            Expr::BinaryOp { op, left, right } => write!(f, "({} {:?} {})", left, op, right),
+            Expr::Not(e) => write!(f, "!({})", e),
+            Expr::Neg(e) => write!(f, "-({})", e),
+            Expr::BinaryOp { op, left, right } => write!(f, "({} {} {})", left, op, right),
             Expr::GetAttr { expr, attr } => write!(f, "{}.{}", expr, attr),
             Expr::HasAttr { expr, attrs } => {
                 write!(
@@ -623,7 +714,16 @@ impl std::fmt::Display for Expr {
                         .join(".")
                 )
             }
-            Expr::Like { expr, pattern } => write!(f, "{} like {:?}", expr, pattern),
+            Expr::Like { expr, pattern } => {
+                write!(f, "{} like \"", expr)?;
+                for elem in pattern {
+                    match elem {
+                        PatternElem::Char(c) => write!(f, "{}", c.escape_default())?,
+                        PatternElem::Wildcard => write!(f, "*")?,
+                    }
+                }
+                write!(f, "\"")
+            }
             Expr::Is {
                 expr,
                 entity_type,
@@ -658,7 +758,7 @@ impl std::fmt::Display for Expr {
                     f,
                     "{{{}}}",
                     map.iter()
-                        .map(|(k, v)| format!("{}: {}", k, v))
+                        .map(|(k, v)| format!("\"{}\": {}", k.escape_default(), v))
                         .collect::<Vec<_>>()
                         .join(", ")
                 )
@@ -812,10 +912,9 @@ mod tests {
 
     #[test]
     fn test_builder_is_entity_type() {
-        let base = PstBuilder::new().var(crate::ast::Var::Principal);
-        let entity_type =
-            EntityType::from(crate::ast::Name::parse_unqualified_name("User").unwrap());
-        let expr = PstBuilder::new().is_entity_type(base, entity_type.clone());
+        let base = PstBuilder::new().var(ast::Var::Principal);
+        let entity_type = EntityType::from_name(ast::Name::parse_unqualified_name("User").unwrap());
+        let expr = PstBuilder::new().is_entity_type(base, entity_type.clone().try_into().unwrap());
 
         if let Expr::Is {
             entity_type: et,
@@ -837,7 +936,7 @@ mod tests {
         let expr = PstBuilder::new().call_extension_fn(fn_name, args);
 
         if let Expr::FuncCall { name, args } = expr {
-            assert_eq!(name, "decimal");
+            assert_eq!(name, Name::simple("decimal"));
             assert_eq!(args.len(), 2);
         } else {
             panic!("Expected FuncCall");
@@ -853,276 +952,219 @@ mod tests {
 
     mod display_tests {
         use super::*;
-        use nonempty::nonempty;
+        use smol_str::SmolStr;
 
         #[test]
-        fn test_literal_bool() {
-            assert_eq!(Expr::Literal(Literal::Bool(true)).to_string(), "Bool(true)");
-            assert_eq!(Expr::Literal(Literal::Bool(false)).to_string(), "Bool(false)");
+        fn cant_display_unsparseable_entity_type() {
+            let name = "!__Cedar!";
+            let et = EntityType::from_name(Name::simple(name));
+            assert_eq!(format!("{}", et), "<invalid entity type>");
+        }
+
+        // NOTE: These tests verify Display output for expressions constructed via the
+        // ExprBuilder trait (internal builder). Some operators are desugared during
+        // construction (e.g., != becomes !(==), > becomes !(<=), && and || may become
+        // if-then-else in AST but remain as BinaryOp in PST).
+        //
+        // Once a public expression builder API is implemented that constructs PST
+        // directly without desugaring, Display will show all operators in their
+        // original form (!=, >, >=, &&, ||, etc.).
+
+        fn builder() -> PstBuilder {
+            PstBuilder::new()
         }
 
         #[test]
-        fn test_literal_long() {
-            assert_eq!(Expr::Literal(Literal::Long(42)).to_string(), "Long(42)");
-            assert_eq!(Expr::Literal(Literal::Long(-123)).to_string(), "Long(-123)");
-        }
-
-        #[test]
-        fn test_literal_string() {
-            assert_eq!(
-                Expr::Literal(Literal::String("hello".into())).to_string(),
-                "String(\"hello\")"
-            );
-        }
-
-        #[test]
-        fn test_literal_entity_uid() {
-            let uid = EntityUID::from_components(
-                EntityType::from(crate::ast::Name::parse_unqualified_name("User").unwrap()),
-                crate::ast::Eid::new("alice"),
-                None,
-            );
-            let s = Expr::Literal(Literal::EntityUid(uid)).to_string();
-            assert!(s.contains("User"));
-            assert!(s.contains("alice"));
-        }
-
-        #[test]
-        fn test_var() {
-            assert_eq!(Expr::Var(Var::Principal).to_string(), "Principal");
-            assert_eq!(Expr::Var(Var::Action).to_string(), "Action");
-            assert_eq!(Expr::Var(Var::Resource).to_string(), "Resource");
-            assert_eq!(Expr::Var(Var::Context).to_string(), "Context");
-        }
-
-        #[test]
-        fn test_slot() {
-            assert!(Expr::Slot(SlotId::principal()).to_string().contains("principal"));
-        }
-
-        #[test]
-        fn test_not() {
-            let expr = Expr::Not(Arc::new(Expr::Literal(Literal::Bool(true))));
-            assert_eq!(expr.to_string(), "!Bool(true)");
-        }
-
-        #[test]
-        fn test_neg() {
-            let expr = Expr::Neg(Arc::new(Expr::Literal(Literal::Long(42))));
-            assert_eq!(expr.to_string(), "-Long(42)");
-        }
-
-        #[test]
-        fn test_binary_ops() {
-            let left = Arc::new(Expr::Literal(Literal::Long(1)));
-            let right = Arc::new(Expr::Literal(Literal::Long(2)));
-
+        fn test_builder_display() {
             let cases = vec![
-                (BinaryOp::Eq, "Eq"),
-                (BinaryOp::NotEq, "NotEq"),
-                (BinaryOp::Less, "Less"),
-                (BinaryOp::LessEq, "LessEq"),
-                (BinaryOp::Greater, "Greater"),
-                (BinaryOp::GreaterEq, "GreaterEq"),
-                (BinaryOp::And, "And"),
-                (BinaryOp::Or, "Or"),
-                (BinaryOp::Add, "Add"),
-                (BinaryOp::Sub, "Sub"),
-                (BinaryOp::Mul, "Mul"),
-                (BinaryOp::In, "In"),
-                (BinaryOp::Contains, "Contains"),
-                (BinaryOp::ContainsAll, "ContainsAll"),
-                (BinaryOp::ContainsAny, "ContainsAny"),
-                (BinaryOp::GetTag, "GetTag"),
-                (BinaryOp::HasTag, "HasTag"),
+                // Literals
+                (builder().val(true), "true"),
+                (builder().val(false), "false"),
+                (builder().val(42i64), "42"),
+                (builder().val(-123i64), "-123"),
+                (builder().val("hello"), "\"hello\""),
+                // Variables
+                (builder().var(ast::Var::Principal), "principal"),
+                (builder().var(ast::Var::Action), "action"),
+                (builder().var(ast::Var::Resource), "resource"),
+                (builder().var(ast::Var::Context), "context"),
+                // Slots
+                (builder().slot(ast::SlotId::principal()), "?principal"),
+                (builder().slot(ast::SlotId::resource()), "?resource"),
+                // Unary ops
+                (builder().not(builder().val(true)), "!(true)"),
+                (builder().neg(builder().val(42i64)), "-(42)"),
+                // Binary ops - comparison
+                (
+                    builder().is_eq(builder().val(1i64), builder().val(2i64)),
+                    "(1 == 2)",
+                ),
+                (
+                    builder().noteq(builder().val(1i64), builder().val(2i64)),
+                    "!((1 == 2))",
+                ),
+                (
+                    builder().less(builder().val(1i64), builder().val(2i64)),
+                    "(1 < 2)",
+                ),
+                (
+                    builder().lesseq(builder().val(1i64), builder().val(2i64)),
+                    "(1 <= 2)",
+                ),
+                (
+                    builder().greater(builder().val(1i64), builder().val(2i64)),
+                    "!((1 <= 2))",
+                ),
+                (
+                    builder().greatereq(builder().val(1i64), builder().val(2i64)),
+                    "!((1 < 2))",
+                ),
+                // Binary ops - logical
+                (
+                    builder().and(builder().val(true), builder().val(false)),
+                    "(true && false)",
+                ),
+                (
+                    builder().or(builder().val(true), builder().val(false)),
+                    "(true || false)",
+                ),
+                // Binary ops - arithmetic
+                (
+                    builder().add(builder().val(1i64), builder().val(2i64)),
+                    "(1 + 2)",
+                ),
+                (
+                    builder().sub(builder().val(5i64), builder().val(3i64)),
+                    "(5 - 3)",
+                ),
+                (
+                    builder().mul(builder().val(2i64), builder().val(3i64)),
+                    "(2 * 3)",
+                ),
+                // Binary ops - set/hierarchy
+                (
+                    builder().is_in(
+                        builder().var(ast::Var::Principal),
+                        builder().var(ast::Var::Resource),
+                    ),
+                    "(principal in resource)",
+                ),
+                (
+                    builder().contains(builder().set([builder().val(1i64)]), builder().val(1i64)),
+                    "([1] contains 1)",
+                ),
+                (
+                    builder().contains_all(
+                        builder().set([builder().val(1i64)]),
+                        builder().set([builder().val(1i64)]),
+                    ),
+                    "([1] containsAll [1])",
+                ),
+                (
+                    builder().contains_any(
+                        builder().set([builder().val(1i64)]),
+                        builder().set([builder().val(1i64)]),
+                    ),
+                    "([1] containsAny [1])",
+                ),
+                // Attribute access
+                (
+                    builder().get_attr(builder().var(ast::Var::Principal), SmolStr::from("name")),
+                    "principal.name",
+                ),
+                (
+                    builder().has_attr(builder().var(ast::Var::Principal), SmolStr::from("name")),
+                    "principal has name",
+                ),
+                // If-then-else
+                (
+                    builder().ite(
+                        builder().val(true),
+                        builder().val(1i64),
+                        builder().val(2i64),
+                    ),
+                    "if true then 1 else 2",
+                ),
+                // Sets
+                (builder().set([]), "[]"),
+                (builder().set([builder().val(1i64)]), "[1]"),
+                (
+                    builder().set([
+                        builder().val(1i64),
+                        builder().val(2i64),
+                        builder().val(3i64),
+                    ]),
+                    "[1, 2, 3]",
+                ),
+                // Records
+                (builder().record([]).unwrap(), "{}"),
+                (
+                    builder()
+                        .record([(SmolStr::from("a"), builder().val(1i64))])
+                        .unwrap(),
+                    "{\"a\": 1}",
+                ),
+                (
+                    builder()
+                        .record([
+                            (SmolStr::from("a"), builder().val(1i64)),
+                            (SmolStr::from("b"), builder().val(2i64)),
+                        ])
+                        .unwrap(),
+                    "{\"a\": 1, \"b\": 2}",
+                ),
+                // Function calls
+                (
+                    builder().call_extension_fn(Name::simple("foo").try_into().unwrap(), vec![]),
+                    "foo()",
+                ),
+                (
+                    builder().call_extension_fn(
+                        Name::simple("decimal").try_into().unwrap(),
+                        vec![builder().val("1.23")],
+                    ),
+                    "decimal(\"1.23\")",
+                ),
+                (
+                    builder().call_extension_fn(
+                        Name::simple("foo").try_into().unwrap(),
+                        vec![builder().val(1i64), builder().val(2i64)],
+                    ),
+                    "foo(1, 2)",
+                ),
             ];
 
-            for (op, name) in cases {
-                let expr = Expr::BinaryOp {
-                    op,
-                    left: left.clone(),
-                    right: right.clone(),
-                };
-                let s = expr.to_string();
-                assert!(s.contains(name), "Expected {} in {}", name, s);
-                assert!(s.starts_with('(') && s.ends_with(')'));
+            for (expr, expected) in cases {
+                assert_eq!(expr.to_string(), expected, "Failed for: {}", expected);
             }
         }
 
         #[test]
-        fn test_get_attr() {
-            let expr = Expr::GetAttr {
-                expr: Arc::new(Expr::Var(Var::Principal)),
-                attr: "name".into(),
-            };
-            assert_eq!(expr.to_string(), "Principal.name");
-        }
+        fn test_complex_expressions() {
+            // Nested binary ops
+            let nested = builder().is_eq(
+                builder().add(builder().val(1i64), builder().val(2i64)),
+                builder().val(3i64),
+            );
+            assert_eq!(nested.to_string(), "((1 + 2) == 3)");
 
-        #[test]
-        fn test_has_attr_single() {
-            let expr = Expr::HasAttr {
-                expr: Arc::new(Expr::Var(Var::Principal)),
-                attrs: nonempty!["name".into()],
-            };
-            assert_eq!(expr.to_string(), "Principal has name");
-        }
-
-        #[test]
-        fn test_has_attr_nested() {
-            let expr = Expr::HasAttr {
-                expr: Arc::new(Expr::Var(Var::Context)),
-                attrs: nonempty!["user".into(), "email".into()],
-            };
-            assert_eq!(expr.to_string(), "Context has user.email");
-        }
-
-        #[test]
-        fn test_like() {
-            let expr = Expr::Like {
-                expr: Arc::new(Expr::Var(Var::Principal)),
-                pattern: vec![PatternElem::Char('a'), PatternElem::Wildcard],
-            };
-            assert!(expr.to_string().contains("Principal like"));
-        }
-
-        #[test]
-        fn test_is_without_in() {
-            let expr = Expr::Is {
-                expr: Arc::new(Expr::Var(Var::Principal)),
-                entity_type: EntityType::from(
-                    crate::ast::Name::parse_unqualified_name("User").unwrap(),
+            // Complex if-then-else
+            let complex = builder().ite(
+                builder().greater(
+                    builder().get_attr(builder().var(ast::Var::Principal), SmolStr::from("age")),
+                    builder().val(18i64),
                 ),
-                in_expr: None,
-            };
-            assert_eq!(expr.to_string(), "Principal is User");
-        }
-
-        #[test]
-        fn test_is_with_in() {
-            let expr = Expr::Is {
-                expr: Arc::new(Expr::Var(Var::Principal)),
-                entity_type: EntityType::from(
-                    crate::ast::Name::parse_unqualified_name("User").unwrap(),
-                ),
-                in_expr: Some(Arc::new(Expr::Var(Var::Resource))),
-            };
-            assert_eq!(expr.to_string(), "Principal is User in Resource");
-        }
-
-        #[test]
-        fn test_if_then_else() {
-            let expr = Expr::IfThenElse {
-                cond: Arc::new(Expr::Literal(Literal::Bool(true))),
-                then_expr: Arc::new(Expr::Literal(Literal::Long(1))),
-                else_expr: Arc::new(Expr::Literal(Literal::Long(2))),
-            };
-            assert_eq!(expr.to_string(), "if Bool(true) then Long(1) else Long(2)");
-        }
-
-        #[test]
-        fn test_set() {
-            assert_eq!(Expr::Set(vec![]).to_string(), "[]");
-            assert_eq!(
-                Expr::Set(vec![Arc::new(Expr::Literal(Literal::Long(42)))]).to_string(),
-                "[Long(42)]"
+                builder().get_attr(builder().var(ast::Var::Principal), SmolStr::from("name")),
+                builder().val("unknown"),
             );
             assert_eq!(
-                Expr::Set(vec![
-                    Arc::new(Expr::Literal(Literal::Long(1))),
-                    Arc::new(Expr::Literal(Literal::Long(2))),
-                    Arc::new(Expr::Literal(Literal::Long(3))),
-                ])
-                .to_string(),
-                "[Long(1), Long(2), Long(3)]"
+                complex.to_string(),
+                "if !((principal.age <= 18)) then principal.name else \"unknown\""
             );
-        }
 
-        #[test]
-        fn test_record() {
-            assert_eq!(Expr::Record(BTreeMap::new()).to_string(), "{}");
-
-            let mut map = BTreeMap::new();
-            map.insert("a".into(), Arc::new(Expr::Literal(Literal::Long(1))));
-            assert_eq!(Expr::Record(map).to_string(), "{a: Long(1)}");
-
-            let mut map = BTreeMap::new();
-            map.insert("a".into(), Arc::new(Expr::Literal(Literal::Long(1))));
-            map.insert("b".into(), Arc::new(Expr::Literal(Literal::Long(2))));
-            assert_eq!(Expr::Record(map).to_string(), "{a: Long(1), b: Long(2)}");
-        }
-
-        #[test]
-        fn test_func_call() {
-            assert_eq!(
-                Expr::FuncCall {
-                    name: "foo".into(),
-                    args: vec![],
-                }
-                .to_string(),
-                "foo()"
-            );
-            assert_eq!(
-                Expr::FuncCall {
-                    name: "decimal".into(),
-                    args: vec![Arc::new(Expr::Literal(Literal::String("1.23".into())))],
-                }
-                .to_string(),
-                "decimal(String(\"1.23\"))"
-            );
-            assert_eq!(
-                Expr::FuncCall {
-                    name: "foo".into(),
-                    args: vec![
-                        Arc::new(Expr::Literal(Literal::Long(1))),
-                        Arc::new(Expr::Literal(Literal::Long(2))),
-                    ],
-                }
-                .to_string(),
-                "foo(Long(1), Long(2))"
-            );
-        }
-
-        #[test]
-        fn test_is_empty() {
-            let expr = Expr::IsEmpty(Arc::new(Expr::Set(vec![])));
-            assert_eq!(expr.to_string(), "[].isEmpty()");
-        }
-
-        #[test]
-        fn test_nested() {
-            let expr = Expr::BinaryOp {
-                op: BinaryOp::Eq,
-                left: Arc::new(Expr::BinaryOp {
-                    op: BinaryOp::Add,
-                    left: Arc::new(Expr::Literal(Literal::Long(1))),
-                    right: Arc::new(Expr::Literal(Literal::Long(2))),
-                }),
-                right: Arc::new(Expr::Literal(Literal::Long(3))),
-            };
-            assert_eq!(expr.to_string(), "((Long(1) Add Long(2)) Eq Long(3))");
-        }
-
-        #[test]
-        fn test_complex() {
-            let expr = Expr::IfThenElse {
-                cond: Arc::new(Expr::BinaryOp {
-                    op: BinaryOp::Greater,
-                    left: Arc::new(Expr::GetAttr {
-                        expr: Arc::new(Expr::Var(Var::Principal)),
-                        attr: "age".into(),
-                    }),
-                    right: Arc::new(Expr::Literal(Literal::Long(18))),
-                }),
-                then_expr: Arc::new(Expr::GetAttr {
-                    expr: Arc::new(Expr::Var(Var::Principal)),
-                    attr: "name".into(),
-                }),
-                else_expr: Arc::new(Expr::Literal(Literal::String("unknown".into()))),
-            };
-            assert_eq!(
-                expr.to_string(),
-                "if (Principal.age Greater Long(18)) then Principal.name else String(\"unknown\")"
-            );
+            // isEmpty
+            let is_empty = builder().is_empty(builder().set([]));
+            assert_eq!(is_empty.to_string(), "[].isEmpty()");
         }
     }
 }

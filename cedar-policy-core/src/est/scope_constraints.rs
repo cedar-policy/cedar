@@ -151,13 +151,8 @@ pub struct PrincipalOrResourceIsConstraint {
 
 impl PrincipalOrResourceIsConstraint {
     /// Get the entity type
-    pub fn entity_type(&self) -> &SmolStr {
-        &self.entity_type
-    }
-
-    /// Get the optional `in` entity
-    pub fn in_entity(&self) -> Option<&PrincipalOrResourceInConstraint> {
-        self.in_entity.as_ref()
+    pub fn entity_type_and_constraint(self) -> (SmolStr, Option<PrincipalOrResourceInConstraint>) {
+        (self.entity_type, self.in_entity)
     }
 }
 
