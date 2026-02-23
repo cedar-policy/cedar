@@ -16,7 +16,7 @@ repository.workspace = true
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_with = { version = "3.16", features = ["json"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
-lalrpop-util = { version = "0.22.2", features = ["lexer"] }
+lalrpop-util = { version = "0.23.0", features = ["lexer"] }
 either = "1.15"
 itertools = "0.14"
 ref-cast = "1.0"
@@ -32,7 +32,6 @@ unicode-security = "0.1.0"
 regex = { version = "1.12", features = ["unicode"]}
 linked-hash-map = { version = "0.5.6", features = ["serde_impl"] }
 linked_hash_set = "0.1.6"
-insta = "1.46.3"
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
@@ -68,12 +67,13 @@ tpe = []
 variadic-is-in-range = []
 
 [build-dependencies]
-lalrpop = "0.22.2"
+lalrpop = "0.23.0"
 
 [dev-dependencies]
 similar-asserts = "1.7.0"
 cool_asserts = "2.0"
 miette = { version = "7.6.0", features = ["fancy"] }
+insta = "1.46.3"
 
 [lints]
 workspace = true
