@@ -152,6 +152,7 @@ pub fn preparse_schema(schema_name: String, schema: Schema) -> CheckParseAnswer 
 /// [`PartialAuthorizationAnswer`] types
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
+#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "isAuthorizedPartial"))]
 pub fn is_authorized_partial(call: PartialAuthorizationCall) -> PartialAuthorizationAnswer {
     match call.parse() {
         WithWarnings {
@@ -360,6 +361,7 @@ pub struct ResidualResponse {
     errored: HashSet<PolicyId>,
     may_be_determining: HashSet<PolicyId>,
     must_be_determining: HashSet<PolicyId>,
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, PolicyJson>"))]
     residuals: HashMap<PolicyId, JsonValueWithNoDuplicateKeys>,
     nontrivial_residuals: HashSet<PolicyId>,
 }

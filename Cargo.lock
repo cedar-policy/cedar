@@ -401,6 +401,7 @@ dependencies = [
  "cool_asserts",
  "educe",
  "either",
+ "insta",
  "itertools 0.14.0",
  "lalrpop",
  "lalrpop-util",
