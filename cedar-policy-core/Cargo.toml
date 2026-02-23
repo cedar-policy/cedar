@@ -16,7 +16,7 @@ repository.workspace = true
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_with = { version = "3.16", features = ["json"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
-lalrpop-util = { version = "0.22.2", features = ["lexer"] }
+lalrpop-util = { version = "0.23.0", features = ["lexer"] }
 either = "1.15"
 itertools = "0.14"
 ref-cast = "1.0"
@@ -41,7 +41,7 @@ tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
 
 # datetime extension requires chrono
-chrono = { version = "0.4.43", optional = true, default-features = false}
+chrono = { version = "0.4.44", optional = true, default-features = false}
 
 [features]
 # by default, enable all Cedar extensions
@@ -68,7 +68,7 @@ tpe = []
 variadic-is-in-range = []
 
 [build-dependencies]
-lalrpop = "0.22.2"
+lalrpop = "0.23.0"
 
 [dev-dependencies]
 similar-asserts = "1.7.0"
