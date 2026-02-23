@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-use std::path::PathBuf;
-
 fn main() {
     generate_parsers();
 }
@@ -26,14 +24,7 @@ fn main() {
     reason = "panics in build.rs are acceptable, they just fail the build"
 )]
 fn generate_parsers() {
-    let out_dir = std::env::var("OUT_DIR").expect("env var is created by cargo");
     lalrpop::Configuration::new()
-        .set_out_dir(PathBuf::from(&out_dir).join("src/parser/"))
-        .process_dir("src/parser/")
-        .expect("failed to run lalrpop");
-
-    lalrpop::Configuration::new()
-        .set_out_dir(PathBuf::from(out_dir).join("src/validator/cedar_schema/"))
-        .process_dir("src/validator/cedar_schema/")
+        .process_dir("src/")
         .expect("failed to run lalrpop");
 }
