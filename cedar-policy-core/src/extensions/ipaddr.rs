@@ -26,7 +26,7 @@ use crate::evaluator;
 use std::sync::Arc;
 
 #[expect(clippy::expect_used, reason = "All the names are valid names")]
-mod names {
+pub(crate) mod names {
     use crate::ast::Name;
     use std::sync::LazyLock;
 

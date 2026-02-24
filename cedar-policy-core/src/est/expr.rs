@@ -431,6 +431,24 @@ pub struct ExtFuncCall {
     call: HashMap<SmolStr, Vec<Expr>>,
 }
 
+impl ExtFuncCall {
+    pub(crate) fn name_and_args(&self) -> (&SmolStr, &Vec<Expr>) {
+        #[expect(clippy::unreachable, reason = "safe due to INVARIANT on `ExtFuncCall`")]
+        let Some((fn_name, args)) = self.call.iter().next() else {
+            unreachable!("invariant violated: empty ExtFuncCall")
+        };
+        return (fn_name, args);
+    }
+
+    pub(crate) fn into_components(self) -> (SmolStr, Vec<Expr>) {
+        #[expect(clippy::unreachable, reason = "safe due to INVARIANT on `ExtFuncCall`")]
+        let Some((fn_name, args)) = self.call.into_iter().next() else {
+            unreachable!("invariant violated: empty ExtFuncCall")
+        };
+        return (fn_name, args);
+    }
+}
+
 /// Construct an [`Expr`].
 #[derive(Clone, Debug)]
 pub struct Builder;
@@ -1555,10 +1573,7 @@ impl std::fmt::Display for ExtFuncCall {
 
 impl BoundedDisplay for ExtFuncCall {
     fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
-        #[expect(clippy::unreachable, reason = "safe due to INVARIANT on `ExtFuncCall`")]
-        let Some((fn_name, args)) = self.call.iter().next() else {
-            unreachable!("invariant violated: empty ExtFuncCall")
-        };
+        let (fn_name, args) = self.name_and_args();
         // search for the name and callstyle
         let style = Extensions::all_available().all_funcs().find_map(|ext_fn| {
             if &ext_fn.name().to_smolstr() == fn_name {

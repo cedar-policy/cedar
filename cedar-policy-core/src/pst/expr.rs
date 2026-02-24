@@ -26,6 +26,100 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
 
+/// Constants for core Cedar operator names
+mod constants {
+    use crate::ast::Name;
+    use std::sync::LazyLock;
+
+    // We get the name of most operators from their definition in the ast, except for a few
+    // operators that only in syntax.
+
+    pub static NOT_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::UnaryOp::Not))
+            .expect("should be a valid identifier")
+    });
+    pub static NEG_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::UnaryOp::Neg))
+            .expect("should be a valid identifier")
+    });
+    pub static IS_EMPTY_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::UnaryOp::IsEmpty))
+            .expect("should be a valid identifier")
+    });
+
+    pub static EQ_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Eq))
+            .expect("should be a valid identifier")
+    });
+    pub static LESS_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Less))
+            .expect("should be a valid identifier")
+    });
+    pub static LESS_EQ_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::LessEq))
+            .expect("should be a valid identifier")
+    });
+    pub static ADD_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Add))
+            .expect("should be a valid identifier")
+    });
+    pub static SUB_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Sub))
+            .expect("should be a valid identifier")
+    });
+    pub static MUL_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Mul))
+            .expect("should be a valid identifier")
+    });
+    pub static IN_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::In))
+            .expect("should be a valid identifier")
+    });
+    pub static CONTAINS_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Contains))
+            .expect("should be a valid identifier")
+    });
+    pub static CONTAINS_ALL_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::ContainsAll))
+            .expect("should be a valid identifier")
+    });
+    pub static CONTAINS_ANY_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::ContainsAny))
+            .expect("should be a valid identifier")
+    });
+    pub static GET_TAG_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::GetTag))
+            .expect("should be a valid identifier")
+    });
+    pub static HAS_TAG_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::HasTag))
+            .expect("should be a valid identifier")
+    });
+
+    // The operators that are defined only in syntax
+    pub static NOT_EQ_STR: &str = "!=";
+    pub static GREATER_STR: &str = ">";
+    pub static GREATER_EQ_STR: &str = ">=";
+    pub static AND_STR: &str = "&&";
+    pub static OR_STR: &str = "||";
+
+    pub static NOT_EQ_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(NOT_EQ_STR).expect("should be a valid identifier")
+    });
+    pub static GREATER_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(GREATER_STR).expect("should be a valid identifier")
+    });
+    pub static GREATER_EQ_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(GREATER_EQ_STR).expect("should be a valid identifier")
+    });
+    pub static AND_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(AND_STR).expect("should be a valid identifier")
+    });
+    pub static OR_NAME: LazyLock<Name> = LazyLock::new(|| {
+        Name::parse_unqualified_name(OR_STR).expect("should be a valid identifier")
+    });
+}
+
 /// Slot identifier for template policies
 ///
 /// Cedar supports two slot types: `principal` and `resource`
@@ -264,27 +358,29 @@ pub enum UnaryOp {
 }
 
 impl UnaryOp {
-    /// Get the Cedar syntax representation of this operator
-    pub const fn as_str(self) -> &'static str {
+    pub(crate) fn to_name(self) -> &'static ast::Name {
+        // We get the names of the extension functions from where they are defined: we don't duplicate
+        // name definitions.
+        use crate::extensions;
         match self {
-            UnaryOp::Not => "!",
-            UnaryOp::Neg => "-",
-            UnaryOp::IsEmpty => "isEmpty",
-            UnaryOp::Datetime => "datetime",
-            UnaryOp::Decimal => "decimal",
-            UnaryOp::Duration => "duration",
-            UnaryOp::Ip => "ip",
-            UnaryOp::IsIPv4 => "isIpv4",
-            UnaryOp::IsIPV6 => "isIpv6",
-            UnaryOp::IsLoopback => "isLoopback",
-            UnaryOp::IsMulticast => "isMulticast",
-            UnaryOp::ToDate => "toDate",
-            UnaryOp::ToTime => "toTime",
-            UnaryOp::ToMilliseconds => "toMilliseconds",
-            UnaryOp::ToSeconds => "toSeconds",
-            UnaryOp::ToMinutes => "toMinutes",
-            UnaryOp::ToHours => "toHours",
-            UnaryOp::ToDays => "toDays",
+            UnaryOp::IsEmpty => &constants::IS_EMPTY_NAME,
+            UnaryOp::Not => &constants::NOT_NAME,
+            UnaryOp::Neg => &constants::NEG_NAME,
+            UnaryOp::Datetime => &extensions::datetime::constants::DATETIME_CONSTRUCTOR_NAME,
+            UnaryOp::Decimal => &extensions::decimal::constants::DECIMAL_FROM_STR_NAME,
+            UnaryOp::Duration => &extensions::datetime::constants::DURATION_CONSTRUCTOR_NAME,
+            UnaryOp::Ip => &extensions::ipaddr::names::IP_FROM_STR_NAME,
+            UnaryOp::IsIPv4 => &extensions::ipaddr::names::IS_IPV4,
+            UnaryOp::IsIPV6 => &extensions::ipaddr::names::IS_IPV6,
+            UnaryOp::IsLoopback => &extensions::ipaddr::names::IS_LOOPBACK,
+            UnaryOp::IsMulticast => &extensions::ipaddr::names::IS_MULTICAST,
+            UnaryOp::ToDate => &extensions::datetime::constants::TO_DATE_NAME,
+            UnaryOp::ToTime => &extensions::datetime::constants::TO_TIME_NAME,
+            UnaryOp::ToMilliseconds => &extensions::datetime::constants::TO_MILLISECONDS_NAME,
+            UnaryOp::ToSeconds => &extensions::datetime::constants::TO_SECONDS_NAME,
+            UnaryOp::ToMinutes => &extensions::datetime::constants::TO_MINUTES_NAME,
+            UnaryOp::ToHours => &extensions::datetime::constants::TO_HOURS_NAME,
+            UnaryOp::ToDays => &extensions::datetime::constants::TO_DAYS_NAME,
         }
     }
 
@@ -313,7 +409,7 @@ impl UnaryOp {
 
 impl Display for UnaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
+        write!(f, "{}", self.to_name())
     }
 }
 
@@ -371,29 +467,29 @@ pub enum BinaryOp {
 }
 
 impl BinaryOp {
-    /// Get the Cedar syntax representation of this operator
-    pub const fn as_str(self) -> &'static str {
+    pub(crate) fn to_name(self) -> &'static ast::Name {
+        use crate::extensions;
         match self {
-            BinaryOp::Eq => "==",
-            BinaryOp::NotEq => "!=",
-            BinaryOp::Less => "<",
-            BinaryOp::LessEq => "<=",
-            BinaryOp::Greater => ">",
-            BinaryOp::GreaterEq => ">=",
-            BinaryOp::And => "&&",
-            BinaryOp::Or => "||",
-            BinaryOp::Add => "+",
-            BinaryOp::Sub => "-",
-            BinaryOp::Mul => "*",
-            BinaryOp::In => "in",
-            BinaryOp::Contains => "contains",
-            BinaryOp::ContainsAll => "containsAll",
-            BinaryOp::ContainsAny => "containsAny",
-            BinaryOp::GetTag => "getTag",
-            BinaryOp::HasTag => "hasTag",
-            BinaryOp::IsInRange => "isInRange",
-            BinaryOp::Offset => "offset",
-            BinaryOp::DurationSince => "durationSince",
+            BinaryOp::Eq => &constants::EQ_NAME,
+            BinaryOp::NotEq => &constants::NOT_EQ_NAME,
+            BinaryOp::And => &constants::AND_NAME,
+            BinaryOp::Or => &constants::OR_NAME,
+            BinaryOp::Less => &constants::LESS_NAME,
+            BinaryOp::LessEq => &constants::LESS_EQ_NAME,
+            BinaryOp::Greater => &constants::GREATER_NAME,
+            BinaryOp::GreaterEq => &constants::GREATER_EQ_NAME,
+            BinaryOp::Add => &constants::ADD_NAME,
+            BinaryOp::Sub => &constants::SUB_NAME,
+            BinaryOp::Mul => &constants::MUL_NAME,
+            BinaryOp::In => &constants::IN_NAME,
+            BinaryOp::Contains => &constants::CONTAINS_NAME,
+            BinaryOp::ContainsAll => &constants::CONTAINS_ALL_NAME,
+            BinaryOp::ContainsAny => &constants::CONTAINS_ANY_NAME,
+            BinaryOp::GetTag => &constants::GET_TAG_NAME,
+            BinaryOp::HasTag => &constants::HAS_TAG_NAME,
+            BinaryOp::IsInRange => &extensions::ipaddr::names::IS_IN_RANGE,
+            BinaryOp::Offset => &extensions::datetime::constants::OFFSET_METHOD_NAME,
+            BinaryOp::DurationSince => &extensions::datetime::constants::DURATION_SINCE_NAME,
         }
     }
 
@@ -414,7 +510,7 @@ impl BinaryOp {
 
 impl Display for BinaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
+        write!(f, "{}", self.to_name())
     }
 }
 
@@ -550,8 +646,10 @@ pub enum ExprConstructionError {
     /// Unknown function name
     UnknownFunction {
         /// The name of the unknown function
-        name: String,
+        name: SmolStr,
     },
+    /// Name parsing error
+    NameParsingError(SmolStr),
     /// Extension function lookup error
     FunctionLookupError(ExtensionFunctionLookupError),
     /// Wrong number of arguments
@@ -574,6 +672,9 @@ impl std::fmt::Display for ExprConstructionError {
             ExprConstructionError::FunctionLookupError(e) => {
                 write!(f, "{}", e)
             }
+            ExprConstructionError::NameParsingError(e) => {
+                write!(f, "error parsing name: {}", e)
+            }
             ExprConstructionError::WrongArity {
                 name,
                 expected,
@@ -590,13 +691,29 @@ impl std::fmt::Display for ExprConstructionError {
 impl std::error::Error for ExprConstructionError {}
 
 impl Expr {
-    #[expect(dead_code, reason = "PST is under development")]
-    fn from_function(
-        name: &ast::Name,
+    pub(crate) fn from_function_name_and_args(
+        name: SmolStr,
+        args: &Vec<Arc<Expr>>,
+    ) -> Result<Expr, ExprConstructionError> {
+        let ast_name = ast::Name::from_str(name.as_str())
+            .map_err(|_| ExprConstructionError::NameParsingError(name.clone()))?;
+        Self::from_function_names_and_args(name, ast_name, args)
+    }
+
+    pub(crate) fn from_function_ast_name_and_args(
+        name: ast::Name,
+        args: &Vec<Arc<Expr>>,
+    ) -> Result<Expr, ExprConstructionError> {
+        Self::from_function_names_and_args(name.to_smolstr(), name, args)
+    }
+
+    fn from_function_names_and_args(
+        name: SmolStr,
+        ast_name: ast::Name,
         args: &Vec<Arc<Expr>>,
     ) -> Result<Expr, ExprConstructionError> {
         let extension = Extensions::all_available()
-            .func(&name)
+            .func(&ast_name)
             .map_err(ExprConstructionError::FunctionLookupError)?;
 
         let expected = extension.arg_types().len();
@@ -611,11 +728,8 @@ impl Expr {
         }
         Ok(match args.len() {
             1 => {
-                let op = UnaryOp::from_function_name(&name.to_string()).ok_or_else(|| {
-                    ExprConstructionError::UnknownFunction {
-                        name: name.to_string(),
-                    }
-                })?;
+                let op = UnaryOp::from_function_name(&name.to_string())
+                    .ok_or_else(|| ExprConstructionError::UnknownFunction { name })?;
                 Expr::UnaryOp {
                     op,
                     #[expect(clippy::indexing_slicing, reason = "length = 1 checked in arm")]
@@ -623,11 +737,8 @@ impl Expr {
                 }
             }
             2 => {
-                let op = BinaryOp::from_function_name(&name.to_string()).ok_or_else(|| {
-                    ExprConstructionError::UnknownFunction {
-                        name: name.to_string(),
-                    }
-                })?;
+                let op = BinaryOp::from_function_name(&name.to_string())
+                    .ok_or_else(|| ExprConstructionError::UnknownFunction { name })?;
                 Expr::BinaryOp {
                     op,
                     #[expect(clippy::indexing_slicing, reason = "length checked = 2 in arm")]
@@ -636,11 +747,7 @@ impl Expr {
                     right: Arc::clone(&args[1]),
                 }
             }
-            _ => {
-                return Err(ExprConstructionError::UnknownFunction {
-                    name: name.to_string(),
-                })
-            }
+            _ => return Err(ExprConstructionError::UnknownFunction { name }),
         })
     }
 }
@@ -649,7 +756,6 @@ impl Expr {
 /// expression building functions, this does not perform any validation on the input and is meant
 /// to be used internally.
 #[derive(Clone, Debug)]
-#[expect(dead_code, reason = "PST is under development")]
 pub(crate) struct PstBuilder;
 
 impl ExprBuilder for PstBuilder {
@@ -865,7 +971,10 @@ impl ExprBuilder for PstBuilder {
     }
 
     fn call_extension_fn(self, fn_name: ast::Name, args: impl IntoIterator<Item = Expr>) -> Expr {
-        let expr = Expr::from_function(&fn_name, &args.into_iter().map(Arc::new).collect());
+        let expr = Expr::from_function_ast_name_and_args(
+            fn_name,
+            &args.into_iter().map(Arc::new).collect(),
+        );
         match expr {
             Ok(e) => e,
             Err(e) => Expr::Error(ErrorNode { error: e }),
@@ -1006,6 +1115,120 @@ impl std::fmt::Display for Expr {
     }
 }
 
+impl From<ast::Expr> for Expr {
+    fn from(ast_expr: ast::Expr) -> Self {
+        use crate::expr_builder::ExprBuilder;
+        let builder = PstBuilder;
+
+        match ast_expr.into_expr_kind() {
+            ast::ExprKind::Lit(lit) => builder.val(lit),
+            ast::ExprKind::Var(v) => builder.var(v),
+            ast::ExprKind::Slot(s) => builder.slot(s),
+            ast::ExprKind::Unknown(u) => builder.unknown(u),
+            ast::ExprKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => builder.ite(
+                Arc::unwrap_or_clone(test_expr).into(),
+                Arc::unwrap_or_clone(then_expr).into(),
+                Arc::unwrap_or_clone(else_expr).into(),
+            ),
+            ast::ExprKind::And { left, right } => builder.and(
+                Arc::unwrap_or_clone(left).into(),
+                Arc::unwrap_or_clone(right).into(),
+            ),
+            ast::ExprKind::Or { left, right } => builder.or(
+                Arc::unwrap_or_clone(left).into(),
+                Arc::unwrap_or_clone(right).into(),
+            ),
+            ast::ExprKind::UnaryApp { op, arg } => match op {
+                ast::UnaryOp::Not => builder.not(Arc::unwrap_or_clone(arg).into()),
+                ast::UnaryOp::Neg => builder.neg(Arc::unwrap_or_clone(arg).into()),
+                ast::UnaryOp::IsEmpty => builder.is_empty(Arc::unwrap_or_clone(arg).into()),
+            },
+            ast::ExprKind::BinaryApp { op, arg1, arg2 } => match op {
+                ast::BinaryOp::Eq => builder.is_eq(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+                ast::BinaryOp::Less => builder.less(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+                ast::BinaryOp::LessEq => builder.lesseq(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+                ast::BinaryOp::Add => builder.add(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+                ast::BinaryOp::Sub => builder.sub(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+                ast::BinaryOp::Mul => builder.mul(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+                ast::BinaryOp::In => builder.is_in(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+                ast::BinaryOp::Contains => builder.contains(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+                ast::BinaryOp::ContainsAll => builder.contains_all(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+                ast::BinaryOp::ContainsAny => builder.contains_any(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+                ast::BinaryOp::GetTag => builder.get_tag(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+                ast::BinaryOp::HasTag => builder.has_tag(
+                    Arc::unwrap_or_clone(arg1).into(),
+                    Arc::unwrap_or_clone(arg2).into(),
+                ),
+            },
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args } => builder.call_extension_fn(
+                fn_name,
+                Arc::unwrap_or_clone(args).into_iter().map(|a| a.into()),
+            ),
+            ast::ExprKind::GetAttr { expr, attr } => {
+                builder.get_attr(Arc::unwrap_or_clone(expr).into(), attr.into())
+            }
+            ast::ExprKind::HasAttr { expr, attr } => {
+                builder.has_attr(Arc::unwrap_or_clone(expr).into(), attr.into())
+            }
+            ast::ExprKind::Like { expr, pattern } => {
+                builder.like(Arc::unwrap_or_clone(expr).into(), pattern)
+            }
+            ast::ExprKind::Is { expr, entity_type } => {
+                builder.is_entity_type(Arc::unwrap_or_clone(expr).into(), entity_type)
+            }
+            ast::ExprKind::Set(elems) => {
+                builder.set(Arc::unwrap_or_clone(elems).into_iter().map(|e| e.into()))
+            }
+            ast::ExprKind::Record(map) => builder
+                .record(
+                    Arc::unwrap_or_clone(map)
+                        .into_iter()
+                        .map(|(k, v)| (k.into(), v.into())),
+                )
+                .unwrap(),
+            #[cfg(feature = "tolerant-ast")]
+            ast::ExprKind::Error { .. } => panic!("Cannot convert EST error node to PST"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1015,7 +1238,7 @@ mod tests {
         let name = ast::Name::parse_unqualified_name("unknownFunc").unwrap();
         let args = vec![Arc::new(Expr::Literal(Literal::Long(1)))];
 
-        let result = Expr::from_function(&name, &args);
+        let result = Expr::from_function_ast_name_and_args(name, &args);
         assert!(matches!(
             result,
             Err(ExprConstructionError::FunctionLookupError { .. })
@@ -1030,7 +1253,7 @@ mod tests {
             Arc::new(Expr::Literal(Literal::Long(2))),
         ];
 
-        let result = Expr::from_function(&name, &args);
+        let result = Expr::from_function_ast_name_and_args(name, &args);
         assert!(matches!(
             result,
             Err(ExprConstructionError::WrongArity { .. })
@@ -1056,7 +1279,7 @@ mod tests {
                 .map(|_| Arc::new(Expr::Literal(Literal::Long(0))))
                 .collect();
 
-            let result = Expr::from_function(&name, &args);
+            let result = Expr::from_function_ast_name_and_args(name.clone(), &args);
             assert!(
                 result.is_ok(),
                 "Function {} should be supported but got error: {:?}",
@@ -1088,7 +1311,7 @@ mod tests {
     #[test]
     fn test_expr_construction_error_display() {
         let err = ExprConstructionError::UnknownFunction {
-            name: "foo".to_string(),
+            name: "foo".to_smolstr(),
         };
         assert!(err.to_string().contains("foo"));
 

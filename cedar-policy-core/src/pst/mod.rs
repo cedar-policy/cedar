@@ -26,13 +26,17 @@
 //! - Converts to/from AST and EST at boundaries
 //! - Uses `Arc<Expr>` for cheap cloning during manipulation
 
+mod ast_conversions;
+mod builders;
 mod constraints;
+mod est_conversions;
 mod expr;
 mod policy;
 
+pub use ast_conversions::ConversionError;
+pub use builders::ExprConstructionError;
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
 pub use expr::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprConstructionError, Literal, Name, PatternElem,
-    SlotId, UnaryOp, Var,
+    BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
 pub use policy::{Clause, Effect, Policy};

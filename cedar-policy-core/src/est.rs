@@ -87,6 +87,36 @@ pub enum Clause {
 }
 
 impl Policy {
+    /// Get the effect of this policy
+    pub fn effect(&self) -> ast::Effect {
+        self.effect
+    }
+
+    /// Get the principal constraint
+    pub fn principal(&self) -> &PrincipalConstraint {
+        &self.principal
+    }
+
+    /// Get the action constraint
+    pub fn action(&self) -> &ActionConstraint {
+        &self.action
+    }
+
+    /// Get the resource constraint
+    pub fn resource(&self) -> &ResourceConstraint {
+        &self.resource
+    }
+
+    /// Get the conditions (when/unless clauses)
+    pub fn conditions(&self) -> &[Clause] {
+        &self.conditions
+    }
+
+    /// Get the annotations
+    pub fn annotations(&self) -> &Annotations {
+        &self.annotations
+    }
+
     /// Fill in any slots in the policy using the values in `vals`. Throws an
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings -- and in particular if
