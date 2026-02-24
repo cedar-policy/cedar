@@ -289,7 +289,6 @@ impl UnaryOp {
     }
 
     /// Parse a unary operator from a function name
-    #[expect(dead_code, reason = "used by from_function")]
     pub(crate) fn from_function_name(name: &str) -> Option<Self> {
         match name {
             "decimal" => Some(UnaryOp::Decimal),
@@ -399,7 +398,6 @@ impl BinaryOp {
     }
 
     /// Parse a binary operator from a function name
-    #[expect(dead_code, reason = "used by from_function")]
     pub(crate) fn from_function_name(name: &str) -> Option<Self> {
         match name {
             "lessThan" => Some(BinaryOp::Less),
@@ -534,6 +532,7 @@ pub enum Expr {
     /// An error occurred during construction
     #[expect(
         clippy::pub_underscore_fields,
+        private_interfaces,
         reason = "intentionally private to prevent clients from constructing error nodes"
     )]
     Error(ErrorNode),
@@ -1046,6 +1045,10 @@ mod tests {
 
         for func in extensions.all_funcs() {
             let name = func.name().clone();
+            // The "unknown" function is not directly supported
+            if &name.to_string() == "unknown" {
+                continue;
+            }
             let arity = func.arg_types().len();
 
             // Create dummy "0" arguments based on arity, we don't typecheck here
