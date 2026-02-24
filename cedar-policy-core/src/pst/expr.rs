@@ -18,6 +18,7 @@
 
 use crate::ast;
 use crate::expr_builder::ExprBuilder;
+use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use itertools::Itertools;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::BTreeMap;
@@ -29,6 +30,7 @@ use std::sync::Arc;
 ///
 /// Cedar supports two slot types: `principal` and `resource`
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
 pub enum SlotId {
     /// Principal slot
     Principal,
@@ -219,8 +221,106 @@ pub enum Var {
     Context,
 }
 
+/// Unary operators in Cedar expressions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum UnaryOp {
+    /// Logical not (`!`)
+    Not,
+    /// Arithmetic negation (`-`)
+    Neg,
+    /// Test set empty
+    IsEmpty,
+    /// Parse string and construct a datetime
+    Datetime,
+    /// Parse string and construct a decimal
+    Decimal,
+    /// Parse string and construct a duration
+    Duration,
+    /// Parse string and construct an ip address
+    Ip,
+    /// Test for a valid ipv4 address
+    IsIPv4,
+    /// Test for a valid ipv6 address
+    IsIPV6,
+    /// Test for IP loopback address
+    IsLoopback,
+    /// Test for multicast address
+    IsMulticast,
+    /// Extract date portion as new datetime
+    ToDate,
+    /// Extract time as duration
+    ToTime,
+    /// Convert to milliseconds
+    ToMilliseconds,
+    /// Convert to seconds
+    ToSeconds,
+    /// Convert to minutes
+    ToMinutes,
+    /// Convert to hours
+    ToHours,
+    /// Convert to days
+    ToDays,
+}
+
+impl UnaryOp {
+    /// Get the Cedar syntax representation of this operator
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            UnaryOp::Not => "!",
+            UnaryOp::Neg => "-",
+            UnaryOp::IsEmpty => "isEmpty",
+            UnaryOp::Datetime => "datetime",
+            UnaryOp::Decimal => "decimal",
+            UnaryOp::Duration => "duration",
+            UnaryOp::Ip => "ip",
+            UnaryOp::IsIPv4 => "isIpv4",
+            UnaryOp::IsIPV6 => "isIpv6",
+            UnaryOp::IsLoopback => "isLoopback",
+            UnaryOp::IsMulticast => "isMulticast",
+            UnaryOp::ToDate => "toDate",
+            UnaryOp::ToTime => "toTime",
+            UnaryOp::ToMilliseconds => "toMilliseconds",
+            UnaryOp::ToSeconds => "toSeconds",
+            UnaryOp::ToMinutes => "toMinutes",
+            UnaryOp::ToHours => "toHours",
+            UnaryOp::ToDays => "toDays",
+        }
+    }
+
+    /// Parse a unary operator from a function name
+    #[expect(dead_code, reason = "used by from_function")]
+    pub(crate) fn from_function_name(name: &str) -> Option<Self> {
+        match name {
+            "decimal" => Some(UnaryOp::Decimal),
+            "datetime" => Some(UnaryOp::Datetime),
+            "duration" => Some(UnaryOp::Duration),
+            "ip" => Some(UnaryOp::Ip),
+            "isIpv4" => Some(UnaryOp::IsIPv4),
+            "isIpv6" => Some(UnaryOp::IsIPV6),
+            "isLoopback" => Some(UnaryOp::IsLoopback),
+            "isMulticast" => Some(UnaryOp::IsMulticast),
+            "toDate" => Some(UnaryOp::ToDate),
+            "toTime" => Some(UnaryOp::ToTime),
+            "toMilliseconds" => Some(UnaryOp::ToMilliseconds),
+            "toSeconds" => Some(UnaryOp::ToSeconds),
+            "toMinutes" => Some(UnaryOp::ToMinutes),
+            "toHours" => Some(UnaryOp::ToHours),
+            "toDays" => Some(UnaryOp::ToDays),
+            _ => None,
+        }
+    }
+}
+
+impl Display for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Binary operators in Cedar expressions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum BinaryOp {
     // Comparison
     /// Equality (`==`)
@@ -261,6 +361,14 @@ pub enum BinaryOp {
     GetTag,
     /// Check tag existence (`hasTag`)
     HasTag,
+    // Ip operations
+    /// Test for inclusion in IP address range
+    IsInRange,
+    // Datetime
+    /// Compute a datetime offset by duration
+    Offset,
+    /// Compute difference between two datetimes
+    DurationSince,
 }
 
 impl BinaryOp {
@@ -284,6 +392,24 @@ impl BinaryOp {
             BinaryOp::ContainsAny => "containsAny",
             BinaryOp::GetTag => "getTag",
             BinaryOp::HasTag => "hasTag",
+            BinaryOp::IsInRange => "isInRange",
+            BinaryOp::Offset => "offset",
+            BinaryOp::DurationSince => "durationSince",
+        }
+    }
+
+    /// Parse a binary operator from a function name
+    #[expect(dead_code, reason = "used by from_function")]
+    pub(crate) fn from_function_name(name: &str) -> Option<Self> {
+        match name {
+            "lessThan" => Some(BinaryOp::Less),
+            "lessThanOrEqual" => Some(BinaryOp::LessEq),
+            "greaterThan" => Some(BinaryOp::Greater),
+            "greaterThanOrEqual" => Some(BinaryOp::GreaterEq),
+            "isInRange" => Some(BinaryOp::IsInRange),
+            "offset" => Some(BinaryOp::Offset),
+            "durationSince" => Some(BinaryOp::DurationSince),
+            _ => None,
         }
     }
 }
@@ -296,6 +422,7 @@ impl Display for BinaryOp {
 
 /// Literal values
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Literal {
     /// Boolean literal
     Bool(bool),
@@ -330,6 +457,7 @@ impl From<ast::Pattern> for Vec<PatternElem> {
 
 /// PST Expression
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Expr {
     /// Literal value
     Literal(Literal),
@@ -337,10 +465,13 @@ pub enum Expr {
     Var(Var),
     /// Template slot
     Slot(SlotId),
-    /// Logical not
-    Not(Arc<Expr>),
-    /// Arithmetic negation
-    Neg(Arc<Expr>),
+    /// Unary operation
+    UnaryOp {
+        /// The operator
+        op: UnaryOp,
+        /// The operand
+        expr: Arc<Expr>,
+    },
     /// Binary operation
     BinaryOp {
         /// The operator
@@ -395,16 +526,124 @@ pub enum Expr {
     Set(Vec<Arc<Expr>>),
     /// Record literal
     Record(BTreeMap<String, Arc<Expr>>),
-    /// Function call. Syntactically, this can be either a function-style or
-    /// method-style call depending on the extension.
-    FuncCall {
-        /// Function name
-        name: Name,
-        /// Arguments
-        args: Vec<Arc<Expr>>,
+    /// Representation of an unknown for partial evaluation
+    Unknown {
+        /// Name of the unknown
+        name: SmolStr,
     },
-    /// Check if set is empty
-    IsEmpty(Arc<Expr>),
+    /// An error occurred during construction
+    #[expect(
+        clippy::pub_underscore_fields,
+        reason = "intentionally private to prevent clients from constructing error nodes"
+    )]
+    Error(ErrorNode),
+}
+
+/// A private error node is used when other internal APIs require infaillible methods
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ErrorNode {
+    error: ExprConstructionError,
+}
+
+/// Error type for PST expression construction
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExprConstructionError {
+    /// Unknown function name
+    UnknownFunction {
+        /// The name of the unknown function
+        name: String,
+    },
+    /// Extension function lookup error
+    FunctionLookupError(ExtensionFunctionLookupError),
+    /// Wrong number of arguments
+    WrongArity {
+        /// The name of the entity with the wrong number of arguments
+        name: String,
+        /// The expected number of arguments
+        expected: usize,
+        /// The actual number of arguments
+        got: usize,
+    },
+}
+
+impl std::fmt::Display for ExprConstructionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExprConstructionError::UnknownFunction { name } => {
+                write!(f, "unknown function: {}", name)
+            }
+            ExprConstructionError::FunctionLookupError(e) => {
+                write!(f, "{}", e)
+            }
+            ExprConstructionError::WrongArity {
+                name,
+                expected,
+                got,
+            } => write!(
+                f,
+                "function {} expects {} argument(s), got {}",
+                name, expected, got
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ExprConstructionError {}
+
+impl Expr {
+    #[expect(dead_code, reason = "PST is under development")]
+    fn from_function(
+        name: &ast::Name,
+        args: &Vec<Arc<Expr>>,
+    ) -> Result<Expr, ExprConstructionError> {
+        let extension = Extensions::all_available()
+            .func(&name)
+            .map_err(ExprConstructionError::FunctionLookupError)?;
+
+        let expected = extension.arg_types().len();
+        let got = args.len();
+
+        if expected != got {
+            return Err(ExprConstructionError::WrongArity {
+                name: name.to_string(),
+                expected,
+                got,
+            });
+        }
+        Ok(match args.len() {
+            1 => {
+                let op = UnaryOp::from_function_name(&name.to_string()).ok_or_else(|| {
+                    ExprConstructionError::UnknownFunction {
+                        name: name.to_string(),
+                    }
+                })?;
+                Expr::UnaryOp {
+                    op,
+                    #[expect(clippy::indexing_slicing, reason = "length = 1 checked in arm")]
+                    expr: Arc::clone(&args[0]),
+                }
+            }
+            2 => {
+                let op = BinaryOp::from_function_name(&name.to_string()).ok_or_else(|| {
+                    ExprConstructionError::UnknownFunction {
+                        name: name.to_string(),
+                    }
+                })?;
+                Expr::BinaryOp {
+                    op,
+                    #[expect(clippy::indexing_slicing, reason = "length checked = 2 in arm")]
+                    left: Arc::clone(&args[0]),
+                    #[expect(clippy::indexing_slicing, reason = "length checked = 2 in arm")]
+                    right: Arc::clone(&args[1]),
+                }
+            }
+            _ => {
+                return Err(ExprConstructionError::UnknownFunction {
+                    name: name.to_string(),
+                })
+            }
+        })
+    }
 }
 
 /// Builder to construct a PST [`Expr`] that implements the [`ExprBuilder`] interface. Unlike the
@@ -438,30 +677,26 @@ impl ExprBuilder for PstBuilder {
         &()
     }
 
-    fn val(self, lit: impl Into<crate::ast::Literal>) -> Expr {
+    fn val(self, lit: impl Into<ast::Literal>) -> Expr {
         Expr::Literal(match lit.into() {
-            crate::ast::Literal::Bool(b) => Literal::Bool(b),
-            crate::ast::Literal::Long(i) => Literal::Long(i),
-            crate::ast::Literal::String(s) => Literal::String(s.to_string()),
-            crate::ast::Literal::EntityUID(e) => Literal::EntityUID(e.as_ref().clone().into()),
+            ast::Literal::Bool(b) => Literal::Bool(b),
+            ast::Literal::Long(i) => Literal::Long(i),
+            ast::Literal::String(s) => Literal::String(s.to_string()),
+            ast::Literal::EntityUID(e) => Literal::EntityUID(e.as_ref().clone().into()),
         })
     }
 
-    fn var(self, var: crate::ast::Var) -> Expr {
+    fn var(self, var: ast::Var) -> Expr {
         Expr::Var(match var {
-            crate::ast::Var::Principal => Var::Principal,
-            crate::ast::Var::Action => Var::Action,
-            crate::ast::Var::Resource => Var::Resource,
-            crate::ast::Var::Context => Var::Context,
+            ast::Var::Principal => Var::Principal,
+            ast::Var::Action => Var::Action,
+            ast::Var::Resource => Var::Resource,
+            ast::Var::Context => Var::Context,
         })
     }
 
-    fn unknown(self, u: crate::ast::Unknown) -> Expr {
-        // Represent unknown as a function call
-        Expr::FuncCall {
-            name: Name::simple("unknown"),
-            args: vec![Arc::new(Expr::Literal(Literal::String(u.name.to_string())))],
-        }
+    fn unknown(self, u: ast::Unknown) -> Expr {
+        Expr::Unknown { name: u.name }
     }
 
     fn slot(self, s: ast::SlotId) -> Expr {
@@ -477,7 +712,10 @@ impl ExprBuilder for PstBuilder {
     }
 
     fn not(self, e: Expr) -> Expr {
-        Expr::Not(Arc::new(e))
+        Expr::UnaryOp {
+            op: UnaryOp::Not,
+            expr: Arc::new(e),
+        }
     }
 
     fn is_eq(self, e1: Expr, e2: Expr) -> Expr {
@@ -545,7 +783,10 @@ impl ExprBuilder for PstBuilder {
     }
 
     fn neg(self, e: Expr) -> Expr {
-        Expr::Neg(Arc::new(e))
+        Expr::UnaryOp {
+            op: UnaryOp::Neg,
+            expr: Arc::new(e),
+        }
     }
 
     fn is_in(self, e1: Expr, e2: Expr) -> Expr {
@@ -581,7 +822,10 @@ impl ExprBuilder for PstBuilder {
     }
 
     fn is_empty(self, expr: Expr) -> Expr {
-        Expr::IsEmpty(Arc::new(expr))
+        Expr::UnaryOp {
+            op: UnaryOp::IsEmpty,
+            expr: Arc::new(expr),
+        }
     }
 
     fn get_tag(self, expr: Expr, tag: Expr) -> Expr {
@@ -607,30 +851,25 @@ impl ExprBuilder for PstBuilder {
     fn record(
         self,
         pairs: impl IntoIterator<Item = (SmolStr, Expr)>,
-    ) -> Result<Expr, crate::ast::ExpressionConstructionError> {
+    ) -> Result<Expr, ast::ExpressionConstructionError> {
         let mut map = BTreeMap::new();
         for (k, v) in pairs {
             if map.insert(k.to_string(), Arc::new(v)).is_some() {
-                return Err(
-                    crate::ast::expression_construction_errors::DuplicateKeyError {
-                        key: k,
-                        context: "in record literal",
-                    }
-                    .into(),
-                );
+                return Err(ast::expression_construction_errors::DuplicateKeyError {
+                    key: k,
+                    context: "in record literal",
+                }
+                .into());
             }
         }
         Ok(Expr::Record(map))
     }
 
-    fn call_extension_fn(
-        self,
-        fn_name: crate::ast::Name,
-        args: impl IntoIterator<Item = Expr>,
-    ) -> Expr {
-        Expr::FuncCall {
-            name: fn_name.into(),
-            args: args.into_iter().map(Arc::new).collect(),
+    fn call_extension_fn(self, fn_name: ast::Name, args: impl IntoIterator<Item = Expr>) -> Expr {
+        let expr = Expr::from_function(&fn_name, &args.into_iter().map(Arc::new).collect());
+        match expr {
+            Ok(e) => e,
+            Err(e) => Expr::Error(ErrorNode { error: e }),
         }
     }
 
@@ -648,7 +887,7 @@ impl ExprBuilder for PstBuilder {
         }
     }
 
-    fn like(self, expr: Expr, pattern: crate::ast::Pattern) -> Expr {
+    fn like(self, expr: Expr, pattern: ast::Pattern) -> Expr {
         Expr::Like {
             expr: Arc::new(expr),
             pattern: pattern.into(),
@@ -698,8 +937,7 @@ impl std::fmt::Display for Expr {
                 Var::Context => write!(f, "context"),
             },
             Expr::Slot(s) => write!(f, "{}", s),
-            Expr::Not(e) => write!(f, "!({})", e),
-            Expr::Neg(e) => write!(f, "-({})", e),
+            Expr::UnaryOp { op, expr } => write!(f, "{}({})", op, expr),
             Expr::BinaryOp { op, left, right } => write!(f, "({} {} {})", left, op, right),
             Expr::GetAttr { expr, attr } => write!(f, "{}.{}", expr, attr),
             Expr::HasAttr { expr, attrs } => {
@@ -763,18 +1001,8 @@ impl std::fmt::Display for Expr {
                         .join(", ")
                 )
             }
-            Expr::FuncCall { name, args } => {
-                write!(
-                    f,
-                    "{}({})",
-                    name,
-                    args.iter()
-                        .map(|e| e.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            Expr::IsEmpty(e) => write!(f, "{}.isEmpty()", e),
+            Expr::Unknown { name } => write!(f, "{}", name),
+            Expr::Error(e) => write!(f, "<error: {}>", e.error),
         }
     }
 }
@@ -784,170 +1012,142 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_builder_literal() {
-        let expr = PstBuilder::new().val(true);
-        assert!(matches!(expr, Expr::Literal(Literal::Bool(true))));
+    fn test_from_function_unknown_function() {
+        let name = ast::Name::parse_unqualified_name("unknownFunc").unwrap();
+        let args = vec![Arc::new(Expr::Literal(Literal::Long(1)))];
 
-        let expr = PstBuilder::new().val(42i64);
-        assert!(matches!(expr, Expr::Literal(Literal::Long(42))));
-    }
-
-    #[test]
-    fn test_builder_var() {
-        let expr = PstBuilder::new().var(crate::ast::Var::Principal);
-        assert!(matches!(expr, Expr::Var(Var::Principal)));
-    }
-
-    #[test]
-    fn test_builder_binary_ops() {
-        let left = PstBuilder::new().val(1i64);
-        let right = PstBuilder::new().val(2i64);
-
-        let expr = PstBuilder::new().add(left.clone(), right.clone());
+        let result = Expr::from_function(&name, &args);
         assert!(matches!(
-            expr,
-            Expr::BinaryOp {
-                op: BinaryOp::Add,
-                ..
-            }
-        ));
-
-        let expr = PstBuilder::new().and(left.clone(), right.clone());
-        assert!(matches!(
-            expr,
-            Expr::BinaryOp {
-                op: BinaryOp::And,
-                ..
-            }
-        ));
-
-        let expr = PstBuilder::new().is_eq(left, right);
-        assert!(matches!(
-            expr,
-            Expr::BinaryOp {
-                op: BinaryOp::Eq,
-                ..
-            }
+            result,
+            Err(ExprConstructionError::FunctionLookupError { .. })
         ));
     }
 
     #[test]
-    fn test_builder_unary_ops() {
-        let inner = PstBuilder::new().val(true);
-        let expr = PstBuilder::new().not(inner);
-        assert!(matches!(expr, Expr::Not(_)));
-
-        let inner = PstBuilder::new().val(42i64);
-        let expr = PstBuilder::new().neg(inner);
-        assert!(matches!(expr, Expr::Neg(_)));
-    }
-
-    #[test]
-    fn test_builder_ite() {
-        let cond = PstBuilder::new().val(true);
-        let then_expr = PstBuilder::new().val(1i64);
-        let else_expr = PstBuilder::new().val(2i64);
-
-        let expr = PstBuilder::new().ite(cond, then_expr, else_expr);
-        assert!(matches!(expr, Expr::IfThenElse { .. }));
-    }
-
-    #[test]
-    fn test_builder_set() {
-        let exprs = vec![
-            PstBuilder::new().val(1i64),
-            PstBuilder::new().val(2i64),
-            PstBuilder::new().val(3i64),
+    fn test_from_function_wrong_arity() {
+        let name = ast::Name::parse_unqualified_name("decimal").unwrap();
+        let args = vec![
+            Arc::new(Expr::Literal(Literal::Long(1))),
+            Arc::new(Expr::Literal(Literal::Long(2))),
         ];
 
-        let expr = PstBuilder::new().set(exprs);
-        if let Expr::Set(elements) = expr {
-            assert_eq!(elements.len(), 3);
-        } else {
-            panic!("Expected Set");
+        let result = Expr::from_function(&name, &args);
+        assert!(matches!(
+            result,
+            Err(ExprConstructionError::WrongArity { .. })
+        ));
+    }
+
+    #[test]
+    fn test_all_extension_functions_are_supported() {
+        // This test ensures that all extension functions defined in Extensions
+        // are properly mapped to PST operators (UnaryOp or BinaryOp)
+        let extensions = Extensions::all_available();
+
+        for func in extensions.all_funcs() {
+            let name = func.name().clone();
+            let arity = func.arg_types().len();
+
+            // Create dummy "0" arguments based on arity, we don't typecheck here
+            let args: Vec<Arc<Expr>> = (0..arity)
+                .map(|_| Arc::new(Expr::Literal(Literal::Long(0))))
+                .collect();
+
+            let result = Expr::from_function(&name, &args);
+            assert!(
+                result.is_ok(),
+                "Function {} should be supported but got error: {:?}",
+                name,
+                result.err()
+            );
+            let actual = result.unwrap();
+            print!("Expression: {}", actual);
+            match arity {
+                1 => {
+                    assert!(
+                        matches!(actual, Expr::UnaryOp { .. }),
+                        "Unary function {} should produce UnaryOp",
+                        name
+                    );
+                }
+                2 => {
+                    assert!(
+                        matches!(actual, Expr::BinaryOp { .. }),
+                        "Binary function {} should produce BinaryOp",
+                        name
+                    );
+                }
+                _ => (),
+            }
         }
     }
 
     #[test]
-    fn test_builder_record() {
-        let pairs = vec![
-            ("a".into(), PstBuilder::new().val(1i64)),
-            ("b".into(), PstBuilder::new().val(2i64)),
-        ];
+    fn test_expr_construction_error_display() {
+        let err = ExprConstructionError::UnknownFunction {
+            name: "foo".to_string(),
+        };
+        assert!(err.to_string().contains("foo"));
 
-        let expr = PstBuilder::new().record(pairs).unwrap();
-        if let Expr::Record(map) = expr {
-            assert_eq!(map.len(), 2);
-            assert!(map.contains_key("a"));
-            assert!(map.contains_key("b"));
-        } else {
-            panic!("Expected Record");
-        }
+        let err = ExprConstructionError::WrongArity {
+            name: "bar".to_string(),
+            expected: 2,
+            got: 1,
+        };
+        assert!(err.to_string().contains("bar"));
+        assert!(err.to_string().contains("2"));
+        assert!(err.to_string().contains("1"));
     }
 
     #[test]
-    fn test_builder_get_attr() {
-        let base = PstBuilder::new().var(crate::ast::Var::Principal);
-        let expr = PstBuilder::new().get_attr(base, "name".into());
+    fn test_builder_additional_methods() {
+        // Test unknown
+        let expr = PstBuilder::new().unknown(ast::Unknown::new_untyped("test"));
+        assert!(matches!(expr, Expr::Unknown { .. }));
 
-        if let Expr::GetAttr { attr, .. } = expr {
-            assert_eq!(attr, "name");
-        } else {
-            panic!("Expected GetAttr");
-        }
-    }
+        // Test like
+        let base = PstBuilder::new().val("test");
+        let pattern = ast::Pattern::from(vec![ast::PatternElem::Char('a')]);
+        let expr = PstBuilder::new().like(base, pattern);
+        assert!(matches!(expr, Expr::Like { .. }));
 
-    #[test]
-    fn test_builder_has_attr() {
-        let base = PstBuilder::new().var(crate::ast::Var::Principal);
-        let expr = PstBuilder::new().has_attr(base, "name".into());
-
-        if let Expr::HasAttr { attrs, .. } = expr {
-            assert_eq!(attrs.len(), 1);
-            assert_eq!(attrs.head, "name");
-        } else {
-            panic!("Expected HasAttr");
-        }
-    }
-
-    #[test]
-    fn test_builder_is_entity_type() {
+        // Test is_in_entity_type
         let base = PstBuilder::new().var(ast::Var::Principal);
         let entity_type = EntityType::from_name(ast::Name::parse_unqualified_name("User").unwrap());
-        let expr = PstBuilder::new().is_entity_type(base, entity_type.clone().try_into().unwrap());
-
+        let uid = ast::EntityUID::from_components(
+            ast::EntityType::from(ast::Name::parse_unqualified_name("User").unwrap()),
+            ast::Eid::new("alice"),
+            None,
+        );
+        let in_expr = PstBuilder::new().val(uid);
+        let expr = PstBuilder::new().is_in_entity_type(
+            base,
+            entity_type.clone().try_into().unwrap(),
+            in_expr,
+        );
         if let Expr::Is {
             entity_type: et,
-            in_expr,
+            in_expr: Some(_),
             ..
         } = expr
         {
             assert_eq!(et, entity_type);
-            assert!(in_expr.is_none());
         } else {
-            panic!("Expected Is");
+            panic!("Expected Is with in_expr");
         }
     }
 
     #[test]
-    fn test_builder_func_call() {
-        let args = vec![PstBuilder::new().val(1i64), PstBuilder::new().val(2i64)];
-        let fn_name = crate::ast::Name::parse_unqualified_name("decimal").unwrap();
-        let expr = PstBuilder::new().call_extension_fn(fn_name, args);
-
-        if let Expr::FuncCall { name, args } = expr {
-            assert_eq!(name, Name::simple("decimal"));
-            assert_eq!(args.len(), 2);
-        } else {
-            panic!("Expected FuncCall");
-        }
-    }
-
-    #[test]
-    fn test_builder_display() {
-        let expr = PstBuilder::new().val(42i64);
-        let s = expr.to_string();
-        assert!(s.contains("42"));
+    fn test_builder_record_duplicate_keys() {
+        let pairs = vec![
+            (SmolStr::new("key"), PstBuilder::new().val(1i64)),
+            (SmolStr::new("key"), PstBuilder::new().val(2i64)),
+        ];
+        let result = PstBuilder::new().record(pairs);
+        assert!(matches!(
+            result,
+            Err(ast::ExpressionConstructionError::DuplicateKey { .. })
+        ));
     }
 
     mod display_tests {
@@ -983,6 +1183,14 @@ mod tests {
                 (builder().val(42i64), "42"),
                 (builder().val(-123i64), "-123"),
                 (builder().val("hello"), "\"hello\""),
+                (
+                    builder().val(ast::EntityUID::from_components(
+                        ast::Name::from_str("Photo").unwrap().into(),
+                        ast::Eid::new("abc123"),
+                        None,
+                    )),
+                    "Photo::\"abc123\"",
+                ),
                 // Variables
                 (builder().var(ast::Var::Principal), "principal"),
                 (builder().var(ast::Var::Action), "action"),
@@ -991,7 +1199,7 @@ mod tests {
                 // Slots
                 (builder().slot(ast::SlotId::principal()), "?principal"),
                 (builder().slot(ast::SlotId::resource()), "?resource"),
-                // Unary ops
+                // Basic unary ops
                 (builder().not(builder().val(true)), "!(true)"),
                 (builder().neg(builder().val(42i64)), "-(42)"),
                 // Binary ops - comparison
@@ -1076,6 +1284,13 @@ mod tests {
                     builder().has_attr(builder().var(ast::Var::Principal), SmolStr::from("name")),
                     "principal has name",
                 ),
+                (
+                    builder().is_entity_type(
+                        builder().var(ast::Var::Resource),
+                        ast::Name::from_str("Photo").unwrap().into(),
+                    ),
+                    "resource is Photo",
+                ),
                 // If-then-else
                 (
                     builder().ite(
@@ -1113,11 +1328,27 @@ mod tests {
                         .unwrap(),
                     "{\"a\": 1, \"b\": 2}",
                 ),
-                // Function calls
+                // Tags
                 (
-                    builder().call_extension_fn(Name::simple("foo").try_into().unwrap(), vec![]),
-                    "foo()",
+                    builder().has_tag(builder().var(ast::Var::Action), builder().val("tag")),
+                    "(action hasTag \"tag\")",
                 ),
+                (
+                    builder().get_tag(builder().var(ast::Var::Action), builder().val("tag")),
+                    "(action getTag \"tag\")",
+                ),
+                // Like
+                (
+                    builder().like(
+                        builder().val("hello"),
+                        ast::Pattern::from(vec![
+                            ast::PatternElem::Char('h'),
+                            ast::PatternElem::Wildcard,
+                        ]),
+                    ),
+                    "\"hello\" like \"h*\"",
+                ),
+                // Function calls
                 (
                     builder().call_extension_fn(
                         Name::simple("decimal").try_into().unwrap(),
@@ -1127,10 +1358,10 @@ mod tests {
                 ),
                 (
                     builder().call_extension_fn(
-                        Name::simple("foo").try_into().unwrap(),
-                        vec![builder().val(1i64), builder().val(2i64)],
+                        Name::simple("notAFunc").try_into().unwrap(),
+                        vec![builder().val("12.3")],
                     ),
-                    "foo(1, 2)",
+                    "<error: extension function `notAFunc` does not exist>",
                 ),
             ];
 
@@ -1164,7 +1395,7 @@ mod tests {
 
             // isEmpty
             let is_empty = builder().is_empty(builder().set([]));
-            assert_eq!(is_empty.to_string(), "[].isEmpty()");
+            assert_eq!(is_empty.to_string(), "isEmpty([])");
         }
     }
 }
