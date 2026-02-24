@@ -25,10 +25,6 @@ fn main() {
 )]
 fn generate_parsers() {
     lalrpop::Configuration::new()
-        .process_dir("src/parser/")
-        .expect("failed to run lalrpop");
-
-    lalrpop::Configuration::new()
-        .process_dir("src/validator/cedar_schema/")
+        .process_dir("src/")
         .expect("failed to run lalrpop");
 }
