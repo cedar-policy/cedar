@@ -38,8 +38,8 @@ use crate::FromNormalizedStr;
 ///
 /// This type may contain any name valid for use internally, including names
 /// with reserved `__cedar` components (and also names without `__cedar`).
-#[derive(Educe, Debug, Clone)]
-#[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Educe, Clone)]
+#[educe(Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct InternalName {
     /// Basename
     pub(crate) id: Id,
@@ -49,6 +49,7 @@ pub struct InternalName {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
+    #[educe(Debug(ignore))]
     pub(crate) loc: Option<Loc>,
 }
 
@@ -95,7 +96,7 @@ impl InternalName {
     /// Get the [`InternalName`] representing the reserved `__cedar` namespace
     pub fn __cedar() -> Self {
         // using `Id::new_unchecked()` for performance reasons -- this function is called many times by validator code
-        Self::unqualified_name(Id::new_unchecked("__cedar"), None)
+        Self::unqualified_name(Id::new_unchecked_const("__cedar"), None)
     }
 
     /// Create an [`InternalName`] with no path (no namespaces).

@@ -118,14 +118,7 @@ impl Decimal {
     /// Our representation stores the decimal number `d` as the 64-bit integer
     /// `d * 10 ^ NUM_DIGITS`; this function will error on overflow.
     fn from_str(str: impl AsRef<str>) -> Result<Self, Error> {
-        // check that the string matches the regex
-        if !constants::DECIMAL_REGEX.is_match(str.as_ref()) {
-            return Err(Error::FailedParse(str.as_ref().to_owned()));
-        }
-
         // pull out the components: integer part, and fractional part
-        // (the check above should ensure that .captures() and .get() succeed,
-        // but we include proper error handling for posterity)
         let caps = constants::DECIMAL_REGEX
             .captures(str.as_ref())
             .ok_or_else(|| Error::FailedParse(str.as_ref().to_owned()))?;
