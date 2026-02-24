@@ -57,7 +57,7 @@ pub enum Error {
     #[error("failed to recover a concrete counterexample: {0}")]
     ConcretizeError(#[from] ConcretizeError),
     /// Model successfully decoded and concretized, but the resulting model is invalid.
-    #[error("model is invalid: violates assertion {assert:?}")]
+    #[error("model is invalid: violates assertion {assert}")]
     ModelInvalid {
         /// Assertion that was violated
         assert: Term,
