@@ -205,7 +205,7 @@ impl TryFrom<est::ExprNoExt> for Expr {
                 entity_type,
                 in_expr,
             } => {
-                let et_name = pst::Name::simple(entity_type);
+                let et_name = pst::Name::unqualified(entity_type);
                 let et = EntityType::from_name(et_name);
                 match in_expr {
                     None => Ok(Expr::is_type(Arc::unwrap_or_clone(left).try_into()?, et)),
@@ -335,7 +335,7 @@ impl TryFrom<est::PrincipalConstraint> for super::PrincipalConstraint {
             ),
             E::Is(is_c) => {
                 let (entity_type_ast, in_constraint) = is_c.into_components();
-                let entity_type = EntityType::from_name(Name::simple(entity_type_ast));
+                let entity_type = EntityType::from_name(Name::unqualified(entity_type_ast));
                 match in_constraint {
                     None => Ok(super::PrincipalConstraint::Is(entity_type)),
                     Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
@@ -379,7 +379,7 @@ impl TryFrom<est::ResourceConstraint> for super::ResourceConstraint {
             ),
             E::Is(is_c) => {
                 let (entity_type_ast, in_constraint) = is_c.into_components();
-                let entity_type = EntityType::from_name(Name::simple(entity_type_ast));
+                let entity_type = EntityType::from_name(Name::unqualified(entity_type_ast));
                 match in_constraint {
                     None => Ok(super::ResourceConstraint::Is(entity_type)),
                     Some(PrincipalOrResourceInConstraint::Entity { entity }) => {

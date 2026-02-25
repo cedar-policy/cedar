@@ -129,7 +129,7 @@ mod tests {
 
     fn make_entity_uid(ty: &str, id: &str) -> EntityUID {
         EntityUID {
-            ty: EntityType(Name::simple(ty)),
+            ty: EntityType(Name::unqualified(ty)),
             eid: id.into(),
         }
     }
@@ -138,7 +138,7 @@ mod tests {
     fn test_principal_constraint_display() {
         let uid = make_entity_uid("User", "alice");
         let eos = EntityOrSlot::Entity(uid.clone());
-        let et = EntityType(Name::simple("User"));
+        let et = EntityType(Name::unqualified("User"));
         let etq = EntityType(Name::qualified(vec!["Admins"], "User"));
         let cases = vec![
             (PrincipalConstraint::Any, ""),

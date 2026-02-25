@@ -54,7 +54,7 @@ impl Expr {
     }
 
     /// Create a string literal
-    pub fn string(s: impl Into<String>) -> Self {
+    pub fn string(s: impl Into<SmolStr>) -> Self {
         Self::Literal(Literal::String(s.into()))
     }
 

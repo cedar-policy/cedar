@@ -109,6 +109,16 @@ impl EntityType {
         }
     }
 
+    /// Consumes this entity type and returns the owned name. Clones the statically defined name
+    /// for entity errors when this entity type is ErrorEntityType.
+    pub fn into_name(self) -> Name {
+        match self {
+            EntityType::EntityType(name) => name,
+            #[cfg(feature = "tolerant-ast")]
+            EntityType::ErrorEntityType => ERROR_NAME.clone(),
+        }
+    }
+
     /// The source location of this entity type
     pub fn loc(&self) -> Option<&Loc> {
         match self {

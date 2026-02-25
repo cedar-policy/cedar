@@ -170,8 +170,8 @@ pub struct Name {
 }
 
 impl Name {
-    /// Constructs a simple (unqualified) name.
-    pub fn simple(id: impl Into<SmolStr>) -> Self {
+    /// Constructs an unqualified name.
+    pub fn unqualified(id: impl Into<SmolStr>) -> Self {
         Name {
             id: id.into(),
             namespace: Arc::new(vec![]),
@@ -193,11 +193,15 @@ impl Name {
 
 impl From<ast::Name> for Name {
     fn from(name: ast::Name) -> Self {
+        let ast::Name {
+            0: ast::InternalName { id, path, .. },
+        } = name;
         Name {
-            id: name.basename().to_smolstr(),
+            id: id.into_smolstr(),
             namespace: Arc::new(
-                name.as_ref()
-                    .namespace_components()
+                Arc::try_unwrap(path)
+                    .unwrap_or_else(|arc| (*arc).clone())
+                    .into_iter()
                     .map(|id| id.to_smolstr())
                     .collect(),
             ),
@@ -244,16 +248,7 @@ impl EntityType {
 
 impl From<ast::EntityType> for EntityType {
     fn from(et: ast::EntityType) -> Self {
-        EntityType(Name {
-            id: et.name().basename().to_smolstr(),
-            namespace: Arc::new(
-                et.name()
-                    .0
-                    .namespace_components()
-                    .map(|id| id.to_smolstr())
-                    .collect(),
-            ),
-        })
+        EntityType(et.into_name().into())
     }
 }
 
@@ -523,7 +518,7 @@ pub enum Literal {
     /// Integer literal
     Long(i64),
     /// String literal
-    String(String),
+    String(SmolStr),
     /// Entity UID literal
     EntityUID(EntityUID),
 }
@@ -641,18 +636,22 @@ pub(crate) struct ErrorNode {
 }
 
 /// Error type for PST expression construction
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ExprConstructionError {
     /// Unknown function name
+    #[error("unknown function: {name}")]
     UnknownFunction {
         /// The name of the unknown function
         name: SmolStr,
     },
     /// Name parsing error
+    #[error("error parsing name: {0}")]
     NameParsingError(SmolStr),
     /// Extension function lookup error
+    #[error(transparent)]
     FunctionLookupError(ExtensionFunctionLookupError),
     /// Wrong number of arguments
+    #[error("function {name} expects {expected} argument(s), got {got}")]
     WrongArity {
         /// The name of the entity with the wrong number of arguments
         name: String,
@@ -662,33 +661,6 @@ pub enum ExprConstructionError {
         got: usize,
     },
 }
-
-impl std::fmt::Display for ExprConstructionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ExprConstructionError::UnknownFunction { name } => {
-                write!(f, "unknown function: {}", name)
-            }
-            ExprConstructionError::FunctionLookupError(e) => {
-                write!(f, "{}", e)
-            }
-            ExprConstructionError::NameParsingError(e) => {
-                write!(f, "error parsing name: {}", e)
-            }
-            ExprConstructionError::WrongArity {
-                name,
-                expected,
-                got,
-            } => write!(
-                f,
-                "function {} expects {} argument(s), got {}",
-                name, expected, got
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ExprConstructionError {}
 
 impl Expr {
     pub(crate) fn from_function_name_and_args(
@@ -786,7 +758,7 @@ impl ExprBuilder for PstBuilder {
         Expr::Literal(match lit.into() {
             ast::Literal::Bool(b) => Literal::Bool(b),
             ast::Literal::Long(i) => Literal::Long(i),
-            ast::Literal::String(s) => Literal::String(s.to_string()),
+            ast::Literal::String(s) => Literal::String(s),
             ast::Literal::EntityUID(e) => Literal::EntityUID(e.as_ref().clone().into()),
         })
     }
@@ -1030,7 +1002,10 @@ impl ExprBuilder for PstBuilder {
 
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // This Display implementation is mostly for debugging purposes
+        // This Display implementation is mostly for debugging purposes, and it does not print
+        // valid Cedar expressions.
+        // If you need to print a valid Cedar expression from a PST expression, you should convert
+        // it to an EST expression first.
         match self {
             Expr::Literal(lit) => match lit {
                 Literal::Bool(b) => write!(f, "{}", b),
@@ -1383,7 +1358,7 @@ mod tests {
         #[test]
         fn cant_display_unsparseable_entity_type() {
             let name = "!__Cedar!";
-            let et = EntityType::from_name(Name::simple(name));
+            let et = EntityType::from_name(Name::unqualified(name));
             assert_eq!(format!("{}", et), "<invalid entity type>");
         }
 
@@ -1577,14 +1552,14 @@ mod tests {
                 // Function calls
                 (
                     builder().call_extension_fn(
-                        Name::simple("decimal").try_into().unwrap(),
+                        Name::unqualified("decimal").try_into().unwrap(),
                         vec![builder().val("1.23")],
                     ),
                     "decimal(\"1.23\")",
                 ),
                 (
                     builder().call_extension_fn(
-                        Name::simple("notAFunc").try_into().unwrap(),
+                        Name::unqualified("notAFunc").try_into().unwrap(),
                         vec![builder().val("12.3")],
                     ),
                     "<error: extension function `notAFunc` does not exist>",
