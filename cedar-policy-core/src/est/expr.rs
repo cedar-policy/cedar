@@ -437,7 +437,7 @@ impl ExtFuncCall {
         let Some((fn_name, args)) = self.call.iter().next() else {
             unreachable!("invariant violated: empty ExtFuncCall")
         };
-        return (fn_name, args);
+        (fn_name, args)
     }
 
     pub(crate) fn into_components(self) -> (SmolStr, Vec<Expr>) {
@@ -445,7 +445,7 @@ impl ExtFuncCall {
         let Some((fn_name, args)) = self.call.into_iter().next() else {
             unreachable!("invariant violated: empty ExtFuncCall")
         };
-        return (fn_name, args);
+        (fn_name, args)
     }
 }
 

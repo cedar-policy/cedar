@@ -223,8 +223,8 @@ impl TryFrom<est::Expr> for Expr {
                     .into_iter()
                     .map(|a: est::Expr| a.try_into().map(Arc::new))
                     .try_collect()?;
-                Expr::from_function_name_and_args(fn_name.clone(), pst_args)
-                    .map_err(|e| ConversionError::InvalidExpression(e))
+                Expr::from_function_name_and_args(fn_name, pst_args)
+                    .map_err(ConversionError::InvalidExpression)
             }
         }
     }
@@ -244,9 +244,9 @@ impl TryFrom<est::ExprNoExt> for Expr {
                 let restricted_expr = v
                     .into_expr(&ctx)
                     .map_err(|e| ConversionError::InvalidEntityUid(e.to_string()))?;
-                Ok(ast::Expr::from(restricted_expr).try_into().unwrap())
+                Ok(ast::Expr::from(restricted_expr).into())
             }
-            E::Var(v) => Ok(Expr::var(v.try_into().unwrap())),
+            E::Var(v) => Ok(Expr::var(v.into())),
             E::Slot(s) => Ok(Expr::slot(s.into())),
             E::Not { arg } => Ok(Expr::not(Arc::unwrap_or_clone(arg).try_into()?)),
             E::Neg { arg } => Ok(Expr::neg(Arc::unwrap_or_clone(arg).try_into()?)),
@@ -331,12 +331,7 @@ impl TryFrom<est::ExprNoExt> for Expr {
                 }
                 est::HasAttrRepr::Extended { left, attr } => {
                     // Validate that if length of attr > 1, all elements are identifiers
-                    if attr.len() > 1
-                        && attr
-                            .iter()
-                            .find(|attr| !ast::is_normalized_ident(attr))
-                            .is_some()
-                    {
+                    if attr.len() > 1 && attr.iter().any(|attr| !ast::is_normalized_ident(attr)) {
                         Err(ConversionError::InvalidAttributePath(format!(
                             "attribute sequence .{} contains non-identifiers",
                             attr.iter().join(".")

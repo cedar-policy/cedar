@@ -22,6 +22,8 @@ use super::constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, Re
 use super::expr::{BinaryOp, EntityUID, Expr, Literal, PatternElem, UnaryOp, Var};
 use super::policy::{Clause, Effect, Policy};
 use crate::ast;
+use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
+use crate::pst::expr::ErrorNode;
 use std::sync::Arc;
 
 /// Error type for PST to AST conversions
@@ -75,11 +77,9 @@ impl TryFrom<Policy> for ast::Template {
             .collect::<Result<Vec<_>, _>>()?
             .into_iter();
 
-        let conditions = if let Some(last_expr) = conds_rev_iter.next() {
-            Some(conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc)))
-        } else {
-            None
-        };
+        let conditions = conds_rev_iter.next().map(|last_expr| {
+            conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc))
+        });
 
         // Convert annotations
         let annotations: ast::Annotations = policy
@@ -312,7 +312,6 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
         } => Ok(builder.is_entity_type(
             expr_to_ast(Arc::unwrap_or_clone(expr))?,
             entity_type
-                .clone()
                 .try_into()
                 .map_err(|p| ConversionError::InvalidConversion(format!("{:?}", p)))?,
         )),
@@ -323,20 +322,19 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
         } => Ok(builder.is_in_entity_type(
             expr_to_ast(Arc::unwrap_or_clone(expr))?,
             entity_type
-                .clone()
                 .try_into()
                 .map_err(|p| ConversionError::InvalidConversion(format!("{:?}", p)))?,
             expr_to_ast(Arc::unwrap_or_clone(e))?,
         )),
         Expr::GetAttr { expr, attr } => {
-            Ok(builder.get_attr(expr_to_ast(Arc::unwrap_or_clone(expr))?, attr.clone()))
+            Ok(builder.get_attr(expr_to_ast(Arc::unwrap_or_clone(expr))?, attr))
         }
         Expr::HasAttr { expr, attrs } => {
             Ok(builder.extended_has_attr(expr_to_ast(Arc::unwrap_or_clone(expr))?, &attrs))
         }
         Expr::Like { expr, pattern } => Ok(builder.like(
             expr_to_ast(Arc::unwrap_or_clone(expr))?,
-            elements_into_ast_pattern(pattern.clone()),
+            elements_into_ast_pattern(pattern),
         )),
         Expr::Record(elems) => builder
             .record(
@@ -347,10 +345,19 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
             )
             .map_err(|cstr_err| ConversionError::InvalidConversion(format!("{:?}", cstr_err))),
         Expr::Unknown { name } => Ok(builder.unknown(ast::Unknown {
-            name: name.clone(),
+            name,
             type_annotation: None,
         })),
-        Expr::Error(_) => todo!(),
+        Expr::Error(ErrorNode { error: e }) =>
+        // TODO: temporary handling of the error node
+        {
+            builder
+                .error(ParseErrors::singleton(ToASTError::new(
+                    ToASTErrorKind::ASTErrorNode,
+                    None,
+                )))
+                .map_err(|_| ConversionError::InvalidConversion(format!("{}", e)))
+        }
     }
 }
 

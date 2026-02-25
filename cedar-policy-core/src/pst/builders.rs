@@ -222,8 +222,7 @@ impl Expr {
         if attrs_nonempty.len() > 1
             && attrs_nonempty
                 .iter()
-                .find(|attr| !ast::is_normalized_ident(attr))
-                .is_some()
+                .any(|attr| !ast::is_normalized_ident(attr))
         {
             Err(ExprConstructionError::InvalidAttributePath(
                 attrs_nonempty.iter().join("."),

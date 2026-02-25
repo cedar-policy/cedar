@@ -578,7 +578,7 @@ pub enum Expr {
 /// A private error node is used when other internal APIs require infaillible methods
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ErrorNode {
-    error: ExprConstructionError,
+    pub(crate) error: ExprConstructionError,
 }
 
 /// Error type for PST expression construction
@@ -593,6 +593,9 @@ pub enum ExprConstructionError {
     /// Name parsing error
     #[error("error parsing name: {0}")]
     NameParsingError(SmolStr),
+    /// A generic invalid expression
+    #[error("invalid expression: {0}")]
+    InvalidExpression(String),
     /// Extension function lookup error
     #[error(transparent)]
     FunctionLookupError(ExtensionFunctionLookupError),
@@ -618,29 +621,37 @@ pub enum ExprConstructionError {
 }
 
 impl Expr {
+    /// Transform a function call with arguments into a PST expression given the [SmolStr] name
+    /// of the function.
+    /// Needs to construct a reprentation of the [SmolStr] name as an [ast::Name].
     pub(crate) fn from_function_name_and_args(
         name: SmolStr,
         args: Vec<Arc<Expr>>,
     ) -> Result<Expr, ExprConstructionError> {
         let ast_name = ast::Name::from_str(name.as_str())
             .map_err(|_| ExprConstructionError::NameParsingError(name.clone()))?;
-        Self::from_function_names_and_args(name, ast_name, args)
+        Self::from_function_names_and_args(name, &ast_name, args)
     }
 
+    /// Transform a function call with arguments into a PST expression given the [`ast::Name`] of
+    /// the function. Clones the string representation of the `ast::Name` given.
     pub(crate) fn from_function_ast_name_and_args(
-        name: ast::Name,
+        name: &ast::Name,
         args: Vec<Arc<Expr>>,
     ) -> Result<Expr, ExprConstructionError> {
         Self::from_function_names_and_args(name.to_smolstr(), name, args)
     }
 
+    /// Transform a function call with arguments into a PST expression given the [`ast::Name`] of
+    /// the function, and its [SmolStr] name.
+    /// Assumes the two names's representation as strings are equivalent, and does not clone.
     fn from_function_names_and_args(
         name: SmolStr,
-        ast_name: ast::Name,
+        ast_name: &ast::Name,
         args: Vec<Arc<Expr>>,
     ) -> Result<Expr, ExprConstructionError> {
         let extension = Extensions::all_available()
-            .func(&ast_name)
+            .func(ast_name)
             .map_err(ExprConstructionError::FunctionLookupError)?;
 
         let expected = extension.arg_types().len();
@@ -648,7 +659,7 @@ impl Expr {
 
         if expected != got {
             return Err(ExprConstructionError::WrongArity {
-                name: ast_name.to_string(),
+                name: name.into(),
                 expected,
                 got,
             });
@@ -664,12 +675,12 @@ impl Expr {
                     });
                 }
                 let op = UnaryOp::from_function_name(&ast_name.to_string())
-                    .ok_or_else(|| ExprConstructionError::UnknownFunction { name })?;
+                    .ok_or(ExprConstructionError::UnknownFunction { name })?;
                 Expr::UnaryOp { op, expr }
             }
             2 => {
                 let op = BinaryOp::from_function_name(&ast_name.to_string())
-                    .ok_or_else(|| ExprConstructionError::UnknownFunction { name })?;
+                    .ok_or(ExprConstructionError::UnknownFunction { name })?;
                 let mut iter = args.into_iter();
                 Expr::BinaryOp {
                     op,
@@ -904,12 +915,12 @@ impl ExprBuilder for PstBuilder {
 
     fn call_extension_fn(self, fn_name: ast::Name, args: impl IntoIterator<Item = Expr>) -> Expr {
         let expr = Expr::from_function_ast_name_and_args(
-            fn_name,
+            &fn_name,
             args.into_iter().map(Arc::new).collect(),
         );
         match expr {
             Ok(e) => e,
-            Err(e) => Expr::Error(ErrorNode { error: e }),
+            Err(error) => Expr::Error(ErrorNode { error }),
         }
     }
 
@@ -1050,6 +1061,10 @@ impl std::fmt::Display for Expr {
     }
 }
 
+#[expect(
+    clippy::fallible_impl_from,
+    reason = "AST records cannot have duplicate keys, so builder.record() cannot fail"
+)]
 impl From<ast::Expr> for Expr {
     fn from(ast_expr: ast::Expr) -> Self {
         use crate::expr_builder::ExprBuilder;
@@ -1137,10 +1152,10 @@ impl From<ast::Expr> for Expr {
                 Arc::unwrap_or_clone(args).into_iter().map(|a| a.into()),
             ),
             ast::ExprKind::GetAttr { expr, attr } => {
-                builder.get_attr(Arc::unwrap_or_clone(expr).into(), attr.into())
+                builder.get_attr(Arc::unwrap_or_clone(expr).into(), attr)
             }
             ast::ExprKind::HasAttr { expr, attr } => {
-                builder.has_attr(Arc::unwrap_or_clone(expr).into(), attr.into())
+                builder.has_attr(Arc::unwrap_or_clone(expr).into(), attr)
             }
             ast::ExprKind::Like { expr, pattern } => {
                 builder.like(Arc::unwrap_or_clone(expr).into(), pattern)
@@ -1151,15 +1166,26 @@ impl From<ast::Expr> for Expr {
             ast::ExprKind::Set(elems) => {
                 builder.set(Arc::unwrap_or_clone(elems).into_iter().map(|e| e.into()))
             }
-            ast::ExprKind::Record(map) => builder
-                .record(
-                    Arc::unwrap_or_clone(map)
-                        .into_iter()
-                        .map(|(k, v)| (k.into(), v.into())),
-                )
-                .unwrap(),
+            ast::ExprKind::Record(map) =>
+            {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "cannot have duplicate keys in this conversion"
+                )]
+                builder
+                    .record(
+                        Arc::unwrap_or_clone(map)
+                            .into_iter()
+                            .map(|(k, v)| (k, v.into())),
+                    )
+                    .unwrap()
+            }
             #[cfg(feature = "tolerant-ast")]
-            ast::ExprKind::Error { .. } => panic!("Cannot convert EST error node to PST"),
+            ast::ExprKind::Error {
+                error_kind: ast::expr_allows_errors::AstExprErrorKind::InvalidExpr(e_str),
+            } => Expr::Error(ErrorNode {
+                error: ExprConstructionError::InvalidExpression(e_str),
+            }),
         }
     }
 }
@@ -1173,7 +1199,7 @@ mod tests {
         let name = ast::Name::parse_unqualified_name("unknownFunc").unwrap();
         let args = vec![Arc::new(Expr::Literal(Literal::Long(1)))];
 
-        let result = Expr::from_function_ast_name_and_args(name, args);
+        let result = Expr::from_function_ast_name_and_args(&name, args);
         assert!(matches!(
             result,
             Err(ExprConstructionError::FunctionLookupError { .. })
@@ -1188,7 +1214,7 @@ mod tests {
             Arc::new(Expr::Literal(Literal::Long(2))),
         ];
 
-        let result = Expr::from_function_ast_name_and_args(name, args);
+        let result = Expr::from_function_ast_name_and_args(&name, args);
         assert!(matches!(
             result,
             Err(ExprConstructionError::WrongArity { .. })
@@ -1210,7 +1236,7 @@ mod tests {
                 .map(|_| Arc::new(Expr::Literal(Literal::Long(0))))
                 .collect();
 
-            let result = Expr::from_function_ast_name_and_args(name.clone(), args);
+            let result = Expr::from_function_ast_name_and_args(&name, args);
             assert!(
                 result.is_ok(),
                 "Function {} should be supported but got error: {:?}",
