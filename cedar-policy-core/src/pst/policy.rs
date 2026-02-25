@@ -90,7 +90,9 @@ impl std::fmt::Display for Clause {
 
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Display in Cedar syntax
+        // This Display implementation is only for debugging purposes. It does not print valid
+        // Cedar syntax.
+        // Currently, there is no goal to display valid Cedar syntax from the PST directly.
         write!(f, "{} (", self.effect)?;
         write!(f, "principal {}, ", self.principal)?;
         write!(f, "action {}, ", self.action)?;

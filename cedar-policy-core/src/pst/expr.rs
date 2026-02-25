@@ -76,8 +76,8 @@ pub struct Name {
 }
 
 impl Name {
-    /// Constructs a simple (unqualified) name.
-    pub fn simple(id: impl Into<SmolStr>) -> Self {
+    /// Constructs an unqualified name.
+    pub fn unqualified(id: impl Into<SmolStr>) -> Self {
         Name {
             id: id.into(),
             namespace: Arc::new(vec![]),
@@ -99,11 +99,15 @@ impl Name {
 
 impl From<ast::Name> for Name {
     fn from(name: ast::Name) -> Self {
+        let ast::Name {
+            0: ast::InternalName { id, path, .. },
+        } = name;
         Name {
-            id: name.basename().to_smolstr(),
+            id: id.into_smolstr(),
             namespace: Arc::new(
-                name.as_ref()
-                    .namespace_components()
+                Arc::try_unwrap(path)
+                    .unwrap_or_else(|arc| (*arc).clone())
+                    .into_iter()
                     .map(|id| id.to_smolstr())
                     .collect(),
             ),
@@ -150,16 +154,7 @@ impl EntityType {
 
 impl From<ast::EntityType> for EntityType {
     fn from(et: ast::EntityType) -> Self {
-        EntityType(Name {
-            id: et.name().basename().to_smolstr(),
-            namespace: Arc::new(
-                et.name()
-                    .0
-                    .namespace_components()
-                    .map(|id| id.to_smolstr())
-                    .collect(),
-            ),
-        })
+        EntityType(et.into_name().into())
     }
 }
 
@@ -427,7 +422,7 @@ pub enum Literal {
     /// Integer literal
     Long(i64),
     /// String literal
-    String(String),
+    String(SmolStr),
     /// Entity UID literal
     EntityUID(EntityUID),
 }
@@ -531,7 +526,6 @@ pub enum Expr {
     },
     /// An error occurred during construction
     #[expect(
-        clippy::pub_underscore_fields,
         private_interfaces,
         reason = "intentionally private to prevent clients from constructing error nodes"
     )]
@@ -545,16 +539,19 @@ pub(crate) struct ErrorNode {
 }
 
 /// Error type for PST expression construction
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ExprConstructionError {
     /// Unknown function name
+    #[error("unknown function: {name}")]
     UnknownFunction {
         /// The name of the unknown function
         name: String,
     },
     /// Extension function lookup error
+    #[error(transparent)]
     FunctionLookupError(ExtensionFunctionLookupError),
     /// Wrong number of arguments
+    #[error("function {name} expects {expected} argument(s), got {got}")]
     WrongArity {
         /// The name of the entity with the wrong number of arguments
         name: String,
@@ -565,38 +562,14 @@ pub enum ExprConstructionError {
     },
 }
 
-impl std::fmt::Display for ExprConstructionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ExprConstructionError::UnknownFunction { name } => {
-                write!(f, "unknown function: {}", name)
-            }
-            ExprConstructionError::FunctionLookupError(e) => {
-                write!(f, "{}", e)
-            }
-            ExprConstructionError::WrongArity {
-                name,
-                expected,
-                got,
-            } => write!(
-                f,
-                "function {} expects {} argument(s), got {}",
-                name, expected, got
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ExprConstructionError {}
-
 impl Expr {
     #[expect(dead_code, reason = "PST is under development")]
     fn from_function(
         name: &ast::Name,
-        args: &Vec<Arc<Expr>>,
+        args: Vec<Arc<Expr>>,
     ) -> Result<Expr, ExprConstructionError> {
         let extension = Extensions::all_available()
-            .func(&name)
+            .func(name)
             .map_err(ExprConstructionError::FunctionLookupError)?;
 
         let expected = extension.arg_types().len();
@@ -611,16 +584,20 @@ impl Expr {
         }
         Ok(match args.len() {
             1 => {
+                #[expect(clippy::unwrap_used, reason = "length = 1 checked in arm")]
+                let expr = args.into_iter().next().unwrap();
+                // Special case: the unknown function
+                if name.to_string() == "unknown" {
+                    return Ok(Expr::Unknown {
+                        name: format!("{}", expr).into(),
+                    });
+                }
                 let op = UnaryOp::from_function_name(&name.to_string()).ok_or_else(|| {
                     ExprConstructionError::UnknownFunction {
                         name: name.to_string(),
                     }
                 })?;
-                Expr::UnaryOp {
-                    op,
-                    #[expect(clippy::indexing_slicing, reason = "length = 1 checked in arm")]
-                    expr: Arc::clone(&args[0]),
-                }
+                Expr::UnaryOp { op, expr }
             }
             2 => {
                 let op = BinaryOp::from_function_name(&name.to_string()).ok_or_else(|| {
@@ -628,12 +605,13 @@ impl Expr {
                         name: name.to_string(),
                     }
                 })?;
+                let mut iter = args.into_iter();
                 Expr::BinaryOp {
                     op,
-                    #[expect(clippy::indexing_slicing, reason = "length checked = 2 in arm")]
-                    left: Arc::clone(&args[0]),
-                    #[expect(clippy::indexing_slicing, reason = "length checked = 2 in arm")]
-                    right: Arc::clone(&args[1]),
+                    #[expect(clippy::unwrap_used, reason = "length = 2 checked in match arm")]
+                    left: iter.next().unwrap(),
+                    #[expect(clippy::unwrap_used, reason = "length = 2 checked in match arm")]
+                    right: iter.next().unwrap(),
                 }
             }
             _ => {
@@ -680,7 +658,7 @@ impl ExprBuilder for PstBuilder {
         Expr::Literal(match lit.into() {
             ast::Literal::Bool(b) => Literal::Bool(b),
             ast::Literal::Long(i) => Literal::Long(i),
-            ast::Literal::String(s) => Literal::String(s.to_string()),
+            ast::Literal::String(s) => Literal::String(s),
             ast::Literal::EntityUID(e) => Literal::EntityUID(e.as_ref().clone().into()),
         })
     }
@@ -865,7 +843,7 @@ impl ExprBuilder for PstBuilder {
     }
 
     fn call_extension_fn(self, fn_name: ast::Name, args: impl IntoIterator<Item = Expr>) -> Expr {
-        let expr = Expr::from_function(&fn_name, &args.into_iter().map(Arc::new).collect());
+        let expr = Expr::from_function(&fn_name, args.into_iter().map(Arc::new).collect());
         match expr {
             Ok(e) => e,
             Err(e) => Expr::Error(ErrorNode { error: e }),
@@ -921,7 +899,10 @@ impl ExprBuilder for PstBuilder {
 
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // This Display implementation is mostly for debugging purposes
+        // This Display implementation is mostly for debugging purposes, and it does not print
+        // valid Cedar expressions.
+        // If you need to print a valid Cedar expression from a PST expression, you should convert
+        // it to an EST expression first.
         match self {
             Expr::Literal(lit) => match lit {
                 Literal::Bool(b) => write!(f, "{}", b),
@@ -1015,7 +996,7 @@ mod tests {
         let name = ast::Name::parse_unqualified_name("unknownFunc").unwrap();
         let args = vec![Arc::new(Expr::Literal(Literal::Long(1)))];
 
-        let result = Expr::from_function(&name, &args);
+        let result = Expr::from_function(&name, args);
         assert!(matches!(
             result,
             Err(ExprConstructionError::FunctionLookupError { .. })
@@ -1030,7 +1011,7 @@ mod tests {
             Arc::new(Expr::Literal(Literal::Long(2))),
         ];
 
-        let result = Expr::from_function(&name, &args);
+        let result = Expr::from_function(&name, args);
         assert!(matches!(
             result,
             Err(ExprConstructionError::WrongArity { .. })
@@ -1045,10 +1026,6 @@ mod tests {
 
         for func in extensions.all_funcs() {
             let name = func.name().clone();
-            // The "unknown" function is not directly supported
-            if &name.to_string() == "unknown" {
-                continue;
-            }
             let arity = func.arg_types().len();
 
             // Create dummy "0" arguments based on arity, we don't typecheck here
@@ -1056,7 +1033,7 @@ mod tests {
                 .map(|_| Arc::new(Expr::Literal(Literal::Long(0))))
                 .collect();
 
-            let result = Expr::from_function(&name, &args);
+            let result = Expr::from_function(&name, args);
             assert!(
                 result.is_ok(),
                 "Function {} should be supported but got error: {:?}",
@@ -1067,11 +1044,18 @@ mod tests {
             print!("Expression: {}", actual);
             match arity {
                 1 => {
-                    assert!(
-                        matches!(actual, Expr::UnaryOp { .. }),
-                        "Unary function {} should produce UnaryOp",
-                        name
-                    );
+                    if &name.to_string() == "unknown" {
+                        assert!(
+                            matches!(actual, Expr::Unknown { .. }),
+                            "Expected unary unknown function to be Unknown expr",
+                        );
+                    } else {
+                        assert!(
+                            matches!(actual, Expr::UnaryOp { .. }),
+                            "Unary function {} should produce UnaryOp",
+                            name
+                        );
+                    }
                 }
                 2 => {
                     assert!(
@@ -1160,7 +1144,7 @@ mod tests {
         #[test]
         fn cant_display_unsparseable_entity_type() {
             let name = "!__Cedar!";
-            let et = EntityType::from_name(Name::simple(name));
+            let et = EntityType::from_name(Name::unqualified(name));
             assert_eq!(format!("{}", et), "<invalid entity type>");
         }
 
@@ -1354,14 +1338,14 @@ mod tests {
                 // Function calls
                 (
                     builder().call_extension_fn(
-                        Name::simple("decimal").try_into().unwrap(),
+                        Name::unqualified("decimal").try_into().unwrap(),
                         vec![builder().val("1.23")],
                     ),
                     "decimal(\"1.23\")",
                 ),
                 (
                     builder().call_extension_fn(
-                        Name::simple("notAFunc").try_into().unwrap(),
+                        Name::unqualified("notAFunc").try_into().unwrap(),
                         vec![builder().val("12.3")],
                     ),
                     "<error: extension function `notAFunc` does not exist>",
