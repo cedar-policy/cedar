@@ -16,11 +16,14 @@
 
 //! Conversions between EST and PST representations.
 
-use super::{EntityUID, Expr, UnaryOp};
-use crate::pst::policy::PolicyID;
-use crate::pst::Name;
-use crate::{ast::is_normalized_ident, pst::EntityType};
-use crate::{est, pst};
+use super::{
+    policy::PolicyID, ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr,
+    ExprConstructionError, Name, PatternElem, Policy, PrincipalConstraint, ResourceConstraint,
+    UnaryOp, Var,
+};
+use crate::ast;
+use crate::entities;
+use crate::est;
 use itertools::Itertools;
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -39,10 +42,173 @@ pub enum ConversionError {
     InvalidRecord(String),
     #[error("invalid attribute path {0}")]
     InvalidAttributePath(String),
-    #[error("invalid method call {0}")]
-    InvalidMethodCall(SmolStr),
+    #[error(transparent)]
+    InvalidExpression(ExprConstructionError),
     #[error("unknown function {0}")]
     UnknownFunction(SmolStr),
+}
+
+impl TryFrom<est::Policy> for Policy {
+    type Error = ConversionError;
+
+    fn try_from(est_policy: est::Policy) -> Result<Self, Self::Error> {
+        let clauses: Result<Vec<_>, _> = est_policy
+            .conditions
+            .into_iter()
+            .map(|c| c.try_into())
+            .collect();
+
+        Ok(Policy {
+            id: PolicyID("policy".into()),
+            effect: match est_policy.effect {
+                ast::Effect::Permit => Effect::Permit,
+                ast::Effect::Forbid => Effect::Forbid,
+            },
+            principal: est_policy.principal.try_into()?,
+            action: est_policy.action.try_into()?,
+            resource: est_policy.resource.try_into()?,
+            clauses: clauses?,
+            annotations: est_policy
+                .annotations
+                .0
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.to_string(),
+                        v.as_ref().map(|a| a.val.to_string()).unwrap_or_default(),
+                    )
+                })
+                .collect(),
+        })
+    }
+}
+
+impl TryFrom<est::Clause> for Clause {
+    type Error = ConversionError;
+
+    fn try_from(clause: est::Clause) -> Result<Self, Self::Error> {
+        match clause {
+            est::Clause::When(expr) => Ok(Clause::When(Arc::new(expr.try_into()?))),
+            est::Clause::Unless(expr) => Ok(Clause::Unless(Arc::new(expr.try_into()?))),
+        }
+    }
+}
+
+impl TryFrom<entities::EntityUidJson> for EntityUID {
+    type Error = ConversionError;
+
+    fn try_from(entity: entities::EntityUidJson) -> Result<Self, Self::Error> {
+        let ctx = || crate::entities::json::err::JsonDeserializationErrorContext::Context;
+        entity
+            .into_euid(&ctx)
+            .map_err(|e| ConversionError::InvalidEntityUid(e.to_string()))
+            .map(EntityUID::from)
+    }
+}
+
+impl TryFrom<est::PrincipalConstraint> for PrincipalConstraint {
+    type Error = ConversionError;
+
+    fn try_from(constraint: est::PrincipalConstraint) -> Result<Self, Self::Error> {
+        use est::{EqConstraint, PrincipalConstraint as E, PrincipalOrResourceInConstraint};
+        match constraint {
+            E::All => Ok(PrincipalConstraint::Any),
+            E::Eq(EqConstraint::Entity { entity }) => Ok(PrincipalConstraint::Eq(
+                EntityOrSlot::Entity(entity.try_into()?),
+            )),
+            E::Eq(EqConstraint::Slot { slot }) => {
+                Ok(PrincipalConstraint::Eq(EntityOrSlot::Slot(slot.into())))
+            }
+            E::In(PrincipalOrResourceInConstraint::Entity { entity }) => Ok(
+                PrincipalConstraint::In(EntityOrSlot::Entity(entity.try_into()?)),
+            ),
+            E::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
+                Ok(PrincipalConstraint::In(EntityOrSlot::Slot(slot.into())))
+            }
+            E::Is(is_c) => {
+                let (entity_type_ast, in_constraint) = is_c.into_components();
+                let entity_type = EntityType::from_name(Name::unqualified(entity_type_ast));
+                match in_constraint {
+                    None => Ok(PrincipalConstraint::Is(entity_type)),
+                    Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                        Ok(PrincipalConstraint::IsIn(
+                            entity_type,
+                            EntityOrSlot::Entity(entity.try_into()?),
+                        ))
+                    }
+                    Some(PrincipalOrResourceInConstraint::Slot { slot }) => Ok(
+                        PrincipalConstraint::IsIn(entity_type, EntityOrSlot::Slot(slot.into())),
+                    ),
+                }
+            }
+        }
+    }
+}
+
+impl TryFrom<est::ResourceConstraint> for ResourceConstraint {
+    type Error = ConversionError;
+
+    fn try_from(constraint: est::ResourceConstraint) -> Result<Self, Self::Error> {
+        use est::{EqConstraint, PrincipalOrResourceInConstraint, ResourceConstraint as E};
+        match constraint {
+            E::All => Ok(ResourceConstraint::Any),
+            E::Eq(EqConstraint::Entity { entity }) => Ok(ResourceConstraint::Eq(
+                EntityOrSlot::Entity(entity.try_into()?),
+            )),
+            E::Eq(EqConstraint::Slot { slot }) => {
+                Ok(ResourceConstraint::Eq(EntityOrSlot::Slot(slot.into())))
+            }
+            E::In(PrincipalOrResourceInConstraint::Entity { entity }) => Ok(
+                ResourceConstraint::In(EntityOrSlot::Entity(entity.try_into()?)),
+            ),
+            E::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
+                Ok(ResourceConstraint::In(EntityOrSlot::Slot(slot.into())))
+            }
+            E::Is(is_c) => {
+                let (entity_type_ast, in_constraint) = is_c.into_components();
+                let entity_type = EntityType::from_name(Name::unqualified(entity_type_ast));
+                match in_constraint {
+                    None => Ok(ResourceConstraint::Is(entity_type)),
+                    Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                        Ok(ResourceConstraint::IsIn(
+                            entity_type,
+                            EntityOrSlot::Entity(entity.try_into()?),
+                        ))
+                    }
+                    Some(PrincipalOrResourceInConstraint::Slot { slot }) => Ok(
+                        ResourceConstraint::IsIn(entity_type, EntityOrSlot::Slot(slot.into())),
+                    ),
+                }
+            }
+        }
+    }
+}
+
+impl TryFrom<est::ActionConstraint> for ActionConstraint {
+    type Error = ConversionError;
+
+    fn try_from(constraint: est::ActionConstraint) -> Result<Self, Self::Error> {
+        use est::{ActionConstraint as E, ActionInConstraint, EqConstraint};
+        match constraint {
+            E::All => Ok(ActionConstraint::Any),
+            E::Eq(EqConstraint::Entity { entity }) => Ok(ActionConstraint::Eq(entity.try_into()?)),
+            E::Eq(EqConstraint::Slot { .. }) => {
+                Err(ConversionError::ActionConstraintCannotHaveSlots)
+            }
+            E::In(ActionInConstraint::Single { entity }) => {
+                Ok(ActionConstraint::In(vec![entity.try_into()?]))
+            }
+            E::In(ActionInConstraint::Set { entities }) => {
+                let euids: Vec<EntityUID> =
+                    entities.into_iter().map(TryInto::try_into).try_collect()?;
+                Ok(ActionConstraint::In(euids))
+            }
+            #[cfg(feature = "tolerant-ast")]
+            E::ErrorConstraint => Err(ConversionError::InvalidEntityUid(
+                "Cannot convert EST error constraint to PST".to_string(),
+            )),
+        }
+    }
 }
 
 impl TryFrom<est::Expr> for Expr {
@@ -55,10 +221,10 @@ impl TryFrom<est::Expr> for Expr {
                 let (fn_name, est_args) = e.into_components();
                 let pst_args: Vec<Arc<Expr>> = est_args
                     .into_iter()
-                    .map(|a: est::Expr| a.clone().try_into().map(Arc::new))
+                    .map(|a: est::Expr| a.try_into().map(Arc::new))
                     .try_collect()?;
                 Expr::from_function_name_and_args(fn_name.clone(), &pst_args)
-                    .map_err(|_| ConversionError::UnknownFunction(fn_name.clone()))
+                    .map_err(|e| ConversionError::InvalidExpression(e))
             }
         }
     }
@@ -78,9 +244,7 @@ impl TryFrom<est::ExprNoExt> for Expr {
                 let restricted_expr = v
                     .into_expr(&ctx)
                     .map_err(|e| ConversionError::InvalidEntityUid(e.to_string()))?;
-                Ok(crate::ast::Expr::from(restricted_expr.as_ref().clone())
-                    .try_into()
-                    .unwrap())
+                Ok(ast::Expr::from(restricted_expr).try_into().unwrap())
             }
             E::Var(v) => Ok(Expr::var(v.try_into().unwrap())),
             E::Slot(s) => Ok(Expr::slot(s.into())),
@@ -170,7 +334,7 @@ impl TryFrom<est::ExprNoExt> for Expr {
                     if attr.len() > 1
                         && attr
                             .iter()
-                            .find(|attr| !is_normalized_ident(attr))
+                            .find(|attr| !ast::is_normalized_ident(attr))
                             .is_some()
                     {
                         Err(ConversionError::InvalidAttributePath(format!(
@@ -184,13 +348,11 @@ impl TryFrom<est::ExprNoExt> for Expr {
                 }
             },
             E::Like { left, pattern } => {
-                let pattern_elems: Vec<super::PatternElem> = pattern
+                let pattern_elems: Vec<PatternElem> = pattern
                     .iter()
                     .flat_map(|e| match e {
-                        est::PatternElem::Wildcard => vec![super::PatternElem::Wildcard],
-                        est::PatternElem::Literal(s) => {
-                            s.chars().map(super::PatternElem::Char).collect()
-                        }
+                        est::PatternElem::Wildcard => vec![PatternElem::Wildcard],
+                        est::PatternElem::Literal(s) => s.chars().map(PatternElem::Char).collect(),
                     })
                     .collect();
                 // We don't use the ExprBuilder trait here; avoids a conversion est -> ast,
@@ -205,7 +367,7 @@ impl TryFrom<est::ExprNoExt> for Expr {
                 entity_type,
                 in_expr,
             } => {
-                let et_name = pst::Name::unqualified(entity_type);
+                let et_name = Name::unqualified(entity_type);
                 let et = EntityType::from_name(et_name);
                 match in_expr {
                     None => Ok(Expr::is_type(Arc::unwrap_or_clone(left).try_into()?, et)),
@@ -245,190 +407,13 @@ impl TryFrom<est::ExprNoExt> for Expr {
     }
 }
 
-impl From<crate::ast::Var> for super::Var {
-    fn from(v: crate::ast::Var) -> Self {
+impl From<ast::Var> for Var {
+    fn from(v: ast::Var) -> Self {
         match v {
-            crate::ast::Var::Principal => super::Var::Principal,
-            crate::ast::Var::Action => super::Var::Action,
-            crate::ast::Var::Resource => super::Var::Resource,
-            crate::ast::Var::Context => super::Var::Context,
-        }
-    }
-}
-
-impl TryFrom<est::Policy> for super::Policy {
-    type Error = ConversionError;
-
-    fn try_from(est_policy: est::Policy) -> Result<Self, Self::Error> {
-        let clauses: Result<Vec<_>, _> = est_policy
-            .conditions()
-            .iter()
-            .cloned()
-            .map(|c| c.try_into())
-            .collect();
-        Ok(super::Policy {
-            id: PolicyID("policy".into()),
-            effect: match est_policy.effect() {
-                crate::ast::Effect::Permit => super::Effect::Permit,
-                crate::ast::Effect::Forbid => super::Effect::Forbid,
-            },
-            principal: est_policy.principal().clone().try_into()?,
-            action: est_policy.action().clone().try_into()?,
-            resource: est_policy.resource().clone().try_into()?,
-            clauses: clauses?,
-            annotations: est_policy
-                .annotations()
-                .0
-                .iter()
-                .map(|(k, v)| {
-                    (
-                        k.to_string(),
-                        v.as_ref().map(|a| a.val.to_string()).unwrap_or_default(),
-                    )
-                })
-                .collect(),
-        })
-    }
-}
-
-impl TryFrom<est::Clause> for super::Clause {
-    type Error = ConversionError;
-
-    fn try_from(clause: est::Clause) -> Result<Self, Self::Error> {
-        match clause {
-            est::Clause::When(expr) => Ok(super::Clause::When(Arc::new(expr.try_into()?))),
-            est::Clause::Unless(expr) => Ok(super::Clause::Unless(Arc::new(expr.try_into()?))),
-        }
-    }
-}
-
-fn entity_from_entity_uid_json(
-    entity: crate::entities::EntityUidJson,
-) -> Result<EntityUID, ConversionError> {
-    let ctx = || crate::entities::json::err::JsonDeserializationErrorContext::Context;
-    entity
-        .into_euid(&ctx)
-        .map_err(|e| ConversionError::InvalidEntityUid(e.to_string()))
-        .map(EntityUID::from)
-}
-
-impl TryFrom<est::PrincipalConstraint> for super::PrincipalConstraint {
-    type Error = ConversionError;
-
-    fn try_from(constraint: est::PrincipalConstraint) -> Result<Self, Self::Error> {
-        use est::{EqConstraint, PrincipalConstraint as E, PrincipalOrResourceInConstraint};
-        match constraint {
-            E::All => Ok(super::PrincipalConstraint::Any),
-            E::Eq(EqConstraint::Entity { entity }) => Ok(super::PrincipalConstraint::Eq(
-                super::EntityOrSlot::Entity(entity_from_entity_uid_json(entity)?),
-            )),
-            E::Eq(EqConstraint::Slot { slot }) => Ok(super::PrincipalConstraint::Eq(
-                super::EntityOrSlot::Slot(slot.into()),
-            )),
-            E::In(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                Ok(super::PrincipalConstraint::In(super::EntityOrSlot::Entity(
-                    entity_from_entity_uid_json(entity)?,
-                )))
-            }
-            E::In(PrincipalOrResourceInConstraint::Slot { slot }) => Ok(
-                super::PrincipalConstraint::In(super::EntityOrSlot::Slot(slot.into())),
-            ),
-            E::Is(is_c) => {
-                let (entity_type_ast, in_constraint) = is_c.into_components();
-                let entity_type = EntityType::from_name(Name::unqualified(entity_type_ast));
-                match in_constraint {
-                    None => Ok(super::PrincipalConstraint::Is(entity_type)),
-                    Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                        Ok(super::PrincipalConstraint::IsIn(
-                            entity_type,
-                            super::EntityOrSlot::Entity(entity_from_entity_uid_json(entity)?),
-                        ))
-                    }
-                    Some(PrincipalOrResourceInConstraint::Slot { slot }) => {
-                        Ok(super::PrincipalConstraint::IsIn(
-                            entity_type,
-                            super::EntityOrSlot::Slot(slot.into()),
-                        ))
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl TryFrom<est::ResourceConstraint> for super::ResourceConstraint {
-    type Error = ConversionError;
-
-    fn try_from(constraint: est::ResourceConstraint) -> Result<Self, Self::Error> {
-        use est::{EqConstraint, PrincipalOrResourceInConstraint, ResourceConstraint as E};
-        match constraint {
-            E::All => Ok(super::ResourceConstraint::Any),
-            E::Eq(EqConstraint::Entity { entity }) => Ok(super::ResourceConstraint::Eq(
-                super::EntityOrSlot::Entity(entity_from_entity_uid_json(entity)?),
-            )),
-            E::Eq(EqConstraint::Slot { slot }) => Ok(super::ResourceConstraint::Eq(
-                super::EntityOrSlot::Slot(slot.into()),
-            )),
-            E::In(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                Ok(super::ResourceConstraint::In(super::EntityOrSlot::Entity(
-                    entity_from_entity_uid_json(entity)?,
-                )))
-            }
-            E::In(PrincipalOrResourceInConstraint::Slot { slot }) => Ok(
-                super::ResourceConstraint::In(super::EntityOrSlot::Slot(slot.into())),
-            ),
-            E::Is(is_c) => {
-                let (entity_type_ast, in_constraint) = is_c.into_components();
-                let entity_type = EntityType::from_name(Name::unqualified(entity_type_ast));
-                match in_constraint {
-                    None => Ok(super::ResourceConstraint::Is(entity_type)),
-                    Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                        Ok(super::ResourceConstraint::IsIn(
-                            entity_type,
-                            super::EntityOrSlot::Entity(entity_from_entity_uid_json(
-                                entity.clone(),
-                            )?),
-                        ))
-                    }
-                    Some(PrincipalOrResourceInConstraint::Slot { slot }) => {
-                        Ok(super::ResourceConstraint::IsIn(
-                            entity_type,
-                            super::EntityOrSlot::Slot(slot.into()),
-                        ))
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl TryFrom<est::ActionConstraint> for super::ActionConstraint {
-    type Error = ConversionError;
-
-    fn try_from(constraint: est::ActionConstraint) -> Result<Self, Self::Error> {
-        use est::{ActionConstraint as E, ActionInConstraint, EqConstraint};
-        match constraint {
-            E::All => Ok(super::ActionConstraint::Any),
-            E::Eq(EqConstraint::Entity { entity }) => Ok(super::ActionConstraint::Eq(
-                entity_from_entity_uid_json(entity)?,
-            )),
-            E::Eq(EqConstraint::Slot { .. }) => {
-                Err(ConversionError::ActionConstraintCannotHaveSlots)
-            }
-            E::In(ActionInConstraint::Single { entity }) => Ok(super::ActionConstraint::In(vec![
-                entity_from_entity_uid_json(entity)?,
-            ])),
-            E::In(ActionInConstraint::Set { entities }) => {
-                let euids: Vec<EntityUID> = entities
-                    .into_iter()
-                    .map(entity_from_entity_uid_json)
-                    .try_collect()?;
-                Ok(super::ActionConstraint::In(euids))
-            }
-            #[cfg(feature = "tolerant-ast")]
-            E::ErrorConstraint => Err(ConversionError::InvalidEntityUid(
-                "Cannot convert EST error constraint to PST".to_string(),
-            )),
+            ast::Var::Principal => Var::Principal,
+            ast::Var::Action => Var::Action,
+            ast::Var::Resource => Var::Resource,
+            ast::Var::Context => Var::Context,
         }
     }
 }
@@ -588,7 +573,7 @@ mod tests {
     #[test]
     fn test_est_to_pst_simple() {
         // Test simple value conversion
-        let est_expr = est::ExprNoExt::Var(crate::ast::Var::Principal);
+        let est_expr = est::ExprNoExt::Var(ast::Var::Principal);
         let pst_expr: Expr = est_expr.try_into().unwrap();
         assert!(matches!(pst_expr, Expr::Var(pst::expr::Var::Principal)));
     }
@@ -633,7 +618,7 @@ mod tests {
     #[test]
     fn test_est_to_pst_is_empty() {
         let arg = Arc::new(est::Expr::ExprNoExt(est::ExprNoExt::Var(
-            crate::ast::Var::Principal,
+            ast::Var::Principal,
         )));
         let est_expr = est::ExprNoExt::IsEmpty { arg };
         let pst_expr: Expr = est_expr.try_into().unwrap();
@@ -649,7 +634,7 @@ mod tests {
     #[test]
     fn test_est_to_pst_get_attr() {
         let left = Arc::new(est::Expr::ExprNoExt(est::ExprNoExt::Var(
-            crate::ast::Var::Principal,
+            ast::Var::Principal,
         )));
         let est_expr = est::ExprNoExt::GetAttr {
             left,
@@ -662,7 +647,7 @@ mod tests {
     #[test]
     fn test_est_to_pst_has_attr() {
         let left = Arc::new(est::Expr::ExprNoExt(est::ExprNoExt::Var(
-            crate::ast::Var::Principal,
+            ast::Var::Principal,
         )));
         let est_expr = est::ExprNoExt::HasAttr(est::HasAttrRepr::Simple {
             left,
@@ -675,7 +660,7 @@ mod tests {
     #[test]
     fn test_est_to_pst_like() {
         let left = Arc::new(est::Expr::ExprNoExt(est::ExprNoExt::Var(
-            crate::ast::Var::Principal,
+            ast::Var::Principal,
         )));
         let pattern = vec![
             est::PatternElem::Wildcard,
@@ -689,7 +674,7 @@ mod tests {
     #[test]
     fn test_est_to_pst_is() {
         let left = Arc::new(est::Expr::ExprNoExt(est::ExprNoExt::Var(
-            crate::ast::Var::Principal,
+            ast::Var::Principal,
         )));
         let est_expr = est::ExprNoExt::Is {
             left,
@@ -704,8 +689,8 @@ mod tests {
     fn test_est_to_pst_set() {
         // Test set conversion
         let est_expr = est::ExprNoExt::Set(vec![
-            est::Expr::ExprNoExt(est::ExprNoExt::Var(crate::ast::Var::Principal)),
-            est::Expr::ExprNoExt(est::ExprNoExt::Var(crate::ast::Var::Action)),
+            est::Expr::ExprNoExt(est::ExprNoExt::Var(ast::Var::Principal)),
+            est::Expr::ExprNoExt(est::ExprNoExt::Var(ast::Var::Action)),
         ]);
         let pst_expr: Expr = est_expr.try_into().unwrap();
         if let Expr::Set(elems) = pst_expr {
@@ -917,7 +902,7 @@ mod tests {
 
     #[test]
     fn test_est_action_constraint_slot_panics() {
-        use crate::ast::SlotId;
+        use ast::SlotId;
         let constraint = est::ActionConstraint::Eq(est::EqConstraint::Slot {
             slot: SlotId::principal(),
         });
@@ -1172,6 +1157,6 @@ mod tests {
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let result: Result<Expr, _> = est_expr.try_into();
         assert!(result.is_err());
-        assert!(matches!(result, Err(ConversionError::InvalidMethodCall(_))));
+        assert!(matches!(result, Err(ConversionError::InvalidExpression(_))));
     }
 }

@@ -35,172 +35,79 @@ pub enum ConversionError {
     NotImplemented(String),
 }
 
-fn elements_into_ast_pattern(elems: impl IntoIterator<Item = PatternElem>) -> ast::Pattern {
-    let elems = elems.into_iter().map(|elem| match elem {
-        PatternElem::Char(c) => ast::PatternElem::Char(c),
-        PatternElem::Wildcard => ast::PatternElem::Wildcard,
-    });
-    ast::Pattern::from_iter(elems)
-}
+impl TryFrom<Policy> for ast::Policy {
+    type Error = ConversionError;
 
-// Helper to convert PST Expr to AST Expr using the AST builder
-fn expr_to_ast(expr: impl AsRef<Expr>) -> Result<ast::Expr, ConversionError> {
-    use crate::expr_builder::ExprBuilder;
-    let builder = ast::ExprBuilder::<()>::new();
-
-    match expr.as_ref() {
-        Expr::Literal(lit) => match lit {
-            Literal::Bool(b) => Ok(builder.val(*b)),
-            Literal::Long(i) => Ok(builder.val(*i)),
-            Literal::String(s) => Ok(builder.val(s.as_str())),
-            Literal::EntityUID(uid) => {
-                // Convert PST EntityUID to AST EntityUID using existing TryFrom impl
-                let ast_et: ast::EntityType = uid.ty.clone().try_into().map_err(|e| {
-                    ConversionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
-                })?;
-                let ast_eid = ast::Eid::new(uid.eid.as_str());
-                let ast_uid = ast::EntityUID::from_components(ast_et, ast_eid, None);
-                Ok(builder.val(ast_uid))
-            }
-        },
-        Expr::Var(v) => {
-            let ast_var = match v {
-                Var::Principal => ast::Var::Principal,
-                Var::Action => ast::Var::Action,
-                Var::Resource => ast::Var::Resource,
-                Var::Context => ast::Var::Context,
-            };
-            Ok(builder.var(ast_var))
-        }
-        Expr::Slot(_) => Err(ConversionError::NotImplemented("slots".to_string())),
-        Expr::UnaryOp { op, expr } => {
-            let inner = expr_to_ast(expr.clone())?;
-            Ok(match op {
-                UnaryOp::Not => builder.not(inner),
-                UnaryOp::Neg => builder.neg(inner),
-                UnaryOp::IsEmpty => builder.is_empty(inner),
-                _ => builder.call_extension_fn(op.to_name().clone(), vec![inner]),
+    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
+        // Convert to Template first, then to Policy (following EST pattern)
+        let template: ast::Template = policy.try_into()?;
+        ast::StaticPolicy::try_from(template)
+            .map(Into::into)
+            .map_err(|e| {
+                ConversionError::InvalidConversion(format!(
+                    "Failed to convert template to static policy: {:?}",
+                    e
+                ))
             })
-        }
-        Expr::BinaryOp { op, left, right } => {
-            let left_ast = expr_to_ast(left.clone())?;
-            let right_ast = expr_to_ast(right.clone())?;
+    }
+}
 
-            Ok(match op {
-                BinaryOp::Eq => builder.is_eq(left_ast, right_ast),
-                BinaryOp::NotEq => builder.noteq(left_ast, right_ast),
-                BinaryOp::Less => builder.less(left_ast, right_ast),
-                BinaryOp::LessEq => builder.lesseq(left_ast, right_ast),
-                BinaryOp::Greater => builder.greater(left_ast, right_ast),
-                BinaryOp::GreaterEq => builder.greatereq(left_ast, right_ast),
-                BinaryOp::And => builder.and(left_ast, right_ast),
-                BinaryOp::Or => builder.or(left_ast, right_ast),
-                BinaryOp::Add => builder.add(left_ast, right_ast),
-                BinaryOp::Sub => builder.sub(left_ast, right_ast),
-                BinaryOp::Mul => builder.mul(left_ast, right_ast),
-                BinaryOp::In => builder.is_in(left_ast, right_ast),
-                BinaryOp::Contains => builder.contains(left_ast, right_ast),
-                BinaryOp::ContainsAll => builder.contains_all(left_ast, right_ast),
-                BinaryOp::ContainsAny => builder.contains_any(left_ast, right_ast),
-                BinaryOp::GetTag => builder.get_tag(left_ast, right_ast),
-                BinaryOp::HasTag => builder.has_tag(left_ast, right_ast),
-                _ => builder.call_extension_fn(op.to_name().clone(), vec![left_ast, right_ast]),
+impl TryFrom<Policy> for ast::Template {
+    type Error = ConversionError;
+
+    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
+        use crate::expr_builder::ExprBuilder;
+        let id = policy.id.into();
+        let effect: ast::Effect = policy.effect.try_into()?;
+        let principal: ast::PrincipalConstraint = policy.principal.try_into()?;
+        let action: ast::ActionConstraint = policy.action.try_into()?;
+        let resource: ast::ResourceConstraint = policy.resource.try_into()?;
+        // Convert clauses - fold them into a single expression (following EST pattern)
+        let builder = ast::ExprBuilder::<()>::new();
+        let mut conds_rev_iter = policy
+            .clauses
+            .into_iter()
+            .map(|clause| match clause {
+                Clause::When(expr) => (*expr).clone().try_into(),
+                Clause::Unless(expr) => (*expr).clone().try_into().map(|x| builder.clone().not(x)),
             })
-        }
-        Expr::Set(exprs) => {
-            let ast_exprs: Result<Vec<_>, _> =
-                exprs.into_iter().map(|e| expr_to_ast(e.clone())).collect();
-            Ok(builder.set(ast_exprs?))
-        }
-        Expr::IfThenElse {
-            cond,
-            then_expr,
-            else_expr,
-        } => Ok(builder.ite(
-            expr_to_ast(cond.clone())?,
-            expr_to_ast(then_expr.clone())?,
-            expr_to_ast(else_expr.clone())?,
-        )),
-        Expr::Is {
-            expr,
-            entity_type,
-            in_expr: None,
-        } => Ok(builder.is_entity_type(
-            expr_to_ast(expr.clone())?,
-            entity_type
-                .clone()
-                .try_into()
-                .map_err(|p| ConversionError::InvalidConversion(format!("{:?}", p)))?,
-        )),
-        Expr::Is {
-            expr,
-            entity_type,
-            in_expr: Some(e),
-        } => Ok(builder.is_in_entity_type(
-            expr_to_ast(expr.clone())?,
-            entity_type
-                .clone()
-                .try_into()
-                .map_err(|p| ConversionError::InvalidConversion(format!("{:?}", p)))?,
-            expr_to_ast(e.clone())?,
-        )),
-        Expr::GetAttr { expr, attr } => {
-            Ok(builder.get_attr(expr_to_ast(expr.clone())?, attr.clone()))
-        }
-        Expr::HasAttr { expr, attrs } => {
-            Ok(builder.extended_has_attr(expr_to_ast(expr.clone())?, attrs))
-        }
-        Expr::Like { expr, pattern } => Ok(builder.like(
-            expr_to_ast(expr.clone())?,
-            elements_into_ast_pattern(pattern.clone()),
-        )),
-        Expr::Record(elems) => builder
-            .record(
-                elems
-                    .into_iter()
-                    .map(|(k, v)| Ok((k.into(), expr_to_ast(v)?)))
-                    .collect::<Result<Vec<_>, _>>()?,
-            )
-            .map_err(|cstr_err| ConversionError::InvalidConversion(format!("{:?}", cstr_err))),
-        Expr::Unknown { name } => Ok(builder.unknown(ast::Unknown {
-            name: name.clone(),
-            type_annotation: None,
-        })),
-        Expr::Error(_) => todo!(),
-    }
-}
+            .rev()
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter();
 
-impl TryFrom<Effect> for ast::Effect {
-    type Error = ConversionError;
+        let conditions = if let Some(last_expr) = conds_rev_iter.next() {
+            Some(conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc)))
+        } else {
+            None
+        };
 
-    fn try_from(effect: Effect) -> Result<Self, Self::Error> {
-        match effect {
-            Effect::Permit => Ok(ast::Effect::Permit),
-            Effect::Forbid => Ok(ast::Effect::Forbid),
-        }
-    }
-}
+        // Convert annotations
+        let annotations: ast::Annotations = policy
+            .annotations
+            .into_iter()
+            .map(|(key, val)| {
+                let value = if val.is_empty() {
+                    None
+                } else {
+                    Some(val.to_smolstr())
+                };
+                (
+                    ast::AnyId::new_unchecked(key),
+                    ast::Annotation::with_optional_value(value, None),
+                )
+            })
+            .collect();
 
-impl TryFrom<EntityUID> for ast::EntityUID {
-    type Error = ConversionError;
-
-    fn try_from(value: EntityUID) -> Result<Self, ConversionError> {
-        let ast_et: ast::EntityType = value.ty.try_into().map_err(|e| {
-            ConversionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
-        })?;
-        let ast_eid = ast::Eid::new(value.eid.as_str());
-        Ok(ast::EntityUID::from_components(ast_et, ast_eid, None))
-    }
-}
-
-impl TryFrom<EntityOrSlot> for ast::EntityReference {
-    type Error = ConversionError;
-
-    fn try_from(eos: EntityOrSlot) -> Result<Self, Self::Error> {
-        match eos {
-            EntityOrSlot::Entity(uid) => Ok(ast::EntityReference::euid(Arc::new(uid.try_into()?))),
-            EntityOrSlot::Slot(_) => Err(ConversionError::NotImplemented("templates".to_string())),
-        }
+        Ok(ast::Template::new(
+            id,
+            None,
+            annotations,
+            effect,
+            principal,
+            action,
+            resource,
+            conditions,
+        ))
     }
 }
 
@@ -284,78 +191,199 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
     }
 }
 
-impl TryFrom<Policy> for ast::Policy {
+fn elements_into_ast_pattern(elems: impl IntoIterator<Item = PatternElem>) -> ast::Pattern {
+    let elems = elems.into_iter().map(|elem| match elem {
+        PatternElem::Char(c) => ast::PatternElem::Char(c),
+        PatternElem::Wildcard => ast::PatternElem::Wildcard,
+    });
+    ast::Pattern::from_iter(elems)
+}
+
+impl TryFrom<Expr> for ast::Expr {
     type Error = ConversionError;
 
-    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
-        // Convert to Template first, then to Policy (following EST pattern)
-        let template: ast::Template = policy.try_into()?;
-        ast::StaticPolicy::try_from(template)
-            .map(Into::into)
-            .map_err(|e| {
-                ConversionError::InvalidConversion(format!(
-                    "Failed to convert template to static policy: {:?}",
-                    e
-                ))
-            })
+    fn try_from(expr: Expr) -> Result<Self, ConversionError> {
+        expr_to_ast(expr).map_err(|e| {
+            ConversionError::InvalidConversion(format!("Failed to convert expr: {:?}", e))
+        })
     }
 }
 
-impl TryFrom<Policy> for ast::Template {
+// Helper to convert PST Expr to AST Expr using the AST builder
+fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
+    use crate::expr_builder::ExprBuilder;
+    let builder = ast::ExprBuilder::<()>::new();
+
+    match expr {
+        Expr::Literal(lit) => match lit {
+            Literal::Bool(b) => Ok(builder.val(b)),
+            Literal::Long(i) => Ok(builder.val(i)),
+            Literal::String(s) => Ok(builder.val(s)),
+            Literal::EntityUID(uid) => {
+                // Convert PST EntityUID to AST EntityUID using existing TryFrom impl
+                let ast_et: ast::EntityType = uid.ty.try_into().map_err(|e| {
+                    ConversionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
+                })?;
+                let ast_eid = ast::Eid::new(uid.eid.as_str());
+                let ast_uid = ast::EntityUID::from_components(ast_et, ast_eid, None);
+                Ok(builder.val(ast_uid))
+            }
+        },
+        Expr::Var(v) => {
+            let ast_var = match v {
+                Var::Principal => ast::Var::Principal,
+                Var::Action => ast::Var::Action,
+                Var::Resource => ast::Var::Resource,
+                Var::Context => ast::Var::Context,
+            };
+            Ok(builder.var(ast_var))
+        }
+        Expr::Slot(_) => Err(ConversionError::NotImplemented("slots".to_string())),
+        Expr::UnaryOp { op, expr } => {
+            let inner = expr_to_ast(Arc::unwrap_or_clone(expr))?;
+            Ok(match op {
+                UnaryOp::Not => builder.not(inner),
+                UnaryOp::Neg => builder.neg(inner),
+                UnaryOp::IsEmpty => builder.is_empty(inner),
+                // The other unary operators are extension functions.
+                _ => match op.to_name() {
+                    Some(fn_name) => builder.call_extension_fn(fn_name.clone(), vec![inner]),
+                    None => Err(ConversionError::InvalidConversion(format!(
+                        "unknown unary operator: {:?}",
+                        op
+                    )))?,
+                },
+            })
+        }
+        Expr::BinaryOp { op, left, right } => {
+            let left_ast = expr_to_ast(Arc::unwrap_or_clone(left))?;
+            let right_ast = expr_to_ast(Arc::unwrap_or_clone(right))?;
+
+            Ok(match op {
+                BinaryOp::Eq => builder.is_eq(left_ast, right_ast),
+                BinaryOp::NotEq => builder.noteq(left_ast, right_ast),
+                BinaryOp::Less => builder.less(left_ast, right_ast),
+                BinaryOp::LessEq => builder.lesseq(left_ast, right_ast),
+                BinaryOp::Greater => builder.greater(left_ast, right_ast),
+                BinaryOp::GreaterEq => builder.greatereq(left_ast, right_ast),
+                BinaryOp::And => builder.and(left_ast, right_ast),
+                BinaryOp::Or => builder.or(left_ast, right_ast),
+                BinaryOp::Add => builder.add(left_ast, right_ast),
+                BinaryOp::Sub => builder.sub(left_ast, right_ast),
+                BinaryOp::Mul => builder.mul(left_ast, right_ast),
+                BinaryOp::In => builder.is_in(left_ast, right_ast),
+                BinaryOp::Contains => builder.contains(left_ast, right_ast),
+                BinaryOp::ContainsAll => builder.contains_all(left_ast, right_ast),
+                BinaryOp::ContainsAny => builder.contains_any(left_ast, right_ast),
+                BinaryOp::GetTag => builder.get_tag(left_ast, right_ast),
+                BinaryOp::HasTag => builder.has_tag(left_ast, right_ast),
+                // The other binary operators are extensions
+                _ => match op.to_name() {
+                    Some(fn_name) => {
+                        builder.call_extension_fn(fn_name.clone(), vec![left_ast, right_ast])
+                    }
+                    None => Err(ConversionError::InvalidConversion(format!(
+                        "unknown binary operator: {:?}",
+                        op
+                    )))?,
+                },
+            })
+        }
+        Expr::Set(exprs) => {
+            let ast_exprs: Result<Vec<_>, _> = exprs
+                .into_iter()
+                .map(|e| expr_to_ast(Arc::unwrap_or_clone(e)))
+                .collect();
+            Ok(builder.set(ast_exprs?))
+        }
+        Expr::IfThenElse {
+            cond,
+            then_expr,
+            else_expr,
+        } => Ok(builder.ite(
+            expr_to_ast(Arc::unwrap_or_clone(cond))?,
+            expr_to_ast(Arc::unwrap_or_clone(then_expr))?,
+            expr_to_ast(Arc::unwrap_or_clone(else_expr))?,
+        )),
+        Expr::Is {
+            expr,
+            entity_type,
+            in_expr: None,
+        } => Ok(builder.is_entity_type(
+            expr_to_ast(Arc::unwrap_or_clone(expr))?,
+            entity_type
+                .clone()
+                .try_into()
+                .map_err(|p| ConversionError::InvalidConversion(format!("{:?}", p)))?,
+        )),
+        Expr::Is {
+            expr,
+            entity_type,
+            in_expr: Some(e),
+        } => Ok(builder.is_in_entity_type(
+            expr_to_ast(Arc::unwrap_or_clone(expr))?,
+            entity_type
+                .clone()
+                .try_into()
+                .map_err(|p| ConversionError::InvalidConversion(format!("{:?}", p)))?,
+            expr_to_ast(Arc::unwrap_or_clone(e))?,
+        )),
+        Expr::GetAttr { expr, attr } => {
+            Ok(builder.get_attr(expr_to_ast(Arc::unwrap_or_clone(expr))?, attr.clone()))
+        }
+        Expr::HasAttr { expr, attrs } => {
+            Ok(builder.extended_has_attr(expr_to_ast(Arc::unwrap_or_clone(expr))?, &attrs))
+        }
+        Expr::Like { expr, pattern } => Ok(builder.like(
+            expr_to_ast(Arc::unwrap_or_clone(expr))?,
+            elements_into_ast_pattern(pattern.clone()),
+        )),
+        Expr::Record(elems) => builder
+            .record(
+                elems
+                    .into_iter()
+                    .map(|(k, v)| Ok((k.into(), expr_to_ast(Arc::unwrap_or_clone(v))?)))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )
+            .map_err(|cstr_err| ConversionError::InvalidConversion(format!("{:?}", cstr_err))),
+        Expr::Unknown { name } => Ok(builder.unknown(ast::Unknown {
+            name: name.clone(),
+            type_annotation: None,
+        })),
+        Expr::Error(_) => todo!(),
+    }
+}
+
+impl TryFrom<Effect> for ast::Effect {
     type Error = ConversionError;
 
-    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
-        use crate::expr_builder::ExprBuilder;
-        let id = policy.id.into();
-        let effect: ast::Effect = policy.effect.try_into()?;
-        let principal: ast::PrincipalConstraint = policy.principal.try_into()?;
-        let action: ast::ActionConstraint = policy.action.try_into()?;
-        let resource: ast::ResourceConstraint = policy.resource.try_into()?;
-        // Convert clauses - fold them into a single expression (following EST pattern)
-        let builder = ast::ExprBuilder::<()>::new();
-        let mut conds_rev_iter = policy
-            .clauses
-            .into_iter()
-            .map(|clause| match clause {
-                Clause::When(expr) => expr_to_ast(expr.clone()),
-                Clause::Unless(expr) => Ok(builder.clone().not(expr_to_ast(expr.clone())?)),
-            })
-            .rev()
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter();
+    fn try_from(effect: Effect) -> Result<Self, Self::Error> {
+        match effect {
+            Effect::Permit => Ok(ast::Effect::Permit),
+            Effect::Forbid => Ok(ast::Effect::Forbid),
+        }
+    }
+}
 
-        let conditions = if let Some(last_expr) = conds_rev_iter.next() {
-            Some(conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc)))
-        } else {
-            None
-        };
+impl TryFrom<EntityUID> for ast::EntityUID {
+    type Error = ConversionError;
 
-        // Convert annotations
-        let annotations: ast::Annotations = policy
-            .annotations
-            .into_iter()
-            .map(|(key, val)| {
-                let value = if val.is_empty() {
-                    None
-                } else {
-                    Some(val.to_smolstr())
-                };
-                (
-                    ast::AnyId::new_unchecked(key),
-                    ast::Annotation::with_optional_value(value, None),
-                )
-            })
-            .collect();
+    fn try_from(value: EntityUID) -> Result<Self, ConversionError> {
+        let ast_et: ast::EntityType = value.ty.try_into().map_err(|e| {
+            ConversionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
+        })?;
+        let ast_eid = ast::Eid::new(value.eid.as_str());
+        Ok(ast::EntityUID::from_components(ast_et, ast_eid, None))
+    }
+}
 
-        Ok(ast::Template::new(
-            id,
-            None,
-            annotations,
-            effect,
-            principal,
-            action,
-            resource,
-            conditions,
-        ))
+impl TryFrom<EntityOrSlot> for ast::EntityReference {
+    type Error = ConversionError;
+
+    fn try_from(eos: EntityOrSlot) -> Result<Self, Self::Error> {
+        match eos {
+            EntityOrSlot::Entity(uid) => Ok(ast::EntityReference::euid(Arc::new(uid.try_into()?))),
+            EntityOrSlot::Slot(_) => Err(ConversionError::NotImplemented("templates".to_string())),
+        }
     }
 }

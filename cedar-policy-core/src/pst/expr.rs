@@ -28,96 +28,12 @@ use std::sync::Arc;
 
 /// Constants for core Cedar operator names
 mod constants {
-    use crate::ast::Name;
-    use std::sync::LazyLock;
-
-    // We get the name of most operators from their definition in the ast, except for a few
-    // operators that only in syntax.
-
-    pub static NOT_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::UnaryOp::Not))
-            .expect("should be a valid identifier")
-    });
-    pub static NEG_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::UnaryOp::Neg))
-            .expect("should be a valid identifier")
-    });
-    pub static IS_EMPTY_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::UnaryOp::IsEmpty))
-            .expect("should be a valid identifier")
-    });
-
-    pub static EQ_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Eq))
-            .expect("should be a valid identifier")
-    });
-    pub static LESS_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Less))
-            .expect("should be a valid identifier")
-    });
-    pub static LESS_EQ_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::LessEq))
-            .expect("should be a valid identifier")
-    });
-    pub static ADD_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Add))
-            .expect("should be a valid identifier")
-    });
-    pub static SUB_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Sub))
-            .expect("should be a valid identifier")
-    });
-    pub static MUL_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Mul))
-            .expect("should be a valid identifier")
-    });
-    pub static IN_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::In))
-            .expect("should be a valid identifier")
-    });
-    pub static CONTAINS_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::Contains))
-            .expect("should be a valid identifier")
-    });
-    pub static CONTAINS_ALL_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::ContainsAll))
-            .expect("should be a valid identifier")
-    });
-    pub static CONTAINS_ANY_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::ContainsAny))
-            .expect("should be a valid identifier")
-    });
-    pub static GET_TAG_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::GetTag))
-            .expect("should be a valid identifier")
-    });
-    pub static HAS_TAG_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(&format!("{}", crate::ast::BinaryOp::HasTag))
-            .expect("should be a valid identifier")
-    });
-
     // The operators that are defined only in syntax
     pub static NOT_EQ_STR: &str = "!=";
     pub static GREATER_STR: &str = ">";
     pub static GREATER_EQ_STR: &str = ">=";
     pub static AND_STR: &str = "&&";
     pub static OR_STR: &str = "||";
-
-    pub static NOT_EQ_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(NOT_EQ_STR).expect("should be a valid identifier")
-    });
-    pub static GREATER_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(GREATER_STR).expect("should be a valid identifier")
-    });
-    pub static GREATER_EQ_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(GREATER_EQ_STR).expect("should be a valid identifier")
-    });
-    pub static AND_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(AND_STR).expect("should be a valid identifier")
-    });
-    pub static OR_NAME: LazyLock<Name> = LazyLock::new(|| {
-        Name::parse_unqualified_name(OR_STR).expect("should be a valid identifier")
-    });
 }
 
 /// Slot identifier for template policies
@@ -353,29 +269,27 @@ pub enum UnaryOp {
 }
 
 impl UnaryOp {
-    pub(crate) fn to_name(self) -> &'static ast::Name {
+    pub(crate) fn to_name(self) -> Option<&'static ast::Name> {
         // We get the names of the extension functions from where they are defined: we don't duplicate
         // name definitions.
         use crate::extensions;
         match self {
-            UnaryOp::IsEmpty => &constants::IS_EMPTY_NAME,
-            UnaryOp::Not => &constants::NOT_NAME,
-            UnaryOp::Neg => &constants::NEG_NAME,
-            UnaryOp::Datetime => &extensions::datetime::constants::DATETIME_CONSTRUCTOR_NAME,
-            UnaryOp::Decimal => &extensions::decimal::constants::DECIMAL_FROM_STR_NAME,
-            UnaryOp::Duration => &extensions::datetime::constants::DURATION_CONSTRUCTOR_NAME,
-            UnaryOp::Ip => &extensions::ipaddr::names::IP_FROM_STR_NAME,
-            UnaryOp::IsIPv4 => &extensions::ipaddr::names::IS_IPV4,
-            UnaryOp::IsIPV6 => &extensions::ipaddr::names::IS_IPV6,
-            UnaryOp::IsLoopback => &extensions::ipaddr::names::IS_LOOPBACK,
-            UnaryOp::IsMulticast => &extensions::ipaddr::names::IS_MULTICAST,
-            UnaryOp::ToDate => &extensions::datetime::constants::TO_DATE_NAME,
-            UnaryOp::ToTime => &extensions::datetime::constants::TO_TIME_NAME,
-            UnaryOp::ToMilliseconds => &extensions::datetime::constants::TO_MILLISECONDS_NAME,
-            UnaryOp::ToSeconds => &extensions::datetime::constants::TO_SECONDS_NAME,
-            UnaryOp::ToMinutes => &extensions::datetime::constants::TO_MINUTES_NAME,
-            UnaryOp::ToHours => &extensions::datetime::constants::TO_HOURS_NAME,
-            UnaryOp::ToDays => &extensions::datetime::constants::TO_DAYS_NAME,
+            UnaryOp::IsEmpty | UnaryOp::Neg | UnaryOp::Not => None,
+            UnaryOp::Datetime => Some(&extensions::datetime::constants::DATETIME_CONSTRUCTOR_NAME),
+            UnaryOp::Decimal => Some(&extensions::decimal::constants::DECIMAL_FROM_STR_NAME),
+            UnaryOp::Duration => Some(&extensions::datetime::constants::DURATION_CONSTRUCTOR_NAME),
+            UnaryOp::Ip => Some(&extensions::ipaddr::names::IP_FROM_STR_NAME),
+            UnaryOp::IsIPv4 => Some(&extensions::ipaddr::names::IS_IPV4),
+            UnaryOp::IsIPV6 => Some(&extensions::ipaddr::names::IS_IPV6),
+            UnaryOp::IsLoopback => Some(&extensions::ipaddr::names::IS_LOOPBACK),
+            UnaryOp::IsMulticast => Some(&extensions::ipaddr::names::IS_MULTICAST),
+            UnaryOp::ToDate => Some(&extensions::datetime::constants::TO_DATE_NAME),
+            UnaryOp::ToTime => Some(&extensions::datetime::constants::TO_TIME_NAME),
+            UnaryOp::ToMilliseconds => Some(&extensions::datetime::constants::TO_MILLISECONDS_NAME),
+            UnaryOp::ToSeconds => Some(&extensions::datetime::constants::TO_SECONDS_NAME),
+            UnaryOp::ToMinutes => Some(&extensions::datetime::constants::TO_MINUTES_NAME),
+            UnaryOp::ToHours => Some(&extensions::datetime::constants::TO_HOURS_NAME),
+            UnaryOp::ToDays => Some(&extensions::datetime::constants::TO_DAYS_NAME),
         }
     }
 
@@ -404,7 +318,16 @@ impl UnaryOp {
 
 impl Display for UnaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_name())
+        match self {
+            UnaryOp::Not => write!(f, "{}", ast::UnaryOp::Not),
+            UnaryOp::Neg => write!(f, "{}", ast::UnaryOp::Neg),
+            UnaryOp::IsEmpty => write!(f, "{}", ast::UnaryOp::IsEmpty),
+            // Extension functions - use their name
+            _ => match self.to_name() {
+                Some(name) => write!(f, "{}", name),
+                None => write!(f, "<impossible operator>"),
+            },
+        }
     }
 }
 
@@ -462,29 +385,30 @@ pub enum BinaryOp {
 }
 
 impl BinaryOp {
-    pub(crate) fn to_name(self) -> &'static ast::Name {
+    pub(crate) fn to_name(self) -> Option<&'static ast::Name> {
         use crate::extensions;
         match self {
-            BinaryOp::Eq => &constants::EQ_NAME,
-            BinaryOp::NotEq => &constants::NOT_EQ_NAME,
-            BinaryOp::And => &constants::AND_NAME,
-            BinaryOp::Or => &constants::OR_NAME,
-            BinaryOp::Less => &constants::LESS_NAME,
-            BinaryOp::LessEq => &constants::LESS_EQ_NAME,
-            BinaryOp::Greater => &constants::GREATER_NAME,
-            BinaryOp::GreaterEq => &constants::GREATER_EQ_NAME,
-            BinaryOp::Add => &constants::ADD_NAME,
-            BinaryOp::Sub => &constants::SUB_NAME,
-            BinaryOp::Mul => &constants::MUL_NAME,
-            BinaryOp::In => &constants::IN_NAME,
-            BinaryOp::Contains => &constants::CONTAINS_NAME,
-            BinaryOp::ContainsAll => &constants::CONTAINS_ALL_NAME,
-            BinaryOp::ContainsAny => &constants::CONTAINS_ANY_NAME,
-            BinaryOp::GetTag => &constants::GET_TAG_NAME,
-            BinaryOp::HasTag => &constants::HAS_TAG_NAME,
-            BinaryOp::IsInRange => &extensions::ipaddr::names::IS_IN_RANGE,
-            BinaryOp::Offset => &extensions::datetime::constants::OFFSET_METHOD_NAME,
-            BinaryOp::DurationSince => &extensions::datetime::constants::DURATION_SINCE_NAME,
+            BinaryOp::IsInRange => Some(&extensions::ipaddr::names::IS_IN_RANGE),
+            BinaryOp::Offset => Some(&extensions::datetime::constants::OFFSET_METHOD_NAME),
+            BinaryOp::DurationSince => Some(&extensions::datetime::constants::DURATION_SINCE_NAME),
+            // those are operators, not names
+            BinaryOp::Eq
+            | BinaryOp::NotEq
+            | BinaryOp::And
+            | BinaryOp::Or
+            | BinaryOp::Less
+            | BinaryOp::LessEq
+            | BinaryOp::Greater
+            | BinaryOp::GreaterEq
+            | BinaryOp::Add
+            | BinaryOp::Sub
+            | BinaryOp::Mul
+            | BinaryOp::In
+            | BinaryOp::Contains
+            | BinaryOp::ContainsAll
+            | BinaryOp::ContainsAny
+            | BinaryOp::GetTag
+            | BinaryOp::HasTag => None,
         }
     }
 
@@ -505,7 +429,30 @@ impl BinaryOp {
 
 impl Display for BinaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_name())
+        match self {
+            BinaryOp::Eq => write!(f, "{}", ast::BinaryOp::Eq),
+            BinaryOp::NotEq => write!(f, "{}", &constants::NOT_EQ_STR),
+            BinaryOp::Less => write!(f, "{}", ast::BinaryOp::Less),
+            BinaryOp::LessEq => write!(f, "{}", ast::BinaryOp::LessEq),
+            BinaryOp::Greater => write!(f, "{}", &constants::GREATER_STR),
+            BinaryOp::GreaterEq => write!(f, "{}", &constants::GREATER_EQ_STR),
+            BinaryOp::And => write!(f, "{}", &constants::AND_STR),
+            BinaryOp::Or => write!(f, "{}", &constants::OR_STR),
+            BinaryOp::Add => write!(f, "{}", ast::BinaryOp::Add),
+            BinaryOp::Sub => write!(f, "{}", ast::BinaryOp::Sub),
+            BinaryOp::Mul => write!(f, "{}", ast::BinaryOp::Mul),
+            BinaryOp::In => write!(f, "{}", ast::BinaryOp::In),
+            BinaryOp::Contains => write!(f, "{}", ast::BinaryOp::Contains),
+            BinaryOp::ContainsAll => write!(f, "{}", ast::BinaryOp::ContainsAll),
+            BinaryOp::ContainsAny => write!(f, "{}", ast::BinaryOp::ContainsAny),
+            BinaryOp::GetTag => write!(f, "{}", ast::BinaryOp::GetTag),
+            BinaryOp::HasTag => write!(f, "{}", ast::BinaryOp::HasTag),
+            // Extension functions - use their name
+            _ => match self.to_name() {
+                Some(name) => write!(f, "{}", name),
+                None => write!(f, "<impossible operator>"),
+            },
+        }
     }
 }
 
@@ -660,6 +607,15 @@ pub enum ExprConstructionError {
         /// The actual number of arguments
         got: usize,
     },
+    /// Error constructing a `HasAttr` expression with an empty attribute path
+    #[error("attribute path cannot be empty")]
+    EmptyAttributePath,
+    /// Error constructing an attribute path (e.g. more than one attribute and invalid identifiers)
+    #[error("attribute path {0} contains invalid elements")]
+    InvalidAttributePath(String),
+    /// Duplicate key in a record
+    #[error("duplicate record key {0}")]
+    DuplicateRecordKey(String),
 }
 
 impl Expr {

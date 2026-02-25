@@ -16,26 +16,15 @@
 
 //! Public builder API for constructing PST expressions
 
-use super::{BinaryOp, EntityType, EntityUID, Expr, Literal, PatternElem, SlotId, UnaryOp, Var};
+use super::{
+    BinaryOp, EntityType, EntityUID, Expr, ExprConstructionError, Literal, PatternElem, SlotId,
+    UnaryOp, Var,
+};
 use crate::ast;
 use itertools::Itertools;
 use smol_str::SmolStr;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-
-/// Errors that can occur when building PST expressions
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum ExprConstructionError {
-    /// Empty attribute path in `has` expression
-    #[error("attribute path cannot be empty")]
-    EmptyAttributePath,
-    /// Duplicate key in record literal
-    #[error("duplicate key in record: {0}")]
-    DuplicateRecordKey(String),
-    /// Invalid attribute path
-    #[error("invalid attribute path: {0}")]
-    InvalidAttributePath(String),
-}
 
 impl Expr {
     /// Create a literal expression

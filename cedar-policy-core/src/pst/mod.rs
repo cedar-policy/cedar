@@ -34,9 +34,9 @@ mod expr;
 mod policy;
 
 pub use ast_conversions::ConversionError;
-pub use builders::ExprConstructionError;
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
 pub use expr::{
-    BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
+    BinaryOp, EntityType, EntityUID, Expr, ExprConstructionError, Literal, Name, PatternElem,
+    SlotId, UnaryOp, Var,
 };
 pub use policy::{Clause, Effect, Policy};
