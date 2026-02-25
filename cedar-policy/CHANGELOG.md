@@ -17,6 +17,14 @@ Cedar Language Version: TBD
 ### Added
 - Extended `has` operator in JSON policies, maintaining backwards-compatible desugaring of extended `has` in Cedar policies to json (#1889)
 
+## [4.9.1] - Coming Soon
+
+Cedar Language Version: 4.4
+
+### Changed
+
+- Minor optimizations to decimal parsing (#2156) and constructing constant identifiers (#1880).
+
 ## [4.9.0] - 2026-02-09
 
 Cedar Language Version: 4.4
@@ -1157,7 +1165,10 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.8.1...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.9.1...main
+[4.9.1]: https://github.com/cedar-policy/cedar/compare/v4.9.0...v4.9.1
+[4.9.0]: https://github.com/cedar-policy/cedar/compare/v4.8.2...v4.9.0
+[4.8.2]: https://github.com/cedar-policy/cedar/compare/v4.8.1...v4.8.2
 [4.8.1]: https://github.com/cedar-policy/cedar/compare/v4.8.0...v4.8.1
 [4.8.0]: https://github.com/cedar-policy/cedar/compare/v4.7.0...v4.8.0
 [4.7.0]: https://github.com/cedar-policy/cedar/compare/v4.6.0...v4.7.0
