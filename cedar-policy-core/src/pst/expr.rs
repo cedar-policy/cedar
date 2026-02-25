@@ -569,7 +569,6 @@ pub enum Expr {
     },
     /// An error occurred during construction
     #[expect(
-        clippy::pub_underscore_fields,
         private_interfaces,
         reason = "intentionally private to prevent clients from constructing error nodes"
     )]
@@ -621,7 +620,7 @@ pub enum ExprConstructionError {
 impl Expr {
     pub(crate) fn from_function_name_and_args(
         name: SmolStr,
-        args: &Vec<Arc<Expr>>,
+        args: Vec<Arc<Expr>>,
     ) -> Result<Expr, ExprConstructionError> {
         let ast_name = ast::Name::from_str(name.as_str())
             .map_err(|_| ExprConstructionError::NameParsingError(name.clone()))?;
@@ -630,7 +629,7 @@ impl Expr {
 
     pub(crate) fn from_function_ast_name_and_args(
         name: ast::Name,
-        args: &Vec<Arc<Expr>>,
+        args: Vec<Arc<Expr>>,
     ) -> Result<Expr, ExprConstructionError> {
         Self::from_function_names_and_args(name.to_smolstr(), name, args)
     }
@@ -638,7 +637,7 @@ impl Expr {
     fn from_function_names_and_args(
         name: SmolStr,
         ast_name: ast::Name,
-        args: &Vec<Arc<Expr>>,
+        args: Vec<Arc<Expr>>,
     ) -> Result<Expr, ExprConstructionError> {
         let extension = Extensions::all_available()
             .func(&ast_name)
@@ -649,30 +648,35 @@ impl Expr {
 
         if expected != got {
             return Err(ExprConstructionError::WrongArity {
-                name: name.to_string(),
+                name: ast_name.to_string(),
                 expected,
                 got,
             });
         }
         Ok(match args.len() {
             1 => {
-                let op = UnaryOp::from_function_name(&name.to_string())
-                    .ok_or_else(|| ExprConstructionError::UnknownFunction { name })?;
-                Expr::UnaryOp {
-                    op,
-                    #[expect(clippy::indexing_slicing, reason = "length = 1 checked in arm")]
-                    expr: Arc::clone(&args[0]),
+                #[expect(clippy::unwrap_used, reason = "length = 1 checked in arm")]
+                let expr = args.into_iter().next().unwrap();
+                // Special case: the unknown function
+                if ast_name.to_string() == "unknown" {
+                    return Ok(Expr::Unknown {
+                        name: format!("{}", expr).into(),
+                    });
                 }
+                let op = UnaryOp::from_function_name(&ast_name.to_string())
+                    .ok_or_else(|| ExprConstructionError::UnknownFunction { name })?;
+                Expr::UnaryOp { op, expr }
             }
             2 => {
-                let op = BinaryOp::from_function_name(&name.to_string())
+                let op = BinaryOp::from_function_name(&ast_name.to_string())
                     .ok_or_else(|| ExprConstructionError::UnknownFunction { name })?;
+                let mut iter = args.into_iter();
                 Expr::BinaryOp {
                     op,
-                    #[expect(clippy::indexing_slicing, reason = "length checked = 2 in arm")]
-                    left: Arc::clone(&args[0]),
-                    #[expect(clippy::indexing_slicing, reason = "length checked = 2 in arm")]
-                    right: Arc::clone(&args[1]),
+                    #[expect(clippy::unwrap_used, reason = "length = 2 checked in match arm")]
+                    left: iter.next().unwrap(),
+                    #[expect(clippy::unwrap_used, reason = "length = 2 checked in match arm")]
+                    right: iter.next().unwrap(),
                 }
             }
             _ => return Err(ExprConstructionError::UnknownFunction { name }),
@@ -901,7 +905,7 @@ impl ExprBuilder for PstBuilder {
     fn call_extension_fn(self, fn_name: ast::Name, args: impl IntoIterator<Item = Expr>) -> Expr {
         let expr = Expr::from_function_ast_name_and_args(
             fn_name,
-            &args.into_iter().map(Arc::new).collect(),
+            args.into_iter().map(Arc::new).collect(),
         );
         match expr {
             Ok(e) => e,
@@ -1169,7 +1173,7 @@ mod tests {
         let name = ast::Name::parse_unqualified_name("unknownFunc").unwrap();
         let args = vec![Arc::new(Expr::Literal(Literal::Long(1)))];
 
-        let result = Expr::from_function_ast_name_and_args(name, &args);
+        let result = Expr::from_function_ast_name_and_args(name, args);
         assert!(matches!(
             result,
             Err(ExprConstructionError::FunctionLookupError { .. })
@@ -1184,7 +1188,7 @@ mod tests {
             Arc::new(Expr::Literal(Literal::Long(2))),
         ];
 
-        let result = Expr::from_function_ast_name_and_args(name, &args);
+        let result = Expr::from_function_ast_name_and_args(name, args);
         assert!(matches!(
             result,
             Err(ExprConstructionError::WrongArity { .. })
@@ -1199,10 +1203,6 @@ mod tests {
 
         for func in extensions.all_funcs() {
             let name = func.name().clone();
-            // The "unknown" function is not directly supported
-            if &name.to_string() == "unknown" {
-                continue;
-            }
             let arity = func.arg_types().len();
 
             // Create dummy "0" arguments based on arity, we don't typecheck here
@@ -1210,7 +1210,7 @@ mod tests {
                 .map(|_| Arc::new(Expr::Literal(Literal::Long(0))))
                 .collect();
 
-            let result = Expr::from_function_ast_name_and_args(name.clone(), &args);
+            let result = Expr::from_function_ast_name_and_args(name.clone(), args);
             assert!(
                 result.is_ok(),
                 "Function {} should be supported but got error: {:?}",
@@ -1221,11 +1221,18 @@ mod tests {
             print!("Expression: {}", actual);
             match arity {
                 1 => {
-                    assert!(
-                        matches!(actual, Expr::UnaryOp { .. }),
-                        "Unary function {} should produce UnaryOp",
-                        name
-                    );
+                    if &name.to_string() == "unknown" {
+                        assert!(
+                            matches!(actual, Expr::Unknown { .. }),
+                            "Expected unary unknown function to be Unknown expr",
+                        );
+                    } else {
+                        assert!(
+                            matches!(actual, Expr::UnaryOp { .. }),
+                            "Unary function {} should produce UnaryOp",
+                            name
+                        );
+                    }
                 }
                 2 => {
                     assert!(

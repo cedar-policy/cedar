@@ -223,7 +223,7 @@ impl TryFrom<est::Expr> for Expr {
                     .into_iter()
                     .map(|a: est::Expr| a.try_into().map(Arc::new))
                     .try_collect()?;
-                Expr::from_function_name_and_args(fn_name.clone(), &pst_args)
+                Expr::from_function_name_and_args(fn_name.clone(), pst_args)
                     .map_err(|e| ConversionError::InvalidExpression(e))
             }
         }
