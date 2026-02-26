@@ -129,8 +129,8 @@ pub enum Commands {
     ///   - num_errors: expected number of erroring policies
     #[clap(verbatim_doc_comment)] // stops clap from dropping newlines in bulleted list
     RunTests(RunTestsArgs),
-    /// Symbolic analysis of Cedar policies
-    Analyze(AnalyzeArgs),
+    /// Symbolic analysis of Cedar policies using SymCC
+    Symcc(SymccArgs),
     /// Print Cedar language version
     LanguageVersion,
 }
@@ -856,12 +856,24 @@ pub struct NewArgs {
 
 #[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
-pub struct AnalyzeArgs {
+pub struct SymccArgs {
     #[command(subcommand)]
-    pub command: AnalyzeCommands,
+    pub command: SymccCommands,
     /// Path to CVC5 solver executable
     #[arg(long, env = "CVC5")]
     pub cvc5_path: Option<PathBuf>,
+    /// Principal entity type (e.g., 'User')
+    #[arg(long)]
+    pub principal_type: String,
+    /// Action entity UID (e.g., 'Action::"view"')
+    #[arg(long)]
+    pub action: String,
+    /// Resource entity type (e.g., 'Photo')
+    #[arg(long)]
+    pub resource_type: String,
+    /// Schema args (shared across all subcommands)
+    #[command(flatten)]
+    pub schema: SchemaArgs,
     /// Generate counterexamples when verification fails
     #[arg(long, default_value_t = true)]
     pub counterexample: bool,
@@ -872,17 +884,34 @@ pub struct AnalyzeArgs {
 
 #[cfg(not(feature = "analyze"))]
 #[derive(Debug, Args)]
-pub struct AnalyzeArgs;
+pub struct SymccArgs;
 
 #[cfg(feature = "analyze")]
 #[derive(Subcommand, Debug)]
-pub enum AnalyzeCommands {
-    /// Verify that policies never produce runtime errors
+pub enum SymccCommands {
+    // --- Single-policy primitives ---
+    /// Verify that a policy never produces runtime errors
     NeverErrors(NeverErrorsArgs),
+    /// Verify that a policy always matches (is always true)
+    AlwaysMatches(AlwaysMatchesArgs),
+    /// Verify that a policy never matches (is always false)
+    NeverMatches(NeverMatchesArgs),
+
+    // --- Two-policy comparison primitives ---
+    /// Check if two individual policies have equivalent match conditions
+    MatchesEquivalent(MatchesEquivalentArgs),
+    /// Check if one policy's match condition implies another's
+    MatchesImplies(MatchesImpliesArgs),
+    /// Check if two policies' match conditions are disjoint
+    MatchesDisjoint(MatchesDisjointArgs),
+
+    // --- Single-policy-set primitives ---
     /// Verify that policy set always allows all well-formed requests
     AlwaysAllows(AlwaysAllowsArgs),
     /// Verify that policy set always denies all well-formed requests
     AlwaysDenies(AlwaysDeniesArgs),
+
+    // --- Two-policy-set comparison primitives ---
     /// Verify that two policy sets are logically equivalent
     Equivalent(EquivalentArgs),
     /// Verify that one policy set implies another (subsumption)
@@ -897,9 +926,22 @@ pub struct NeverErrorsArgs {
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: PoliciesArgs,
-    /// Schema args (incorporated by reference)  
+}
+
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct AlwaysMatchesArgs {
+    /// Policies args (incorporated by reference)
     #[command(flatten)]
-    pub schema: SchemaArgs,
+    pub policies: PoliciesArgs,
+}
+
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct NeverMatchesArgs {
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
 }
 
 #[cfg(feature = "analyze")]
@@ -908,9 +950,6 @@ pub struct AlwaysAllowsArgs {
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: PoliciesArgs,
-    /// Schema args (incorporated by reference)
-    #[command(flatten)]
-    pub schema: SchemaArgs,
 }
 
 #[cfg(feature = "analyze")]
@@ -919,51 +958,165 @@ pub struct AlwaysDeniesArgs {
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: PoliciesArgs,
-    /// Schema args (incorporated by reference)
+}
+
+/// Two-policy comparison: first policy input
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct Policy1Args {
+    /// File containing the first Cedar policy
+    #[arg(long = "policy1", value_name = "FILE")]
+    pub policy1_file: Option<String>,
+    /// Format of the first policy file
+    #[arg(long = "policy1-format", default_value_t, value_enum)]
+    pub policy1_format: PolicyFormat,
+}
+
+#[cfg(feature = "analyze")]
+impl Policy1Args {
+    fn get_policy_set(&self) -> Result<PolicySet> {
+        let pargs = PoliciesArgs {
+            policies_file: self.policy1_file.clone(),
+            policy_format: self.policy1_format,
+            template_linked_file: None,
+        };
+        pargs.get_policy_set()
+    }
+}
+
+/// Two-policy comparison: second policy input
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct Policy2Args {
+    /// File containing the second Cedar policy
+    #[arg(long = "policy2", value_name = "FILE")]
+    pub policy2_file: Option<String>,
+    /// Format of the second policy file
+    #[arg(long = "policy2-format", default_value_t, value_enum)]
+    pub policy2_format: PolicyFormat,
+}
+
+#[cfg(feature = "analyze")]
+impl Policy2Args {
+    fn get_policy_set(&self) -> Result<PolicySet> {
+        let pargs = PoliciesArgs {
+            policies_file: self.policy2_file.clone(),
+            policy_format: self.policy2_format,
+            template_linked_file: None,
+        };
+        pargs.get_policy_set()
+    }
+}
+
+/// Two policy-set comparison: first policy set input
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct Policies1Args {
+    /// File containing the first policy set
+    #[arg(long = "policies1", value_name = "FILE")]
+    pub policies1_file: Option<String>,
+    /// Format of the first policy set file
+    #[arg(long = "policies1-format", default_value_t, value_enum)]
+    pub policies1_format: PolicyFormat,
+    /// Template-linked policies for the first policy set
+    #[arg(long = "template-linked1", value_name = "FILE")]
+    pub template_linked1_file: Option<String>,
+}
+
+#[cfg(feature = "analyze")]
+impl Policies1Args {
+    fn get_policy_set(&self) -> Result<PolicySet> {
+        let pargs = PoliciesArgs {
+            policies_file: self.policies1_file.clone(),
+            policy_format: self.policies1_format,
+            template_linked_file: self.template_linked1_file.clone(),
+        };
+        pargs.get_policy_set()
+    }
+}
+
+/// Two policy-set comparison: second policy set input
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct Policies2Args {
+    /// File containing the second policy set
+    #[arg(long = "policies2", value_name = "FILE")]
+    pub policies2_file: Option<String>,
+    /// Format of the second policy set file
+    #[arg(long = "policies2-format", default_value_t, value_enum)]
+    pub policies2_format: PolicyFormat,
+    /// Template-linked policies for the second policy set
+    #[arg(long = "template-linked2", value_name = "FILE")]
+    pub template_linked2_file: Option<String>,
+}
+
+#[cfg(feature = "analyze")]
+impl Policies2Args {
+    fn get_policy_set(&self) -> Result<PolicySet> {
+        let pargs = PoliciesArgs {
+            policies_file: self.policies2_file.clone(),
+            policy_format: self.policies2_format,
+            template_linked_file: self.template_linked2_file.clone(),
+        };
+        pargs.get_policy_set()
+    }
+}
+
+/// Two-policy comparison: check if two policies have equivalent match conditions
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct MatchesEquivalentArgs {
     #[command(flatten)]
-    pub schema: SchemaArgs,
+    pub policy1: Policy1Args,
+    #[command(flatten)]
+    pub policy2: Policy2Args,
+}
+
+/// Two-policy comparison: check if one policy's match condition implies another's
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct MatchesImpliesArgs {
+    #[command(flatten)]
+    pub policy1: Policy1Args,
+    #[command(flatten)]
+    pub policy2: Policy2Args,
+}
+
+/// Two-policy comparison: check if two policies' match conditions are disjoint
+#[cfg(feature = "analyze")]
+#[derive(Args, Debug)]
+pub struct MatchesDisjointArgs {
+    #[command(flatten)]
+    pub policy1: Policy1Args,
+    #[command(flatten)]
+    pub policy2: Policy2Args,
 }
 
 #[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct EquivalentArgs {
-    /// First policy set for comparison
-    #[arg(long = "policies1", value_name = "FILE")]
-    pub policies1_file: String,
-    /// Second policy set for comparison
-    #[arg(long = "policies2", value_name = "FILE")]
-    pub policies2_file: String,
-    /// Schema args (incorporated by reference)
     #[command(flatten)]
-    pub schema: SchemaArgs,
+    pub policies1: Policies1Args,
+    #[command(flatten)]
+    pub policies2: Policies2Args,
 }
 
 #[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct ImpliesArgs {
-    /// First policy set (should be subsumed by second)
-    #[arg(long = "policies1", value_name = "FILE")]
-    pub policies1_file: String,
-    /// Second policy set (should subsume first)
-    #[arg(long = "policies2", value_name = "FILE")]
-    pub policies2_file: String,
-    /// Schema args (incorporated by reference)
     #[command(flatten)]
-    pub schema: SchemaArgs,
+    pub policies1: Policies1Args,
+    #[command(flatten)]
+    pub policies2: Policies2Args,
 }
 
 #[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct DisjointArgs {
-    /// First policy set for disjointness check
-    #[arg(long = "policies1", value_name = "FILE")]
-    pub policies1_file: String,
-    /// Second policy set for disjointness check
-    #[arg(long = "policies2", value_name = "FILE")]
-    pub policies2_file: String,
-    /// Schema args (incorporated by reference)
     #[command(flatten)]
-    pub schema: SchemaArgs,
+    pub policies1: Policies1Args,
+    #[command(flatten)]
+    pub policies2: Policies2Args,
 }
 
 /// Wrapper struct
@@ -1533,24 +1686,26 @@ pub fn language_version() -> CedarExitCode {
 }
 
 #[cfg(not(feature = "analyze"))]
-pub fn analyze(_: &AnalyzeArgs) -> CedarExitCode {
+pub fn symcc(_: &SymccArgs) -> CedarExitCode {
     eprintln!("Error: analyze command requires the 'analyze' feature to be enabled");
     CedarExitCode::Failure
 }
 
 #[cfg(feature = "analyze")]
-pub fn analyze(args: &AnalyzeArgs) -> CedarExitCode {
-    // Initialize async runtime
-    let rt = match tokio::runtime::Runtime::new() {
+pub fn symcc(args: &SymccArgs) -> CedarExitCode {
+    let rt = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("Failed to initialize async runtime: {e}");
             return CedarExitCode::Failure;
         }
     };
-    
+
     rt.block_on(async {
-        match analyze_async(args).await {
+        match symcc_async(args).await {
             Ok(()) => CedarExitCode::Success,
             Err(e) => {
                 eprintln!("Analysis failed: {e:?}");
@@ -1561,42 +1716,388 @@ pub fn analyze(args: &AnalyzeArgs) -> CedarExitCode {
 }
 
 #[cfg(feature = "analyze")]
-async fn analyze_async(args: &AnalyzeArgs) -> Result<()> {
-    // TODO: Initialize CVC5 solver and create CedarSymCompiler
-    // This will be implemented in later tasks
-    
-    match &args.command {
-        AnalyzeCommands::NeverErrors(_cmd_args) => {
-            // TODO: Implement never-errors analysis
-            println!("Never-errors analysis not yet implemented");
-            Ok(())
+fn initialize_solver(
+    cvc5_path: &Option<PathBuf>,
+) -> Result<cedar_policy_symcc::solver::LocalSolver> {
+    match cvc5_path {
+        Some(p) => cedar_policy_symcc::solver::LocalSolver::from_command(
+            tokio::process::Command::new(p).args(["--lang", "smt", "--tlimit=60000"]),
+        )
+        .map_err(|e| miette!("CVC5 solver not found or failed to start at '{}': {e}", p.display())),
+        None => cedar_policy_symcc::solver::LocalSolver::cvc5()
+            .map_err(|e| miette!("CVC5 solver not found or failed to start: {e}")),
+    }
+}
+
+#[cfg(feature = "analyze")]
+fn load_single_policy(
+    policies: &PoliciesArgs,
+    schema_args: &SchemaArgs,
+) -> Result<(Policy, Schema)> {
+    let pset = policies.get_policy_set()?;
+    let schema = schema_args.get_schema()?;
+    let policies: Vec<_> = pset.policies().collect();
+    if policies.len() != 1 {
+        return Err(miette!(
+            "Expected exactly one policy, found {}",
+            policies.len()
+        ));
+    }
+    Ok((policies[0].clone(), schema))
+}
+
+#[cfg(feature = "analyze")]
+fn load_two_policies(
+    p1: &Policy1Args,
+    p2: &Policy2Args,
+    schema_args: &SchemaArgs,
+) -> Result<(Policy, Policy, Schema)> {
+    let pset1 = p1.get_policy_set()?;
+    let pset2 = p2.get_policy_set()?;
+    let schema = schema_args.get_schema()?;
+    let policies1: Vec<_> = pset1.policies().collect();
+    let policies2: Vec<_> = pset2.policies().collect();
+    if policies1.len() != 1 {
+        return Err(miette!(
+            "Expected exactly one policy in --policy1, found {}",
+            policies1.len()
+        ));
+    }
+    if policies2.len() != 1 {
+        return Err(miette!(
+            "Expected exactly one policy in --policy2, found {}",
+            policies2.len()
+        ));
+    }
+    Ok((policies1[0].clone(), policies2[0].clone(), schema))
+}
+
+#[cfg(feature = "analyze")]
+fn load_policy_set(
+    policies: &PoliciesArgs,
+    schema_args: &SchemaArgs,
+) -> Result<(PolicySet, Schema)> {
+    let pset = policies.get_policy_set()?;
+    let schema = schema_args.get_schema()?;
+    Ok((pset, schema))
+}
+
+#[cfg(feature = "analyze")]
+fn load_two_policy_sets(
+    p1: &Policies1Args,
+    p2: &Policies2Args,
+    schema_args: &SchemaArgs,
+) -> Result<(PolicySet, PolicySet, Schema)> {
+    let pset1 = p1.get_policy_set()?;
+    let pset2 = p2.get_policy_set()?;
+    let schema = schema_args.get_schema()?;
+    Ok((pset1, pset2, schema))
+}
+
+#[cfg(feature = "analyze")]
+fn format_bool_result(holds: bool, property: &str) {
+    if holds {
+        println!("✓ {property}: VERIFIED");
+    } else {
+        println!("✗ {property}: FAILED");
+    }
+}
+
+#[cfg(feature = "analyze")]
+fn format_counterexample_result(
+    cex: Option<cedar_policy_symcc::Env>,
+    property: &str,
+    verbose: bool,
+) {
+    match cex {
+        None => {
+            println!("✓ {property}: VERIFIED");
+            if verbose {
+                println!("  No counterexample found — property holds for all well-formed inputs.");
+            }
         }
-        AnalyzeCommands::AlwaysAllows(_cmd_args) => {
-            // TODO: Implement always-allows analysis
-            println!("Always-allows analysis not yet implemented");
-            Ok(())
-        }
-        AnalyzeCommands::AlwaysDenies(_cmd_args) => {
-            // TODO: Implement always-denies analysis
-            println!("Always-denies analysis not yet implemented");
-            Ok(())
-        }
-        AnalyzeCommands::Equivalent(_cmd_args) => {
-            // TODO: Implement equivalence analysis
-            println!("Equivalence analysis not yet implemented");
-            Ok(())
-        }
-        AnalyzeCommands::Implies(_cmd_args) => {
-            // TODO: Implement implies analysis
-            println!("Implies analysis not yet implemented");
-            Ok(())
-        }
-        AnalyzeCommands::Disjoint(_cmd_args) => {
-            // TODO: Implement disjoint analysis
-            println!("Disjoint analysis not yet implemented");
-            Ok(())
+        Some(env) => {
+            println!("✗ {property}: FAILED");
+            println!("  Counterexample found:");
+            println!("    Request: {:?}", env.request);
+            println!("    Entities: {:?}", env.entities);
         }
     }
+}
+
+#[cfg(feature = "analyze")]
+fn build_request_env(args: &SymccArgs) -> Result<RequestEnv> {
+    let principal_type: EntityTypeName = args
+        .principal_type
+        .parse()
+        .map_err(|e| miette!("Invalid --principal-type '{}': {e}", args.principal_type))?;
+    let action: EntityUid = args
+        .action
+        .parse()
+        .map_err(|e| miette!("Invalid --action '{}': {e}", args.action))?;
+    let resource_type: EntityTypeName = args
+        .resource_type
+        .parse()
+        .map_err(|e| miette!("Invalid --resource-type '{}': {e}", args.resource_type))?;
+    Ok(RequestEnv::new(principal_type, action, resource_type))
+}
+
+#[cfg(feature = "analyze")]
+async fn symcc_async(args: &SymccArgs) -> Result<()> {
+    use cedar_policy_symcc::{CedarSymCompiler, CompiledPolicy, CompiledPolicySet};
+
+    let solver = initialize_solver(&args.cvc5_path)?;
+    let mut compiler = CedarSymCompiler::new(solver)
+        .map_err(|e| miette!("Failed to initialize SymCC compiler: {e}"))?;
+    let req_env = build_request_env(args)?;
+
+    match &args.command {
+        // --- Single-policy primitives ---
+        SymccCommands::NeverErrors(cmd_args) => {
+            let (policy, schema) = load_single_policy(&cmd_args.policies, &args.schema)?;
+            let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy: {e}"))?;
+            if args.counterexample {
+                let result = compiler
+                    .check_never_errors_with_counterexample_opt(&compiled)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_counterexample_result(result, "Policy never errors", args.verbose);
+            } else {
+                let holds = compiler
+                    .check_never_errors_opt(&compiled)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_bool_result(holds, "Policy never errors");
+            }
+        }
+        SymccCommands::AlwaysMatches(cmd_args) => {
+            let (policy, schema) = load_single_policy(&cmd_args.policies, &args.schema)?;
+            let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy: {e}"))?;
+            if args.counterexample {
+                let result = compiler
+                    .check_always_matches_with_counterexample_opt(&compiled)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_counterexample_result(result, "Policy always matches", args.verbose);
+            } else {
+                let holds = compiler
+                    .check_always_matches_opt(&compiled)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_bool_result(holds, "Policy always matches");
+            }
+        }
+        SymccCommands::NeverMatches(cmd_args) => {
+            let (policy, schema) = load_single_policy(&cmd_args.policies, &args.schema)?;
+            let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy: {e}"))?;
+            if args.counterexample {
+                let result = compiler
+                    .check_never_matches_with_counterexample_opt(&compiled)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_counterexample_result(result, "Policy never matches", args.verbose);
+            } else {
+                let holds = compiler
+                    .check_never_matches_opt(&compiled)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_bool_result(holds, "Policy never matches");
+            }
+        }
+
+        // --- Two-policy comparison primitives ---
+        SymccCommands::MatchesEquivalent(cmd_args) => {
+            let (p1, p2, schema) =
+                load_two_policies(&cmd_args.policy1, &cmd_args.policy2, &args.schema)?;
+            let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
+            let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy2: {e}"))?;
+            if args.counterexample {
+                let result = compiler
+                    .check_matches_equivalent_with_counterexample_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_counterexample_result(
+                    result,
+                    "Policies have equivalent match conditions",
+                    args.verbose,
+                );
+            } else {
+                let holds = compiler
+                    .check_matches_equivalent_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_bool_result(
+                    holds,
+                    "Policies have equivalent match conditions",
+                );
+            }
+        }
+        SymccCommands::MatchesImplies(cmd_args) => {
+            let (p1, p2, schema) =
+                load_two_policies(&cmd_args.policy1, &cmd_args.policy2, &args.schema)?;
+            let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
+            let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy2: {e}"))?;
+            if args.counterexample {
+                let result = compiler
+                    .check_matches_implies_with_counterexample_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_counterexample_result(
+                    result,
+                    "Policy1 match implies Policy2 match",
+                    args.verbose,
+                );
+            } else {
+                let holds = compiler
+                    .check_matches_implies_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_bool_result(holds, "Policy1 match implies Policy2 match");
+            }
+        }
+        SymccCommands::MatchesDisjoint(cmd_args) => {
+            let (p1, p2, schema) =
+                load_two_policies(&cmd_args.policy1, &cmd_args.policy2, &args.schema)?;
+            let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
+            let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy2: {e}"))?;
+            if args.counterexample {
+                let result = compiler
+                    .check_matches_disjoint_with_counterexample_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_counterexample_result(
+                    result,
+                    "Policies have disjoint match conditions",
+                    args.verbose,
+                );
+            } else {
+                let holds = compiler
+                    .check_matches_disjoint_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_bool_result(
+                    holds,
+                    "Policies have disjoint match conditions",
+                );
+            }
+        }
+
+        // --- Policy-set primitives ---
+        SymccCommands::AlwaysAllows(cmd_args) => {
+            let (pset, schema) = load_policy_set(&cmd_args.policies, &args.schema)?;
+            let compiled = CompiledPolicySet::compile(&pset, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy set: {e}"))?;
+            if args.counterexample {
+                let result = compiler
+                    .check_always_allows_with_counterexample_opt(&compiled)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_counterexample_result(result, "Policy set always allows", args.verbose);
+            } else {
+                let holds = compiler
+                    .check_always_allows_opt(&compiled)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_bool_result(holds, "Policy set always allows");
+            }
+        }
+        SymccCommands::AlwaysDenies(cmd_args) => {
+            let (pset, schema) = load_policy_set(&cmd_args.policies, &args.schema)?;
+            let compiled = CompiledPolicySet::compile(&pset, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy set: {e}"))?;
+            if args.counterexample {
+                let result = compiler
+                    .check_always_denies_with_counterexample_opt(&compiled)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_counterexample_result(result, "Policy set always denies", args.verbose);
+            } else {
+                let holds = compiler
+                    .check_always_denies_opt(&compiled)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_bool_result(holds, "Policy set always denies");
+            }
+        }
+        SymccCommands::Equivalent(cmd_args) => {
+            let (pset1, pset2, schema) =
+                load_two_policy_sets(&cmd_args.policies1, &cmd_args.policies2, &args.schema)?;
+            let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
+            let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy set 2: {e}"))?;
+            if args.counterexample {
+                let result = compiler
+                    .check_equivalent_with_counterexample_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_counterexample_result(result, "Policy sets are equivalent", args.verbose);
+            } else {
+                let holds = compiler
+                    .check_equivalent_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_bool_result(holds, "Policy sets are equivalent");
+            }
+        }
+        SymccCommands::Implies(cmd_args) => {
+            let (pset1, pset2, schema) =
+                load_two_policy_sets(&cmd_args.policies1, &cmd_args.policies2, &args.schema)?;
+            let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
+            let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy set 2: {e}"))?;
+            if args.counterexample {
+                let result = compiler
+                    .check_implies_with_counterexample_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_counterexample_result(
+                    result,
+                    "Policy set 1 implies policy set 2",
+                    args.verbose,
+                );
+            } else {
+                let holds = compiler
+                    .check_implies_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_bool_result(holds, "Policy set 1 implies policy set 2");
+            }
+        }
+        SymccCommands::Disjoint(cmd_args) => {
+            let (pset1, pset2, schema) =
+                load_two_policy_sets(&cmd_args.policies1, &cmd_args.policies2, &args.schema)?;
+            let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
+            let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
+                .map_err(|e| miette!("Failed to compile policy set 2: {e}"))?;
+            if args.counterexample {
+                let result = compiler
+                    .check_disjoint_with_counterexample_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_counterexample_result(result, "Policy sets are disjoint", args.verbose);
+            } else {
+                let holds = compiler
+                    .check_disjoint_opt(&compiled1, &compiled2)
+                    .await
+                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                format_bool_result(holds, "Policy sets are disjoint");
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn create_slot_env(data: &HashMap<SlotId, String>) -> Result<HashMap<SlotId, EntityUid>> {
