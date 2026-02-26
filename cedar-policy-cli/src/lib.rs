@@ -24,6 +24,7 @@
 )]
 
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
+#[cfg(feature = "analyze")]
 use itertools::Itertools;
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use owo_colors::OwoColorize;
