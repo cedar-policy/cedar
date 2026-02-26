@@ -325,7 +325,7 @@ pub fn bvsmod(t1: Term, t2: Term) -> Term {
 }
 
 pub fn bvurem(t1: Term, t2: Term) -> Term {
-    bvapp(Op::Bvumod, &BitVec::urem, t1, t2)
+    bvapp(Op::Bvurem, &BitVec::urem, t1, t2)
 }
 
 pub fn bvshl(t1: Term, t2: Term) -> Term {
