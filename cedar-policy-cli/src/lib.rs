@@ -1638,7 +1638,7 @@ pub fn language_version() -> CedarExitCode {
 
 #[cfg(not(feature = "analyze"))]
 pub fn symcc(_: &SymccArgs) -> CedarExitCode {
-    eprintln!("Error: analyze command requires the 'analyze' feature to be enabled");
+    eprintln!("Cannot run `symcc`: this Cedar CLI was built without the 'analyze' feature enabled");
     CedarExitCode::Failure
 }
 
