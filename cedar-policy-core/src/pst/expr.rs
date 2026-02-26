@@ -16,16 +16,16 @@
 
 //! Expression types for PST
 
+use super::errors::PstConstructionError;
 use crate::ast;
 use crate::expr_builder::ExprBuilder;
-use crate::extensions::{ExtensionFunctionLookupError, Extensions};
+use crate::extensions::Extensions;
 use itertools::Itertools;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
-
 /// Constants for core Cedar operator names
 mod constants {
     // The operators that are defined only in syntax
@@ -578,46 +578,7 @@ pub enum Expr {
 /// A private error node is used when other internal APIs require infaillible methods
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ErrorNode {
-    pub(crate) error: ExprConstructionError,
-}
-
-/// Error type for PST expression construction
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum ExprConstructionError {
-    /// Unknown function name
-    #[error("unknown function: {name}")]
-    UnknownFunction {
-        /// The name of the unknown function
-        name: SmolStr,
-    },
-    /// Name parsing error
-    #[error("error parsing name: {0}")]
-    NameParsingError(SmolStr),
-    /// A generic invalid expression
-    #[error("invalid expression: {0}")]
-    InvalidExpression(String),
-    /// Extension function lookup error
-    #[error(transparent)]
-    FunctionLookupError(ExtensionFunctionLookupError),
-    /// Wrong number of arguments
-    #[error("function {name} expects {expected} argument(s), got {got}")]
-    WrongArity {
-        /// The name of the entity with the wrong number of arguments
-        name: String,
-        /// The expected number of arguments
-        expected: usize,
-        /// The actual number of arguments
-        got: usize,
-    },
-    /// Error constructing a `HasAttr` expression with an empty attribute path
-    #[error("attribute path cannot be empty")]
-    EmptyAttributePath,
-    /// Error constructing an attribute path (e.g. more than one attribute and invalid identifiers)
-    #[error("attribute path {0} contains invalid elements")]
-    InvalidAttributePath(String),
-    /// Duplicate key in a record
-    #[error("duplicate record key {0}")]
-    DuplicateRecordKey(String),
+    pub(crate) error: PstConstructionError,
 }
 
 impl Expr {
@@ -627,9 +588,9 @@ impl Expr {
     pub(crate) fn from_function_name_and_args(
         name: SmolStr,
         args: Vec<Arc<Expr>>,
-    ) -> Result<Expr, ExprConstructionError> {
+    ) -> Result<Expr, PstConstructionError> {
         let ast_name = ast::Name::from_str(name.as_str())
-            .map_err(|_| ExprConstructionError::NameParsingError(name.clone()))?;
+            .map_err(|_| PstConstructionError::InvalidName(name.clone()))?;
         Self::from_function_names_and_args(name, &ast_name, args)
     }
 
@@ -638,7 +599,7 @@ impl Expr {
     pub(crate) fn from_function_ast_name_and_args(
         name: &ast::Name,
         args: Vec<Arc<Expr>>,
-    ) -> Result<Expr, ExprConstructionError> {
+    ) -> Result<Expr, PstConstructionError> {
         Self::from_function_names_and_args(name.to_smolstr(), name, args)
     }
 
@@ -649,16 +610,16 @@ impl Expr {
         name: SmolStr,
         ast_name: &ast::Name,
         args: Vec<Arc<Expr>>,
-    ) -> Result<Expr, ExprConstructionError> {
+    ) -> Result<Expr, PstConstructionError> {
         let extension = Extensions::all_available()
             .func(ast_name)
-            .map_err(ExprConstructionError::FunctionLookupError)?;
+            .map_err(PstConstructionError::FunctionLookupError)?;
 
         let expected = extension.arg_types().len();
         let got = args.len();
 
         if expected != got {
-            return Err(ExprConstructionError::WrongArity {
+            return Err(PstConstructionError::WrongArity {
                 name: name.into(),
                 expected,
                 got,
@@ -675,12 +636,12 @@ impl Expr {
                     });
                 }
                 let op = UnaryOp::from_function_name(&ast_name.to_string())
-                    .ok_or(ExprConstructionError::UnknownFunction { name })?;
+                    .ok_or(PstConstructionError::UnknownFunction(name))?;
                 Expr::UnaryOp { op, expr }
             }
             2 => {
                 let op = BinaryOp::from_function_name(&ast_name.to_string())
-                    .ok_or(ExprConstructionError::UnknownFunction { name })?;
+                    .ok_or(PstConstructionError::UnknownFunction(name))?;
                 let mut iter = args.into_iter();
                 Expr::BinaryOp {
                     op,
@@ -690,7 +651,7 @@ impl Expr {
                     right: iter.next().unwrap(),
                 }
             }
-            _ => return Err(ExprConstructionError::UnknownFunction { name }),
+            _ => return Err(PstConstructionError::UnknownFunction(name)),
         })
     }
 }
@@ -1184,7 +1145,7 @@ impl From<ast::Expr> for Expr {
             ast::ExprKind::Error {
                 error_kind: ast::expr_allows_errors::AstExprErrorKind::InvalidExpr(e_str),
             } => Expr::Error(ErrorNode {
-                error: ExprConstructionError::InvalidExpression(e_str),
+                error: PstConstructionError::InvalidExpression(e_str),
             }),
         }
     }
@@ -1202,7 +1163,7 @@ mod tests {
         let result = Expr::from_function_ast_name_and_args(&name, args);
         assert!(matches!(
             result,
-            Err(ExprConstructionError::FunctionLookupError { .. })
+            Err(PstConstructionError::FunctionLookupError { .. })
         ));
     }
 
@@ -1217,7 +1178,7 @@ mod tests {
         let result = Expr::from_function_ast_name_and_args(&name, args);
         assert!(matches!(
             result,
-            Err(ExprConstructionError::WrongArity { .. })
+            Err(PstConstructionError::WrongArity { .. })
         ));
     }
 
@@ -1274,12 +1235,10 @@ mod tests {
 
     #[test]
     fn test_expr_construction_error_display() {
-        let err = ExprConstructionError::UnknownFunction {
-            name: "foo".to_smolstr(),
-        };
+        let err = PstConstructionError::UnknownFunction("foo".to_smolstr());
         assert!(err.to_string().contains("foo"));
 
-        let err = ExprConstructionError::WrongArity {
+        let err = PstConstructionError::WrongArity {
             name: "bar".to_string(),
             expected: 2,
             got: 1,
@@ -1586,6 +1545,76 @@ mod tests {
             // isEmpty
             let is_empty = builder().is_empty(builder().set([]));
             assert_eq!(is_empty.to_string(), "isEmpty([])");
+        }
+
+        #[test]
+        fn test_unary_op_display_no_impossible_operator() {
+            // Test that all UnaryOp variants display without showing "<impossible operator>"
+            let ops = [
+                UnaryOp::Not,
+                UnaryOp::Neg,
+                UnaryOp::IsEmpty,
+                UnaryOp::Datetime,
+                UnaryOp::Decimal,
+                UnaryOp::Duration,
+                UnaryOp::Ip,
+                UnaryOp::IsIPv4,
+                UnaryOp::IsIPV6,
+                UnaryOp::IsLoopback,
+                UnaryOp::IsMulticast,
+                UnaryOp::ToDate,
+                UnaryOp::ToTime,
+                UnaryOp::ToMilliseconds,
+                UnaryOp::ToSeconds,
+                UnaryOp::ToMinutes,
+                UnaryOp::ToHours,
+                UnaryOp::ToDays,
+            ];
+
+            for op in ops {
+                let display = op.to_string();
+                assert_ne!(
+                    display, "<impossible operator>",
+                    "UnaryOp::{:?} should not display as impossible operator",
+                    op
+                );
+            }
+        }
+
+        #[test]
+        fn test_binary_op_display_no_impossible_operator() {
+            // Test that all BinaryOp variants display without showing "<impossible operator>"
+            let ops = [
+                BinaryOp::Eq,
+                BinaryOp::NotEq,
+                BinaryOp::Less,
+                BinaryOp::LessEq,
+                BinaryOp::Greater,
+                BinaryOp::GreaterEq,
+                BinaryOp::And,
+                BinaryOp::Or,
+                BinaryOp::Add,
+                BinaryOp::Sub,
+                BinaryOp::Mul,
+                BinaryOp::In,
+                BinaryOp::Contains,
+                BinaryOp::ContainsAll,
+                BinaryOp::ContainsAny,
+                BinaryOp::GetTag,
+                BinaryOp::HasTag,
+                BinaryOp::IsInRange,
+                BinaryOp::Offset,
+                BinaryOp::DurationSince,
+            ];
+
+            for op in ops {
+                let display = op.to_string();
+                assert_ne!(
+                    display, "<impossible operator>",
+                    "BinaryOp::{:?} should not display as impossible operator",
+                    op
+                );
+            }
         }
     }
 }

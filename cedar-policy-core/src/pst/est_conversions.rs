@@ -18,38 +18,17 @@
 
 use super::{
     policy::PolicyID, ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr,
-    ExprConstructionError, Name, PatternElem, Policy, PrincipalConstraint, ResourceConstraint,
+    Name, PatternElem, Policy, PrincipalConstraint, PstConstructionError, ResourceConstraint,
     UnaryOp, Var,
 };
 use crate::ast;
 use crate::entities;
 use crate::est;
 use itertools::Itertools;
-use miette::Diagnostic;
-use smol_str::SmolStr;
 use std::sync::Arc;
-use thiserror::Error;
-
-#[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-pub enum ConversionError {
-    #[error("action_constraint_cannot_have_slots")]
-    ActionConstraintCannotHaveSlots,
-    #[error("invalid entity uid {0}")]
-    InvalidEntityUid(String),
-    #[error("invalid entity type {0}")]
-    InvalidEntityType(String),
-    #[error("invalid record {0}")]
-    InvalidRecord(String),
-    #[error("invalid attribute path {0}")]
-    InvalidAttributePath(String),
-    #[error(transparent)]
-    InvalidExpression(ExprConstructionError),
-    #[error("unknown function {0}")]
-    UnknownFunction(SmolStr),
-}
 
 impl TryFrom<est::Policy> for Policy {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(est_policy: est::Policy) -> Result<Self, Self::Error> {
         let clauses: Result<Vec<_>, _> = est_policy
@@ -84,7 +63,7 @@ impl TryFrom<est::Policy> for Policy {
 }
 
 impl TryFrom<est::Clause> for Clause {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(clause: est::Clause) -> Result<Self, Self::Error> {
         match clause {
@@ -95,19 +74,19 @@ impl TryFrom<est::Clause> for Clause {
 }
 
 impl TryFrom<entities::EntityUidJson> for EntityUID {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(entity: entities::EntityUidJson) -> Result<Self, Self::Error> {
         let ctx = || crate::entities::json::err::JsonDeserializationErrorContext::Context;
         entity
             .into_euid(&ctx)
-            .map_err(|e| ConversionError::InvalidEntityUid(e.to_string()))
+            .map_err(|e| PstConstructionError::InvalidEntityUid(e.to_string()))
             .map(EntityUID::from)
     }
 }
 
 impl TryFrom<est::PrincipalConstraint> for PrincipalConstraint {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(constraint: est::PrincipalConstraint) -> Result<Self, Self::Error> {
         use est::{EqConstraint, PrincipalConstraint as E, PrincipalOrResourceInConstraint};
@@ -146,7 +125,7 @@ impl TryFrom<est::PrincipalConstraint> for PrincipalConstraint {
 }
 
 impl TryFrom<est::ResourceConstraint> for ResourceConstraint {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(constraint: est::ResourceConstraint) -> Result<Self, Self::Error> {
         use est::{EqConstraint, PrincipalOrResourceInConstraint, ResourceConstraint as E};
@@ -185,7 +164,7 @@ impl TryFrom<est::ResourceConstraint> for ResourceConstraint {
 }
 
 impl TryFrom<est::ActionConstraint> for ActionConstraint {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(constraint: est::ActionConstraint) -> Result<Self, Self::Error> {
         use est::{ActionConstraint as E, ActionInConstraint, EqConstraint};
@@ -193,7 +172,7 @@ impl TryFrom<est::ActionConstraint> for ActionConstraint {
             E::All => Ok(ActionConstraint::Any),
             E::Eq(EqConstraint::Entity { entity }) => Ok(ActionConstraint::Eq(entity.try_into()?)),
             E::Eq(EqConstraint::Slot { .. }) => {
-                Err(ConversionError::ActionConstraintCannotHaveSlots)
+                Err(PstConstructionError::ActionConstraintCannotHaveSlots)
             }
             E::In(ActionInConstraint::Single { entity }) => {
                 Ok(ActionConstraint::In(vec![entity.try_into()?]))
@@ -204,7 +183,7 @@ impl TryFrom<est::ActionConstraint> for ActionConstraint {
                 Ok(ActionConstraint::In(euids))
             }
             #[cfg(feature = "tolerant-ast")]
-            E::ErrorConstraint => Err(ConversionError::InvalidEntityUid(
+            E::ErrorConstraint => Err(PstConstructionError::InvalidEntityUid(
                 "Cannot convert EST error constraint to PST".to_string(),
             )),
         }
@@ -212,9 +191,9 @@ impl TryFrom<est::ActionConstraint> for ActionConstraint {
 }
 
 impl TryFrom<est::Expr> for Expr {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
-    fn try_from(est_expr: est::Expr) -> Result<Self, ConversionError> {
+    fn try_from(est_expr: est::Expr) -> Result<Self, PstConstructionError> {
         match est_expr {
             est::Expr::ExprNoExt(e) => e.try_into(),
             est::Expr::ExtFuncCall(e) => {
@@ -224,16 +203,15 @@ impl TryFrom<est::Expr> for Expr {
                     .map(|a: est::Expr| a.try_into().map(Arc::new))
                     .try_collect()?;
                 Expr::from_function_name_and_args(fn_name, pst_args)
-                    .map_err(ConversionError::InvalidExpression)
             }
         }
     }
 }
 
 impl TryFrom<est::ExprNoExt> for Expr {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
-    fn try_from(est_expr: est::ExprNoExt) -> Result<Self, ConversionError> {
+    fn try_from(est_expr: est::ExprNoExt) -> Result<Self, PstConstructionError> {
         use est::ExprNoExt as E;
         // The conversion doesn't use the ExprBuilder's interface, which currently desugars some
         // expressions. We want the PST to be closed to the EST, so we avoid desugaring here.
@@ -243,7 +221,7 @@ impl TryFrom<est::ExprNoExt> for Expr {
                 let ctx = || crate::entities::json::err::JsonDeserializationErrorContext::Context;
                 let restricted_expr = v
                     .into_expr(&ctx)
-                    .map_err(|e| ConversionError::InvalidEntityUid(e.to_string()))?;
+                    .map_err(|e| PstConstructionError::InvalidEntityUid(e.to_string()))?;
                 Ok(ast::Expr::from(restricted_expr).into())
             }
             E::Var(v) => Ok(Expr::var(v.into())),
@@ -332,13 +310,13 @@ impl TryFrom<est::ExprNoExt> for Expr {
                 est::HasAttrRepr::Extended { left, attr } => {
                     // Validate that if length of attr > 1, all elements are identifiers
                     if attr.len() > 1 && attr.iter().any(|attr| !ast::is_normalized_ident(attr)) {
-                        Err(ConversionError::InvalidAttributePath(format!(
+                        Err(PstConstructionError::InvalidAttributePath(format!(
                             "attribute sequence .{} contains non-identifiers",
                             attr.iter().join(".")
                         )))
                     } else {
                         Expr::has_attrs(Arc::unwrap_or_clone(left).try_into()?, attr)
-                            .map_err(|e| ConversionError::InvalidAttributePath(e.to_string()))
+                            .map_err(|e| PstConstructionError::InvalidAttributePath(e.to_string()))
                     }
                 }
             },
@@ -392,10 +370,11 @@ impl TryFrom<est::ExprNoExt> for Expr {
                     .into_iter()
                     .map(|(k, v)| v.try_into().map(|v| (k, v)))
                     .collect();
-                Expr::record(converted?).map_err(|e| ConversionError::InvalidRecord(e.to_string()))
+                Expr::record(converted?)
+                    .map_err(|e| PstConstructionError::InvalidRecord(e.to_string()))
             }
             #[cfg(feature = "tolerant-ast")]
-            E::Error(_) => Err(ConversionError::InvalidEntityUid(
+            E::Error(_) => Err(PstConstructionError::InvalidEntityUid(
                 "Cannot convert EST error node to PST".to_string(),
             )),
         }
@@ -904,7 +883,7 @@ mod tests {
         let result: Result<pst::ActionConstraint, _> = constraint.try_into();
         assert!(matches!(
             result,
-            Err(ConversionError::ActionConstraintCannotHaveSlots)
+            Err(PstConstructionError::ActionConstraintCannotHaveSlots)
         ));
     }
 
@@ -1151,7 +1130,6 @@ mod tests {
         let json = r#"{"offset": []}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let result: Result<Expr, _> = est_expr.try_into();
-        assert!(result.is_err());
-        assert!(matches!(result, Err(ConversionError::InvalidExpression(_))));
+        assert!(matches!(result, Err(PstConstructionError::WrongArity { .. })));
     }
 }

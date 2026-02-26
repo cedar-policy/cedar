@@ -29,14 +29,14 @@
 mod ast_conversions;
 mod builders;
 mod constraints;
+mod errors;
 mod est_conversions;
 mod expr;
 mod policy;
 
-pub use ast_conversions::ConversionError;
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
+pub use errors::PstConstructionError;
 pub use expr::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprConstructionError, Literal, Name, PatternElem,
-    SlotId, UnaryOp, Var,
+    BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
 pub use policy::{Clause, Effect, Policy};

@@ -17,7 +17,7 @@
 //! Public builder API for constructing PST expressions
 
 use super::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprConstructionError, Literal, PatternElem, SlotId,
+    BinaryOp, EntityType, EntityUID, Expr, Literal, PatternElem, PstConstructionError, SlotId,
     UnaryOp, Var,
 };
 use crate::ast;
@@ -26,6 +26,8 @@ use smol_str::SmolStr;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+// Expr provides convenience functions to build expressions. This is not the private ExprBuilder API,
+// which is in expr.rs.
 impl Expr {
     /// Create a literal expression
     pub fn literal(lit: Literal) -> Self {
@@ -211,20 +213,23 @@ impl Expr {
     /// Create an attribute existence check expression
     ///
     /// # Errors
-    /// Returns an error if the attribute path is empty
+    /// - Returns an [`ExprConstructionError::EmptyAttributePath`] error if the attribute path is
+    /// empty.
+    /// - Returns an [`ExprConstructionError::InvalidAttributePath`] error if there is more than
+    /// one attribute, and some attribute name is not a valid identifier.
     pub fn has_attrs(
         expr: Self,
         attrs: impl IntoIterator<Item = impl Into<SmolStr>>,
-    ) -> Result<Self, ExprConstructionError> {
+    ) -> Result<Self, PstConstructionError> {
         let attrs_vec: Vec<SmolStr> = attrs.into_iter().map(Into::into).collect();
         let attrs_nonempty = nonempty::NonEmpty::from_vec(attrs_vec)
-            .ok_or(ExprConstructionError::EmptyAttributePath)?;
+            .ok_or(PstConstructionError::EmptyAttributePath)?;
         if attrs_nonempty.len() > 1
             && attrs_nonempty
                 .iter()
                 .any(|attr| !ast::is_normalized_ident(attr))
         {
-            Err(ExprConstructionError::InvalidAttributePath(
+            Err(PstConstructionError::InvalidAttributePath(
                 attrs_nonempty.iter().join("."),
             ))
         } else {
@@ -278,15 +283,15 @@ impl Expr {
     /// Create a record expression
     ///
     /// # Errors
-    /// Returns an error if there are duplicate keys
+    /// Returns an [`ExprConstructionError::DuplicateRecordKey`] error if there are duplicate keys
     pub fn record(
         pairs: impl IntoIterator<Item = (impl Into<String>, Self)>,
-    ) -> Result<Self, ExprConstructionError> {
+    ) -> Result<Self, PstConstructionError> {
         let mut map = BTreeMap::new();
         for (k, v) in pairs {
             let key = k.into();
             if map.insert(key.clone(), Arc::new(v)).is_some() {
-                return Err(ExprConstructionError::DuplicateRecordKey(key));
+                return Err(PstConstructionError::DuplicateRecordKey(key));
             }
         }
         Ok(Self::Record(map))
@@ -364,7 +369,7 @@ mod tests {
         let result = Expr::record(pairs);
         assert!(matches!(
             result,
-            Err(ExprConstructionError::DuplicateRecordKey(_))
+            Err(PstConstructionError::DuplicateRecordKey(_))
         ));
     }
 
@@ -374,7 +379,7 @@ mod tests {
         let result = Expr::has_attrs(expr, Vec::<SmolStr>::new());
         assert!(matches!(
             result,
-            Err(ExprConstructionError::EmptyAttributePath)
+            Err(PstConstructionError::EmptyAttributePath)
         ));
     }
 
@@ -384,7 +389,7 @@ mod tests {
         let result = Expr::has_attrs(expr, nonempty!["ok", "oh snap®"]);
         assert!(matches!(
             result,
-            Err(ExprConstructionError::InvalidAttributePath(_))
+            Err(PstConstructionError::InvalidAttributePath(_))
         ));
     }
 

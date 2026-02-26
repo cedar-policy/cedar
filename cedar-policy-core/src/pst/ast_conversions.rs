@@ -18,27 +18,17 @@
 
 use smol_str::ToSmolStr;
 
-use super::constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
-use super::expr::{BinaryOp, EntityUID, Expr, Literal, PatternElem, UnaryOp, Var};
-use super::policy::{Clause, Effect, Policy};
+use super::{
+    ActionConstraint, BinaryOp, Clause, Effect, EntityOrSlot, EntityUID, Expr, Literal,
+    PatternElem, Policy, PrincipalConstraint, PstConstructionError, ResourceConstraint, UnaryOp,
+    Var,
+};
 use crate::ast;
-use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use crate::pst::expr::ErrorNode;
 use std::sync::Arc;
 
-/// Error type for PST to AST conversions
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum ConversionError {
-    /// Invalid conversion with description
-    #[error("Invalid conversion: {0}")]
-    InvalidConversion(String),
-    /// Conversion steps not yet implemented
-    #[error("Not implemented: {0}")]
-    NotImplemented(String),
-}
-
 impl TryFrom<Policy> for ast::Policy {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(policy: Policy) -> Result<Self, Self::Error> {
         // Convert to Template first, then to Policy (following EST pattern)
@@ -46,7 +36,7 @@ impl TryFrom<Policy> for ast::Policy {
         ast::StaticPolicy::try_from(template)
             .map(Into::into)
             .map_err(|e| {
-                ConversionError::InvalidConversion(format!(
+                PstConstructionError::InvalidConversion(format!(
                     "Failed to convert template to static policy: {:?}",
                     e
                 ))
@@ -55,7 +45,7 @@ impl TryFrom<Policy> for ast::Policy {
 }
 
 impl TryFrom<Policy> for ast::Template {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(policy: Policy) -> Result<Self, Self::Error> {
         use crate::expr_builder::ExprBuilder;
@@ -112,7 +102,7 @@ impl TryFrom<Policy> for ast::Template {
 }
 
 impl TryFrom<PrincipalConstraint> for ast::PrincipalConstraint {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(constraint: PrincipalConstraint) -> Result<Self, Self::Error> {
         match constraint {
@@ -125,26 +115,26 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalConstraint {
             }
             PrincipalConstraint::Is(entity_type) => {
                 let ast_et: ast::EntityType = entity_type.try_into().map_err(|e| {
-                    ConversionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
+                    PstConstructionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
                 })?;
                 Ok(ast::PrincipalConstraint::is_entity_type(Arc::new(ast_et)))
             }
             PrincipalConstraint::IsIn(entity_type, EntityOrSlot::Entity(eos)) => {
                 let ast_et: ast::EntityType = entity_type.try_into().map_err(|e| {
-                    ConversionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
+                    PstConstructionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
                 })?;
                 Ok(ast::PrincipalConstraint::is_entity_type_in(
                     Arc::new(ast_et),
                     Arc::new(eos.try_into()?),
                 ))
             }
-            _ => Err(ConversionError::NotImplemented("templates".into())),
+            _ => Err(PstConstructionError::NotImplemented("templates".into())),
         }
     }
 }
 
 impl TryFrom<ResourceConstraint> for ast::ResourceConstraint {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(constraint: ResourceConstraint) -> Result<Self, Self::Error> {
         match constraint {
@@ -157,26 +147,26 @@ impl TryFrom<ResourceConstraint> for ast::ResourceConstraint {
             }
             ResourceConstraint::Is(entity_type) => {
                 let ast_et: ast::EntityType = entity_type.try_into().map_err(|e| {
-                    ConversionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
+                    PstConstructionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
                 })?;
                 Ok(ast::ResourceConstraint::is_entity_type(Arc::new(ast_et)))
             }
             ResourceConstraint::IsIn(entity_type, EntityOrSlot::Entity(eos)) => {
                 let ast_et: ast::EntityType = entity_type.try_into().map_err(|e| {
-                    ConversionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
+                    PstConstructionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
                 })?;
                 Ok(ast::ResourceConstraint::is_entity_type_in(
                     Arc::new(ast_et),
                     Arc::new(eos.try_into()?),
                 ))
             }
-            _ => Err(ConversionError::NotImplemented("templates".into())),
+            _ => Err(PstConstructionError::NotImplemented("templates".into())),
         }
     }
 }
 
 impl TryFrom<ActionConstraint> for ast::ActionConstraint {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(constraint: ActionConstraint) -> Result<Self, Self::Error> {
         match constraint {
@@ -200,17 +190,17 @@ fn elements_into_ast_pattern(elems: impl IntoIterator<Item = PatternElem>) -> as
 }
 
 impl TryFrom<Expr> for ast::Expr {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
-    fn try_from(expr: Expr) -> Result<Self, ConversionError> {
+    fn try_from(expr: Expr) -> Result<Self, PstConstructionError> {
         expr_to_ast(expr).map_err(|e| {
-            ConversionError::InvalidConversion(format!("Failed to convert expr: {:?}", e))
+            PstConstructionError::InvalidConversion(format!("Failed to convert expr: {:?}", e))
         })
     }
 }
 
 // Helper to convert PST Expr to AST Expr using the AST builder
-fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
+fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
     use crate::expr_builder::ExprBuilder;
     let builder = ast::ExprBuilder::<()>::new();
 
@@ -222,7 +212,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
             Literal::EntityUID(uid) => {
                 // Convert PST EntityUID to AST EntityUID using existing TryFrom impl
                 let ast_et: ast::EntityType = uid.ty.try_into().map_err(|e| {
-                    ConversionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
+                    PstConstructionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
                 })?;
                 let ast_eid = ast::Eid::new(uid.eid.as_str());
                 let ast_uid = ast::EntityUID::from_components(ast_et, ast_eid, None);
@@ -238,7 +228,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
             };
             Ok(builder.var(ast_var))
         }
-        Expr::Slot(_) => Err(ConversionError::NotImplemented("slots".to_string())),
+        Expr::Slot(_) => Err(PstConstructionError::NotImplemented("slots".to_string())),
         Expr::UnaryOp { op, expr } => {
             let inner = expr_to_ast(Arc::unwrap_or_clone(expr))?;
             Ok(match op {
@@ -248,7 +238,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
                 // The other unary operators are extension functions.
                 _ => match op.to_name() {
                     Some(fn_name) => builder.call_extension_fn(fn_name.clone(), vec![inner]),
-                    None => Err(ConversionError::InvalidConversion(format!(
+                    None => Err(PstConstructionError::InvalidConversion(format!(
                         "unknown unary operator: {:?}",
                         op
                     )))?,
@@ -282,7 +272,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
                     Some(fn_name) => {
                         builder.call_extension_fn(fn_name.clone(), vec![left_ast, right_ast])
                     }
-                    None => Err(ConversionError::InvalidConversion(format!(
+                    None => Err(PstConstructionError::InvalidConversion(format!(
                         "unknown binary operator: {:?}",
                         op
                     )))?,
@@ -313,7 +303,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
             expr_to_ast(Arc::unwrap_or_clone(expr))?,
             entity_type
                 .try_into()
-                .map_err(|p| ConversionError::InvalidConversion(format!("{:?}", p)))?,
+                .map_err(|p| PstConstructionError::InvalidConversion(format!("{:?}", p)))?,
         )),
         Expr::Is {
             expr,
@@ -323,7 +313,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
             expr_to_ast(Arc::unwrap_or_clone(expr))?,
             entity_type
                 .try_into()
-                .map_err(|p| ConversionError::InvalidConversion(format!("{:?}", p)))?,
+                .map_err(|p| PstConstructionError::InvalidConversion(format!("{:?}", p)))?,
             expr_to_ast(Arc::unwrap_or_clone(e))?,
         )),
         Expr::GetAttr { expr, attr } => {
@@ -343,26 +333,17 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, ConversionError> {
                     .map(|(k, v)| Ok((k.into(), expr_to_ast(Arc::unwrap_or_clone(v))?)))
                     .collect::<Result<Vec<_>, _>>()?,
             )
-            .map_err(|cstr_err| ConversionError::InvalidConversion(format!("{:?}", cstr_err))),
+            .map_err(|cstr_err| PstConstructionError::InvalidConversion(format!("{:?}", cstr_err))),
         Expr::Unknown { name } => Ok(builder.unknown(ast::Unknown {
             name,
             type_annotation: None,
         })),
-        Expr::Error(ErrorNode { error: e }) =>
-        // TODO: temporary handling of the error node
-        {
-            builder
-                .error(ParseErrors::singleton(ToASTError::new(
-                    ToASTErrorKind::ASTErrorNode,
-                    None,
-                )))
-                .map_err(|_| ConversionError::InvalidConversion(format!("{}", e)))
-        }
+        Expr::Error(ErrorNode { error: e }) => Err(PstConstructionError::ErrorNode(e.to_string())),
     }
 }
 
 impl TryFrom<Effect> for ast::Effect {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(effect: Effect) -> Result<Self, Self::Error> {
         match effect {
@@ -373,11 +354,11 @@ impl TryFrom<Effect> for ast::Effect {
 }
 
 impl TryFrom<EntityUID> for ast::EntityUID {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
-    fn try_from(value: EntityUID) -> Result<Self, ConversionError> {
+    fn try_from(value: EntityUID) -> Result<Self, PstConstructionError> {
         let ast_et: ast::EntityType = value.ty.try_into().map_err(|e| {
-            ConversionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
+            PstConstructionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
         })?;
         let ast_eid = ast::Eid::new(value.eid.as_str());
         Ok(ast::EntityUID::from_components(ast_et, ast_eid, None))
@@ -385,12 +366,14 @@ impl TryFrom<EntityUID> for ast::EntityUID {
 }
 
 impl TryFrom<EntityOrSlot> for ast::EntityReference {
-    type Error = ConversionError;
+    type Error = PstConstructionError;
 
     fn try_from(eos: EntityOrSlot) -> Result<Self, Self::Error> {
         match eos {
             EntityOrSlot::Entity(uid) => Ok(ast::EntityReference::euid(Arc::new(uid.try_into()?))),
-            EntityOrSlot::Slot(_) => Err(ConversionError::NotImplemented("templates".to_string())),
+            EntityOrSlot::Slot(_) => Err(PstConstructionError::NotImplemented(
+                "templates".to_string(),
+            )),
         }
     }
 }
