@@ -1748,7 +1748,7 @@ fn format_bool_result(holds: bool, property: &str) {
     if holds {
         println!("✓ {property}: VERIFIED");
     } else {
-        println!("✗ {property}: FAILED");
+        println!("✗ {property}: DOES NOT HOLD");
     }
 }
 
@@ -1825,7 +1825,7 @@ fn format_counterexample_result(
             }
         }
         Some(env) => {
-            println!("✗ {property}: FAILED");
+            println!("✗ {property}: DOES NOT HOLD");
             println!("  Counterexample found:");
             println!("{}", Counterexample(env));
         }
