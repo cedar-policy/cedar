@@ -949,32 +949,15 @@ pub struct AlwaysDeniesArgs {
     pub policies: PoliciesArgs,
 }
 
-/// Two-policy comparison: first policy input
+/// Two-policy comparison: policy inputs
 #[derive(Args, Debug)]
-pub struct Policy1Args {
+pub struct TwoPolicyArgs {
     /// File containing the first Cedar policy
     #[arg(long = "policy1", value_name = "FILE")]
     pub policy1_file: Option<String>,
     /// Format of the first policy file
     #[arg(long = "policy1-format", default_value_t, value_enum)]
     pub policy1_format: PolicyFormat,
-}
-
-#[cfg(feature = "analyze")]
-impl Policy1Args {
-    fn get_policy_set(&self) -> Result<PolicySet> {
-        let pargs = PoliciesArgs {
-            policies_file: self.policy1_file.clone(),
-            policy_format: self.policy1_format,
-            template_linked_file: None,
-        };
-        pargs.get_policy_set()
-    }
-}
-
-/// Two-policy comparison: second policy input
-#[derive(Args, Debug)]
-pub struct Policy2Args {
     /// File containing the second Cedar policy
     #[arg(long = "policy2", value_name = "FILE")]
     pub policy2_file: Option<String>,
@@ -984,8 +967,17 @@ pub struct Policy2Args {
 }
 
 #[cfg(feature = "analyze")]
-impl Policy2Args {
-    fn get_policy_set(&self) -> Result<PolicySet> {
+impl TwoPolicyArgs {
+    fn get_policy_set_1(&self) -> Result<PolicySet> {
+        let pargs = PoliciesArgs {
+            policies_file: self.policy1_file.clone(),
+            policy_format: self.policy1_format,
+            template_linked_file: None,
+        };
+        pargs.get_policy_set()
+    }
+
+    fn get_policy_set_2(&self) -> Result<PolicySet> {
         let pargs = PoliciesArgs {
             policies_file: self.policy2_file.clone(),
             policy_format: self.policy2_format,
@@ -995,9 +987,9 @@ impl Policy2Args {
     }
 }
 
-/// Two policy-set comparison: first policy set input
+/// Two policy-set comparison: policy set inputs
 #[derive(Args, Debug)]
-pub struct Policies1Args {
+pub struct TwoPoliciesArgs {
     /// File containing the first policy set
     #[arg(long = "policies1", value_name = "FILE")]
     pub policies1_file: Option<String>,
@@ -1007,23 +999,6 @@ pub struct Policies1Args {
     /// Template-linked policies for the first policy set
     #[arg(long = "template-linked1", value_name = "FILE")]
     pub template_linked1_file: Option<String>,
-}
-
-#[cfg(feature = "analyze")]
-impl Policies1Args {
-    fn get_policy_set(&self) -> Result<PolicySet> {
-        let pargs = PoliciesArgs {
-            policies_file: self.policies1_file.clone(),
-            policy_format: self.policies1_format,
-            template_linked_file: self.template_linked1_file.clone(),
-        };
-        pargs.get_policy_set()
-    }
-}
-
-/// Two policy-set comparison: second policy set input
-#[derive(Args, Debug)]
-pub struct Policies2Args {
     /// File containing the second policy set
     #[arg(long = "policies2", value_name = "FILE")]
     pub policies2_file: Option<String>,
@@ -1036,8 +1011,17 @@ pub struct Policies2Args {
 }
 
 #[cfg(feature = "analyze")]
-impl Policies2Args {
-    fn get_policy_set(&self) -> Result<PolicySet> {
+impl TwoPoliciesArgs {
+    fn get_policy_set_1(&self) -> Result<PolicySet> {
+        let pargs = PoliciesArgs {
+            policies_file: self.policies1_file.clone(),
+            policy_format: self.policies1_format,
+            template_linked_file: self.template_linked1_file.clone(),
+        };
+        pargs.get_policy_set()
+    }
+
+    fn get_policy_set_2(&self) -> Result<PolicySet> {
         let pargs = PoliciesArgs {
             policies_file: self.policies2_file.clone(),
             policy_format: self.policies2_format,
@@ -1051,51 +1035,39 @@ impl Policies2Args {
 #[derive(Args, Debug)]
 pub struct MatchesEquivalentArgs {
     #[command(flatten)]
-    pub policy1: Policy1Args,
-    #[command(flatten)]
-    pub policy2: Policy2Args,
+    pub policies: TwoPolicyArgs,
 }
 
 /// Two-policy comparison: check if one policy's match condition implies another's
 #[derive(Args, Debug)]
 pub struct MatchesImpliesArgs {
     #[command(flatten)]
-    pub policy1: Policy1Args,
-    #[command(flatten)]
-    pub policy2: Policy2Args,
+    pub policies: TwoPolicyArgs,
 }
 
 /// Two-policy comparison: check if two policies' match conditions are disjoint
 #[derive(Args, Debug)]
 pub struct MatchesDisjointArgs {
     #[command(flatten)]
-    pub policy1: Policy1Args,
-    #[command(flatten)]
-    pub policy2: Policy2Args,
+    pub policies: TwoPolicyArgs,
 }
 
 #[derive(Args, Debug)]
 pub struct EquivalentArgs {
     #[command(flatten)]
-    pub policies1: Policies1Args,
-    #[command(flatten)]
-    pub policies2: Policies2Args,
+    pub policy_sets: TwoPoliciesArgs,
 }
 
 #[derive(Args, Debug)]
 pub struct ImpliesArgs {
     #[command(flatten)]
-    pub policies1: Policies1Args,
-    #[command(flatten)]
-    pub policies2: Policies2Args,
+    pub policy_sets: TwoPoliciesArgs,
 }
 
 #[derive(Args, Debug)]
 pub struct DisjointArgs {
     #[command(flatten)]
-    pub policies1: Policies1Args,
-    #[command(flatten)]
-    pub policies2: Policies2Args,
+    pub policy_sets: TwoPoliciesArgs,
 }
 
 /// Wrapper struct
@@ -1727,12 +1699,11 @@ fn load_single_policy(
 
 #[cfg(feature = "analyze")]
 fn load_two_policies(
-    p1: &Policy1Args,
-    p2: &Policy2Args,
+    args: &TwoPolicyArgs,
     schema_args: &SchemaArgs,
 ) -> Result<(Policy, Policy, Schema)> {
-    let pset1 = p1.get_policy_set()?;
-    let pset2 = p2.get_policy_set()?;
+    let pset1 = args.get_policy_set_1()?;
+    let pset2 = args.get_policy_set_2()?;
     let schema = schema_args.get_schema()?;
     let policies1: Vec<_> = pset1.policies().collect();
     let policies2: Vec<_> = pset2.policies().collect();
@@ -1763,12 +1734,11 @@ fn load_policy_set(
 
 #[cfg(feature = "analyze")]
 fn load_two_policy_sets(
-    p1: &Policies1Args,
-    p2: &Policies2Args,
+    args: &TwoPoliciesArgs,
     schema_args: &SchemaArgs,
 ) -> Result<(PolicySet, PolicySet, Schema)> {
-    let pset1 = p1.get_policy_set()?;
-    let pset2 = p2.get_policy_set()?;
+    let pset1 = args.get_policy_set_1()?;
+    let pset2 = args.get_policy_set_2()?;
     let schema = schema_args.get_schema()?;
     Ok((pset1, pset2, schema))
 }
@@ -1948,7 +1918,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         // --- Two-policy comparison primitives ---
         SymccCommands::MatchesEquivalent(cmd_args) => {
             let (p1, p2, schema) =
-                load_two_policies(&cmd_args.policy1, &cmd_args.policy2, &args.schema)?;
+                load_two_policies(&cmd_args.policies, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
@@ -1976,7 +1946,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::MatchesImplies(cmd_args) => {
             let (p1, p2, schema) =
-                load_two_policies(&cmd_args.policy1, &cmd_args.policy2, &args.schema)?;
+                load_two_policies(&cmd_args.policies, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
@@ -2001,7 +1971,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::MatchesDisjoint(cmd_args) => {
             let (p1, p2, schema) =
-                load_two_policies(&cmd_args.policy1, &cmd_args.policy2, &args.schema)?;
+                load_two_policies(&cmd_args.policies, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
@@ -2067,7 +2037,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::Equivalent(cmd_args) => {
             let (pset1, pset2, schema) =
-                load_two_policy_sets(&cmd_args.policies1, &cmd_args.policies2, &args.schema)?;
+                load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
@@ -2088,7 +2058,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::Implies(cmd_args) => {
             let (pset1, pset2, schema) =
-                load_two_policy_sets(&cmd_args.policies1, &cmd_args.policies2, &args.schema)?;
+                load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
@@ -2113,7 +2083,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::Disjoint(cmd_args) => {
             let (pset1, pset2, schema) =
-                load_two_policy_sets(&cmd_args.policies1, &cmd_args.policies2, &args.schema)?;
+                load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
