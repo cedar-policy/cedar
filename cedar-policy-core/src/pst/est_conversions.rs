@@ -17,9 +17,8 @@
 //! Conversions between EST and PST representations.
 
 use super::{
-    policy::PolicyID, ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr,
-    Name, PatternElem, Policy, PrincipalConstraint, PstConstructionError, ResourceConstraint,
-    UnaryOp, Var,
+    ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Name, PatternElem,
+    Policy, PolicyID, PrincipalConstraint, PstConstructionError, ResourceConstraint, UnaryOp,
 };
 use crate::ast;
 use crate::entities;
@@ -377,17 +376,6 @@ impl TryFrom<est::ExprNoExt> for Expr {
             E::Error(_) => Err(PstConstructionError::InvalidEntityUid(
                 "Cannot convert EST error node to PST".to_string(),
             )),
-        }
-    }
-}
-
-impl From<ast::Var> for Var {
-    fn from(v: ast::Var) -> Self {
-        match v {
-            ast::Var::Principal => Var::Principal,
-            ast::Var::Action => Var::Action,
-            ast::Var::Resource => Var::Resource,
-            ast::Var::Context => Var::Context,
         }
     }
 }
@@ -1130,6 +1118,9 @@ mod tests {
         let json = r#"{"offset": []}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let result: Result<Expr, _> = est_expr.try_into();
-        assert!(matches!(result, Err(PstConstructionError::WrongArity { .. })));
+        assert!(matches!(
+            result,
+            Err(PstConstructionError::WrongArity { .. })
+        ));
     }
 }

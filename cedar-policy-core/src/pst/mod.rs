@@ -39,4 +39,4 @@ pub use errors::PstConstructionError;
 pub use expr::{
     BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
-pub use policy::{Clause, Effect, Policy};
+pub use policy::{Clause, Effect, Policy, PolicyID};

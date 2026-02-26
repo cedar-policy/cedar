@@ -20,7 +20,6 @@ use super::errors::PstConstructionError;
 use crate::ast;
 use crate::expr_builder::ExprBuilder;
 use crate::extensions::Extensions;
-use itertools::Itertools;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::BTreeMap;
 use std::fmt::Display;
@@ -46,24 +45,6 @@ pub enum SlotId {
     Principal,
     /// Resource slot
     Resource,
-}
-
-impl From<ast::SlotId> for SlotId {
-    fn from(slot: ast::SlotId) -> Self {
-        match slot.0 {
-            ast::ValidSlotId::Principal => SlotId::Principal,
-            ast::ValidSlotId::Resource => SlotId::Resource,
-        }
-    }
-}
-
-impl From<SlotId> for ast::SlotId {
-    fn from(slot: SlotId) -> Self {
-        match slot {
-            SlotId::Principal => ast::SlotId::principal(),
-            SlotId::Resource => ast::SlotId::resource(),
-        }
-    }
 }
 
 impl Display for SlotId {
@@ -107,38 +88,6 @@ impl Name {
     }
 }
 
-impl From<ast::Name> for Name {
-    fn from(name: ast::Name) -> Self {
-        let ast::Name {
-            0: ast::InternalName { id, path, .. },
-        } = name;
-        Name {
-            id: id.into_smolstr(),
-            namespace: Arc::new(
-                Arc::try_unwrap(path)
-                    .unwrap_or_else(|arc| (*arc).clone())
-                    .into_iter()
-                    .map(|id| id.to_smolstr())
-                    .collect(),
-            ),
-        }
-    }
-}
-
-impl TryFrom<Name> for ast::Name {
-    type Error = crate::parser::err::ParseErrors;
-
-    fn try_from(name: Name) -> Result<Self, Self::Error> {
-        let basename = ast::Id::from_str(&name.id)?;
-        let path: Vec<ast::Id> = name
-            .namespace
-            .iter()
-            .map(|s| ast::Id::from_str(s.as_str()))
-            .try_collect()?;
-        Ok(ast::Name(ast::InternalName::new(basename, path, None)))
-    }
-}
-
 impl Display for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for elem in self.namespace.as_ref() {
@@ -159,20 +108,6 @@ impl EntityType {
     /// Create an entity type from a name
     pub fn from_name(name: impl Into<Name>) -> Self {
         EntityType(name.into())
-    }
-}
-
-impl From<ast::EntityType> for EntityType {
-    fn from(et: ast::EntityType) -> Self {
-        EntityType(et.into_name().into())
-    }
-}
-
-impl TryFrom<EntityType> for ast::EntityType {
-    type Error = crate::parser::err::ParseErrors;
-
-    fn try_from(et: EntityType) -> Result<Self, Self::Error> {
-        Ok(ast::EntityType::EntityType(et.0.try_into()?))
     }
 }
 
@@ -477,18 +412,6 @@ pub enum PatternElem {
     Char(char),
     /// A wildcard (`*`)
     Wildcard,
-}
-
-impl From<ast::Pattern> for Vec<PatternElem> {
-    fn from(pattern: ast::Pattern) -> Self {
-        pattern
-            .iter()
-            .map(|elem| match elem {
-                ast::PatternElem::Char(c) => PatternElem::Char(*c),
-                ast::PatternElem::Wildcard => PatternElem::Wildcard,
-            })
-            .collect()
-    }
 }
 
 /// PST Expression

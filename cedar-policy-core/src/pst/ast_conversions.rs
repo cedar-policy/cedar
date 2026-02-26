@@ -19,12 +19,14 @@
 use smol_str::ToSmolStr;
 
 use super::{
-    ActionConstraint, BinaryOp, Clause, Effect, EntityOrSlot, EntityUID, Expr, Literal,
-    PatternElem, Policy, PrincipalConstraint, PstConstructionError, ResourceConstraint, UnaryOp,
-    Var,
+    ActionConstraint, BinaryOp, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Literal,
+    Name, PatternElem, Policy, PrincipalConstraint, PstConstructionError, ResourceConstraint,
+    SlotId, UnaryOp, Var,
 };
 use crate::ast;
 use crate::pst::expr::ErrorNode;
+use itertools::Itertools;
+use std::str::FromStr;
 use std::sync::Arc;
 
 impl TryFrom<Policy> for ast::Policy {
@@ -219,15 +221,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
                 Ok(builder.val(ast_uid))
             }
         },
-        Expr::Var(v) => {
-            let ast_var = match v {
-                Var::Principal => ast::Var::Principal,
-                Var::Action => ast::Var::Action,
-                Var::Resource => ast::Var::Resource,
-                Var::Context => ast::Var::Context,
-            };
-            Ok(builder.var(ast_var))
-        }
+        Expr::Var(v) => Ok(builder.var(v.into())),
         Expr::Slot(_) => Err(PstConstructionError::NotImplemented("slots".to_string())),
         Expr::UnaryOp { op, expr } => {
             let inner = expr_to_ast(Arc::unwrap_or_clone(expr))?;
@@ -375,5 +369,103 @@ impl TryFrom<EntityOrSlot> for ast::EntityReference {
                 "templates".to_string(),
             )),
         }
+    }
+}
+
+impl From<ast::EntityType> for EntityType {
+    fn from(et: ast::EntityType) -> Self {
+        EntityType(et.into_name().into())
+    }
+}
+
+impl TryFrom<EntityType> for ast::EntityType {
+    type Error = crate::parser::err::ParseErrors;
+
+    fn try_from(et: EntityType) -> Result<Self, Self::Error> {
+        Ok(ast::EntityType::EntityType(et.0.try_into()?))
+    }
+}
+
+impl From<ast::Var> for Var {
+    fn from(v: ast::Var) -> Self {
+        match v {
+            ast::Var::Principal => Var::Principal,
+            ast::Var::Action => Var::Action,
+            ast::Var::Resource => Var::Resource,
+            ast::Var::Context => Var::Context,
+        }
+    }
+}
+
+impl From<Var> for ast::Var {
+    fn from(v: Var) -> Self {
+        match v {
+            Var::Principal => ast::Var::Principal,
+            Var::Action => ast::Var::Action,
+            Var::Resource => ast::Var::Resource,
+            Var::Context => ast::Var::Context,
+        }
+    }
+}
+
+impl From<ast::Name> for Name {
+    fn from(name: ast::Name) -> Self {
+        let ast::Name {
+            0: ast::InternalName { id, path, .. },
+        } = name;
+        Name {
+            id: id.into_smolstr(),
+            namespace: Arc::new(
+                Arc::try_unwrap(path)
+                    .unwrap_or_else(|arc| (*arc).clone())
+                    .into_iter()
+                    .map(|id| id.to_smolstr())
+                    .collect(),
+            ),
+        }
+    }
+}
+
+impl TryFrom<Name> for ast::Name {
+    type Error = crate::parser::err::ParseErrors;
+
+    fn try_from(name: Name) -> Result<Self, Self::Error> {
+        let basename = ast::Id::from_str(&name.id)?;
+        let path: Vec<ast::Id> = name
+            .namespace
+            .iter()
+            .map(|s| ast::Id::from_str(s.as_str()))
+            .try_collect()?;
+        Ok(ast::Name(ast::InternalName::new(basename, path, None)))
+    }
+}
+
+impl From<ast::SlotId> for SlotId {
+    fn from(slot: ast::SlotId) -> Self {
+        match slot.0 {
+            ast::ValidSlotId::Principal => SlotId::Principal,
+            ast::ValidSlotId::Resource => SlotId::Resource,
+        }
+    }
+}
+
+impl From<SlotId> for ast::SlotId {
+    fn from(slot: SlotId) -> Self {
+        match slot {
+            SlotId::Principal => ast::SlotId::principal(),
+            SlotId::Resource => ast::SlotId::resource(),
+        }
+    }
+}
+
+impl From<ast::Pattern> for Vec<PatternElem> {
+    fn from(pattern: ast::Pattern) -> Self {
+        pattern
+            .iter()
+            .map(|elem| match elem {
+                ast::PatternElem::Char(c) => PatternElem::Char(*c),
+                ast::PatternElem::Wildcard => PatternElem::Wildcard,
+            })
+            .collect()
     }
 }
