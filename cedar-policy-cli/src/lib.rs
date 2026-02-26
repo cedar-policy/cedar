@@ -1674,7 +1674,12 @@ fn initialize_solver(
         Some(p) => cedar_policy_symcc::solver::LocalSolver::from_command(
             tokio::process::Command::new(p).args(["--lang", "smt", "--tlimit=60000"]),
         )
-        .map_err(|e| miette!("CVC5 solver not found or failed to start at '{}': {e}", p.display())),
+        .map_err(|e| {
+            miette!(
+                "CVC5 solver not found or failed to start at '{}': {e}",
+                p.display()
+            )
+        }),
         None => cedar_policy_symcc::solver::LocalSolver::cvc5()
             .map_err(|e| miette!("CVC5 solver not found or failed to start: {e}")),
     }
@@ -1759,10 +1764,19 @@ struct Counterexample(cedar_policy_symcc::Env);
 impl std::fmt::Display for Counterexample {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let req = &self.0.request;
-        let principal = req.principal().map_or("unknown".to_string(), |p| p.to_string());
-        let action = req.action().map_or("unknown".to_string(), |a| a.to_string());
-        let resource = req.resource().map_or("unknown".to_string(), |r| r.to_string());
-        write!(f, "principal: {principal}, action: {action}, resource: {resource}")?;
+        let principal = req
+            .principal()
+            .map_or("unknown".to_string(), |p| p.to_string());
+        let action = req
+            .action()
+            .map_or("unknown".to_string(), |a| a.to_string());
+        let resource = req
+            .resource()
+            .map_or("unknown".to_string(), |r| r.to_string());
+        write!(
+            f,
+            "principal: {principal}, action: {action}, resource: {resource}"
+        )?;
         if let Some(ctx) = req.context() {
             write!(f, "\ncontext: {ctx}")?;
         }
@@ -1917,8 +1931,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
 
         // --- Two-policy comparison primitives ---
         SymccCommands::MatchesEquivalent(cmd_args) => {
-            let (p1, p2, schema) =
-                load_two_policies(&cmd_args.policies, &args.schema)?;
+            let (p1, p2, schema) = load_two_policies(&cmd_args.policies, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
@@ -1938,15 +1951,11 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                     .check_matches_equivalent_opt(&compiled1, &compiled2)
                     .await
                     .map_err(|e| miette!("Verification failed: {e}"))?;
-                format_bool_result(
-                    holds,
-                    "Policies have equivalent match conditions",
-                );
+                format_bool_result(holds, "Policies have equivalent match conditions");
             }
         }
         SymccCommands::MatchesImplies(cmd_args) => {
-            let (p1, p2, schema) =
-                load_two_policies(&cmd_args.policies, &args.schema)?;
+            let (p1, p2, schema) = load_two_policies(&cmd_args.policies, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
@@ -1970,8 +1979,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             }
         }
         SymccCommands::MatchesDisjoint(cmd_args) => {
-            let (p1, p2, schema) =
-                load_two_policies(&cmd_args.policies, &args.schema)?;
+            let (p1, p2, schema) = load_two_policies(&cmd_args.policies, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
@@ -1991,10 +1999,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                     .check_matches_disjoint_opt(&compiled1, &compiled2)
                     .await
                     .map_err(|e| miette!("Verification failed: {e}"))?;
-                format_bool_result(
-                    holds,
-                    "Policies have disjoint match conditions",
-                );
+                format_bool_result(holds, "Policies have disjoint match conditions");
             }
         }
 
@@ -2038,8 +2043,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
 
         // --- Two-policy-set primitives ---
         SymccCommands::Equivalent(cmd_args) => {
-            let (pset1, pset2, schema) =
-                load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
+            let (pset1, pset2, schema) = load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
@@ -2059,8 +2063,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             }
         }
         SymccCommands::Implies(cmd_args) => {
-            let (pset1, pset2, schema) =
-                load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
+            let (pset1, pset2, schema) = load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
@@ -2084,8 +2087,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             }
         }
         SymccCommands::Disjoint(cmd_args) => {
-            let (pset1, pset2, schema) =
-                load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
+            let (pset1, pset2, schema) = load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
