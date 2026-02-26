@@ -382,6 +382,7 @@ dependencies = [
  "clap",
  "glob",
  "graphviz-rust",
+ "itertools 0.14.0",
  "miette",
  "owo-colors",
  "predicates",

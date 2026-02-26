@@ -24,6 +24,7 @@
 )]
 
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
+use itertools::Itertools;
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use owo_colors::OwoColorize;
 use serde::de::{DeserializeSeed, IntoDeserializer};
@@ -1692,14 +1693,12 @@ fn load_single_policy(
 ) -> Result<(Policy, Schema)> {
     let pset = policies.get_policy_set()?;
     let schema = schema_args.get_schema()?;
-    let policies: Vec<_> = pset.policies().collect();
-    if policies.len() != 1 {
-        return Err(miette!(
-            "Expected exactly one policy, found {}",
-            policies.len()
-        ));
-    }
-    Ok((policies[0].clone(), schema))
+    let policy = pset
+        .policies()
+        .exactly_one()
+        .map_err(|e| miette!("Expected exactly one policy, found {}", e.count()))?
+        .clone();
+    Ok((policy, schema))
 }
 
 #[cfg(feature = "analyze")]
@@ -1710,21 +1709,27 @@ fn load_two_policies(
     let pset1 = args.get_policy_set_1()?;
     let pset2 = args.get_policy_set_2()?;
     let schema = schema_args.get_schema()?;
-    let policies1: Vec<_> = pset1.policies().collect();
-    let policies2: Vec<_> = pset2.policies().collect();
-    if policies1.len() != 1 {
-        return Err(miette!(
-            "Expected exactly one policy in --policy1, found {}",
-            policies1.len()
-        ));
-    }
-    if policies2.len() != 1 {
-        return Err(miette!(
-            "Expected exactly one policy in --policy2, found {}",
-            policies2.len()
-        ));
-    }
-    Ok((policies1[0].clone(), policies2[0].clone(), schema))
+    let p1 = pset1
+        .policies()
+        .exactly_one()
+        .map_err(|e| {
+            miette!(
+                "Expected exactly one policy in --policy1, found {}",
+                e.count()
+            )
+        })?
+        .clone();
+    let p2 = pset2
+        .policies()
+        .exactly_one()
+        .map_err(|e| {
+            miette!(
+                "Expected exactly one policy in --policy2, found {}",
+                e.count()
+            )
+        })?
+        .clone();
+    Ok((p1, p2, schema))
 }
 
 #[cfg(feature = "analyze")]
@@ -1766,13 +1771,13 @@ impl std::fmt::Display for Counterexample {
         let req = &self.0.request;
         let principal = req
             .principal()
-            .map_or("unknown".to_string(), |p| p.to_string());
+            .map_or_else(|| "unknown".to_string(), |p| p.to_string());
         let action = req
             .action()
-            .map_or("unknown".to_string(), |a| a.to_string());
+            .map_or_else(|| "unknown".to_string(), |a| a.to_string());
         let resource = req
             .resource()
-            .map_or("unknown".to_string(), |r| r.to_string());
+            .map_or_else(|| "unknown".to_string(), |r| r.to_string());
         write!(
             f,
             "principal: {principal}, action: {action}, resource: {resource}"
