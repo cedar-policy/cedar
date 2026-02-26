@@ -1998,7 +1998,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             }
         }
 
-        // --- Policy-set primitives ---
+        // --- Single-policy-set primitives ---
         SymccCommands::AlwaysAllows(cmd_args) => {
             let (pset, schema) = load_policy_set(&cmd_args.policies, &args.schema)?;
             let compiled = CompiledPolicySet::compile(&pset, &req_env, &schema)
@@ -2035,6 +2035,8 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                 format_bool_result(holds, "Policy set always denies");
             }
         }
+
+        // --- Two-policy-set primitives ---
         SymccCommands::Equivalent(cmd_args) => {
             let (pset1, pset2, schema) =
                 load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;

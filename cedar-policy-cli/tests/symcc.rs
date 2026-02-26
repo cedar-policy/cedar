@@ -360,6 +360,34 @@ fn test_implies_permit_all_implies_itself() {
 }
 
 #[test]
+fn test_implies_never_matches_implies_permit_all() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let ps1 = write_temp(NEVER_MATCHES_POLICY);
+    let ps2 = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("implies")
+        .arg("--policies1")
+        .arg(ps1.path())
+        .arg("--policies2")
+        .arg(ps2.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("VERIFIED"));
+}
+
+#[test]
 fn test_disjoint_permit_vs_empty() {
     let schema = write_temp(SAMPLE_SCHEMA);
     let ps1 = write_temp(PERMIT_ALL);
