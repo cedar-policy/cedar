@@ -854,7 +854,6 @@ pub struct NewArgs {
     pub name: String,
 }
 
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct SymccArgs {
     #[command(subcommand)]
@@ -882,11 +881,6 @@ pub struct SymccArgs {
     pub verbose: bool,
 }
 
-#[cfg(not(feature = "analyze"))]
-#[derive(Debug, Args)]
-pub struct SymccArgs;
-
-#[cfg(feature = "analyze")]
 #[derive(Subcommand, Debug)]
 pub enum SymccCommands {
     // --- Single-policy primitives ---
@@ -920,7 +914,6 @@ pub enum SymccCommands {
     Disjoint(DisjointArgs),
 }
 
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct NeverErrorsArgs {
     /// Policies args (incorporated by reference)
@@ -928,7 +921,6 @@ pub struct NeverErrorsArgs {
     pub policies: PoliciesArgs,
 }
 
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct AlwaysMatchesArgs {
     /// Policies args (incorporated by reference)
@@ -936,7 +928,6 @@ pub struct AlwaysMatchesArgs {
     pub policies: PoliciesArgs,
 }
 
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct NeverMatchesArgs {
     /// Policies args (incorporated by reference)
@@ -944,7 +935,6 @@ pub struct NeverMatchesArgs {
     pub policies: PoliciesArgs,
 }
 
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct AlwaysAllowsArgs {
     /// Policies args (incorporated by reference)
@@ -952,7 +942,6 @@ pub struct AlwaysAllowsArgs {
     pub policies: PoliciesArgs,
 }
 
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct AlwaysDeniesArgs {
     /// Policies args (incorporated by reference)
@@ -961,7 +950,6 @@ pub struct AlwaysDeniesArgs {
 }
 
 /// Two-policy comparison: first policy input
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct Policy1Args {
     /// File containing the first Cedar policy
@@ -985,7 +973,6 @@ impl Policy1Args {
 }
 
 /// Two-policy comparison: second policy input
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct Policy2Args {
     /// File containing the second Cedar policy
@@ -1009,7 +996,6 @@ impl Policy2Args {
 }
 
 /// Two policy-set comparison: first policy set input
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct Policies1Args {
     /// File containing the first policy set
@@ -1036,7 +1022,6 @@ impl Policies1Args {
 }
 
 /// Two policy-set comparison: second policy set input
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct Policies2Args {
     /// File containing the second policy set
@@ -1063,7 +1048,6 @@ impl Policies2Args {
 }
 
 /// Two-policy comparison: check if two policies have equivalent match conditions
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct MatchesEquivalentArgs {
     #[command(flatten)]
@@ -1073,7 +1057,6 @@ pub struct MatchesEquivalentArgs {
 }
 
 /// Two-policy comparison: check if one policy's match condition implies another's
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct MatchesImpliesArgs {
     #[command(flatten)]
@@ -1083,7 +1066,6 @@ pub struct MatchesImpliesArgs {
 }
 
 /// Two-policy comparison: check if two policies' match conditions are disjoint
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct MatchesDisjointArgs {
     #[command(flatten)]
@@ -1092,7 +1074,6 @@ pub struct MatchesDisjointArgs {
     pub policy2: Policy2Args,
 }
 
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct EquivalentArgs {
     #[command(flatten)]
@@ -1101,7 +1082,6 @@ pub struct EquivalentArgs {
     pub policies2: Policies2Args,
 }
 
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct ImpliesArgs {
     #[command(flatten)]
@@ -1110,7 +1090,6 @@ pub struct ImpliesArgs {
     pub policies2: Policies2Args,
 }
 
-#[cfg(feature = "analyze")]
 #[derive(Args, Debug)]
 pub struct DisjointArgs {
     #[command(flatten)]
