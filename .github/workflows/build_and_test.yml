@@ -98,6 +98,7 @@ jobs:
       - run: cargo test --verbose --benches
       - run: cargo test --verbose --no-default-features
       - run: cargo test --verbose --features "experimental"
+      - run: cargo test --verbose -p cedar-policy-cli --all-features # Specifically run cedar-policy-cli tests with --all-features
       - name: Create a coverage report
         if: ${{ inputs.collect_coverage }} && ${{ matrix.toolchain }} == 'stable'
         uses: ./.github/actions/create_coverage_reports
