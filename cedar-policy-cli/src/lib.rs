@@ -887,68 +887,33 @@ pub struct SymccArgs {
 pub enum SymccCommands {
     // --- Single-policy primitives ---
     /// Verify that a policy never produces runtime errors
-    NeverErrors(NeverErrorsArgs),
+    NeverErrors(PoliciesArgs),
     /// Verify that a policy always matches (is always true)
-    AlwaysMatches(AlwaysMatchesArgs),
+    AlwaysMatches(PoliciesArgs),
     /// Verify that a policy never matches (is always false)
-    NeverMatches(NeverMatchesArgs),
+    NeverMatches(PoliciesArgs),
 
     // --- Two-policy comparison primitives ---
     /// Check if two individual policies have equivalent match conditions
-    MatchesEquivalent(MatchesEquivalentArgs),
+    MatchesEquivalent(TwoPolicyArgs),
     /// Check if one policy's match condition implies another's
-    MatchesImplies(MatchesImpliesArgs),
+    MatchesImplies(TwoPolicyArgs),
     /// Check if two policies' match conditions are disjoint
-    MatchesDisjoint(MatchesDisjointArgs),
+    MatchesDisjoint(TwoPolicyArgs),
 
     // --- Single-policy-set primitives ---
     /// Verify that policy set always allows all well-formed requests
-    AlwaysAllows(AlwaysAllowsArgs),
+    AlwaysAllows(PoliciesArgs),
     /// Verify that policy set always denies all well-formed requests
-    AlwaysDenies(AlwaysDeniesArgs),
+    AlwaysDenies(PoliciesArgs),
 
     // --- Two-policy-set comparison primitives ---
     /// Verify that two policy sets are logically equivalent
-    Equivalent(EquivalentArgs),
+    Equivalent(TwoPoliciesArgs),
     /// Verify that one policy set implies another (subsumption)
-    Implies(ImpliesArgs),
+    Implies(TwoPoliciesArgs),
     /// Verify that two policy sets are disjoint (no overlapping permissions)
-    Disjoint(DisjointArgs),
-}
-
-#[derive(Args, Debug)]
-pub struct NeverErrorsArgs {
-    /// Policies args (incorporated by reference)
-    #[command(flatten)]
-    pub policies: PoliciesArgs,
-}
-
-#[derive(Args, Debug)]
-pub struct AlwaysMatchesArgs {
-    /// Policies args (incorporated by reference)
-    #[command(flatten)]
-    pub policies: PoliciesArgs,
-}
-
-#[derive(Args, Debug)]
-pub struct NeverMatchesArgs {
-    /// Policies args (incorporated by reference)
-    #[command(flatten)]
-    pub policies: PoliciesArgs,
-}
-
-#[derive(Args, Debug)]
-pub struct AlwaysAllowsArgs {
-    /// Policies args (incorporated by reference)
-    #[command(flatten)]
-    pub policies: PoliciesArgs,
-}
-
-#[derive(Args, Debug)]
-pub struct AlwaysDeniesArgs {
-    /// Policies args (incorporated by reference)
-    #[command(flatten)]
-    pub policies: PoliciesArgs,
+    Disjoint(TwoPoliciesArgs),
 }
 
 /// Two-policy comparison: policy inputs
@@ -1031,45 +996,6 @@ impl TwoPoliciesArgs {
         };
         pargs.get_policy_set()
     }
-}
-
-/// Two-policy comparison: check if two policies have equivalent match conditions
-#[derive(Args, Debug)]
-pub struct MatchesEquivalentArgs {
-    #[command(flatten)]
-    pub policies: TwoPolicyArgs,
-}
-
-/// Two-policy comparison: check if one policy's match condition implies another's
-#[derive(Args, Debug)]
-pub struct MatchesImpliesArgs {
-    #[command(flatten)]
-    pub policies: TwoPolicyArgs,
-}
-
-/// Two-policy comparison: check if two policies' match conditions are disjoint
-#[derive(Args, Debug)]
-pub struct MatchesDisjointArgs {
-    #[command(flatten)]
-    pub policies: TwoPolicyArgs,
-}
-
-#[derive(Args, Debug)]
-pub struct EquivalentArgs {
-    #[command(flatten)]
-    pub policy_sets: TwoPoliciesArgs,
-}
-
-#[derive(Args, Debug)]
-pub struct ImpliesArgs {
-    #[command(flatten)]
-    pub policy_sets: TwoPoliciesArgs,
-}
-
-#[derive(Args, Debug)]
-pub struct DisjointArgs {
-    #[command(flatten)]
-    pub policy_sets: TwoPoliciesArgs,
 }
 
 /// Wrapper struct
@@ -1881,7 +1807,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
     match &args.command {
         // --- Single-policy primitives ---
         SymccCommands::NeverErrors(cmd_args) => {
-            let (policy, schema) = load_single_policy(&cmd_args.policies, &args.schema)?;
+            let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
             let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy: {e}"))?;
             if args.counterexample {
@@ -1899,7 +1825,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             }
         }
         SymccCommands::AlwaysMatches(cmd_args) => {
-            let (policy, schema) = load_single_policy(&cmd_args.policies, &args.schema)?;
+            let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
             let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy: {e}"))?;
             if args.counterexample {
@@ -1917,7 +1843,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             }
         }
         SymccCommands::NeverMatches(cmd_args) => {
-            let (policy, schema) = load_single_policy(&cmd_args.policies, &args.schema)?;
+            let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
             let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy: {e}"))?;
             if args.counterexample {
@@ -1937,7 +1863,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
 
         // --- Two-policy comparison primitives ---
         SymccCommands::MatchesEquivalent(cmd_args) => {
-            let (p1, p2, schema) = load_two_policies(&cmd_args.policies, &args.schema)?;
+            let (p1, p2, schema) = load_two_policies(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
@@ -1961,7 +1887,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             }
         }
         SymccCommands::MatchesImplies(cmd_args) => {
-            let (p1, p2, schema) = load_two_policies(&cmd_args.policies, &args.schema)?;
+            let (p1, p2, schema) = load_two_policies(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
@@ -1985,7 +1911,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             }
         }
         SymccCommands::MatchesDisjoint(cmd_args) => {
-            let (p1, p2, schema) = load_two_policies(&cmd_args.policies, &args.schema)?;
+            let (p1, p2, schema) = load_two_policies(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
@@ -2011,7 +1937,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
 
         // --- Single-policy-set primitives ---
         SymccCommands::AlwaysAllows(cmd_args) => {
-            let (pset, schema) = load_policy_set(&cmd_args.policies, &args.schema)?;
+            let (pset, schema) = load_policy_set(cmd_args, &args.schema)?;
             let compiled = CompiledPolicySet::compile(&pset, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set: {e}"))?;
             if args.counterexample {
@@ -2029,7 +1955,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             }
         }
         SymccCommands::AlwaysDenies(cmd_args) => {
-            let (pset, schema) = load_policy_set(&cmd_args.policies, &args.schema)?;
+            let (pset, schema) = load_policy_set(cmd_args, &args.schema)?;
             let compiled = CompiledPolicySet::compile(&pset, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set: {e}"))?;
             if args.counterexample {
@@ -2049,7 +1975,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
 
         // --- Two-policy-set primitives ---
         SymccCommands::Equivalent(cmd_args) => {
-            let (pset1, pset2, schema) = load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
+            let (pset1, pset2, schema) = load_two_policy_sets(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
@@ -2069,7 +1995,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             }
         }
         SymccCommands::Implies(cmd_args) => {
-            let (pset1, pset2, schema) = load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
+            let (pset1, pset2, schema) = load_two_policy_sets(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
@@ -2093,7 +2019,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             }
         }
         SymccCommands::Disjoint(cmd_args) => {
-            let (pset1, pset2, schema) = load_two_policy_sets(&cmd_args.policy_sets, &args.schema)?;
+            let (pset1, pset2, schema) = load_two_policy_sets(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
