@@ -11,8 +11,8 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy = { version = "=4.9.0", path = "../cedar-policy" }
-cedar-policy-core = { version = "=4.9.0", path = "../cedar-policy-core" }
+cedar-policy = { version = "=4.9.1", path = "../cedar-policy" }
+cedar-policy-core = { version = "=4.9.1", path = "../cedar-policy-core" }
 async-recursion = "1.1"
 itertools = "0.14"
 ref-cast = "1.0"
