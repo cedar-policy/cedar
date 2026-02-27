@@ -51,11 +51,6 @@ impl TryFrom<Policy> for ast::Template {
 
     fn try_from(policy: Policy) -> Result<Self, Self::Error> {
         use crate::expr_builder::ExprBuilder;
-        let id = policy.id.into();
-        let effect: ast::Effect = policy.effect.into();
-        let principal: ast::PrincipalConstraint = policy.principal.try_into()?;
-        let action: ast::ActionConstraint = policy.action.try_into()?;
-        let resource: ast::ResourceConstraint = policy.resource.try_into()?;
         // Convert clauses - fold them into a single expression (following EST pattern)
         let builder = ast::ExprBuilder::<()>::new();
         let mut conds_rev_iter = policy
@@ -91,13 +86,13 @@ impl TryFrom<Policy> for ast::Template {
             .collect();
 
         Ok(ast::Template::new(
-            id,
+            policy.id.into(),
             None,
             annotations,
-            effect,
-            principal,
-            action,
-            resource,
+            policy.effect.into(),
+            policy.principal.try_into()?,
+            policy.action.try_into()?,
+            policy.resource.try_into()?,
             conditions,
         ))
     }
@@ -115,18 +110,12 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalConstraint {
             PrincipalConstraint::In(EntityOrSlot::Entity(eos)) => {
                 Ok(ast::PrincipalConstraint::is_in(Arc::new(eos.try_into()?)))
             }
-            PrincipalConstraint::Is(entity_type) => {
-                let ast_et: ast::EntityType = entity_type.try_into().map_err(|e| {
-                    PstConstructionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
-                })?;
-                Ok(ast::PrincipalConstraint::is_entity_type(Arc::new(ast_et)))
-            }
+            PrincipalConstraint::Is(entity_type) => Ok(ast::PrincipalConstraint::is_entity_type(
+                Arc::new(entity_type.try_into()?),
+            )),
             PrincipalConstraint::IsIn(entity_type, EntityOrSlot::Entity(eos)) => {
-                let ast_et: ast::EntityType = entity_type.try_into().map_err(|e| {
-                    PstConstructionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
-                })?;
                 Ok(ast::PrincipalConstraint::is_entity_type_in(
-                    Arc::new(ast_et),
+                    Arc::new(entity_type.try_into()?),
                     Arc::new(eos.try_into()?),
                 ))
             }
@@ -147,14 +136,12 @@ impl TryFrom<ResourceConstraint> for ast::ResourceConstraint {
             ResourceConstraint::In(EntityOrSlot::Entity(eos)) => {
                 Ok(ast::ResourceConstraint::is_in(Arc::new(eos.try_into()?)))
             }
-            ResourceConstraint::Is(entity_type) => {
-                let ast_et: ast::EntityType = entity_type.try_into()?;
-                Ok(ast::ResourceConstraint::is_entity_type(Arc::new(ast_et)))
-            }
+            ResourceConstraint::Is(entity_type) => Ok(ast::ResourceConstraint::is_entity_type(
+                Arc::new(entity_type.try_into()?),
+            )),
             ResourceConstraint::IsIn(entity_type, EntityOrSlot::Entity(eos)) => {
-                let ast_et: ast::EntityType = entity_type.try_into()?;
                 Ok(ast::ResourceConstraint::is_entity_type_in(
-                    Arc::new(ast_et),
+                    Arc::new(entity_type.try_into()?),
                     Arc::new(eos.try_into()?),
                 ))
             }
@@ -228,6 +215,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
                 // The other unary operators are extension functions.
                 _ => match op.to_name() {
                     Some(fn_name) => builder.call_extension_fn(fn_name.clone(), vec![inner]),
+                    // This should never occur!
                     None => Err(PstConstructionError::InvalidConversion(format!(
                         "unknown unary operator: {:?}",
                         op
@@ -262,6 +250,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
                     Some(fn_name) => {
                         builder.call_extension_fn(fn_name.clone(), vec![left_ast, right_ast])
                     }
+                    // This should never occur!
                     None => Err(PstConstructionError::InvalidConversion(format!(
                         "unknown binary operator: {:?}",
                         op
