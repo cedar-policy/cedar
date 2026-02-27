@@ -1689,73 +1689,7 @@ fn format_bool_result(holds: bool, property: &str) {
     }
 }
 
-#[cfg(feature = "analyze")]
-struct Counterexample(cedar_policy_symcc::Env);
 
-#[cfg(feature = "analyze")]
-impl std::fmt::Display for Counterexample {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let req = &self.0.request;
-        let principal = req
-            .principal()
-            .map_or_else(|| "unknown".to_string(), |p| p.to_string());
-        let action = req
-            .action()
-            .map_or_else(|| "unknown".to_string(), |a| a.to_string());
-        let resource = req
-            .resource()
-            .map_or_else(|| "unknown".to_string(), |r| r.to_string());
-        write!(
-            f,
-            "principal: {principal}, action: {action}, resource: {resource}"
-        )?;
-        if let Some(ctx) = req.context() {
-            write!(f, "\ncontext: {ctx}")?;
-        }
-        let entities = &self.0.entities;
-        if !entities.is_empty() {
-            writeln!(f, "\nentities: [")?;
-            for entity in entities.iter() {
-                let uid = entity.uid();
-                write!(f, "  {uid}")?;
-                // ancestors
-                if let Some(ancestors) = entities.ancestors(&uid) {
-                    let ancs: Vec<_> = ancestors.map(|a| a.to_string()).collect();
-                    if !ancs.is_empty() {
-                        write!(f, " in [{}]", ancs.join(", "))?;
-                    }
-                }
-                // attrs
-                let attrs: Vec<_> = entity.attrs().collect();
-                if !attrs.is_empty() {
-                    writeln!(f, " {{")?;
-                    for (k, v) in &attrs {
-                        match v {
-                            Ok(val) => writeln!(f, "    {k}: {val},")?,
-                            Err(_) => writeln!(f, "    {k}: <unknown>,")?,
-                        }
-                    }
-                    write!(f, "  }}")?;
-                }
-                // tags
-                let tags: Vec<_> = entity.tags().collect();
-                if !tags.is_empty() {
-                    writeln!(f, " tags {{")?;
-                    for (k, v) in &tags {
-                        match v {
-                            Ok(val) => writeln!(f, "    {k}: {val},")?,
-                            Err(_) => writeln!(f, "    {k}: <unknown>,")?,
-                        }
-                    }
-                    write!(f, "  }}")?;
-                }
-                writeln!(f, ",")?;
-            }
-            write!(f, "]")?;
-        }
-        Ok(())
-    }
-}
 
 #[cfg(feature = "analyze")]
 fn format_counterexample_result(
@@ -1773,7 +1707,7 @@ fn format_counterexample_result(
         Some(env) => {
             println!("✗ {property}: DOES NOT HOLD");
             println!("  Counterexample found:");
-            println!("{}", Counterexample(env));
+            println!("{env}");
         }
     }
 }
