@@ -8,7 +8,7 @@ on:
         type: boolean
       retention-days:
         description: >
-          Duration after which the uploaded coverage artifacts will expire in days, or 0 to use the default setting 
+          Duration after which the uploaded coverage artifacts will expire in days, or 0 to use the default setting
           for the repository.
         required: false
         default: "0"

@@ -26,6 +26,7 @@
 #![allow(clippy::unwrap_used, reason = "tests")]
 
 use assert_cmd::cargo;
+use predicates::prelude::PredicateBooleanExt;
 use std::io::Write;
 use tempfile::NamedTempFile;
 
@@ -414,4 +415,599 @@ fn test_disjoint_permit_vs_empty() {
         .assert()
         .success()
         .stdout(predicates::str::contains("VERIFIED"));
+}
+
+#[test]
+fn test_nonexistent_cvc5_path_error() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--cvc5-path")
+        .arg("/nonexistent/path/to/cvc5")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("never-errors")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "CVC5 solver not found or failed to start at '/nonexistent/path/to/cvc5'",
+        ));
+}
+
+// ---- Error condition tests ----
+
+const TWO_POLICIES: &str =
+    "permit(principal, action, resource);\npermit(principal, action, resource) when { true };";
+
+#[test]
+fn test_always_matches_rejects_multi_policy() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let multi = write_temp(TWO_POLICIES);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-matches")
+        .arg("--policies")
+        .arg(multi.path())
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("Expected exactly one policy"));
+}
+
+#[test]
+fn test_never_matches_rejects_multi_policy() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let multi = write_temp(TWO_POLICIES);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("never-matches")
+        .arg("--policies")
+        .arg(multi.path())
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("Expected exactly one policy"));
+}
+
+#[test]
+fn test_never_errors_rejects_empty_policy() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let empty = write_temp("");
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("never-errors")
+        .arg("--policies")
+        .arg(empty.path())
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("Expected exactly one policy, found 0"));
+}
+
+#[test]
+fn test_matches_equivalent_rejects_multi_policy_in_policy1() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let multi = write_temp(TWO_POLICIES);
+    let single = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("matches-equivalent")
+        .arg("--policy1")
+        .arg(multi.path())
+        .arg("--policy2")
+        .arg(single.path())
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "Expected exactly one policy in --policy1",
+        ));
+}
+
+#[test]
+fn test_matches_implies_rejects_multi_policy_in_policy2() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let single = write_temp(PERMIT_ALL);
+    let multi = write_temp(TWO_POLICIES);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("matches-implies")
+        .arg("--policy1")
+        .arg(single.path())
+        .arg("--policy2")
+        .arg(multi.path())
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "Expected exactly one policy in --policy2",
+        ));
+}
+
+#[test]
+fn test_matches_disjoint_rejects_multi_policy_in_both() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let multi = write_temp(TWO_POLICIES);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("matches-disjoint")
+        .arg("--policy1")
+        .arg(multi.path())
+        .arg("--policy2")
+        .arg(multi.path())
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "Expected exactly one policy in --policy1",
+        ));
+}
+
+// ---- Tests with --counterexample false (exercises the bool-only code path) ----
+
+#[test]
+fn test_never_errors_no_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--counterexample")
+        .arg("false")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("never-errors")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("VERIFIED"));
+}
+
+#[test]
+fn test_always_matches_no_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--counterexample")
+        .arg("false")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-matches")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("VERIFIED"));
+}
+
+#[test]
+fn test_never_matches_no_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(NEVER_MATCHES_POLICY);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--counterexample")
+        .arg("false")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("never-matches")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("VERIFIED"));
+}
+
+#[test]
+fn test_matches_equivalent_no_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--counterexample")
+        .arg("false")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("matches-equivalent")
+        .arg("--policy1")
+        .arg(policy.path())
+        .arg("--policy2")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("VERIFIED"));
+}
+
+#[test]
+fn test_always_allows_no_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--counterexample")
+        .arg("false")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-allows")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("VERIFIED"));
+}
+
+#[test]
+fn test_equivalent_no_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--counterexample")
+        .arg("false")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("equivalent")
+        .arg("--policies1")
+        .arg(policy.path())
+        .arg("--policies2")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("VERIFIED"));
+}
+
+// ---- DOES NOT HOLD tests (with counterexample, the default) ----
+
+#[test]
+fn test_always_matches_does_not_hold_with_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    // A policy that doesn't always match
+    let policy = write_temp(NEVER_MATCHES_POLICY);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-matches")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("DOES NOT HOLD"))
+        .stdout(predicates::str::contains("Counterexample found"));
+}
+
+#[test]
+fn test_never_matches_does_not_hold_with_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    // permit(principal, action, resource) always matches, so "never matches" does not hold
+    let policy = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("never-matches")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("DOES NOT HOLD"))
+        .stdout(predicates::str::contains("Counterexample found"));
+}
+
+#[test]
+fn test_always_denies_does_not_hold_with_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    // A permit-all policy set clearly doesn't always deny
+    let policy = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-denies")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("DOES NOT HOLD"))
+        .stdout(predicates::str::contains("Counterexample found"));
+}
+
+#[test]
+fn test_matches_equivalent_does_not_hold_with_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy1 = write_temp(PERMIT_ALL);
+    let policy2 = write_temp(NEVER_MATCHES_POLICY);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("matches-equivalent")
+        .arg("--policy1")
+        .arg(policy1.path())
+        .arg("--policy2")
+        .arg(policy2.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("DOES NOT HOLD"))
+        .stdout(predicates::str::contains("Counterexample found"));
+}
+
+// ---- DOES NOT HOLD tests (without counterexample) ----
+
+#[test]
+fn test_always_matches_does_not_hold_no_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(NEVER_MATCHES_POLICY);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--counterexample")
+        .arg("false")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-matches")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("DOES NOT HOLD"))
+        .stdout(predicates::str::contains("Counterexample found").not());
+}
+
+#[test]
+fn test_never_matches_does_not_hold_no_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--counterexample")
+        .arg("false")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("never-matches")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("DOES NOT HOLD"))
+        .stdout(predicates::str::contains("Counterexample found").not());
+}
+
+#[test]
+fn test_always_denies_does_not_hold_no_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--counterexample")
+        .arg("false")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-denies")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("DOES NOT HOLD"))
+        .stdout(predicates::str::contains("Counterexample found").not());
+}
+
+#[test]
+fn test_equivalent_does_not_hold_no_counterexample() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy1 = write_temp(PERMIT_ALL);
+    let policy2 = write_temp(NEVER_MATCHES_POLICY);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--counterexample")
+        .arg("false")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("equivalent")
+        .arg("--policies1")
+        .arg(policy1.path())
+        .arg("--policies2")
+        .arg(policy2.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("DOES NOT HOLD"))
+        .stdout(predicates::str::contains("Counterexample found").not());
 }

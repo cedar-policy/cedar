@@ -1689,8 +1689,6 @@ fn format_bool_result(holds: bool, property: &str) {
     }
 }
 
-
-
 #[cfg(feature = "analyze")]
 fn format_counterexample_result(
     cex: Option<cedar_policy_symcc::Env>,
