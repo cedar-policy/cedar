@@ -21,8 +21,8 @@ use miette::ErrorHook;
 
 use cedar_policy_cli::{
     authorize, check_parse, evaluate, format_policies, language_version, link, new,
-    partial_authorize, run_tests, tpe, translate_policy, translate_schema, validate, visualize,
-    CedarExitCode, Cli, Commands, ErrorFormat,
+    partial_authorize, run_tests, symcc, tpe, translate_policy, translate_schema, validate,
+    visualize, CedarExitCode, Cli, Commands, ErrorFormat,
 };
 
 fn main() -> CedarExitCode {
@@ -57,6 +57,7 @@ fn main() -> CedarExitCode {
         Commands::PartiallyAuthorize(args) => partial_authorize(&args),
         Commands::Tpe(args) => tpe(&args),
         Commands::RunTests(args) => run_tests(&args),
+        Commands::Symcc(args) => symcc(&args),
         Commands::LanguageVersion => language_version(),
     }
 }
