@@ -26,11 +26,11 @@
 //! - Converts to/from AST and EST at boundaries
 //! - Uses `Arc<Expr>` for cheap cloning during manipulation
 
-mod ast_conversions;
-mod builders;
+pub(crate) mod ast_conversions;
+pub(crate) mod builders;
 mod constraints;
 mod errors;
-mod est_conversions;
+pub(crate) mod est_conversions;
 mod expr;
 mod policy;
 
@@ -40,3 +40,44 @@ pub use expr::{
     BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
 pub use policy::{Clause, Effect, Policy, PolicyID};
+
+use crate::{ast, est};
+
+impl Policy {
+    /// Convert this PST policy to an AST policy for evaluation
+    pub fn to_ast(self) -> Result<ast::Policy, PstConstructionError> {
+        self.try_into()
+    }
+
+    /// Convert this PST policy to EST (JSON format)
+    pub fn to_est(self) -> Result<est::Policy, PstConstructionError> {
+        self.try_into()
+    }
+
+    /// Create a PST policy from EST (JSON format)
+    pub fn from_est(policy: est::Policy) -> Result<Self, PstConstructionError> {
+        policy.try_into()
+    }
+}
+
+impl Expr {
+    /// Convert this PST expression to an AST expression for evaluation
+    pub fn to_ast(self) -> Result<ast::Expr, PstConstructionError> {
+        self.try_into()
+    }
+
+    /// Convert this PST expression to EST (JSON format)
+    pub fn to_est(self) -> Result<est::Expr, PstConstructionError> {
+        self.try_into()
+    }
+
+    /// Create a PST expression from an AST expression
+    pub fn from_ast(expr: ast::Expr) -> Self {
+        expr.into()
+    }
+
+    /// Create a PST expression from EST (JSON format)
+    pub fn from_est(expr: est::Expr) -> Result<Self, PstConstructionError> {
+        expr.try_into()
+    }
+}

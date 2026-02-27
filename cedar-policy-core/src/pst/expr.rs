@@ -132,16 +132,6 @@ pub struct EntityUID {
     pub eid: SmolStr,
 }
 
-impl From<ast::EntityUID> for EntityUID {
-    fn from(uid: ast::EntityUID) -> Self {
-        let (ty, eid) = uid.components();
-        EntityUID {
-            ty: ty.into(),
-            eid: eid.into_smolstr(),
-        }
-    }
-}
-
 impl Display for EntityUID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}::\"{}\"", self.ty, self.eid.as_str().escape_default())
@@ -610,21 +600,11 @@ impl ExprBuilder for PstBuilder {
     }
 
     fn val(self, lit: impl Into<ast::Literal>) -> Expr {
-        Expr::Literal(match lit.into() {
-            ast::Literal::Bool(b) => Literal::Bool(b),
-            ast::Literal::Long(i) => Literal::Long(i),
-            ast::Literal::String(s) => Literal::String(s),
-            ast::Literal::EntityUID(e) => Literal::EntityUID(e.as_ref().clone().into()),
-        })
+        Expr::Literal(From::<ast::Literal>::from(lit.into()))
     }
 
     fn var(self, var: ast::Var) -> Expr {
-        Expr::Var(match var {
-            ast::Var::Principal => Var::Principal,
-            ast::Var::Action => Var::Action,
-            ast::Var::Resource => Var::Resource,
-            ast::Var::Context => Var::Context,
-        })
+        Expr::Var(var.into())
     }
 
     fn unknown(self, u: ast::Unknown) -> Expr {
@@ -949,131 +929,6 @@ impl std::fmt::Display for Expr {
     clippy::fallible_impl_from,
     reason = "AST records cannot have duplicate keys, so builder.record() cannot fail"
 )]
-impl From<ast::Expr> for Expr {
-    fn from(ast_expr: ast::Expr) -> Self {
-        use crate::expr_builder::ExprBuilder;
-        let builder = PstBuilder;
-
-        match ast_expr.into_expr_kind() {
-            ast::ExprKind::Lit(lit) => builder.val(lit),
-            ast::ExprKind::Var(v) => builder.var(v),
-            ast::ExprKind::Slot(s) => builder.slot(s),
-            ast::ExprKind::Unknown(u) => builder.unknown(u),
-            ast::ExprKind::If {
-                test_expr,
-                then_expr,
-                else_expr,
-            } => builder.ite(
-                Arc::unwrap_or_clone(test_expr).into(),
-                Arc::unwrap_or_clone(then_expr).into(),
-                Arc::unwrap_or_clone(else_expr).into(),
-            ),
-            ast::ExprKind::And { left, right } => builder.and(
-                Arc::unwrap_or_clone(left).into(),
-                Arc::unwrap_or_clone(right).into(),
-            ),
-            ast::ExprKind::Or { left, right } => builder.or(
-                Arc::unwrap_or_clone(left).into(),
-                Arc::unwrap_or_clone(right).into(),
-            ),
-            ast::ExprKind::UnaryApp { op, arg } => match op {
-                ast::UnaryOp::Not => builder.not(Arc::unwrap_or_clone(arg).into()),
-                ast::UnaryOp::Neg => builder.neg(Arc::unwrap_or_clone(arg).into()),
-                ast::UnaryOp::IsEmpty => builder.is_empty(Arc::unwrap_or_clone(arg).into()),
-            },
-            ast::ExprKind::BinaryApp { op, arg1, arg2 } => match op {
-                ast::BinaryOp::Eq => builder.is_eq(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::Less => builder.less(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::LessEq => builder.lesseq(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::Add => builder.add(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::Sub => builder.sub(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::Mul => builder.mul(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::In => builder.is_in(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::Contains => builder.contains(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::ContainsAll => builder.contains_all(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::ContainsAny => builder.contains_any(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::GetTag => builder.get_tag(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::HasTag => builder.has_tag(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-            },
-            ast::ExprKind::ExtensionFunctionApp { fn_name, args } => builder.call_extension_fn(
-                fn_name,
-                Arc::unwrap_or_clone(args).into_iter().map(|a| a.into()),
-            ),
-            ast::ExprKind::GetAttr { expr, attr } => {
-                builder.get_attr(Arc::unwrap_or_clone(expr).into(), attr)
-            }
-            ast::ExprKind::HasAttr { expr, attr } => {
-                builder.has_attr(Arc::unwrap_or_clone(expr).into(), attr)
-            }
-            ast::ExprKind::Like { expr, pattern } => {
-                builder.like(Arc::unwrap_or_clone(expr).into(), pattern)
-            }
-            ast::ExprKind::Is { expr, entity_type } => {
-                builder.is_entity_type(Arc::unwrap_or_clone(expr).into(), entity_type)
-            }
-            ast::ExprKind::Set(elems) => {
-                builder.set(Arc::unwrap_or_clone(elems).into_iter().map(|e| e.into()))
-            }
-            ast::ExprKind::Record(map) =>
-            {
-                #[expect(
-                    clippy::unwrap_used,
-                    reason = "cannot have duplicate keys in this conversion"
-                )]
-                builder
-                    .record(
-                        Arc::unwrap_or_clone(map)
-                            .into_iter()
-                            .map(|(k, v)| (k, v.into())),
-                    )
-                    .unwrap()
-            }
-            #[cfg(feature = "tolerant-ast")]
-            ast::ExprKind::Error {
-                error_kind: ast::expr_allows_errors::AstExprErrorKind::InvalidExpr(e_str),
-            } => Expr::Error(ErrorNode {
-                error: PstConstructionError::InvalidExpression(e_str),
-            }),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
