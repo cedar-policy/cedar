@@ -498,6 +498,7 @@ impl From<ast::EntityUID> for EntityUID {
     }
 }
 
+#[expect(clippy::fallible_impl_from, reason = "the unwrap cannot fail")]
 impl From<ast::Expr> for Expr {
     fn from(ast_expr: ast::Expr) -> Self {
         use crate::expr_builder::ExprBuilder;

@@ -7,6 +7,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ### Added
 
+- `symcc` subcommand exposing functionality in `cedar-policy-symcc`, for
+analyzing Cedar policies and policysets using SMT solvers
 - `--expression` option to `check-parse` command to check if a Cedar expression parses
 
 ## 4.9.1

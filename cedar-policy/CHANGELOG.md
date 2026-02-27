@@ -17,7 +17,7 @@ Cedar Language Version: TBD
 ### Added
 - Extended `has` operator in JSON policies, maintaining backwards-compatible desugaring of extended `has` in Cedar policies to json (#1889)
 
-## [4.9.1] - Coming Soon
+## [4.9.1] - 2026-02-27
 
 Cedar Language Version: 4.4
 
