@@ -97,6 +97,7 @@ impl Name {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::Name> for Name {
     fn from(name: ast::Name) -> Self {
         let ast::Name {
@@ -105,8 +106,7 @@ impl From<ast::Name> for Name {
         Name {
             id: id.into_smolstr(),
             namespace: Arc::new(
-                Arc::try_unwrap(path)
-                    .unwrap_or_else(|arc| (*arc).clone())
+                Arc::unwrap_or_clone(path)
                     .into_iter()
                     .map(|id| id.to_smolstr())
                     .collect(),
@@ -115,6 +115,7 @@ impl From<ast::Name> for Name {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<Name> for ast::Name {
     type Error = crate::parser::err::ParseErrors;
 
@@ -152,12 +153,14 @@ impl EntityType {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::EntityType> for EntityType {
     fn from(et: ast::EntityType) -> Self {
         EntityType(et.into_name().into())
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<EntityType> for ast::EntityType {
     type Error = crate::parser::err::ParseErrors;
 
@@ -187,6 +190,7 @@ pub struct EntityUID {
     pub eid: SmolStr,
 }
 
+#[doc(hidden)]
 impl From<ast::EntityUID> for EntityUID {
     fn from(uid: ast::EntityUID) -> Self {
         let (ty, eid) = uid.components();
@@ -436,6 +440,7 @@ pub enum PatternElem {
     Wildcard,
 }
 
+#[doc(hidden)]
 impl From<ast::Pattern> for Vec<PatternElem> {
     fn from(pattern: ast::Pattern) -> Self {
         pattern
@@ -907,7 +912,7 @@ impl std::fmt::Display for Expr {
             Expr::Literal(lit) => match lit {
                 Literal::Bool(b) => write!(f, "{}", b),
                 Literal::Long(i) => write!(f, "{}", i),
-                Literal::String(s) => write!(f, "\"{}\"", s.escape_default()),
+                Literal::String(s) => write!(f, "\"{}\"", s.escape_debug()),
                 Literal::EntityUID(uid) => write!(f, "{}", uid),
             },
             Expr::Var(v) => match v {
