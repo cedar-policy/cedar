@@ -214,9 +214,9 @@ impl Expr {
     ///
     /// # Errors
     /// - Returns an [`ExprConstructionError::EmptyAttributePath`] error if the attribute path is
-    /// empty.
+    ///   empty.
     /// - Returns an [`ExprConstructionError::InvalidAttributePath`] error if there is more than
-    /// one attribute, and some attribute name is not a valid identifier.
+    ///   one attribute, and some attribute name is not a valid identifier.
     pub fn has_attrs(
         expr: Self,
         attrs: impl IntoIterator<Item = impl Into<SmolStr>>,

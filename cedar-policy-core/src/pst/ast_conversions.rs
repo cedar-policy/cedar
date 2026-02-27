@@ -458,8 +458,10 @@ impl From<SlotId> for ast::SlotId {
 
 impl From<PatternElem> for ast::PatternElem {
     fn from(elem: PatternElem) -> Self {
-        elem.try_into()
-            .expect("PST PatternElem should always convert to AST")
+        match elem {
+            PatternElem::Char(c) => ast::PatternElem::Char(c),
+            PatternElem::Wildcard => ast::PatternElem::Wildcard,
+        }
     }
 }
 

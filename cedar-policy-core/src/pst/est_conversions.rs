@@ -18,8 +18,8 @@
 
 use super::{
     ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Literal, Name,
-    PatternElem, PatternElem, Policy, PolicyID, PrincipalConstraint, PstConstructionError,
-    ResourceConstraint, UnaryOp,
+    PatternElem, Policy, PolicyID, PrincipalConstraint, PstConstructionError, ResourceConstraint,
+    UnaryOp,
 };
 use crate::ast;
 use crate::entities;
@@ -1275,6 +1275,10 @@ impl From<ResourceConstraint> for est::ResourceConstraint {
     }
 }
 
+#[expect(
+    clippy::fallible_impl_from,
+    reason = "not faillible, as the unwrap cannot fail"
+)]
 impl From<ActionConstraint> for est::ActionConstraint {
     fn from(constraint: ActionConstraint) -> Self {
         match constraint {
@@ -1284,6 +1288,10 @@ impl From<ActionConstraint> for est::ActionConstraint {
             }),
             ActionConstraint::In(entities) => {
                 if entities.len() == 1 {
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "entities length checked to be 1 in this arm"
+                    )]
                     est::ActionConstraint::In(est::ActionInConstraint::Single {
                         entity: entities.into_iter().next().unwrap().into(),
                     })
@@ -1311,11 +1319,11 @@ impl TryFrom<Expr> for est::Expr {
         let b = est::Builder::new();
 
         Ok(match expr {
-            Expr::Literal(lit) => b.val(lit.into()),
+            Expr::Literal(lit) => est::Expr::ExprNoExt(est::ExprNoExt::Value(lit.try_into()?)),
             Expr::Var(var) => b.var(var.into()),
             Expr::Slot(slot) => b.slot(slot.into()),
             Expr::Unknown { name } => b.unknown(ast::Unknown {
-                name: name.into(),
+                name,
                 type_annotation: None,
             }),
             Expr::IfThenElse {
@@ -1332,10 +1340,14 @@ impl TryFrom<Expr> for est::Expr {
                 match op {
                     UnaryOp::Not => b.not(arg),
                     UnaryOp::Neg => b.neg(arg),
-                    _ => b.call_extension_fn(
-                        op.to_name().expect("operator should have a name").clone(),
-                        vec![arg],
-                    ),
+                    _ => match op.to_name() {
+                        Some(name) => b.call_extension_fn(name.clone(), vec![arg]),
+                        // this arm should be unreachable, to_name should handle all non-core operators
+                        None => Err(PstConstructionError::InvalidExpression(format!(
+                            "unknown operator: {:?}",
+                            op
+                        )))?,
+                    },
                 }
             }
             Expr::BinaryOp { op, left, right } => {
@@ -1357,10 +1369,14 @@ impl TryFrom<Expr> for est::Expr {
                     super::BinaryOp::Contains => b.contains(left, right),
                     super::BinaryOp::ContainsAll => b.contains_all(left, right),
                     super::BinaryOp::ContainsAny => b.contains_any(left, right),
-                    _ => b.call_extension_fn(
-                        op.to_name().expect("operator should have a name").clone(),
-                        vec![left, right],
-                    ),
+                    _ => match op.to_name() {
+                        Some(name) => b.call_extension_fn(name.clone(), vec![left, right]),
+                        // this arm should be unreachable, to_name should handle all non-core operators
+                        None => Err(PstConstructionError::InvalidExpression(format!(
+                            "unknown operator: {:?}",
+                            op
+                        )))?,
+                    },
                 }
             }
             Expr::GetAttr { expr, attr } => {
@@ -1370,13 +1386,8 @@ impl TryFrom<Expr> for est::Expr {
                 b.extended_has_attr(Arc::unwrap_or_clone(expr).try_into()?, &attrs)
             }
             Expr::Like { expr, pattern } => {
-                let ast_pattern: Vec<ast::PatternElem> = pattern
-                    .into_iter()
-                    .map(|p| {
-                        p.try_into()
-                            .map_err(|e| PstConstructionError::InvalidExpression(format!("{}", e)))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
+                let ast_pattern: Vec<ast::PatternElem> =
+                    pattern.into_iter().map(From::<PatternElem>::from).collect();
                 b.like(Arc::unwrap_or_clone(expr).try_into()?, ast_pattern.into())
             }
             Expr::Is {
@@ -1404,13 +1415,19 @@ impl TryFrom<Expr> for est::Expr {
                     .map(|e| Arc::unwrap_or_clone(e).try_into())
                     .collect::<Result<Vec<_>, _>>()?,
             ),
-            Expr::Record(map) => b
-                .record(
+            Expr::Record(map) =>
+            {
+                #[expect(
+                    clippy::expect_used,
+                    reason = "map is converted to list, there cannot be duplicates"
+                )]
+                b.record(
                     map.into_iter()
                         .map(|(k, v)| Ok((k.into(), Arc::unwrap_or_clone(v).try_into()?)))
                         .collect::<Result<HashMap<_, _>, Self::Error>>()?,
                 )
-                .expect("no duplicate keys in PST record"),
+                .expect("no duplicate keys in PST record")
+            }
             Expr::Error(_) => {
                 return Err(PstConstructionError::ErrorNode(
                     "Cannot convert PST error node to EST".to_string(),
@@ -1420,16 +1437,17 @@ impl TryFrom<Expr> for est::Expr {
     }
 }
 
-impl From<Literal> for CedarValueJson {
-    fn from(lit: Literal) -> Self {
-        match lit {
+impl TryFrom<Literal> for CedarValueJson {
+    type Error = PstConstructionError;
+    fn try_from(lit: Literal) -> Result<Self, PstConstructionError> {
+        Ok(match lit {
             Literal::Bool(b) => CedarValueJson::Bool(b),
             Literal::Long(n) => CedarValueJson::Long(n),
             Literal::String(s) => CedarValueJson::String(s),
             Literal::EntityUID(uid) => CedarValueJson::EntityEscape {
-                __entity: uid.into(),
+                __entity: uid.try_into()?,
             },
-        }
+        })
     }
 }
 
@@ -1442,11 +1460,11 @@ impl From<PatternElem> for est::PatternElem {
     }
 }
 
-impl From<EntityUID> for entities::TypeAndId {
-    fn from(uid: EntityUID) -> Self {
-        let ast_uid: ast::EntityUID = uid
-            .try_into()
-            .expect("PST EntityUID should always convert to AST");
-        ast_uid.into()
+impl TryFrom<EntityUID> for entities::TypeAndId {
+    type Error = PstConstructionError;
+
+    fn try_from(uid: EntityUID) -> Result<Self, PstConstructionError> {
+        let ast_uid: ast::EntityUID = uid.try_into()?;
+        Ok(ast_uid.into())
     }
 }
