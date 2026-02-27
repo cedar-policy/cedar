@@ -230,13 +230,16 @@ impl Term {
                 // Otherwise leave the application as it but
                 // interpret the arguments
                 (op, args) => {
-                    debug_assert!(false, "This should never happen. The above match should be exhaustive.");
+                    debug_assert!(
+                        false,
+                        "This should never happen. The above match should be exhaustive."
+                    );
                     Term::App {
                         op: op.clone(),
                         args: Arc::new(args.iter().map(|t| t.interpret(interp)).collect()),
                         ret_ty: ret_ty.clone(),
                     }
-            },
+                }
             },
         }
     }
