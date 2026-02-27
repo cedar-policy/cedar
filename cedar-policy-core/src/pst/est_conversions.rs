@@ -17,13 +17,16 @@
 //! Conversions between EST and PST representations.
 
 use super::{
-    ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Name, PatternElem,
-    Policy, PolicyID, PrincipalConstraint, PstConstructionError, ResourceConstraint, UnaryOp,
+    ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Literal, Name,
+    PatternElem, PatternElem, Policy, PolicyID, PrincipalConstraint, PstConstructionError,
+    ResourceConstraint, UnaryOp,
 };
 use crate::ast;
 use crate::entities;
+use crate::entities::json::CedarValueJson;
 use crate::est;
 use itertools::Itertools;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 impl TryFrom<est::Policy> for Policy {
@@ -1122,5 +1125,328 @@ mod tests {
             result,
             Err(PstConstructionError::WrongArity { .. })
         ));
+    }
+}
+
+// ============================================================================
+// PST → EST Conversions
+// ============================================================================
+
+impl TryFrom<Policy> for est::Policy {
+    type Error = PstConstructionError;
+
+    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
+        let mut annotations = est::Annotations::new();
+        for (k, v) in policy.annotations.into_iter() {
+            annotations.0.insert(
+                ast::AnyId::new_unchecked(k),
+                Some(ast::Annotation {
+                    val: v.into(),
+                    loc: None,
+                }),
+            );
+        }
+        Ok(est::Policy {
+            effect: match policy.effect {
+                Effect::Permit => ast::Effect::Permit,
+                Effect::Forbid => ast::Effect::Forbid,
+            },
+            principal: policy.principal.into(),
+            action: policy.action.into(),
+            resource: policy.resource.into(),
+            conditions: policy
+                .clauses
+                .into_iter()
+                .map(|c| c.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+            annotations,
+        })
+    }
+}
+
+impl TryFrom<Clause> for est::Clause {
+    type Error = PstConstructionError;
+
+    fn try_from(clause: Clause) -> Result<Self, Self::Error> {
+        Ok(match clause {
+            Clause::When(expr) => est::Clause::When(Arc::unwrap_or_clone(expr).try_into()?),
+            Clause::Unless(expr) => est::Clause::Unless(Arc::unwrap_or_clone(expr).try_into()?),
+        })
+    }
+}
+
+impl From<PrincipalConstraint> for est::PrincipalConstraint {
+    fn from(constraint: PrincipalConstraint) -> Self {
+        match constraint {
+            PrincipalConstraint::Any => est::PrincipalConstraint::All,
+            PrincipalConstraint::Eq(eos) => match eos {
+                EntityOrSlot::Entity(entity) => {
+                    est::PrincipalConstraint::Eq(est::EqConstraint::Entity {
+                        entity: entity.into(),
+                    })
+                }
+                EntityOrSlot::Slot(slot) => {
+                    est::PrincipalConstraint::Eq(est::EqConstraint::Slot { slot: slot.into() })
+                }
+            },
+            PrincipalConstraint::In(eos) => match eos {
+                EntityOrSlot::Entity(entity) => {
+                    est::PrincipalConstraint::In(est::PrincipalOrResourceInConstraint::Entity {
+                        entity: entity.into(),
+                    })
+                }
+                EntityOrSlot::Slot(slot) => {
+                    est::PrincipalConstraint::In(est::PrincipalOrResourceInConstraint::Slot {
+                        slot: slot.into(),
+                    })
+                }
+            },
+            PrincipalConstraint::Is(entity_type) => {
+                est::PrincipalConstraint::Is(est::PrincipalOrResourceIsConstraint {
+                    entity_type: entity_type.to_string().into(),
+                    in_entity: None,
+                })
+            }
+            PrincipalConstraint::IsIn(entity_type, eos) => {
+                let in_entity = match eos {
+                    EntityOrSlot::Entity(entity) => est::PrincipalOrResourceInConstraint::Entity {
+                        entity: entity.into(),
+                    },
+                    EntityOrSlot::Slot(slot) => {
+                        est::PrincipalOrResourceInConstraint::Slot { slot: slot.into() }
+                    }
+                };
+                est::PrincipalConstraint::Is(est::PrincipalOrResourceIsConstraint {
+                    entity_type: entity_type.to_string().into(),
+                    in_entity: Some(in_entity),
+                })
+            }
+        }
+    }
+}
+
+impl From<ResourceConstraint> for est::ResourceConstraint {
+    fn from(constraint: ResourceConstraint) -> Self {
+        match constraint {
+            ResourceConstraint::Any => est::ResourceConstraint::All,
+            ResourceConstraint::Eq(eos) => match eos {
+                EntityOrSlot::Entity(entity) => {
+                    est::ResourceConstraint::Eq(est::EqConstraint::Entity {
+                        entity: entity.into(),
+                    })
+                }
+                EntityOrSlot::Slot(slot) => {
+                    est::ResourceConstraint::Eq(est::EqConstraint::Slot { slot: slot.into() })
+                }
+            },
+            ResourceConstraint::In(eos) => match eos {
+                EntityOrSlot::Entity(entity) => {
+                    est::ResourceConstraint::In(est::PrincipalOrResourceInConstraint::Entity {
+                        entity: entity.into(),
+                    })
+                }
+                EntityOrSlot::Slot(slot) => {
+                    est::ResourceConstraint::In(est::PrincipalOrResourceInConstraint::Slot {
+                        slot: slot.into(),
+                    })
+                }
+            },
+            ResourceConstraint::Is(entity_type) => {
+                est::ResourceConstraint::Is(est::PrincipalOrResourceIsConstraint {
+                    entity_type: entity_type.to_string().into(),
+                    in_entity: None,
+                })
+            }
+            ResourceConstraint::IsIn(entity_type, eos) => {
+                let in_entity = match eos {
+                    EntityOrSlot::Entity(entity) => est::PrincipalOrResourceInConstraint::Entity {
+                        entity: entity.into(),
+                    },
+                    EntityOrSlot::Slot(slot) => {
+                        est::PrincipalOrResourceInConstraint::Slot { slot: slot.into() }
+                    }
+                };
+                est::ResourceConstraint::Is(est::PrincipalOrResourceIsConstraint {
+                    entity_type: entity_type.to_string().into(),
+                    in_entity: Some(in_entity),
+                })
+            }
+        }
+    }
+}
+
+impl From<ActionConstraint> for est::ActionConstraint {
+    fn from(constraint: ActionConstraint) -> Self {
+        match constraint {
+            ActionConstraint::Any => est::ActionConstraint::All,
+            ActionConstraint::Eq(entity) => est::ActionConstraint::Eq(est::EqConstraint::Entity {
+                entity: entity.into(),
+            }),
+            ActionConstraint::In(entities) => {
+                if entities.len() == 1 {
+                    est::ActionConstraint::In(est::ActionInConstraint::Single {
+                        entity: entities.into_iter().next().unwrap().into(),
+                    })
+                } else {
+                    est::ActionConstraint::In(est::ActionInConstraint::Set {
+                        entities: entities.into_iter().map(Into::into).collect(),
+                    })
+                }
+            }
+        }
+    }
+}
+
+impl From<EntityUID> for entities::EntityUidJson {
+    fn from(uid: EntityUID) -> Self {
+        entities::EntityUidJson::new(uid.ty.to_string(), uid.eid.to_string())
+    }
+}
+
+impl TryFrom<Expr> for est::Expr {
+    type Error = PstConstructionError;
+
+    fn try_from(expr: Expr) -> Result<Self, Self::Error> {
+        use crate::expr_builder::ExprBuilder;
+        let b = est::Builder::new();
+
+        Ok(match expr {
+            Expr::Literal(lit) => b.val(lit.into()),
+            Expr::Var(var) => b.var(var.into()),
+            Expr::Slot(slot) => b.slot(slot.into()),
+            Expr::Unknown { name } => b.unknown(ast::Unknown {
+                name: name.into(),
+                type_annotation: None,
+            }),
+            Expr::IfThenElse {
+                cond,
+                then_expr,
+                else_expr,
+            } => b.ite(
+                Arc::unwrap_or_clone(cond).try_into()?,
+                Arc::unwrap_or_clone(then_expr).try_into()?,
+                Arc::unwrap_or_clone(else_expr).try_into()?,
+            ),
+            Expr::UnaryOp { op, expr } => {
+                let arg = Arc::unwrap_or_clone(expr).try_into()?;
+                match op {
+                    UnaryOp::Not => b.not(arg),
+                    UnaryOp::Neg => b.neg(arg),
+                    _ => b.call_extension_fn(
+                        op.to_name().expect("operator should have a name").clone(),
+                        vec![arg],
+                    ),
+                }
+            }
+            Expr::BinaryOp { op, left, right } => {
+                let left = Arc::unwrap_or_clone(left).try_into()?;
+                let right = Arc::unwrap_or_clone(right).try_into()?;
+                match op {
+                    super::BinaryOp::Eq => b.is_eq(left, right),
+                    super::BinaryOp::NotEq => b.noteq(left, right),
+                    super::BinaryOp::Less => b.less(left, right),
+                    super::BinaryOp::LessEq => b.lesseq(left, right),
+                    super::BinaryOp::Greater => b.greater(left, right),
+                    super::BinaryOp::GreaterEq => b.greatereq(left, right),
+                    super::BinaryOp::And => b.and(left, right),
+                    super::BinaryOp::Or => b.or(left, right),
+                    super::BinaryOp::Add => b.add(left, right),
+                    super::BinaryOp::Sub => b.sub(left, right),
+                    super::BinaryOp::Mul => b.mul(left, right),
+                    super::BinaryOp::In => b.is_in(left, right),
+                    super::BinaryOp::Contains => b.contains(left, right),
+                    super::BinaryOp::ContainsAll => b.contains_all(left, right),
+                    super::BinaryOp::ContainsAny => b.contains_any(left, right),
+                    _ => b.call_extension_fn(
+                        op.to_name().expect("operator should have a name").clone(),
+                        vec![left, right],
+                    ),
+                }
+            }
+            Expr::GetAttr { expr, attr } => {
+                b.get_attr(Arc::unwrap_or_clone(expr).try_into()?, attr)
+            }
+            Expr::HasAttr { expr, attrs } => {
+                b.extended_has_attr(Arc::unwrap_or_clone(expr).try_into()?, &attrs)
+            }
+            Expr::Like { expr, pattern } => {
+                let ast_pattern: Vec<ast::PatternElem> = pattern
+                    .into_iter()
+                    .map(|p| {
+                        p.try_into()
+                            .map_err(|e| PstConstructionError::InvalidExpression(format!("{}", e)))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                b.like(Arc::unwrap_or_clone(expr).try_into()?, ast_pattern.into())
+            }
+            Expr::Is {
+                expr,
+                entity_type,
+                in_expr,
+            } => {
+                let ast_entity_type: ast::EntityType = entity_type
+                    .try_into()
+                    .map_err(|e| PstConstructionError::InvalidEntityType(format!("{}", e)))?;
+                match in_expr {
+                    None => {
+                        b.is_entity_type(Arc::unwrap_or_clone(expr).try_into()?, ast_entity_type)
+                    }
+                    Some(ent) => b.is_in_entity_type(
+                        Arc::unwrap_or_clone(expr).try_into()?,
+                        ast_entity_type,
+                        Arc::unwrap_or_clone(ent).try_into()?,
+                    ),
+                }
+            }
+            Expr::Set(elements) => b.set(
+                elements
+                    .into_iter()
+                    .map(|e| Arc::unwrap_or_clone(e).try_into())
+                    .collect::<Result<Vec<_>, _>>()?,
+            ),
+            Expr::Record(map) => b
+                .record(
+                    map.into_iter()
+                        .map(|(k, v)| Ok((k.into(), Arc::unwrap_or_clone(v).try_into()?)))
+                        .collect::<Result<HashMap<_, _>, Self::Error>>()?,
+                )
+                .expect("no duplicate keys in PST record"),
+            Expr::Error(_) => {
+                return Err(PstConstructionError::ErrorNode(
+                    "Cannot convert PST error node to EST".to_string(),
+                ))
+            }
+        })
+    }
+}
+
+impl From<Literal> for CedarValueJson {
+    fn from(lit: Literal) -> Self {
+        match lit {
+            Literal::Bool(b) => CedarValueJson::Bool(b),
+            Literal::Long(n) => CedarValueJson::Long(n),
+            Literal::String(s) => CedarValueJson::String(s),
+            Literal::EntityUID(uid) => CedarValueJson::EntityEscape {
+                __entity: uid.into(),
+            },
+        }
+    }
+}
+
+impl From<PatternElem> for est::PatternElem {
+    fn from(elem: PatternElem) -> Self {
+        match elem {
+            PatternElem::Char(c) => est::PatternElem::Literal(c.to_string().into()),
+            PatternElem::Wildcard => est::PatternElem::Wildcard,
+        }
+    }
+}
+
+impl From<EntityUID> for entities::TypeAndId {
+    fn from(uid: EntityUID) -> Self {
+        let ast_uid: ast::EntityUID = uid
+            .try_into()
+            .expect("PST EntityUID should always convert to AST");
+        ast_uid.into()
     }
 }

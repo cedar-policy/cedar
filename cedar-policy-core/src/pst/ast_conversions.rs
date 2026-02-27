@@ -52,7 +52,7 @@ impl TryFrom<Policy> for ast::Template {
     fn try_from(policy: Policy) -> Result<Self, Self::Error> {
         use crate::expr_builder::ExprBuilder;
         let id = policy.id.into();
-        let effect: ast::Effect = policy.effect.try_into()?;
+        let effect: ast::Effect = policy.effect.into();
         let principal: ast::PrincipalConstraint = policy.principal.try_into()?;
         let action: ast::ActionConstraint = policy.action.try_into()?;
         let resource: ast::ResourceConstraint = policy.resource.try_into()?;
@@ -336,13 +336,11 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
     }
 }
 
-impl TryFrom<Effect> for ast::Effect {
-    type Error = PstConstructionError;
-
-    fn try_from(effect: Effect) -> Result<Self, Self::Error> {
+impl From<Effect> for ast::Effect {
+    fn from(effect: Effect) -> Self {
         match effect {
-            Effect::Permit => Ok(ast::Effect::Permit),
-            Effect::Forbid => Ok(ast::Effect::Forbid),
+            Effect::Permit => ast::Effect::Permit,
+            Effect::Forbid => ast::Effect::Forbid,
         }
     }
 }
@@ -455,6 +453,13 @@ impl From<SlotId> for ast::SlotId {
             SlotId::Principal => ast::SlotId::principal(),
             SlotId::Resource => ast::SlotId::resource(),
         }
+    }
+}
+
+impl From<PatternElem> for ast::PatternElem {
+    fn from(elem: PatternElem) -> Self {
+        elem.try_into()
+            .expect("PST PatternElem should always convert to AST")
     }
 }
 
