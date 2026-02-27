@@ -11,6 +11,7 @@ Cedar Language Version: TBD
 ### Added
 
 - `Display` impl for `Env`
+- Fixed bug in `Term::interpret` caused by missing `bvsrem` case
 
 ## [0.3.0] - 2026-02-17
 Cedar Language Version: 4.4
