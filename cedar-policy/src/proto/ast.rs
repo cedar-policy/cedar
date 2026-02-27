@@ -24,28 +24,28 @@ use smol_str::ToSmolStr;
 use std::{collections::HashSet, sync::Arc};
 
 #[expect(clippy::fallible_impl_from, reason = "experimental feature")]
-impl From<&models::Name> for ast::InternalName {
+impl From<models::Name> for ast::InternalName {
     #[expect(clippy::unwrap_used, reason = "experimental feature")]
-    fn from(v: &models::Name) -> Self {
+    fn from(v: models::Name) -> Self {
         let basename = ast::Id::from_normalized_str(&v.id).unwrap();
         let path = v
             .path
-            .iter()
-            .map(|id| ast::Id::from_normalized_str(id).unwrap());
+            .into_iter()
+            .map(|id| ast::Id::from_normalized_str(&id).unwrap());
         ast::InternalName::new(basename, path, None)
     }
 }
 
 #[expect(clippy::fallible_impl_from, reason = "experimental feature")]
-impl From<&models::Name> for ast::Name {
+impl From<models::Name> for ast::Name {
     #[expect(clippy::unwrap_used, reason = "experimental feature")]
-    fn from(v: &models::Name) -> Self {
+    fn from(v: models::Name) -> Self {
         ast::Name::try_from(ast::InternalName::from(v)).unwrap()
     }
 }
 
-impl From<&models::Name> for ast::EntityType {
-    fn from(v: &models::Name) -> Self {
+impl From<models::Name> for ast::EntityType {
+    fn from(v: models::Name) -> Self {
         ast::EntityType::from(ast::Name::from(v))
     }
 }
@@ -74,12 +74,12 @@ impl From<&ast::EntityType> for models::Name {
     }
 }
 
-impl From<&models::EntityUid> for ast::EntityUID {
+impl From<models::EntityUid> for ast::EntityUID {
     #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: &models::EntityUid) -> Self {
+    fn from(v: models::EntityUid) -> Self {
         Self::from_components(
-            ast::EntityType::from(v.ty.as_ref().expect("ty field should exist")),
-            ast::Eid::new(v.eid.clone()),
+            ast::EntityType::from(v.ty.expect("ty field should exist")),
+            ast::Eid::new(v.eid),
             None,
         )
     }
@@ -94,8 +94,8 @@ impl From<&ast::EntityUID> for models::EntityUid {
     }
 }
 
-impl From<&models::EntityUid> for ast::EntityUIDEntry {
-    fn from(v: &models::EntityUid) -> Self {
+impl From<models::EntityUid> for ast::EntityUIDEntry {
+    fn from(v: models::EntityUid) -> Self {
         ast::EntityUIDEntry::known(ast::EntityUID::from(v), None)
     }
 }
@@ -114,39 +114,36 @@ impl From<&ast::EntityUIDEntry> for models::EntityUid {
     }
 }
 
-impl From<&models::Entity> for ast::Entity {
+impl From<models::Entity> for ast::Entity {
     #[expect(
         clippy::expect_used,
         clippy::unwrap_used,
         reason = "experimental feature"
     )]
-    fn from(v: &models::Entity) -> Self {
+    fn from(v: models::Entity) -> Self {
         let eval = RestrictedEvaluator::new(Extensions::none());
 
-        let attrs = v.attrs.iter().map(|(key, value)| {
+        let attrs = v.attrs.into_iter().map(|(key, value)| {
+            let expr = ast::Expr::from(value);
             let pval = eval
-                .partial_interpret(
-                    ast::BorrowedRestrictedExpr::new(&ast::Expr::from(value)).unwrap(),
-                )
+                .partial_interpret(ast::BorrowedRestrictedExpr::new(&expr).unwrap())
                 .expect("interpret on RestrictedExpr");
             (key.into(), pval)
         });
 
         let ancestors: HashSet<ast::EntityUID> =
-            v.ancestors.iter().map(ast::EntityUID::from).collect();
+            v.ancestors.into_iter().map(ast::EntityUID::from).collect();
 
-        let tags = v.tags.iter().map(|(key, value)| {
+        let tags = v.tags.into_iter().map(|(key, value)| {
+            let expr = ast::Expr::from(value);
             let pval = eval
-                .partial_interpret(
-                    ast::BorrowedRestrictedExpr::new(&ast::Expr::from(value))
-                        .expect("RestrictedExpr"),
-                )
+                .partial_interpret(ast::BorrowedRestrictedExpr::new(&expr).expect("RestrictedExpr"))
                 .expect("interpret on RestrictedExpr");
             (key.into(), pval)
         });
 
         Self::new_with_attr_partial_value(
-            ast::EntityUID::from(v.uid.as_ref().expect("uid field should exist")),
+            ast::EntityUID::from(v.uid.expect("uid field should exist")),
             attrs,
             ancestors,
             HashSet::new(),
@@ -188,46 +185,32 @@ impl From<&Arc<ast::Entity>> for models::Entity {
     }
 }
 
-impl From<&models::Expr> for ast::Expr {
+impl From<models::Expr> for ast::Expr {
     #[expect(
         clippy::expect_used,
         clippy::too_many_lines,
         reason = "experimental feature"
     )]
-    fn from(v: &models::Expr) -> Self {
-        let kind = v.expr_kind.as_ref().expect("expr_kind field should exist");
+    fn from(v: models::Expr) -> Self {
+        let kind = v.expr_kind.expect("expr_kind field should exist");
 
         match kind {
             models::expr::ExprKind::Lit(lit) => ast::Expr::val(ast::Literal::from(lit)),
 
             models::expr::ExprKind::Var(var) => {
-                let pvar =
-                    models::expr::Var::try_from(var.to_owned()).expect("decode should succeed");
-                ast::Expr::var(ast::Var::from(&pvar))
+                let pvar = models::expr::Var::try_from(var).expect("decode should succeed");
+                ast::Expr::var(ast::Var::from(pvar))
             }
 
             models::expr::ExprKind::Slot(slot) => {
-                let pslot =
-                    models::SlotId::try_from(slot.to_owned()).expect("decode should succeed");
-                ast::Expr::slot(ast::SlotId::from(&pslot))
+                let pslot = models::SlotId::try_from(slot).expect("decode should succeed");
+                ast::Expr::slot(ast::SlotId::from(pslot))
             }
 
             models::expr::ExprKind::If(msg) => {
-                let test_expr = msg
-                    .test_expr
-                    .as_ref()
-                    .expect("test_expr field should exist")
-                    .as_ref();
-                let then_expr = msg
-                    .then_expr
-                    .as_ref()
-                    .expect("then_expr field should exist")
-                    .as_ref();
-                let else_expr = msg
-                    .else_expr
-                    .as_ref()
-                    .expect("else_expr field should exist")
-                    .as_ref();
+                let test_expr = *msg.test_expr.expect("test_expr field should exist");
+                let then_expr = *msg.then_expr.expect("then_expr field should exist");
+                let else_expr = *msg.else_expr.expect("else_expr field should exist");
                 ast::Expr::ite(
                     ast::Expr::from(test_expr),
                     ast::Expr::from(then_expr),
@@ -236,86 +219,77 @@ impl From<&models::Expr> for ast::Expr {
             }
 
             models::expr::ExprKind::And(msg) => {
-                let left = msg.left.as_ref().expect("left field should exist").as_ref();
-                let right = msg
-                    .right
-                    .as_ref()
-                    .expect("right field should exist")
-                    .as_ref();
+                let left = *msg.left.expect("left field should exist");
+                let right = *msg.right.expect("right field should exist");
                 ast::Expr::and(ast::Expr::from(left), ast::Expr::from(right))
             }
 
             models::expr::ExprKind::Or(msg) => {
-                let left = msg.left.as_ref().expect("left field should exist").as_ref();
-                let right = msg
-                    .right
-                    .as_ref()
-                    .expect("right field should exist")
-                    .as_ref();
+                let left = *msg.left.expect("left field should exist");
+                let right = *msg.right.expect("right field should exist");
                 ast::Expr::or(ast::Expr::from(left), ast::Expr::from(right))
             }
 
             models::expr::ExprKind::UApp(msg) => {
-                let arg = msg.expr.as_ref().expect("expr field should exist").as_ref();
+                let arg = *msg.expr.expect("expr field should exist");
                 let puop =
                     models::expr::unary_app::Op::try_from(msg.op).expect("decode should succeed");
-                ast::Expr::unary_app(ast::UnaryOp::from(&puop), ast::Expr::from(arg))
+                ast::Expr::unary_app(ast::UnaryOp::from(puop), ast::Expr::from(arg))
             }
 
             models::expr::ExprKind::BApp(msg) => {
                 let pbop =
                     models::expr::binary_app::Op::try_from(msg.op).expect("decode should succeed");
-                let left = msg.left.as_ref().expect("left field should exist");
-                let right = msg.right.as_ref().expect("right field should exist");
+                let left = *msg.left.expect("left field should exist");
+                let right = *msg.right.expect("right field should exist");
                 ast::Expr::binary_app(
-                    ast::BinaryOp::from(&pbop),
-                    ast::Expr::from(left.as_ref()),
-                    ast::Expr::from(right.as_ref()),
+                    ast::BinaryOp::from(pbop),
+                    ast::Expr::from(left),
+                    ast::Expr::from(right),
                 )
             }
 
             models::expr::ExprKind::ExtApp(msg) => ast::Expr::call_extension_fn(
-                ast::Name::from(msg.fn_name.as_ref().expect("fn_name field should exist")),
-                msg.args.iter().map(ast::Expr::from).collect(),
+                ast::Name::from(msg.fn_name.expect("fn_name field should exist")),
+                msg.args.into_iter().map(ast::Expr::from).collect(),
             ),
 
             models::expr::ExprKind::GetAttr(msg) => {
-                let arg = msg.expr.as_ref().expect("expr field should exist").as_ref();
-                ast::Expr::get_attr(ast::Expr::from(arg), msg.attr.clone().into())
+                let arg = *msg.expr.expect("expr field should exist");
+                ast::Expr::get_attr(ast::Expr::from(arg), msg.attr.into())
             }
 
             models::expr::ExprKind::HasAttr(msg) => {
-                let arg = msg.expr.as_ref().expect("expr field should exist").as_ref();
-                ast::Expr::has_attr(ast::Expr::from(arg), msg.attr.clone().into())
+                let arg = *msg.expr.expect("expr field should exist");
+                ast::Expr::has_attr(ast::Expr::from(arg), msg.attr.into())
             }
 
             models::expr::ExprKind::Like(msg) => {
-                let arg = msg.expr.as_ref().expect("expr field should exist").as_ref();
+                let arg = *msg.expr.expect("expr field should exist");
                 ast::Expr::like(
                     ast::Expr::from(arg),
-                    msg.pattern.iter().map(ast::PatternElem::from).collect(),
+                    msg.pattern
+                        .into_iter()
+                        .map(ast::PatternElem::from)
+                        .collect(),
                 )
             }
 
             models::expr::ExprKind::Is(msg) => {
-                let arg = msg.expr.as_ref().expect("expr field should exist").as_ref();
+                let arg = *msg.expr.expect("expr field should exist");
                 ast::Expr::is_entity_type(
                     ast::Expr::from(arg),
-                    ast::EntityType::from(
-                        msg.entity_type
-                            .as_ref()
-                            .expect("entity_type field should exist"),
-                    ),
+                    ast::EntityType::from(msg.entity_type.expect("entity_type field should exist")),
                 )
             }
 
             models::expr::ExprKind::Set(msg) => {
-                ast::Expr::set(msg.elements.iter().map(ast::Expr::from))
+                ast::Expr::set(msg.elements.into_iter().map(ast::Expr::from))
             }
 
             models::expr::ExprKind::Record(msg) => ast::Expr::record(
                 msg.items
-                    .iter()
+                    .into_iter()
                     .map(|(key, value)| (key.into(), ast::Expr::from(value))),
             )
             .expect("Expr should be valid"),
@@ -444,8 +418,8 @@ impl From<&ast::Value> for models::Expr {
     }
 }
 
-impl From<&models::expr::Var> for ast::Var {
-    fn from(v: &models::expr::Var) -> Self {
+impl From<models::expr::Var> for ast::Var {
+    fn from(v: models::expr::Var) -> Self {
         match v {
             models::expr::Var::Principal => ast::Var::Principal,
             models::expr::Var::Action => ast::Var::Action,
@@ -466,13 +440,13 @@ impl From<&ast::Var> for models::expr::Var {
     }
 }
 
-impl From<&models::expr::Literal> for ast::Literal {
+impl From<models::expr::Literal> for ast::Literal {
     #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: &models::expr::Literal) -> Self {
-        match v.lit.as_ref().expect("lit field should exist") {
-            models::expr::literal::Lit::B(b) => ast::Literal::Bool(*b),
-            models::expr::literal::Lit::I(l) => ast::Literal::Long(*l),
-            models::expr::literal::Lit::S(s) => ast::Literal::String(s.clone().into()),
+    fn from(v: models::expr::Literal) -> Self {
+        match v.lit.expect("lit field should exist") {
+            models::expr::literal::Lit::B(b) => ast::Literal::Bool(b),
+            models::expr::literal::Lit::I(l) => ast::Literal::Long(l),
+            models::expr::literal::Lit::S(s) => ast::Literal::String(s.into()),
             models::expr::literal::Lit::Euid(e) => {
                 ast::Literal::EntityUID(ast::EntityUID::from(e).into())
             }
@@ -501,8 +475,8 @@ impl From<&ast::Literal> for models::expr::Literal {
     }
 }
 
-impl From<&models::SlotId> for ast::SlotId {
-    fn from(v: &models::SlotId) -> Self {
+impl From<models::SlotId> for ast::SlotId {
+    fn from(v: models::SlotId) -> Self {
         match v {
             models::SlotId::Principal => ast::SlotId::principal(),
             models::SlotId::Resource => ast::SlotId::resource(),
@@ -524,8 +498,8 @@ impl From<&ast::SlotId> for models::SlotId {
     }
 }
 
-impl From<&models::expr::unary_app::Op> for ast::UnaryOp {
-    fn from(v: &models::expr::unary_app::Op) -> Self {
+impl From<models::expr::unary_app::Op> for ast::UnaryOp {
+    fn from(v: models::expr::unary_app::Op) -> Self {
         match v {
             models::expr::unary_app::Op::Not => ast::UnaryOp::Not,
             models::expr::unary_app::Op::Neg => ast::UnaryOp::Neg,
@@ -544,8 +518,8 @@ impl From<&ast::UnaryOp> for models::expr::unary_app::Op {
     }
 }
 
-impl From<&models::expr::binary_app::Op> for ast::BinaryOp {
-    fn from(v: &models::expr::binary_app::Op) -> Self {
+impl From<models::expr::binary_app::Op> for ast::BinaryOp {
+    fn from(v: models::expr::binary_app::Op) -> Self {
         match v {
             models::expr::binary_app::Op::Eq => ast::BinaryOp::Eq,
             models::expr::binary_app::Op::Less => ast::BinaryOp::Less,
@@ -582,9 +556,9 @@ impl From<&ast::BinaryOp> for models::expr::binary_app::Op {
     }
 }
 
-impl From<&models::expr::like::PatternElem> for ast::PatternElem {
+impl From<models::expr::like::PatternElem> for ast::PatternElem {
     #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: &models::expr::like::PatternElem) -> Self {
+    fn from(v: models::expr::like::PatternElem) -> Self {
         match v.data.as_ref().expect("data field should exist") {
             models::expr::like::pattern_elem::Data::C(c) => {
                 ast::PatternElem::Char(c.chars().next().expect("c is non-empty"))
@@ -616,16 +590,16 @@ impl From<&ast::PatternElem> for models::expr::like::PatternElem {
     }
 }
 
-impl From<&models::Request> for ast::Request {
+impl From<models::Request> for ast::Request {
     #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: &models::Request) -> Self {
+    fn from(v: models::Request) -> Self {
         ast::Request::new_unchecked(
-            ast::EntityUIDEntry::from(v.principal.as_ref().expect("principal.as_ref()")),
-            ast::EntityUIDEntry::from(v.action.as_ref().expect("action.as_ref()")),
-            ast::EntityUIDEntry::from(v.resource.as_ref().expect("resource.as_ref()")),
+            ast::EntityUIDEntry::from(v.principal.expect("principal.as_ref()")),
+            ast::EntityUIDEntry::from(v.action.expect("action.as_ref()")),
+            ast::EntityUIDEntry::from(v.resource.expect("resource.as_ref()")),
             Some(
                 ast::Context::from_pairs(
-                    v.context.iter().map(|(k, v)| {
+                    v.context.into_iter().map(|(k, v)| {
                         (
                             k.to_smolstr(),
                             ast::RestrictedExpr::new(ast::Expr::from(v))
@@ -666,11 +640,12 @@ impl From<&ast::Request> for models::Request {
     }
 }
 
-impl From<&models::Expr> for ast::Context {
-    fn from(v: &models::Expr) -> Self {
+impl From<models::Expr> for ast::Context {
+    fn from(v: models::Expr) -> Self {
         #[expect(clippy::expect_used, reason = "experimental feature")]
+        let expr = ast::Expr::from(v);
         ast::Context::from_expr(
-            ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v))
+            ast::BorrowedRestrictedExpr::new(&expr)
                 .expect("encoded context should be valid restricted expr"),
             Extensions::none(),
         )
@@ -687,22 +662,23 @@ impl From<&ast::Context> for models::Expr {
 #[cfg(test)]
 mod test {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn name_and_slot_roundtrip() {
         let orig_name = ast::Name::from_normalized_str("B::C::D").unwrap();
-        assert_eq!(orig_name, ast::Name::from(&models::Name::from(&orig_name)));
+        assert_eq!(orig_name, ast::Name::from(models::Name::from(&orig_name)));
 
         let orig_slot1 = ast::SlotId::principal();
         assert_eq!(
             orig_slot1,
-            ast::SlotId::from(&models::SlotId::from(&orig_slot1))
+            ast::SlotId::from(models::SlotId::from(&orig_slot1))
         );
 
         let orig_slot2 = ast::SlotId::resource();
         assert_eq!(
             orig_slot2,
-            ast::SlotId::from(&models::SlotId::from(&orig_slot2))
+            ast::SlotId::from(models::SlotId::from(&orig_slot2))
         );
     }
 
@@ -712,30 +688,21 @@ mod test {
         let ety_specified = ast::EntityType::from(name);
         assert_eq!(
             ety_specified,
-            ast::EntityType::from(&models::Name::from(&ety_specified))
+            ast::EntityType::from(models::Name::from(&ety_specified))
         );
 
         let euid1 = ast::EntityUID::with_eid_and_type("A", "foo").unwrap();
-        assert_eq!(
-            euid1,
-            ast::EntityUID::from(&models::EntityUid::from(&euid1))
-        );
+        assert_eq!(euid1, ast::EntityUID::from(models::EntityUid::from(&euid1)));
 
         let euid2 = ast::EntityUID::from_normalized_str("Foo::Action::\"view\"").unwrap();
-        assert_eq!(
-            euid2,
-            ast::EntityUID::from(&models::EntityUid::from(&euid2))
-        );
+        assert_eq!(euid2, ast::EntityUID::from(models::EntityUid::from(&euid2)));
 
         let euid3 = ast::EntityUID::from_components(
             ast::EntityType::from_normalized_str("A").unwrap(),
             ast::Eid::new("\0\n \' \"+-$^!"),
             None,
         );
-        assert_eq!(
-            euid3,
-            ast::EntityUID::from(&models::EntityUid::from(&euid3))
-        );
+        assert_eq!(euid3, ast::EntityUID::from(models::EntityUid::from(&euid3)));
 
         let attrs = (1..=7).map(|id| (format!("{id}").into(), ast::RestrictedExpr::val(true)));
         let entity = ast::Entity::new(
@@ -747,48 +714,48 @@ mod test {
             Extensions::none(),
         )
         .unwrap();
-        assert_eq!(entity, ast::Entity::from(&models::Entity::from(&entity)));
+        assert_eq!(entity, ast::Entity::from(models::Entity::from(&entity)));
     }
 
     #[test]
     fn expr_roundtrip() {
         let e1 = ast::Expr::val(33);
-        assert_eq!(e1, ast::Expr::from(&models::Expr::from(&e1)));
+        assert_eq!(e1, ast::Expr::from(models::Expr::from(&e1)));
         let e2 = ast::Expr::val("hello");
-        assert_eq!(e2, ast::Expr::from(&models::Expr::from(&e2)));
+        assert_eq!(e2, ast::Expr::from(models::Expr::from(&e2)));
         let e3 = ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "foo").unwrap());
-        assert_eq!(e3, ast::Expr::from(&models::Expr::from(&e3)));
+        assert_eq!(e3, ast::Expr::from(models::Expr::from(&e3)));
         let e4 = ast::Expr::var(ast::Var::Principal);
-        assert_eq!(e4, ast::Expr::from(&models::Expr::from(&e4)));
+        assert_eq!(e4, ast::Expr::from(models::Expr::from(&e4)));
         let e5 = ast::Expr::ite(
             ast::Expr::val(true),
             ast::Expr::val(88),
             ast::Expr::val(-100),
         );
-        assert_eq!(e5, ast::Expr::from(&models::Expr::from(&e5)));
+        assert_eq!(e5, ast::Expr::from(models::Expr::from(&e5)));
         let e6 = ast::Expr::not(ast::Expr::val(false));
-        assert_eq!(e6, ast::Expr::from(&models::Expr::from(&e6)));
+        assert_eq!(e6, ast::Expr::from(models::Expr::from(&e6)));
         let e7 = ast::Expr::get_attr(
             ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "foo").unwrap()),
             "some_attr".into(),
         );
-        assert_eq!(e7, ast::Expr::from(&models::Expr::from(&e7)));
+        assert_eq!(e7, ast::Expr::from(models::Expr::from(&e7)));
         let e8 = ast::Expr::has_attr(
             ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "foo").unwrap()),
             "some_attr".into(),
         );
-        assert_eq!(e8, ast::Expr::from(&models::Expr::from(&e8)));
+        assert_eq!(e8, ast::Expr::from(models::Expr::from(&e8)));
         let e9 = ast::Expr::is_entity_type(
             ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "foo").unwrap()),
             "Type".parse().unwrap(),
         );
-        assert_eq!(e9, ast::Expr::from(&models::Expr::from(&e9)));
+        assert_eq!(e9, ast::Expr::from(models::Expr::from(&e9)));
         let e10 = ast::Expr::slot(ast::SlotId::principal());
-        assert_eq!(e10, ast::Expr::from(&models::Expr::from(&e10)));
+        assert_eq!(e10, ast::Expr::from(models::Expr::from(&e10)));
         let e11 = ast::Expr::slot(ast::SlotId::resource());
-        assert_eq!(e11, ast::Expr::from(&models::Expr::from(&e11)));
+        assert_eq!(e11, ast::Expr::from(models::Expr::from(&e11)));
         let e12 = ast::Expr::and(ast::Expr::val(false), ast::Expr::not(ast::Expr::val(true)));
-        assert_eq!(e12, ast::Expr::from(&models::Expr::from(&e12)));
+        assert_eq!(e12, ast::Expr::from(models::Expr::from(&e12)));
         let e13 = ast::Expr::or(
             ast::Expr::ite(
                 ast::Expr::get_attr(ast::Expr::var(ast::Var::Context), "a".into()),
@@ -797,12 +764,12 @@ mod test {
             ),
             ast::Expr::greater(ast::Expr::val(33), ast::Expr::val(-33)),
         );
-        assert_eq!(e13, ast::Expr::from(&models::Expr::from(&e13)));
+        assert_eq!(e13, ast::Expr::from(models::Expr::from(&e13)));
         let e14 = ast::Expr::contains(
             ast::Expr::set([ast::Expr::val("beans"), ast::Expr::val("carrots")]),
             ast::Expr::val("peas"),
         );
-        assert_eq!(e14, ast::Expr::from(&models::Expr::from(&e14)));
+        assert_eq!(e14, ast::Expr::from(models::Expr::from(&e14)));
     }
 
     #[test]
@@ -810,44 +777,44 @@ mod test {
         let bool_literal_f = ast::Literal::from(false);
         assert_eq!(
             bool_literal_f,
-            ast::Literal::from(&models::expr::Literal::from(&bool_literal_f))
+            ast::Literal::from(models::expr::Literal::from(&bool_literal_f))
         );
 
         let bool_literal_t = ast::Literal::from(true);
         assert_eq!(
             bool_literal_t,
-            ast::Literal::from(&models::expr::Literal::from(&bool_literal_t))
+            ast::Literal::from(models::expr::Literal::from(&bool_literal_t))
         );
 
         let long_literal0 = ast::Literal::from(0);
         assert_eq!(
             long_literal0,
-            ast::Literal::from(&models::expr::Literal::from(&long_literal0))
+            ast::Literal::from(models::expr::Literal::from(&long_literal0))
         );
 
         let long_literal1 = ast::Literal::from(1);
         assert_eq!(
             long_literal1,
-            ast::Literal::from(&models::expr::Literal::from(&long_literal1))
+            ast::Literal::from(models::expr::Literal::from(&long_literal1))
         );
 
         let str_literal0 = ast::Literal::from("");
         assert_eq!(
             str_literal0,
-            ast::Literal::from(&models::expr::Literal::from(&str_literal0))
+            ast::Literal::from(models::expr::Literal::from(&str_literal0))
         );
 
         let str_literal1 = ast::Literal::from("foo");
         assert_eq!(
             str_literal1,
-            ast::Literal::from(&models::expr::Literal::from(&str_literal1))
+            ast::Literal::from(models::expr::Literal::from(&str_literal1))
         );
 
         let euid_literal =
             ast::Literal::from(ast::EntityUID::with_eid_and_type("A", "foo").unwrap());
         assert_eq!(
             euid_literal,
-            ast::Literal::from(&models::expr::Literal::from(&euid_literal))
+            ast::Literal::from(models::expr::Literal::from(&euid_literal))
         );
     }
 
@@ -877,8 +844,8 @@ mod test {
             },
             Some(context.clone()),
         );
-        let request_rt = ast::Request::from(&models::Request::from(&request));
-        assert_eq!(context, ast::Context::from(&models::Expr::from(&context)));
+        let request_rt = ast::Request::from(models::Request::from(&request));
+        assert_eq!(context, ast::Context::from(models::Expr::from(&context)));
         assert_eq!(request.principal().uid(), request_rt.principal().uid());
         assert_eq!(request.action().uid(), request_rt.action().uid());
         assert_eq!(request.resource().uid(), request_rt.resource().uid());

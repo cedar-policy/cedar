@@ -49,15 +49,15 @@ pub(crate) fn encode_to_vec<M: prost::Message>(thing: impl Into<M>) -> Vec<u8> {
 use std::default::Default;
 
 /// Decode something of type `T` from `buf` using the protobuf format `M`
-pub(crate) fn decode<M: prost::Message + Default, T: for<'a> From<&'a M>>(
+pub(crate) fn decode<M: prost::Message + Default, T: From<M>>(
     buf: impl prost::bytes::Buf,
 ) -> Result<T, prost::DecodeError> {
-    M::decode(buf).map(|m| T::from(&m))
+    M::decode(buf).map(T::from)
 }
 
 /// Decode something of type `T` from `buf` using the protobuf format `M`
-pub(crate) fn try_decode<M: prost::Message + Default, E, T: for<'a> TryFrom<&'a M, Error = E>>(
+pub(crate) fn try_decode<M: prost::Message + Default, E, T: TryFrom<M, Error = E>>(
     buf: impl prost::bytes::Buf,
 ) -> Result<Result<T, E>, prost::DecodeError> {
-    M::decode(buf).map(|m| T::try_from(&m))
+    M::decode(buf).map(T::try_from)
 }

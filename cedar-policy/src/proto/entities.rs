@@ -19,10 +19,10 @@
 use super::models;
 use cedar_policy_core::{ast, entities, extensions};
 
-impl From<&models::Entities> for entities::Entities {
+impl From<models::Entities> for entities::Entities {
     #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: &models::Entities) -> Self {
-        let entities: Vec<ast::Entity> = v.entities.iter().map(ast::Entity::from).collect();
+    fn from(v: models::Entities) -> Self {
+        let entities: Vec<ast::Entity> = v.entities.into_iter().map(ast::Entity::from).collect();
 
         // REVIEW (before stabilization): does `AssumeAlreadyComputed` make
         // sense here? It will be the case for protobufs produced from our
@@ -54,6 +54,7 @@ impl From<&entities::Entities> for models::Entities {
 mod test {
     use super::*;
     use cedar_policy_core::assert_deep_eq;
+    use proptest::prelude::*;
     use smol_str::SmolStr;
     use std::collections::{BTreeMap, HashMap, HashSet};
     use std::sync::Arc;
@@ -64,7 +65,7 @@ mod test {
         let entities1 = entities::Entities::new();
         assert_deep_eq!(
             entities1,
-            entities::Entities::from(&models::Entities::from(&entities1))
+            entities::Entities::from(models::Entities::from(&entities1))
         );
 
         // Single Element Test
@@ -93,7 +94,7 @@ mod test {
             .unwrap();
         assert_deep_eq!(
             entities2,
-            entities::Entities::from(&models::Entities::from(&entities2))
+            entities::Entities::from(models::Entities::from(&entities2))
         );
 
         // Two Element Test
@@ -119,7 +120,7 @@ mod test {
             .unwrap();
         assert_deep_eq!(
             entities3,
-            entities::Entities::from(&models::Entities::from(&entities3))
+            entities::Entities::from(models::Entities::from(&entities3))
         );
     }
 }
