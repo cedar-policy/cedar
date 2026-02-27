@@ -523,7 +523,9 @@ fn test_never_errors_rejects_empty_policy() {
         .arg(empty.path())
         .assert()
         .failure()
-        .stderr(predicates::str::contains("Expected exactly one policy, found 0"));
+        .stderr(predicates::str::contains(
+            "Expected exactly one policy, found 0",
+        ));
 }
 
 #[test]
@@ -615,7 +617,7 @@ fn test_matches_disjoint_rejects_multi_policy_in_both() {
         ));
 }
 
-// ---- Tests with --counterexample false (exercises the bool-only code path) ----
+// ---- Tests with --no-counterexample (exercises the bool-only code path) ----
 
 #[test]
 fn test_never_errors_no_counterexample() {
@@ -624,8 +626,7 @@ fn test_never_errors_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
-        .arg("--counterexample")
-        .arg("false")
+        .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -651,8 +652,7 @@ fn test_always_matches_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
-        .arg("--counterexample")
-        .arg("false")
+        .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -678,8 +678,7 @@ fn test_never_matches_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
-        .arg("--counterexample")
-        .arg("false")
+        .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -705,8 +704,7 @@ fn test_matches_equivalent_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
-        .arg("--counterexample")
-        .arg("false")
+        .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -734,8 +732,7 @@ fn test_always_allows_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
-        .arg("--counterexample")
-        .arg("false")
+        .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -761,8 +758,7 @@ fn test_equivalent_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
-        .arg("--counterexample")
-        .arg("false")
+        .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -904,8 +900,7 @@ fn test_always_matches_does_not_hold_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
-        .arg("--counterexample")
-        .arg("false")
+        .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -932,8 +927,7 @@ fn test_never_matches_does_not_hold_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
-        .arg("--counterexample")
-        .arg("false")
+        .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -960,8 +954,7 @@ fn test_always_denies_does_not_hold_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
-        .arg("--counterexample")
-        .arg("false")
+        .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -989,8 +982,7 @@ fn test_equivalent_does_not_hold_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
-        .arg("--counterexample")
-        .arg("false")
+        .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")

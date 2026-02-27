@@ -876,8 +876,11 @@ pub struct SymccArgs {
     #[command(flatten)]
     pub schema: SchemaArgs,
     /// Generate counterexamples when verification fails
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, conflicts_with = "no_counterexample")]
     pub counterexample: bool,
+    /// Don't generate counterexamples when verification fails
+    #[arg(long, default_value_t = false, conflicts_with = "counterexample")]
+    pub no_counterexample: bool,
     /// Verbose output showing verification details
     #[arg(short, long)]
     pub verbose: bool,
@@ -1742,7 +1745,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
             let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy: {e}"))?;
-            if args.counterexample {
+            if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_never_errors_with_counterexample_opt(&compiled)
                     .await
@@ -1760,7 +1763,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
             let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy: {e}"))?;
-            if args.counterexample {
+            if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_always_matches_with_counterexample_opt(&compiled)
                     .await
@@ -1778,7 +1781,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
             let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy: {e}"))?;
-            if args.counterexample {
+            if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_never_matches_with_counterexample_opt(&compiled)
                     .await
@@ -1800,7 +1803,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy2: {e}"))?;
-            if args.counterexample {
+            if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_matches_equivalent_with_counterexample_opt(&compiled1, &compiled2)
                     .await
@@ -1824,7 +1827,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy2: {e}"))?;
-            if args.counterexample {
+            if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_matches_implies_with_counterexample_opt(&compiled1, &compiled2)
                     .await
@@ -1848,7 +1851,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                 .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy2: {e}"))?;
-            if args.counterexample {
+            if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_matches_disjoint_with_counterexample_opt(&compiled1, &compiled2)
                     .await
@@ -1872,7 +1875,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             let (pset, schema) = load_policy_set(cmd_args, &args.schema)?;
             let compiled = CompiledPolicySet::compile(&pset, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set: {e}"))?;
-            if args.counterexample {
+            if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_always_allows_with_counterexample_opt(&compiled)
                     .await
@@ -1890,7 +1893,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
             let (pset, schema) = load_policy_set(cmd_args, &args.schema)?;
             let compiled = CompiledPolicySet::compile(&pset, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set: {e}"))?;
-            if args.counterexample {
+            if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_always_denies_with_counterexample_opt(&compiled)
                     .await
@@ -1912,7 +1915,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 2: {e}"))?;
-            if args.counterexample {
+            if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_equivalent_with_counterexample_opt(&compiled1, &compiled2)
                     .await
@@ -1932,7 +1935,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 2: {e}"))?;
-            if args.counterexample {
+            if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_implies_with_counterexample_opt(&compiled1, &compiled2)
                     .await
@@ -1956,7 +1959,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                 .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
                 .map_err(|e| miette!("Failed to compile policy set 2: {e}"))?;
-            if args.counterexample {
+            if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_disjoint_with_counterexample_opt(&compiled1, &compiled2)
                     .await
