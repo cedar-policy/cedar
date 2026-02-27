@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 /// A unique identifier for a policy statement
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
-pub struct PolicyID(SmolStr);
+pub struct PolicyID(pub SmolStr);
 
 impl From<PolicyID> for ast::PolicyID {
     fn from(id: PolicyID) -> Self {

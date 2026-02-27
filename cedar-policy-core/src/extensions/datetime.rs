@@ -38,7 +38,7 @@ const DATETIME_EXTENSION_NAME: &str = "datetime";
     clippy::unwrap_used,
     reason = "The `Name`s and `Regex` here are valid"
 )]
-mod constants {
+pub(crate) mod constants {
     use regex::Regex;
     use std::sync::LazyLock;
 

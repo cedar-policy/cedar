@@ -26,13 +26,36 @@
 //! - Converts to/from AST and EST at boundaries
 //! - Uses `Arc<Expr>` for cheap cloning during manipulation
 
+pub(crate) mod ast_conversions;
 mod constraints;
+mod errors;
 mod expr;
 mod policy;
 
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
+pub use errors::PstConstructionError;
 pub use expr::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprConstructionError, Literal, Name, PatternElem,
-    SlotId, UnaryOp, Var,
+    BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
-pub use policy::{Clause, Effect, Policy};
+pub use policy::{Clause, Effect, Policy, PolicyID};
+
+use crate::ast;
+
+impl Policy {
+    /// Convert this PST policy to an AST policy for evaluation
+    pub fn to_ast(self) -> Result<ast::Policy, PstConstructionError> {
+        self.try_into()
+    }
+}
+
+impl Expr {
+    /// Convert this PST expression to an AST expression for evaluation
+    pub fn to_ast(self) -> Result<ast::Expr, PstConstructionError> {
+        self.try_into()
+    }
+
+    /// Create a PST expression from an AST expression
+    pub fn from_ast(expr: ast::Expr) -> Self {
+        expr.into()
+    }
+}

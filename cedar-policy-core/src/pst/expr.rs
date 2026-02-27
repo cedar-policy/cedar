@@ -16,15 +16,24 @@
 
 //! Expression types for PST
 
+use super::errors::PstConstructionError;
 use crate::ast;
 use crate::expr_builder::ExprBuilder;
-use crate::extensions::{ExtensionFunctionLookupError, Extensions};
-use itertools::Itertools;
+use crate::extensions::Extensions;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::BTreeMap;
 use std::fmt::Display;
-use std::str::FromStr;
 use std::sync::Arc;
+
+/// Constants for core Cedar operator names
+mod constants {
+    // The operators that are defined only in syntax
+    pub static NOT_EQ_STR: &str = "!=";
+    pub static GREATER_STR: &str = ">";
+    pub static GREATER_EQ_STR: &str = ">=";
+    pub static AND_STR: &str = "&&";
+    pub static OR_STR: &str = "||";
+}
 
 /// Slot identifier for template policies
 ///
@@ -36,24 +45,6 @@ pub enum SlotId {
     Principal,
     /// Resource slot
     Resource,
-}
-
-impl From<ast::SlotId> for SlotId {
-    fn from(slot: ast::SlotId) -> Self {
-        match slot.0 {
-            ast::ValidSlotId::Principal => SlotId::Principal,
-            ast::ValidSlotId::Resource => SlotId::Resource,
-        }
-    }
-}
-
-impl From<SlotId> for ast::SlotId {
-    fn from(slot: SlotId) -> Self {
-        match slot {
-            SlotId::Principal => ast::SlotId::principal(),
-            SlotId::Resource => ast::SlotId::resource(),
-        }
-    }
 }
 
 impl Display for SlotId {
@@ -97,39 +88,6 @@ impl Name {
     }
 }
 
-#[doc(hidden)]
-impl From<ast::Name> for Name {
-    fn from(name: ast::Name) -> Self {
-        let ast::Name {
-            0: ast::InternalName { id, path, .. },
-        } = name;
-        Name {
-            id: id.into_smolstr(),
-            namespace: Arc::new(
-                Arc::unwrap_or_clone(path)
-                    .into_iter()
-                    .map(|id| id.to_smolstr())
-                    .collect(),
-            ),
-        }
-    }
-}
-
-#[doc(hidden)]
-impl TryFrom<Name> for ast::Name {
-    type Error = crate::parser::err::ParseErrors;
-
-    fn try_from(name: Name) -> Result<Self, Self::Error> {
-        let basename = ast::Id::from_str(&name.id)?;
-        let path: Vec<ast::Id> = name
-            .namespace
-            .iter()
-            .map(|s| ast::Id::from_str(s.as_str()))
-            .try_collect()?;
-        Ok(ast::Name(ast::InternalName::new(basename, path, None)))
-    }
-}
-
 impl Display for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for elem in self.namespace.as_ref() {
@@ -153,22 +111,6 @@ impl EntityType {
     }
 }
 
-#[doc(hidden)]
-impl From<ast::EntityType> for EntityType {
-    fn from(et: ast::EntityType) -> Self {
-        EntityType(et.into_name().into())
-    }
-}
-
-#[doc(hidden)]
-impl TryFrom<EntityType> for ast::EntityType {
-    type Error = crate::parser::err::ParseErrors;
-
-    fn try_from(et: EntityType) -> Result<Self, Self::Error> {
-        Ok(ast::EntityType::EntityType(et.0.try_into()?))
-    }
-}
-
 impl Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ast_et: Result<ast::EntityType, _> = self.clone().try_into();
@@ -188,17 +130,6 @@ pub struct EntityUID {
     pub ty: EntityType,
     /// Entity identifier (EID)
     pub eid: SmolStr,
-}
-
-#[doc(hidden)]
-impl From<ast::EntityUID> for EntityUID {
-    fn from(uid: ast::EntityUID) -> Self {
-        let (ty, eid) = uid.components();
-        EntityUID {
-            ty: ty.into(),
-            eid: eid.into_smolstr(),
-        }
-    }
 }
 
 impl Display for EntityUID {
@@ -263,27 +194,27 @@ pub enum UnaryOp {
 }
 
 impl UnaryOp {
-    /// Get the Cedar syntax representation of this operator
-    pub const fn as_str(self) -> &'static str {
+    pub(crate) fn to_name(self) -> Option<&'static ast::Name> {
+        // We get the names of the extension functions from where they are defined: we don't duplicate
+        // name definitions.
+        use crate::extensions;
         match self {
-            UnaryOp::Not => "!",
-            UnaryOp::Neg => "-",
-            UnaryOp::IsEmpty => "isEmpty",
-            UnaryOp::Datetime => "datetime",
-            UnaryOp::Decimal => "decimal",
-            UnaryOp::Duration => "duration",
-            UnaryOp::Ip => "ip",
-            UnaryOp::IsIPv4 => "isIpv4",
-            UnaryOp::IsIPV6 => "isIpv6",
-            UnaryOp::IsLoopback => "isLoopback",
-            UnaryOp::IsMulticast => "isMulticast",
-            UnaryOp::ToDate => "toDate",
-            UnaryOp::ToTime => "toTime",
-            UnaryOp::ToMilliseconds => "toMilliseconds",
-            UnaryOp::ToSeconds => "toSeconds",
-            UnaryOp::ToMinutes => "toMinutes",
-            UnaryOp::ToHours => "toHours",
-            UnaryOp::ToDays => "toDays",
+            UnaryOp::IsEmpty | UnaryOp::Neg | UnaryOp::Not => None,
+            UnaryOp::Datetime => Some(&extensions::datetime::constants::DATETIME_CONSTRUCTOR_NAME),
+            UnaryOp::Decimal => Some(&extensions::decimal::constants::DECIMAL_FROM_STR_NAME),
+            UnaryOp::Duration => Some(&extensions::datetime::constants::DURATION_CONSTRUCTOR_NAME),
+            UnaryOp::Ip => Some(&extensions::ipaddr::names::IP_FROM_STR_NAME),
+            UnaryOp::IsIPv4 => Some(&extensions::ipaddr::names::IS_IPV4),
+            UnaryOp::IsIPV6 => Some(&extensions::ipaddr::names::IS_IPV6),
+            UnaryOp::IsLoopback => Some(&extensions::ipaddr::names::IS_LOOPBACK),
+            UnaryOp::IsMulticast => Some(&extensions::ipaddr::names::IS_MULTICAST),
+            UnaryOp::ToDate => Some(&extensions::datetime::constants::TO_DATE_NAME),
+            UnaryOp::ToTime => Some(&extensions::datetime::constants::TO_TIME_NAME),
+            UnaryOp::ToMilliseconds => Some(&extensions::datetime::constants::TO_MILLISECONDS_NAME),
+            UnaryOp::ToSeconds => Some(&extensions::datetime::constants::TO_SECONDS_NAME),
+            UnaryOp::ToMinutes => Some(&extensions::datetime::constants::TO_MINUTES_NAME),
+            UnaryOp::ToHours => Some(&extensions::datetime::constants::TO_HOURS_NAME),
+            UnaryOp::ToDays => Some(&extensions::datetime::constants::TO_DAYS_NAME),
         }
     }
 
@@ -312,7 +243,16 @@ impl UnaryOp {
 
 impl Display for UnaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
+        match self {
+            UnaryOp::Not => write!(f, "{}", ast::UnaryOp::Not),
+            UnaryOp::Neg => write!(f, "{}", ast::UnaryOp::Neg),
+            UnaryOp::IsEmpty => write!(f, "{}", ast::UnaryOp::IsEmpty),
+            // Extension functions - use their name
+            _ => match self.to_name() {
+                Some(name) => write!(f, "{}", name),
+                None => write!(f, "<impossible operator>"),
+            },
+        }
     }
 }
 
@@ -370,29 +310,30 @@ pub enum BinaryOp {
 }
 
 impl BinaryOp {
-    /// Get the Cedar syntax representation of this operator
-    pub const fn as_str(self) -> &'static str {
+    pub(crate) fn to_name(self) -> Option<&'static ast::Name> {
+        use crate::extensions;
         match self {
-            BinaryOp::Eq => "==",
-            BinaryOp::NotEq => "!=",
-            BinaryOp::Less => "<",
-            BinaryOp::LessEq => "<=",
-            BinaryOp::Greater => ">",
-            BinaryOp::GreaterEq => ">=",
-            BinaryOp::And => "&&",
-            BinaryOp::Or => "||",
-            BinaryOp::Add => "+",
-            BinaryOp::Sub => "-",
-            BinaryOp::Mul => "*",
-            BinaryOp::In => "in",
-            BinaryOp::Contains => "contains",
-            BinaryOp::ContainsAll => "containsAll",
-            BinaryOp::ContainsAny => "containsAny",
-            BinaryOp::GetTag => "getTag",
-            BinaryOp::HasTag => "hasTag",
-            BinaryOp::IsInRange => "isInRange",
-            BinaryOp::Offset => "offset",
-            BinaryOp::DurationSince => "durationSince",
+            BinaryOp::IsInRange => Some(&extensions::ipaddr::names::IS_IN_RANGE),
+            BinaryOp::Offset => Some(&extensions::datetime::constants::OFFSET_METHOD_NAME),
+            BinaryOp::DurationSince => Some(&extensions::datetime::constants::DURATION_SINCE_NAME),
+            // those are operators, not names
+            BinaryOp::Eq
+            | BinaryOp::NotEq
+            | BinaryOp::And
+            | BinaryOp::Or
+            | BinaryOp::Less
+            | BinaryOp::LessEq
+            | BinaryOp::Greater
+            | BinaryOp::GreaterEq
+            | BinaryOp::Add
+            | BinaryOp::Sub
+            | BinaryOp::Mul
+            | BinaryOp::In
+            | BinaryOp::Contains
+            | BinaryOp::ContainsAll
+            | BinaryOp::ContainsAny
+            | BinaryOp::GetTag
+            | BinaryOp::HasTag => None,
         }
     }
 
@@ -413,7 +354,30 @@ impl BinaryOp {
 
 impl Display for BinaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
+        match self {
+            BinaryOp::Eq => write!(f, "{}", ast::BinaryOp::Eq),
+            BinaryOp::NotEq => write!(f, "{}", &constants::NOT_EQ_STR),
+            BinaryOp::Less => write!(f, "{}", ast::BinaryOp::Less),
+            BinaryOp::LessEq => write!(f, "{}", ast::BinaryOp::LessEq),
+            BinaryOp::Greater => write!(f, "{}", &constants::GREATER_STR),
+            BinaryOp::GreaterEq => write!(f, "{}", &constants::GREATER_EQ_STR),
+            BinaryOp::And => write!(f, "{}", &constants::AND_STR),
+            BinaryOp::Or => write!(f, "{}", &constants::OR_STR),
+            BinaryOp::Add => write!(f, "{}", ast::BinaryOp::Add),
+            BinaryOp::Sub => write!(f, "{}", ast::BinaryOp::Sub),
+            BinaryOp::Mul => write!(f, "{}", ast::BinaryOp::Mul),
+            BinaryOp::In => write!(f, "{}", ast::BinaryOp::In),
+            BinaryOp::Contains => write!(f, "{}", ast::BinaryOp::Contains),
+            BinaryOp::ContainsAll => write!(f, "{}", ast::BinaryOp::ContainsAll),
+            BinaryOp::ContainsAny => write!(f, "{}", ast::BinaryOp::ContainsAny),
+            BinaryOp::GetTag => write!(f, "{}", ast::BinaryOp::GetTag),
+            BinaryOp::HasTag => write!(f, "{}", ast::BinaryOp::HasTag),
+            // Extension functions - use their name
+            _ => match self.to_name() {
+                Some(name) => write!(f, "{}", name),
+                None => write!(f, "<impossible operator>"),
+            },
+        }
     }
 }
 
@@ -438,19 +402,6 @@ pub enum PatternElem {
     Char(char),
     /// A wildcard (`*`)
     Wildcard,
-}
-
-#[doc(hidden)]
-impl From<ast::Pattern> for Vec<PatternElem> {
-    fn from(pattern: ast::Pattern) -> Self {
-        pattern
-            .iter()
-            .map(|elem| match elem {
-                ast::PatternElem::Char(c) => PatternElem::Char(*c),
-                ast::PatternElem::Wildcard => PatternElem::Wildcard,
-            })
-            .collect()
-    }
 }
 
 /// PST Expression
@@ -540,49 +491,37 @@ pub enum Expr {
 /// A private error node is used when other internal APIs require infaillible methods
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ErrorNode {
-    error: ExprConstructionError,
-}
-
-/// Error type for PST expression construction
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum ExprConstructionError {
-    /// Unknown function name
-    #[error("unknown function: {name}")]
-    UnknownFunction {
-        /// The name of the unknown function
-        name: String,
-    },
-    /// Extension function lookup error
-    #[error(transparent)]
-    FunctionLookupError(ExtensionFunctionLookupError),
-    /// Wrong number of arguments
-    #[error("function {name} expects {expected} argument(s), got {got}")]
-    WrongArity {
-        /// The name of the entity with the wrong number of arguments
-        name: String,
-        /// The expected number of arguments
-        expected: usize,
-        /// The actual number of arguments
-        got: usize,
-    },
+    pub(crate) error: PstConstructionError,
 }
 
 impl Expr {
-    #[expect(dead_code, reason = "PST is under development")]
-    fn from_function(
+    /// Transform a function call with arguments into a PST expression given the [`ast::Name`] of
+    /// the function. Clones the string representation of the `ast::Name` given.
+    pub(crate) fn from_function_ast_name_and_args(
         name: &ast::Name,
         args: Vec<Arc<Expr>>,
-    ) -> Result<Expr, ExprConstructionError> {
+    ) -> Result<Expr, PstConstructionError> {
+        Self::from_function_names_and_args(name.to_smolstr(), name, args)
+    }
+
+    /// Transform a function call with arguments into a PST expression given the [`ast::Name`] of
+    /// the function, and its [SmolStr] name.
+    /// Assumes the two names's representation as strings are equivalent, and does not clone.
+    fn from_function_names_and_args(
+        name: SmolStr,
+        ast_name: &ast::Name,
+        args: Vec<Arc<Expr>>,
+    ) -> Result<Expr, PstConstructionError> {
         let extension = Extensions::all_available()
-            .func(name)
-            .map_err(ExprConstructionError::FunctionLookupError)?;
+            .func(ast_name)
+            .map_err(PstConstructionError::FunctionLookupError)?;
 
         let expected = extension.arg_types().len();
         let got = args.len();
 
         if expected != got {
-            return Err(ExprConstructionError::WrongArity {
-                name: name.to_string(),
+            return Err(PstConstructionError::WrongArity {
+                name: name.into(),
                 expected,
                 got,
             });
@@ -592,24 +531,18 @@ impl Expr {
                 #[expect(clippy::unwrap_used, reason = "length = 1 checked in arm")]
                 let expr = args.into_iter().next().unwrap();
                 // Special case: the unknown function
-                if name.to_string() == "unknown" {
+                if ast_name.to_string() == "unknown" {
                     return Ok(Expr::Unknown {
                         name: format!("{}", expr).into(),
                     });
                 }
-                let op = UnaryOp::from_function_name(&name.to_string()).ok_or_else(|| {
-                    ExprConstructionError::UnknownFunction {
-                        name: name.to_string(),
-                    }
-                })?;
+                let op = UnaryOp::from_function_name(&ast_name.to_string())
+                    .ok_or(PstConstructionError::UnknownFunction(name))?;
                 Expr::UnaryOp { op, expr }
             }
             2 => {
-                let op = BinaryOp::from_function_name(&name.to_string()).ok_or_else(|| {
-                    ExprConstructionError::UnknownFunction {
-                        name: name.to_string(),
-                    }
-                })?;
+                let op = BinaryOp::from_function_name(&ast_name.to_string())
+                    .ok_or(PstConstructionError::UnknownFunction(name))?;
                 let mut iter = args.into_iter();
                 Expr::BinaryOp {
                     op,
@@ -619,11 +552,7 @@ impl Expr {
                     right: iter.next().unwrap(),
                 }
             }
-            _ => {
-                return Err(ExprConstructionError::UnknownFunction {
-                    name: name.to_string(),
-                })
-            }
+            _ => return Err(PstConstructionError::UnknownFunction(name)),
         })
     }
 }
@@ -632,7 +561,6 @@ impl Expr {
 /// expression building functions, this does not perform any validation on the input and is meant
 /// to be used internally.
 #[derive(Clone, Debug)]
-#[expect(dead_code, reason = "PST is under development")]
 pub(crate) struct PstBuilder;
 
 impl ExprBuilder for PstBuilder {
@@ -660,21 +588,11 @@ impl ExprBuilder for PstBuilder {
     }
 
     fn val(self, lit: impl Into<ast::Literal>) -> Expr {
-        Expr::Literal(match lit.into() {
-            ast::Literal::Bool(b) => Literal::Bool(b),
-            ast::Literal::Long(i) => Literal::Long(i),
-            ast::Literal::String(s) => Literal::String(s),
-            ast::Literal::EntityUID(e) => Literal::EntityUID(e.as_ref().clone().into()),
-        })
+        Expr::Literal(From::<ast::Literal>::from(lit.into()))
     }
 
     fn var(self, var: ast::Var) -> Expr {
-        Expr::Var(match var {
-            ast::Var::Principal => Var::Principal,
-            ast::Var::Action => Var::Action,
-            ast::Var::Resource => Var::Resource,
-            ast::Var::Context => Var::Context,
-        })
+        Expr::Var(var.into())
     }
 
     fn unknown(self, u: ast::Unknown) -> Expr {
@@ -848,10 +766,13 @@ impl ExprBuilder for PstBuilder {
     }
 
     fn call_extension_fn(self, fn_name: ast::Name, args: impl IntoIterator<Item = Expr>) -> Expr {
-        let expr = Expr::from_function(&fn_name, args.into_iter().map(Arc::new).collect());
+        let expr = Expr::from_function_ast_name_and_args(
+            &fn_name,
+            args.into_iter().map(Arc::new).collect(),
+        );
         match expr {
             Ok(e) => e,
-            Err(e) => Expr::Error(ErrorNode { error: e }),
+            Err(error) => Expr::Error(ErrorNode { error }),
         }
     }
 
@@ -912,7 +833,7 @@ impl std::fmt::Display for Expr {
             Expr::Literal(lit) => match lit {
                 Literal::Bool(b) => write!(f, "{}", b),
                 Literal::Long(i) => write!(f, "{}", i),
-                Literal::String(s) => write!(f, "\"{}\"", s.escape_debug()),
+                Literal::String(s) => write!(f, "\"{}\"", s.escape_default()),
                 Literal::EntityUID(uid) => write!(f, "{}", uid),
             },
             Expr::Var(v) => match v {
@@ -992,19 +913,24 @@ impl std::fmt::Display for Expr {
     }
 }
 
+#[expect(
+    clippy::fallible_impl_from,
+    reason = "AST records cannot have duplicate keys, so builder.record() cannot fail"
+)]
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_from_function_unknown_function() {
         let name = ast::Name::parse_unqualified_name("unknownFunc").unwrap();
         let args = vec![Arc::new(Expr::Literal(Literal::Long(1)))];
 
-        let result = Expr::from_function(&name, args);
+        let result = Expr::from_function_ast_name_and_args(&name, args);
         assert!(matches!(
             result,
-            Err(ExprConstructionError::FunctionLookupError { .. })
+            Err(PstConstructionError::FunctionLookupError { .. })
         ));
     }
 
@@ -1016,10 +942,10 @@ mod tests {
             Arc::new(Expr::Literal(Literal::Long(2))),
         ];
 
-        let result = Expr::from_function(&name, args);
+        let result = Expr::from_function_ast_name_and_args(&name, args);
         assert!(matches!(
             result,
-            Err(ExprConstructionError::WrongArity { .. })
+            Err(PstConstructionError::WrongArity { .. })
         ));
     }
 
@@ -1038,7 +964,7 @@ mod tests {
                 .map(|_| Arc::new(Expr::Literal(Literal::Long(0))))
                 .collect();
 
-            let result = Expr::from_function(&name, args);
+            let result = Expr::from_function_ast_name_and_args(&name, args);
             assert!(
                 result.is_ok(),
                 "Function {} should be supported but got error: {:?}",
@@ -1076,12 +1002,10 @@ mod tests {
 
     #[test]
     fn test_expr_construction_error_display() {
-        let err = ExprConstructionError::UnknownFunction {
-            name: "foo".to_string(),
-        };
+        let err = PstConstructionError::UnknownFunction("foo".to_smolstr());
         assert!(err.to_string().contains("foo"));
 
-        let err = ExprConstructionError::WrongArity {
+        let err = PstConstructionError::WrongArity {
             name: "bar".to_string(),
             expected: 2,
             got: 1,
@@ -1388,6 +1312,76 @@ mod tests {
             // isEmpty
             let is_empty = builder().is_empty(builder().set([]));
             assert_eq!(is_empty.to_string(), "isEmpty([])");
+        }
+
+        #[test]
+        fn test_unary_op_display_no_impossible_operator() {
+            // Test that all UnaryOp variants display without showing "<impossible operator>"
+            let ops = [
+                UnaryOp::Not,
+                UnaryOp::Neg,
+                UnaryOp::IsEmpty,
+                UnaryOp::Datetime,
+                UnaryOp::Decimal,
+                UnaryOp::Duration,
+                UnaryOp::Ip,
+                UnaryOp::IsIPv4,
+                UnaryOp::IsIPV6,
+                UnaryOp::IsLoopback,
+                UnaryOp::IsMulticast,
+                UnaryOp::ToDate,
+                UnaryOp::ToTime,
+                UnaryOp::ToMilliseconds,
+                UnaryOp::ToSeconds,
+                UnaryOp::ToMinutes,
+                UnaryOp::ToHours,
+                UnaryOp::ToDays,
+            ];
+
+            for op in ops {
+                let display = op.to_string();
+                assert_ne!(
+                    display, "<impossible operator>",
+                    "UnaryOp::{:?} should not display as impossible operator",
+                    op
+                );
+            }
+        }
+
+        #[test]
+        fn test_binary_op_display_no_impossible_operator() {
+            // Test that all BinaryOp variants display without showing "<impossible operator>"
+            let ops = [
+                BinaryOp::Eq,
+                BinaryOp::NotEq,
+                BinaryOp::Less,
+                BinaryOp::LessEq,
+                BinaryOp::Greater,
+                BinaryOp::GreaterEq,
+                BinaryOp::And,
+                BinaryOp::Or,
+                BinaryOp::Add,
+                BinaryOp::Sub,
+                BinaryOp::Mul,
+                BinaryOp::In,
+                BinaryOp::Contains,
+                BinaryOp::ContainsAll,
+                BinaryOp::ContainsAny,
+                BinaryOp::GetTag,
+                BinaryOp::HasTag,
+                BinaryOp::IsInRange,
+                BinaryOp::Offset,
+                BinaryOp::DurationSince,
+            ];
+
+            for op in ops {
+                let display = op.to_string();
+                assert_ne!(
+                    display, "<impossible operator>",
+                    "BinaryOp::{:?} should not display as impossible operator",
+                    op
+                );
+            }
         }
     }
 }
