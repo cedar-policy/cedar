@@ -43,6 +43,7 @@ use the performance-optimized primitives introduced in 0.2.0. (#2102)
 
 - Bug where returned counterexamples could occasionally be invalid by containing
 cycles in the entity data for entities irrelevant to the given policies (#2089)
+- Fixed bug in `Term::interpret` caused by missing `bvsrem` case
 
 ### Removed
 
