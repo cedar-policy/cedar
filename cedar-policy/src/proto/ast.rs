@@ -662,7 +662,7 @@ impl From<&ast::Context> for models::Expr {
 #[cfg(test)]
 mod test {
     use super::*;
-    use proptest::prelude::*;
+
 
     #[test]
     fn name_and_slot_roundtrip() {

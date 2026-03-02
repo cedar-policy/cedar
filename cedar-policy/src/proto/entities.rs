@@ -54,7 +54,7 @@ impl From<&entities::Entities> for models::Entities {
 mod test {
     use super::*;
     use cedar_policy_core::assert_deep_eq;
-    use proptest::prelude::*;
+
     use smol_str::SmolStr;
     use std::collections::{BTreeMap, HashMap, HashSet};
     use std::sync::Arc;

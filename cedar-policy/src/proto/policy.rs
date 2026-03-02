@@ -440,7 +440,7 @@ mod test {
     use std::sync::Arc;
 
     use super::*;
-    use proptest::prelude::*;
+
 
     // We add `PartialOrd` and `Ord` implementations for both `models::Policy` and
     // `models::TemplateBody`, so that these can be sorted for testing purposes
