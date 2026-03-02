@@ -331,7 +331,10 @@ mod interpret_test {
     use cedar_policy::{RequestEnv, Schema};
     use cedar_policy_core::ast::Expr;
 
-    use crate::{bitvec::BitVec, symcc::compiler::compile, term::TermPrim, type_abbrevs::Width};
+    use crate::{
+        bitvec::BitVec, symcc::compiler::compile, term::TermPrim, term_type::TermType,
+        type_abbrevs::Width,
+    };
 
     use super::*;
 
@@ -531,26 +534,36 @@ mod interpret_test {
             3,
         )));
 
+        // This test exists to test `Term::interpret` for these operations, so I
+        // don't want to use the factory functions which would fold constants before interpration.
+        fn bv_app_without_folding(op: Op, t1: &Term, t2: &Term, ret_ty: TermType) -> Term {
+            Term::App {
+                op,
+                args: Arc::new(vec![t1.clone(), t2.clone()]),
+                ret_ty,
+            }
+        }
+
         assert_eq!(
-            factory::bvult(t1.clone(), t2.clone()).interpret(&interp),
+            bv_app_without_folding(Op::Bvult, &t1, &t2, TermType::Bool).interpret(&interp),
             Term::Prim(TermPrim::Bool(false))
         );
         assert_eq!(
-            factory::bvudiv(t1.clone(), t2.clone()).interpret(&interp),
+            bv_app_without_folding(Op::Bvudiv, &t1, &t2, t1.type_of()).interpret(&interp),
             Term::Prim(TermPrim::Bitvec(BitVec::of_u128(
                 Width::new(64).unwrap(),
                 3
             )))
         );
         assert_eq!(
-            factory::bvsmod(t1.clone(), t2.clone()).interpret(&interp),
+            bv_app_without_folding(Op::Bvsmod, &t1, &t2, t1.type_of()).interpret(&interp),
             Term::Prim(TermPrim::Bitvec(BitVec::of_u128(
                 Width::new(64).unwrap(),
                 1
             )))
         );
         assert_eq!(
-            factory::bvurem(t1.clone(), t2.clone()).interpret(&interp),
+            bv_app_without_folding(Op::Bvurem, &t1, &t2, t1.type_of()).interpret(&interp),
             Term::Prim(TermPrim::Bitvec(BitVec::of_u128(
                 Width::new(64).unwrap(),
                 1
