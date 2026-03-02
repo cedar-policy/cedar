@@ -131,6 +131,10 @@ impl Term {
                     factory::bvsdiv(arg1.interpret(interp), arg2.interpret(interp))
                 }
 
+                (Op::Bvsrem, [arg1, arg2]) => {
+                    factory::bvsdiv(arg1.interpret(interp), arg2.interpret(interp))
+                }
+
                 (Op::Bvudiv, [arg1, arg2]) => {
                     factory::bvudiv(arg1.interpret(interp), arg2.interpret(interp))
                 }
@@ -225,11 +229,17 @@ impl Term {
 
                 // Otherwise leave the application as it but
                 // interpret the arguments
-                (op, args) => Term::App {
-                    op: op.clone(),
-                    args: Arc::new(args.iter().map(|t| t.interpret(interp)).collect()),
-                    ret_ty: ret_ty.clone(),
-                },
+                (op, args) => {
+                    debug_assert!(
+                        false,
+                        "This should never happen. The above match should be exhaustive."
+                    );
+                    Term::App {
+                        op: op.clone(),
+                        args: Arc::new(args.iter().map(|t| t.interpret(interp)).collect()),
+                        ret_ty: ret_ty.clone(),
+                    }
+                }
             },
         }
     }
