@@ -33,14 +33,14 @@ impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
     }
 }
 
-impl From<&models::Schema> for cedar_policy_core::validator::ValidatorSchema {
-    fn from(v: &models::Schema) -> Self {
+impl From<models::Schema> for cedar_policy_core::validator::ValidatorSchema {
+    fn from(v: models::Schema) -> Self {
         Self::new(
             v.entity_decls
-                .iter()
+                .into_iter()
                 .map(cedar_policy_core::validator::ValidatorEntityType::from),
             v.action_decls
-                .iter()
+                .into_iter()
                 .map(cedar_policy_core::validator::ValidatorActionId::from),
         )
     }
@@ -61,8 +61,8 @@ impl From<&cedar_policy_core::validator::ValidationMode> for models::ValidationM
     }
 }
 
-impl From<&models::ValidationMode> for cedar_policy_core::validator::ValidationMode {
-    fn from(v: &models::ValidationMode) -> Self {
+impl From<models::ValidationMode> for cedar_policy_core::validator::ValidationMode {
+    fn from(v: models::ValidationMode) -> Self {
         match v {
             models::ValidationMode::Strict => cedar_policy_core::validator::ValidationMode::Strict,
             models::ValidationMode::Permissive => {
@@ -101,16 +101,16 @@ impl From<&cedar_policy_core::validator::ValidatorActionId> for models::ActionDe
     }
 }
 
-impl From<&models::ActionDecl> for cedar_policy_core::validator::ValidatorActionId {
+impl From<models::ActionDecl> for cedar_policy_core::validator::ValidatorActionId {
     #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: &models::ActionDecl) -> Self {
+    fn from(v: models::ActionDecl) -> Self {
         Self::new(
-            ast::EntityUID::from(v.name.as_ref().expect("name field should exist")),
-            v.principal_types.iter().map(ast::EntityType::from),
-            v.resource_types.iter().map(ast::EntityType::from),
-            v.descendants.iter().map(ast::EntityUID::from),
+            ast::EntityUID::from(v.name.expect("name field should exist")),
+            v.principal_types.into_iter().map(ast::EntityType::from),
+            v.resource_types.into_iter().map(ast::EntityType::from),
+            v.descendants.into_iter().map(ast::EntityUID::from),
             types::Type::Record {
-                attrs: model_to_attributes(&v.context),
+                attrs: model_to_attributes(v.context),
                 open_attributes: types::OpenTag::default(),
             },
             None,
@@ -143,52 +143,51 @@ impl From<&cedar_policy_core::validator::ValidatorEntityType> for models::Entity
     }
 }
 
-impl From<&models::EntityDecl> for cedar_policy_core::validator::ValidatorEntityType {
+impl From<models::EntityDecl> for cedar_policy_core::validator::ValidatorEntityType {
     #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: &models::EntityDecl) -> Self {
-        let name = ast::EntityType::from(v.name.as_ref().expect("name field should exist"));
-        let descendants = v.descendants.iter().map(ast::EntityType::from);
-        match NonEmpty::collect(v.enum_choices.iter().map(SmolStr::from)) {
+    fn from(v: models::EntityDecl) -> Self {
+        let name = ast::EntityType::from(v.name.expect("name field should exist"));
+        let descendants = v.descendants.into_iter().map(ast::EntityType::from);
+        match NonEmpty::collect(v.enum_choices.into_iter().map(SmolStr::from)) {
             // `enum_choices` is empty, so `v` represents a standard entity type
             None => Self::new_standard(
                 name,
                 descendants,
-                model_to_attributes(&v.attributes),
+                model_to_attributes(v.attributes),
                 types::OpenTag::default(),
-                v.tags.as_ref().map(types::Type::from),
+                v.tags.map(types::Type::from),
                 None,
             ),
             Some(enum_choices) => {
                 // `enum_choices` is not empty, so `v` represents an enumerated entity type.
                 // enumerated entity types must have no attributes or tags.
-                assert_eq!(&v.attributes, &HashMap::new());
-                assert_eq!(&v.tags, &None);
-                Self::new_enum(name.clone(), descendants, enum_choices, name.loc().cloned())
+                assert_eq!(v.attributes, HashMap::new());
+                assert_eq!(v.tags, None);
+                Self::new_enum(name, descendants, enum_choices, None)
             }
         }
     }
 }
 
-impl From<&models::Type> for types::Type {
+impl From<models::Type> for types::Type {
     #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: &models::Type) -> Self {
-        match v.data.as_ref().expect("data field should exist") {
+    fn from(v: models::Type) -> Self {
+        match v.data.expect("data field should exist") {
             models::r#type::Data::Prim(vt) => {
-                match models::r#type::Prim::try_from(vt.to_owned()).expect("decode should succeed")
-                {
+                match models::r#type::Prim::try_from(vt).expect("decode should succeed") {
                     models::r#type::Prim::Bool => types::Type::primitive_boolean(),
                     models::r#type::Prim::String => types::Type::primitive_string(),
                     models::r#type::Prim::Long => types::Type::primitive_long(),
                 }
             }
             models::r#type::Data::SetElem(elty) => types::Type::Set {
-                element_type: Some(Arc::new(types::Type::from(elty.as_ref()))),
+                element_type: Some(Arc::new(types::Type::from(*elty))),
             },
             models::r#type::Data::Entity(e) => types::Type::Entity(types::EntityKind::Entity(
                 types::EntityLUB::single_entity(ast::EntityType::from(e)),
             )),
             models::r#type::Data::Record(r) => types::Type::Record {
-                attrs: model_to_attributes(&r.attrs),
+                attrs: model_to_attributes(r.attrs),
                 open_attributes: types::OpenTag::default(),
             },
             models::r#type::Data::Ext(name) => types::Type::ExtensionType {
@@ -239,8 +238,8 @@ impl From<&types::Type> for models::Type {
     }
 }
 
-fn model_to_attributes(v: &HashMap<String, models::AttributeType>) -> types::Attributes {
-    types::Attributes::with_attributes(v.iter().map(|(k, v)| (k.into(), v.into())))
+fn model_to_attributes(v: HashMap<String, models::AttributeType>) -> types::Attributes {
+    types::Attributes::with_attributes(v.into_iter().map(|(k, v)| (k.into(), v.into())))
 }
 
 fn attributes_to_model(v: &types::Attributes) -> HashMap<String, models::AttributeType> {
@@ -249,14 +248,11 @@ fn attributes_to_model(v: &types::Attributes) -> HashMap<String, models::Attribu
         .collect()
 }
 
-impl From<&models::AttributeType> for types::AttributeType {
+impl From<models::AttributeType> for types::AttributeType {
     #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: &models::AttributeType) -> Self {
+    fn from(v: models::AttributeType) -> Self {
         Self {
-            attr_type: types::Type::from(
-                v.attr_type.as_ref().expect("attr_type field should exist"),
-            )
-            .into(),
+            attr_type: types::Type::from(v.attr_type.expect("attr_type field should exist")).into(),
             is_required: v.is_required,
             #[cfg(feature = "extended-schema")]
             loc: None,

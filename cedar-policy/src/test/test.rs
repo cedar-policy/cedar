@@ -11261,7 +11261,7 @@ mod has_non_scope_constraint {
         fn roundtrip_via_policy_set(p: Policy) -> Policy {
             let policy_set = crate::PolicySet::from_policies([p]).unwrap();
             let proto = crate::proto::models::PolicySet::from(&policy_set);
-            let policy_set_from_proto: crate::PolicySet = (&proto).try_into().unwrap();
+            let policy_set_from_proto: crate::PolicySet = proto.try_into().unwrap();
             let roundtripped = policy_set_from_proto.policies().next().unwrap();
             roundtripped.clone()
         }

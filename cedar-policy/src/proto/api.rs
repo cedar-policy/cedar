@@ -28,8 +28,8 @@ macro_rules! standard_conversions {
             }
         }
 
-        impl From<&$B> for $A {
-            fn from(v: &$B) -> $A {
+        impl From<$B> for $A {
+            fn from(v: $B) -> $A {
                 $A_expr(v.into())
             }
         }
@@ -55,8 +55,8 @@ impl From<&api::Template> for models::TemplateBody {
     }
 }
 
-impl From<&models::TemplateBody> for api::Template {
-    fn from(v: &models::TemplateBody) -> Self {
+impl From<models::TemplateBody> for api::Template {
+    fn from(v: models::TemplateBody) -> Self {
         Self::from_ast(v.into())
     }
 }
@@ -73,9 +73,9 @@ impl From<&api::PolicySet> for models::PolicySet {
     }
 }
 
-impl TryFrom<&models::PolicySet> for api::PolicySet {
+impl TryFrom<models::PolicySet> for api::PolicySet {
     type Error = api::PolicySetError;
-    fn try_from(v: &models::PolicySet) -> Result<Self, Self::Error> {
+    fn try_from(v: models::PolicySet) -> Result<Self, Self::Error> {
         #[expect(clippy::expect_used, reason = "experimental feature")]
         Self::from_ast(
             v.try_into()
