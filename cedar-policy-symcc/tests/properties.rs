@@ -360,3 +360,9 @@ check_prop!(prop_str_pattern_unicode,
 
 check_prop!(prop_str_pattern_quote,
     forall |a : String, b : String| !($a like "\"" && $b like "\"") || $a == $b);
+
+check_prop!(if_false_true_eq_not,
+    forall |b : Bool| (if $b then false else true) == !$b );
+
+check_prop!(if_true_false_eq_id,
+    forall |b : Bool| (if $b then true else false) == $b );
