@@ -24,6 +24,7 @@ use super::{
     SlotId, UnaryOp, Var,
 };
 use crate::ast;
+use crate::expr_builder;
 use crate::pst::expr::{ErrorNode, PstBuilder};
 use itertools::Itertools;
 use std::str::FromStr;
@@ -57,8 +58,10 @@ impl TryFrom<Policy> for ast::Template {
             .clauses
             .into_iter()
             .map(|clause| match clause {
-                Clause::When(expr) => (*expr).clone().try_into(),
-                Clause::Unless(expr) => (*expr).clone().try_into().map(|x| builder.clone().not(x)),
+                Clause::When(expr) => Arc::unwrap_or_clone(expr).try_into(),
+                Clause::Unless(expr) => Arc::unwrap_or_clone(expr)
+                    .try_into()
+                    .map(|x| builder.clone().not(x)),
             })
             .rev()
             .collect::<Result<Vec<_>, _>>()?
@@ -73,11 +76,7 @@ impl TryFrom<Policy> for ast::Template {
             .annotations
             .into_iter()
             .map(|(key, val)| {
-                let value = if val.is_empty() {
-                    None
-                } else {
-                    Some(val.to_smolstr())
-                };
+                let value = if val.is_empty() { None } else { Some(val) };
                 (
                     ast::AnyId::new_unchecked(key),
                     ast::Annotation::with_optional_value(value, None),
@@ -178,139 +177,139 @@ impl TryFrom<Expr> for ast::Expr {
     type Error = PstConstructionError;
 
     fn try_from(expr: Expr) -> Result<Self, PstConstructionError> {
-        expr_to_ast(expr)
+        expr.try_into_expr::<ast::ExprBuilder<()>>()
     }
 }
 
-// Helper to convert PST Expr to AST Expr using the AST builder
-fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
-    use crate::expr_builder::ExprBuilder;
-    let builder = ast::ExprBuilder::<()>::new();
-
-    match expr {
-        Expr::Literal(lit) => match lit {
-            Literal::Bool(b) => Ok(builder.val(b)),
-            Literal::Long(i) => Ok(builder.val(i)),
-            Literal::String(s) => Ok(builder.val(s)),
-            Literal::EntityUID(uid) => {
-                let ast_et: ast::EntityType = uid.ty.try_into()?;
-                let ast_eid = ast::Eid::new(uid.eid.as_str());
-                let ast_uid = ast::EntityUID::from_components(ast_et, ast_eid, None);
-                Ok(builder.val(ast_uid))
+impl Expr {
+    fn try_into_expr<B: expr_builder::ExprBuilder>(self) -> Result<B::Expr, PstConstructionError> {
+        let builder = B::new();
+        match self {
+            Expr::Literal(lit) => match lit {
+                Literal::Bool(b) => Ok(builder.val(b)),
+                Literal::Long(i) => Ok(builder.val(i)),
+                Literal::String(s) => Ok(builder.val(s)),
+                Literal::EntityUID(uid) => {
+                    let ast_et: ast::EntityType = uid.ty.try_into()?;
+                    let ast_eid = ast::Eid::new(uid.eid.as_str());
+                    let ast_uid = ast::EntityUID::from_components(ast_et, ast_eid, None);
+                    Ok(builder.val(ast_uid))
+                }
+            },
+            Expr::Var(v) => Ok(builder.var(v.into())),
+            Expr::Slot(_) => Err(PstConstructionError::NotImplemented("slots".to_string())),
+            Expr::UnaryOp { op, expr } => {
+                let inner = Arc::unwrap_or_clone(expr).try_into_expr::<B>()?;
+                Ok(match op {
+                    UnaryOp::Not => builder.not(inner),
+                    UnaryOp::Neg => builder.neg(inner),
+                    UnaryOp::IsEmpty => builder.is_empty(inner),
+                    // The other unary operators are extension functions.
+                    _ => match op.to_name() {
+                        Some(fn_name) => builder.call_extension_fn(fn_name.clone(), vec![inner]),
+                        // This should never occur!
+                        None => Err(PstConstructionError::InvalidExpression(format!(
+                            "unknown unary operator: {}",
+                            op
+                        )))?,
+                    },
+                })
             }
-        },
-        Expr::Var(v) => Ok(builder.var(v.into())),
-        Expr::Slot(_) => Err(PstConstructionError::NotImplemented("slots".to_string())),
-        Expr::UnaryOp { op, expr } => {
-            let inner = expr_to_ast(Arc::unwrap_or_clone(expr))?;
-            Ok(match op {
-                UnaryOp::Not => builder.not(inner),
-                UnaryOp::Neg => builder.neg(inner),
-                UnaryOp::IsEmpty => builder.is_empty(inner),
-                // The other unary operators are extension functions.
-                _ => match op.to_name() {
-                    Some(fn_name) => builder.call_extension_fn(fn_name.clone(), vec![inner]),
-                    // This should never occur!
-                    None => Err(PstConstructionError::InvalidExpression(format!(
-                        "unknown unary operator: {}",
-                        op
-                    )))?,
-                },
-            })
-        }
-        Expr::BinaryOp { op, left, right } => {
-            let left_ast = expr_to_ast(Arc::unwrap_or_clone(left))?;
-            let right_ast = expr_to_ast(Arc::unwrap_or_clone(right))?;
+            Expr::BinaryOp { op, left, right } => {
+                let left_ast = Arc::unwrap_or_clone(left).try_into_expr::<B>()?;
+                let right_ast = Arc::unwrap_or_clone(right).try_into_expr::<B>()?;
 
-            Ok(match op {
-                BinaryOp::Eq => builder.is_eq(left_ast, right_ast),
-                BinaryOp::NotEq => builder.noteq(left_ast, right_ast),
-                BinaryOp::Less => builder.less(left_ast, right_ast),
-                BinaryOp::LessEq => builder.lesseq(left_ast, right_ast),
-                BinaryOp::Greater => builder.greater(left_ast, right_ast),
-                BinaryOp::GreaterEq => builder.greatereq(left_ast, right_ast),
-                BinaryOp::And => builder.and(left_ast, right_ast),
-                BinaryOp::Or => builder.or(left_ast, right_ast),
-                BinaryOp::Add => builder.add(left_ast, right_ast),
-                BinaryOp::Sub => builder.sub(left_ast, right_ast),
-                BinaryOp::Mul => builder.mul(left_ast, right_ast),
-                BinaryOp::In => builder.is_in(left_ast, right_ast),
-                BinaryOp::Contains => builder.contains(left_ast, right_ast),
-                BinaryOp::ContainsAll => builder.contains_all(left_ast, right_ast),
-                BinaryOp::ContainsAny => builder.contains_any(left_ast, right_ast),
-                BinaryOp::GetTag => builder.get_tag(left_ast, right_ast),
-                BinaryOp::HasTag => builder.has_tag(left_ast, right_ast),
-                // The other binary operators are extensions
-                _ => match op.to_name() {
-                    Some(fn_name) => {
-                        builder.call_extension_fn(fn_name.clone(), vec![left_ast, right_ast])
-                    }
-                    // This should never occur!
-                    None => Err(PstConstructionError::InvalidExpression(format!(
-                        "unknown binary operator: {}",
-                        op
-                    )))?,
-                },
-            })
-        }
-        Expr::Set(exprs) => {
-            let ast_exprs: Result<Vec<_>, _> = exprs
-                .into_iter()
-                .map(|e| expr_to_ast(Arc::unwrap_or_clone(e)))
-                .collect();
-            Ok(builder.set(ast_exprs?))
-        }
-        Expr::IfThenElse {
-            cond,
-            then_expr,
-            else_expr,
-        } => Ok(builder.ite(
-            expr_to_ast(Arc::unwrap_or_clone(cond))?,
-            expr_to_ast(Arc::unwrap_or_clone(then_expr))?,
-            expr_to_ast(Arc::unwrap_or_clone(else_expr))?,
-        )),
-        Expr::Is {
-            expr,
-            entity_type,
-            in_expr: None,
-        } => Ok(builder.is_entity_type(
-            expr_to_ast(Arc::unwrap_or_clone(expr))?,
-            entity_type.try_into()?,
-        )),
-        Expr::Is {
-            expr,
-            entity_type,
-            in_expr: Some(e),
-        } => Ok(builder.is_in_entity_type(
-            expr_to_ast(Arc::unwrap_or_clone(expr))?,
-            entity_type.try_into()?,
-            expr_to_ast(Arc::unwrap_or_clone(e))?,
-        )),
-        Expr::GetAttr { expr, attr } => {
-            Ok(builder.get_attr(expr_to_ast(Arc::unwrap_or_clone(expr))?, attr))
-        }
-        Expr::HasAttr { expr, attrs } => {
-            Ok(builder.extended_has_attr(expr_to_ast(Arc::unwrap_or_clone(expr))?, &attrs))
-        }
-        Expr::Like { expr, pattern } => Ok(builder.like(
-            expr_to_ast(Arc::unwrap_or_clone(expr))?,
-            elements_into_ast_pattern(pattern),
-        )),
-        Expr::Record(elems) => builder
-            .record(
-                elems
+                Ok(match op {
+                    BinaryOp::Eq => builder.is_eq(left_ast, right_ast),
+                    BinaryOp::NotEq => builder.noteq(left_ast, right_ast),
+                    BinaryOp::Less => builder.less(left_ast, right_ast),
+                    BinaryOp::LessEq => builder.lesseq(left_ast, right_ast),
+                    BinaryOp::Greater => builder.greater(left_ast, right_ast),
+                    BinaryOp::GreaterEq => builder.greatereq(left_ast, right_ast),
+                    BinaryOp::And => builder.and(left_ast, right_ast),
+                    BinaryOp::Or => builder.or(left_ast, right_ast),
+                    BinaryOp::Add => builder.add(left_ast, right_ast),
+                    BinaryOp::Sub => builder.sub(left_ast, right_ast),
+                    BinaryOp::Mul => builder.mul(left_ast, right_ast),
+                    BinaryOp::In => builder.is_in(left_ast, right_ast),
+                    BinaryOp::Contains => builder.contains(left_ast, right_ast),
+                    BinaryOp::ContainsAll => builder.contains_all(left_ast, right_ast),
+                    BinaryOp::ContainsAny => builder.contains_any(left_ast, right_ast),
+                    BinaryOp::GetTag => builder.get_tag(left_ast, right_ast),
+                    BinaryOp::HasTag => builder.has_tag(left_ast, right_ast),
+                    // The other binary operators are extensions
+                    _ => match op.to_name() {
+                        Some(fn_name) => {
+                            builder.call_extension_fn(fn_name.clone(), vec![left_ast, right_ast])
+                        }
+                        // This should never occur!
+                        None => Err(PstConstructionError::InvalidExpression(format!(
+                            "unknown binary operator: {}",
+                            op
+                        )))?,
+                    },
+                })
+            }
+            Expr::Set(exprs) => {
+                let ast_exprs: Result<Vec<_>, _> = exprs
                     .into_iter()
-                    .map(|(k, v)| Ok((k.into(), expr_to_ast(Arc::unwrap_or_clone(v))?)))
-                    .collect::<Result<Vec<_>, PstConstructionError>>()?,
-            )
-            .map_err(|cstr_err: ast::ExpressionConstructionError| {
-                PstConstructionError::InvalidConversion(cstr_err.to_string())
-            }),
-        Expr::Unknown { name } => Ok(builder.unknown(ast::Unknown {
-            name,
-            type_annotation: None,
-        })),
-        Expr::Error(ErrorNode { error }) => Err(error),
+                    .map(|e| Arc::unwrap_or_clone(e).try_into_expr::<B>())
+                    .collect();
+                Ok(builder.set(ast_exprs?))
+            }
+            Expr::IfThenElse {
+                cond,
+                then_expr,
+                else_expr,
+            } => Ok(builder.ite(
+                Arc::unwrap_or_clone(cond).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(then_expr).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(else_expr).try_into_expr::<B>()?,
+            )),
+            Expr::Is {
+                expr,
+                entity_type,
+                in_expr: None,
+            } => Ok(builder.is_entity_type(
+                Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
+                entity_type.try_into()?,
+            )),
+            Expr::Is {
+                expr,
+                entity_type,
+                in_expr: Some(e),
+            } => Ok(builder.is_in_entity_type(
+                Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
+                entity_type.try_into()?,
+                Arc::unwrap_or_clone(e).try_into_expr::<B>()?,
+            )),
+            Expr::GetAttr { expr, attr } => {
+                Ok(builder.get_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attr))
+            }
+            Expr::HasAttr { expr, attrs } => {
+                Ok(builder
+                    .extended_has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, &attrs))
+            }
+            Expr::Like { expr, pattern } => Ok(builder.like(
+                Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
+                elements_into_ast_pattern(pattern),
+            )),
+            Expr::Record(elems) => builder
+                .record(
+                    elems
+                        .into_iter()
+                        .map(|(k, v)| Ok((k.into(), Arc::unwrap_or_clone(v).try_into_expr::<B>()?)))
+                        .collect::<Result<Vec<_>, PstConstructionError>>()?,
+                )
+                .map_err(|cstr_err: ast::ExpressionConstructionError| {
+                    PstConstructionError::InvalidConversion(cstr_err.to_string())
+                }),
+            Expr::Unknown { name } => Ok(builder.unknown(ast::Unknown {
+                name,
+                type_annotation: None,
+            })),
+            Expr::Error(ErrorNode { error }) => Err(error),
+        }
     }
 }
 
@@ -474,128 +473,9 @@ impl From<ast::EntityUID> for EntityUID {
     }
 }
 
-#[expect(clippy::fallible_impl_from, reason = "the unwrap cannot fail")]
 impl From<ast::Expr> for Expr {
     fn from(ast_expr: ast::Expr) -> Self {
-        use crate::expr_builder::ExprBuilder;
-        let builder = PstBuilder::new();
-        match ast_expr.into_expr_kind() {
-            ast::ExprKind::Lit(lit) => builder.val(lit),
-            ast::ExprKind::Var(v) => builder.var(v.into()),
-            ast::ExprKind::Slot(s) => builder.slot(s),
-            ast::ExprKind::Unknown(u) => builder.unknown(u),
-            ast::ExprKind::If {
-                test_expr,
-                then_expr,
-                else_expr,
-            } => builder.ite(
-                Arc::unwrap_or_clone(test_expr).into(),
-                Arc::unwrap_or_clone(then_expr).into(),
-                Arc::unwrap_or_clone(else_expr).into(),
-            ),
-            ast::ExprKind::And { left, right } => builder.and(
-                Arc::unwrap_or_clone(left).into(),
-                Arc::unwrap_or_clone(right).into(),
-            ),
-            ast::ExprKind::Or { left, right } => builder.or(
-                Arc::unwrap_or_clone(left).into(),
-                Arc::unwrap_or_clone(right).into(),
-            ),
-            ast::ExprKind::UnaryApp { op, arg } => match op {
-                ast::UnaryOp::Not => builder.not(Arc::unwrap_or_clone(arg).into()),
-                ast::UnaryOp::Neg => builder.neg(Arc::unwrap_or_clone(arg).into()),
-                ast::UnaryOp::IsEmpty => builder.is_empty(Arc::unwrap_or_clone(arg).into()),
-            },
-            ast::ExprKind::BinaryApp { op, arg1, arg2 } => match op {
-                ast::BinaryOp::Eq => builder.is_eq(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::Less => builder.less(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::LessEq => builder.lesseq(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::Add => builder.add(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::Sub => builder.sub(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::Mul => builder.mul(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::In => builder.is_in(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::Contains => builder.contains(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::ContainsAll => builder.contains_all(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::ContainsAny => builder.contains_any(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::GetTag => builder.get_tag(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-                ast::BinaryOp::HasTag => builder.has_tag(
-                    Arc::unwrap_or_clone(arg1).into(),
-                    Arc::unwrap_or_clone(arg2).into(),
-                ),
-            },
-            ast::ExprKind::ExtensionFunctionApp { fn_name, args } => builder.call_extension_fn(
-                fn_name,
-                Arc::unwrap_or_clone(args).into_iter().map(|a| a.into()),
-            ),
-            ast::ExprKind::GetAttr { expr, attr } => {
-                builder.get_attr(Arc::unwrap_or_clone(expr).into(), attr)
-            }
-            ast::ExprKind::HasAttr { expr, attr } => {
-                builder.has_attr(Arc::unwrap_or_clone(expr).into(), attr)
-            }
-            ast::ExprKind::Like { expr, pattern } => {
-                builder.like(Arc::unwrap_or_clone(expr).into(), pattern)
-            }
-            ast::ExprKind::Is { expr, entity_type } => {
-                builder.is_entity_type(Arc::unwrap_or_clone(expr).into(), entity_type)
-            }
-            ast::ExprKind::Set(elems) => {
-                builder.set(Arc::unwrap_or_clone(elems).into_iter().map(|e| e.into()))
-            }
-            ast::ExprKind::Record(map) =>
-            {
-                #[expect(
-                    clippy::unwrap_used,
-                    reason = "cannot have duplicate keys in this conversion"
-                )]
-                builder
-                    .record(
-                        Arc::unwrap_or_clone(map)
-                            .into_iter()
-                            .map(|(k, v)| (k, v.into())),
-                    )
-                    .unwrap()
-            }
-            #[cfg(feature = "tolerant-ast")]
-            ast::ExprKind::Error {
-                error_kind: ast::expr_allows_errors::AstExprErrorKind::InvalidExpr(e_str),
-            } => Expr::Error(ErrorNode {
-                error: PstConstructionError::InvalidExpression(e_str),
-            }),
-        }
+        ast::Expr::into_expr::<PstBuilder>(ast_expr)
     }
 }
 
@@ -939,7 +819,7 @@ mod tests {
                     action: ActionConstraint::Any,
                     resource: ResourceConstraint::Any,
                     clauses: vec![],
-                    annotations: [("id".to_string(), "test".to_string())]
+                    annotations: [("id".to_string(), "test".to_smolstr())]
                         .into_iter()
                         .collect(),
                 },

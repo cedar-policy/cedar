@@ -67,7 +67,7 @@ pub struct Policy {
     /// When/unless clauses (preserves order)
     pub clauses: Vec<Clause>,
     /// Annotations (empty string for no value)
-    pub annotations: BTreeMap<String, String>,
+    pub annotations: BTreeMap<String, SmolStr>,
 }
 
 impl std::fmt::Display for Effect {
@@ -109,6 +109,8 @@ impl std::fmt::Display for Policy {
 
 #[cfg(test)]
 mod tests {
+    use smol_str::ToSmolStr;
+
     use super::*;
     use crate::pst::expr::{Literal, Var};
 
@@ -133,13 +135,13 @@ mod tests {
             BTreeMap::new(),
             {
                 let mut map = BTreeMap::new();
-                map.insert("author".to_string(), "alice".to_string());
+                map.insert("author".to_string(), "alice".to_smolstr());
                 map
             },
             {
                 let mut map = BTreeMap::new();
-                map.insert("author".to_string(), "bob".to_string());
-                map.insert("version".to_string(), "1.0".to_string());
+                map.insert("author".to_string(), "bob".to_smolstr());
+                map.insert("version".to_string(), "1.0".to_smolstr());
                 map
             },
         ];

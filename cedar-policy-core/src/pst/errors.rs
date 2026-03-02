@@ -28,6 +28,7 @@ use thiserror::Error;
 
 /// Errors that can occur during PST construction or conversion.
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
+#[non_exhaustive]
 pub enum PstConstructionError {
     /// Action constraints cannot contain template slots
     #[error("action constraint cannot have slots")]
