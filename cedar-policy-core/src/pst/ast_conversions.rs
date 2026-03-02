@@ -178,9 +178,7 @@ impl TryFrom<Expr> for ast::Expr {
     type Error = PstConstructionError;
 
     fn try_from(expr: Expr) -> Result<Self, PstConstructionError> {
-        expr_to_ast(expr).map_err(|e| {
-            PstConstructionError::InvalidConversion(format!("Failed to convert expr: {:?}", e))
-        })
+        expr_to_ast(expr)
     }
 }
 
@@ -195,10 +193,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
             Literal::Long(i) => Ok(builder.val(i)),
             Literal::String(s) => Ok(builder.val(s)),
             Literal::EntityUID(uid) => {
-                // Convert PST EntityUID to AST EntityUID using existing TryFrom impl
-                let ast_et: ast::EntityType = uid.ty.try_into().map_err(|e| {
-                    PstConstructionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
-                })?;
+                let ast_et: ast::EntityType = uid.ty.try_into()?;
                 let ast_eid = ast::Eid::new(uid.eid.as_str());
                 let ast_uid = ast::EntityUID::from_components(ast_et, ast_eid, None);
                 Ok(builder.val(ast_uid))
@@ -216,8 +211,8 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
                 _ => match op.to_name() {
                     Some(fn_name) => builder.call_extension_fn(fn_name.clone(), vec![inner]),
                     // This should never occur!
-                    None => Err(PstConstructionError::InvalidConversion(format!(
-                        "unknown unary operator: {:?}",
+                    None => Err(PstConstructionError::InvalidExpression(format!(
+                        "unknown unary operator: {}",
                         op
                     )))?,
                 },
@@ -251,8 +246,8 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
                         builder.call_extension_fn(fn_name.clone(), vec![left_ast, right_ast])
                     }
                     // This should never occur!
-                    None => Err(PstConstructionError::InvalidConversion(format!(
-                        "unknown binary operator: {:?}",
+                    None => Err(PstConstructionError::InvalidExpression(format!(
+                        "unknown binary operator: {}",
                         op
                     )))?,
                 },
@@ -280,9 +275,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
             in_expr: None,
         } => Ok(builder.is_entity_type(
             expr_to_ast(Arc::unwrap_or_clone(expr))?,
-            entity_type
-                .try_into()
-                .map_err(|p| PstConstructionError::InvalidConversion(format!("{:?}", p)))?,
+            entity_type.try_into()?,
         )),
         Expr::Is {
             expr,
@@ -290,9 +283,7 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
             in_expr: Some(e),
         } => Ok(builder.is_in_entity_type(
             expr_to_ast(Arc::unwrap_or_clone(expr))?,
-            entity_type
-                .try_into()
-                .map_err(|p| PstConstructionError::InvalidConversion(format!("{:?}", p)))?,
+            entity_type.try_into()?,
             expr_to_ast(Arc::unwrap_or_clone(e))?,
         )),
         Expr::GetAttr { expr, attr } => {
@@ -312,12 +303,14 @@ fn expr_to_ast(expr: Expr) -> Result<ast::Expr, PstConstructionError> {
                     .map(|(k, v)| Ok((k.into(), expr_to_ast(Arc::unwrap_or_clone(v))?)))
                     .collect::<Result<Vec<_>, PstConstructionError>>()?,
             )
-            .map_err(|cstr_err| PstConstructionError::InvalidConversion(format!("{:?}", cstr_err))),
+            .map_err(|cstr_err: ast::ExpressionConstructionError| {
+                PstConstructionError::InvalidConversion(cstr_err.to_string())
+            }),
         Expr::Unknown { name } => Ok(builder.unknown(ast::Unknown {
             name,
             type_annotation: None,
         })),
-        Expr::Error(ErrorNode { error: e }) => Err(PstConstructionError::ErrorNode(e.to_string())),
+        Expr::Error(ErrorNode { error }) => Err(error),
     }
 }
 
@@ -334,9 +327,7 @@ impl TryFrom<EntityUID> for ast::EntityUID {
     type Error = PstConstructionError;
 
     fn try_from(value: EntityUID) -> Result<Self, PstConstructionError> {
-        let ast_et: ast::EntityType = value.ty.try_into().map_err(|e| {
-            PstConstructionError::InvalidConversion(format!("Invalid entity type: {:?}", e))
-        })?;
+        let ast_et: ast::EntityType = value.ty.try_into()?;
         let ast_eid = ast::Eid::new(value.eid.as_str());
         Ok(ast::EntityUID::from_components(ast_et, ast_eid, None))
     }
@@ -400,8 +391,7 @@ impl From<ast::Name> for Name {
         Name {
             id: id.into_smolstr(),
             namespace: Arc::new(
-                Arc::try_unwrap(path)
-                    .unwrap_or_else(|arc| (*arc).clone())
+                Arc::unwrap_or_clone(path)
                     .into_iter()
                     .map(|id| id.to_smolstr())
                     .collect(),
@@ -605,6 +595,609 @@ impl From<ast::Expr> for Expr {
             } => Expr::Error(ErrorNode {
                 error: PstConstructionError::InvalidExpression(e_str),
             }),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser;
+
+    /// Helper to create AST expressions from Cedar text
+    fn parse_expr(s: &str) -> ast::Expr {
+        parser::parse_expr(s).expect("parse failed")
+    }
+
+    /// Test roundtrip: ast::Expr -> pst::Expr -> ast::Expr
+    fn assert_expr_roundtrip(ast_expr: ast::Expr) {
+        let pst_expr: Expr = ast_expr.clone().into();
+        let ast_expr2: ast::Expr = pst_expr.try_into().expect("conversion failed");
+        assert_eq!(ast_expr, ast_expr2, "roundtrip failed");
+    }
+
+    #[test]
+    fn test_literal_roundtrips() {
+        let cases = ["true", "false", "42", r#""hello""#];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    fn test_variable_roundtrips() {
+        let cases = ["principal", "action", "resource", "context"];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    fn test_unary_op_roundtrips() {
+        let cases = ["!true", "-42", "[].isEmpty()"];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    /// Test the binary operators that roundtrip -- not all do
+    fn test_binary_op_roundtrips() {
+        let cases = [
+            "1 + 2",
+            "5 - 3",
+            "2 * 3",
+            "1 == 2",
+            "1 != 2",
+            "1 < 2",
+            "1 <= 2",
+            "1 > 2",
+            "1 >= 2",
+            "true && false",
+            "true || false",
+            r#""a" in "abc""#,
+            r#"User::"alice" in Group::"admins""#,
+            r#"[1, 2, 3].contains(2)"#,
+            r#"[1, 2].containsAll([1])"#,
+            r#"[1, 2].containsAny([2, 3])"#,
+            r#"User::"alice".getTag("role")"#,
+            r#"User::"alice".hasTag("role")"#,
+        ];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    fn test_if_then_else_roundtrip() {
+        let expr = parse_expr("if true then 1 else 2");
+        assert_expr_roundtrip(expr);
+    }
+
+    #[test]
+    fn test_set_roundtrips() {
+        let cases = ["[]", "[1]", "[1, 2, 3]"];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    fn test_record_roundtrips() {
+        let cases = [
+            "{}",
+            r#"{"a": 1}"#,
+            r#"{"a": 1, "b": 2}"#,
+            r#"{"nested": {"x": 1}}"#,
+            r#"{"if": 1}"#,
+            r#"{"a-b": 1}"#,
+        ];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    fn test_entity_uid_roundtrip() {
+        let cases = [r#"User::"alice""#, r#"MyApp::User::"alice""#];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    fn test_get_attr_roundtrips() {
+        let cases = [r#"principal.name"#, r#"resource.owner.id"#];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    fn test_has_attr_roundtrip() {
+        let expr = parse_expr(r#"principal has name"#);
+        assert_expr_roundtrip(expr);
+    }
+
+    #[test]
+    fn test_like_roundtrip() {
+        let cases = [
+            r#"principal.name like "a*b""#,
+            r#""test" like "*""#,
+            r#""test" like "*est""#,
+            r#""test" like "test*""#,
+        ];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    fn test_is_roundtrip() {
+        let cases = [
+            r#"principal is User"#,
+            r#"principal is MyApp::User"#,
+            r#"principal is User in Group::"admins""#,
+            r#"principal is User in Group::"admins" || principal is User in Group::"users""#,
+        ];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    fn test_function_call_roundtrips() {
+        let cases = [
+            r#"decimal("1.23")"#,
+            r#"ip("127.0.0.1")"#,
+            r#"datetime("2024-01-01")"#,
+            r#"ip("127.0.0.1").isIpv4()"#,
+            r#"ip("127.0.0.1").isInRange(ip("127.0.0.0/24"))"#,
+        ];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    /// Test that extension methods that normalize to operators convert correctly
+    /// These don't roundtrip to identical AST, but should convert without error
+    #[test]
+    fn test_extension_method_normalization() {
+        let cases = [
+            (
+                r#"decimal("1.23").lessThan(decimal("2.0"))"#,
+                "decimal lessThan -> <",
+            ),
+            (
+                r#"decimal("1.23").lessThanOrEqual(decimal("2.0"))"#,
+                "decimal lessThanOrEqual -> <=",
+            ),
+            (
+                r#"decimal("1.23").greaterThan(decimal("2.0"))"#,
+                "decimal greaterThan -> >",
+            ),
+            (
+                r#"decimal("1.23").greaterThanOrEqual(decimal("2.0"))"#,
+                "decimal greaterThanOrEqual -> >=",
+            ),
+        ];
+
+        for (expr_str, desc) in cases {
+            let ast_expr = parse_expr(expr_str);
+            // Convert to PST
+            let pst_expr: Expr = ast_expr.into();
+            // Convert back to AST - should succeed even if structure differs
+            let _ast_expr2: ast::Expr = pst_expr.try_into().expect(desc);
+        }
+    }
+
+    #[test]
+    fn test_complex_nested_expression() {
+        let cases = [
+            r#"if principal.age >= 18 && resource.public == true then
+                    [1, 2, 3].contains(action.level)
+                else
+                    false"#,
+            r#"((1 + 2) * 3) - 4"#,
+            r#"!(!true)"#,
+            r#"true && (false || true)"#,
+            r#"principal has name && principal has age"#,
+        ];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    fn test_unknown_expr() {
+        // Unknown is created programmatically, not parsed
+        use crate::ast;
+        let unknown = ast::Unknown::new_untyped("test");
+        let ast_expr = ast::Expr::unknown(unknown);
+        let pst_expr: Expr = ast_expr.clone().into();
+        let ast_expr2: ast::Expr = pst_expr.try_into().expect("conversion failed");
+        assert_eq!(ast_expr, ast_expr2);
+    }
+
+    /// Test PST policy -> AST conversion (one direction only)
+    #[test]
+    fn test_policy_to_ast_conversion() {
+        use crate::pst::{
+            ActionConstraint, Clause, Effect, Policy, PolicyID, PrincipalConstraint,
+            ResourceConstraint,
+        };
+        use std::collections::BTreeMap;
+
+        // Helper to normalize whitespace for comparison
+        let normalize = |s: &str| -> String {
+            s.replace('\n', " ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+
+        let cases = [
+            (
+                Policy {
+                    id: PolicyID("policy0".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal, action, resource );",
+                "minimal permit policy",
+            ),
+            (
+                Policy {
+                    id: PolicyID("policy1".into()),
+                    effect: Effect::Forbid,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "forbid( principal, action, resource );",
+                "forbid policy",
+            ),
+            (
+                Policy {
+                    id: PolicyID("policy2".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![Clause::When(Arc::new(Expr::Literal(Literal::Bool(true))))],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal, action, resource ) when { true };",
+                "policy with when clause",
+            ),
+            (
+                Policy {
+                    id: PolicyID("policy3".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![Clause::Unless(Arc::new(Expr::Literal(Literal::Bool(
+                        false,
+                    ))))],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal, action, resource ) when { !false };",
+                "policy with unless clause",
+            ),
+            (
+                Policy {
+                    id: PolicyID("policy4".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![
+                        Clause::When(Arc::new(Expr::Literal(Literal::Bool(true)))),
+                        Clause::Unless(Arc::new(Expr::Literal(Literal::Bool(false)))),
+                    ],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal, action, resource ) when { true && (!false) };",
+                "policy with when and unless",
+            ),
+            (
+                Policy {
+                    id: PolicyID("policy5".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![],
+                    annotations: [("id".to_string(), "test".to_string())]
+                        .into_iter()
+                        .collect(),
+                },
+                "@id(\"test\") permit( principal, action, resource );",
+                "policy with annotation",
+            ),
+        ];
+
+        for (pst_policy, expected_output, desc) in cases {
+            let ast_policy: ast::Policy = pst_policy.try_into().expect("pst->ast failed");
+            let actual = normalize(&ast_policy.to_string());
+            let expected = normalize(expected_output);
+            assert_eq!(actual, expected, "failed: {}", desc);
+        }
+    }
+
+    /// Test policy constraints (principal, action, resource)
+    #[test]
+    fn test_policy_constraint_conversions() {
+        use crate::pst::{
+            ActionConstraint, Effect, EntityOrSlot, EntityType, EntityUID, Name, Policy, PolicyID,
+            PrincipalConstraint, ResourceConstraint,
+        };
+        use std::collections::BTreeMap;
+
+        let normalize = |s: &str| -> String {
+            s.replace('\n', " ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+
+        let user_alice = EntityUID {
+            ty: EntityType(Name {
+                id: "User".into(),
+                namespace: Arc::new(vec![]),
+            }),
+            eid: "alice".into(),
+        };
+
+        let action_view = EntityUID {
+            ty: EntityType(Name {
+                id: "Action".into(),
+                namespace: Arc::new(vec![]),
+            }),
+            eid: "view".into(),
+        };
+
+        let cases = [
+            (
+                Policy {
+                    id: PolicyID("p0".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Eq(EntityOrSlot::Entity(user_alice.clone())),
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal == User::\"alice\", action, resource );",
+                "principal eq constraint",
+            ),
+            (
+                Policy {
+                    id: PolicyID("p1".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::In(EntityOrSlot::Entity(user_alice.clone())),
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal in User::\"alice\", action, resource );",
+                "principal in constraint",
+            ),
+            (
+                Policy {
+                    id: PolicyID("p2".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Is(EntityType(Name {
+                        id: "User".into(),
+                        namespace: Arc::new(vec![]),
+                    })),
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal is User, action, resource );",
+                "principal is constraint",
+            ),
+            (
+                Policy {
+                    id: PolicyID("p3".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::IsIn(
+                        EntityType(Name {
+                            id: "User".into(),
+                            namespace: Arc::new(vec![]),
+                        }),
+                        EntityOrSlot::Entity(user_alice.clone()),
+                    ),
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal is User in User::\"alice\", action, resource );",
+                "principal is-in constraint",
+            ),
+            (
+                Policy {
+                    id: PolicyID("p4".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::Eq(action_view.clone()),
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal, action == Action::\"view\", resource );",
+                "action eq constraint",
+            ),
+            (
+                Policy {
+                    id: PolicyID("p5".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::In(vec![action_view.clone()]),
+                    resource: ResourceConstraint::Any,
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal, action in [Action::\"view\"], resource );",
+                "action in constraint",
+            ),
+            (
+                Policy {
+                    id: PolicyID("p6".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::In(EntityOrSlot::Entity(user_alice.clone())),
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal, action, resource in User::\"alice\" );",
+                "resource in constraint",
+            ),
+            (
+                Policy {
+                    id: PolicyID("p7".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Eq(EntityOrSlot::Entity(user_alice.clone())),
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal, action, resource == User::\"alice\" );",
+                "resource eq constraint",
+            ),
+            (
+                Policy {
+                    id: PolicyID("p8".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::Is(EntityType(Name {
+                        id: "Photo".into(),
+                        namespace: Arc::new(vec![]),
+                    })),
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal, action, resource is Photo );",
+                "resource is constraint",
+            ),
+            (
+                Policy {
+                    id: PolicyID("p9".into()),
+                    effect: Effect::Permit,
+                    principal: PrincipalConstraint::Any,
+                    action: ActionConstraint::Any,
+                    resource: ResourceConstraint::IsIn(
+                        EntityType(Name {
+                            id: "Photo".into(),
+                            namespace: Arc::new(vec![]),
+                        }),
+                        EntityOrSlot::Entity(user_alice),
+                    ),
+                    clauses: vec![],
+                    annotations: BTreeMap::new(),
+                },
+                "permit( principal, action, resource is Photo in User::\"alice\" );",
+                "resource is-in constraint",
+            ),
+        ];
+
+        for (pst_policy, expected_output, desc) in cases {
+            let ast_policy: ast::Policy = pst_policy.try_into().expect("pst->ast failed");
+            let actual = normalize(&ast_policy.to_string());
+            let expected = normalize(expected_output);
+            assert_eq!(actual, expected, "failed: {}", desc);
+            println!("✓ {}", desc);
+        }
+    }
+
+    /// Test expressions that get desugared/normalized during AST conversion
+    #[test]
+    fn test_expression_desugaring() {
+        let cases = [
+            ("1 != 2", "!(1 == 2)", "!= desugars to !(==)"),
+            ("1 > 2", "!(1 <= 2)", "> desugars to !(<=)"),
+            ("1 >= 2", "!(1 < 2)", ">= desugars to !(<)"),
+        ];
+
+        for (input, expected_output, desc) in cases {
+            let ast_expr = parse_expr(input);
+            let pst_expr: Expr = ast_expr.into();
+            let ast_expr2: ast::Expr = pst_expr.try_into().expect("conversion failed");
+
+            // Normalize both for comparison
+            let actual = ast_expr2
+                .to_string()
+                .replace('\n', " ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            let expected = expected_output
+                .replace('\n', " ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            assert_eq!(actual, expected, "failed: {}", desc);
+        }
+    }
+
+    /// Test that ErrorNode in PST results in conversion error
+    #[test]
+    fn test_error_node_conversion() {
+        use crate::pst::expr::ErrorNode;
+
+        let error_expr = Expr::Error(ErrorNode {
+            error: PstConstructionError::InvalidExpression("test error".into()),
+        });
+
+        let result: Result<ast::Expr, PstConstructionError> = error_expr.try_into();
+        assert!(result.is_err(), "ErrorNode should fail conversion");
+
+        match result {
+            Err(PstConstructionError::InvalidExpression(msg)) => {
+                assert_eq!(msg, "test error");
+                println!("✓ ErrorNode correctly produces conversion error");
+            }
+            Err(e) => panic!("Expected InvalidExpression error, got: {:?}", e),
+            Ok(_) => panic!("Expected error, got Ok"),
         }
     }
 }
