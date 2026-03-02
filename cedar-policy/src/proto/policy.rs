@@ -397,15 +397,13 @@ impl From<models::PolicySet> for ast::LiteralPolicySet {
             // per docs in core.proto, for static policies, `link_id` is omitted/ignored,
             // and the ID of the policy is the `template_id`.
             let id = if p.is_template_link {
-                ast::PolicyID::from_string(
-                    p.link_id
-                        .as_ref()
-                        .expect("template link should have a link_id"),
-                )
+                p.link_id
+                    .as_ref()
+                    .expect("template link should have a link_id")
             } else {
-                ast::PolicyID::from_string(&p.template_id)
+                &p.template_id
             };
-            (id, ast::LiteralPolicy::from(p))
+            (ast::PolicyID::from_string(id), ast::LiteralPolicy::from(p))
         });
 
         Self::new(templates, links)
@@ -440,7 +438,6 @@ mod test {
     use std::sync::Arc;
 
     use super::*;
-
 
     // We add `PartialOrd` and `Ord` implementations for both `models::Policy` and
     // `models::TemplateBody`, so that these can be sorted for testing purposes

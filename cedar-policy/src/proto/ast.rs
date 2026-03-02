@@ -559,13 +559,13 @@ impl From<&ast::BinaryOp> for models::expr::binary_app::Op {
 impl From<models::expr::like::PatternElem> for ast::PatternElem {
     #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: models::expr::like::PatternElem) -> Self {
-        match v.data.as_ref().expect("data field should exist") {
+        match v.data.expect("data field should exist") {
             models::expr::like::pattern_elem::Data::C(c) => {
                 ast::PatternElem::Char(c.chars().next().expect("c is non-empty"))
             }
 
             models::expr::like::pattern_elem::Data::Wildcard(unit) => {
-                match models::expr::like::pattern_elem::Wildcard::try_from(*unit)
+                match models::expr::like::pattern_elem::Wildcard::try_from(unit)
                     .expect("decode should succeed")
                 {
                     models::expr::like::pattern_elem::Wildcard::Unit => ast::PatternElem::Wildcard,
@@ -643,9 +643,8 @@ impl From<&ast::Request> for models::Request {
 impl From<models::Expr> for ast::Context {
     fn from(v: models::Expr) -> Self {
         #[expect(clippy::expect_used, reason = "experimental feature")]
-        let expr = ast::Expr::from(v);
         ast::Context::from_expr(
-            ast::BorrowedRestrictedExpr::new(&expr)
+            ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v))
                 .expect("encoded context should be valid restricted expr"),
             Extensions::none(),
         )
@@ -662,7 +661,6 @@ impl From<&ast::Context> for models::Expr {
 #[cfg(test)]
 mod test {
     use super::*;
-
 
     #[test]
     fn name_and_slot_roundtrip() {
