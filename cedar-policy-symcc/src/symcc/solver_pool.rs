@@ -268,11 +268,12 @@ impl Solver for PooledSolver {
 
     async fn enable_models(&mut self) -> Result<(), SolverError> {
         // The `PooledSolver` implementation doesn't need to do anything other
-        // than set the appropriate SMTLib option.
-        self.smtlib_input()
-            .set_option("produce-models", "true")
-            .await
-            .map_err(Into::into)
+        // than passthrough.
+        let solver = self
+            .solver
+            .as_mut()
+            .ok_or(SolverError::SolverMarkedFailed)?;
+        solver.enable_models().await
     }
 
     async fn check_sat(&mut self) -> Result<Decision, SolverError> {
