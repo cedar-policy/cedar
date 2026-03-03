@@ -43,7 +43,7 @@
 //! ```
 
 use super::smtlib_script::SmtLibScript;
-use super::solver::{Decision, LocalSolver, Solver, SolverError};
+use super::solver::{Decision, DecisionWithModel, LocalSolver, Solver, SolverError};
 use miette::Diagnostic;
 use std::io::{self, ErrorKind};
 use std::pin::Pin;
@@ -274,12 +274,12 @@ impl Solver for PooledSolver {
         solver.check_sat().await
     }
 
-    async fn get_model(&mut self) -> Result<Option<String>, SolverError> {
+    async fn check_sat_with_model(&mut self) -> Result<DecisionWithModel, SolverError> {
         let solver = self
             .solver
             .as_mut()
             .ok_or(SolverError::SolverMarkedFailed)?;
-        solver.get_model().await
+        solver.check_sat_with_model().await
     }
 }
 
@@ -495,8 +495,8 @@ mod test {
         let result = solver.check_sat().await;
         assert_matches!(result, Err(SolverError::SolverMarkedFailed));
 
-        // get_model should return SolverMarkedFailed error
-        let result = solver.get_model().await;
+        // check_sat_with_model should return SolverMarkedFailed error
+        let result = solver.check_sat_with_model().await;
         assert_matches!(result, Err(SolverError::SolverMarkedFailed));
 
         // Writing to smtlib_input should return an IO error
