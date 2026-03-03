@@ -495,6 +495,19 @@ pub(crate) struct ErrorNode {
 }
 
 impl Expr {
+    /// Transform a function call with arguments into a PST expression given the [SmolStr] name
+    /// of the function.
+    /// Needs to construct a reprentation of the [SmolStr] name as an [ast::Name].
+    pub(crate) fn from_function_name_and_args(
+        name: SmolStr,
+        args: Vec<Arc<Expr>>,
+    ) -> Result<Expr, PstConstructionError> {
+        let ast_name = ast::Name::parse_unqualified_name(name.as_str()).map_err(|e| {
+            PstConstructionError::from(error_body::ParsingFailedError::new(e.to_string()))
+        })?;
+        Self::from_function_names_and_args(name, &ast_name, args)
+    }
+
     /// Transform a function call with arguments into a PST expression given the [`ast::Name`] of
     /// the function. Clones the string representation of the `ast::Name` given.
     pub(crate) fn from_function_ast_name_and_args(

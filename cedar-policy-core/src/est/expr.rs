@@ -431,6 +431,41 @@ pub struct ExtFuncCall {
     call: HashMap<SmolStr, Vec<Expr>>,
 }
 
+impl ExtFuncCall {
+    /// Check the invariant.
+    ///
+    /// Returns `FromJsonError::MissingOperator` or `FromJsonError::MultipleOperators` as appropriate.
+    fn invariant(&self) -> Result<(), FromJsonError> {
+        match self.call.len() {
+            0 => Err(FromJsonError::MissingOperator),
+            1 => Ok(()),
+            _ => Err(FromJsonError::MultipleOperators {
+                ops: self.call.clone().into_keys().collect(),
+            }),
+        }
+    }
+
+    /// Attempt to extract the function name and arguments, returns the error of `self.invariant()`
+    /// if invariant doesn't hold.
+    pub(crate) fn try_into_components(self) -> Result<(SmolStr, Vec<Expr>), FromJsonError> {
+        self.invariant()?;
+        match self.call.into_iter().next() {
+            Some((fn_name, args)) => Ok((fn_name, args)),
+            None => Err(FromJsonError::MissingOperator),
+        }
+    }
+
+    /// Attempt to extract references to the function name and arguments,
+    /// Returns the error of `self.invariant()` if invariant doesn't hold.
+    pub(crate) fn try_components(&self) -> Result<(&SmolStr, &[Expr]), FromJsonError> {
+        self.invariant()?;
+        match self.call.iter().next() {
+            Some((fn_name, args)) => Ok((fn_name, args)),
+            None => Err(FromJsonError::MissingOperator),
+        }
+    }
+}
+
 /// Construct an [`Expr`].
 #[derive(Clone, Debug)]
 pub struct Builder;
@@ -1064,32 +1099,22 @@ impl Expr {
                 )
                 .expect("can't have duplicate keys here because the input was already a HashMap"))
             }
-            Expr::ExtFuncCall(ExtFuncCall { call }) => match call.len() {
-                0 => Err(FromJsonError::MissingOperator),
-                1 => {
-                    #[expect(clippy::expect_used, reason = "checked that `call.len() == 1`")]
-                    let (fn_name, args) = call
-                        .into_iter()
-                        .next()
-                        .expect("already checked that len was 1");
-                    let fn_name = Name::from_normalized_str(&fn_name).map_err(|errs| {
-                        JsonDeserializationError::parse_escape(EscapeKind::Extension, fn_name, errs)
-                    })?;
-                    if ExtStyles::is_known_extension_func_name(&fn_name) {
-                        Ok(ast::Expr::call_extension_fn(
-                            fn_name,
-                            args.into_iter()
-                                .map(|arg| arg.try_into_ast(id))
-                                .collect::<Result<_, _>>()?,
-                        ))
-                    } else {
-                        Err(FromJsonError::UnknownExtensionFunction(fn_name))
-                    }
+            Expr::ExtFuncCall(e) => {
+                let (fn_name, args) = e.try_into_components()?;
+                let fn_name = Name::from_normalized_str(&fn_name).map_err(|errs| {
+                    JsonDeserializationError::parse_escape(EscapeKind::Extension, fn_name, errs)
+                })?;
+                if ExtStyles::is_known_extension_func_name(&fn_name) {
+                    Ok(ast::Expr::call_extension_fn(
+                        fn_name,
+                        args.into_iter()
+                            .map(|arg| arg.try_into_ast(id))
+                            .collect::<Result<_, _>>()?,
+                    ))
+                } else {
+                    Err(FromJsonError::UnknownExtensionFunction(fn_name))
                 }
-                _ => Err(FromJsonError::MultipleOperators {
-                    ops: call.into_keys().collect(),
-                }),
-            },
+            }
             #[cfg(feature = "tolerant-ast")]
             Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ASTErrorNode),
         }
@@ -1555,10 +1580,8 @@ impl std::fmt::Display for ExtFuncCall {
 
 impl BoundedDisplay for ExtFuncCall {
     fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
-        #[expect(clippy::unreachable, reason = "safe due to INVARIANT on `ExtFuncCall`")]
-        let Some((fn_name, args)) = self.call.iter().next() else {
-            unreachable!("invariant violated: empty ExtFuncCall")
-        };
+        #[expect(clippy::unwrap_used, reason = "safe due to INVARIANT on `ExtFuncCall`")]
+        let (fn_name, args) = self.try_components().unwrap();
         // search for the name and callstyle
         let style = Extensions::all_available().all_funcs().find_map(|ext_fn| {
             if &ext_fn.name().to_smolstr() == fn_name {

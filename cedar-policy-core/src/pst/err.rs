@@ -129,6 +129,9 @@ pub mod error_body {
     }
 
     impl DuplicateRecordKeyError {
+        pub(crate) fn new(key: String) -> Self {
+            Self { key }
+        }
         /// The duplicate key
         pub fn key(&self) -> &str {
             &self.key
@@ -177,6 +180,12 @@ pub mod error_body {
         pub(crate) description: String,
     }
 
+    impl InvalidAttributePathError {
+        pub(crate) fn new(description: String) -> Self {
+            Self { description }
+        }
+    }
+
     /// Attempted to construct a `has` expression with an empty attribute path
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
     #[error("attribute path cannot be empty")]
@@ -187,6 +196,12 @@ pub mod error_body {
     #[error("invalid record: {description}")]
     pub struct InvalidRecordError {
         pub(crate) description: String,
+    }
+
+    impl InvalidRecordError {
+        pub(crate) fn new(description: String) -> Self {
+            Self { description }
+        }
     }
 
     /// A generic invalid expression error with a description
