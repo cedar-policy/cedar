@@ -16,7 +16,9 @@
 use cedar_policy::{Schema, Validator};
 use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
 
-use crate::utils::{assert_does_not_imply, assert_implies, Environments};
+use crate::utils::{
+    assert_does_not_always_allow, assert_does_not_imply, assert_implies, Environments,
+};
 mod utils;
 
 fn sample_schema() -> Schema {
@@ -90,4 +92,57 @@ async fn x_min_offset() {
     let envs = env_for_sample_schema(&schema);
     assert_implies(&mut compiler, &pset1, &pset2, &envs).await;
     assert_does_not_imply(&mut compiler, &pset1, &pset3, &envs).await;
+}
+
+/// Test reproducing PBT symcc failure for counter-example validation. The issue was
+/// Term interpretation was missing a case for `bvsrem`.
+#[tokio::test]
+async fn pbt_cex_failure() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity a = {
+                A: __cedar::datetime
+                };
+        action "action" appliesTo {
+                principal: [a],
+                resource: [a],
+                context: {}
+                };
+    "#,
+    );
+    let validator = Validator::new(schema);
+    let pset1 = utils::pset_from_text(
+        r#"
+        permit(
+          principal == a::"",
+          action in [Action::"action"],
+          resource == a::""
+        ) when {
+          resource.A.toDate() == datetime("4224-11-03").toDate() && false
+        };
+
+    "#,
+        &validator,
+    );
+
+    let pset2 = utils::pset_from_text(
+        r#"
+        permit(
+          principal == a::"",
+          action in [Action::"action"],
+          resource == a::""
+        ) when {
+          resource.A.toTime() == datetime("4224-11-03").toTime() && false
+        };
+
+    "#,
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "a", "Action::\"action\"", "a");
+
+    // The policies never allow anything.
+    assert_does_not_always_allow(&mut compiler, &pset1, &envs).await;
+    assert_does_not_always_allow(&mut compiler, &pset2, &envs).await;
 }
