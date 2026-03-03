@@ -228,21 +228,14 @@ impl Solver for LocalSolver {
     }
 
     async fn check_sat_with_model(&mut self) -> Result<DecisionWithModel> {
-        self.check_child_process_status().await?;
-        self.smtlib_input().check_sat().await?;
-        self.solver_stdin.flush().await?;
-        let mut output = String::new();
-
-        // Read the first line
-        self.read_line(&mut output).await?;
-        match output.as_str() {
-            "sat\n" => {
+        match self.check_sat().await? {
+            Decision::Sat => {
                 // in the SAT case, we ask the solver for a model, which we expect to be in one of the following forms:
                 // 1. "(\n<the actual model>\n)\n"
                 // 2. "(error ...)\n"
                 self.smtlib_input().get_model().await?;
                 self.solver_stdin.flush().await?;
-                output.clear(); // remove the `sat` line, which is not part of the model
+                let mut output = String::new();
                 self.read_line(&mut output).await?;
                 match output.as_str() {
                     "(\n" => {
@@ -263,9 +256,8 @@ impl Solver for LocalSolver {
                 }
             }
             // in the UNSAT/UNKNOWN case, we don't ask for a model
-            "unsat\n" => Ok(DecisionWithModel::Unsat),
-            "unknown\n" => Ok(DecisionWithModel::Unknown),
-            s => Err(self.process_error_output(s).await)?,
+            Decision::Unsat => Ok(DecisionWithModel::Unsat),
+            Decision::Unknown => Ok(DecisionWithModel::Unknown),
         }
     }
 }
