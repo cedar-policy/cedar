@@ -80,14 +80,14 @@ impl Footprint {
 
     pub fn chain_option(mut self, other: Option<Term>) -> Self {
         if let Some(other) = other {
-            // `push_back` is contant time
+            // `push_back` is constant time
             self.terms.push_back(other);
         }
         self
     }
 
     pub fn chain(mut self, mut other: Self) -> Self {
-        // `append` is contant time
+        // `append` is constant time
         self.terms.append(&mut other.terms);
         self
     }
