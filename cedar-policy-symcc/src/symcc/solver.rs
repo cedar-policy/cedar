@@ -97,6 +97,38 @@ pub trait Solver {
     /// is brought into scope.
     fn smtlib_input(&mut self) -> &mut (dyn tokio::io::AsyncWrite + Unpin + Send);
 
+    /// Enable models for the current solver query.
+    ///
+    /// This function is responsible for adding
+    /// `SmtLibScript::set_option("produce-models", "true")`.
+    /// It also may perform other functions depending on the `Solver`
+    /// implementation.
+    ///
+    /// This function _must_ be called before `check_sat_with_model()`, and in
+    /// fact, before writing anything to `smtlib_input()` prior to a
+    /// `check_sat_with_model()` (except optionally a `.reset()`).
+    ///
+    /// This signature could be written
+    /// `async fn enable_models(&mut self) -> Result<()>;`
+    /// but that would not allow us to include the `Send` bound we need.
+    /// What you see here is basically a desugaring of the above, plus the
+    /// `Send` bound. See <https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits/#async-fn-in-public-traits>
+    ///
+    /// Note that implementors of this trait, like `LocalSolver` and
+    /// `WriterSolver` below, can still use the `async fn` syntax sugar to
+    /// implement this.
+    fn enable_models(&mut self) -> impl Future<Output = Result<()>> + Send;
+    // minimal compliant implementation: (requires `Self: Send` so can't actually
+    // be a default implementation, but left here in comments)
+    /*
+    async fn enable_models(&mut self) -> Result<()> {
+        self.smtlib_input()
+            .set_option("produce-models", "true")
+            .await
+            .map_err(Into::into)
+    }
+    */
+
     /// Execute the query that has been written via `smtlib_input()`, returning
     /// the `Decision`.
     ///
@@ -213,6 +245,15 @@ impl Solver for LocalSolver {
         &mut self.solver_stdin
     }
 
+    async fn enable_models(&mut self) -> Result<()> {
+        // The `LocalSolver` implementation doesn't need to do anything other than
+        // set the appropriate SMTLib option.
+        self.smtlib_input()
+            .set_option("produce-models", "true")
+            .await
+            .map_err(Into::into)
+    }
+
     async fn check_sat(&mut self) -> Result<Decision> {
         self.check_child_process_status().await?;
         self.smtlib_input().check_sat().await?;
@@ -326,6 +367,14 @@ impl<W: tokio::io::AsyncWrite + Unpin + Send> Solver for WriterSolver<W> {
     fn smtlib_input(&mut self) -> &mut (dyn tokio::io::AsyncWrite + Unpin + Send) {
         &mut self.w
     }
+    async fn enable_models(&mut self) -> Result<()> {
+        // The `WriterSolver` implementation doesn't need to do anything other
+        // than set the appropriate SMTLib option.
+        self.smtlib_input()
+            .set_option("produce-models", "true")
+            .await
+            .map_err(Into::into)
+    }
     async fn check_sat(&mut self) -> Result<Decision> {
         self.smtlib_input().check_sat().await?;
         self.w.flush().await?;
@@ -395,11 +444,7 @@ mod test {
     #[tokio::test]
     async fn get_model_sat() {
         let mut my_solver = LocalSolver::cvc5().unwrap();
-        my_solver
-            .smtlib_input()
-            .set_option("produce-models", "true")
-            .await
-            .unwrap();
+        my_solver.enable_models().await.unwrap();
         my_solver.smtlib_input().assert("true").await.unwrap();
         let decision = my_solver.check_sat_with_model().await.unwrap();
         assert_matches!(decision, DecisionWithModel::Sat { model } => {
@@ -410,11 +455,7 @@ mod test {
     #[tokio::test]
     async fn get_model_unsat() {
         let mut my_solver = LocalSolver::cvc5().unwrap();
-        my_solver
-            .smtlib_input()
-            .set_option("produce-models", "true")
-            .await
-            .unwrap();
+        my_solver.enable_models().await.unwrap();
         my_solver.smtlib_input().assert("false").await.unwrap();
         let decision = my_solver.check_sat_with_model().await.unwrap();
         assert_eq!(decision, DecisionWithModel::Unsat);
