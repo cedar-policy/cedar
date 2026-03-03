@@ -16,7 +16,7 @@
 
 //! Expression types for PST
 
-use super::errors::PstConstructionError;
+use super::err::{error_body, PstConstructionError};
 use crate::ast;
 use crate::expr_builder::ExprBuilder;
 use crate::extensions::Extensions;
@@ -514,17 +514,13 @@ impl Expr {
     ) -> Result<Expr, PstConstructionError> {
         let extension = Extensions::all_available()
             .func(ast_name)
-            .map_err(PstConstructionError::FunctionLookupError)?;
+            .map_err(error_body::FunctionLookupError)?;
 
         let expected = extension.arg_types().len();
         let got = args.len();
 
         if expected != got {
-            return Err(PstConstructionError::WrongArity {
-                name: name.into(),
-                expected,
-                got,
-            });
+            return Err(error_body::WrongArityError::new(name.into(), expected, got).into());
         }
         Ok(match args.len() {
             1 => {
@@ -537,12 +533,12 @@ impl Expr {
                     });
                 }
                 let op = UnaryOp::from_function_name(&ast_name.to_string())
-                    .ok_or(PstConstructionError::UnknownFunction(name))?;
+                    .ok_or_else(|| error_body::UnknownFunctionError::new(name.clone()))?;
                 Expr::UnaryOp { op, expr }
             }
             2 => {
                 let op = BinaryOp::from_function_name(&ast_name.to_string())
-                    .ok_or(PstConstructionError::UnknownFunction(name))?;
+                    .ok_or_else(|| error_body::UnknownFunctionError::new(name.clone()))?;
                 let mut iter = args.into_iter();
                 Expr::BinaryOp {
                     op,
@@ -552,7 +548,7 @@ impl Expr {
                     right: iter.next().unwrap(),
                 }
             }
-            _ => return Err(PstConstructionError::UnknownFunction(name)),
+            _ => return Err(error_body::UnknownFunctionError::new(name).into()),
         })
     }
 }
@@ -930,7 +926,7 @@ mod tests {
         let result = Expr::from_function_ast_name_and_args(&name, args);
         assert!(matches!(
             result,
-            Err(PstConstructionError::FunctionLookupError { .. })
+            Err(PstConstructionError::FunctionLookup(..))
         ));
     }
 
@@ -943,10 +939,7 @@ mod tests {
         ];
 
         let result = Expr::from_function_ast_name_and_args(&name, args);
-        assert!(matches!(
-            result,
-            Err(PstConstructionError::WrongArity { .. })
-        ));
+        assert!(matches!(result, Err(PstConstructionError::WrongArity(..))));
     }
 
     #[test]
@@ -1002,14 +995,12 @@ mod tests {
 
     #[test]
     fn test_expr_construction_error_display() {
-        let err = PstConstructionError::UnknownFunction("foo".to_smolstr());
+        let err: PstConstructionError =
+            error_body::UnknownFunctionError::new("foo".to_smolstr()).into();
         assert!(err.to_string().contains("foo"));
 
-        let err = PstConstructionError::WrongArity {
-            name: "bar".to_string(),
-            expected: 2,
-            got: 1,
-        };
+        let err: PstConstructionError =
+            error_body::WrongArityError::new("bar".to_string(), 2, 1).into();
         assert!(err.to_string().contains("bar"));
         assert!(err.to_string().contains("2"));
         assert!(err.to_string().contains("1"));
