@@ -51,6 +51,20 @@ pub enum Decision {
     Unknown,
 }
 
+/// Satisfiability decision from the SMT solver, with a model in the SAT case.
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+pub enum DecisionWithModel {
+    /// Sat
+    Sat {
+        /// Raw model from the solver
+        model: String,
+    },
+    /// Unsat
+    Unsat,
+    /// Unknown
+    Unknown,
+}
+
 /// Errors when interacting with a [`Solver`] instance.
 /// Corresponds to various errors in the Lean version at `Cedar.SymCC.Solver`
 #[derive(Debug, Diagnostic, Error)]
@@ -82,7 +96,9 @@ pub trait Solver {
     /// the trait `SmtLibScript` for free, as long as the `SmtLibScript` trait
     /// is brought into scope.
     fn smtlib_input(&mut self) -> &mut (dyn tokio::io::AsyncWrite + Unpin + Send);
-    /// Execute the query that has been written via `script()`, returning the `Decision`.
+
+    /// Execute the query that has been written via `smtlib_input()`, returning
+    /// the `Decision`.
     ///
     /// This function is also responsible for adding `SmtLibScript::check_sat()`.
     ///
@@ -96,8 +112,23 @@ pub trait Solver {
     /// `WriterSolver` below, can still use the `async fn` syntax sugar to
     /// implement this.
     fn check_sat(&mut self) -> impl Future<Output = Result<Decision>> + Send;
-    /// Call `(get-model)` and return the SMT model as a string.
-    fn get_model(&mut self) -> impl Future<Output = Result<Option<String>>> + Send;
+
+    /// Like `check_sat()`, but in the SAT case, asks the solver for a model
+    /// and returns it as a string.
+    ///
+    /// This function is responsible for adding both `SmtLibScript::check_sat()`
+    /// and `SmtLibScript::get_model()`.
+    ///
+    /// This signature could be written
+    /// `async fn check_sat_with_model(&mut self) -> Result<DecisionWithModel>;`
+    /// but that would not allow us to include the `Send` bound we need.
+    /// What you see here is basically a desugaring of the above, plus the
+    /// `Send` bound. See <https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits/#async-fn-in-public-traits>
+    ///
+    /// Note that implementors of this trait, like `LocalSolver` and
+    /// `WriterSolver` below, can still use the `async fn` syntax sugar to
+    /// implement this.
+    fn check_sat_with_model(&mut self) -> impl Future<Output = Result<DecisionWithModel>> + Send;
 }
 
 /// A solver instance that communicates with a local SMT solver process
@@ -196,34 +227,45 @@ impl Solver for LocalSolver {
         }
     }
 
-    async fn get_model(&mut self) -> Result<Option<String>> {
+    async fn check_sat_with_model(&mut self) -> Result<DecisionWithModel> {
         self.check_child_process_status().await?;
-        self.smtlib_input().get_model().await?;
+        self.smtlib_input().check_sat().await?;
         self.solver_stdin.flush().await?;
         let mut output = String::new();
-
-        // We assume that the output is one of the following forms:
-        // 1. "(\n<the actual model>\n)\n"
-        // 2. "(error ...)\n"
 
         // Read the first line
         self.read_line(&mut output).await?;
         match output.as_str() {
-            "(\n" => {
-                // Read until a line ")\n"
-                loop {
-                    let len: usize = self.read_line(&mut output).await?;
-                    #[expect(
-                        clippy::string_slice,
-                        reason = "`output.len() - len` gives the end index of `output` before the `read_line`"
-                    )]
-                    if &output[output.len() - len..] == ")\n" {
-                        break;
+            "sat\n" => {
+                // in the SAT case, we ask the solver for a model, which we expect to be in one of the following forms:
+                // 1. "(\n<the actual model>\n)\n"
+                // 2. "(error ...)\n"
+                self.smtlib_input().get_model().await?;
+                self.solver_stdin.flush().await?;
+                output.clear(); // remove the `sat` line, which is not part of the model
+                self.read_line(&mut output).await?;
+                match output.as_str() {
+                    "(\n" => {
+                        // Read until a line ")\n"
+                        loop {
+                            let len: usize = self.read_line(&mut output).await?;
+                            #[expect(
+                                clippy::string_slice,
+                                reason = "`output.len() - len` gives the end index of `output` before the `read_line`"
+                            )]
+                            if &output[output.len() - len..] == ")\n" {
+                                break;
+                            }
+                        }
+                        Ok(DecisionWithModel::Sat { model: output })
                     }
+                    s => Err(self.process_error_output(s).await),
                 }
-                Ok(Some(output))
             }
-            s => Err(self.process_error_output(s).await),
+            // in the UNSAT/UNKNOWN case, we don't ask for a model
+            "unsat\n" => Ok(DecisionWithModel::Unsat),
+            "unknown\n" => Ok(DecisionWithModel::Unknown),
+            s => Err(self.process_error_output(s).await)?,
         }
     }
 }
@@ -297,10 +339,11 @@ impl<W: tokio::io::AsyncWrite + Unpin + Send> Solver for WriterSolver<W> {
         self.w.flush().await?;
         Ok(Decision::Unknown)
     }
-    async fn get_model(&mut self) -> Result<Option<String>> {
+    async fn check_sat_with_model(&mut self) -> Result<DecisionWithModel> {
+        self.smtlib_input().check_sat().await?;
         self.smtlib_input().get_model().await?;
         self.w.flush().await?;
-        Ok(None)
+        Ok(DecisionWithModel::Unknown)
     }
 }
 
@@ -366,10 +409,10 @@ mod test {
             .await
             .unwrap();
         my_solver.smtlib_input().assert("true").await.unwrap();
-        let decision = my_solver.check_sat().await.unwrap();
-        assert_eq!(decision, Decision::Sat);
-        let model = my_solver.get_model().await.unwrap();
-        assert!(model.is_some());
+        let decision = my_solver.check_sat_with_model().await.unwrap();
+        assert_matches!(decision, DecisionWithModel::Sat { model } => {
+            assert!(!model.is_empty());
+        });
     }
 
     #[tokio::test]
@@ -381,9 +424,8 @@ mod test {
             .await
             .unwrap();
         my_solver.smtlib_input().assert("false").await.unwrap();
-        let decision = my_solver.check_sat().await.unwrap();
-        assert_eq!(decision, Decision::Unsat);
-        my_solver.get_model().await.unwrap_err();
+        let decision = my_solver.check_sat_with_model().await.unwrap();
+        assert_eq!(decision, DecisionWithModel::Unsat);
     }
 
     #[tokio::test]

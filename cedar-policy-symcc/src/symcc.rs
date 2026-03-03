@@ -58,6 +58,7 @@ use std::borrow::Borrow;
 use verifier::Asserts;
 
 use crate::err::{Error, Result};
+use crate::solver::DecisionWithModel;
 
 pub use bitvec::BitVecError;
 pub use concretizer::ConcretizeError;
@@ -195,13 +196,10 @@ impl<S: Solver> SymCompiler<S> {
                 .map_err(Error::EncodeError)?;
             let encoder = encoder.finalize(); // drops borrows of `self.solver.smtlib_input()`, so that we can run `self.solver.check_sat()`
             let id_maps = IdMaps::from_encoder(&encoder);
-            match self.solver.check_sat().await? {
-                Decision::Unsat => Ok(None),
-                Decision::Sat => {
-                    let Some(model_str) = self.solver.get_model().await? else {
-                        return Ok(None);
-                    };
-                    let model = parse_sexpr(model_str.as_bytes())?;
+            match self.solver.check_sat_with_model().await? {
+                DecisionWithModel::Unsat => Ok(None),
+                DecisionWithModel::Sat { model } => {
+                    let model = parse_sexpr(model.as_bytes())?;
                     let interp = model.decode_model(symenv, &id_maps)?;
                     #[cfg(debug_assertions)]
                     {
@@ -216,7 +214,7 @@ impl<S: Solver> SymCompiler<S> {
                     }
                     Ok(Some(interp))
                 }
-                Decision::Unknown => Err(Error::SolverUnknown),
+                DecisionWithModel::Unknown => Err(Error::SolverUnknown),
             }
         }
     }
