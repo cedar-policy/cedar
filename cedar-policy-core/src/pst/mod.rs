@@ -26,13 +26,41 @@
 //! - Converts to/from AST and EST at boundaries
 //! - Uses `Arc<Expr>` for cheap cloning during manipulation
 
+pub(crate) mod ast_conversions;
 mod constraints;
+mod errors;
 mod expr;
 mod policy;
 
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
+pub use errors::PstConstructionError;
 pub use expr::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprConstructionError, Literal, Name, PatternElem,
-    SlotId, UnaryOp, Var,
+    BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
-pub use policy::{Clause, Effect, Policy};
+pub use policy::{Clause, Effect, Policy, PolicyID};
+
+use crate::ast;
+
+impl Policy {
+    /// Convert this PST policy to an AST policy for evaluation
+    pub fn try_into_ast_policy(self) -> Result<ast::Policy, PstConstructionError> {
+        // Currently the trait implementations for converting AST to PST are all implemented in
+        // ast_conversions, which is only pub(crate).
+        // This function is the public boundary between PST and AST. We may need more conversion
+        // functions, or we may make ast_conversions pub rather than pub(crate) if needed.
+        self.try_into()
+    }
+}
+
+impl Expr {
+    /// Convert this PST expression to an AST expression for evaluation
+    pub fn try_into_ast_expr(self) -> Result<ast::Expr, PstConstructionError> {
+        // Similar to try_into_ast for Policy, this is the public boundary
+        self.try_into()
+    }
+
+    /// Create a PST expression from an AST expression
+    pub fn from_ast_expr(expr: ast::Expr) -> Self {
+        expr.into()
+    }
+}
