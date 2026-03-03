@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-use std::sync::Arc;
+use std::{
+    collections::{linked_list, LinkedList},
+    sync::Arc,
+};
 
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp, Var};
 
@@ -44,56 +47,49 @@ use crate::{
 /// Not present in the Lean, but serves Rust-specific performance optimizations;
 /// see notes where this is used
 pub struct Footprint {
-    terms: Option<Box<dyn Iterator<Item = Term>>>,
+    terms: LinkedList<Term>,
 }
 
-impl Iterator for Footprint {
+impl IntoIterator for Footprint {
     type Item = Term;
 
-    fn next(&mut self) -> Option<Term> {
-        self.terms.as_mut()?.next()
+    type IntoIter = linked_list::IntoIter<Term>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.terms.into_iter()
     }
 }
 
 impl Footprint {
     pub fn empty() -> Self {
-        Self { terms: None }
+        // `LinkedList::new` doesn't allocate any nodes
+        Self {
+            terms: LinkedList::new(),
+        }
     }
 
     pub fn singleton(term: Term) -> Self {
         Self {
-            terms: Some(Box::new(std::iter::once(term))),
+            terms: [term].into(),
         }
     }
 
-    pub fn flatten(results: impl Iterator<Item = Footprint> + 'static) -> Self {
-        let mut p = results.flatten().peekable();
-        if p.peek().is_some() {
-            Self {
-                terms: Some(Box::new(p)),
-            }
-        } else {
-            Self::empty()
-        }
+    pub fn flatten(results: impl Iterator<Item = Self> + 'static) -> Self {
+        results.fold(Self::empty(), |f1, f2| f1.chain(f2))
     }
 
-    pub fn chain_option(self, other: Option<Term>) -> Self {
-        match (self.terms, other) {
-            (Some(t0), Some(t1)) => Self {
-                terms: Some(Box::new(t0.chain(Some(t1)))),
-            },
-            (terms, None) => Self { terms },
-            (None, Some(term)) => Self::singleton(term),
+    pub fn chain_option(mut self, other: Option<Term>) -> Self {
+        if let Some(other) = other {
+            // `push_back` is contant time
+            self.terms.push_back(other);
         }
+        self
     }
 
-    pub fn chain(self, other: Self) -> Self {
-        match (self.terms, other.terms) {
-            (Some(t0), Some(t1)) => Self {
-                terms: Some(Box::new(t0.chain(t1))),
-            },
-            (terms, None) | (None, terms) => Self { terms },
-        }
+    pub fn chain(mut self, mut other: Self) -> Self {
+        // `append` is contant time
+        self.terms.append(&mut other.terms);
+        self
     }
 }
 
@@ -119,7 +115,7 @@ pub struct CompileResult {
     /// All terms in the `footprint` are of type `TermType::Option(TermType::Entity)`.
     ///
     /// In the Lean, this is a Set. In Rust, we avoid repeatedly collecting into
-    /// a `BTreeSet` for each compiled subexpression, by using a `dyn Iterator`
+    /// a `BTreeSet` for each compiled subexpression, by using a `LinkedList` (supporting constant time append)
     /// internally rather than `BTreeSet` here. Ultimately, the caller of
     /// `compile` will collect into a `BTreeSet` to remove duplicates.
     pub footprint: Footprint,
