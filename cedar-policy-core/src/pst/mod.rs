@@ -28,12 +28,12 @@
 
 pub(crate) mod ast_conversions;
 mod constraints;
-mod errors;
+mod err;
 mod expr;
 mod policy;
 
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
-pub use errors::PstConstructionError;
+pub use err::PstConstructionError;
 pub use expr::{
     BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };

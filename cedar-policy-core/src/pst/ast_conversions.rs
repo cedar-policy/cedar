@@ -25,6 +25,9 @@ use super::{
 };
 use crate::ast;
 use crate::expr_builder;
+use crate::pst::err::error_body::{
+    InvalidConversionError, InvalidExpressionError, NotImplementedError, ParsingFailedError,
+};
 use crate::pst::expr::{ErrorNode, PstBuilder};
 use itertools::Itertools;
 use std::str::FromStr;
@@ -39,10 +42,11 @@ impl TryFrom<Policy> for ast::Policy {
         ast::StaticPolicy::try_from(template)
             .map(Into::into)
             .map_err(|e| {
-                PstConstructionError::InvalidConversion(format!(
+                InvalidConversionError::new(format!(
                     "Failed to convert template to static policy: {:?}",
                     e
                 ))
+                .into()
             })
     }
 }
@@ -118,7 +122,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalConstraint {
                     Arc::new(eos.try_into()?),
                 ))
             }
-            _ => Err(PstConstructionError::NotImplemented("templates".into())),
+            _ => Err(NotImplementedError::new("templates".to_string()).into()),
         }
     }
 }
@@ -144,7 +148,7 @@ impl TryFrom<ResourceConstraint> for ast::ResourceConstraint {
                     Arc::new(eos.try_into()?),
                 ))
             }
-            _ => Err(PstConstructionError::NotImplemented("templates".into())),
+            _ => Err(NotImplementedError::new("templates".to_string()).into()),
         }
     }
 }
@@ -197,7 +201,7 @@ impl Expr {
                 }
             },
             Expr::Var(v) => Ok(builder.var(v.into())),
-            Expr::Slot(_) => Err(PstConstructionError::NotImplemented("slots".to_string())),
+            Expr::Slot(_) => Err(NotImplementedError::new("slots".into()).into()),
             Expr::UnaryOp { op, expr } => {
                 let inner = Arc::unwrap_or_clone(expr).try_into_expr::<B>()?;
                 Ok(match op {
@@ -208,9 +212,8 @@ impl Expr {
                     _ => match op.to_name() {
                         Some(fn_name) => builder.call_extension_fn(fn_name.clone(), vec![inner]),
                         // This should never occur!
-                        None => Err(PstConstructionError::InvalidExpression(format!(
-                            "unknown unary operator: {}",
-                            op
+                        None => Err(PstConstructionError::from(InvalidExpressionError::new(
+                            format!("unknown unary operator: {}", op),
                         )))?,
                     },
                 })
@@ -243,9 +246,8 @@ impl Expr {
                             builder.call_extension_fn(fn_name.clone(), vec![left_ast, right_ast])
                         }
                         // This should never occur!
-                        None => Err(PstConstructionError::InvalidExpression(format!(
-                            "unknown binary operator: {}",
-                            op
+                        None => Err(PstConstructionError::from(InvalidExpressionError::new(
+                            format!("unknown binary operator: {}", op),
                         )))?,
                     },
                 })
@@ -302,7 +304,7 @@ impl Expr {
                         .collect::<Result<Vec<_>, PstConstructionError>>()?,
                 )
                 .map_err(|cstr_err: ast::ExpressionConstructionError| {
-                    PstConstructionError::InvalidConversion(cstr_err.to_string())
+                    InvalidConversionError::new(cstr_err.to_string()).into()
                 }),
             Expr::Unknown { name } => Ok(builder.unknown(ast::Unknown {
                 name,
@@ -338,9 +340,7 @@ impl TryFrom<EntityOrSlot> for ast::EntityReference {
     fn try_from(eos: EntityOrSlot) -> Result<Self, Self::Error> {
         match eos {
             EntityOrSlot::Entity(uid) => Ok(ast::EntityReference::euid(Arc::new(uid.try_into()?))),
-            EntityOrSlot::Slot(_) => Err(PstConstructionError::NotImplemented(
-                "templates".to_string(),
-            )),
+            EntityOrSlot::Slot(_) => Err(NotImplementedError::new("templates".to_string()).into()),
         }
     }
 }
@@ -403,12 +403,13 @@ impl TryFrom<Name> for ast::Name {
     type Error = PstConstructionError;
 
     fn try_from(name: Name) -> Result<Self, Self::Error> {
-        let basename = ast::Id::from_str(&name.id)?;
+        let basename = ast::Id::from_str(&name.id).map_err(ParsingFailedError::from)?;
         let path: Vec<ast::Id> = name
             .namespace
             .iter()
             .map(|s| ast::Id::from_str(s.as_str()))
-            .try_collect()?;
+            .try_collect()
+            .map_err(ParsingFailedError::from)?;
         Ok(ast::Name(ast::InternalName::new(basename, path, None)))
     }
 }
@@ -1065,15 +1066,15 @@ mod tests {
         use crate::pst::expr::ErrorNode;
 
         let error_expr = Expr::Error(ErrorNode {
-            error: PstConstructionError::InvalidExpression("test error".into()),
+            error: InvalidExpressionError::new("test error".into()).into(),
         });
 
         let result: Result<ast::Expr, PstConstructionError> = error_expr.try_into();
         assert!(result.is_err(), "ErrorNode should fail conversion");
 
         match result {
-            Err(PstConstructionError::InvalidExpression(msg)) => {
-                assert_eq!(msg, "test error");
+            Err(PstConstructionError::InvalidExpression(err)) => {
+                assert_eq!(err.description, "test error");
                 println!("✓ ErrorNode correctly produces conversion error");
             }
             Err(e) => panic!("Expected InvalidExpression error, got: {:?}", e),
