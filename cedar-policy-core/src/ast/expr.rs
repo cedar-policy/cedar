@@ -15,16 +15,16 @@
  */
 
 #[cfg(feature = "tolerant-ast")]
-use {
-    super::expr_allows_errors::AstExprErrorKind, crate::parser::err::ToASTError,
-    crate::parser::err::ToASTErrorKind,
-};
+use {super::expr_allows_errors::AstExprErrorKind, crate::parser::err::ToASTErrorKind};
 
 use crate::{
     ast::*,
     expr_builder::{self, ExprBuilder as _},
     extensions::Extensions,
-    parser::{err::ParseErrors, Loc},
+    parser::{
+        err::{ParseErrors, ToASTError},
+        Loc,
+    },
 };
 use educe::Educe;
 use miette::Diagnostic;
@@ -1004,6 +1004,8 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     type Expr = Expr<T>;
 
     type Data = T;
+
+    type BuildError = Infallible;
 
     #[cfg(feature = "tolerant-ast")]
     type ErrorType = ParseErrors;
