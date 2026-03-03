@@ -404,9 +404,10 @@ mod test {
         {
             let mut solver = pool.acquire().await.unwrap();
             // The solver was reset, so this should work fresh
+            solver.enable_models().await.unwrap();
             solver.smtlib_input().assert("true").await.unwrap();
-            let decision = solver.check_sat().await.unwrap();
-            assert_eq!(decision, Decision::Sat);
+            let decision = solver.check_sat_with_model().await.unwrap();
+            assert_matches!(decision, DecisionWithModel::Sat { .. });
         }
     }
 
