@@ -266,6 +266,16 @@ impl Solver for PooledSolver {
         }
     }
 
+    async fn enable_models(&mut self) -> Result<(), SolverError> {
+        // The `PooledSolver` implementation doesn't need to do anything other
+        // than passthrough.
+        let solver = self
+            .solver
+            .as_mut()
+            .ok_or(SolverError::SolverMarkedFailed)?;
+        solver.enable_models().await
+    }
+
     async fn check_sat(&mut self) -> Result<Decision, SolverError> {
         let solver = self
             .solver
@@ -394,9 +404,10 @@ mod test {
         {
             let mut solver = pool.acquire().await.unwrap();
             // The solver was reset, so this should work fresh
+            solver.enable_models().await.unwrap();
             solver.smtlib_input().assert("true").await.unwrap();
-            let decision = solver.check_sat().await.unwrap();
-            assert_eq!(decision, Decision::Sat);
+            let decision = solver.check_sat_with_model().await.unwrap();
+            assert_matches!(decision, DecisionWithModel::Sat { .. });
         }
     }
 

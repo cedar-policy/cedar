@@ -178,11 +178,7 @@ impl<S: Solver> SymCompiler<S> {
                 .reset()
                 .await
                 .map_err(|err| Error::EncodeError(err.into()))?;
-            self.solver
-                .smtlib_input()
-                .set_option("produce-models", "true")
-                .await
-                .map_err(|err| Error::EncodeError(err.into()))?;
+            self.solver.enable_models().await?;
             self.solver
                 .smtlib_input()
                 .set_logic("ALL")
