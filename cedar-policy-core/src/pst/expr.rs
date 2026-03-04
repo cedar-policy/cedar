@@ -488,7 +488,7 @@ pub enum Expr {
     Error(ErrorNode),
 }
 
-/// A private error node is used when other internal APIs require infaillible methods
+/// A private error node is used when other internal APIs require infallible methods
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ErrorNode {
     pub(crate) error: PstConstructionError,

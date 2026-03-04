@@ -954,9 +954,9 @@ impl Expr {
         B: ExprBuilder,
         B::BuildError: From<FromJsonError>,
     {
-        // This implementation looks at lot like try_into_ast but:
+        // This implementation looks a lot like try_into_ast but:
         // - it doesn't have the policy ID information (could be injected after though)
-        // - it uses the faillible extension call constructor; validation is handled by builder
+        // - it uses the fallible extension call constructor; validation is handled by builder
         // - it doesn't directly desugars is_in, rather defers to the builder
         // This implementation is used by PST. Using this for AST would result in a different
         // behavior than try_into_ast, particularly for the second point which would fail
@@ -1119,7 +1119,7 @@ impl Expr {
                     JsonDeserializationError::parse_escape(EscapeKind::Extension, fn_name, errs)
                         .into()
                 })?;
-                // unlike into_ast, some validation is handled by calling the faillible version
+                // unlike into_ast, some validation is handled by calling the fallible version
                 // of the extension call builder
                 builder.try_call_extension_fn(
                     fn_name,

@@ -23,7 +23,7 @@ use super::{
 use crate::ast;
 use crate::entities;
 use crate::est;
-use crate::pst::err::error_body::InvalidEntityUidError;
+use crate::pst::err::error_body;
 use itertools::Itertools;
 use std::sync::Arc;
 
@@ -80,7 +80,7 @@ impl TryFrom<entities::EntityUidJson> for EntityUID {
         entity
             .into_euid(&ctx)
             .map_err(|e| {
-                InvalidEntityUidError {
+                error_body::InvalidEntityUidError {
                     description: e.to_string(),
                 }
                 .into()
@@ -187,10 +187,7 @@ impl TryFrom<est::ActionConstraint> for ActionConstraint {
                 Ok(ActionConstraint::In(euids))
             }
             #[cfg(feature = "tolerant-ast")]
-            E::ErrorConstraint => Err(InvalidEntityUidError {
-                description: "Cannot convert EST error constraint to PST".to_string(),
-            }
-            .into()),
+            E::ErrorConstraint => Err((error_body::UnsupportedErrorNode {}).into()),
         }
     }
 }
@@ -221,10 +218,17 @@ impl TryFrom<Policy> for est::Policy {
     fn try_from(policy: Policy) -> Result<Self, Self::Error> {
         let mut annotations = est::Annotations::new();
         for (k, val) in policy.annotations.into_iter() {
-            annotations.0.insert(
-                ast::AnyId::new_unchecked(k),
-                Some(ast::Annotation { val, loc: None }),
-            );
+            let annotation = if val.is_empty() {
+                None
+            } else {
+                Some(ast::Annotation { val, loc: None })
+            };
+            let id = k.parse::<ast::AnyId>().map_err(|p| {
+                PstConstructionError::ParsingFailed(error_body::ParsingFailedError {
+                    description: p.to_string(),
+                })
+            })?;
+            annotations.0.insert(id, annotation);
         }
         Ok(est::Policy {
             effect: match policy.effect {
@@ -351,7 +355,7 @@ impl From<ResourceConstraint> for est::ResourceConstraint {
 
 #[expect(
     clippy::fallible_impl_from,
-    reason = "not faillible, as the unwrap cannot fail"
+    reason = "not fallible, as the unwrap cannot fail"
 )]
 impl From<ActionConstraint> for est::ActionConstraint {
     fn from(constraint: ActionConstraint) -> Self {
@@ -389,6 +393,8 @@ impl From<EntityUID> for entities::EntityUidJson {
 mod tests {
     use super::*;
     use crate::pst::{self, BinaryOp, UnaryOp};
+    use smol_str::SmolStr;
+    use std::collections::BTreeMap;
 
     fn roundtrips(e: Expr) {
         let est: est::Expr = e.clone().try_into().unwrap();
@@ -956,7 +962,7 @@ mod tests {
     }
 
     #[test]
-    fn test_est_action_constraint_slot_panics() {
+    fn test_est_action_constraint_slot_returns_err() {
         use ast::SlotId;
         let constraint = est::ActionConstraint::Eq(est::EqConstraint::Slot {
             slot: SlotId::principal(),
@@ -1121,6 +1127,77 @@ mod tests {
             panic!("Expected ResourceConstraint::IsIn with Slot");
         }
         policy_roundtrips(pst_policy);
+    }
+
+    #[test]
+    fn test_est_policy_annotation_empty_value() {
+        let json = r#"{
+            "annotations": {"ok":""},
+            "effect": "permit",
+            "principal": {
+                "op": "is",
+                "entity_type": "User",
+                "in": { "slot": "?principal" }
+            },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": []
+        }"#;
+        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
+        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        assert_eq!(pst_policy.annotations.len(), 1);
+        policy_roundtrips(pst_policy);
+    }
+
+    #[test]
+    fn test_pst_to_est_annotation_empty_value_maps_to_none() {
+        let mut annotations = BTreeMap::new();
+        annotations.insert("empty".to_string(), SmolStr::default());
+        annotations.insert("nonempty".to_string(), SmolStr::new("hello"));
+        let policy = Policy {
+            id: PolicyID("p0".into()),
+            effect: Effect::Permit,
+            principal: PrincipalConstraint::Any,
+            action: ActionConstraint::Any,
+            resource: ResourceConstraint::Any,
+            clauses: vec![],
+            annotations,
+        };
+        let est_policy: est::Policy = policy.try_into().unwrap();
+        let empty_key = "empty".parse::<ast::AnyId>().unwrap();
+        let nonempty_key = "nonempty".parse::<ast::AnyId>().unwrap();
+        assert!(est_policy.annotations.0.get(&empty_key).unwrap().is_none());
+        assert_eq!(
+            est_policy
+                .annotations
+                .0
+                .get(&nonempty_key)
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .val,
+            "hello"
+        );
+    }
+
+    #[test]
+    fn test_pst_to_est_annotation_invalid_key() {
+        let mut annotations = BTreeMap::new();
+        annotations.insert("not valid!!".to_string(), SmolStr::new("v"));
+        let policy = Policy {
+            id: PolicyID("p0".into()),
+            effect: Effect::Permit,
+            principal: PrincipalConstraint::Any,
+            action: ActionConstraint::Any,
+            resource: ResourceConstraint::Any,
+            clauses: vec![],
+            annotations,
+        };
+        let result: Result<est::Policy, PstConstructionError> = policy.try_into();
+        assert!(matches!(
+            result,
+            Err(PstConstructionError::ParsingFailed(..))
+        ));
     }
 
     #[test]

@@ -46,7 +46,7 @@ pub trait ExprBuilder: Clone {
     /// can be `()` if no data is stored.
     type Data: Default;
 
-    /// Type for errors returned by the faillible methods of the builder impl.
+    /// Type for errors returned by the fallible methods of the builder impl.
     type BuildError: Debug;
 
     /// Type for what error we return if we cannot construct an error node
