@@ -145,9 +145,6 @@ pub mod error_body {
     }
 
     impl DuplicateRecordKeyError {
-        pub(crate) fn new(key: String) -> Self {
-            Self { key }
-        }
         /// The duplicate key
         pub fn key(&self) -> &str {
             &self.key
@@ -194,12 +191,6 @@ pub mod error_body {
     #[error("invalid attribute path: {description}")]
     pub struct InvalidAttributePathError {
         pub(crate) description: String,
-    }
-
-    impl InvalidAttributePathError {
-        pub(crate) fn new(description: String) -> Self {
-            Self { description }
-        }
     }
 
     /// Attempted to construct a `has` expression with an empty attribute path

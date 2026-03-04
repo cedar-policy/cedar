@@ -27,7 +27,6 @@
 //! - Uses `Arc<Expr>` for cheap cloning during manipulation
 
 pub(crate) mod ast_conversions;
-mod builders;
 mod constraints;
 mod err;
 pub(crate) mod est_conversions;

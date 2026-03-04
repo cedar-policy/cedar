@@ -220,13 +220,10 @@ impl TryFrom<Policy> for est::Policy {
 
     fn try_from(policy: Policy) -> Result<Self, Self::Error> {
         let mut annotations = est::Annotations::new();
-        for (k, v) in policy.annotations.into_iter() {
+        for (k, val) in policy.annotations.into_iter() {
             annotations.0.insert(
                 ast::AnyId::new_unchecked(k),
-                Some(ast::Annotation {
-                    val: v.into(),
-                    loc: None,
-                }),
+                Some(ast::Annotation { val, loc: None }),
             );
         }
         Ok(est::Policy {
@@ -827,7 +824,10 @@ mod tests {
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
         let pst_policy: pst::Policy = est_policy.try_into().unwrap();
         assert_eq!(pst_policy.annotations.len(), 2);
-        assert_eq!(pst_policy.annotations.get("reason").unwrap(), "allow all access");
+        assert_eq!(
+            pst_policy.annotations.get("reason").unwrap(),
+            "allow all access"
+        );
         assert_eq!(pst_policy.annotations.get("id").unwrap(), "policy_1");
         policy_roundtrips(pst_policy);
     }

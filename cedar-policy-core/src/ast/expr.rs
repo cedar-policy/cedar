@@ -15,16 +15,16 @@
  */
 
 #[cfg(feature = "tolerant-ast")]
-use {super::expr_allows_errors::AstExprErrorKind, crate::parser::err::ToASTErrorKind};
+use {
+    super::expr_allows_errors::AstExprErrorKind,
+    crate::parser::err::{ToASTError, ToASTErrorKind},
+};
 
 use crate::{
     ast::*,
     expr_builder::{self, ExprBuilder as _},
     extensions::Extensions,
-    parser::{
-        err::{ParseErrors, ToASTError},
-        Loc,
-    },
+    parser::{err::ParseErrors, Loc},
 };
 use educe::Educe;
 use miette::Diagnostic;
