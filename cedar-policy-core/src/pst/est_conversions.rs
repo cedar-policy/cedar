@@ -281,12 +281,9 @@ impl From<PrincipalConstraint> for est::PrincipalConstraint {
                     })
                 }
             },
-            PrincipalConstraint::Is(entity_type) => {
-                est::PrincipalConstraint::Is(est::PrincipalOrResourceIsConstraint {
-                    entity_type: entity_type.to_string().into(),
-                    in_entity: None,
-                })
-            }
+            PrincipalConstraint::Is(entity_type) => est::PrincipalConstraint::Is(
+                est::PrincipalOrResourceIsConstraint::new(entity_type.to_string().into(), None),
+            ),
             PrincipalConstraint::IsIn(entity_type, eos) => {
                 let in_entity = match eos {
                     EntityOrSlot::Entity(entity) => est::PrincipalOrResourceInConstraint::Entity {
@@ -296,10 +293,10 @@ impl From<PrincipalConstraint> for est::PrincipalConstraint {
                         est::PrincipalOrResourceInConstraint::Slot { slot: slot.into() }
                     }
                 };
-                est::PrincipalConstraint::Is(est::PrincipalOrResourceIsConstraint {
-                    entity_type: entity_type.to_string().into(),
-                    in_entity: Some(in_entity),
-                })
+                est::PrincipalConstraint::Is(est::PrincipalOrResourceIsConstraint::new(
+                    entity_type.to_string().into(),
+                    Some(in_entity),
+                ))
             }
         }
     }
@@ -331,12 +328,9 @@ impl From<ResourceConstraint> for est::ResourceConstraint {
                     })
                 }
             },
-            ResourceConstraint::Is(entity_type) => {
-                est::ResourceConstraint::Is(est::PrincipalOrResourceIsConstraint {
-                    entity_type: entity_type.to_string().into(),
-                    in_entity: None,
-                })
-            }
+            ResourceConstraint::Is(entity_type) => est::ResourceConstraint::Is(
+                est::PrincipalOrResourceIsConstraint::new(entity_type.to_string().into(), None),
+            ),
             ResourceConstraint::IsIn(entity_type, eos) => {
                 let in_entity = match eos {
                     EntityOrSlot::Entity(entity) => est::PrincipalOrResourceInConstraint::Entity {
@@ -346,10 +340,10 @@ impl From<ResourceConstraint> for est::ResourceConstraint {
                         est::PrincipalOrResourceInConstraint::Slot { slot: slot.into() }
                     }
                 };
-                est::ResourceConstraint::Is(est::PrincipalOrResourceIsConstraint {
-                    entity_type: entity_type.to_string().into(),
-                    in_entity: Some(in_entity),
-                })
+                est::ResourceConstraint::Is(est::PrincipalOrResourceIsConstraint::new(
+                    entity_type.to_string().into(),
+                    Some(in_entity),
+                ))
             }
         }
     }
@@ -394,7 +388,7 @@ impl From<EntityUID> for entities::EntityUidJson {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pst::{self, UnaryOp};
+    use crate::pst::{self, BinaryOp, UnaryOp};
 
     fn roundtrips(e: Expr) {
         let est: est::Expr = e.clone().try_into().unwrap();
@@ -484,7 +478,7 @@ mod tests {
         assert!(matches!(
             pst_expr,
             Expr::BinaryOp {
-                op: pst::expr::BinaryOp::And,
+                op: BinaryOp::And,
                 ..
             }
         ));
@@ -602,23 +596,23 @@ mod tests {
     #[test]
     fn test_est_to_pst_binary_ops() {
         let test_cases = vec![
-            ("==", pst::expr::BinaryOp::Eq),
-            ("!=", pst::expr::BinaryOp::NotEq),
-            ("in", pst::expr::BinaryOp::In),
-            ("<", pst::expr::BinaryOp::Less),
-            ("<=", pst::expr::BinaryOp::LessEq),
-            (">", pst::expr::BinaryOp::Greater),
-            (">=", pst::expr::BinaryOp::GreaterEq),
-            ("&&", pst::expr::BinaryOp::And),
-            ("||", pst::expr::BinaryOp::Or),
-            ("+", pst::expr::BinaryOp::Add),
-            ("-", pst::expr::BinaryOp::Sub),
-            ("*", pst::expr::BinaryOp::Mul),
-            ("contains", pst::expr::BinaryOp::Contains),
-            ("containsAll", pst::expr::BinaryOp::ContainsAll),
-            ("containsAny", pst::expr::BinaryOp::ContainsAny),
-            ("getTag", pst::expr::BinaryOp::GetTag),
-            ("hasTag", pst::expr::BinaryOp::HasTag),
+            ("==", BinaryOp::Eq),
+            ("!=", BinaryOp::NotEq),
+            ("in", BinaryOp::In),
+            ("<", BinaryOp::Less),
+            ("<=", BinaryOp::LessEq),
+            (">", BinaryOp::Greater),
+            (">=", BinaryOp::GreaterEq),
+            ("&&", BinaryOp::And),
+            ("||", BinaryOp::Or),
+            ("+", BinaryOp::Add),
+            ("-", BinaryOp::Sub),
+            ("*", BinaryOp::Mul),
+            ("contains", BinaryOp::Contains),
+            ("containsAll", BinaryOp::ContainsAll),
+            ("containsAny", BinaryOp::ContainsAny),
+            ("getTag", BinaryOp::GetTag),
+            ("hasTag", BinaryOp::HasTag),
         ];
 
         for (op_str, expected_op) in test_cases {
@@ -1178,7 +1172,7 @@ mod tests {
         assert!(matches!(
             pst_expr,
             Expr::BinaryOp {
-                op: pst::expr::BinaryOp::DurationSince,
+                op: BinaryOp::DurationSince,
                 ..
             }
         ));
@@ -1197,7 +1191,7 @@ mod tests {
             assert!(matches!(
                 *expr,
                 Expr::BinaryOp {
-                    op: pst::expr::BinaryOp::And,
+                    op: BinaryOp::And,
                     ..
                 }
             ));

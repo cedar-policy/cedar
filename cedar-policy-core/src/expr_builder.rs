@@ -46,7 +46,7 @@ pub trait ExprBuilder: Clone {
     /// can be `()` if no data is stored.
     type Data: Default;
 
-    /// Type for what error we return if we cannot construct an expression to the try_ methods.
+    /// Type for errors returned by the faillible methods of the builder impl.
     type BuildError: Debug;
 
     /// Type for what error we return if we cannot construct an error node
@@ -180,8 +180,8 @@ pub trait ExprBuilder: Clone {
         args: impl IntoIterator<Item = Self::Expr>,
     ) -> Self::Expr;
 
-    /// Fallible version of `call_extension_fn` that validates arity and other constraints.
-    /// Default implementation delegates to the infallible `call_extension_fn`.
+    /// Fallible version of `call_extension_fn` that can implement validation.
+    /// Default implementation is just `Ok(call_extension_fn(..))`
     fn try_call_extension_fn(
         self,
         fn_name: Name,

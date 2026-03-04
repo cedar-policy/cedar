@@ -143,15 +143,25 @@ pub enum PrincipalOrResourceInConstraint {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct PrincipalOrResourceIsConstraint {
     #[cfg_attr(feature = "wasm", tsify(type = "string"))]
-    pub(crate) entity_type: SmolStr,
+    entity_type: SmolStr,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "in")]
-    pub(crate) in_entity: Option<PrincipalOrResourceInConstraint>,
+    in_entity: Option<PrincipalOrResourceInConstraint>,
 }
 
 impl PrincipalOrResourceIsConstraint {
     pub(crate) fn into_components(self) -> (SmolStr, Option<PrincipalOrResourceInConstraint>) {
         (self.entity_type, self.in_entity)
+    }
+
+    pub(crate) fn new(
+        entity_type: SmolStr,
+        in_entity: Option<PrincipalOrResourceInConstraint>,
+    ) -> Self {
+        Self {
+            entity_type,
+            in_entity,
+        }
     }
 }
 

@@ -17,7 +17,6 @@
 use super::FromJsonError;
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::AstExprErrorKind;
-#[cfg(feature = "tolerant-ast")]
 use crate::ast::Infallible;
 use crate::ast::{self, is_normalized_ident, BoundedDisplay, EntityUID, Name};
 use crate::entities::json::{
@@ -472,7 +471,7 @@ pub struct Builder;
 
 impl ExprBuilder for Builder {
     type Expr = Expr;
-    type BuildError = FromJsonError;
+    type BuildError = Infallible;
     type Data = ();
     #[cfg(feature = "tolerant-ast")]
     type ErrorType = Infallible;
@@ -948,7 +947,8 @@ impl Expr {
 }
 
 impl Expr {
-    /// Convert this `est::Expr` into an expression of type `B::Expr` using the builder `B`.
+    /// Convert this `est::Expr` into an expression of type `B::Expr` using the builder `B`,
+    /// In the case of an error, returns the builder's own `BuildError`.
     pub fn try_into_expr<B>(self) -> Result<B::Expr, B::BuildError>
     where
         B: ExprBuilder,
