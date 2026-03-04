@@ -382,7 +382,7 @@ impl<W: tokio::io::AsyncWrite + Unpin + Send> Solver for WriterSolver<W> {
     }
     async fn check_sat_with_model(&mut self) -> Result<DecisionWithModel> {
         self.smtlib_input().check_sat().await?;
-        self.smtlib_input().get_model().await?;
+        // Since the decision is always `Unknown`, we should not emit get-model for consistency.
         self.w.flush().await?;
         Ok(DecisionWithModel::Unknown)
     }
