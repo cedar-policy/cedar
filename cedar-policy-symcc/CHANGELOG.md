@@ -20,6 +20,9 @@ to make the API easier to use with fewer implicit ordering constraints (#2190)
 some implementors of `Solver` to perform other initialization/configuration as
 required when models are being enabled (#2192)
 
+## [0.3.1] - Coming soon
+Cedar Language Version: 4.4
+
 ### Fixed
 
 - Fixed bug in `Term::interpret` caused by missing `bvsrem` case (#2185, #2203)
