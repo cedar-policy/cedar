@@ -132,7 +132,7 @@ impl Term {
                 }
 
                 (Op::Bvsrem, [arg1, arg2]) => {
-                    factory::bvsdiv(arg1.interpret(interp), arg2.interpret(interp))
+                    factory::bvsrem(arg1.interpret(interp), arg2.interpret(interp))
                 }
 
                 (Op::Bvudiv, [arg1, arg2]) => {
