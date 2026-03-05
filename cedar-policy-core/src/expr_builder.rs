@@ -31,6 +31,7 @@ use crate::{
 #[cfg(feature = "tolerant-ast")]
 use crate::parser::err::ParseErrors;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 /// Defines a generic interface for building different expression data
 /// structures.
@@ -109,8 +110,29 @@ pub trait ExprBuilder: Clone {
     fn slot(self, s: SlotId) -> Self::Expr;
 
     /// Create a ternary (if-then-else) `Expr`.
-    fn ite(self, test_expr: Self::Expr, then_expr: Self::Expr, else_expr: Self::Expr)
-        -> Self::Expr;
+    fn ite(
+        self,
+        test_expr: Self::Expr,
+        then_expr: Self::Expr,
+        else_expr: Self::Expr,
+    ) -> Self::Expr {
+        self.ite_arc(
+            Arc::new(test_expr),
+            Arc::new(then_expr),
+            Arc::new(else_expr),
+        )
+    }
+
+    /// Create a ternary (if-then-else) `Expr` using `Arc<Expr>` arguments.
+    ///
+    /// Most builders will implement this version, and callers use the default implementation
+    /// just wraps the arguments in `Arc`.
+    fn ite_arc(
+        self,
+        cond_expr: Arc<Self::Expr>,
+        then_expr: Arc<Self::Expr>,
+        else_expr: Arc<Self::Expr>,
+    ) -> Self::Expr;
 
     /// Create a 'not' expression.
     fn not(self, e: Self::Expr) -> Self::Expr;
@@ -191,24 +213,39 @@ pub trait ExprBuilder: Clone {
     }
 
     /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
-    fn get_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr;
+    /// Builders implement the `_arc` version, and callers use the default implementation,
+    /// which just wraps the `expr` in an `Arc`.
+    fn get_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr {
+        self.get_attr_arc(Arc::new(expr), attr)
+    }
+
+    /// Create an `Expr` which tests for the existence of a given
+    /// attribute on a given `Entity` or record using an `Arc<Expr>`.
+    fn get_attr_arc(self, expr: Arc<Self::Expr>, attr: SmolStr) -> Self::Expr;
 
     /// Create an `Expr` which tests for the existence of a given
     /// attribute on a given `Entity` or record.
-    fn has_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr;
+    fn has_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr {
+        self.has_attr_arc(Arc::new(expr), attr)
+    }
+
+    /// Create an `Expr` which tests for the existence of a given
+    /// attribute on a given `Entity` or record using an `Arc<Expr>`.
+    /// Builders implement the `_arc` version, and callers use the default implementation,
+    /// which just wraps the `expr` in an `Arc`.
+    fn has_attr_arc(self, expr: Arc<Self::Expr>, attr: SmolStr) -> Self::Expr;
 
     /// Create an `Expr` which tests for the existence of a given
     /// non-empty list of attributes on a given `Entity` or record.
-    fn extended_has_attr(self, expr: Self::Expr, attrs: &NonEmpty<SmolStr>) -> Self::Expr {
-        // TODO: might move this to the trait implementers, since it will be a particular
-        // representation's choice on whether to desugar or not
-        let (first, rest) = attrs.split_first();
+    fn extended_has_attr(self, expr: Arc<Self::Expr>, attrs: NonEmpty<SmolStr>) -> Self::Expr {
         let has_expr = Self::new()
             .with_maybe_source_loc(self.loc())
-            .has_attr(expr.clone(), first.to_owned());
-        let get_expr = Self::new()
-            .with_maybe_source_loc(self.loc())
-            .get_attr(expr, first.to_owned());
+            .has_attr_arc(expr.clone(), attrs.head.clone());
+        let get_expr = Arc::new(
+            Self::new()
+                .with_maybe_source_loc(self.loc())
+                .get_attr_arc(expr, attrs.head),
+        );
         // Foldl on the attribute list
         // It produces the following for `principal has contactInfo.address.zip`
         //     Expr.and
@@ -230,18 +267,22 @@ pub trait ExprBuilder: Clone {
         //   (Expr.and
         //      (Expr.hasAttr (Expr.getAttr (Expr.var .principal) "contactInfo")"address")
         //      (Expr.hasAttr ..., "zip"))
-        rest.iter()
+        attrs
+            .tail
+            .into_iter()
             .fold((has_expr, get_expr), |(has_expr, get_expr), attr| {
                 (
                     Self::new().with_maybe_source_loc(self.loc()).and(
                         has_expr,
                         Self::new()
                             .with_maybe_source_loc(self.loc())
-                            .has_attr(get_expr.clone(), attr.to_owned()),
+                            .has_attr_arc(get_expr.clone(), attr.clone()),
                     ),
-                    Self::new()
-                        .with_maybe_source_loc(self.loc())
-                        .get_attr(get_expr, attr.to_owned()),
+                    Arc::new(
+                        Self::new()
+                            .with_maybe_source_loc(self.loc())
+                            .get_attr_arc(get_expr, attr),
+                    ),
                 )
             })
             .0

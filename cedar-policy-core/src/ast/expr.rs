@@ -1053,13 +1053,18 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     }
 
     /// Create a ternary (if-then-else) `Expr`.
-    ///
+    /// Takes `Arc`s instead of owned `Expr`s.
     /// `test_expr` must evaluate to a Bool type
-    fn ite(self, test_expr: Expr<T>, then_expr: Expr<T>, else_expr: Expr<T>) -> Expr<T> {
+    fn ite_arc(
+        self,
+        test_expr: Arc<Expr<T>>,
+        then_expr: Arc<Expr<T>>,
+        else_expr: Arc<Expr<T>>,
+    ) -> Expr<T> {
         self.with_expr_kind(ExprKind::If {
-            test_expr: Arc::new(test_expr),
-            then_expr: Arc::new(then_expr),
-            else_expr: Arc::new(else_expr),
+            test_expr,
+            then_expr,
+            else_expr,
         })
     }
 
@@ -1286,22 +1291,16 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
-    fn get_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
-        self.with_expr_kind(ExprKind::GetAttr {
-            expr: Arc::new(expr),
-            attr,
-        })
+    fn get_attr_arc(self, expr: Arc<Expr<T>>, attr: SmolStr) -> Expr<T> {
+        self.with_expr_kind(ExprKind::GetAttr { expr, attr })
     }
 
     /// Create an `Expr` which tests for the existence of a given
     /// attribute on a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
-    fn has_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
-        self.with_expr_kind(ExprKind::HasAttr {
-            expr: Arc::new(expr),
-            attr,
-        })
+    fn has_attr_arc(self, expr: Arc<Expr<T>>, attr: SmolStr) -> Expr<T> {
+        self.with_expr_kind(ExprKind::HasAttr { expr, attr })
     }
 
     /// Create a 'like' expression.
@@ -1334,22 +1333,6 @@ impl<T> ExprBuilder<T> {
     /// `ExprBuilder` and the given `ExprKind`.
     pub fn with_expr_kind(self, expr_kind: ExprKind<T>) -> Expr<T> {
         Expr::new(expr_kind, self.source_loc, self.data)
-    }
-
-    /// Create a ternary (if-then-else) `Expr`.
-    /// Takes `Arc`s instead of owned `Expr`s.
-    /// `test_expr` must evaluate to a Bool type
-    pub fn ite_arc(
-        self,
-        test_expr: Arc<Expr<T>>,
-        then_expr: Arc<Expr<T>>,
-        else_expr: Arc<Expr<T>>,
-    ) -> Expr<T> {
-        self.with_expr_kind(ExprKind::If {
-            test_expr,
-            then_expr,
-            else_expr,
-        })
     }
 
     /// Create an `Expr` which evaluates to a Record with the given key-value mapping.

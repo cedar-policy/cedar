@@ -290,10 +290,10 @@ impl Expr {
             Expr::GetAttr { expr, attr } => {
                 Ok(builder.get_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attr))
             }
-            Expr::HasAttr { expr, attrs } => {
-                Ok(builder
-                    .extended_has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, &attrs))
-            }
+            Expr::HasAttr { expr, attrs } => Ok(builder.extended_has_attr(
+                Arc::new(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?),
+                attrs,
+            )),
             Expr::Like { expr, pattern } => Ok(builder.like(
                 Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
                 elements_into_ast_pattern(pattern),

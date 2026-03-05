@@ -93,11 +93,16 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
     /// Create a ternary (if-then-else) `Expr`.
     ///
     /// `test_expr` must evaluate to a Bool type
-    fn ite(self, test_expr: Expr<T>, then_expr: Expr<T>, else_expr: Expr<T>) -> Expr<T> {
+    fn ite_arc(
+        self,
+        test_expr: Arc<Self::Expr>,
+        then_expr: Arc<Self::Expr>,
+        else_expr: Arc<Self::Expr>,
+    ) -> Self::Expr {
         self.with_expr_kind(ExprKind::If {
-            test_expr: Arc::new(test_expr),
-            then_expr: Arc::new(then_expr),
-            else_expr: Arc::new(else_expr),
+            test_expr,
+            then_expr,
+            else_expr,
         })
     }
 
@@ -324,22 +329,16 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
     /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
-    fn get_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
-        self.with_expr_kind(ExprKind::GetAttr {
-            expr: Arc::new(expr),
-            attr,
-        })
+    fn get_attr_arc(self, expr: Arc<Expr<T>>, attr: SmolStr) -> Expr<T> {
+        self.with_expr_kind(ExprKind::GetAttr { expr, attr })
     }
 
     /// Create an `Expr` which tests for the existence of a given
     /// attribute on a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
-    fn has_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
-        self.with_expr_kind(ExprKind::HasAttr {
-            expr: Arc::new(expr),
-            attr,
-        })
+    fn has_attr_arc(self, expr: Arc<Expr<T>>, attr: SmolStr) -> Expr<T> {
+        self.with_expr_kind(ExprKind::HasAttr { expr, attr })
     }
 
     /// Create a 'like' expression.
