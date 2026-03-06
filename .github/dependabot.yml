@@ -23,6 +23,8 @@ updates:
       # Issue #2209 tracks an eventual upgrade to a later version.
       - dependency-name: "lalrpop"
         versions: ["0.23.0"]
+      - dependency-name: "lalrpop-util"
+        versions: ["0.23.0"]
     # Group all updates into one pull request
     groups:
       rust-dependencies:
