@@ -8,10 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
-### Added
-
-- `Display` impl for `Env` (#2182)
-
 ### Changed
 
 - Refactored `Solver` trait to include `check_sat_with_model()` instead of `get_model()`,
@@ -22,6 +18,10 @@ required when models are being enabled (#2192)
 
 ## [0.3.1] - Coming soon
 Cedar Language Version: 4.4
+
+### Added
+
+- `Display` impl for `Env` (#2182)
 
 ### Fixed
 
