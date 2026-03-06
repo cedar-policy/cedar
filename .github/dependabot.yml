@@ -19,6 +19,10 @@ updates:
       # version or a later version.
       - dependency-name: "tsify"
         versions: ["0.5.5"]
+      # Due to an issue with cross-compilation in lalrpop 0.23.0, we are ignoring this version.
+      # Issue #2209 tracks an eventual upgrade to a later version.
+      - dependency-name: "lalrpop"
+        versions: ["0.23.0"]
     # Group all updates into one pull request
     groups:
       rust-dependencies:
