@@ -185,7 +185,7 @@ pub mod error_body {
         pub(crate) description: String,
     }
 
-    /// Invalid entity type name
+    /// Invalid entity type error (often failure to parse the name)
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
     #[error("invalid entity type: `{description}`")]
     pub struct InvalidEntityTypeError {
@@ -193,8 +193,8 @@ pub mod error_body {
     }
 
     impl InvalidEntityTypeError {
-        /// The invalid entity type
-        pub fn entity_type(&self) -> &str {
+        /// The description of the entity type error
+        pub fn description(&self) -> &str {
             &self.description
         }
     }
