@@ -35,7 +35,7 @@ pub struct ExprWithErrsBuilder<T = ()> {
 
 impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
     type Expr = Expr<T>;
-
+    type BuildError = Infallible;
     type Data = T;
 
     #[cfg(feature = "tolerant-ast")]

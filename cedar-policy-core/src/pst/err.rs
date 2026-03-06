@@ -22,7 +22,10 @@
 //! - Validating PST structure and semantics
 
 use miette::Diagnostic;
+use smol_str::ToSmolStr;
 use thiserror::Error;
+
+use crate::est::FromJsonError;
 
 /// Errors that can occur during PST construction or conversion
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
@@ -109,6 +112,32 @@ pub enum PstConstructionError {
     ParsingFailed(#[from] error_body::ParsingFailedError),
 }
 
+impl From<crate::est::FromJsonError> for PstConstructionError {
+    fn from(err: crate::est::FromJsonError) -> Self {
+        match err {
+            FromJsonError::UnknownExtensionFunction(e) => PstConstructionError::UnknownFunction(
+                error_body::UnknownFunctionError::new(e.to_smolstr()),
+            ),
+            FromJsonError::InvalidEntityType(e) => {
+                PstConstructionError::InvalidEntityType(error_body::InvalidEntityTypeError {
+                    description: e.to_string(),
+                })
+            }
+            FromJsonError::UnescapeError(e) => PstConstructionError::ParsingFailed(
+                // Show just first error in main error message, like original err
+                error_body::ParsingFailedError::new(e.head.to_string()),
+            ),
+            #[cfg(feature = "tolerant-ast")]
+            FromJsonError::ASTErrorNode => {
+                PstConstructionError::UnsupportedErrorNode(error_body::UnsupportedErrorNode {})
+            }
+            _ => PstConstructionError::InvalidConversion(error_body::InvalidConversionError::new(
+                err.to_string(),
+            )),
+        }
+    }
+}
+
 /// Error subtypes for [`PstConstructionError`]
 pub mod error_body {
     use crate::extensions::ExtensionFunctionLookupError;
@@ -156,17 +185,17 @@ pub mod error_body {
         pub(crate) description: String,
     }
 
-    /// Invalid entity type name
+    /// Invalid entity type error (often failure to parse the name)
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-    #[error("invalid entity type: `{entity_type}`")]
+    #[error("invalid entity type: `{description}`")]
     pub struct InvalidEntityTypeError {
-        pub(crate) entity_type: String,
+        pub(crate) description: String,
     }
 
     impl InvalidEntityTypeError {
-        /// The invalid entity type
-        pub fn entity_type(&self) -> &str {
-            &self.entity_type
+        /// The description of the entity type error
+        pub fn description(&self) -> &str {
+            &self.description
         }
     }
 
@@ -280,10 +309,8 @@ pub mod error_body {
 
     /// Error nodes from parsing are not supported in PST conversion
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-    #[error("error nodes not supported in conversion: {description}")]
-    pub struct UnsupportedErrorNode {
-        pub(crate) description: String,
-    }
+    #[error("error nodes not supported in conversion")]
+    pub struct UnsupportedErrorNode {}
 
     /// Conversion functionality not yet implemented
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]

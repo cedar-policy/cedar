@@ -29,7 +29,8 @@ use crate::{
 };
 
 #[cfg(feature = "tolerant-ast")]
-use {crate::parser::err::ParseErrors, std::fmt::Debug};
+use crate::parser::err::ParseErrors;
+use std::fmt::Debug;
 
 /// Defines a generic interface for building different expression data
 /// structures.
@@ -44,6 +45,9 @@ pub trait ExprBuilder: Clone {
     /// Type for extra information stored on nodes of the expression AST. This
     /// can be `()` if no data is stored.
     type Data: Default;
+
+    /// Type for errors returned by the fallible methods of the builder impl.
+    type BuildError: Debug;
 
     /// Type for what error we return if we cannot construct an error node
     ///
@@ -175,6 +179,16 @@ pub trait ExprBuilder: Clone {
         fn_name: Name,
         args: impl IntoIterator<Item = Self::Expr>,
     ) -> Self::Expr;
+
+    /// Fallible version of `call_extension_fn` that can implement validation.
+    /// Default implementation is just `Ok(call_extension_fn(..))`
+    fn try_call_extension_fn(
+        self,
+        fn_name: Name,
+        args: Vec<Self::Expr>,
+    ) -> Result<Self::Expr, Self::BuildError> {
+        Ok(self.call_extension_fn(fn_name, args))
+    }
 
     /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
     fn get_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr;

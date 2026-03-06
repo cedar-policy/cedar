@@ -488,7 +488,7 @@ pub enum Expr {
     Error(ErrorNode),
 }
 
-/// A private error node is used when other internal APIs require infaillible methods
+/// A private error node is used when other internal APIs require infallible methods
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ErrorNode {
     pub(crate) error: PstConstructionError,
@@ -562,6 +562,7 @@ pub(crate) struct PstBuilder;
 impl ExprBuilder for PstBuilder {
     type Expr = Expr;
     type Data = ();
+    type BuildError = PstConstructionError;
 
     #[cfg(feature = "tolerant-ast")]
     type ErrorType = crate::parser::err::ParseErrors;
@@ -622,6 +623,14 @@ impl ExprBuilder for PstBuilder {
         }
     }
 
+    fn noteq(self, e1: Expr, e2: Expr) -> Expr {
+        Expr::BinaryOp {
+            op: BinaryOp::NotEq,
+            left: Arc::new(e1),
+            right: Arc::new(e2),
+        }
+    }
+
     fn and(self, e1: Expr, e2: Expr) -> Expr {
         Expr::BinaryOp {
             op: BinaryOp::And,
@@ -649,6 +658,22 @@ impl ExprBuilder for PstBuilder {
     fn lesseq(self, e1: Expr, e2: Expr) -> Expr {
         Expr::BinaryOp {
             op: BinaryOp::LessEq,
+            left: Arc::new(e1),
+            right: Arc::new(e2),
+        }
+    }
+
+    fn greater(self, e1: Expr, e2: Expr) -> Expr {
+        Expr::BinaryOp {
+            op: BinaryOp::Greater,
+            left: Arc::new(e1),
+            right: Arc::new(e2),
+        }
+    }
+
+    fn greatereq(self, e1: Expr, e2: Expr) -> Expr {
+        Expr::BinaryOp {
+            op: BinaryOp::GreaterEq,
             left: Arc::new(e1),
             right: Arc::new(e2),
         }
@@ -772,6 +797,14 @@ impl ExprBuilder for PstBuilder {
         }
     }
 
+    fn try_call_extension_fn(
+        self,
+        fn_name: ast::Name,
+        args: Vec<Expr>,
+    ) -> Result<Expr, PstConstructionError> {
+        Expr::from_function_ast_name_and_args(&fn_name, args.into_iter().map(Arc::new).collect())
+    }
+
     fn get_attr(self, expr: Expr, attr: SmolStr) -> Expr {
         Expr::GetAttr {
             expr: Arc::new(expr),
@@ -783,6 +816,13 @@ impl ExprBuilder for PstBuilder {
         Expr::HasAttr {
             expr: Arc::new(expr),
             attrs: nonempty::nonempty![attr],
+        }
+    }
+
+    fn extended_has_attr(self, expr: Expr, attrs: &nonempty::NonEmpty<SmolStr>) -> Expr {
+        Expr::HasAttr {
+            expr: Arc::new(expr),
+            attrs: attrs.clone(),
         }
     }
 
@@ -1116,7 +1156,7 @@ mod tests {
                 ),
                 (
                     builder().noteq(builder().val(1i64), builder().val(2i64)),
-                    "!((1 == 2))",
+                    "(1 != 2)",
                 ),
                 (
                     builder().less(builder().val(1i64), builder().val(2i64)),
@@ -1128,11 +1168,11 @@ mod tests {
                 ),
                 (
                     builder().greater(builder().val(1i64), builder().val(2i64)),
-                    "!((1 <= 2))",
+                    "(1 > 2)",
                 ),
                 (
                     builder().greatereq(builder().val(1i64), builder().val(2i64)),
-                    "!((1 < 2))",
+                    "(1 >= 2)",
                 ),
                 // Binary ops - logical
                 (
@@ -1297,7 +1337,7 @@ mod tests {
             );
             assert_eq!(
                 complex.to_string(),
-                "if !((principal.age <= 18)) then principal.name else \"unknown\""
+                "if (principal.age > 18) then principal.name else \"unknown\""
             );
 
             // isEmpty

@@ -186,7 +186,9 @@ impl TryFrom<Expr> for ast::Expr {
 }
 
 impl Expr {
-    fn try_into_expr<B: expr_builder::ExprBuilder>(self) -> Result<B::Expr, PstConstructionError> {
+    pub(crate) fn try_into_expr<B: expr_builder::ExprBuilder>(
+        self,
+    ) -> Result<B::Expr, PstConstructionError> {
         let builder = B::new();
         match self {
             Expr::Literal(lit) => match lit {

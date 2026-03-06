@@ -149,6 +149,22 @@ pub struct PrincipalOrResourceIsConstraint {
     in_entity: Option<PrincipalOrResourceInConstraint>,
 }
 
+impl PrincipalOrResourceIsConstraint {
+    pub(crate) fn into_components(self) -> (SmolStr, Option<PrincipalOrResourceInConstraint>) {
+        (self.entity_type, self.in_entity)
+    }
+
+    pub(crate) fn new(
+        entity_type: SmolStr,
+        in_entity: Option<PrincipalOrResourceInConstraint>,
+    ) -> Self {
+        Self {
+            entity_type,
+            in_entity,
+        }
+    }
+}
+
 /// Serde JSON structure for an `in` scope constraint for action in the EST
 /// format
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
