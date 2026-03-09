@@ -5,6 +5,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+## 4.10.0
+
 ### Added
 
 - `symcc` subcommand exposing functionality in `cedar-policy-symcc`, for
