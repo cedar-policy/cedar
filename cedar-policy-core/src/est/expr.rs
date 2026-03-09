@@ -1075,7 +1075,6 @@ impl Expr {
                     .map_err(FromJsonError::InvalidEntityType)?;
                 let left_expr = Arc::unwrap_or_clone(left).try_into_expr::<B>()?;
                 match in_expr {
-                    // unlike try_into_ast, call is_in_entity_type instead of desugaring here
                     Some(in_expr) => Ok(builder.is_in_entity_type(
                         left_expr,
                         entity_type_name,
@@ -1245,15 +1244,13 @@ impl Expr {
                 .map_err(FromJsonError::InvalidEntityType)
                 .and_then(|entity_type_name| {
                     let left: ast::Expr = Arc::unwrap_or_clone(left).try_into_ast(id)?;
-                    let is_expr = ast::Expr::is_entity_type(left.clone(), entity_type_name);
                     match in_expr {
-                        // The AST doesn't have an `... is ... in ..` node, so
-                        // we represent it as a conjunction of `is` and `in`.
-                        Some(in_expr) => Ok(ast::Expr::and(
-                            is_expr,
-                            ast::Expr::is_in(left, Arc::unwrap_or_clone(in_expr).try_into_ast(id)?),
+                        Some(in_expr) => Ok(ast::ExprBuilder::new().is_in_entity_type(
+                            left,
+                            entity_type_name,
+                            Arc::unwrap_or_clone(in_expr).try_into_ast(id)?,
                         )),
-                        None => Ok(is_expr),
+                        None => Ok(ast::ExprBuilder::new().is_entity_type(left, entity_type_name)),
                     }
                 }),
             Expr::ExprNoExt(ExprNoExt::If {
