@@ -1390,15 +1390,15 @@ impl Node<Option<cst::Relation>> {
             }
             cst::Relation::Has { target, field } => {
                 let maybe_target = target.to_expr::<Build>();
-                let maybe_field = Ok(match field.to_has_rhs::<Build>()? {
+                let maybe_fields = Ok(match field.to_has_rhs::<Build>()? {
                     Either::Left(s) => nonempty![s],
                     Either::Right(ids) => ids.map(|id| id.into_smolstr()),
                 });
-                let (target, field) = flatten_tuple_2(maybe_target, maybe_field)?;
+                let (target, fields) = flatten_tuple_2(maybe_target, maybe_fields)?;
                 Ok(ExprOrSpecial::Expr {
                     expr: Build::new()
                         .with_maybe_source_loc(self.loc.as_ref())
-                        .extended_has_attr(target, &field),
+                        .extended_has_attr(target, fields),
                     loc: self.loc.clone(),
                 })
             }
