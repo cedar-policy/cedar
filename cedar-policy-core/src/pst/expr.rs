@@ -16,12 +16,15 @@
 
 //! Expression types for PST
 
-use super::err::{error_body, PstConstructionError};
+use super::err::{
+    error_body::{self, LinkingError},
+    PstConstructionError,
+};
 use crate::ast;
 use crate::expr_builder::ExprBuilder;
 use crate::extensions::Extensions;
 use smol_str::{SmolStr, ToSmolStr};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::sync::Arc;
 
@@ -495,6 +498,71 @@ pub(crate) struct ErrorNode {
 }
 
 impl Expr {
+    /// Fill in any slots in this expression using the values in `vals`.
+    /// Returns an error if a slot is encountered that has no mapping in `vals`.
+    pub fn link(self, vals: &HashMap<SlotId, EntityUID>) -> Result<Self, LinkingError> {
+        match self {
+            Expr::Slot(slot) => match vals.get(&slot) {
+                Some(uid) => Ok(Expr::Literal(Literal::EntityUID(uid.clone()))),
+                None => Err(LinkingError::MissedSlot { slot }),
+            },
+            Expr::UnaryOp { op, expr } => Ok(Expr::UnaryOp {
+                op,
+                expr: Arc::new((*expr).clone().link(vals)?),
+            }),
+            Expr::BinaryOp { op, left, right } => Ok(Expr::BinaryOp {
+                op,
+                left: Arc::new((*left).clone().link(vals)?),
+                right: Arc::new((*right).clone().link(vals)?),
+            }),
+            Expr::GetAttr { expr, attr } => Ok(Expr::GetAttr {
+                expr: Arc::new((*expr).clone().link(vals)?),
+                attr,
+            }),
+            Expr::HasAttr { expr, attrs } => Ok(Expr::HasAttr {
+                expr: Arc::new((*expr).clone().link(vals)?),
+                attrs,
+            }),
+            Expr::Like { expr, pattern } => Ok(Expr::Like {
+                expr: Arc::new((*expr).clone().link(vals)?),
+                pattern,
+            }),
+            Expr::Is {
+                expr,
+                entity_type,
+                in_expr,
+            } => Ok(Expr::Is {
+                expr: Arc::new((*expr).clone().link(vals)?),
+                entity_type,
+                in_expr: in_expr
+                    .map(|e| Ok::<_, LinkingError>(Arc::new((*e).clone().link(vals)?)))
+                    .transpose()?,
+            }),
+            Expr::IfThenElse {
+                cond,
+                then_expr,
+                else_expr,
+            } => Ok(Expr::IfThenElse {
+                cond: Arc::new((*cond).clone().link(vals)?),
+                then_expr: Arc::new((*then_expr).clone().link(vals)?),
+                else_expr: Arc::new((*else_expr).clone().link(vals)?),
+            }),
+            Expr::Set(exprs) => Ok(Expr::Set(
+                exprs
+                    .into_iter()
+                    .map(|e| Ok(Arc::new((*e).clone().link(vals)?)))
+                    .collect::<Result<_, LinkingError>>()?,
+            )),
+            Expr::Record(map) => Ok(Expr::Record(
+                map.into_iter()
+                    .map(|(k, v)| Ok((k, Arc::new((*v).clone().link(vals)?))))
+                    .collect::<Result<_, LinkingError>>()?,
+            )),
+            // Leaf nodes with no slots
+            e @ (Expr::Literal(_) | Expr::Var(_) | Expr::Unknown { .. } | Expr::Error(_)) => Ok(e),
+        }
+    }
+
     /// Transform a function call with arguments into a PST expression given the [`ast::Name`] of
     /// the function. Clones the string representation of the `ast::Name` given.
     pub(crate) fn from_function_ast_name_and_args(
@@ -1413,6 +1481,247 @@ mod tests {
                     op
                 );
             }
+        }
+    }
+
+    mod link_tests {
+        use super::*;
+
+        fn make_uid(ty: &str, id: &str) -> EntityUID {
+            EntityUID {
+                ty: EntityType(Name::unqualified(ty)),
+                eid: SmolStr::from(id),
+            }
+        }
+
+        fn make_vals() -> HashMap<SlotId, EntityUID> {
+            let mut vals = HashMap::new();
+            vals.insert(SlotId::Principal, make_uid("User", "alice"));
+            vals.insert(SlotId::Resource, make_uid("File", "doc.txt"));
+            vals
+        }
+
+        #[test]
+        fn test_link_slot_resolves() {
+            let expr = Expr::Slot(SlotId::Principal);
+            assert_eq!(
+                expr.link(&make_vals()).unwrap(),
+                Expr::Literal(Literal::EntityUID(make_uid("User", "alice")))
+            );
+        }
+
+        #[test]
+        fn test_link_slot_missing() {
+            let expr = Expr::Slot(SlotId::Principal);
+            assert!(matches!(
+                expr.link(&HashMap::new()),
+                Err(LinkingError::MissedSlot {
+                    slot: SlotId::Principal
+                })
+            ));
+        }
+
+        #[test]
+        fn test_link_leaf_nodes_passthrough() {
+            let vals = make_vals();
+            assert_eq!(
+                Expr::Literal(Literal::Long(42)).link(&vals).unwrap(),
+                Expr::Literal(Literal::Long(42))
+            );
+            assert_eq!(
+                Expr::Var(Var::Context).link(&vals).unwrap(),
+                Expr::Var(Var::Context)
+            );
+        }
+
+        #[test]
+        fn test_link_binary_op_with_slot() {
+            let vals = make_vals();
+            let expr = Expr::BinaryOp {
+                op: BinaryOp::Eq,
+                left: Arc::new(Expr::Slot(SlotId::Principal)),
+                right: Arc::new(Expr::Literal(Literal::EntityUID(make_uid("User", "bob")))),
+            };
+            assert_eq!(
+                expr.link(&vals).unwrap(),
+                Expr::BinaryOp {
+                    op: BinaryOp::Eq,
+                    left: Arc::new(Expr::Literal(Literal::EntityUID(make_uid("User", "alice")))),
+                    right: Arc::new(Expr::Literal(Literal::EntityUID(make_uid("User", "bob")))),
+                }
+            );
+        }
+
+        #[test]
+        fn test_link_unary_op() {
+            let vals = make_vals();
+            let expr = Expr::UnaryOp {
+                op: UnaryOp::Not,
+                expr: Arc::new(Expr::Slot(SlotId::Principal)),
+            };
+            assert_eq!(
+                expr.link(&vals).unwrap(),
+                Expr::UnaryOp {
+                    op: UnaryOp::Not,
+                    expr: Arc::new(Expr::Literal(Literal::EntityUID(make_uid("User", "alice")))),
+                }
+            );
+        }
+
+        #[test]
+        fn test_link_if_then_else() {
+            let vals = make_vals();
+            let expr = Expr::IfThenElse {
+                cond: Arc::new(Expr::Literal(Literal::Bool(true))),
+                then_expr: Arc::new(Expr::Slot(SlotId::Principal)),
+                else_expr: Arc::new(Expr::Slot(SlotId::Resource)),
+            };
+            assert_eq!(
+                expr.link(&vals).unwrap(),
+                Expr::IfThenElse {
+                    cond: Arc::new(Expr::Literal(Literal::Bool(true))),
+                    then_expr: Arc::new(Expr::Literal(Literal::EntityUID(make_uid(
+                        "User", "alice"
+                    )))),
+                    else_expr: Arc::new(Expr::Literal(Literal::EntityUID(make_uid(
+                        "File", "doc.txt"
+                    )))),
+                }
+            );
+        }
+
+        #[test]
+        fn test_link_get_attr() {
+            let vals = make_vals();
+            let expr = Expr::GetAttr {
+                expr: Arc::new(Expr::Slot(SlotId::Principal)),
+                attr: SmolStr::from("name"),
+            };
+            assert_eq!(
+                expr.link(&vals).unwrap(),
+                Expr::GetAttr {
+                    expr: Arc::new(Expr::Literal(Literal::EntityUID(make_uid("User", "alice")))),
+                    attr: SmolStr::from("name"),
+                }
+            );
+        }
+
+        #[test]
+        fn test_link_has_attr() {
+            let vals = make_vals();
+            let expr = Expr::HasAttr {
+                expr: Arc::new(Expr::Slot(SlotId::Resource)),
+                attrs: nonempty::nonempty![SmolStr::from("name")],
+            };
+            assert_eq!(
+                expr.link(&vals).unwrap(),
+                Expr::HasAttr {
+                    expr: Arc::new(Expr::Literal(Literal::EntityUID(make_uid(
+                        "File", "doc.txt"
+                    )))),
+                    attrs: nonempty::nonempty![SmolStr::from("name")],
+                }
+            );
+        }
+
+        #[test]
+        fn test_link_like() {
+            let vals = make_vals();
+            let expr = Expr::Like {
+                expr: Arc::new(Expr::Slot(SlotId::Principal)),
+                pattern: vec![PatternElem::Wildcard],
+            };
+            assert_eq!(
+                expr.link(&vals).unwrap(),
+                Expr::Like {
+                    expr: Arc::new(Expr::Literal(Literal::EntityUID(make_uid("User", "alice")))),
+                    pattern: vec![PatternElem::Wildcard],
+                }
+            );
+        }
+
+        #[test]
+        fn test_link_is_with_in_slot() {
+            let vals = make_vals();
+            let expr = Expr::Is {
+                expr: Arc::new(Expr::Var(Var::Principal)),
+                entity_type: EntityType(Name::unqualified("User")),
+                in_expr: Some(Arc::new(Expr::Slot(SlotId::Principal))),
+            };
+            assert_eq!(
+                expr.link(&vals).unwrap(),
+                Expr::Is {
+                    expr: Arc::new(Expr::Var(Var::Principal)),
+                    entity_type: EntityType(Name::unqualified("User")),
+                    in_expr: Some(Arc::new(Expr::Literal(Literal::EntityUID(make_uid(
+                        "User", "alice"
+                    ))))),
+                }
+            );
+        }
+
+        #[test]
+        fn test_link_is_without_in() {
+            let vals = make_vals();
+            let expr = Expr::Is {
+                expr: Arc::new(Expr::Var(Var::Principal)),
+                entity_type: EntityType(Name::unqualified("User")),
+                in_expr: None,
+            };
+            let original = expr.clone();
+            assert_eq!(expr.link(&vals).unwrap(), original);
+        }
+
+        #[test]
+        fn test_link_set() {
+            let vals = make_vals();
+            let expr = Expr::Set(vec![
+                Arc::new(Expr::Slot(SlotId::Principal)),
+                Arc::new(Expr::Literal(Literal::Long(1))),
+            ]);
+            assert_eq!(
+                expr.link(&vals).unwrap(),
+                Expr::Set(vec![
+                    Arc::new(Expr::Literal(Literal::EntityUID(make_uid("User", "alice")))),
+                    Arc::new(Expr::Literal(Literal::Long(1))),
+                ])
+            );
+        }
+
+        #[test]
+        fn test_link_record() {
+            let vals = make_vals();
+            let mut map = BTreeMap::new();
+            map.insert("p".to_string(), Arc::new(Expr::Slot(SlotId::Principal)));
+            let expr = Expr::Record(map);
+            let mut expected = BTreeMap::new();
+            expected.insert(
+                "p".to_string(),
+                Arc::new(Expr::Literal(Literal::EntityUID(make_uid("User", "alice")))),
+            );
+            assert_eq!(expr.link(&vals).unwrap(), Expr::Record(expected));
+        }
+
+        #[test]
+        fn test_link_error_propagates_from_nested() {
+            let expr = Expr::Set(vec![Arc::new(Expr::Slot(SlotId::Principal))]);
+            assert!(matches!(
+                expr.link(&HashMap::new()),
+                Err(LinkingError::MissedSlot {
+                    slot: SlotId::Principal
+                })
+            ));
+        }
+
+        #[test]
+        fn test_link_no_slots_is_identity() {
+            let expr = Expr::BinaryOp {
+                op: BinaryOp::Add,
+                left: Arc::new(Expr::Literal(Literal::Long(1))),
+                right: Arc::new(Expr::Literal(Literal::Long(2))),
+            };
+            let original = expr.clone();
+            assert_eq!(expr.link(&make_vals()).unwrap(), original);
         }
     }
 }

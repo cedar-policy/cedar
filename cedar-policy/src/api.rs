@@ -53,8 +53,8 @@ use cedar_policy_core::evaluator::Evaluator;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::Extensions;
-use cedar_policy_core::parser;
 use cedar_policy_core::FromNormalizedStr;
+use cedar_policy_core::{parser, pst};
 use itertools::{Either, Itertools};
 use linked_hash_map::LinkedHashMap;
 use miette::Diagnostic;
@@ -3503,7 +3503,9 @@ impl Template {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> String {
         match &self.lossless {
-            LosslessPolicy::Empty | LosslessPolicy::Est(_) => self.ast.to_string(),
+            LosslessPolicy::Empty | LosslessPolicy::Est(_) | LosslessPolicy::Pst(_) => {
+                self.ast.to_string()
+            }
             LosslessPolicy::Text { text, .. } => text.clone(),
         }
     }
@@ -3637,7 +3639,7 @@ pub struct Policy {
     pub(crate) ast: ast::Policy,
     /// Some "lossless" representation of the policy, whichever is most
     /// convenient to provide (and can be provided with the least overhead).
-    /// This is used just for `to_json()`.
+    /// This is for `to_json()` and `to_pst()`.
     /// We can't just derive this on-demand from `ast`, because the AST is lossy:
     /// we can't reconstruct an accurate CST/EST/policy-text from the AST, but
     /// we can from the EST (modulo whitespace and a few other things like the
@@ -4036,7 +4038,9 @@ impl Policy {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
         match &self.lossless {
-            LosslessPolicy::Empty | LosslessPolicy::Est(_) => Some(self.ast.to_string()),
+            LosslessPolicy::Empty | LosslessPolicy::Est(_) | LosslessPolicy::Pst(_) => {
+                Some(self.ast.to_string())
+            }
             LosslessPolicy::Text { text, slots } => {
                 if slots.is_empty() {
                     Some(text.clone())
@@ -4045,6 +4049,12 @@ impl Policy {
                 }
             }
         }
+    }
+
+    /// Get the PST representation of this policy.
+    pub fn to_pst(&self) -> Result<pst::Policy, pst::PstConstructionError> {
+        self.lossless
+            .pst(|| pst::Policy::try_from(self.ast.clone()))
     }
 
     /// Get all the unknown entities from the policy
@@ -4102,6 +4112,8 @@ pub(crate) enum LosslessPolicy {
     Empty,
     /// EST representation
     Est(est::Policy),
+    /// PST representation
+    Pst(pst::Policy),
     /// Text representation
     Text {
         /// actual policy text, of the policy or template
@@ -4131,6 +4143,7 @@ impl LosslessPolicy {
             // Fall back to the `policy` AST if the lossless representation is empty
             Self::Empty => Ok(fallback_est()),
             Self::Est(est) => Ok(est.clone()),
+            Self::Pst(pst) => Ok(pst.clone().try_into()?),
             Self::Text { text, slots } => {
                 let est =
                     parser::parse_policy_or_template_to_est(text).map_err(ParseErrors::from)?;
@@ -4139,6 +4152,32 @@ impl LosslessPolicy {
                 } else {
                     let unwrapped_vals = slots.iter().map(|(k, v)| (*k, v.into())).collect();
                     Ok(est.link(&unwrapped_vals)?)
+                }
+            }
+        }
+    }
+
+    /// Get the PST representation of this static policy, linked policy, or template.
+    fn pst(
+        &self,
+        fallback_pst: impl FnOnce() -> Result<pst::Policy, pst::PstConstructionError>,
+    ) -> Result<pst::Policy, pst::PstConstructionError> {
+        match self {
+            // Fall back to the `policy` AST if the lossless representation is empty
+            Self::Empty => Ok(fallback_pst()?),
+            Self::Est(est) => Ok(est.clone().try_into()?),
+            Self::Pst(pst) => Ok(pst.clone()),
+            Self::Text { text, slots } => {
+                // Parse -> EST -> PST
+                let pst: pst::Policy = parser::parse_policy_or_template_to_est(text)?.try_into()?;
+                if slots.is_empty() {
+                    Ok(pst)
+                } else {
+                    let unwrapped_vals: HashMap<pst::SlotId, pst::EntityUID> = slots
+                        .iter()
+                        .map(|(k, v)| ((*k).into(), v.clone().into()))
+                        .collect();
+                    Ok(pst.link(&unwrapped_vals)?)
                 }
             }
         }
@@ -4157,6 +4196,9 @@ impl LosslessPolicy {
                 > = vals.into_iter().map(|(k, v)| (k, v.into())).collect();
                 Ok(Self::Est(est.link(&unwrapped_est_vals)?))
             }
+            Self::Pst(_) => {
+                todo!("implement templates for pst")
+            }
             Self::Text { text, slots } => {
                 debug_assert!(
                     slots.is_empty(),
@@ -4174,7 +4216,8 @@ impl LosslessPolicy {
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            Self::Empty => match self.est(fallback_est) {
+            Self::Empty | Self::Pst(_) => match self.est(fallback_est) {
+                // pst will be converted to est for printing
                 Ok(est) => write!(f, "{est}"),
                 Err(e) => write!(f, "<invalid policy: {e}>"),
             },

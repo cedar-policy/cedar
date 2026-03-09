@@ -20,13 +20,13 @@ use smol_str::ToSmolStr;
 
 use super::{
     ActionConstraint, BinaryOp, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Literal,
-    Name, PatternElem, Policy, PrincipalConstraint, PstConstructionError, ResourceConstraint,
-    SlotId, UnaryOp, Var,
+    Name, PatternElem, Policy, PolicyID, PrincipalConstraint, PstConstructionError,
+    ResourceConstraint, SlotId, UnaryOp, Var,
 };
 use crate::ast;
 use crate::expr_builder;
 use crate::pst::err::error_body::{
-    InvalidConversionError, InvalidExpressionError, NotImplementedError, ParsingFailedError,
+    InvalidConversionError, InvalidExpressionError, ParsingFailedError,
 };
 use crate::pst::expr::{ErrorNode, PstBuilder};
 use itertools::Itertools;
@@ -110,8 +110,14 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalConstraint {
             PrincipalConstraint::Eq(EntityOrSlot::Entity(eos)) => {
                 Ok(ast::PrincipalConstraint::is_eq(Arc::new(eos.try_into()?)))
             }
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)) => {
+                Ok(ast::PrincipalConstraint::is_eq_slot())
+            }
             PrincipalConstraint::In(EntityOrSlot::Entity(eos)) => {
                 Ok(ast::PrincipalConstraint::is_in(Arc::new(eos.try_into()?)))
+            }
+            PrincipalConstraint::In(EntityOrSlot::Slot(SlotId::Principal)) => {
+                Ok(ast::PrincipalConstraint::is_in_slot())
             }
             PrincipalConstraint::Is(entity_type) => Ok(ast::PrincipalConstraint::is_entity_type(
                 Arc::new(entity_type.try_into()?),
@@ -122,7 +128,16 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalConstraint {
                     Arc::new(eos.try_into()?),
                 ))
             }
-            _ => Err(NotImplementedError::new("templates".to_string()).into()),
+            PrincipalConstraint::IsIn(entity_type, EntityOrSlot::Slot(SlotId::Principal)) => Ok(
+                ast::PrincipalConstraint::is_entity_type_in_slot(Arc::new(entity_type.try_into()?)),
+            ),
+            // Wrong slot type (resource slot in principal position)
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(s))
+            | PrincipalConstraint::In(EntityOrSlot::Slot(s))
+            | PrincipalConstraint::IsIn(_, EntityOrSlot::Slot(s)) => Err(
+                InvalidConversionError::new(format!("principal constraint cannot use slot `{s}`"))
+                    .into(),
+            ),
         }
     }
 }
@@ -136,8 +151,14 @@ impl TryFrom<ResourceConstraint> for ast::ResourceConstraint {
             ResourceConstraint::Eq(EntityOrSlot::Entity(eos)) => {
                 Ok(ast::ResourceConstraint::is_eq(Arc::new(eos.try_into()?)))
             }
+            ResourceConstraint::Eq(EntityOrSlot::Slot(SlotId::Resource)) => {
+                Ok(ast::ResourceConstraint::is_eq_slot())
+            }
             ResourceConstraint::In(EntityOrSlot::Entity(eos)) => {
                 Ok(ast::ResourceConstraint::is_in(Arc::new(eos.try_into()?)))
+            }
+            ResourceConstraint::In(EntityOrSlot::Slot(SlotId::Resource)) => {
+                Ok(ast::ResourceConstraint::is_in_slot())
             }
             ResourceConstraint::Is(entity_type) => Ok(ast::ResourceConstraint::is_entity_type(
                 Arc::new(entity_type.try_into()?),
@@ -148,7 +169,16 @@ impl TryFrom<ResourceConstraint> for ast::ResourceConstraint {
                     Arc::new(eos.try_into()?),
                 ))
             }
-            _ => Err(NotImplementedError::new("templates".to_string()).into()),
+            ResourceConstraint::IsIn(entity_type, EntityOrSlot::Slot(SlotId::Resource)) => Ok(
+                ast::ResourceConstraint::is_entity_type_in_slot(Arc::new(entity_type.try_into()?)),
+            ),
+            // Wrong slot type (principal slot in resource position)
+            ResourceConstraint::Eq(EntityOrSlot::Slot(s))
+            | ResourceConstraint::In(EntityOrSlot::Slot(s))
+            | ResourceConstraint::IsIn(_, EntityOrSlot::Slot(s)) => Err(
+                InvalidConversionError::new(format!("resource constraint cannot use slot `{s}`"))
+                    .into(),
+            ),
         }
     }
 }
@@ -203,7 +233,7 @@ impl Expr {
                 }
             },
             Expr::Var(v) => Ok(builder.var(v.into())),
-            Expr::Slot(_) => Err(NotImplementedError::new("slots".into()).into()),
+            Expr::Slot(s) => Ok(builder.slot(s.into())),
             Expr::UnaryOp { op, expr } => {
                 let inner = Arc::unwrap_or_clone(expr).try_into_expr::<B>()?;
                 Ok(match op {
@@ -342,7 +372,7 @@ impl TryFrom<EntityOrSlot> for ast::EntityReference {
     fn try_from(eos: EntityOrSlot) -> Result<Self, Self::Error> {
         match eos {
             EntityOrSlot::Entity(uid) => Ok(ast::EntityReference::euid(Arc::new(uid.try_into()?))),
-            EntityOrSlot::Slot(_) => Err(NotImplementedError::new("templates".to_string()).into()),
+            EntityOrSlot::Slot(_) => Ok(ast::EntityReference::Slot(None)),
         }
     }
 }
@@ -479,6 +509,160 @@ impl From<ast::EntityUID> for EntityUID {
 impl From<ast::Expr> for Expr {
     fn from(ast_expr: ast::Expr) -> Self {
         ast::Expr::into_expr::<PstBuilder>(ast_expr)
+    }
+}
+
+impl From<ast::Effect> for Effect {
+    fn from(effect: ast::Effect) -> Self {
+        match effect {
+            ast::Effect::Permit => Effect::Permit,
+            ast::Effect::Forbid => Effect::Forbid,
+        }
+    }
+}
+
+impl From<ast::EntityReference> for EntityOrSlot {
+    fn from(er: ast::EntityReference) -> Self {
+        match er {
+            ast::EntityReference::EUID(uid) => {
+                EntityOrSlot::Entity(Arc::unwrap_or_clone(uid).into())
+            }
+            ast::EntityReference::Slot(_) => {
+                // Slot location is not preserved; the slot identity (principal vs resource)
+                // is determined by the constraint that contains it, handled in the
+                // PrincipalConstraint/ResourceConstraint conversions below.
+                unreachable!(
+                    "EntityReference::Slot should not be converted directly; \
+                     use PrincipalConstraint/ResourceConstraint conversion instead"
+                )
+            }
+        }
+    }
+}
+
+fn entity_ref_to_entity_or_slot(er: ast::EntityReference, slot: SlotId) -> EntityOrSlot {
+    match er {
+        ast::EntityReference::EUID(uid) => EntityOrSlot::Entity(Arc::unwrap_or_clone(uid).into()),
+        ast::EntityReference::Slot(_) => EntityOrSlot::Slot(slot),
+    }
+}
+
+impl From<ast::PrincipalConstraint> for PrincipalConstraint {
+    fn from(c: ast::PrincipalConstraint) -> Self {
+        match c.into_inner() {
+            ast::PrincipalOrResourceConstraint::Any => PrincipalConstraint::Any,
+            ast::PrincipalOrResourceConstraint::Eq(er) => {
+                PrincipalConstraint::Eq(entity_ref_to_entity_or_slot(er, SlotId::Principal))
+            }
+            ast::PrincipalOrResourceConstraint::In(er) => {
+                PrincipalConstraint::In(entity_ref_to_entity_or_slot(er, SlotId::Principal))
+            }
+            ast::PrincipalOrResourceConstraint::Is(et) => {
+                PrincipalConstraint::Is(Arc::unwrap_or_clone(et).into())
+            }
+            ast::PrincipalOrResourceConstraint::IsIn(et, er) => PrincipalConstraint::IsIn(
+                Arc::unwrap_or_clone(et).into(),
+                entity_ref_to_entity_or_slot(er, SlotId::Principal),
+            ),
+        }
+    }
+}
+
+impl From<ast::ResourceConstraint> for ResourceConstraint {
+    fn from(c: ast::ResourceConstraint) -> Self {
+        match c.into_inner() {
+            ast::PrincipalOrResourceConstraint::Any => ResourceConstraint::Any,
+            ast::PrincipalOrResourceConstraint::Eq(er) => {
+                ResourceConstraint::Eq(entity_ref_to_entity_or_slot(er, SlotId::Resource))
+            }
+            ast::PrincipalOrResourceConstraint::In(er) => {
+                ResourceConstraint::In(entity_ref_to_entity_or_slot(er, SlotId::Resource))
+            }
+            ast::PrincipalOrResourceConstraint::Is(et) => {
+                ResourceConstraint::Is(Arc::unwrap_or_clone(et).into())
+            }
+            ast::PrincipalOrResourceConstraint::IsIn(et, er) => ResourceConstraint::IsIn(
+                Arc::unwrap_or_clone(et).into(),
+                entity_ref_to_entity_or_slot(er, SlotId::Resource),
+            ),
+        }
+    }
+}
+
+impl From<ast::ActionConstraint> for ActionConstraint {
+    fn from(c: ast::ActionConstraint) -> Self {
+        match c {
+            ast::ActionConstraint::Any => ActionConstraint::Any,
+            ast::ActionConstraint::Eq(uid) => {
+                ActionConstraint::Eq(Arc::unwrap_or_clone(uid).into())
+            }
+            ast::ActionConstraint::In(uids) => ActionConstraint::In(
+                uids.into_iter()
+                    .map(|uid| Arc::unwrap_or_clone(uid).into())
+                    .collect(),
+            ),
+            #[cfg(feature = "tolerant-ast")]
+            ast::ActionConstraint::ErrorConstraint => ActionConstraint::Any,
+        }
+    }
+}
+
+impl TryFrom<ast::Template> for Policy {
+    type Error = PstConstructionError;
+
+    fn try_from(template: ast::Template) -> Result<Self, PstConstructionError> {
+        let (
+            id,
+            annot,
+            effect,
+            principal_constraint,
+            action_constraint,
+            resource_constraint,
+            clause,
+        ) = template
+            .into_template_components_opt()
+            .ok_or(InvalidConversionError::new(
+                "template contained errors".to_string(),
+            ))?;
+        let id = PolicyID(id.to_smolstr());
+        let effect = effect.into();
+        let principal = principal_constraint.into();
+        let action = action_constraint.into();
+        let resource = resource_constraint.into();
+
+        let clauses = match clause {
+            Some(expr) => vec![Clause::When(Arc::new(Arc::unwrap_or_clone(expr).into()))],
+            None => vec![],
+        };
+
+        let annotations = Arc::unwrap_or_clone(annot)
+            .into_iter()
+            .map(|(key, ann)| (key.to_string(), ann.val.clone()))
+            .collect();
+
+        Ok(Policy {
+            id,
+            effect,
+            principal,
+            action,
+            resource,
+            clauses,
+            annotations,
+        })
+    }
+}
+
+impl TryFrom<ast::Policy> for Policy {
+    type Error = PstConstructionError;
+
+    fn try_from(policy: ast::Policy) -> Result<Self, PstConstructionError> {
+        let (template, _, env) = policy.into_components();
+        let policy: Policy = Arc::unwrap_or_clone(template).try_into()?;
+        let env = env
+            .into_iter()
+            .map(|(k, v)| (SlotId::from(k), EntityUID::from(v)))
+            .collect();
+        Ok(policy.link(&env)?)
     }
 }
 

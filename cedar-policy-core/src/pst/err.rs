@@ -25,7 +25,7 @@ use miette::Diagnostic;
 use smol_str::ToSmolStr;
 use thiserror::Error;
 
-use crate::est::FromJsonError;
+use crate::est;
 
 /// Errors that can occur during PST construction or conversion
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
@@ -110,31 +110,44 @@ pub enum PstConstructionError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ParsingFailed(#[from] error_body::ParsingFailedError),
+
+    /// A linking error occurred.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    LinkingFailed(#[from] error_body::LinkingError),
 }
 
-impl From<crate::est::FromJsonError> for PstConstructionError {
-    fn from(err: crate::est::FromJsonError) -> Self {
+impl From<est::FromJsonError> for PstConstructionError {
+    fn from(err: est::FromJsonError) -> Self {
         match err {
-            FromJsonError::UnknownExtensionFunction(e) => PstConstructionError::UnknownFunction(
-                error_body::UnknownFunctionError::new(e.to_smolstr()),
-            ),
-            FromJsonError::InvalidEntityType(e) => {
+            est::FromJsonError::UnknownExtensionFunction(e) => {
+                PstConstructionError::UnknownFunction(error_body::UnknownFunctionError::new(
+                    e.to_smolstr(),
+                ))
+            }
+            est::FromJsonError::InvalidEntityType(e) => {
                 PstConstructionError::InvalidEntityType(error_body::InvalidEntityTypeError {
                     description: e.to_string(),
                 })
             }
-            FromJsonError::UnescapeError(e) => PstConstructionError::ParsingFailed(
+            est::FromJsonError::UnescapeError(e) => PstConstructionError::ParsingFailed(
                 // Show just first error in main error message, like original err
                 error_body::ParsingFailedError::new(e.head.to_string()),
             ),
             #[cfg(feature = "tolerant-ast")]
-            FromJsonError::ASTErrorNode => {
+            est::FromJsonError::ASTErrorNode => {
                 PstConstructionError::UnsupportedErrorNode(error_body::UnsupportedErrorNode {})
             }
             _ => PstConstructionError::InvalidConversion(error_body::InvalidConversionError::new(
                 err.to_string(),
             )),
         }
+    }
+}
+
+impl From<crate::parser::err::ParseErrors> for PstConstructionError {
+    fn from(value: crate::parser::err::ParseErrors) -> Self {
+        error_body::ParsingFailedError::from(value).into()
     }
 }
 
@@ -319,12 +332,6 @@ pub mod error_body {
         pub(crate) description: String,
     }
 
-    impl NotImplementedError {
-        pub(crate) fn new(description: String) -> Self {
-            Self { description }
-        }
-    }
-
     /// A parsing error occurred
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
     #[error("parse error: {description}")]
@@ -342,5 +349,16 @@ pub mod error_body {
         fn from(value: crate::parser::err::ParseErrors) -> Self {
             Self::new(format!("{value:?}"))
         }
+    }
+
+    /// Errors that can occur when linking a template policy
+    #[derive(Debug, PartialEq, Eq, Diagnostic, Error, Clone)]
+    pub enum LinkingError {
+        /// Template contains this slot, but a value wasn't provided for it
+        #[error("failed to link template: no value provided for `{slot}`")]
+        MissedSlot {
+            /// Slot which didn't have a value provided for it
+            slot: crate::pst::SlotId,
+        },
     }
 }

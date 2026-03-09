@@ -17,10 +17,11 @@
 //! Policy types for PST
 
 use super::constraints::{ActionConstraint, PrincipalConstraint, ResourceConstraint};
-use super::expr::Expr;
+use super::expr::{EntityUID, Expr, SlotId};
 use crate::ast;
+use crate::pst::err::error_body::LinkingError;
 use smol_str::SmolStr;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 /// A unique identifier for a policy statement
@@ -68,6 +69,32 @@ pub struct Policy {
     pub clauses: Vec<Clause>,
     /// Annotations (empty string for no value)
     pub annotations: BTreeMap<String, SmolStr>,
+}
+
+impl Policy {
+    /// Fill in any slots in this policy using the values in `vals`.
+    /// Returns an error if a slot is encountered that has no mapping in `vals`.
+    /// Does not error if `vals` contains unused mappings.
+    pub fn link(self, vals: &HashMap<SlotId, EntityUID>) -> Result<Self, LinkingError> {
+        let linked_clauses = self
+            .clauses
+            .into_iter()
+            .map(|clause| match clause {
+                Clause::When(e) => Ok(Clause::When(Arc::new((*e).clone().link(vals)?))),
+                Clause::Unless(e) => Ok(Clause::Unless(Arc::new((*e).clone().link(vals)?))),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Policy {
+            id: self.id,
+            effect: self.effect,
+            principal: self.principal.link(vals)?,
+            action: self.action.link(vals)?,
+            resource: self.resource.link(vals)?,
+            clauses: linked_clauses,
+            annotations: self.annotations,
+        })
+    }
 }
 
 impl std::fmt::Display for Effect {
@@ -179,5 +206,90 @@ mod tests {
         let pst_id = PolicyID(SmolStr::from("test_policy"));
         let ast_id: ast::PolicyID = pst_id.into();
         assert_eq!(ast_id.to_string(), "test_policy");
+    }
+
+    fn make_uid(ty: &str, id: &str) -> EntityUID {
+        EntityUID {
+            ty: crate::pst::EntityType::from_name(crate::pst::Name::unqualified(ty)),
+            eid: SmolStr::from(id),
+        }
+    }
+
+    #[test]
+    fn test_policy_link_replaces_all_slots() {
+        use crate::pst::constraints::*;
+        use crate::pst::expr::SlotId;
+
+        let template = Policy {
+            id: PolicyID(SmolStr::from("t1")),
+            effect: Effect::Permit,
+            principal: PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)),
+            action: ActionConstraint::Eq(make_uid("Action", "view")),
+            resource: ResourceConstraint::In(EntityOrSlot::Slot(SlotId::Resource)),
+            clauses: vec![Clause::When(Arc::new(Expr::Slot(SlotId::Principal)))],
+            annotations: BTreeMap::new(),
+        };
+
+        let mut vals = HashMap::new();
+        vals.insert(SlotId::Principal, make_uid("User", "alice"));
+        vals.insert(SlotId::Resource, make_uid("Album", "vacation"));
+
+        let linked = template.link(&vals).unwrap();
+
+        assert_eq!(
+            linked.principal,
+            PrincipalConstraint::Eq(EntityOrSlot::Entity(make_uid("User", "alice")))
+        );
+        assert_eq!(
+            linked.resource,
+            ResourceConstraint::In(EntityOrSlot::Entity(make_uid("Album", "vacation")))
+        );
+        assert_eq!(
+            linked.clauses,
+            vec![Clause::When(Arc::new(Expr::Literal(Literal::EntityUID(
+                make_uid("User", "alice")
+            ))))]
+        );
+    }
+
+    #[test]
+    fn test_policy_link_missing_slot_errors() {
+        use crate::pst::constraints::*;
+        use crate::pst::expr::SlotId;
+
+        let template = Policy {
+            id: PolicyID(SmolStr::from("t2")),
+            effect: Effect::Forbid,
+            principal: PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)),
+            action: ActionConstraint::Any,
+            resource: ResourceConstraint::Any,
+            clauses: vec![],
+            annotations: BTreeMap::new(),
+        };
+
+        let result = template.link(&HashMap::new());
+        assert!(matches!(
+            result,
+            Err(LinkingError::MissedSlot {
+                slot: SlotId::Principal
+            })
+        ));
+    }
+
+    #[test]
+    fn test_policy_link_no_slots_passthrough() {
+        let policy = Policy {
+            id: PolicyID(SmolStr::from("p1")),
+            effect: Effect::Permit,
+            principal: PrincipalConstraint::Any,
+            action: ActionConstraint::Any,
+            resource: ResourceConstraint::Any,
+            clauses: vec![Clause::When(Arc::new(Expr::Literal(Literal::Bool(true))))],
+            annotations: BTreeMap::new(),
+        };
+
+        let original = policy.clone();
+        let linked = policy.link(&HashMap::new()).unwrap();
+        assert_eq!(linked, original);
     }
 }
