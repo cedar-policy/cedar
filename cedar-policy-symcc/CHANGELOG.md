@@ -16,7 +16,7 @@ to make the API easier to use with fewer implicit ordering constraints (#2190)
 some implementors of `Solver` to perform other initialization/configuration as
 required when models are being enabled (#2192)
 
-## [0.3.1] - Coming soon
+## [0.3.1] - 2026-03-09
 Cedar Language Version: 4.4
 
 ### Added
