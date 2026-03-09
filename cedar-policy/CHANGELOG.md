@@ -12,9 +12,12 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## [Unreleased]
 
-Cedar Language Version: TBD
+## [4.10.0] - Coming soon
+
+Cedar Language Version: 4.5
 
 ### Added
+
 - Extended `has` operator in JSON policies, maintaining backwards-compatible desugaring of extended `has` in Cedar policies to json (#1889)
 
 ## [4.9.1] - 2026-02-27
