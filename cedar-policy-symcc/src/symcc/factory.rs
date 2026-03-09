@@ -522,8 +522,7 @@ pub fn set_inter(ts1: Term, ts2: Term) -> Term {
 
 pub fn set_is_empty(t: Term) -> Term {
     match t {
-        Term::Set { elts, .. } if elts.is_empty() => true.into(),
-        Term::Set { elts, .. } if !elts.is_empty() => false.into(),
+        Term::Set { elts, .. } => elts.is_empty().into(),
         ts => match ts.type_of() {
             TermType::Set { ty } => eq(
                 ts,

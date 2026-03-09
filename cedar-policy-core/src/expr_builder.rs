@@ -31,6 +31,7 @@ use crate::{
 #[cfg(feature = "tolerant-ast")]
 use crate::parser::err::ParseErrors;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 /// Defines a generic interface for building different expression data
 /// structures.
@@ -109,8 +110,26 @@ pub trait ExprBuilder: Clone {
     fn slot(self, s: SlotId) -> Self::Expr;
 
     /// Create a ternary (if-then-else) `Expr`.
-    fn ite(self, test_expr: Self::Expr, then_expr: Self::Expr, else_expr: Self::Expr)
-        -> Self::Expr;
+    fn ite(
+        self,
+        test_expr: Self::Expr,
+        then_expr: Self::Expr,
+        else_expr: Self::Expr,
+    ) -> Self::Expr {
+        self.ite_arc(
+            Arc::new(test_expr),
+            Arc::new(then_expr),
+            Arc::new(else_expr),
+        )
+    }
+
+    /// Create a ternary (if-then-else) `Expr` using `Arc<Expr>` arguments.
+    fn ite_arc(
+        self,
+        cond_expr: Arc<Self::Expr>,
+        then_expr: Arc<Self::Expr>,
+        else_expr: Arc<Self::Expr>,
+    ) -> Self::Expr;
 
     /// Create a 'not' expression.
     fn not(self, e: Self::Expr) -> Self::Expr;
@@ -143,7 +162,12 @@ pub trait ExprBuilder: Clone {
     fn neg(self, e: Self::Expr) -> Self::Expr;
 
     /// Create an 'in' expression. First argument must evaluate to Entity type.
-    fn is_in(self, e1: Self::Expr, e2: Self::Expr) -> Self::Expr;
+    fn is_in(self, e1: Self::Expr, e2: Self::Expr) -> Self::Expr {
+        self.is_in_arc(Arc::new(e1), Arc::new(e2))
+    }
+
+    /// Create an 'in' expression. First argument must evaluate to Entity type.
+    fn is_in_arc(self, e1: Arc<Self::Expr>, e2: Arc<Self::Expr>) -> Self::Expr;
 
     /// Create a 'contains' expression.
     fn contains(self, e1: Self::Expr, e2: Self::Expr) -> Self::Expr;
@@ -191,24 +215,45 @@ pub trait ExprBuilder: Clone {
     }
 
     /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
-    fn get_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr;
+    fn get_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr {
+        // builders usually implement the `_arc` version, and clients get this convenient wrapper
+        self.get_attr_arc(Arc::new(expr), attr)
+    }
+
+    /// Create an `Expr` which tests for the existence of a given
+    /// attribute on a given `Entity` or record using an `Arc<Expr>`.
+    fn get_attr_arc(self, expr: Arc<Self::Expr>, attr: SmolStr) -> Self::Expr;
 
     /// Create an `Expr` which tests for the existence of a given
     /// attribute on a given `Entity` or record.
-    fn has_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr;
+    fn has_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr {
+        // builders usually implement the `_arc` version, and clients get this convenient wrapper
+        self.has_attr_arc(Arc::new(expr), attr)
+    }
+
+    /// Create an `Expr` which tests for the existence of a given
+    /// attribute on a given `Entity` or record using an `Arc<Expr>`.
+    fn has_attr_arc(self, expr: Arc<Self::Expr>, attr: SmolStr) -> Self::Expr;
 
     /// Create an `Expr` which tests for the existence of a given
     /// non-empty list of attributes on a given `Entity` or record.
-    fn extended_has_attr(self, expr: Self::Expr, attrs: &NonEmpty<SmolStr>) -> Self::Expr {
-        // TODO: might move this to the trait implementers, since it will be a particular
-        // representation's choice on whether to desugar or not
-        let (first, rest) = attrs.split_first();
+    fn extended_has_attr(self, expr: Self::Expr, attrs: NonEmpty<SmolStr>) -> Self::Expr {
+        // builders usually implement the `_arc` version, and clients get this convenient wrapper
+        self.extended_has_attr_arc(Arc::new(expr), attrs)
+    }
+
+    /// Create an `Expr` which tests for the existence of a given
+    /// non-empty list of attributes on a given `Entity` or record.
+    fn extended_has_attr_arc(self, expr: Arc<Self::Expr>, attrs: NonEmpty<SmolStr>) -> Self::Expr {
+        // builders that can directly support extended has operator implement this directly.
         let has_expr = Self::new()
             .with_maybe_source_loc(self.loc())
-            .has_attr(expr.clone(), first.to_owned());
-        let get_expr = Self::new()
-            .with_maybe_source_loc(self.loc())
-            .get_attr(expr, first.to_owned());
+            .has_attr_arc(expr.clone(), attrs.head.clone());
+        let get_expr = Arc::new(
+            Self::new()
+                .with_maybe_source_loc(self.loc())
+                .get_attr_arc(expr, attrs.head),
+        );
         // Foldl on the attribute list
         // It produces the following for `principal has contactInfo.address.zip`
         //     Expr.and
@@ -230,18 +275,22 @@ pub trait ExprBuilder: Clone {
         //   (Expr.and
         //      (Expr.hasAttr (Expr.getAttr (Expr.var .principal) "contactInfo")"address")
         //      (Expr.hasAttr ..., "zip"))
-        rest.iter()
+        attrs
+            .tail
+            .into_iter()
             .fold((has_expr, get_expr), |(has_expr, get_expr), attr| {
                 (
                     Self::new().with_maybe_source_loc(self.loc()).and(
                         has_expr,
                         Self::new()
                             .with_maybe_source_loc(self.loc())
-                            .has_attr(get_expr.clone(), attr.to_owned()),
+                            .has_attr_arc(get_expr.clone(), attr.clone()),
                     ),
-                    Self::new()
-                        .with_maybe_source_loc(self.loc())
-                        .get_attr(get_expr, attr.to_owned()),
+                    Arc::new(
+                        Self::new()
+                            .with_maybe_source_loc(self.loc())
+                            .get_attr_arc(get_expr, attr),
+                    ),
                 )
             })
             .0
@@ -251,7 +300,12 @@ pub trait ExprBuilder: Clone {
     fn like(self, expr: Self::Expr, pattern: Pattern) -> Self::Expr;
 
     /// Create an 'is' expression.
-    fn is_entity_type(self, expr: Self::Expr, entity_type: EntityType) -> Self::Expr;
+    fn is_entity_type(self, expr: Self::Expr, entity_type: EntityType) -> Self::Expr {
+        self.is_entity_type_arc(Arc::new(expr), entity_type)
+    }
+
+    /// Create an 'is' expression from an `Arc<Self::Expr>` and `EntityType`.
+    fn is_entity_type_arc(self, expr: Arc<Self::Expr>, entity_type: EntityType) -> Self::Expr;
 
     /// Create an `_ is _ in _`  expression
     fn is_in_entity_type(
@@ -259,13 +313,23 @@ pub trait ExprBuilder: Clone {
         e1: Self::Expr,
         entity_type: EntityType,
         e2: Self::Expr,
+    ) -> Self::Expr {
+        self.is_in_entity_type_arc(Arc::new(e1), entity_type, Arc::new(e2))
+    }
+
+    /// Create an `_ is _ in _`  expression from `Arc<Self::Expr>` arguments.
+    fn is_in_entity_type_arc(
+        self,
+        e1: Arc<Self::Expr>,
+        entity_type: EntityType,
+        e2: Arc<Self::Expr>,
     ) -> Self::Expr
     where
         Self: Sized,
     {
         self.clone().and(
-            self.clone().is_entity_type(e1.clone(), entity_type),
-            self.is_in(e1, e2),
+            self.clone().is_entity_type_arc(e1.clone(), entity_type),
+            self.is_in_arc(e1, e2),
         )
     }
 
