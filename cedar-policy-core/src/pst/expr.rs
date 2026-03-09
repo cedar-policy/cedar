@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-//! Expression types for PST
+//! Expression types for PST.
+//!
+//! This module defines the expression tree used in Cedar policy conditions
+//! (`when` / `unless` clauses). Expressions are recursive via [`Arc<Expr>`].
 
 use super::err::{error_body, PstConstructionError};
 use crate::ast;
@@ -35,15 +38,26 @@ mod constants {
     pub static OR_STR: &str = "||";
 }
 
-/// Slot identifier for template policies
+/// Slot identifier for template policies.
 ///
-/// Cedar supports two slot types: `principal` and `resource`
+/// In Cedar, template slots are placeholders written as `?principal` or `?resource`
+/// that get filled in when a template is instantiated into a concrete policy.
+///
+/// ```cedar
+/// permit (
+///   principal == ?principal,
+///   action == Action::"view",
+///   resource in ?resource
+/// );
+/// ```
+///
+/// This enum is `#[non_exhaustive]`; match arms must include a wildcard.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum SlotId {
-    /// Principal slot
+    /// `?principal` slot
     Principal,
-    /// Resource slot
+    /// `?resource` slot
     Resource,
 }
 
@@ -54,10 +68,20 @@ impl Display for SlotId {
     }
 }
 
-/// A qualified name (e.g., `Namespace::Type`)
+/// A qualified name (e.g., `Namespace::Type`).
 ///
 /// Represents entity types, action names, and other identifiers in Cedar.
 /// Names consist of a basename and optional namespace components.
+///
+/// ```cedar
+/// // Unqualified: just a basename
+/// User
+/// Photo
+///
+/// // Qualified: namespace components followed by basename
+/// MyApp::User
+/// AWS::EC2::Instance
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     /// Basename (the final component of the name)
@@ -98,9 +122,14 @@ impl Display for Name {
     }
 }
 
-/// Entity type name
+/// Entity type name.
 ///
-/// Represents the type of an entity in Cedar (e.g., `User`, `Photo`, `Namespace::Resource`)
+/// Represents the type of an entity in Cedar.
+///
+/// ```cedar
+/// User            // unqualified
+/// MyApp::Photo    // qualified with namespace
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EntityType(pub Name);
 
@@ -121,9 +150,15 @@ impl Display for EntityType {
     }
 }
 
-/// Entity unique identifier (UID)
+/// Entity unique identifier (UID).
 ///
-/// Represents a specific entity instance in Cedar (e.g., `User::"alice"`)
+/// Represents a specific entity instance in Cedar, written as `Type::"id"`.
+///
+/// ```cedar
+/// User::"alice"
+/// Photo::"vacation.jpg"
+/// MyApp::Action::"readFile"
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EntityUID {
     /// Type of the entity
@@ -138,58 +173,99 @@ impl Display for EntityUID {
     }
 }
 
-/// Variables available in Cedar policy expressions
+/// Variables available in Cedar policy expressions.
+///
+/// Cedar provides four built-in variables that refer to the authorization request:
+///
+/// ```cedar
+/// principal       // the entity making the request
+/// action          // the action being requested
+/// resource        // the entity the action targets
+/// context         // the request context record
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Var {
-    /// The `principal` variable
+    /// `principal` — the entity making the request
     Principal,
-    /// The `action` variable
+    /// `action` — the action being requested
     Action,
-    /// The `resource` variable
+    /// `resource` — the entity the action targets
     Resource,
-    /// The `context` variable
+    /// `context` — the request context record
     Context,
 }
 
-/// Unary operators in Cedar expressions
+/// Unary operators in Cedar expressions.
+///
+/// Includes built-in operators and extension functions that take a single argument.
+///
+/// This enum is `#[non_exhaustive]`; match arms must include a wildcard.
+///
+/// ```cedar
+/// // Built-in operators
+/// !context.is_admin           // Not
+/// -(1)                        // Neg
+/// [].isEmpty()                // IsEmpty
+///
+/// // Extension constructors
+/// decimal("1.23")             // Decimal
+/// ip("10.0.0.1")              // Ip
+/// datetime("2024-01-01")      // Datetime
+/// duration("1h30m")           // Duration
+///
+/// // IP extension methods
+/// ip("10.0.0.1").isIpv4()     // IsIPv4
+/// ip("::1").isIpv6()          // IsIPV6
+/// ip("127.0.0.1").isLoopback()   // IsLoopback
+/// ip("224.0.0.1").isMulticast()  // IsMulticast
+///
+/// // Datetime extension methods
+/// datetime("2024-01-01").toDate()           // ToDate
+/// datetime("2024-01-01T12:00:00Z").toTime() // ToTime
+/// duration("1h30m").toMilliseconds()        // ToMilliseconds
+/// duration("1h30m").toSeconds()             // ToSeconds
+/// duration("1h30m").toMinutes()             // ToMinutes
+/// duration("1h30m").toHours()               // ToHours
+/// duration("30d").toDays()                  // ToDays
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum UnaryOp {
-    /// Logical not (`!`)
+    /// `!expr`
     Not,
-    /// Arithmetic negation (`-`)
+    /// `-(expr)`
     Neg,
-    /// Test set empty
+    /// `expr.isEmpty()`
     IsEmpty,
-    /// Parse string and construct a datetime
+    /// `datetime("...")`
     Datetime,
-    /// Parse string and construct a decimal
+    /// `decimal("...")`
     Decimal,
-    /// Parse string and construct a duration
+    /// `duration("...")`
     Duration,
-    /// Parse string and construct an ip address
+    /// `ip("...")`
     Ip,
-    /// Test for a valid ipv4 address
+    /// `expr.isIpv4()`
     IsIPv4,
-    /// Test for a valid ipv6 address
+    /// `expr.isIpv6()`
     IsIPV6,
-    /// Test for IP loopback address
+    /// `expr.isLoopback()`
     IsLoopback,
-    /// Test for multicast address
+    /// `expr.isMulticast()`
     IsMulticast,
-    /// Extract date portion as new datetime
+    /// `expr.toDate()`
     ToDate,
-    /// Extract time as duration
+    /// `expr.toTime()`
     ToTime,
-    /// Convert to milliseconds
+    /// `expr.toMilliseconds()`
     ToMilliseconds,
-    /// Convert to seconds
+    /// `expr.toSeconds()`
     ToSeconds,
-    /// Convert to minutes
+    /// `expr.toMinutes()`
     ToMinutes,
-    /// Convert to hours
+    /// `expr.toHours()`
     ToHours,
-    /// Convert to days
+    /// `expr.toDays()`
     ToDays,
 }
 
@@ -256,56 +332,89 @@ impl Display for UnaryOp {
     }
 }
 
-/// Binary operators in Cedar expressions
+/// Binary operators in Cedar expressions.
+///
+/// Includes built-in operators and extension functions that take two arguments.
+///
+/// This enum is `#[non_exhaustive]`; match arms must include a wildcard.
+///
+/// ```cedar
+/// // Comparison
+/// principal == User::"alice"          // Eq
+/// principal != User::"bob"            // NotEq
+/// context.age < 18                    // Less
+/// context.age <= 21                   // LessEq
+/// context.age > 13                    // Greater
+/// context.age >= 65                   // GreaterEq
+///
+/// // Logical
+/// true && false                       // And
+/// true || false                       // Or
+///
+/// // Arithmetic
+/// context.x + 1                       // Add
+/// context.x - 1                       // Sub
+/// context.x * 2                       // Mul
+///
+/// // Hierarchy / set
+/// principal in Group::"admins"        // In
+/// [1, 2, 3].contains(2)              // Contains
+/// [1, 2].containsAll([1])            // ContainsAll
+/// [1, 2].containsAny([2, 3])         // ContainsAny
+///
+/// // Tags
+/// resource.hasTag("env")              // HasTag
+/// resource.getTag("env")              // GetTag
+///
+/// // IP extension
+/// ip("10.0.0.1").isInRange(ip("10.0.0.0/24"))  // IsInRange
+///
+/// // Datetime extension
+/// datetime("2024-01-01").offset(duration("1d")) // Offset
+/// datetime("2024-01-02").durationSince(datetime("2024-01-01")) // DurationSince
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum BinaryOp {
-    // Comparison
-    /// Equality (`==`)
+    /// `left == right`
     Eq,
-    /// Inequality (`!=`)
+    /// `left != right`
     NotEq,
-    /// Less than (`<`)
+    /// `left < right`
     Less,
-    /// Less than or equal (`<=`)
+    /// `left <= right`
     LessEq,
-    /// Greater than (`>`)
+    /// `left > right`
     Greater,
-    /// Greater than or equal (`>=`)
+    /// `left >= right`
     GreaterEq,
-    // Logical
-    /// Logical AND (`&&`)
+    /// `left && right`
     And,
-    /// Logical OR (`||`)
+    /// `left || right`
     Or,
-    // Arithmetic
-    /// Addition (`+`)
+    /// `left + right`
     Add,
-    /// Subtraction (`-`)
+    /// `left - right`
     Sub,
-    /// Multiplication (`*`)
+    /// `left * right`
     Mul,
-    // Set/hierarchy
-    /// Hierarchy membership (`in`)
+    /// `left in right`
     In,
-    /// Set contains element (`contains`)
+    /// `left.contains(right)`
     Contains,
-    /// Set contains all elements (`containsAll`)
+    /// `left.containsAll(right)`
     ContainsAll,
-    /// Set contains any element (`containsAny`)
+    /// `left.containsAny(right)`
     ContainsAny,
-    // Tags
-    /// Get tag value (`getTag`)
+    /// `left.getTag(right)`
     GetTag,
-    /// Check tag existence (`hasTag`)
+    /// `left.hasTag(right)`
     HasTag,
-    // Ip operations
-    /// Test for inclusion in IP address range
+    /// `left.isInRange(right)`
     IsInRange,
-    // Datetime
-    /// Compute a datetime offset by duration
+    /// `left.offset(right)`
     Offset,
-    /// Compute difference between two datetimes
+    /// `left.durationSince(right)`
     DurationSince,
 }
 
@@ -381,47 +490,81 @@ impl Display for BinaryOp {
     }
 }
 
-/// Literal values
+/// Literal values in Cedar expressions.
+///
+/// This enum is `#[non_exhaustive]`; match arms must include a wildcard.
+///
+/// ```cedar
+/// true                    // Bool
+/// 42                      // Long
+/// "hello"                 // String
+/// User::"alice"           // EntityUID
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Literal {
-    /// Boolean literal
+    /// `true` or `false`
     Bool(bool),
-    /// Integer literal
+    /// Integer literal (e.g., `42`, `-1`)
     Long(i64),
-    /// String literal
+    /// String literal (e.g., `"hello"`)
     String(SmolStr),
-    /// Entity UID literal
+    /// Entity UID literal (e.g., `User::"alice"`)
     EntityUID(EntityUID),
 }
 
-/// Pattern element for `like` expressions
+/// Pattern element for `like` expressions.
+///
+/// A pattern is a sequence of literal characters and wildcards used with the `like` operator:
+///
+/// ```cedar
+/// resource.name like "*.jpg"      // Wildcard then Char('.')...
+/// resource.name like "photo_*"    // Char('p')... then Wildcard
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PatternElem {
-    /// A literal character
+    /// A literal character in the pattern
     Char(char),
-    /// A wildcard (`*`)
+    /// A wildcard (`*`) matching zero or more characters
     Wildcard,
 }
 
-/// PST Expression
+/// PST Expression — the core expression type for Cedar policy conditions.
+///
+/// This enum is `#[non_exhaustive]`; match arms must include a wildcard.
+///
+/// Each variant corresponds to a Cedar syntax construct. See individual variant docs
+/// for the Cedar syntax each one represents.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Expr {
-    /// Literal value
+    /// A literal value: `true`, `42`, `"hello"`, or `User::"alice"`.
     Literal(Literal),
-    /// Variable (principal, action, resource, context)
+    /// A built-in variable: `principal`, `action`, `resource`, or `context`.
     Var(Var),
-    /// Template slot
+    /// A template slot: `?principal` or `?resource`.
     Slot(SlotId),
-    /// Unary operation
+    /// A unary operation.
+    ///
+    /// ```cedar
+    /// !expr           // UnaryOp::Not
+    /// -(expr)         // UnaryOp::Neg
+    /// expr.isEmpty()  // UnaryOp::IsEmpty
+    /// decimal("1.0")  // UnaryOp::Decimal
+    /// ```
     UnaryOp {
         /// The operator
         op: UnaryOp,
         /// The operand
         expr: Arc<Expr>,
     },
-    /// Binary operation
+    /// A binary operation.
+    ///
+    /// ```cedar
+    /// context.age >= 18                   // BinaryOp::GreaterEq
+    /// principal in Group::"admins"        // BinaryOp::In
+    /// [1, 2].contains(1)                 // BinaryOp::Contains
+    /// ```
     BinaryOp {
         /// The operator
         op: BinaryOp,
@@ -430,39 +573,62 @@ pub enum Expr {
         /// Right operand
         right: Arc<Expr>,
     },
-    /// Attribute access (e.g., `principal.name`)
+    /// Attribute access.
+    ///
+    /// ```cedar
+    /// principal.name
+    /// context.request.ip
+    /// ```
     GetAttr {
         /// Expression to get attribute from
         expr: Arc<Expr>,
         /// Attribute name
         attr: SmolStr,
     },
-    /// Attribute existence check (e.g., `principal has name`)
-    /// Can check nested attributes (e.g., `principal has address.street`)
+    /// Attribute existence check. Can check nested attributes.
+    ///
+    /// ```cedar
+    /// principal has name
+    /// principal has "0notACedarIdent"
+    /// principal has address.street
+    /// ```
+    /// If there are more than one attribute, all attributes must be valid Cedar identifiers.
     HasAttr {
         /// Expression to check for attribute
         expr: Arc<Expr>,
-        /// Attribute path (non-empty)
+        /// Attribute path (non-empty; multiple elements for nested checks)
         attrs: nonempty::NonEmpty<SmolStr>,
     },
-    /// Pattern matching (e.g., `resource.name like "*.jpg"`)
+    /// Pattern matching with the `like` operator.
+    ///
+    /// ```cedar
+    /// resource.name like "*.jpg"
+    /// ```
     Like {
         /// Expression to match
         expr: Arc<Expr>,
         /// Pattern to match against
         pattern: Vec<PatternElem>,
     },
-    /// Type test with optional hierarchy check
-    /// `expr is Type` or `expr is Type in parent`
+    /// Entity type test, optionally combined with a hierarchy check.
+    ///
+    /// ```cedar
+    /// principal is User
+    /// principal is User in Group::"admins"
+    /// ```
     Is {
         /// Expression to test
         expr: Arc<Expr>,
         /// Entity type to test for
         entity_type: EntityType,
-        /// Optional hierarchy parent
+        /// Optional `in` hierarchy parent
         in_expr: Option<Arc<Expr>>,
     },
-    /// Conditional expression
+    /// Conditional expression.
+    ///
+    /// ```cedar
+    /// if context.is_admin then "yes" else "no"
+    /// ```
     IfThenElse {
         /// Condition
         cond: Arc<Expr>,
@@ -471,16 +637,25 @@ pub enum Expr {
         /// Else branch
         else_expr: Arc<Expr>,
     },
-    /// Set literal
+    /// Set literal.
+    ///
+    /// ```cedar
+    /// [1, 2, 3]
+    /// [User::"alice", User::"bob"]
+    /// ```
     Set(Vec<Arc<Expr>>),
-    /// Record literal
+    /// Record literal.
+    ///
+    /// ```cedar
+    /// {"key": "value", "count": 42}
+    /// ```
     Record(BTreeMap<String, Arc<Expr>>),
-    /// Representation of an unknown for partial evaluation
+    /// An unknown value for partial evaluation (not part of Cedar surface syntax).
     Unknown {
         /// Name of the unknown
         name: SmolStr,
     },
-    /// An error occurred during construction
+    /// An error occurred during construction (not constructible by external callers).
     #[expect(
         private_interfaces,
         reason = "intentionally private to prevent clients from constructing error nodes"

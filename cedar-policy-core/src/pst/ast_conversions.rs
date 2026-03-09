@@ -33,6 +33,7 @@ use itertools::Itertools;
 use std::str::FromStr;
 use std::sync::Arc;
 
+#[doc(hidden)]
 impl TryFrom<Policy> for ast::Policy {
     type Error = PstConstructionError;
 
@@ -51,6 +52,7 @@ impl TryFrom<Policy> for ast::Policy {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<Policy> for ast::Template {
     type Error = PstConstructionError;
 
@@ -101,6 +103,7 @@ impl TryFrom<Policy> for ast::Template {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<PrincipalConstraint> for ast::PrincipalConstraint {
     type Error = PstConstructionError;
 
@@ -127,6 +130,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalConstraint {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<ResourceConstraint> for ast::ResourceConstraint {
     type Error = PstConstructionError;
 
@@ -153,6 +157,7 @@ impl TryFrom<ResourceConstraint> for ast::ResourceConstraint {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<ActionConstraint> for ast::ActionConstraint {
     type Error = PstConstructionError;
 
@@ -177,6 +182,7 @@ fn elements_into_ast_pattern(elems: impl IntoIterator<Item = PatternElem>) -> as
     ast::Pattern::from_iter(elems)
 }
 
+#[doc(hidden)]
 impl TryFrom<Expr> for ast::Expr {
     type Error = PstConstructionError;
 
@@ -185,6 +191,7 @@ impl TryFrom<Expr> for ast::Expr {
     }
 }
 
+#[doc(hidden)]
 impl Expr {
     pub(crate) fn try_into_expr<B: expr_builder::ExprBuilder>(
         self,
@@ -317,6 +324,7 @@ impl Expr {
     }
 }
 
+#[doc(hidden)]
 impl From<Effect> for ast::Effect {
     fn from(effect: Effect) -> Self {
         match effect {
@@ -326,6 +334,7 @@ impl From<Effect> for ast::Effect {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<EntityUID> for ast::EntityUID {
     type Error = PstConstructionError;
 
@@ -336,6 +345,7 @@ impl TryFrom<EntityUID> for ast::EntityUID {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<EntityOrSlot> for ast::EntityReference {
     type Error = PstConstructionError;
 
@@ -347,12 +357,14 @@ impl TryFrom<EntityOrSlot> for ast::EntityReference {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::EntityType> for EntityType {
     fn from(et: ast::EntityType) -> Self {
         EntityType(et.into_name().into())
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<EntityType> for ast::EntityType {
     type Error = PstConstructionError;
 
@@ -362,6 +374,7 @@ impl TryFrom<EntityType> for ast::EntityType {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::Var> for Var {
     fn from(v: ast::Var) -> Self {
         match v {
@@ -373,6 +386,7 @@ impl From<ast::Var> for Var {
     }
 }
 
+#[doc(hidden)]
 impl From<Var> for ast::Var {
     fn from(v: Var) -> Self {
         match v {
@@ -384,6 +398,7 @@ impl From<Var> for ast::Var {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::Name> for Name {
     fn from(name: ast::Name) -> Self {
         let ast::Name {
@@ -401,6 +416,7 @@ impl From<ast::Name> for Name {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<Name> for ast::Name {
     type Error = PstConstructionError;
 
@@ -416,6 +432,7 @@ impl TryFrom<Name> for ast::Name {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::SlotId> for SlotId {
     fn from(slot: ast::SlotId) -> Self {
         match slot.0 {
@@ -434,6 +451,7 @@ impl From<SlotId> for ast::SlotId {
     }
 }
 
+#[doc(hidden)]
 impl From<PatternElem> for ast::PatternElem {
     fn from(elem: PatternElem) -> Self {
         match elem {
@@ -443,6 +461,7 @@ impl From<PatternElem> for ast::PatternElem {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::Pattern> for Vec<PatternElem> {
     fn from(pattern: ast::Pattern) -> Self {
         pattern
@@ -455,6 +474,7 @@ impl From<ast::Pattern> for Vec<PatternElem> {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::Literal> for Literal {
     fn from(value: ast::Literal) -> Self {
         match value {
@@ -466,6 +486,7 @@ impl From<ast::Literal> for Literal {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::EntityUID> for EntityUID {
     fn from(uid: ast::EntityUID) -> Self {
         let (ty, eid) = uid.components();
@@ -476,6 +497,7 @@ impl From<ast::EntityUID> for EntityUID {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::Expr> for Expr {
     fn from(ast_expr: ast::Expr) -> Self {
         ast::Expr::into_expr::<PstBuilder>(ast_expr)

@@ -14,17 +14,128 @@
  * limitations under the License.
  */
 
-//! Public Syntax Tree (PST) - Ergonomic representation for programmatic policy construction
+//! The PST is a public syntax tree representation of Cedar policies designed for programmatic
+//! manipulation. All the types necessary to build a valid PST are public.
 //!
-//! PST is a separate owned data structure designed for building and manipulating Cedar policies
-//! programmatically. It provides a cleaner API than EST (which is JSON-driven) and AST (which is
-//! evaluation-optimized).
+//! # Constructing a policy
 //!
-//! # Design Principles
-//! - All types are PST-owned (no `ast::` or `est::` leakage)
-//! - Simplified from EST (single `Expr` enum, unified operators)
-//! - Converts to/from AST and EST at boundaries
-//! - Uses `Arc<Expr>` for cheap cloning during manipulation
+//! Build a PST [`Policy`] directly from its constituent types. This example constructs:
+//! ```cedar
+//! permit (
+//!   principal == User::"alice",
+//!   action == Action::"view",
+//!   resource in Album::"vacation"
+//! ) when { resource.public == true };
+//! ```
+//!
+//! ```
+//! # use cedar_policy_core::pst::*;
+//! # use smol_str::SmolStr;
+//! # use std::sync::Arc;
+//! # use std::collections::BTreeMap;
+//! let policy = Policy {
+//!     id: PolicyID(SmolStr::from("policy0")),
+//!     effect: Effect::Permit,
+//!     principal: PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
+//!         ty: EntityType::from_name(Name::unqualified("User")),
+//!         eid: SmolStr::from("alice"),
+//!     })),
+//!     action: ActionConstraint::Eq(EntityUID {
+//!         ty: EntityType::from_name(Name::unqualified("Action")),
+//!         eid: SmolStr::from("view"),
+//!     }),
+//!     resource: ResourceConstraint::In(EntityOrSlot::Entity(EntityUID {
+//!         ty: EntityType::from_name(Name::unqualified("Album")),
+//!         eid: SmolStr::from("vacation"),
+//!     })),
+//!     clauses: vec![Clause::When(Arc::new(Expr::BinaryOp {
+//!         op: BinaryOp::Eq,
+//!         left: Arc::new(Expr::GetAttr {
+//!             expr: Arc::new(Expr::Var(Var::Resource)),
+//!             attr: SmolStr::from("public"),
+//!         }),
+//!         right: Arc::new(Expr::Literal(Literal::Bool(true))),
+//!     }))],
+//!     annotations: BTreeMap::new(),
+//! };
+//! assert_eq!(policy.effect, Effect::Permit);
+//! ```
+//!
+//! # Matching / inspecting a policy
+//!
+//! The PST types that are likely to be extended in the future are marked `#[non_exhaustive]`
+//! ([`Expr`], [`Literal`], [`BinaryOp`], [`UnaryOp`], [`SlotId`]), so match arms must include
+//! a wildcard. Types that are *not* `#[non_exhaustive]` (constraints, [`Effect`], [`Clause`],
+//! [`Var`], [`PatternElem`]) can be exhaustively matched.
+//!
+//! ```
+//! # use cedar_policy_core::pst::*;
+//! # use smol_str::SmolStr;
+//! # use std::sync::Arc;
+//! # use std::collections::BTreeMap;
+//! # let policy = Policy {
+//! #     id: PolicyID(SmolStr::from("policy0")),
+//! #     effect: Effect::Permit,
+//! #     principal: PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
+//! #         ty: EntityType::from_name(Name::unqualified("User")),
+//! #         eid: SmolStr::from("alice"),
+//! #     })),
+//! #     action: ActionConstraint::Eq(EntityUID {
+//! #         ty: EntityType::from_name(Name::unqualified("Action")),
+//! #         eid: SmolStr::from("view"),
+//! #     }),
+//! #     resource: ResourceConstraint::Any,
+//! #     clauses: vec![Clause::When(Arc::new(Expr::BinaryOp {
+//! #         op: BinaryOp::Eq,
+//! #         left: Arc::new(Expr::GetAttr {
+//! #             expr: Arc::new(Expr::Var(Var::Resource)),
+//! #             attr: SmolStr::from("public"),
+//! #         }),
+//! #         right: Arc::new(Expr::Literal(Literal::Bool(true))),
+//! #     }))],
+//! #     annotations: BTreeMap::new(),
+//! # };
+//! // Effect and constraints are exhaustively matchable:
+//! let is_permit = match policy.effect {
+//!     Effect::Permit => true,
+//!     Effect::Forbid => false,
+//! };
+//!
+//! // PrincipalConstraint is also exhaustively matchable:
+//! let principal_entity = match &policy.principal {
+//!     PrincipalConstraint::Eq(EntityOrSlot::Entity(uid)) => Some(uid),
+//!     PrincipalConstraint::Any
+//!     | PrincipalConstraint::Eq(EntityOrSlot::Slot(_))
+//!     | PrincipalConstraint::In(_)
+//!     | PrincipalConstraint::Is(_)
+//!     | PrincipalConstraint::IsIn(_, _) => None,
+//! };
+//!
+//! // Expr is #[non_exhaustive] — a wildcard arm is required:
+//! for clause in &policy.clauses {
+//!     let expr = match clause {
+//!         Clause::When(e) => e,
+//!         Clause::Unless(e) => e,
+//!     };
+//!     match expr.as_ref() {
+//!         Expr::BinaryOp { op, left, right } => {
+//!             // BinaryOp is also #[non_exhaustive]:
+//!             match op {
+//!                 BinaryOp::Eq => println!("found equality check"),
+//!                 _ => {}
+//!             }
+//!         }
+//!         Expr::Literal(lit) => {
+//!             // Literal is #[non_exhaustive]:
+//!             match lit {
+//!                 Literal::Bool(b) => println!("bool: {b}"),
+//!                 _ => {}
+//!             }
+//!         }
+//!         _ => {} // required for Expr
+//!     }
+//! }
+//! ```
 
 pub(crate) mod ast_conversions;
 mod constraints;
@@ -39,29 +150,3 @@ pub use expr::{
     BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
 pub use policy::{Clause, Effect, Policy, PolicyID};
-
-use crate::ast;
-
-impl Policy {
-    /// Convert this PST policy to an AST policy for evaluation
-    pub fn try_into_ast_policy(self) -> Result<ast::Policy, PstConstructionError> {
-        // Currently the trait implementations for converting AST to PST are all implemented in
-        // ast_conversions, which is only pub(crate).
-        // This function is the public boundary between PST and AST. We may need more conversion
-        // functions, or we may make ast_conversions pub rather than pub(crate) if needed.
-        self.try_into()
-    }
-}
-
-impl Expr {
-    /// Convert this PST expression to an AST expression for evaluation
-    pub fn try_into_ast_expr(self) -> Result<ast::Expr, PstConstructionError> {
-        // Similar to try_into_ast for Policy, this is the public boundary
-        self.try_into()
-    }
-
-    /// Create a PST expression from an AST expression
-    pub fn from_ast_expr(expr: ast::Expr) -> Self {
-        expr.into()
-    }
-}
