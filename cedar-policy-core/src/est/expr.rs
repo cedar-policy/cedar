@@ -17,7 +17,6 @@
 use super::FromJsonError;
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::AstExprErrorKind;
-#[cfg(feature = "tolerant-ast")]
 use crate::ast::Infallible;
 use crate::ast::{self, is_normalized_ident, BoundedDisplay, EntityUID, Name};
 use crate::entities::json::{
@@ -431,13 +430,48 @@ pub struct ExtFuncCall {
     call: HashMap<SmolStr, Vec<Expr>>,
 }
 
+impl ExtFuncCall {
+    /// Check the invariant.
+    ///
+    /// Returns `FromJsonError::MissingOperator` or `FromJsonError::MultipleOperators` as appropriate.
+    fn invariant(&self) -> Result<(), FromJsonError> {
+        match self.call.len() {
+            0 => Err(FromJsonError::MissingOperator),
+            1 => Ok(()),
+            _ => Err(FromJsonError::MultipleOperators {
+                ops: self.call.clone().into_keys().collect(),
+            }),
+        }
+    }
+
+    /// Attempt to extract the function name and arguments, returns the error of `self.invariant()`
+    /// if invariant doesn't hold.
+    pub(crate) fn try_into_components(self) -> Result<(SmolStr, Vec<Expr>), FromJsonError> {
+        self.invariant()?;
+        match self.call.into_iter().next() {
+            Some((fn_name, args)) => Ok((fn_name, args)),
+            None => Err(FromJsonError::MissingOperator),
+        }
+    }
+
+    /// Attempt to extract references to the function name and arguments,
+    /// Returns the error of `self.invariant()` if invariant doesn't hold.
+    pub(crate) fn try_components(&self) -> Result<(&SmolStr, &[Expr]), FromJsonError> {
+        self.invariant()?;
+        match self.call.iter().next() {
+            Some((fn_name, args)) => Ok((fn_name, args)),
+            None => Err(FromJsonError::MissingOperator),
+        }
+    }
+}
+
 /// Construct an [`Expr`].
 #[derive(Clone, Debug)]
 pub struct Builder;
 
 impl ExprBuilder for Builder {
     type Expr = Expr;
-
+    type BuildError = Infallible;
     type Data = ();
     #[cfg(feature = "tolerant-ast")]
     type ErrorType = Infallible;
@@ -913,6 +947,192 @@ impl Expr {
 }
 
 impl Expr {
+    /// Convert this `est::Expr` into an expression of type `B::Expr` using the builder `B`,
+    /// In the case of an error, returns the builder's own `BuildError`.
+    pub fn try_into_expr<B>(self) -> Result<B::Expr, B::BuildError>
+    where
+        B: ExprBuilder,
+        B::BuildError: From<FromJsonError>,
+    {
+        // This implementation looks a lot like try_into_ast but:
+        // - it doesn't have the policy ID information (could be injected after though)
+        // - it uses the fallible extension call constructor; validation is handled by builder
+        // - it doesn't directly desugars is_in, rather defers to the builder
+        // This implementation is used by PST. Using this for AST would result in a different
+        // behavior than try_into_ast, particularly for the second point which would fail
+        // conversions that are currently non-failing (method call with no arguments).
+        let builder = B::new();
+        match self {
+            Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => {
+                // Through AST expressions to convert to B::Expr
+                let ast_expr: ast::Expr = jsonvalue
+                    .into_expr(&|| JsonDeserializationErrorContext::Policy {
+                        id: ast::PolicyID::from_string(""),
+                    })
+                    .map(ast::Expr::from)
+                    .map_err(|j| B::BuildError::from(j.into()))?;
+                Ok(ast_expr.into_expr::<B>())
+            }
+            Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(builder.var(var)),
+            Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(builder.slot(slot)),
+            Expr::ExprNoExt(ExprNoExt::Not { arg }) => {
+                Ok(builder.not(Arc::unwrap_or_clone(arg).try_into_expr::<B>()?))
+            }
+            Expr::ExprNoExt(ExprNoExt::Neg { arg }) => {
+                Ok(builder.neg(Arc::unwrap_or_clone(arg).try_into_expr::<B>()?))
+            }
+            Expr::ExprNoExt(ExprNoExt::Eq { left, right }) => Ok(builder.is_eq(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::NotEq { left, right }) => Ok(builder.noteq(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::In { left, right }) => Ok(builder.is_in(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Less { left, right }) => Ok(builder.less(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::LessEq { left, right }) => Ok(builder.lesseq(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Greater { left, right }) => Ok(builder.greater(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::GreaterEq { left, right }) => Ok(builder.greatereq(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::And { left, right }) => Ok(builder.and(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Or { left, right }) => Ok(builder.or(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Add { left, right }) => Ok(builder.add(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Sub { left, right }) => Ok(builder.sub(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => Ok(builder.mul(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Contains { left, right }) => Ok(builder.contains(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::ContainsAll { left, right }) => Ok(builder.contains_all(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::ContainsAny { left, right }) => Ok(builder.contains_any(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::IsEmpty { arg }) => {
+                Ok(builder.is_empty(Arc::unwrap_or_clone(arg).try_into_expr::<B>()?))
+            }
+            Expr::ExprNoExt(ExprNoExt::GetTag { left, right }) => Ok(builder.get_tag(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::HasTag { left, right }) => Ok(builder.has_tag(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => {
+                Ok(builder.get_attr(Arc::unwrap_or_clone(left).try_into_expr::<B>()?, attr))
+            }
+            Expr::ExprNoExt(ExprNoExt::HasAttr(repr)) => match repr {
+                HasAttrRepr::Simple { left, attr } => {
+                    Ok(builder.has_attr(Arc::unwrap_or_clone(left).try_into_expr::<B>()?, attr))
+                }
+                HasAttrRepr::Extended { left, attr } => Ok(builder
+                    .extended_has_attr(Arc::unwrap_or_clone(left).try_into_expr::<B>()?, &attr)),
+            },
+            Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => Ok(builder.like(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                ast::Pattern::from(pattern.as_slice()),
+            )),
+            Expr::ExprNoExt(ExprNoExt::Is {
+                left,
+                entity_type,
+                in_expr,
+            }) => {
+                let entity_type_name = ast::EntityType::from_normalized_str(&entity_type)
+                    .map_err(FromJsonError::InvalidEntityType)?;
+                let left_expr = Arc::unwrap_or_clone(left).try_into_expr::<B>()?;
+                match in_expr {
+                    // unlike try_into_ast, call is_in_entity_type instead of desugaring here
+                    Some(in_expr) => Ok(builder.is_in_entity_type(
+                        left_expr,
+                        entity_type_name,
+                        Arc::unwrap_or_clone(in_expr).try_into_expr::<B>()?,
+                    )),
+                    None => Ok(builder.is_entity_type(left_expr, entity_type_name)),
+                }
+            }
+            Expr::ExprNoExt(ExprNoExt::If {
+                cond_expr,
+                then_expr,
+                else_expr,
+            }) => Ok(builder.ite(
+                Arc::unwrap_or_clone(cond_expr).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(then_expr).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(else_expr).try_into_expr::<B>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Set(elements)) => Ok(builder.set(
+                elements
+                    .into_iter()
+                    .map(|el| el.try_into_expr::<B>())
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
+            Expr::ExprNoExt(ExprNoExt::Record(map)) =>
+            {
+                #[expect(
+                    clippy::expect_used,
+                    reason = "can't have duplicate keys here because the input was already a HashMap"
+                )]
+                Ok(builder
+                    .record(
+                        map.into_iter()
+                            .map(|(k, v)| Ok((k, v.try_into_expr::<B>()?)))
+                            .collect::<Result<Vec<_>, B::BuildError>>()?,
+                    )
+                    .expect("map should not have duplicate keys"))
+            }
+            Expr::ExtFuncCall(e) => {
+                let (fn_name, args) = e.try_into_components()?;
+                let fn_name = Name::from_normalized_str(&fn_name).map_err(|errs| {
+                    JsonDeserializationError::parse_escape(EscapeKind::Extension, fn_name, errs)
+                        .into()
+                })?;
+                // unlike into_ast, some validation is handled by calling the fallible version
+                // of the extension call builder
+                builder.try_call_extension_fn(
+                    fn_name,
+                    args.into_iter()
+                        .map(|arg| arg.try_into_expr::<B>())
+                        .collect::<Result<Vec<_>, _>>()?,
+                )
+            }
+            #[cfg(feature = "tolerant-ast")]
+            Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ASTErrorNode.into()),
+        }
+    }
+
     /// Attempt to convert this `est::Expr` into an `ast::Expr`
     ///
     /// `id`: the ID of the policy this `Expr` belongs to, used only for reporting errors
@@ -1064,32 +1284,22 @@ impl Expr {
                 )
                 .expect("can't have duplicate keys here because the input was already a HashMap"))
             }
-            Expr::ExtFuncCall(ExtFuncCall { call }) => match call.len() {
-                0 => Err(FromJsonError::MissingOperator),
-                1 => {
-                    #[expect(clippy::expect_used, reason = "checked that `call.len() == 1`")]
-                    let (fn_name, args) = call
-                        .into_iter()
-                        .next()
-                        .expect("already checked that len was 1");
-                    let fn_name = Name::from_normalized_str(&fn_name).map_err(|errs| {
-                        JsonDeserializationError::parse_escape(EscapeKind::Extension, fn_name, errs)
-                    })?;
-                    if ExtStyles::is_known_extension_func_name(&fn_name) {
-                        Ok(ast::Expr::call_extension_fn(
-                            fn_name,
-                            args.into_iter()
-                                .map(|arg| arg.try_into_ast(id))
-                                .collect::<Result<_, _>>()?,
-                        ))
-                    } else {
-                        Err(FromJsonError::UnknownExtensionFunction(fn_name))
-                    }
+            Expr::ExtFuncCall(e) => {
+                let (fn_name, args) = e.try_into_components()?;
+                let fn_name = Name::from_normalized_str(&fn_name).map_err(|errs| {
+                    JsonDeserializationError::parse_escape(EscapeKind::Extension, fn_name, errs)
+                })?;
+                if ExtStyles::is_known_extension_func_name(&fn_name) {
+                    Ok(ast::Expr::call_extension_fn(
+                        fn_name,
+                        args.into_iter()
+                            .map(|arg| arg.try_into_ast(id))
+                            .collect::<Result<_, _>>()?,
+                    ))
+                } else {
+                    Err(FromJsonError::UnknownExtensionFunction(fn_name))
                 }
-                _ => Err(FromJsonError::MultipleOperators {
-                    ops: call.into_keys().collect(),
-                }),
-            },
+            }
             #[cfg(feature = "tolerant-ast")]
             Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ASTErrorNode),
         }
@@ -1555,10 +1765,8 @@ impl std::fmt::Display for ExtFuncCall {
 
 impl BoundedDisplay for ExtFuncCall {
     fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
-        #[expect(clippy::unreachable, reason = "safe due to INVARIANT on `ExtFuncCall`")]
-        let Some((fn_name, args)) = self.call.iter().next() else {
-            unreachable!("invariant violated: empty ExtFuncCall")
-        };
+        #[expect(clippy::unwrap_used, reason = "safe due to INVARIANT on `ExtFuncCall`")]
+        let (fn_name, args) = self.try_components().unwrap();
         // search for the name and callstyle
         let style = Extensions::all_available().all_funcs().find_map(|ext_fn| {
             if &ext_fn.name().to_smolstr() == fn_name {
@@ -1567,10 +1775,10 @@ impl BoundedDisplay for ExtFuncCall {
                 None
             }
         });
-        match (style, args.iter().next()) {
-            (Some(ast::CallStyle::MethodStyle), Some(receiver)) => {
+        match (style, args) {
+            (Some(ast::CallStyle::MethodStyle), [receiver, rest @ ..]) => {
                 maybe_with_parens(f, receiver, n)?;
-                write!(f, ".{}({})", fn_name, args.iter().skip(1).join(", "))
+                write!(f, ".{}({})", fn_name, rest.iter().join(", "))
             }
             (_, _) => {
                 write!(f, "{}({})", fn_name, args.iter().join(", "))

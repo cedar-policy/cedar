@@ -29,6 +29,7 @@
 pub(crate) mod ast_conversions;
 mod constraints;
 mod err;
+pub(crate) mod est_conversions;
 mod expr;
 mod policy;
 

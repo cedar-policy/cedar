@@ -57,19 +57,19 @@ extern crate tsify;
 #[cfg_attr(feature = "wasm", serde(rename = "PolicyJson"))]
 pub struct Policy {
     /// `Effect` of the policy or template
-    effect: ast::Effect,
+    pub(crate) effect: ast::Effect,
     /// Principal scope constraint
-    principal: PrincipalConstraint,
+    pub(crate) principal: PrincipalConstraint,
     /// Action scope constraint
-    action: ActionConstraint,
+    pub(crate) action: ActionConstraint,
     /// Resource scope constraint
-    resource: ResourceConstraint,
+    pub(crate) resource: ResourceConstraint,
     /// `when` and/or `unless` clauses
-    conditions: Vec<Clause>,
+    pub(crate) conditions: Vec<Clause>,
     /// annotations
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
-    annotations: Annotations,
+    pub(crate) annotations: Annotations,
 }
 
 /// Serde JSON structure for a `when` or `unless` clause in the EST format

@@ -16,8 +16,8 @@
 
 #[cfg(feature = "tolerant-ast")]
 use {
-    super::expr_allows_errors::AstExprErrorKind, crate::parser::err::ToASTError,
-    crate::parser::err::ToASTErrorKind,
+    super::expr_allows_errors::AstExprErrorKind,
+    crate::parser::err::{ToASTError, ToASTErrorKind},
 };
 
 use crate::{
@@ -1004,6 +1004,8 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     type Expr = Expr<T>;
 
     type Data = T;
+
+    type BuildError = Infallible;
 
     #[cfg(feature = "tolerant-ast")]
     type ErrorType = ParseErrors;
