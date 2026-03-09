@@ -181,7 +181,7 @@ impl Template {
         Template::from(body)
     }
 
-    /// Get the components of the underluing template.
+    /// Get the components of the underlying template.
     ///
     /// Returns `None` when the underlying template doesn't have any components (i.e., it's an error
     /// node).
@@ -499,6 +499,8 @@ impl Policy {
         Self::new(Arc::new(t), None, SlotEnv::new())
     }
 
+    /// Get the owned template, link id (if this is a template-linked policy)
+    /// and slot environment.
     pub(crate) fn into_components(self) -> (Arc<Template>, Option<PolicyID>, SlotEnv) {
         (self.template, self.link, self.values)
     }

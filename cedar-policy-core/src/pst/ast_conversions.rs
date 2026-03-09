@@ -621,8 +621,11 @@ impl TryFrom<ast::Policy> for Policy {
     type Error = PstConstructionError;
 
     fn try_from(policy: ast::Policy) -> Result<Self, PstConstructionError> {
-        let (template, _, env) = policy.into_components();
-        let policy: Policy = Arc::unwrap_or_clone(template).try_into()?;
+        let (template, link_id, env) = policy.into_components();
+        let mut policy: Policy = Arc::unwrap_or_clone(template).try_into()?;
+        if let Some(id) = link_id {
+            policy.id = PolicyID(id.to_smolstr());
+        }
         let env = env
             .into_iter()
             .map(|(k, v)| (SlotId::from(k), EntityUID::from(v)))
@@ -984,6 +987,9 @@ mod tests {
 
         let ast_policy = pset.get(&link_id).expect("policy not found").clone();
         let pst_policy: Policy = ast_policy.try_into().expect("ast->pst failed");
+
+        // Linked policy should use the link ID, not the template ID
+        assert_eq!(pst_policy.id, PolicyID("link0".into()));
 
         // Linked policy should have no slots — entities are filled in
         assert!(matches!(
