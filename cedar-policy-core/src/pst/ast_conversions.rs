@@ -292,7 +292,7 @@ impl Expr {
             }
             Expr::HasAttr { expr, attrs } => {
                 Ok(builder
-                    .extended_has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, &attrs))
+                    .extended_has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attrs))
             }
             Expr::Like { expr, pattern } => Ok(builder.like(
                 Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,

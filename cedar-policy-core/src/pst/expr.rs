@@ -600,11 +600,11 @@ impl ExprBuilder for PstBuilder {
         Expr::Slot(s.into())
     }
 
-    fn ite(self, test_expr: Expr, then_expr: Expr, else_expr: Expr) -> Expr {
+    fn ite_arc(self, cond: Arc<Expr>, then_expr: Arc<Expr>, else_expr: Arc<Expr>) -> Expr {
         Expr::IfThenElse {
-            cond: Arc::new(test_expr),
-            then_expr: Arc::new(then_expr),
-            else_expr: Arc::new(else_expr),
+            cond,
+            then_expr,
+            else_expr,
         }
     }
 
@@ -710,11 +710,11 @@ impl ExprBuilder for PstBuilder {
         }
     }
 
-    fn is_in(self, e1: Expr, e2: Expr) -> Expr {
+    fn is_in_arc(self, left: Arc<Expr>, right: Arc<Expr>) -> Expr {
         Expr::BinaryOp {
             op: BinaryOp::In,
-            left: Arc::new(e1),
-            right: Arc::new(e2),
+            left,
+            right,
         }
     }
 
@@ -805,25 +805,19 @@ impl ExprBuilder for PstBuilder {
         Expr::from_function_ast_name_and_args(&fn_name, args.into_iter().map(Arc::new).collect())
     }
 
-    fn get_attr(self, expr: Expr, attr: SmolStr) -> Expr {
-        Expr::GetAttr {
-            expr: Arc::new(expr),
-            attr,
-        }
+    fn get_attr_arc(self, expr: Arc<Expr>, attr: SmolStr) -> Expr {
+        Expr::GetAttr { expr, attr }
     }
 
-    fn has_attr(self, expr: Expr, attr: SmolStr) -> Expr {
+    fn has_attr_arc(self, expr: Arc<Expr>, attr: SmolStr) -> Expr {
         Expr::HasAttr {
-            expr: Arc::new(expr),
+            expr,
             attrs: nonempty::nonempty![attr],
         }
     }
 
-    fn extended_has_attr(self, expr: Expr, attrs: &nonempty::NonEmpty<SmolStr>) -> Expr {
-        Expr::HasAttr {
-            expr: Arc::new(expr),
-            attrs: attrs.clone(),
-        }
+    fn extended_has_attr_arc(self, expr: Arc<Expr>, attrs: nonempty::NonEmpty<SmolStr>) -> Expr {
+        Expr::HasAttr { expr, attrs }
     }
 
     fn like(self, expr: Expr, pattern: ast::Pattern) -> Expr {
@@ -833,9 +827,9 @@ impl ExprBuilder for PstBuilder {
         }
     }
 
-    fn is_entity_type(self, expr: Expr, entity_type: ast::EntityType) -> Expr {
+    fn is_entity_type_arc(self, expr: Arc<Expr>, entity_type: ast::EntityType) -> Expr {
         Expr::Is {
-            expr: Arc::new(expr),
+            expr,
             entity_type: entity_type.into(),
             in_expr: None,
         }

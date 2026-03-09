@@ -541,11 +541,8 @@ impl ExprBuilder for Builder {
     }
 
     /// `in`
-    fn is_in(self, left: Expr, right: Expr) -> Expr {
-        Expr::ExprNoExt(ExprNoExt::In {
-            left: Arc::new(left),
-            right: Arc::new(right),
-        })
+    fn is_in_arc(self, left: Arc<Expr>, right: Arc<Expr>) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::In { left, right })
     }
 
     /// `<`
@@ -675,12 +672,22 @@ impl ExprBuilder for Builder {
         })
     }
 
+    /// `left.attr` (with an Arc)
+    fn get_attr_arc(self, expr: Arc<Expr>, attr: SmolStr) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::GetAttr { left: expr, attr })
+    }
+
     /// `left has attr`
     fn has_attr(self, expr: Expr, attr: SmolStr) -> Expr {
         Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
             left: Arc::new(expr),
             attr,
         }))
+    }
+
+    /// `left has attr` (with an Arc)
+    fn has_attr_arc(self, expr: Arc<Self::Expr>, attr: SmolStr) -> Self::Expr {
+        Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple { left: expr, attr }))
     }
 
     /// `left like pattern`
@@ -692,9 +699,9 @@ impl ExprBuilder for Builder {
     }
 
     /// `left is entity_type`
-    fn is_entity_type(self, left: Expr, entity_type: ast::EntityType) -> Expr {
+    fn is_entity_type_arc(self, left: Arc<Expr>, entity_type: ast::EntityType) -> Expr {
         Expr::ExprNoExt(ExprNoExt::Is {
-            left: Arc::new(left),
+            left,
             entity_type: entity_type.to_smolstr(),
             in_expr: None,
         })
@@ -710,11 +717,16 @@ impl ExprBuilder for Builder {
     }
 
     /// `if cond_expr then then_expr else else_expr`
-    fn ite(self, cond_expr: Expr, then_expr: Expr, else_expr: Expr) -> Expr {
+    fn ite_arc(
+        self,
+        cond_expr: Arc<Self::Expr>,
+        then_expr: Arc<Self::Expr>,
+        else_expr: Arc<Self::Expr>,
+    ) -> Self::Expr {
         Expr::ExprNoExt(ExprNoExt::If {
-            cond_expr: Arc::new(cond_expr),
-            then_expr: Arc::new(then_expr),
-            else_expr: Arc::new(else_expr),
+            cond_expr,
+            then_expr,
+            else_expr,
         })
     }
 
@@ -1060,7 +1072,7 @@ impl Expr {
                     Ok(builder.has_attr(Arc::unwrap_or_clone(left).try_into_expr::<B>()?, attr))
                 }
                 HasAttrRepr::Extended { left, attr } => Ok(builder
-                    .extended_has_attr(Arc::unwrap_or_clone(left).try_into_expr::<B>()?, &attr)),
+                    .extended_has_attr(Arc::unwrap_or_clone(left).try_into_expr::<B>()?, attr)),
             },
             Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => Ok(builder.like(
                 Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
@@ -1231,7 +1243,7 @@ impl Expr {
                     attr,
                 )),
                 HasAttrRepr::Extended { left, attr } => Ok(ast::ExprBuilder::new()
-                    .extended_has_attr(Arc::unwrap_or_clone(left).try_into_ast(id)?, &attr)),
+                    .extended_has_attr(Arc::unwrap_or_clone(left).try_into_ast(id)?, attr)),
             },
             Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => Ok(ast::Expr::like(
                 Arc::unwrap_or_clone(left).try_into_ast(id)?,
