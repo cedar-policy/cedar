@@ -11,8 +11,8 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy = { version = "=4.9.0", path = "../cedar-policy" }
-cedar-policy-formatter = { version = "=4.9.0", path = "../cedar-policy-formatter" }
+cedar-policy = { version = "=4.10.0", path = "../cedar-policy" }
+cedar-policy-formatter = { version = "=4.10.0", path = "../cedar-policy-formatter" }
 cedar-policy-symcc = { version = "0.3.0", path = "../cedar-policy-symcc", optional = true }
 clap = { version = "4", features = ["derive", "env"] }
 itertools = { version = "0.14", optional = true }
