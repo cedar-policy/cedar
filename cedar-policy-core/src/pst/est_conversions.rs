@@ -430,14 +430,11 @@ mod tests {
     fn test_est_expr_slot() {
         let json = r#"{"Slot": "?principal"}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
+        let pst_expr: Expr = est_expr.clone().try_into().unwrap();
         assert!(matches!(pst_expr, Expr::Slot(_)));
-        // Roundtrip is not supported for slots
-        let result: Result<est::Expr, _> = pst_expr.try_into();
-        assert!(matches!(
-            result,
-            Err(PstConstructionError::NotImplemented(..))
-        ));
+        // Roundtrip: PST slot should convert back to EST slot
+        let est_roundtrip: est::Expr = pst_expr.try_into().unwrap();
+        assert_eq!(est_expr, est_roundtrip);
     }
 
     #[test]
