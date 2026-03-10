@@ -181,7 +181,11 @@ impl Template {
         Template::from(body)
     }
 
-    /// Try to get the template's components, if there is an actual underlying template body.
+    /// Get the components of the underlying template.
+    ///
+    /// Returns `None` when the underlying template doesn't have any components (i.e., it's an error
+    /// node).
+    #[expect(clippy::type_complexity, reason = "policies just have many components")]
     pub(crate) fn into_template_components_opt(
         self,
     ) -> Option<(
@@ -495,6 +499,8 @@ impl Policy {
         Self::new(Arc::new(t), None, SlotEnv::new())
     }
 
+    /// Get the owned template, link id (if this is a template-linked policy)
+    /// and slot environment.
     pub(crate) fn into_components(self) -> (Arc<Template>, Option<PolicyID>, SlotEnv) {
         (self.template, self.link, self.values)
     }
@@ -1225,6 +1231,9 @@ impl TemplateBody {
         }
     }
 
+    /// destructure the `TemplateBody` into its components
+    /// returns `None` if the `TemplateBody` is an error
+    #[expect(clippy::type_complexity, reason = "policies just have many components")]
     pub(crate) fn into_components_opt(
         self,
     ) -> Option<(

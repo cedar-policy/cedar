@@ -508,23 +508,23 @@ impl Expr {
             },
             Expr::UnaryOp { op, expr } => Ok(Expr::UnaryOp {
                 op,
-                expr: Arc::new((*expr).clone().link(vals)?),
+                expr: Arc::new(Arc::unwrap_or_clone(expr).link(vals)?),
             }),
             Expr::BinaryOp { op, left, right } => Ok(Expr::BinaryOp {
                 op,
-                left: Arc::new((*left).clone().link(vals)?),
-                right: Arc::new((*right).clone().link(vals)?),
+                left: Arc::new(Arc::unwrap_or_clone(left).link(vals)?),
+                right: Arc::new(Arc::unwrap_or_clone(right).link(vals)?),
             }),
             Expr::GetAttr { expr, attr } => Ok(Expr::GetAttr {
-                expr: Arc::new((*expr).clone().link(vals)?),
+                expr: Arc::new(Arc::unwrap_or_clone(expr).link(vals)?),
                 attr,
             }),
             Expr::HasAttr { expr, attrs } => Ok(Expr::HasAttr {
-                expr: Arc::new((*expr).clone().link(vals)?),
+                expr: Arc::new(Arc::unwrap_or_clone(expr).link(vals)?),
                 attrs,
             }),
             Expr::Like { expr, pattern } => Ok(Expr::Like {
-                expr: Arc::new((*expr).clone().link(vals)?),
+                expr: Arc::new(Arc::unwrap_or_clone(expr).link(vals)?),
                 pattern,
             }),
             Expr::Is {
@@ -532,10 +532,10 @@ impl Expr {
                 entity_type,
                 in_expr,
             } => Ok(Expr::Is {
-                expr: Arc::new((*expr).clone().link(vals)?),
+                expr: Arc::new(Arc::unwrap_or_clone(expr).link(vals)?),
                 entity_type,
                 in_expr: in_expr
-                    .map(|e| Ok::<_, LinkingError>(Arc::new((*e).clone().link(vals)?)))
+                    .map(|e| Ok::<_, LinkingError>(Arc::new(Arc::unwrap_or_clone(e).link(vals)?)))
                     .transpose()?,
             }),
             Expr::IfThenElse {
@@ -543,19 +543,19 @@ impl Expr {
                 then_expr,
                 else_expr,
             } => Ok(Expr::IfThenElse {
-                cond: Arc::new((*cond).clone().link(vals)?),
-                then_expr: Arc::new((*then_expr).clone().link(vals)?),
-                else_expr: Arc::new((*else_expr).clone().link(vals)?),
+                cond: Arc::new(Arc::unwrap_or_clone(cond).link(vals)?),
+                then_expr: Arc::new(Arc::unwrap_or_clone(then_expr).link(vals)?),
+                else_expr: Arc::new(Arc::unwrap_or_clone(else_expr).link(vals)?),
             }),
             Expr::Set(exprs) => Ok(Expr::Set(
                 exprs
                     .into_iter()
-                    .map(|e| Ok(Arc::new((*e).clone().link(vals)?)))
+                    .map(|e| Ok(Arc::new(Arc::unwrap_or_clone(e).link(vals)?)))
                     .collect::<Result<_, LinkingError>>()?,
             )),
             Expr::Record(map) => Ok(Expr::Record(
                 map.into_iter()
-                    .map(|(k, v)| Ok((k, Arc::new((*v).clone().link(vals)?))))
+                    .map(|(k, v)| Ok((k, Arc::new(Arc::unwrap_or_clone(v).link(vals)?))))
                     .collect::<Result<_, LinkingError>>()?,
             )),
             // Leaf nodes with no slots

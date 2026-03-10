@@ -80,8 +80,10 @@ impl Policy {
             .clauses
             .into_iter()
             .map(|clause| match clause {
-                Clause::When(e) => Ok(Clause::When(Arc::new((*e).clone().link(vals)?))),
-                Clause::Unless(e) => Ok(Clause::Unless(Arc::new((*e).clone().link(vals)?))),
+                Clause::When(e) => Ok(Clause::When(Arc::new(Arc::unwrap_or_clone(e).link(vals)?))),
+                Clause::Unless(e) => Ok(Clause::Unless(Arc::new(
+                    Arc::unwrap_or_clone(e).link(vals)?,
+                ))),
             })
             .collect::<Result<Vec<_>, _>>()?;
 

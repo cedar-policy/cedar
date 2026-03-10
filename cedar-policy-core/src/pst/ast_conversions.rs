@@ -366,17 +366,6 @@ impl TryFrom<EntityUID> for ast::EntityUID {
     }
 }
 
-impl TryFrom<EntityOrSlot> for ast::EntityReference {
-    type Error = PstConstructionError;
-
-    fn try_from(eos: EntityOrSlot) -> Result<Self, Self::Error> {
-        match eos {
-            EntityOrSlot::Entity(uid) => Ok(ast::EntityReference::euid(Arc::new(uid.try_into()?))),
-            EntityOrSlot::Slot(_) => Ok(ast::EntityReference::Slot(None)),
-        }
-    }
-}
-
 impl From<ast::EntityType> for EntityType {
     fn from(et: ast::EntityType) -> Self {
         EntityType(et.into_name().into())
@@ -464,15 +453,6 @@ impl From<SlotId> for ast::SlotId {
     }
 }
 
-impl From<PatternElem> for ast::PatternElem {
-    fn from(elem: PatternElem) -> Self {
-        match elem {
-            PatternElem::Char(c) => ast::PatternElem::Char(c),
-            PatternElem::Wildcard => ast::PatternElem::Wildcard,
-        }
-    }
-}
-
 impl From<ast::Pattern> for Vec<PatternElem> {
     fn from(pattern: ast::Pattern) -> Self {
         pattern
@@ -512,30 +492,12 @@ impl From<ast::Expr> for Expr {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::Effect> for Effect {
     fn from(effect: ast::Effect) -> Self {
         match effect {
             ast::Effect::Permit => Effect::Permit,
             ast::Effect::Forbid => Effect::Forbid,
-        }
-    }
-}
-
-impl From<ast::EntityReference> for EntityOrSlot {
-    fn from(er: ast::EntityReference) -> Self {
-        match er {
-            ast::EntityReference::EUID(uid) => {
-                EntityOrSlot::Entity(Arc::unwrap_or_clone(uid).into())
-            }
-            ast::EntityReference::Slot(_) => {
-                // Slot location is not preserved; the slot identity (principal vs resource)
-                // is determined by the constraint that contains it, handled in the
-                // PrincipalConstraint/ResourceConstraint conversions below.
-                unreachable!(
-                    "EntityReference::Slot should not be converted directly; \
-                     use PrincipalConstraint/ResourceConstraint conversion instead"
-                )
-            }
         }
     }
 }
@@ -547,6 +509,7 @@ fn entity_ref_to_entity_or_slot(er: ast::EntityReference, slot: SlotId) -> Entit
     }
 }
 
+#[doc(hidden)]
 impl From<ast::PrincipalConstraint> for PrincipalConstraint {
     fn from(c: ast::PrincipalConstraint) -> Self {
         match c.into_inner() {
@@ -568,6 +531,7 @@ impl From<ast::PrincipalConstraint> for PrincipalConstraint {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::ResourceConstraint> for ResourceConstraint {
     fn from(c: ast::ResourceConstraint) -> Self {
         match c.into_inner() {
@@ -589,6 +553,7 @@ impl From<ast::ResourceConstraint> for ResourceConstraint {
     }
 }
 
+#[doc(hidden)]
 impl From<ast::ActionConstraint> for ActionConstraint {
     fn from(c: ast::ActionConstraint) -> Self {
         match c {
@@ -607,6 +572,7 @@ impl From<ast::ActionConstraint> for ActionConstraint {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<ast::Template> for Policy {
     type Error = PstConstructionError;
 
@@ -621,9 +587,7 @@ impl TryFrom<ast::Template> for Policy {
             clause,
         ) = template
             .into_template_components_opt()
-            .ok_or(InvalidConversionError::new(
-                "template contained errors".to_string(),
-            ))?;
+            .ok_or_else(|| InvalidConversionError::new("template contained errors".to_string()))?;
         let id = PolicyID(id.to_smolstr());
         let effect = effect.into();
         let principal = principal_constraint.into();
@@ -637,7 +601,7 @@ impl TryFrom<ast::Template> for Policy {
 
         let annotations = Arc::unwrap_or_clone(annot)
             .into_iter()
-            .map(|(key, ann)| (key.to_string(), ann.val.clone()))
+            .map(|(key, ann)| (key.to_string(), ann.val))
             .collect();
 
         Ok(Policy {
@@ -652,12 +616,16 @@ impl TryFrom<ast::Template> for Policy {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<ast::Policy> for Policy {
     type Error = PstConstructionError;
 
     fn try_from(policy: ast::Policy) -> Result<Self, PstConstructionError> {
-        let (template, _, env) = policy.into_components();
-        let policy: Policy = Arc::unwrap_or_clone(template).try_into()?;
+        let (template, link_id, env) = policy.into_components();
+        let mut policy: Policy = Arc::unwrap_or_clone(template).try_into()?;
+        if let Some(id) = link_id {
+            policy.id = PolicyID(id.to_smolstr());
+        }
         let env = env
             .into_iter()
             .map(|(k, v)| (SlotId::from(k), EntityUID::from(v)))
@@ -910,309 +878,135 @@ mod tests {
         assert_eq!(ast_expr, ast_expr2);
     }
 
-    /// Test PST policy -> AST conversion (one direction only)
+    /// Helper to normalize whitespace for policy string comparison
+    fn normalize(s: &str) -> String {
+        s.replace('\n', " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// Test roundtrip: parse Cedar text -> ast::Policy -> pst::Policy -> ast::Policy
+    /// and verify the string representation is preserved.
+    fn assert_static_policy_roundtrip(cedar_text: &str) {
+        let ast_policy: ast::Policy = parser::parse_policy(None, cedar_text)
+            .expect("parse failed")
+            .into();
+        let pst_policy: Policy = ast_policy.clone().try_into().expect("ast->pst failed");
+        let ast_policy2: ast::Policy = pst_policy.try_into().expect("pst->ast failed");
+        assert_eq!(
+            normalize(&ast_policy.to_string()),
+            normalize(&ast_policy2.to_string()),
+            "roundtrip failed for: {}",
+            cedar_text
+        );
+    }
+
+    /// Test roundtrip: parse Cedar text -> ast::Template -> pst::Policy -> ast::Template
+    /// and verify the string representation is preserved.
+    fn assert_template_roundtrip(cedar_text: &str) {
+        let ast_template = parser::parse_template(None, cedar_text).expect("parse failed");
+        let pst_policy: Policy = ast_template.clone().try_into().expect("ast->pst failed");
+        let ast_template2: ast::Template = pst_policy.try_into().expect("pst->ast failed");
+        assert_eq!(
+            normalize(&ast_template.to_string()),
+            normalize(&ast_template2.to_string()),
+            "template roundtrip failed for: {}",
+            cedar_text
+        );
+    }
+
+    /// Test ast::Policy -> pst::Policy -> ast::Policy roundtrip for static policies
     #[test]
-    fn test_policy_to_ast_conversion() {
-        use crate::pst::{
-            ActionConstraint, Clause, Effect, Policy, PolicyID, PrincipalConstraint,
-            ResourceConstraint,
-        };
-        use std::collections::BTreeMap;
-
-        // Helper to normalize whitespace for comparison
-        let normalize = |s: &str| -> String {
-            s.replace('\n', " ")
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-        };
-
+    fn test_static_policy_roundtrip() {
         let cases = [
-            (
-                Policy {
-                    id: PolicyID("policy0".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal, action, resource );",
-                "minimal permit policy",
-            ),
-            (
-                Policy {
-                    id: PolicyID("policy1".into()),
-                    effect: Effect::Forbid,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "forbid( principal, action, resource );",
-                "forbid policy",
-            ),
-            (
-                Policy {
-                    id: PolicyID("policy2".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![Clause::When(Arc::new(Expr::Literal(Literal::Bool(true))))],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal, action, resource ) when { true };",
-                "policy with when clause",
-            ),
-            (
-                Policy {
-                    id: PolicyID("policy3".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![Clause::Unless(Arc::new(Expr::Literal(Literal::Bool(
-                        false,
-                    ))))],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal, action, resource ) when { !false };",
-                "policy with unless clause",
-            ),
-            (
-                Policy {
-                    id: PolicyID("policy4".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![
-                        Clause::When(Arc::new(Expr::Literal(Literal::Bool(true)))),
-                        Clause::Unless(Arc::new(Expr::Literal(Literal::Bool(false)))),
-                    ],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal, action, resource ) when { true && (!false) };",
-                "policy with when and unless",
-            ),
-            (
-                Policy {
-                    id: PolicyID("policy5".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![],
-                    annotations: [("id".to_string(), "test".to_smolstr())]
-                        .into_iter()
-                        .collect(),
-                },
-                "@id(\"test\") permit( principal, action, resource );",
-                "policy with annotation",
-            ),
+            r#"permit(principal, action, resource);"#,
+            r#"forbid(principal, action, resource);"#,
+            r#"permit(principal, action, resource) when { true };"#,
+            r#"permit(principal, action, resource) when { !false };"#,
+            r#"@id("test") permit(principal, action, resource);"#,
+            r#"permit(principal == User::"alice", action, resource);"#,
+            r#"permit(principal in User::"alice", action, resource);"#,
+            r#"permit(principal is User, action, resource);"#,
+            r#"permit(principal is User in User::"alice", action, resource);"#,
+            r#"permit(principal, action == Action::"view", resource);"#,
+            r#"permit(principal, action in [Action::"view"], resource);"#,
+            r#"permit(principal, action, resource == Photo::"vacation");"#,
+            r#"permit(principal, action, resource in Album::"trips");"#,
+            r#"permit(principal, action, resource is Photo);"#,
+            r#"permit(principal, action, resource is Photo in Album::"trips");"#,
+            r#"permit(principal == User::"alice", action == Action::"view", resource in Album::"trips") when { resource.public };"#,
         ];
-
-        for (pst_policy, expected_output, desc) in cases {
-            let ast_policy: ast::Policy = pst_policy.try_into().expect("pst->ast failed");
-            let actual = normalize(&ast_policy.to_string());
-            let expected = normalize(expected_output);
-            assert_eq!(actual, expected, "failed: {}", desc);
+        for cedar_text in cases {
+            assert_static_policy_roundtrip(cedar_text);
         }
     }
 
-    /// Test policy constraints (principal, action, resource)
+    /// Test ast::Template -> pst::Policy -> ast::Template roundtrip for templates with slots
     #[test]
-    fn test_policy_constraint_conversions() {
-        use crate::pst::{
-            ActionConstraint, Effect, EntityOrSlot, EntityType, EntityUID, Name, Policy, PolicyID,
-            PrincipalConstraint, ResourceConstraint,
-        };
-        use std::collections::BTreeMap;
-
-        let normalize = |s: &str| -> String {
-            s.replace('\n', " ")
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-        };
-
-        let user_alice = EntityUID {
-            ty: EntityType(Name {
-                id: "User".into(),
-                namespace: Arc::new(vec![]),
-            }),
-            eid: "alice".into(),
-        };
-
-        let action_view = EntityUID {
-            ty: EntityType(Name {
-                id: "Action".into(),
-                namespace: Arc::new(vec![]),
-            }),
-            eid: "view".into(),
-        };
-
+    fn test_template_policy_roundtrip() {
         let cases = [
-            (
-                Policy {
-                    id: PolicyID("p0".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Eq(EntityOrSlot::Entity(user_alice.clone())),
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal == User::\"alice\", action, resource );",
-                "principal eq constraint",
-            ),
-            (
-                Policy {
-                    id: PolicyID("p1".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::In(EntityOrSlot::Entity(user_alice.clone())),
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal in User::\"alice\", action, resource );",
-                "principal in constraint",
-            ),
-            (
-                Policy {
-                    id: PolicyID("p2".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Is(EntityType(Name {
-                        id: "User".into(),
-                        namespace: Arc::new(vec![]),
-                    })),
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal is User, action, resource );",
-                "principal is constraint",
-            ),
-            (
-                Policy {
-                    id: PolicyID("p3".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::IsIn(
-                        EntityType(Name {
-                            id: "User".into(),
-                            namespace: Arc::new(vec![]),
-                        }),
-                        EntityOrSlot::Entity(user_alice.clone()),
-                    ),
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal is User in User::\"alice\", action, resource );",
-                "principal is-in constraint",
-            ),
-            (
-                Policy {
-                    id: PolicyID("p4".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::Eq(action_view.clone()),
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal, action == Action::\"view\", resource );",
-                "action eq constraint",
-            ),
-            (
-                Policy {
-                    id: PolicyID("p5".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::In(vec![action_view.clone()]),
-                    resource: ResourceConstraint::Any,
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal, action in [Action::\"view\"], resource );",
-                "action in constraint",
-            ),
-            (
-                Policy {
-                    id: PolicyID("p6".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::In(EntityOrSlot::Entity(user_alice.clone())),
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal, action, resource in User::\"alice\" );",
-                "resource in constraint",
-            ),
-            (
-                Policy {
-                    id: PolicyID("p7".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Eq(EntityOrSlot::Entity(user_alice.clone())),
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal, action, resource == User::\"alice\" );",
-                "resource eq constraint",
-            ),
-            (
-                Policy {
-                    id: PolicyID("p8".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::Is(EntityType(Name {
-                        id: "Photo".into(),
-                        namespace: Arc::new(vec![]),
-                    })),
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal, action, resource is Photo );",
-                "resource is constraint",
-            ),
-            (
-                Policy {
-                    id: PolicyID("p9".into()),
-                    effect: Effect::Permit,
-                    principal: PrincipalConstraint::Any,
-                    action: ActionConstraint::Any,
-                    resource: ResourceConstraint::IsIn(
-                        EntityType(Name {
-                            id: "Photo".into(),
-                            namespace: Arc::new(vec![]),
-                        }),
-                        EntityOrSlot::Entity(user_alice),
-                    ),
-                    clauses: vec![],
-                    annotations: BTreeMap::new(),
-                },
-                "permit( principal, action, resource is Photo in User::\"alice\" );",
-                "resource is-in constraint",
-            ),
+            r#"permit(principal == ?principal, action, resource);"#,
+            r#"permit(principal in ?principal, action, resource);"#,
+            r#"permit(principal is User in ?principal, action, resource);"#,
+            r#"permit(principal, action, resource == ?resource);"#,
+            r#"permit(principal, action, resource in ?resource);"#,
+            r#"permit(principal, action, resource is Photo in ?resource);"#,
+            r#"permit(principal == ?principal, action, resource == ?resource);"#,
+            r#"permit(principal == ?principal, action, resource in ?resource) when { resource.public };"#,
         ];
-
-        for (pst_policy, expected_output, desc) in cases {
-            let ast_policy: ast::Policy = pst_policy.try_into().expect("pst->ast failed");
-            let actual = normalize(&ast_policy.to_string());
-            let expected = normalize(expected_output);
-            assert_eq!(actual, expected, "failed: {}", desc);
-            println!("✓ {}", desc);
+        for cedar_text in cases {
+            assert_template_roundtrip(cedar_text);
         }
+    }
+
+    /// Test ast::Policy roundtrip for a linked template (slots filled via env)
+    #[test]
+    fn test_linked_policy_roundtrip() {
+        let template = parser::parse_template(
+            None,
+            r#"permit(principal == ?principal, action, resource in ?resource);"#,
+        )
+        .expect("parse failed");
+        let mut pset = ast::PolicySet::new();
+        let template_id = template.id().clone();
+        pset.add_template(template).expect("add template failed");
+
+        let mut env = std::collections::HashMap::new();
+        env.insert(
+            ast::SlotId::principal(),
+            parser::parse_euid(r#"User::"alice""#).unwrap(),
+        );
+        env.insert(
+            ast::SlotId::resource(),
+            parser::parse_euid(r#"Album::"trips""#).unwrap(),
+        );
+        let link_id = ast::PolicyID::from_string("link0");
+        pset.link(template_id, link_id.clone(), env)
+            .expect("link failed");
+
+        let ast_policy = pset.get(&link_id).expect("policy not found").clone();
+        let pst_policy: Policy = ast_policy.try_into().expect("ast->pst failed");
+
+        // Linked policy should use the link ID, not the template ID
+        assert_eq!(pst_policy.id, PolicyID("link0".into()));
+
+        // Linked policy should have no slots — entities are filled in
+        assert!(matches!(
+            pst_policy.principal,
+            PrincipalConstraint::Eq(EntityOrSlot::Entity(_))
+        ));
+        assert!(matches!(
+            pst_policy.resource,
+            ResourceConstraint::In(EntityOrSlot::Entity(_))
+        ));
+
+        // Should convert back to a static AST policy
+        let ast_policy2: ast::Policy = pst_policy.try_into().expect("pst->ast failed");
+        let expected = normalize(
+            r#"permit( principal == User::"alice", action, resource in Album::"trips" );"#,
+        );
+        assert_eq!(normalize(&ast_policy2.to_string()), expected);
     }
 
     /// Test expressions that get desugared/normalized during AST conversion
