@@ -35,6 +35,7 @@ mod policy;
 
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
 pub use err::PstConstructionError;
+pub use err::error_body;
 pub use expr::{
     BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
@@ -43,12 +44,15 @@ pub use policy::{Clause, Effect, Policy, PolicyID};
 use crate::ast;
 
 impl Policy {
-    /// Convert this PST policy to an AST policy for evaluation
+    /// Convert this PST policy to an AST policy for evaluation.
+    /// Fails if the policy contains slots (`SlotId::Principal` or `SlotId::Resource`).
     pub fn try_into_ast_policy(self) -> Result<ast::Policy, PstConstructionError> {
-        // Currently the trait implementations for converting AST to PST are all implemented in
-        // ast_conversions, which is only pub(crate).
-        // This function is the public boundary between PST and AST. We may need more conversion
-        // functions, or we may make ast_conversions pub rather than pub(crate) if needed.
+        self.try_into()
+    }
+
+    /// Convert this PST policy to an AST template.
+    /// Works for both static policies and templates (policies with slots).
+    pub fn try_into_ast_template(self) -> Result<ast::Template, PstConstructionError> {
         self.try_into()
     }
 }

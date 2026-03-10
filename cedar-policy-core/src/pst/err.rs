@@ -315,7 +315,8 @@ pub mod error_body {
     }
 
     impl InvalidConversionError {
-        pub(crate) fn new(description: String) -> Self {
+        /// Create a new `InvalidConversionError` with the given description
+        pub fn new(description: String) -> Self {
             Self { description }
         }
     }
@@ -360,5 +361,15 @@ pub mod error_body {
             /// Slot which didn't have a value provided for it
             slot: crate::pst::SlotId,
         },
+    }
+
+    impl From<LinkingError> for crate::est::LinkingError {
+        fn from(value: LinkingError) -> Self {
+            match value {
+                LinkingError::MissedSlot { slot } => {
+                    crate::est::LinkingError::MissedSlot { slot: slot.into() }
+                }
+            }
+        }
     }
 }

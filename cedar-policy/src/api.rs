@@ -43,6 +43,7 @@ pub use err::*;
 
 pub use ast::Effect;
 pub use authorizer::Decision;
+pub use cedar_policy_core::pst;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
 use cedar_policy_core::ast::{self, RequestSchema, RestrictedExpr};
@@ -54,7 +55,7 @@ use cedar_policy_core::evaluator::Evaluator;
 use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::FromNormalizedStr;
-use cedar_policy_core::{parser, pst};
+use cedar_policy_core::{parser};
 use itertools::{Either, Itertools};
 use linked_hash_map::LinkedHashMap;
 use miette::Diagnostic;
@@ -3315,6 +3316,36 @@ impl From<ast::Template> for Template {
 }
 
 impl Template {
+    /// Construct a [`Template`] from a PST policy.
+    /// Returns an error if the PST policy has no template slots.
+    /// If `id` is Some, the template will be given that `PolicyId`.
+    pub fn from_pst(
+        id: Option<PolicyId>,
+        pst_policy: pst::Policy,
+    ) -> Result<Self, pst::PstConstructionError> {
+        let mut pst_policy = pst_policy;
+        if let Some(id) = id {
+            pst_policy.id = ast::PolicyID::from(id).into();
+        }
+        let ast = pst_policy.clone().try_into_ast_template()?;
+        if ast.slots().count() == 0 {
+            return Err(pst::error_body::InvalidConversionError::new(
+                "expected a template with slots, but found a static policy".to_string(),
+            )
+            .into());
+        }
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::Pst(pst_policy),
+        })
+    }
+
+    /// Get the PST representation of this template.
+    pub fn to_pst(&self) -> Result<pst::Policy, pst::PstConstructionError> {
+        self.lossless
+            .pst(|| pst::Policy::try_from(self.ast.clone()))
+    }
+
     /// Attempt to parse a [`Template`] from source.
     /// Returns an error if the input is a static policy (i.e., has no slots).
     /// If `id` is Some, then the resulting template will have that `id`.
@@ -3677,6 +3708,24 @@ impl From<ast::StaticPolicy> for Policy {
 }
 
 impl Policy {
+    /// Construct a [`Policy`] from a PST policy.
+    /// Returns an error if the PST policy contains template slots.
+    /// If `id` is Some, the policy will be given that `PolicyId`.
+    pub fn from_pst(
+        id: Option<PolicyId>,
+        pst_policy: pst::Policy,
+    ) -> Result<Self, pst::PstConstructionError> {
+        let mut pst_policy = pst_policy;
+        if let Some(id) = id {
+            pst_policy.id = ast::PolicyID::from(id).into();
+        }
+        let ast = pst_policy.clone().try_into_ast_policy()?;
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::Pst(pst_policy),
+        })
+    }
+
     /// Get the `PolicyId` of the `Template` this is linked to.
     /// If this is a static policy, this will return `None`.
     pub fn template_id(&self) -> Option<&PolicyId> {
@@ -4196,8 +4245,13 @@ impl LosslessPolicy {
                 > = vals.into_iter().map(|(k, v)| (k, v.into())).collect();
                 Ok(Self::Est(est.link(&unwrapped_est_vals)?))
             }
-            Self::Pst(_) => {
-                todo!("implement templates for pst")
+            Self::Pst(p) => {
+                let unwrapped_pst_vals: HashMap<pst::SlotId, pst::EntityUID> = vals
+                    .into_iter()
+                    .map(|(k, v)| (k.into(), v.clone().into()))
+                    .collect();
+
+                Ok(Self::Pst(p.link(&unwrapped_pst_vals)?))
             }
             Self::Text { text, slots } => {
                 debug_assert!(

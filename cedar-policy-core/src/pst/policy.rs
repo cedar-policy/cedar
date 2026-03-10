@@ -34,6 +34,12 @@ impl From<PolicyID> for ast::PolicyID {
     }
 }
 
+impl From<ast::PolicyID> for PolicyID {
+    fn from(id: ast::PolicyID) -> Self {
+        PolicyID(SmolStr::from(id.as_ref()))
+    }
+}
+
 /// Policy effect
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Effect {

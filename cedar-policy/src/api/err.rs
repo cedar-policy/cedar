@@ -971,17 +971,14 @@ impl From<serde_json::Error> for PolicyToJsonError {
 }
 
 impl From<pst::PstConstructionError> for PolicyToJsonError {
-    fn from(_: pst::PstConstructionError) -> Self {
-        // TODO victor: proper impl
-        PolicyToJsonError::JsonSerialization(
-            serde_json::Error::custom("TODO: implement proper error").into(),
-        )
+    fn from(e: pst::PstConstructionError) -> Self {
+        Self::JsonSerialization(serde_json::Error::custom(e.to_string()).into())
     }
 }
 
 impl From<PolicyToJsonError> for pst::PstConstructionError {
-    fn from(_: PolicyToJsonError) -> Self {
-        todo!("impl")
+    fn from(e: PolicyToJsonError) -> Self {
+        Self::InvalidConversion(pst::error_body::InvalidConversionError::new(e.to_string()))
     }
 }
 
