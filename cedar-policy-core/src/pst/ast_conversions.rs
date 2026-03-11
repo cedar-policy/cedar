@@ -638,53 +638,77 @@ impl TryFrom<ast::Policy> for Policy {
 mod tests {
     use super::*;
     use crate::parser;
+    use itertools::Itertools;
+    use smol_str::SmolStr;
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
 
-    /// Helper to create AST expressions from Cedar text
     fn parse_expr(s: &str) -> ast::Expr {
         parser::parse_expr(s).expect("parse failed")
     }
 
-    /// Test roundtrip: ast::Expr -> pst::Expr -> ast::Expr
-    fn assert_expr_roundtrip(ast_expr: ast::Expr) {
-        let pst_expr: Expr = ast_expr.clone().into();
-        let ast_expr2: ast::Expr = pst_expr.try_into().expect("conversion failed");
-        assert_eq!(ast_expr, ast_expr2, "roundtrip failed");
+    fn norm(s: String) -> String {
+        s.split_whitespace().join(" ")
+    }
+
+    /// AST → PST → AST → PST: verifies both representations are stable.
+    fn assert_expr_roundtrip(cedar: &str) {
+        let ast1 = parse_expr(cedar);
+        let pst1: Expr = ast1.clone().into();
+        let ast2: ast::Expr = pst1.clone().try_into().expect("pst->ast failed");
+        let pst2: Expr = ast2.clone().into();
+        assert_eq!(ast1, ast2, "AST mismatch for: {cedar}");
+        assert_eq!(pst1, pst2, "PST mismatch for: {cedar}");
+    }
+
+    /// parse → ast::Policy → pst::Policy → ast::Policy → pst::Policy: verifies both stable.
+    fn assert_static_policy_roundtrip(cedar: &str) {
+        let ast1: ast::Policy = parser::parse_policy(None, cedar)
+            .expect("parse failed")
+            .into();
+        let pst1: Policy = ast1.clone().try_into().expect("ast->pst failed");
+        let ast2: ast::Policy = pst1.clone().try_into().expect("pst->ast failed");
+        let pst2: Policy = ast2.clone().try_into().expect("ast->pst 2 failed");
+        assert_eq!(
+            norm(ast1.to_string()),
+            norm(ast2.to_string()),
+            "AST mismatch for: {cedar}"
+        );
+        assert_eq!(pst1, pst2, "PST mismatch for: {cedar}");
+    }
+
+    /// parse → ast::Template → pst::Policy → ast::Template → pst::Policy: verifies both stable.
+    fn assert_template_roundtrip(cedar: &str) {
+        let ast1 = parser::parse_template(None, cedar).expect("parse failed");
+        let pst1: Policy = ast1.clone().try_into().expect("ast->pst failed");
+        let ast2: ast::Template = pst1.clone().try_into().expect("pst->ast failed");
+        let pst2: Policy = ast2.clone().try_into().expect("ast->pst 2 failed");
+        assert_eq!(
+            norm(ast1.to_string()),
+            norm(ast2.to_string()),
+            "AST mismatch for: {cedar}"
+        );
+        assert_eq!(pst1, pst2, "PST mismatch for: {cedar}");
     }
 
     #[test]
-    fn test_literal_roundtrips() {
-        let cases = ["true", "false", "42", r#""hello""#];
-
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
-        }
-    }
-
-    #[test]
-    fn test_variable_roundtrips() {
-        let cases = ["principal", "action", "resource", "context"];
-
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
-        }
-    }
-
-    #[test]
-    fn test_unary_op_roundtrips() {
-        let cases = ["!true", "-42", "[].isEmpty()"];
-
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
-        }
-    }
-
-    #[test]
-    /// Test the binary operators that roundtrip -- not all do
-    fn test_binary_op_roundtrips() {
+    fn test_expr_roundtrips() {
         let cases = [
+            // Literals
+            "true",
+            "false",
+            "42",
+            r#""hello""#,
+            // Variables
+            "principal",
+            "action",
+            "resource",
+            "context",
+            // Unary ops
+            "!true",
+            "-42",
+            "[].isEmpty()",
+            // Binary ops
             "1 + 2",
             "5 - 3",
             "2 * 3",
@@ -700,170 +724,70 @@ mod tests {
             r#"User::"alice" in Group::"admins""#,
             r#"[1, 2, 3].contains(2)"#,
             r#"[1, 2].containsAll([1])"#,
+            r#"context.products.containsAny(["apples","oranges"])"#,
             r#"[1, 2].containsAny([2, 3])"#,
             r#"User::"alice".getTag("role")"#,
             r#"User::"alice".hasTag("role")"#,
-        ];
-
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
-        }
-    }
-
-    #[test]
-    fn test_if_then_else_roundtrip() {
-        let expr = parse_expr("if true then 1 else 2");
-        assert_expr_roundtrip(expr);
-    }
-
-    #[test]
-    fn test_set_roundtrips() {
-        let cases = ["[]", "[1]", "[1, 2, 3]"];
-
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
-        }
-    }
-
-    #[test]
-    fn test_record_roundtrips() {
-        let cases = [
+            // If-then-else
+            "if true then 1 else 2",
+            // Sets
+            "[]",
+            "[1]",
+            "[1, 2, 3]",
+            // Records (including reserved-word and hyphenated keys)
             "{}",
             r#"{"a": 1}"#,
             r#"{"a": 1, "b": 2}"#,
             r#"{"nested": {"x": 1}}"#,
             r#"{"if": 1}"#,
             r#"{"a-b": 1}"#,
-        ];
-
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
-        }
-    }
-
-    #[test]
-    fn test_entity_uid_roundtrip() {
-        let cases = [r#"User::"alice""#, r#"MyApp::User::"alice""#];
-
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
-        }
-    }
-
-    #[test]
-    fn test_get_attr_roundtrips() {
-        let cases = [r#"principal.name"#, r#"resource.owner.id"#];
-
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
-        }
-    }
-
-    #[test]
-    fn test_has_attr_roundtrip() {
-        let expr = parse_expr(r#"principal has name"#);
-        assert_expr_roundtrip(expr);
-    }
-
-    #[test]
-    fn test_like_roundtrip() {
-        let cases = [
+            // Entity UIDs (simple and namespaced)
+            r#"User::"alice""#,
+            r#"MyApp::User::"alice""#,
+            // Attribute access and has
+            r#"principal.name"#,
+            r#"resource.owner.id"#,
+            r#"principal has name"#,
+            // Like patterns
             r#"principal.name like "a*b""#,
             r#""test" like "*""#,
             r#""test" like "*est""#,
             r#""test" like "test*""#,
-        ];
-
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
-        }
-    }
-
-    #[test]
-    fn test_is_roundtrip() {
-        let cases = [
+            // Is / is-in (simple and namespaced)
             r#"principal is User"#,
             r#"principal is MyApp::User"#,
             r#"principal is User in Group::"admins""#,
             r#"principal is User in Group::"admins" || principal is User in Group::"users""#,
-        ];
-
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
-        }
-    }
-
-    #[test]
-    fn test_function_call_roundtrips() {
-        let cases = [
+            // Extension functions
             r#"decimal("1.23")"#,
             r#"ip("127.0.0.1")"#,
             r#"datetime("2024-01-01")"#,
             r#"ip("127.0.0.1").isIpv4()"#,
             r#"ip("127.0.0.1").isInRange(ip("127.0.0.0/24"))"#,
-        ];
-
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
-        }
-    }
-
-    /// Test that extension methods that normalize to operators convert correctly
-    /// These don't roundtrip to identical AST, but should convert without error
-    #[test]
-    fn test_extension_method_normalization() {
-        let cases = [
-            (
-                r#"decimal("1.23").lessThan(decimal("2.0"))"#,
-                "decimal lessThan -> <",
-            ),
-            (
-                r#"decimal("1.23").lessThanOrEqual(decimal("2.0"))"#,
-                "decimal lessThanOrEqual -> <=",
-            ),
-            (
-                r#"decimal("1.23").greaterThan(decimal("2.0"))"#,
-                "decimal greaterThan -> >",
-            ),
-            (
-                r#"decimal("1.23").greaterThanOrEqual(decimal("2.0"))"#,
-                "decimal greaterThanOrEqual -> >=",
-            ),
-        ];
-
-        for (expr_str, desc) in cases {
-            let ast_expr = parse_expr(expr_str);
-            // Convert to PST
-            let pst_expr: Expr = ast_expr.into();
-            // Convert back to AST - should succeed even if structure differs
-            let _ast_expr2: ast::Expr = pst_expr.try_into().expect(desc);
-        }
-    }
-
-    #[test]
-    fn test_complex_nested_expression() {
-        let cases = [
-            r#"if principal.age >= 18 && resource.public == true then
-                    [1, 2, 3].contains(action.level)
-                else
-                    false"#,
+            // Complex / nested
+            r#"if principal.age >= 18 && resource.public == true then [1, 2, 3].contains(action.level) else false"#,
             r#"((1 + 2) * 3) - 4"#,
             r#"!(!true)"#,
             r#"true && (false || true)"#,
             r#"principal has name && principal has age"#,
         ];
+        for cedar in cases {
+            assert_expr_roundtrip(cedar);
+        }
+    }
 
-        for expr_str in cases {
-            let expr = parse_expr(expr_str);
-            assert_expr_roundtrip(expr);
+    /// Extension methods like `lessThan` normalize to operators during AST→PST conversion,
+    /// so they don't produce identical AST on roundtrip, but conversion must succeed.
+    #[test]
+    fn test_extension_method_normalization() {
+        for cedar in [
+            r#"decimal("1.23").lessThan(decimal("2.0"))"#,
+            r#"decimal("1.23").lessThanOrEqual(decimal("2.0"))"#,
+            r#"decimal("1.23").greaterThan(decimal("2.0"))"#,
+            r#"decimal("1.23").greaterThanOrEqual(decimal("2.0"))"#,
+        ] {
+            let pst: Expr = parse_expr(cedar).into();
+            let _: ast::Expr = pst.try_into().expect(cedar);
         }
     }
 
@@ -878,48 +802,9 @@ mod tests {
         assert_eq!(ast_expr, ast_expr2);
     }
 
-    /// Helper to normalize whitespace for policy string comparison
-    fn normalize(s: &str) -> String {
-        s.replace('\n', " ")
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-
-    /// Test roundtrip: parse Cedar text -> ast::Policy -> pst::Policy -> ast::Policy
-    /// and verify the string representation is preserved.
-    fn assert_static_policy_roundtrip(cedar_text: &str) {
-        let ast_policy: ast::Policy = parser::parse_policy(None, cedar_text)
-            .expect("parse failed")
-            .into();
-        let pst_policy: Policy = ast_policy.clone().try_into().expect("ast->pst failed");
-        let ast_policy2: ast::Policy = pst_policy.try_into().expect("pst->ast failed");
-        assert_eq!(
-            normalize(&ast_policy.to_string()),
-            normalize(&ast_policy2.to_string()),
-            "roundtrip failed for: {}",
-            cedar_text
-        );
-    }
-
-    /// Test roundtrip: parse Cedar text -> ast::Template -> pst::Policy -> ast::Template
-    /// and verify the string representation is preserved.
-    fn assert_template_roundtrip(cedar_text: &str) {
-        let ast_template = parser::parse_template(None, cedar_text).expect("parse failed");
-        let pst_policy: Policy = ast_template.clone().try_into().expect("ast->pst failed");
-        let ast_template2: ast::Template = pst_policy.try_into().expect("pst->ast failed");
-        assert_eq!(
-            normalize(&ast_template.to_string()),
-            normalize(&ast_template2.to_string()),
-            "template roundtrip failed for: {}",
-            cedar_text
-        );
-    }
-
-    /// Test ast::Policy -> pst::Policy -> ast::Policy roundtrip for static policies
     #[test]
-    fn test_static_policy_roundtrip() {
-        let cases = [
+    fn test_static_policy_roundtrips() {
+        for cedar in [
             r#"permit(principal, action, resource);"#,
             r#"forbid(principal, action, resource);"#,
             r#"permit(principal, action, resource) when { true };"#,
@@ -936,16 +821,15 @@ mod tests {
             r#"permit(principal, action, resource is Photo);"#,
             r#"permit(principal, action, resource is Photo in Album::"trips");"#,
             r#"permit(principal == User::"alice", action == Action::"view", resource in Album::"trips") when { resource.public };"#,
-        ];
-        for cedar_text in cases {
-            assert_static_policy_roundtrip(cedar_text);
+            r#"permit(principal is User, action, resource is Photo in Album::"trips");"#,
+        ] {
+            assert_static_policy_roundtrip(cedar);
         }
     }
 
-    /// Test ast::Template -> pst::Policy -> ast::Template roundtrip for templates with slots
     #[test]
-    fn test_template_policy_roundtrip() {
-        let cases = [
+    fn test_template_roundtrips() {
+        for cedar in [
             r#"permit(principal == ?principal, action, resource);"#,
             r#"permit(principal in ?principal, action, resource);"#,
             r#"permit(principal is User in ?principal, action, resource);"#,
@@ -954,9 +838,10 @@ mod tests {
             r#"permit(principal, action, resource is Photo in ?resource);"#,
             r#"permit(principal == ?principal, action, resource == ?resource);"#,
             r#"permit(principal == ?principal, action, resource in ?resource) when { resource.public };"#,
-        ];
-        for cedar_text in cases {
-            assert_template_roundtrip(cedar_text);
+            r#"permit(principal in ?principal, action, resource in ?resource);"#,
+            r#"permit(principal is User in ?principal, action, resource == ?resource) when { resource.public };"#,
+        ] {
+            assert_template_roundtrip(cedar);
         }
     }
 
@@ -1003,44 +888,32 @@ mod tests {
 
         // Should convert back to a static AST policy
         let ast_policy2: ast::Policy = pst_policy.try_into().expect("pst->ast failed");
-        let expected = normalize(
-            r#"permit( principal == User::"alice", action, resource in Album::"trips" );"#,
+        let expected = norm(
+            r#"permit( principal == User::"alice", action, resource in Album::"trips" );"#
+                .to_string(),
         );
-        assert_eq!(normalize(&ast_policy2.to_string()), expected);
+        assert_eq!(norm(ast_policy2.to_string()), expected);
     }
 
-    /// Test expressions that get desugared/normalized during AST conversion
+    /// The Cedar parser desugars `!=`, `>`, `>=` into negated forms in the AST.
+    /// Verify the string output of the roundtripped expression matches the desugared form.
     #[test]
     fn test_expression_desugaring() {
-        let cases = [
-            ("1 != 2", "!(1 == 2)", "!= desugars to !(==)"),
-            ("1 > 2", "!(1 <= 2)", "> desugars to !(<=)"),
-            ("1 >= 2", "!(1 < 2)", ">= desugars to !(<)"),
-        ];
-
-        for (input, expected_output, desc) in cases {
-            let ast_expr = parse_expr(input);
-            let pst_expr: Expr = ast_expr.into();
-            let ast_expr2: ast::Expr = pst_expr.try_into().expect("conversion failed");
-
-            // Normalize both for comparison
-            let actual = ast_expr2
-                .to_string()
-                .replace('\n', " ")
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
-            let expected = expected_output
-                .replace('\n', " ")
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
-
-            assert_eq!(actual, expected, "failed: {}", desc);
+        for (input, expected) in [
+            ("1 != 2", "!(1 == 2)"),
+            ("1 > 2", "!(1 <= 2)"),
+            ("1 >= 2", "!(1 < 2)"),
+        ] {
+            let ast2: ast::Expr = Into::<Expr>::into(parse_expr(input)).try_into().unwrap();
+            assert_eq!(
+                norm(ast2.to_string()),
+                norm(expected.to_string()),
+                "desugaring: {input}"
+            );
         }
     }
 
-    /// Test that ErrorNode in PST results in conversion error
+    /// ErrorNode in PST must produce a conversion error, not silently succeed.
     #[test]
     fn test_error_node_conversion() {
         use crate::pst::expr::ErrorNode;
@@ -1055,10 +928,309 @@ mod tests {
         match result {
             Err(PstConstructionError::InvalidExpression(err)) => {
                 assert_eq!(err.description, "test error");
-                println!("✓ ErrorNode correctly produces conversion error");
             }
             Err(e) => panic!("Expected InvalidExpression error, got: {:?}", e),
             Ok(_) => panic!("Expected error, got Ok"),
+        }
+    }
+
+    // ===== Programmatic construction =====
+
+    #[test]
+    fn test_programmatic_construction() {
+        // Static policy with principal constraint and when clause
+        let policy = Policy {
+            id: PolicyID("policy0".into()),
+            effect: Effect::Permit,
+            principal: PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
+                ty: EntityType::from_name(Name::unqualified("User")),
+                eid: "alice".into(),
+            })),
+            action: ActionConstraint::Any,
+            resource: ResourceConstraint::Any,
+            clauses: vec![Clause::When(Arc::new(Expr::Literal(Literal::Bool(true))))],
+            annotations: BTreeMap::new(),
+        };
+        let ast_policy: ast::Policy = policy.try_into().expect("static policy");
+        let text = norm(ast_policy.to_string());
+        assert!(
+            text.contains("permit")
+                && text.contains("User::\"alice\"")
+                && text.contains("when { true }")
+        );
+
+        // Template with two slots
+        let tmpl = Policy {
+            id: PolicyID("tmpl0".into()),
+            effect: Effect::Forbid,
+            principal: PrincipalConstraint::In(EntityOrSlot::Slot(SlotId::Principal)),
+            action: ActionConstraint::Any,
+            resource: ResourceConstraint::Eq(EntityOrSlot::Slot(SlotId::Resource)),
+            clauses: vec![],
+            annotations: BTreeMap::new(),
+        };
+        let ast_tmpl: ast::Template = tmpl.try_into().expect("template");
+        assert_eq!(ast_tmpl.slots().count(), 2);
+
+        // Programmatic expr: if (principal.age >= 18) then true else false
+        let expr = Expr::IfThenElse {
+            cond: Arc::new(Expr::BinaryOp {
+                op: BinaryOp::GreaterEq,
+                left: Arc::new(Expr::GetAttr {
+                    expr: Arc::new(Expr::Var(Var::Principal)),
+                    attr: "age".into(),
+                }),
+                right: Arc::new(Expr::Literal(Literal::Long(18))),
+            }),
+            then_expr: Arc::new(Expr::Literal(Literal::Bool(true))),
+            else_expr: Arc::new(Expr::Literal(Literal::Bool(false))),
+        };
+        let _: ast::Expr = expr.try_into().expect("expr");
+
+        // Annotations
+        let mut annotations = BTreeMap::new();
+        annotations.insert("reason".to_string(), SmolStr::new("test"));
+        let annotated = Policy {
+            id: PolicyID("p0".into()),
+            effect: Effect::Permit,
+            principal: PrincipalConstraint::Any,
+            action: ActionConstraint::Any,
+            resource: ResourceConstraint::Any,
+            clauses: vec![],
+            annotations,
+        };
+        let ast_annotated: ast::Template = annotated.try_into().expect("annotated");
+        assert!(ast_annotated.to_string().contains("@reason(\"test\")"));
+    }
+
+    // ===== Edge cases =====
+
+    /// PST-level structural edge cases: empty/nested collections, deep nesting.
+    #[test]
+    fn test_pst_expr_roundtrips() {
+        // Empty set
+        let empty_set = Expr::Set(vec![]);
+        let back: Expr = TryInto::<ast::Expr>::try_into(empty_set.clone())
+            .unwrap()
+            .into();
+        assert_eq!(empty_set, back);
+
+        // Empty record
+        let empty_rec = Expr::Record(BTreeMap::new());
+        let back: Expr = TryInto::<ast::Expr>::try_into(empty_rec.clone())
+            .unwrap()
+            .into();
+        assert_eq!(empty_rec, back);
+
+        // Deeply nested: !(!(!(!(true))))
+        let mut deep = Expr::Literal(Literal::Bool(true));
+        for _ in 0..4 {
+            deep = Expr::UnaryOp {
+                op: UnaryOp::Not,
+                expr: Arc::new(deep),
+            };
+        }
+        let back: Expr = TryInto::<ast::Expr>::try_into(deep.clone()).unwrap().into();
+        assert_eq!(deep, back);
+
+        // Nested set inside record
+        let nested = Expr::Record(BTreeMap::from([
+            (
+                "items".to_string(),
+                Arc::new(Expr::Set(vec![
+                    Arc::new(Expr::Literal(Literal::Long(1))),
+                    Arc::new(Expr::Set(vec![])),
+                ])),
+            ),
+            ("empty".to_string(), Arc::new(Expr::Record(BTreeMap::new()))),
+        ]));
+        let back: Expr = TryInto::<ast::Expr>::try_into(nested.clone())
+            .unwrap()
+            .into();
+        assert_eq!(nested, back);
+    }
+
+    /// Multiple when/unless clauses get merged by AST into a single conjunction.
+    #[test]
+    fn test_multiple_clauses_merge() {
+        let policy = Policy {
+            id: PolicyID("p0".into()),
+            effect: Effect::Permit,
+            principal: PrincipalConstraint::Any,
+            action: ActionConstraint::Any,
+            resource: ResourceConstraint::Any,
+            clauses: vec![
+                Clause::When(Arc::new(Expr::Literal(Literal::Bool(true)))),
+                Clause::Unless(Arc::new(Expr::Literal(Literal::Bool(false)))),
+                Clause::When(Arc::new(Expr::BinaryOp {
+                    op: BinaryOp::Eq,
+                    left: Arc::new(Expr::Var(Var::Principal)),
+                    right: Arc::new(Expr::Var(Var::Resource)),
+                })),
+            ],
+            annotations: BTreeMap::new(),
+        };
+        let ast_t: ast::Template = policy.clone().try_into().expect("conversion failed");
+        let pst_back: Policy = ast_t.try_into().expect("back conversion failed");
+        assert_eq!(policy.effect, pst_back.effect);
+        assert_eq!(policy.principal, pst_back.principal);
+        assert!(!pst_back.clauses.is_empty());
+    }
+
+    /// All principal, resource, and action constraint variants roundtrip correctly,
+    /// including namespaced entity types.
+    #[test]
+    fn test_all_constraint_variants() {
+        let uid = EntityUID {
+            ty: EntityType::from_name(Name::unqualified("User")),
+            eid: "alice".into(),
+        };
+        let et = EntityType::from_name(Name::unqualified("User"));
+
+        let make_policy = |principal, action, resource| Policy {
+            id: PolicyID("p0".into()),
+            effect: Effect::Permit,
+            principal,
+            action,
+            resource,
+            clauses: vec![],
+            annotations: BTreeMap::new(),
+        };
+
+        for principal in [
+            PrincipalConstraint::Any,
+            PrincipalConstraint::Eq(EntityOrSlot::Entity(uid.clone())),
+            PrincipalConstraint::In(EntityOrSlot::Entity(uid.clone())),
+            PrincipalConstraint::Is(et.clone()),
+            PrincipalConstraint::IsIn(et.clone(), EntityOrSlot::Entity(uid.clone())),
+            // Namespaced entity type
+            PrincipalConstraint::Is(EntityType::from_name(Name::qualified(
+                ["MyApp", "Auth"],
+                "User",
+            ))),
+        ] {
+            let p = make_policy(
+                principal.clone(),
+                ActionConstraint::Any,
+                ResourceConstraint::Any,
+            );
+            let back: Policy = TryInto::<ast::Template>::try_into(p)
+                .unwrap()
+                .try_into()
+                .unwrap();
+            assert_eq!(principal, back.principal);
+        }
+
+        for resource in [
+            ResourceConstraint::Any,
+            ResourceConstraint::Eq(EntityOrSlot::Entity(uid.clone())),
+            ResourceConstraint::In(EntityOrSlot::Entity(uid.clone())),
+            ResourceConstraint::Is(et.clone()),
+            ResourceConstraint::IsIn(et.clone(), EntityOrSlot::Entity(uid.clone())),
+        ] {
+            let p = make_policy(
+                PrincipalConstraint::Any,
+                ActionConstraint::Any,
+                resource.clone(),
+            );
+            let back: Policy = TryInto::<ast::Template>::try_into(p)
+                .unwrap()
+                .try_into()
+                .unwrap();
+            assert_eq!(resource, back.resource);
+        }
+
+        for action in [
+            ActionConstraint::Any,
+            ActionConstraint::Eq(uid.clone()),
+            ActionConstraint::In(vec![uid.clone()]),
+            ActionConstraint::In(vec![
+                uid.clone(),
+                EntityUID {
+                    ty: EntityType::from_name(Name::unqualified("Action")),
+                    eid: "write".into(),
+                },
+            ]),
+        ] {
+            let p = make_policy(
+                PrincipalConstraint::Any,
+                action.clone(),
+                ResourceConstraint::Any,
+            );
+            let back: Policy = TryInto::<ast::Template>::try_into(p)
+                .unwrap()
+                .try_into()
+                .unwrap();
+            assert_eq!(action, back.action);
+        }
+    }
+
+    /// A PST policy with slots must not convert to a static ast::Policy.
+    #[test]
+    fn test_slot_in_constraint_rejects_static_conversion() {
+        let policy = Policy {
+            id: PolicyID("p0".into()),
+            effect: Effect::Permit,
+            principal: PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)),
+            action: ActionConstraint::Any,
+            resource: ResourceConstraint::Any,
+            clauses: vec![],
+            annotations: BTreeMap::new(),
+        };
+        assert!(TryInto::<ast::Policy>::try_into(policy).is_err());
+    }
+
+    /// A resource slot in a principal constraint (and vice versa) must be rejected.
+    #[test]
+    fn test_wrong_slot_type_in_constraint_fails() {
+        // Resource slot in principal position
+        for principal in [
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Resource)),
+            PrincipalConstraint::In(EntityOrSlot::Slot(SlotId::Resource)),
+            PrincipalConstraint::IsIn(
+                EntityType::from_name(Name::unqualified("User")),
+                EntityOrSlot::Slot(SlotId::Resource),
+            ),
+        ] {
+            let result: Result<ast::Template, _> = Policy {
+                id: PolicyID("p0".into()),
+                effect: Effect::Permit,
+                principal,
+                action: ActionConstraint::Any,
+                resource: ResourceConstraint::Any,
+                clauses: vec![],
+                annotations: BTreeMap::new(),
+            }
+            .try_into();
+            assert!(
+                matches!(result, Err(PstConstructionError::InvalidConversion(_))),
+                "expected error for resource slot in principal"
+            );
+        }
+
+        // Principal slot in resource position
+        for resource in [
+            ResourceConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)),
+            ResourceConstraint::In(EntityOrSlot::Slot(SlotId::Principal)),
+            ResourceConstraint::IsIn(
+                EntityType::from_name(Name::unqualified("Photo")),
+                EntityOrSlot::Slot(SlotId::Principal),
+            ),
+        ] {
+            let result: Result<ast::Template, _> = Policy {
+                id: PolicyID("p0".into()),
+                effect: Effect::Permit,
+                principal: PrincipalConstraint::Any,
+                action: ActionConstraint::Any,
+                resource,
+                clauses: vec![],
+                annotations: BTreeMap::new(),
+            }
+            .try_into();
+            assert!(
+                matches!(result, Err(PstConstructionError::InvalidConversion(_))),
+                "expected error for principal slot in resource"
+            );
         }
     }
 }

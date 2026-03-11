@@ -396,204 +396,218 @@ mod tests {
     use smol_str::SmolStr;
     use std::collections::BTreeMap;
 
-    fn roundtrips(e: Expr) {
-        let est: est::Expr = e.clone().try_into().unwrap();
-        let roundtrip_e: Expr = est.try_into().unwrap();
-        assert!(roundtrip_e == e)
-    }
-
-    fn policy_roundtrips(p: Policy) {
-        let est: est::Policy = p.clone().try_into().unwrap();
-        let roundtrip_p: Policy = est.try_into().unwrap();
-        assert!(roundtrip_p == p)
-    }
-
-    #[test]
-    fn test_est_expr_values() {
-        let json = r#"{"Value": true}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Literal(_)));
-        roundtrips(pst_expr);
+    /// EST (JSON) → PST → EST → PST roundtrip for expressions.
+    /// Parses `json` as an EST expression, converts to PST, asserts `check`,
+    /// then roundtrips back through EST and verifies both representations are stable.
+    fn est_expr_roundtrip(json: &str, check: &dyn Fn(&Expr) -> bool) {
+        let est1: est::Expr = serde_json::from_str(json).unwrap();
+        let pst1: Expr = est1.clone().try_into().unwrap();
+        assert!(check(&pst1), "Pattern check failed for: {json}");
+        let est2: est::Expr = pst1.clone().try_into().unwrap();
+        let pst2: Expr = est2.clone().try_into().unwrap();
+        assert_eq!(est1, est2, "EST mismatch for: {json}");
+        assert_eq!(pst1, pst2, "PST mismatch for: {json}");
     }
 
     #[test]
-    fn test_est_expr_var() {
-        let json = r#"{"Var": "principal"}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Var(pst::expr::Var::Principal)));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_expr_slot() {
-        let json = r#"{"Slot": "?principal"}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.clone().try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Slot(_)));
-        // Roundtrip: PST slot should convert back to EST slot
-        let est_roundtrip: est::Expr = pst_expr.try_into().unwrap();
-        assert_eq!(est_expr, est_roundtrip);
-    }
-
-    #[test]
-    fn test_est_expr_not() {
-        let json = r#"{"!": {"arg": {"Var": "principal"}}}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(
-            pst_expr,
-            Expr::UnaryOp {
-                op: UnaryOp::Not,
-                ..
-            }
-        ));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_expr_neg() {
-        let json = r#"{"neg": {"arg": {"Value": 5}}}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(
-            pst_expr,
-            Expr::UnaryOp {
-                op: UnaryOp::Neg,
-                ..
-            }
-        ));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_expr_binary_ops() {
-        // Test multiple binary operators: (a < b) && (c > d)
-        let json = r#"{
-            "&&": {
-                "left": {"<": {"left": {"Var": "principal"}, "right": {"Var": "action"}}},
-                "right": {">": {"left": {"Var": "resource"}, "right": {"Var": "context"}}}
-            }
-        }"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(
-            pst_expr,
-            Expr::BinaryOp {
-                op: BinaryOp::And,
-                ..
-            }
-        ));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_expr_if_then_else() {
-        let json = r#"{
-            "if-then-else": {
-                "if": {"Var": "principal"},
-                "then": {"Value": true},
-                "else": {"Value": false}
-            }
-        }"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::IfThenElse { .. }));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_expr_set() {
-        let json = r#"{"Set": [{"Var": "principal"}, {"Var": "action"}]}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        roundtrips(pst_expr.clone());
-        if let Expr::Set(elems) = pst_expr {
-            assert_eq!(elems.len(), 2);
-        } else {
-            panic!("Expected Set");
+    fn test_est_expr_roundtrips() {
+        let cases: Vec<(&str, fn(&Expr) -> bool)> = vec![
+            // Literals
+            (r#"{ "Value": true }"#, |e| matches!(e, Expr::Literal(_))),
+            // Variables
+            (r#"{ "Var": "principal" }"#, |e| {
+                matches!(e, Expr::Var(pst::expr::Var::Principal))
+            }),
+            // Slots
+            (r#"{ "Slot": "?principal" }"#, |e| {
+                matches!(e, Expr::Slot(_))
+            }),
+            // Unary: not
+            (r#"{ "!": { "arg": { "Var": "principal" } } }"#, |e| {
+                matches!(
+                    e,
+                    Expr::UnaryOp {
+                        op: UnaryOp::Not,
+                        ..
+                    }
+                )
+            }),
+            // Unary: neg
+            (r#"{ "neg": { "arg": { "Value": 5 } } }"#, |e| {
+                matches!(
+                    e,
+                    Expr::UnaryOp {
+                        op: UnaryOp::Neg,
+                        ..
+                    }
+                )
+            }),
+            // Unary: isEmpty
+            (r#"{ "isEmpty": { "arg": { "Var": "principal" } } }"#, |e| {
+                matches!(
+                    e,
+                    Expr::UnaryOp {
+                        op: UnaryOp::IsEmpty,
+                        ..
+                    }
+                )
+            }),
+            // Nested binary: (a < b) && (c > d)
+            (
+                r#"{
+                    "&&": {
+                        "left":  { "<": { "left": { "Var": "principal" }, "right": { "Var": "action" } } },
+                        "right": { ">": { "left": { "Var": "resource" },  "right": { "Var": "context" } } }
+                    }
+                }"#,
+                |e| {
+                    matches!(
+                        e,
+                        Expr::BinaryOp {
+                            op: BinaryOp::And,
+                            ..
+                        }
+                    )
+                },
+            ),
+            // If-then-else
+            (
+                r#"{
+                    "if-then-else": {
+                        "if":   { "Var": "principal" },
+                        "then": { "Value": true },
+                        "else": { "Value": false }
+                    }
+                }"#,
+                |e| matches!(e, Expr::IfThenElse { .. }),
+            ),
+            // Set
+            (
+                r#"{ "Set": [{ "Var": "principal" }, { "Var": "action" }] }"#,
+                |e| matches!(e, Expr::Set(elems) if elems.len() == 2),
+            ),
+            // Record
+            (r#"{ "Record": { "foo": { "Var": "principal" } } }"#, |e| {
+                matches!(e, Expr::Record(_))
+            }),
+            // GetAttr
+            (
+                r#"{ ".": { "left": { "Var": "principal" }, "attr": "name" } }"#,
+                |e| matches!(e, Expr::GetAttr { .. }),
+            ),
+            // HasAttr
+            (
+                r#"{ "has": { "left": { "Var": "principal" }, "attr": "name" } }"#,
+                |e| matches!(e, Expr::HasAttr { .. }),
+            ),
+            // Like (single-char literal; multi-char gets split by PST→EST)
+            (
+                r#"{
+                    "like": {
+                        "left": { "Var": "principal" },
+                        "pattern": [{ "Wildcard": null }, { "Literal": "x" }]
+                    }
+                }"#,
+                |e| matches!(e, Expr::Like { .. }),
+            ),
+            // Is (without in)
+            (
+                r#"{ "is": { "left": { "Var": "principal" }, "entity_type": "User" } }"#,
+                |e| matches!(e, Expr::Is { in_expr: None, .. }),
+            ),
+            // Is (with in)
+            (
+                r#"{
+                    "is": {
+                        "left": { "Var": "principal" },
+                        "entity_type": "User",
+                        "in": { "Value": { "__entity": { "type": "Folder", "id": "Public" } } }
+                    }
+                }"#,
+                |e| {
+                    matches!(
+                        e,
+                        Expr::Is {
+                            in_expr: Some(_),
+                            ..
+                        }
+                    )
+                },
+            ),
+            // Extension: decimal
+            (r#"{ "decimal": [{ "Value": "1.23" }] }"#, |e| {
+                matches!(
+                    e,
+                    Expr::UnaryOp {
+                        op: UnaryOp::Decimal,
+                        ..
+                    }
+                )
+            }),
+            // Extension: datetime
+            (
+                r#"{ "datetime": [{ "Value": "2025-10-10T10:01:10" }] }"#,
+                |e| {
+                    matches!(
+                        e,
+                        Expr::UnaryOp {
+                            op: UnaryOp::Datetime,
+                            ..
+                        }
+                    )
+                },
+            ),
+            // Extension: ip
+            (r#"{ "ip": [{ "Value": "192.168.0.1" }] }"#, |e| {
+                matches!(
+                    e,
+                    Expr::UnaryOp {
+                        op: UnaryOp::Ip,
+                        ..
+                    }
+                )
+            }),
+            // Extension: durationSince (binary)
+            (
+                r#"{
+                    "durationSince": [
+                        { "datetime": [{ "Value": "2025-10-10T10:01:10" }] },
+                        { "datetime": [{ "Value": "2025-09-10T10:01:10" }] }
+                    ]
+                }"#,
+                |e| {
+                    matches!(
+                        e,
+                        Expr::BinaryOp {
+                            op: BinaryOp::DurationSince,
+                            ..
+                        }
+                    )
+                },
+            ),
+        ];
+        for (json, check) in cases {
+            est_expr_roundtrip(json, &check);
         }
     }
 
     #[test]
-    fn test_est_expr_record() {
-        let json = r#"{"Record": {"foo": {"Var": "principal"}}}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Record(_)));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_expr_get_attr() {
-        let json = r#"{".": {"left": {"Var": "principal"}, "attr": "name"}}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::GetAttr { .. }));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_expr_has_attr() {
-        let json = r#"{"has": {"left": {"Var": "principal"}, "attr": "name"}}"#;
+    fn test_est_expr_has_attr_extended() {
+        // Extended has attr — does not roundtrip because the EST builder desugars it
+        let json = r#"{"has": {"left": {"Var": "principal"}, "attr": ["name", "nested"]}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
         assert!(matches!(pst_expr, Expr::HasAttr { .. }));
-        roundtrips(pst_expr);
-        // Extended has attr — does not roundtrip because the EST builder desugars it
-        let json2 = r#"{"has": {"left": {"Var": "principal"}, "attr": ["name", "nested"]}}"#;
-        let est_expr2: est::Expr = serde_json::from_str(json2).unwrap();
-        let pst_expr2: Expr = est_expr2.try_into().unwrap();
-        assert!(matches!(pst_expr2, Expr::HasAttr { .. }));
     }
 
+    /// Multi-char Like literals don't EST-roundtrip (PST splits them into individual chars),
+    /// so we only check the PST shape here.
     #[test]
-    fn test_est_expr_like() {
+    fn test_est_expr_like_multichar_literal() {
         let json = r#"{"like": {"left": {"Var": "principal"}, "pattern": [{"Wildcard": null}, {"Literal": "@example.com"}]}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
         assert!(matches!(pst_expr, Expr::Like { .. }));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_expr_is() {
-        // Test simple is without in
-        let json = r#"{"is": {
-           "left": { "Var": "principal" },
-            "entity_type": "User"
-    }}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Is { in_expr: None, .. }));
-        roundtrips(pst_expr);
-
-        // Test is with in - now uses is_in_entity_type
-        let json2 = r#"{"is": {
-           "left": { "Var": "principal" },
-            "entity_type": "User",
-            "in": {"Value": {"__entity": { "type": "Folder", "id": "Public" }}}
-    }}"#;
-        let est_expr2: est::Expr = serde_json::from_str(json2).unwrap();
-        let pst_expr2: Expr = est_expr2.try_into().unwrap();
-        assert!(matches!(
-            pst_expr2,
-            Expr::Is {
-                in_expr: Some(_),
-                ..
-            }
-        ));
-        roundtrips(pst_expr2);
-    }
-
-    #[test]
-    fn test_est_to_pst_simple() {
-        // Test simple value conversion
-        let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::Var(ast::Var::Principal));
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Var(pst::expr::Var::Principal)));
-        roundtrips(pst_expr);
     }
 
     #[test]
@@ -623,339 +637,321 @@ mod tests {
                 r#"{{"{}": {{"left": {{"Var": "principal"}}, "right": {{"Var": "resource"}}}}}}"#,
                 op_str
             );
-            let est_expr: est::Expr = serde_json::from_str(&json).unwrap();
-            let pst_expr: Expr = est_expr.try_into().unwrap();
-            if let Expr::BinaryOp { op, .. } = pst_expr {
-                assert_eq!(op, expected_op, "Failed for operator {}", op_str);
-            } else {
-                panic!("Expected BinaryOp for {}", op_str);
-            }
-            roundtrips(pst_expr);
+            est_expr_roundtrip(
+                &json,
+                &|e| matches!(e, Expr::BinaryOp { op, .. } if *op == expected_op),
+            );
         }
     }
 
-    #[test]
-    fn test_est_to_pst_is_empty() {
-        let arg = Arc::new(est::Expr::ExprNoExt(est::ExprNoExt::Var(
-            ast::Var::Principal,
-        )));
-        let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::IsEmpty { arg });
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(
-            pst_expr,
-            Expr::UnaryOp {
-                op: UnaryOp::IsEmpty,
-                ..
-            }
-        ));
-        roundtrips(pst_expr);
+    /// EST (JSON) → PST → EST → PST roundtrip for policies.
+    fn est_policy_roundtrip(json: &str, check: &dyn Fn(&Policy) -> bool) {
+        let est1: est::Policy =
+            serde_json::from_str(json).expect(&format!("{} should parse", json));
+        let pst1: Policy = est1.clone().try_into().unwrap();
+        assert!(check(&pst1), "Pattern check failed for: {json}");
+        let est2: est::Policy = pst1.clone().try_into().unwrap();
+        let pst2: Policy = est2.clone().try_into().unwrap();
+        assert_eq!(est1, est2, "EST mismatch for: {json}");
+        assert_eq!(pst1, pst2, "PST mismatch for: {json}");
     }
 
     #[test]
-    fn test_est_to_pst_get_attr() {
-        let left = Arc::new(est::Expr::ExprNoExt(est::ExprNoExt::Var(
-            ast::Var::Principal,
-        )));
-        let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::GetAttr {
-            left,
-            attr: "name".try_into().unwrap(),
-        });
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::GetAttr { .. }));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_to_pst_has_attr() {
-        let left = Arc::new(est::Expr::ExprNoExt(est::ExprNoExt::Var(
-            ast::Var::Principal,
-        )));
-        let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::HasAttr(est::HasAttrRepr::Simple {
-            left,
-            attr: "name".try_into().unwrap(),
-        }));
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::HasAttr { .. }));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_to_pst_like() {
-        let left = Arc::new(est::Expr::ExprNoExt(est::ExprNoExt::Var(
-            ast::Var::Principal,
-        )));
-        let pattern = vec![
-            est::PatternElem::Wildcard,
-            est::PatternElem::Literal("test".try_into().unwrap()),
+    fn test_est_policy_roundtrips() {
+        let cases: Vec<(&str, fn(&Policy) -> bool)> = vec![
+            // Simple permit with principal == and action ==
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "==", "entity": { "type": "User", "id": "alice" } },
+                    "action":    { "op": "==", "entity": { "type": "Action", "id": "view" } },
+                    "resource":  { "op": "All" },
+                    "conditions": []
+                }"#,
+                |p| matches!(p.effect, pst::Effect::Permit),
+            ),
+            // Forbid with principal in and resource in
+            (
+                r#"{
+                    "effect": "forbid",
+                    "principal": { "op": "in", "entity": { "type": "Group", "id": "admins" } },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "in", "entity": { "type": "Folder", "id": "secrets" } },
+                    "conditions": []
+                }"#,
+                |p| {
+                    matches!(p.effect, pst::Effect::Forbid)
+                        && matches!(p.principal, pst::PrincipalConstraint::In(_))
+                        && matches!(p.resource, pst::ResourceConstraint::In(_))
+                },
+            ),
+            // With a when condition
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "All" },
+                    "conditions": [{
+                        "kind": "when",
+                        "body": { "==": { "left": { "Var": "principal" }, "right": { "Var": "resource" } } }
+                    }]
+                }"#,
+                |p| p.clauses.len() == 1 && matches!(p.clauses[0], pst::Clause::When(..)),
+            ),
+            // With an unless condition
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "All" },
+                    "conditions": [{
+                        "kind": "unless",
+                        "body": { "has": { "left": { "Var": "principal" }, "attr": "attacker" } }
+                    }]
+                }"#,
+                |p| p.clauses.len() == 1 && matches!(p.clauses[0], pst::Clause::Unless(..)),
+            ),
+            // With an unless and when condition
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "All" },
+                    "conditions": [{
+                        "kind": "unless",
+                        "body": { "has": { "left": { "Var": "principal" }, "attr": "attacker" } }
+                    },
+                    {
+                        "kind": "when",
+                        "body": { "==": { "left": { "Var": "principal" }, "right": { "Var": "resource" } } }
+                    }]
+                }"#,
+                |p| {
+                    p.clauses.len() == 2
+                        && matches!(p.clauses[0], pst::Clause::Unless(..))
+                        && matches!(p.clauses[1], pst::Clause::When(..))
+                },
+            ),
+            // With annotations
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "All" },
+                    "conditions": [],
+                    "annotations": { "reason": "allow all access", "id": "policy_1" }
+                }"#,
+                |p| {
+                    p.annotations.len() == 2
+                        && p.annotations
+                            .get("reason")
+                            .is_some_and(|v| v == "allow all access")
+                        && p.annotations.get("id").is_some_and(|v| v == "policy_1")
+                },
+            ),
+            // Action in set
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "in", "entities": [{ "type": "Action", "id": "read" }, { "type": "Action", "id": "write" }] },
+                    "resource":  { "op": "All" },
+                    "conditions": []
+                }"#,
+                |p| matches!(&p.action, pst::ActionConstraint::In(a) if a.len() == 2),
+            ),
+            // Resource == slot
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "==", "slot": "?resource" },
+                    "conditions": []
+                }"#,
+                |p| matches!(p.resource, pst::ResourceConstraint::Eq(_)),
+            ),
+            // Resource ==
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "==", "entity": { "type": "File", "id": "doc.txt" } },
+                    "conditions": []
+                }"#,
+                |p| matches!(p.resource, pst::ResourceConstraint::Eq(_)),
+            ),
+            // Resource is
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "is", "entity_type": "File" },
+                    "conditions": []
+                }"#,
+                |p| matches!(p.resource, pst::ResourceConstraint::Is(_)),
+            ),
+            // Resource is in
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "is", "entity_type": "File", "in": { "entity": { "type": "Folder", "id": "docs" } } },
+                    "conditions": []
+                }"#,
+                |p| matches!(p.resource, pst::ResourceConstraint::IsIn(..)),
+            ),
+            // Action ==
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "==", "entity": { "type": "Action", "id": "view" } },
+                    "resource":  { "op": "All" },
+                    "conditions": []
+                }"#,
+                |p| matches!(p.action, pst::ActionConstraint::Eq(_)),
+            ),
+            // Action in single
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "in", "entity": { "type": "Action", "id": "view" } },
+                    "resource":  { "op": "All" },
+                    "conditions": []
+                }"#,
+                |p| matches!(&p.action, pst::ActionConstraint::In(a) if a.len() == 1),
+            ),
+            // Principal ==
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "==", "entity": { "type": "User", "id": "alice" } },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "All" },
+                    "conditions": []
+                }"#,
+                |p| matches!(p.principal, pst::PrincipalConstraint::Eq(_)),
+            ),
+            // Principal is
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "is", "entity_type": "User" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "All" },
+                    "conditions": []
+                }"#,
+                |p| matches!(p.principal, pst::PrincipalConstraint::Is(_)),
+            ),
+            // Principal is in
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "is", "entity_type": "User", "in": { "entity": { "type": "Group", "id": "admins" } } },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "All" },
+                    "conditions": []
+                }"#,
+                |p| matches!(p.principal, pst::PrincipalConstraint::IsIn(..)),
+            ),
+            // Principal in slot
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "in",  "slot": "?principal" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "All" },
+                    "conditions": []
+                }"#,
+                |p| matches!(p.principal, pst::PrincipalConstraint::In(..)),
+            ),
+            // Principal == slot
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "==", "slot": "?principal" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "All" },
+                    "conditions": []
+                }"#,
+                |p| {
+                    matches!(
+                        p.principal,
+                        pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(_))
+                    )
+                },
+            ),
+            // Resource in slot
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "in", "slot": "?resource" },
+                    "conditions": []
+                }"#,
+                |p| {
+                    matches!(
+                        p.resource,
+                        pst::ResourceConstraint::In(pst::EntityOrSlot::Slot(_))
+                    )
+                },
+            ),
+            // Principal is in slot
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "is", "entity_type": "User", "in": { "slot": "?principal" } },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "All" },
+                    "conditions": []
+                }"#,
+                |p| {
+                    matches!(
+                        p.principal,
+                        pst::PrincipalConstraint::IsIn(_, pst::EntityOrSlot::Slot(_))
+                    )
+                },
+            ),
+            // Resource is in slot
+            (
+                r#"{
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action":    { "op": "All" },
+                    "resource":  { "op": "is", "entity_type": "File", "in": { "slot": "?resource" } },
+                    "conditions": []
+                }"#,
+                |p| {
+                    matches!(
+                        p.resource,
+                        pst::ResourceConstraint::IsIn(_, pst::EntityOrSlot::Slot(_))
+                    )
+                },
+            ),
         ];
-        let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::Like { left, pattern });
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Like { .. }));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_to_pst_is() {
-        let left = Arc::new(est::Expr::ExprNoExt(est::ExprNoExt::Var(
-            ast::Var::Principal,
-        )));
-        let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::Is {
-            left,
-            entity_type: "User".try_into().unwrap(),
-            in_expr: None,
-        });
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Is { .. }));
-        roundtrips(pst_expr);
-    }
-
-    #[test]
-    fn test_est_to_pst_set() {
-        // Test set conversion
-        let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::Set(vec![
-            est::Expr::ExprNoExt(est::ExprNoExt::Var(ast::Var::Principal)),
-            est::Expr::ExprNoExt(est::ExprNoExt::Var(ast::Var::Action)),
-        ]));
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        roundtrips(pst_expr.clone());
-        if let Expr::Set(elems) = pst_expr {
-            assert_eq!(elems.len(), 2);
-        } else {
-            panic!("Expected Set");
+        for (json, check) in cases {
+            est_policy_roundtrip(json, &check);
         }
     }
 
+    /// Empty annotation values don't EST-roundtrip (`""` → PST → `None` in EST),
+    /// so we only check the PST shape here.
     #[test]
-    fn test_est_policy_simple() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": {
-                "op": "==",
-                "entity": { "type": "User", "id": "alice" }
-            },
-            "action": {
-                "op": "==",
-                "entity": { "type": "Action", "id": "view" }
-            },
-            "resource": {
-                "op": "All"
-            },
-            "conditions": []
-        }"#;
+    fn test_est_policy_annotation_empty_value() {
+        let json = r#"{"annotations":{"ok":""},"effect":"permit","principal":{"op":"is","entity_type":"User","in":{"slot":"?principal"}},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[]}"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(pst_policy.effect, pst::Effect::Permit));
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_policy_with_in_constraint() {
-        let json = r#"{
-            "effect": "forbid",
-            "principal": {
-                "op": "in",
-                "entity": { "type": "Group", "id": "admins" }
-            },
-            "action": {
-                "op": "All"
-            },
-            "resource": {
-                "op": "in",
-                "entity": { "type": "Folder", "id": "secrets" }
-            },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(pst_policy.effect, pst::Effect::Forbid));
-        assert!(matches!(
-            pst_policy.principal,
-            pst::PrincipalConstraint::In(_)
-        ));
-        assert!(matches!(
-            pst_policy.resource,
-            pst::ResourceConstraint::In(_)
-        ));
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_policy_with_conditions() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": { "op": "All" },
-            "action": { "op": "All" },
-            "resource": { "op": "All" },
-            "conditions": [
-                {
-                    "kind": "when",
-                    "body": {
-                        "==": {
-                            "left": { "Var": "principal" },
-                            "right": { "Var": "resource" }
-                        }
-                    }
-                }
-            ]
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert_eq!(pst_policy.clauses.len(), 1);
-        assert!(matches!(pst_policy.clauses[0], pst::Clause::When(..)));
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_policy_with_annotations() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": { "op": "All" },
-            "action": { "op": "All" },
-            "resource": { "op": "All" },
-            "conditions": [],
-            "annotations": {
-                "reason": "allow all access",
-                "id": "policy_1"
-            }
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert_eq!(pst_policy.annotations.len(), 2);
-        assert_eq!(
-            pst_policy.annotations.get("reason").unwrap(),
-            "allow all access"
-        );
-        assert_eq!(pst_policy.annotations.get("id").unwrap(), "policy_1");
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_policy_with_action_set() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": { "op": "All" },
-            "action": {
-                "op": "in",
-                "entities": [
-                    { "type": "Action", "id": "read" },
-                    { "type": "Action", "id": "write" }
-                ]
-            },
-            "resource": { "op": "All" },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        policy_roundtrips(pst_policy.clone());
-        if let pst::ActionConstraint::In(actions) = pst_policy.action {
-            assert_eq!(actions.len(), 2);
-        } else {
-            panic!("Expected ActionConstraint::In");
-        }
-    }
-
-    #[test]
-    fn test_est_resource_constraint_eq() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": { "op": "All" },
-            "action": { "op": "All" },
-            "resource": {
-                "op": "==",
-                "entity": { "type": "File", "id": "doc.txt" }
-            },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(
-            pst_policy.resource,
-            pst::ResourceConstraint::Eq(_)
-        ));
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_resource_constraint_is() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": { "op": "All" },
-            "action": { "op": "All" },
-            "resource": {
-                "op": "is",
-                "entity_type": "File"
-            },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(
-            pst_policy.resource,
-            pst::ResourceConstraint::Is(_)
-        ));
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_resource_constraint_is_in() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": { "op": "All" },
-            "action": { "op": "All" },
-            "resource": {
-                "op": "is",
-                "entity_type": "File",
-                "in": { "entity": { "type": "Folder", "id": "docs" } }
-            },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(
-            pst_policy.resource,
-            pst::ResourceConstraint::IsIn(..)
-        ));
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_action_constraint_eq() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": { "op": "All" },
-            "action": {
-                "op": "==",
-                "entity": { "type": "Action", "id": "view" }
-            },
-            "resource": { "op": "All" },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(pst_policy.action, pst::ActionConstraint::Eq(_)));
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_action_constraint_in_single() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": { "op": "All" },
-            "action": {
-                "op": "in",
-                "entity": { "type": "Action", "id": "view" }
-            },
-            "resource": { "op": "All" },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        policy_roundtrips(pst_policy.clone());
-        if let pst::ActionConstraint::In(actions) = pst_policy.action {
-            assert_eq!(actions.len(), 1);
-        } else {
-            panic!("Expected ActionConstraint::In");
-        }
+        let pst_policy: Policy = est_policy.try_into().unwrap();
+        assert_eq!(pst_policy.annotations.len(), 1);
     }
 
     #[test]
@@ -969,181 +965,6 @@ mod tests {
             result,
             Err(PstConstructionError::ActionConstraintCannotHaveSlots(..))
         ));
-    }
-
-    #[test]
-    fn test_est_principal_constraint_eq() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": {
-                "op": "==",
-                "entity": { "type": "User", "id": "alice" }
-            },
-            "action": { "op": "All" },
-            "resource": { "op": "All" },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(
-            pst_policy.principal,
-            pst::PrincipalConstraint::Eq(_)
-        ));
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_principal_constraint_is() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": {
-                "op": "is",
-                "entity_type": "User"
-            },
-            "action": { "op": "All" },
-            "resource": { "op": "All" },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(
-            pst_policy.principal,
-            pst::PrincipalConstraint::Is(_)
-        ));
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_principal_constraint_is_in() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": {
-                "op": "is",
-                "entity_type": "User",
-                "in": { "entity": { "type": "Group", "id": "admins" } }
-            },
-            "action": { "op": "All" },
-            "resource": { "op": "All" },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(
-            pst_policy.principal,
-            pst::PrincipalConstraint::IsIn(..)
-        ));
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_principal_constraint_slot() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": {
-                "op": "==",
-                "slot": "?principal"
-            },
-            "action": { "op": "All" },
-            "resource": { "op": "All" },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        if let pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(_)) = pst_policy.principal {
-            // Success
-        } else {
-            panic!("Expected PrincipalConstraint::Eq with Slot");
-        }
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_resource_constraint_slot() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": { "op": "All" },
-            "action": { "op": "All" },
-            "resource": {
-                "op": "in",
-                "slot": "?resource"
-            },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        if let pst::ResourceConstraint::In(pst::EntityOrSlot::Slot(_)) = pst_policy.resource {
-            // Success
-        } else {
-            panic!("Expected ResourceConstraint::In with Slot");
-        }
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_principal_constraint_is_in_slot() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": {
-                "op": "is",
-                "entity_type": "User",
-                "in": { "slot": "?principal" }
-            },
-            "action": { "op": "All" },
-            "resource": { "op": "All" },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        if let pst::PrincipalConstraint::IsIn(_, pst::EntityOrSlot::Slot(_)) = pst_policy.principal
-        {
-            // Success
-        } else {
-            panic!("Expected PrincipalConstraint::IsIn with Slot");
-        }
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_resource_constraint_is_in_slot() {
-        let json = r#"{
-            "effect": "permit",
-            "principal": { "op": "All" },
-            "action": { "op": "All" },
-            "resource": {
-                "op": "is",
-                "entity_type": "File",
-                "in": { "slot": "?resource" }
-            },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        if let pst::ResourceConstraint::IsIn(_, pst::EntityOrSlot::Slot(_)) = pst_policy.resource {
-            // Success
-        } else {
-            panic!("Expected ResourceConstraint::IsIn with Slot");
-        }
-        policy_roundtrips(pst_policy);
-    }
-
-    #[test]
-    fn test_est_policy_annotation_empty_value() {
-        let json = r#"{
-            "annotations": {"ok":""},
-            "effect": "permit",
-            "principal": {
-                "op": "is",
-                "entity_type": "User",
-                "in": { "slot": "?principal" }
-            },
-            "action": { "op": "All" },
-            "resource": { "op": "All" },
-            "conditions": []
-        }"#;
-        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert_eq!(pst_policy.annotations.len(), 1);
-        policy_roundtrips(pst_policy);
     }
 
     #[test]
@@ -1198,72 +1019,18 @@ mod tests {
     }
 
     #[test]
-    fn test_est_expr_func_call() {
-        // Test unary function calls (single argument)
-        let json = r#"{"decimal": [{"Value": "1.23"}]}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(
-            pst_expr,
-            Expr::UnaryOp {
-                op: UnaryOp::Decimal,
-                ..
-            }
-        ));
-        roundtrips(pst_expr);
-
-        let json = r#"{"datetime": [{"Value": "2025-10-10T10:01:10"}]}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(
-            pst_expr,
-            Expr::UnaryOp {
-                op: UnaryOp::Datetime,
-                ..
-            }
-        ));
-        roundtrips(pst_expr);
-
-        let json = r#"{"ip": [{"Value": "192.168.0.1"}]}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(
-            pst_expr,
-            Expr::UnaryOp {
-                op: UnaryOp::Ip,
-                ..
-            }
-        ));
-        roundtrips(pst_expr);
-
-        // Test binary function calls (two arguments)
-        let json = r#"{"durationSince": [
-          {"datetime": [{"Value": "2025-10-10T10:01:10"}]},
-          {"datetime": [{"Value": "2025-09-10T10:01:10"}]}
-         ]}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(
-            pst_expr,
-            Expr::BinaryOp {
-                op: BinaryOp::DurationSince,
-                ..
-            }
-        ));
-        roundtrips(pst_expr);
-
-        // Complex argument (expression)
+    fn test_est_expr_func_call_nested() {
+        // Complex argument (expression inside extension function)
         let json = r#"{"decimal": [{"&&": {"left": {"Value": true}, "right": {"Value": false}}}]}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        roundtrips(pst_expr.clone());
         if let Expr::UnaryOp {
             op: UnaryOp::Decimal,
             expr,
-        } = pst_expr
+        } = &pst_expr
         {
             assert!(matches!(
-                *expr,
+                **expr,
                 Expr::BinaryOp {
                     op: BinaryOp::And,
                     ..
@@ -1277,14 +1044,13 @@ mod tests {
         let json = r#"{"decimal": [{"ip": [{"Value": "192.168.0.1"}]}]}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        roundtrips(pst_expr.clone());
         if let Expr::UnaryOp {
             op: UnaryOp::Decimal,
             expr,
-        } = pst_expr
+        } = &pst_expr
         {
             assert!(matches!(
-                *expr,
+                **expr,
                 Expr::UnaryOp {
                     op: UnaryOp::Ip,
                     ..
@@ -1301,5 +1067,22 @@ mod tests {
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let result: Result<Expr, _> = est_expr.try_into();
         assert!(matches!(result, Err(PstConstructionError::WrongArity(..))));
+    }
+
+    #[test]
+    fn test_est_policy_invalid_entity_uid() {
+        let json = r#"{
+            "effect": "permit",
+            "principal": { "op": "==", "entity": 42 },
+            "action":    { "op": "All" },
+            "resource":  { "op": "All" },
+            "conditions": []
+        }"#;
+        let est_policy: est::Policy = serde_json::from_str(json).unwrap();
+        let result: Result<Policy, _> = est_policy.try_into();
+        assert!(matches!(
+            result,
+            Err(PstConstructionError::InvalidEntityUid(..))
+        ));
     }
 }
