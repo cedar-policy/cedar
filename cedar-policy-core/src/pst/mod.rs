@@ -14,8 +14,12 @@
  * limitations under the License.
  */
 
-//! The PST is a public syntax tree representation of Cedar policies designed for programmatic
-//! manipulation. All the types necessary to build a valid PST are public.
+// NOTE: Unlike most modules in this crate, all types in the PST are intentionally
+// public. This is by design — the PST is meant for programmatic policy construction,
+// so users need direct access to all constituent types.
+
+//! The PST is a syntax tree representation of Cedar policies designed for programmatic
+//! manipulation.
 //!
 //! # Constructing a policy
 //!
