@@ -115,6 +115,11 @@ pub enum PstConstructionError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     LinkingFailed(#[from] error_body::LinkingError),
+
+    /// Contains unexpected slots
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ContainsSlots(#[from] error_body::ContainsSlotError),
 }
 
 #[doc(hidden)]
@@ -148,6 +153,8 @@ impl From<est::FromJsonError> for PstConstructionError {
 
 /// Error subtypes for [`PstConstructionError`]
 pub mod error_body {
+    use std::collections::HashSet;
+
     use crate::extensions::ExtensionFunctionLookupError;
     use miette::Diagnostic;
     use smol_str::SmolStr;
@@ -348,5 +355,12 @@ pub mod error_body {
             /// Slot which didn't have a value provided for it
             slot: crate::pst::SlotId,
         },
+    }
+
+    /// The policy or an expression contains slots
+    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
+    #[error("policy or expression contains slots: {slots:?}")]
+    pub struct ContainsSlotError {
+        pub(crate) slots: HashSet<crate::pst::SlotId>,
     }
 }

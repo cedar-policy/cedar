@@ -23,7 +23,7 @@
 //!
 //! # Constructing a policy
 //!
-//! Build a PST [`Policy`] directly from its constituent types. This example constructs:
+//! Build a PST [`Template`] directly from its constituent types. This example constructs:
 //! ```cedar
 //! permit (
 //!   principal == User::"alice",
@@ -37,32 +37,34 @@
 //! # use smol_str::SmolStr;
 //! # use std::sync::Arc;
 //! # use std::collections::BTreeMap;
-//! let policy = Policy {
-//!     id: PolicyID(SmolStr::from("policy0")),
-//!     effect: Effect::Permit,
-//!     principal: PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
+//! let template = Template::new(
+//!     PolicyID(SmolStr::from("policy0")),
+//!     Effect::Permit,
+//!     PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
 //!         ty: EntityType::from_name(Name::unqualified("User")),
 //!         eid: SmolStr::from("alice"),
 //!     })),
-//!     action: ActionConstraint::Eq(EntityUID {
+//!     ActionConstraint::Eq(EntityUID {
 //!         ty: EntityType::from_name(Name::unqualified("Action")),
 //!         eid: SmolStr::from("view"),
 //!     }),
-//!     resource: ResourceConstraint::In(EntityOrSlot::Entity(EntityUID {
+//!     ResourceConstraint::In(EntityOrSlot::Entity(EntityUID {
 //!         ty: EntityType::from_name(Name::unqualified("Album")),
 //!         eid: SmolStr::from("vacation"),
 //!     })),
-//!     clauses: vec![Clause::When(Arc::new(Expr::BinaryOp {
-//!         op: BinaryOp::Eq,
-//!         left: Arc::new(Expr::GetAttr {
-//!             expr: Arc::new(Expr::Var(Var::Resource)),
-//!             attr: SmolStr::from("public"),
-//!         }),
-//!         right: Arc::new(Expr::Literal(Literal::Bool(true))),
-//!     }))],
-//!     annotations: BTreeMap::new(),
-//! };
-//! assert_eq!(policy.effect, Effect::Permit);
+//! )
+//! .try_with_clauses(vec![Clause::When(Arc::new(Expr::BinaryOp {
+//!     op: BinaryOp::Eq,
+//!     left: Arc::new(Expr::GetAttr {
+//!         expr: Arc::new(Expr::Var(Var::Resource)),
+//!         attr: SmolStr::from("public"),
+//!     }),
+//!     right: Arc::new(Expr::Literal(Literal::Bool(true))),
+//! }))])
+//! .unwrap();
+//! // If there are no slots, it can be converted into a static policy
+//! let policy : Policy = Policy::Static(template.try_into().unwrap());
+//! assert_eq!(policy.body().effect, Effect::Permit);
 //! ```
 //!
 //! # Matching / inspecting a policy
@@ -77,36 +79,36 @@
 //! # use smol_str::SmolStr;
 //! # use std::sync::Arc;
 //! # use std::collections::BTreeMap;
-//! # let policy = Policy {
-//! #     id: PolicyID(SmolStr::from("policy0")),
-//! #     effect: Effect::Permit,
-//! #     principal: PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
+//! # let template = Template::new(
+//! #     PolicyID(SmolStr::from("policy0")),
+//! #     Effect::Permit,
+//! #     PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
 //! #         ty: EntityType::from_name(Name::unqualified("User")),
 //! #         eid: SmolStr::from("alice"),
 //! #     })),
-//! #     action: ActionConstraint::Eq(EntityUID {
+//! #     ActionConstraint::Eq(EntityUID {
 //! #         ty: EntityType::from_name(Name::unqualified("Action")),
 //! #         eid: SmolStr::from("view"),
 //! #     }),
-//! #     resource: ResourceConstraint::Any,
-//! #     clauses: vec![Clause::When(Arc::new(Expr::BinaryOp {
-//! #         op: BinaryOp::Eq,
-//! #         left: Arc::new(Expr::GetAttr {
-//! #             expr: Arc::new(Expr::Var(Var::Resource)),
-//! #             attr: SmolStr::from("public"),
-//! #         }),
-//! #         right: Arc::new(Expr::Literal(Literal::Bool(true))),
-//! #     }))],
-//! #     annotations: BTreeMap::new(),
-//! # };
+//! #     ResourceConstraint::Any,
+//! # )
+//! # .try_with_clauses(vec![Clause::When(Arc::new(Expr::BinaryOp {
+//! #     op: BinaryOp::Eq,
+//! #     left: Arc::new(Expr::GetAttr {
+//! #         expr: Arc::new(Expr::Var(Var::Resource)),
+//! #         attr: SmolStr::from("public"),
+//! #     }),
+//! #     right: Arc::new(Expr::Literal(Literal::Bool(true))),
+//! # }))])
+//! # .unwrap();
 //! // Effect and constraints are exhaustively matchable:
-//! let is_permit = match policy.effect {
+//! let is_permit = match template.effect {
 //!     Effect::Permit => true,
 //!     Effect::Forbid => false,
 //! };
 //!
 //! // PrincipalConstraint is also exhaustively matchable:
-//! let principal_entity = match &policy.principal {
+//! let principal_entity = match &template.principal {
 //!     PrincipalConstraint::Eq(EntityOrSlot::Entity(uid)) => Some(uid),
 //!     PrincipalConstraint::Any
 //!     | PrincipalConstraint::Eq(EntityOrSlot::Slot(_))
@@ -116,7 +118,7 @@
 //! };
 //!
 //! // Expr is #[non_exhaustive] — a wildcard arm is required:
-//! for clause in &policy.clauses {
+//! for clause in template.clauses() {
 //!     let expr = match clause {
 //!         Clause::When(e) => e,
 //!         Clause::Unless(e) => e,
@@ -153,4 +155,4 @@ pub use err::PstConstructionError;
 pub use expr::{
     BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
-pub use policy::{Clause, Effect, Policy, PolicyID};
+pub use policy::{Clause, Effect, LinkedPolicy, Policy, PolicyID, StaticPolicy, Template};

@@ -19,9 +19,9 @@
 use smol_str::ToSmolStr;
 
 use super::{
-    ActionConstraint, BinaryOp, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Literal,
-    Name, PatternElem, Policy, PolicyID, PrincipalConstraint, PstConstructionError,
-    ResourceConstraint, SlotId, UnaryOp, Var,
+    ActionConstraint, BinaryOp, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr,
+    LinkedPolicy, Literal, Name, PatternElem, Policy, PolicyID, PrincipalConstraint,
+    PstConstructionError, ResourceConstraint, SlotId, Template, UnaryOp, Var,
 };
 use crate::ast;
 use crate::expr_builder;
@@ -38,8 +38,11 @@ impl TryFrom<Policy> for ast::Policy {
     type Error = PstConstructionError;
 
     fn try_from(policy: Policy) -> Result<Self, Self::Error> {
-        // Convert to Template first, then to Policy (following EST pattern)
-        let template: ast::Template = policy.try_into()?;
+        let static_policy = match policy {
+            Policy::Static(sp) => sp,
+            Policy::Linked(lp) => lp.link()?,
+        };
+        let template: ast::Template = static_policy.body.try_into()?;
         ast::StaticPolicy::try_from(template)
             .map(Into::into)
             .map_err(|e| {
@@ -53,10 +56,10 @@ impl TryFrom<Policy> for ast::Policy {
 }
 
 #[doc(hidden)]
-impl TryFrom<Policy> for ast::Template {
+impl TryFrom<Template> for ast::Template {
     type Error = PstConstructionError;
 
-    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
+    fn try_from(policy: Template) -> Result<Self, Self::Error> {
         use crate::expr_builder::ExprBuilder;
         // Convert clauses - fold them into a single expression (following EST pattern)
         let builder = ast::ExprBuilder::<()>::new();
@@ -593,7 +596,7 @@ impl From<ast::ActionConstraint> for ActionConstraint {
 }
 
 #[doc(hidden)]
-impl TryFrom<ast::Template> for Policy {
+impl TryFrom<ast::Template> for Template {
     type Error = PstConstructionError;
 
     fn try_from(template: ast::Template) -> Result<Self, PstConstructionError> {
@@ -624,15 +627,9 @@ impl TryFrom<ast::Template> for Policy {
             .map(|(key, ann)| (key.to_string(), ann.val))
             .collect();
 
-        Ok(Policy {
-            id,
-            effect,
-            principal,
-            action,
-            resource,
-            clauses,
-            annotations,
-        })
+        Template::new(id, effect, principal, action, resource)
+            .with_annotations(annotations)
+            .try_with_clauses(clauses)
     }
 }
 
@@ -641,16 +638,29 @@ impl TryFrom<ast::Policy> for Policy {
     type Error = PstConstructionError;
 
     fn try_from(policy: ast::Policy) -> Result<Self, PstConstructionError> {
-        let (template, link_id, env) = policy.into_components();
-        let mut policy: Policy = Arc::unwrap_or_clone(template).try_into()?;
-        if let Some(id) = link_id {
-            policy.id = PolicyID(id.to_smolstr());
+        let (template, id, values) = policy.into_components();
+        let pst_template: Template = Arc::unwrap_or_clone(template).try_into()?;
+        if pst_template.is_static() {
+            Ok(Policy::Static(pst_template.try_into()?))
+        } else {
+            let values = values
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect();
+            if let Some(ast_id) = id {
+                Ok(Policy::Linked(LinkedPolicy {
+                    body: pst_template,
+                    values,
+                    instance_id: ast_id.into(),
+                }))
+            } else {
+                // We shouldn't get there if the invariant on ast policies hold
+                Err(
+                    InvalidConversionError::new("linked policy missing instance id".to_string())
+                        .into(),
+                )
+            }
         }
-        let env = env
-            .into_iter()
-            .map(|(k, v)| (SlotId::from(k), EntityUID::from(v)))
-            .collect();
-        Ok(policy.link(&env)?)
     }
 }
 
@@ -926,7 +936,7 @@ mod tests {
     /// and verify the string representation is preserved.
     fn assert_template_roundtrip(cedar_text: &str) {
         let ast_template = parser::parse_template(None, cedar_text).expect("parse failed");
-        let pst_policy: Policy = ast_template.clone().try_into().expect("ast->pst failed");
+        let pst_policy: Template = ast_template.clone().try_into().expect("ast->pst failed");
         let ast_template2: ast::Template = pst_policy.try_into().expect("pst->ast failed");
         assert_eq!(
             normalize(&ast_template.to_string()),
@@ -1006,22 +1016,21 @@ mod tests {
             .expect("link failed");
 
         let ast_policy = pset.get(&link_id).expect("policy not found").clone();
-        let pst_policy: Policy = ast_policy.try_into().expect("ast->pst failed");
+        let pst_policy: Policy = ast_policy.clone().try_into().expect("ast->pst failed");
+
+        let Policy::Linked(ref linked) = pst_policy else {
+            panic!("Expected Linked policy");
+        };
 
         // Linked policy should use the link ID, not the template ID
-        assert_eq!(pst_policy.id, PolicyID("link0".into()));
+        assert_eq!(linked.instance_id, PolicyID("link0".into()));
 
-        // Linked policy should have no slots — entities are filled in
-        assert!(matches!(
-            pst_policy.principal,
-            PrincipalConstraint::Eq(EntityOrSlot::Entity(_))
-        ));
-        assert!(matches!(
-            pst_policy.resource,
-            ResourceConstraint::In(EntityOrSlot::Entity(_))
-        ));
+        // The body still has slots; values hold the bindings
+        assert!(linked.body.principal.has_slot() || linked.body.resource.has_slot());
+        assert!(linked.values.contains_key(&SlotId::Principal));
+        assert!(linked.values.contains_key(&SlotId::Resource));
 
-        // Should convert back to a static AST policy
+        // Should convert back to a static AST policy (linking happens during conversion)
         let ast_policy2: ast::Policy = pst_policy.try_into().expect("pst->ast failed");
         let expected = normalize(
             r#"permit( principal == User::"alice", action, resource in Album::"trips" );"#,

@@ -98,6 +98,26 @@ impl PrincipalConstraint {
             }
         }
     }
+
+    /// Test whether the constraint contains any slots.
+    pub fn has_slot(&self) -> bool {
+        matches!(
+            self,
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(_))
+                | PrincipalConstraint::In(EntityOrSlot::Slot(_))
+                | PrincipalConstraint::IsIn(_, EntityOrSlot::Slot(_))
+        )
+    }
+
+    /// Get the slot, if any
+    pub fn slot(&self) -> Option<SlotId> {
+        match self {
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(s))
+            | PrincipalConstraint::In(EntityOrSlot::Slot(s))
+            | PrincipalConstraint::IsIn(_, EntityOrSlot::Slot(s)) => Some(*s),
+            _ => None,
+        }
+    }
 }
 
 /// Resource scope constraint (same shape as [`PrincipalConstraint`]).
@@ -135,6 +155,26 @@ impl ResourceConstraint {
             ResourceConstraint::IsIn(et, eos) => Ok(ResourceConstraint::IsIn(et, eos.link(vals)?)),
         }
     }
+
+    /// Test whether the constraint contains any slots.
+    pub fn has_slot(&self) -> bool {
+        matches!(
+            self,
+            ResourceConstraint::Eq(EntityOrSlot::Slot(_))
+                | ResourceConstraint::In(EntityOrSlot::Slot(_))
+                | ResourceConstraint::IsIn(_, EntityOrSlot::Slot(_)),
+        )
+    }
+
+    /// Get the slot, if any
+    pub fn slot(&self) -> Option<SlotId> {
+        match self {
+            ResourceConstraint::Eq(EntityOrSlot::Slot(s))
+            | ResourceConstraint::In(EntityOrSlot::Slot(s))
+            | ResourceConstraint::IsIn(_, EntityOrSlot::Slot(s)) => Some(*s),
+            _ => None,
+        }
+    }
 }
 
 /// Action scope constraint.
@@ -158,6 +198,16 @@ impl ActionConstraint {
     /// Actions cannot contain slots, so linking is a no-op.
     pub fn link(self, _vals: &HashMap<SlotId, EntityUID>) -> Result<Self, LinkingError> {
         Ok(self)
+    }
+
+    /// Actions cannot contains slots: returns false
+    pub fn has_slot(&self) -> bool {
+        false
+    }
+
+    /// Action cannot have slots
+    pub fn slot(&self) -> Option<SlotId> {
+        None
     }
 }
 
