@@ -117,6 +117,7 @@ pub enum PstConstructionError {
     LinkingFailed(#[from] error_body::LinkingError),
 }
 
+#[doc(hidden)]
 impl From<est::FromJsonError> for PstConstructionError {
     fn from(err: est::FromJsonError) -> Self {
         match err {
@@ -197,13 +198,6 @@ pub mod error_body {
     #[error("invalid entity type: `{description}`")]
     pub struct InvalidEntityTypeError {
         pub(crate) description: String,
-    }
-
-    impl InvalidEntityTypeError {
-        /// The description of the entity type error
-        pub fn description(&self) -> &str {
-            &self.description
-        }
     }
 
     /// Invalid attribute path format or structure

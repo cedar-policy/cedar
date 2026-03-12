@@ -31,6 +31,7 @@ use std::sync::Arc;
 // EST → PST Conversions
 // ============================================================================
 
+#[doc(hidden)]
 impl TryFrom<est::Policy> for Policy {
     type Error = PstConstructionError;
 
@@ -61,6 +62,7 @@ impl TryFrom<est::Policy> for Policy {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<est::Clause> for Clause {
     type Error = PstConstructionError;
 
@@ -72,6 +74,7 @@ impl TryFrom<est::Clause> for Clause {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<entities::EntityUidJson> for EntityUID {
     type Error = PstConstructionError;
 
@@ -89,6 +92,7 @@ impl TryFrom<entities::EntityUidJson> for EntityUID {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<est::PrincipalConstraint> for PrincipalConstraint {
     type Error = PstConstructionError;
 
@@ -128,6 +132,7 @@ impl TryFrom<est::PrincipalConstraint> for PrincipalConstraint {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<est::ResourceConstraint> for ResourceConstraint {
     type Error = PstConstructionError;
 
@@ -167,6 +172,7 @@ impl TryFrom<est::ResourceConstraint> for ResourceConstraint {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<est::ActionConstraint> for ActionConstraint {
     type Error = PstConstructionError;
 
@@ -192,6 +198,7 @@ impl TryFrom<est::ActionConstraint> for ActionConstraint {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<est::Expr> for Expr {
     type Error = PstConstructionError;
 
@@ -204,6 +211,7 @@ impl TryFrom<est::Expr> for Expr {
 // PST → EST Conversions
 // ============================================================================
 
+#[doc(hidden)]
 impl TryFrom<Expr> for est::Expr {
     type Error = PstConstructionError;
 
@@ -212,6 +220,7 @@ impl TryFrom<Expr> for est::Expr {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<Policy> for est::Policy {
     type Error = PstConstructionError;
 
@@ -248,6 +257,7 @@ impl TryFrom<Policy> for est::Policy {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<Clause> for est::Clause {
     type Error = PstConstructionError;
 
@@ -259,6 +269,7 @@ impl TryFrom<Clause> for est::Clause {
     }
 }
 
+#[doc(hidden)]
 impl From<PrincipalConstraint> for est::PrincipalConstraint {
     fn from(constraint: PrincipalConstraint) -> Self {
         match constraint {
@@ -306,6 +317,7 @@ impl From<PrincipalConstraint> for est::PrincipalConstraint {
     }
 }
 
+#[doc(hidden)]
 impl From<ResourceConstraint> for est::ResourceConstraint {
     fn from(constraint: ResourceConstraint) -> Self {
         match constraint {
@@ -357,6 +369,7 @@ impl From<ResourceConstraint> for est::ResourceConstraint {
     clippy::fallible_impl_from,
     reason = "not fallible, as the unwrap cannot fail"
 )]
+#[doc(hidden)]
 impl From<ActionConstraint> for est::ActionConstraint {
     fn from(constraint: ActionConstraint) -> Self {
         match constraint {
@@ -383,6 +396,7 @@ impl From<ActionConstraint> for est::ActionConstraint {
     }
 }
 
+#[doc(hidden)]
 impl From<EntityUID> for entities::EntityUidJson {
     fn from(uid: EntityUID) -> Self {
         entities::EntityUidJson::new(uid.ty.to_string(), uid.eid.to_string())
