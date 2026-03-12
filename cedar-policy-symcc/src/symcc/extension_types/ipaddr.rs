@@ -102,7 +102,7 @@ impl IPv4Addr {
         .unwrap()
     }
 
-    /// Constructs an `IPv4Addr` from an bit vector. Returns `None` if the bit
+    /// Constructs an `IPv4Addr` from a bit vector. Returns `None` if the bit
     /// vector width is not `V4_SIZE`.
     pub fn try_from_bitvec(val: BitVec) -> Option<Self> {
         (val.width() == V4_SIZE).then_some(Self { val })
@@ -188,7 +188,7 @@ impl IPv6Addr {
         .unwrap()
     }
 
-    /// Constructs an `IPv6Addr` from an bit vector. Returns `None` if the bit
+    /// Constructs an `IPv6Addr` from a bit vector. Returns `None` if the bit
     /// vector width is not `V6_SIZE`.
     pub fn try_from_bitvec(val: BitVec) -> Option<Self> {
         (val.width() == V6_SIZE).then_some(Self { val })
@@ -231,7 +231,7 @@ impl IPv4Prefix {
         }
     }
 
-    /// Constructs an `IPv4Prefix` from an bit vector. Returns `None` if the bit
+    /// Constructs an `IPv4Prefix` from a bit vector. Returns `None` if the bit
     /// vector is present but the width is not `V4_WIDTH`.
     pub fn try_from_bitvec(val: Option<BitVec>) -> Option<Self> {
         val.as_ref()
@@ -276,7 +276,7 @@ impl IPv6Prefix {
         }
     }
 
-    /// Constructs an `IPv6Prefix` from an bit vector. Returns `None` if the
+    /// Constructs an `IPv6Prefix` from a bit vector. Returns `None` if the
     /// bit-vector is present but its width is not `V6_WIDTH`.
     pub fn try_from_bitvec(val: Option<BitVec>) -> Option<Self> {
         val.as_ref()
