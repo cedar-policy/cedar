@@ -644,14 +644,14 @@ fn encode_bitvec(bv: &BitVec) -> SmolStr {
 }
 
 fn encode_ipaddr_prefix_v4(pre: &IPv4Prefix) -> SmolStr {
-    match &pre.val {
+    match pre.as_bitvec() {
         Some(pre) => format_smolstr!("(some {})", encode_bitvec(pre)),
         None => format_smolstr!("(as none (Option (_ BitVec {V4_WIDTH})))"),
     }
 }
 
 fn encode_ipaddr_prefix_v6(pre: &IPv6Prefix) -> SmolStr {
-    match &pre.val {
+    match pre.as_bitvec() {
         Some(pre) => format_smolstr!("(some {})", encode_bitvec(pre)),
         None => format_smolstr!("(as none (Option (_ BitVec {V6_WIDTH})))"),
     }
@@ -666,14 +666,14 @@ fn encode_ext(e: &Ext) -> SmolStr {
         Ext::Ipaddr {
             ip: IPNet::V4(CIDRv4 { addr, prefix }),
         } => {
-            let addr = encode_bitvec(&addr.val);
+            let addr = encode_bitvec(addr.as_bitvec());
             let pre = encode_ipaddr_prefix_v4(prefix);
             format_smolstr!("(V4 {addr} {pre})")
         }
         Ext::Ipaddr {
             ip: IPNet::V6(CIDRv6 { addr, prefix }),
         } => {
-            let addr = encode_bitvec(&addr.val);
+            let addr = encode_bitvec(addr.as_bitvec());
             let pre = encode_ipaddr_prefix_v6(prefix);
             format_smolstr!("(V6 {addr} {pre})")
         }

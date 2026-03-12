@@ -72,7 +72,8 @@ const V6_SIZE: Width = addr_size(V6_WIDTH.get());
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IPv4Addr {
     /// The 32-bit value of the IPv4 address.
-    pub val: BitVec,
+    /// Invariant: Width must be equal to V4_SIZE
+    val: BitVec,
 }
 
 impl IPv4Addr {
@@ -100,6 +101,22 @@ impl IPv4Addr {
         )
         .unwrap()
     }
+
+    /// Constructs an `IPv4Addr` from an bit vector. Returns `None` if the bit
+    /// vector width is not `V4_SIZE`.
+    pub fn try_from_bitvec(val: BitVec) -> Option<Self> {
+        (val.width() == V4_SIZE).then_some(Self { val })
+    }
+
+    /// Get this `IPv4Addr` as a bit vector
+    pub fn as_bitvec(&self) -> &BitVec {
+        &self.val
+    }
+
+    /// Get this `IPv4Addr` as a bit vector
+    pub fn into_bitvec(self) -> BitVec {
+        self.val
+    }
 }
 
 /// Internal representation of IPv6 addresses.
@@ -107,7 +124,8 @@ impl IPv4Addr {
 
 pub struct IPv6Addr {
     /// The 128-bit value of the IPv6 address.
-    pub val: BitVec,
+    /// Invariant: Width must be equal to V6_SIZE
+    val: BitVec,
 }
 
 impl IPv6Addr {
@@ -169,13 +187,30 @@ impl IPv6Addr {
         )
         .unwrap()
     }
+
+    /// Constructs an `IPv6Addr` from an bit vector. Returns `None` if the bit
+    /// vector width is not `V6_SIZE`.
+    pub fn try_from_bitvec(val: BitVec) -> Option<Self> {
+        (val.width() == V6_SIZE).then_some(Self { val })
+    }
+
+    /// Get this `IPv6Addr` as a bit vector
+    pub fn as_bitvec(&self) -> &BitVec {
+        &self.val
+    }
+
+    /// Get this `IPv6Addr` as a bit vector
+    pub fn into_bitvec(self) -> BitVec {
+        self.val
+    }
 }
 
 /// Internal representation of IPv4 prefixes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IPv4Prefix {
     /// Optional IPv4 prefix value.
-    pub val: Option<BitVec>,
+    /// INVARIANT: width must be equal to V4_WIDTH
+    val: Option<BitVec>,
 }
 
 impl IPv4Prefix {
@@ -195,13 +230,32 @@ impl IPv4Prefix {
             None => nat(V4_SIZE.get()),
         }
     }
+
+    /// Constructs an `IPv4Prefix` from an bit vector. Returns `None` if the bit
+    /// vector is present but the width is not `V4_WIDTH`.
+    pub fn try_from_bitvec(val: Option<BitVec>) -> Option<Self> {
+        val.as_ref()
+            .is_none_or(|bv| bv.width() == V4_WIDTH)
+            .then_some(Self { val })
+    }
+
+    /// Get this `IPv4Prefix` as a bit vector
+    pub fn as_bitvec(&self) -> Option<&BitVec> {
+        self.val.as_ref()
+    }
+
+    /// Get this `IPv4Prefix` as a bit vector
+    pub fn into_bitvec(self) -> Option<BitVec> {
+        self.val
+    }
 }
 
 /// Internal representation of IPv6 prefixes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IPv6Prefix {
     /// Optional IPv6 prefix value.
-    pub val: Option<BitVec>,
+    /// INVARIANT: width must be equal to V6_WIDTH
+    val: Option<BitVec>,
 }
 
 impl IPv6Prefix {
@@ -220,6 +274,24 @@ impl IPv6Prefix {
             Some(bv) => bv.to_nat(),
             None => nat(V6_SIZE.get()),
         }
+    }
+
+    /// Constructs an `IPv6Prefix` from an bit vector. Returns `None` if the
+    /// bit-vector is present but its width is not `V6_WIDTH`.
+    pub fn try_from_bitvec(val: Option<BitVec>) -> Option<Self> {
+        val.as_ref()
+            .is_none_or(|bv| bv.width() == V6_WIDTH)
+            .then_some(Self { val })
+    }
+
+    /// Get this `IPv6Prefix` as a bit vector
+    pub fn as_bitvec(&self) -> Option<&BitVec> {
+        self.val.as_ref()
+    }
+
+    /// Get this `IPv6Prefix` as a bit vector
+    pub fn into_bitvec(self) -> Option<BitVec> {
+        self.val
     }
 }
 
