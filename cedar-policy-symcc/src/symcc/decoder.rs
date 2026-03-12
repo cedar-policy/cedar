@@ -1294,3 +1294,136 @@ mod string_encode_decode_test {
         }
     }
 }
+
+#[cfg(test)]
+mod test_sexpr_parse {
+    use std::num::IntErrorKind;
+
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    #[test]
+    fn numeral() {
+        assert_eq!(parse_sexpr(b"0").unwrap(), SExpr::Numeral(0));
+        assert_eq!(parse_sexpr(b"00").unwrap(), SExpr::Numeral(0));
+        assert_eq!(parse_sexpr(b"01").unwrap(), SExpr::Numeral(1));
+        assert_eq!(parse_sexpr(b"42").unwrap(), SExpr::Numeral(42));
+        assert_eq!(parse_sexpr(b"999").unwrap(), SExpr::Numeral(999));
+    }
+
+    #[test]
+    fn string() {
+        assert_eq!(parse_sexpr(b"\"\"").unwrap(), SExpr::String("".into()));
+        assert_eq!(
+            parse_sexpr(b"\"hello\"").unwrap(),
+            SExpr::String("hello".into())
+        );
+        assert_eq!(
+            parse_sexpr(b"\"a b c\"").unwrap(),
+            SExpr::String("a b c".into())
+        );
+        assert_eq!(
+            parse_sexpr(b"\"\"\"\"").unwrap(),
+            SExpr::String("\"".into())
+        );
+    }
+
+    #[test]
+    fn symbol() {
+        assert_eq!(parse_sexpr(b"foo").unwrap(), SExpr::Symbol("foo".into()));
+        assert_eq!(
+            parse_sexpr(b"bar123").unwrap(),
+            SExpr::Symbol("bar123".into())
+        );
+        assert_eq!(parse_sexpr(b"a+b").unwrap(), SExpr::Symbol("a+b".into()));
+    }
+
+    #[test]
+    fn app() {
+        assert_eq!(parse_sexpr(b"()").unwrap(), SExpr::App(vec![]));
+        assert_eq!(
+            parse_sexpr(b"(foo)").unwrap(),
+            SExpr::App(vec![SExpr::Symbol("foo".into())])
+        );
+        assert_eq!(
+            parse_sexpr(b"(add 1 2)").unwrap(),
+            SExpr::App(vec![
+                SExpr::Symbol("add".into()),
+                SExpr::Numeral(1),
+                SExpr::Numeral(2)
+            ])
+        );
+        assert_eq!(
+            parse_sexpr(b"(() (() ()) (()))").unwrap(),
+            SExpr::App(vec![
+                SExpr::App(vec![]),
+                SExpr::App(vec![SExpr::App(vec![]), SExpr::App(vec![])]),
+                SExpr::App(vec![SExpr::App(vec![])]),
+            ])
+        );
+    }
+
+    #[test]
+    fn bitvec() {
+        assert_eq!(
+            parse_sexpr(b"#b0").unwrap(),
+            SExpr::BitVec(BitVec::of_u128(Width::new(1).unwrap(), 0))
+        );
+        assert_eq!(
+            parse_sexpr(b"#b1").unwrap(),
+            SExpr::BitVec(BitVec::of_u128(Width::new(1).unwrap(), 1))
+        );
+        assert_eq!(
+            parse_sexpr(b"#b01").unwrap(),
+            SExpr::BitVec(BitVec::of_u128(Width::new(2).unwrap(), 1))
+        );
+        assert_eq!(
+            parse_sexpr(b"#b11").unwrap(),
+            SExpr::BitVec(BitVec::of_int(Width::new(2).unwrap(), (-1).into()))
+        );
+    }
+
+    #[test]
+    fn whitespace() {
+        let expected = SExpr::App(vec![SExpr::Symbol("a".into()), SExpr::Symbol("b".into())]);
+        assert_eq!(parse_sexpr(b"(a b)").unwrap(), expected);
+        assert_eq!(parse_sexpr(b"(a  b)").unwrap(), expected);
+        assert_eq!(parse_sexpr(b"(a\nb)").unwrap(), expected);
+        assert_eq!(parse_sexpr(b"(a\tb)").unwrap(), expected);
+        assert_eq!(parse_sexpr(b"  (a b)  ").unwrap(), expected);
+    }
+
+    #[test]
+    fn comments() {
+        let expected = SExpr::App(vec![SExpr::Symbol("foo".into())]);
+        assert_eq!(parse_sexpr(b"; comment\n(foo)").unwrap(), expected);
+        assert_eq!(parse_sexpr(b"(foo); comment").unwrap(), expected);
+        assert_eq!(parse_sexpr(b"; c1\n(foo); c2\n").unwrap(), expected);
+        assert_eq!(
+            parse_sexpr(b"foo; c2").unwrap(),
+            SExpr::Symbol("foo".into())
+        );
+    }
+
+    #[test]
+    fn errors() {
+        assert_matches!(parse_sexpr(b"\"unclosed"), Err(DecodeError::UnexpectedEnd));
+        assert_matches!(parse_sexpr(b"(unclosed"), Err(DecodeError::UnexpectedEnd));
+        assert_matches!(parse_sexpr(b")"), Err(DecodeError::UnclosedSExpr));
+        assert_matches!(parse_sexpr(b"a b"), Err(DecodeError::TrailingTokens));
+        assert_matches!(parse_sexpr(b"(a) (b)"), Err(DecodeError::TrailingTokens));
+        assert_matches!(parse_sexpr(b"#"), Err(DecodeError::UnexpectedEnd));
+        assert_matches!(
+            parse_sexpr(b"#b"),
+            Err(DecodeError::ParseIntError(e)) if e.kind() == &IntErrorKind::Empty
+        );
+        assert_matches!(
+            parse_sexpr(b"#b111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"),
+            Err(DecodeError::ParseIntError(e)) if e.kind() == &IntErrorKind::PosOverflow
+        );
+        assert_matches!(parse_sexpr(b"#x"), Err(DecodeError::UnexpectedEnd));
+        assert_matches!(parse_sexpr(b""), Err(DecodeError::UnexpectedEnd));
+        assert_matches!(parse_sexpr(b"  "), Err(DecodeError::UnexpectedEnd));
+        assert_matches!(parse_sexpr(b"; comment\n"), Err(DecodeError::UnexpectedEnd));
+    }
+}
