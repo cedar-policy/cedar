@@ -16,7 +16,10 @@
 use cedar_policy::{Schema, Validator};
 use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
 
-use crate::utils::{assert_does_not_imply, assert_equivalent, assert_implies, Environments};
+use crate::utils::{
+    assert_does_not_always_allow, assert_does_not_imply, assert_equivalent, assert_implies,
+    Environments,
+};
 mod utils;
 
 fn sample_schema() -> Schema {
@@ -295,4 +298,20 @@ async fn max_x_model() {
     let schema = sample_schema();
     let envs = env_for_sample_schema(&schema);
     assert_does_not_imply(&mut compiler, &pset1, &pset2, &envs).await;
+}
+
+/// Exercise decoding models with `decimal` type annotation, forced by requiring a counterexample with an empty set.
+#[tokio::test]
+async fn decode_decimal_type() {
+    let schema = utils::schema_from_cedarstr( "entity E; action A appliesTo { principal: [E], resource: [E], context: {x: Set<decimal>} };");
+    let validator = Validator::new(schema);
+    let pset1 = utils::pset_from_text(
+        "permit(principal, action, resource) when { !context.x.isEmpty() };",
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "E", r#"Action::"A""#, "E");
+
+    assert_does_not_always_allow(&mut compiler, &pset1, &envs).await;
 }

@@ -146,3 +146,35 @@ async fn pbt_cex_failure() {
     assert_does_not_always_allow(&mut compiler, &pset1, &envs).await;
     assert_does_not_always_allow(&mut compiler, &pset2, &envs).await;
 }
+
+/// Exercise decoding models with `datetime` type annotation, forced by requiring a counterexample with an empty set.
+#[tokio::test]
+async fn decode_datetime_type() {
+    let schema = utils::schema_from_cedarstr( "entity E; action A appliesTo { principal: [E], resource: [E], context: {x: Set<datetime>} };");
+    let validator = Validator::new(schema);
+    let pset1 = utils::pset_from_text(
+        "permit(principal, action, resource) when { !context.x.isEmpty() };",
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "E", r#"Action::"A""#, "E");
+
+    assert_does_not_always_allow(&mut compiler, &pset1, &envs).await;
+}
+
+/// Exercise decoding models with `duration` type annotation, forced by requiring a counterexample with an empty set.
+#[tokio::test]
+async fn decode_duration_type() {
+    let schema = utils::schema_from_cedarstr( "entity E; action A appliesTo { principal: [E], resource: [E], context: {x: Set<duration>} };");
+    let validator = Validator::new(schema);
+    let pset1 = utils::pset_from_text(
+        "permit(principal, action, resource) when { !context.x.isEmpty() };",
+        &validator,
+    );
+
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let envs = Environments::new(validator.schema(), "E", r#"Action::"A""#, "E");
+
+    assert_does_not_always_allow(&mut compiler, &pset1, &envs).await;
+}
