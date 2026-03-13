@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
+## [0.4.0] - Coming soon
+Cedar Language Version: 4.5
+
 ### Changed
 
 - Refactored `Solver` trait to include `check_sat_with_model()` instead of `get_model()`,
