@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-//! Policy types for PST
+//! Policy types for PST.
+//!
+//! This module defines the top-level [`Policy`] struct and its components:
+//! [`Effect`], [`Clause`], and [`PolicyID`].
 
 use super::constraints::{ActionConstraint, PrincipalConstraint, ResourceConstraint};
 use super::expr::Expr;
@@ -33,25 +36,50 @@ impl From<PolicyID> for ast::PolicyID {
     }
 }
 
-/// Policy effect
+/// Policy effect.
+///
+/// ```cedar
+/// permit (...);   // Permit
+/// forbid (...);   // Forbid
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Effect {
-    /// Permit effect
+    /// `permit` — allow the request
     Permit,
-    /// Forbid effect
+    /// `forbid` — deny the request
     Forbid,
 }
 
-/// When or unless clause
+/// A `when` or `unless` condition clause attached to a policy.
+///
+/// ```cedar
+/// permit (principal, action, resource)
+///   when { resource.public == true }
+///   unless { context.is_blocked };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Clause {
-    /// A `when` clause
+    /// `when { <expr> }`
     When(Arc<Expr>),
-    /// An `unless` clause
+    /// `unless { <expr> }`
     Unless(Arc<Expr>),
 }
 
-/// Cedar policy
+/// A Cedar policy.
+///
+/// Represents a complete Cedar policy statement including its scope constraints,
+/// condition clauses, and annotations.
+///
+/// ```cedar
+/// @id("policy0")
+/// permit (
+///   principal == User::"alice",
+///   action == Action::"view",
+///   resource in Album::"vacation"
+/// )
+/// when { resource.public == true }
+/// unless { context.is_blocked };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policy {
     /// Policy ID

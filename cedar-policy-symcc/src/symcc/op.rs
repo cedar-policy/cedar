@@ -50,16 +50,15 @@ pub enum ExtOp {
     DurationOfBitVec,
 }
 
+/// Variants must be defined in alphabetical order, so that the derived `Ord`
+/// implementation matches the Lean ordering of the variants of this type.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 #[expect(missing_docs, reason = "existing code")]
 pub enum Op {
-    //   ---------- SMTLib core theory of equality with uninterpreted functions (`UF`) ----------
-    Not,
-    And,
-    Or,
-    Eq,
-    Ite,
-    Uuf(Arc<Uuf>),
+    // Since the variants must be defined in alphabetical order (see above),
+    // we can't sort them neatly by SMTLib theory here.
+    And, // SMTLib core theory of equality with uninterpreted functions (`UF`)
+
     //   ---------- SMTLib theory of finite bitvectors (`BV`) ----------
     Bvneg,
     Bvadd,
@@ -89,17 +88,23 @@ pub enum Op {
     Bvssubo,
     /// Bit-vector signed multiplication overflow predicate.
     Bvsmulo,
-    ZeroExtend(u32), // allowed to be 0
+
+    Eq,              // SMTLib core theory of equality with uninterpreted functions (`UF`)
+    Ext(ExtOp),      // Extension ADT operator with trusted mapping to SMT
+    Ite,             // SMTLib core theory of equality with uninterpreted functions (`UF`)
+    Not,             // SMTLib core theory of equality with uninterpreted functions (`UF`)
+    OptionGet,       // Core ADT operator with trusted mapping to SMT
+    Or,              // SMTLib core theory of equality with uninterpreted functions (`UF`)
+    RecordGet(Attr), // Core ADT operator with trusted mapping to SMT
+
     //   ---------- CVC theory of finite sets (`FS`) ----------
     SetMember,
     SetSubset,
     SetInter,
-    //   ---------- Core ADT operators with a trusted mapping to SMT ----------
-    OptionGet,
-    RecordGet(Attr),
-    StringLike(OrdPattern),
-    //   ---------- Extension ADT operators with a trusted mapping to SMT ----------
-    Ext(ExtOp),
+
+    StringLike(OrdPattern), // Core ADT operator with trusted mapping to SMT
+    Uuf(Arc<Uuf>),          // SMTLib core theory of equality with uninterpreted functions (`UF`)
+    ZeroExtend(u32), // allowed to be 0. This is from the `BV` theory, like the variants that begin with `Bv`
 }
 
 impl ExtOp {
