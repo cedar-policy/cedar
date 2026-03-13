@@ -112,7 +112,7 @@ impl TryFrom<LiteralPolicySet> for PolicySet {
             template_to_links_map.insert(template.0.clone(), LinkedHashSet::new());
         }
         for (link_id, link) in &links {
-            let template = link.template().id();
+            let template = link.template.id();
             match template_to_links_map.entry(template.clone()) {
                 Entry::Occupied(t) => t.into_mut().insert(link_id.clone()),
                 Entry::Vacant(_) => return Err(ReificationError::NoSuchTemplate(template.clone())),
@@ -217,7 +217,7 @@ impl PolicySet {
 
     /// Add a `Policy` to the `PolicySet`.
     pub fn add(&mut self, policy: Policy) -> Result<(), PolicySetError> {
-        let t = policy.template_arc();
+        let t = policy.template.clone();
 
         // we need to check for all possible errors before making any
         // modifications to `self`.
@@ -384,7 +384,7 @@ impl PolicySet {
             // Now update the id of the referenced template if this is a link.
             // If it's static, then we updated this already by updating the
             // policy's own id.
-            let other_policy = match renaming.get(other_policy.template().id()) {
+            let other_policy = match renaming.get(other_policy.template.id()) {
                 #[expect(
                     clippy::unwrap_used,
                     reason = "`if` confirms that `other_policy` is a template link"
@@ -593,7 +593,7 @@ impl PolicySet {
         match self.links.remove(policy_id) {
             Some(p) => {
                 #[expect(clippy::panic, reason = "every linked policy should have a template")]
-                match self.template_to_links_map.entry(p.template().id().clone()) {
+                match self.template_to_links_map.entry(p.template.id().clone()) {
                     Entry::Occupied(t) => t.into_mut().remove(policy_id),
                     Entry::Vacant(_) => {
                         panic!("No template found for linked policy")
@@ -1012,7 +1012,7 @@ mod test {
         let v: Vec<_> = s.policies().collect();
 
         assert_eq!(v[0].id(), &lid);
-        assert_eq!(v[0].template().id(), &tid);
+        assert_eq!(v[0].template.id(), &tid);
     }
 
     #[test]
@@ -1074,7 +1074,7 @@ mod test {
 
         let link = s.get(&link_id).expect("Link should exist");
         assert_eq!(&link_id, link.id());
-        assert_eq!(&template_id, link.template().id());
+        assert_eq!(&template_id, link.template.id());
         assert_eq!(
             &entity,
             link.env()
@@ -1160,7 +1160,7 @@ mod test {
         assert_eq!(pset.get(&id2).expect("should find the policy").id(), &id2);
         assert_eq!(pset.get(&id3).expect("should find link").id(), &id3);
         assert_eq!(
-            pset.get(&id3).expect("should find link").template().id(),
+            pset.get(&id3).expect("should find link").template.id(),
             &tid2
         );
         assert!(pset.get(&tid2).is_none());

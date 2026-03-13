@@ -433,18 +433,18 @@ fn describe_arity_error(
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Policy {
     /// Reference to the template
-    template: Arc<Template>,
+    pub(crate) template: Arc<Template>,
     /// Id of this link
     ///
     /// None in the case that this is an instance of a Static Policy
-    link: Option<PolicyID>,
+    pub(crate) link: Option<PolicyID>,
     // INVARIANT (values total map)
     // All of the slots in `template` MUST be bound by `values`
     //
     /// values the slots are bound to.
     /// The constructor `new` is only visible in this module,
     /// so it is the responsibility of callers to maintain
-    values: HashMap<SlotId, EntityUID>,
+    pub(crate) values: HashMap<SlotId, EntityUID>,
 }
 
 impl Policy {
@@ -499,20 +499,9 @@ impl Policy {
         Self::new(Arc::new(t), None, SlotEnv::new())
     }
 
-    /// Get the owned template, link id (if this is a template-linked policy)
-    /// and slot environment.
-    pub(crate) fn into_components(self) -> (Arc<Template>, Option<PolicyID>, SlotEnv) {
-        (self.template, self.link, self.values)
-    }
-
     /// Get pointer to the template for this policy
     pub fn template(&self) -> &Template {
         &self.template
-    }
-
-    /// Get pointer to the template for this policy, as an `Arc`
-    pub(crate) fn template_arc(&self) -> Arc<Template> {
-        Arc::clone(&self.template)
     }
 
     /// Get the effect (forbid or permit) of this policy.
@@ -651,12 +640,12 @@ impl Policy {
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.is_static() {
-            write!(f, "{}", self.template())
+            write!(f, "{}", self.template)
         } else {
             write!(
                 f,
                 "Template Instance of {}, slots: [{}]",
-                self.template().id(),
+                self.template.id(),
                 display_slot_env(self.env())
             )
         }

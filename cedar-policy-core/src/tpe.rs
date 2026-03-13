@@ -48,14 +48,13 @@ pub(crate) fn policy_expr_map<'a>(
             return Err(NonstaticPolicyError.into());
         }
 
-        let t = p.template();
-
-        let errs: Vec<_> = Validator::validate_entity_types_and_literals(schema, t).collect();
+        let errs: Vec<_> =
+            Validator::validate_entity_types_and_literals(schema, &p.template).collect();
         if !errs.is_empty() {
             return Err(TpeError::Validation(errs));
         }
 
-        match tc.typecheck_by_single_request_env(t, &env) {
+        match tc.typecheck_by_single_request_env(&p.template, &env) {
             PolicyCheck::Success(expr) => {
                 exprs.insert(p.id(), expr);
             }

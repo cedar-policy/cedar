@@ -647,16 +647,16 @@ impl TryFrom<ast::Policy> for Policy {
     type Error = PstConstructionError;
 
     fn try_from(policy: ast::Policy) -> Result<Self, PstConstructionError> {
-        let (template, id, values) = policy.into_components();
-        let pst_template: Template = Arc::unwrap_or_clone(template).try_into()?;
+        let pst_template: Template = Arc::unwrap_or_clone(policy.template).try_into()?;
         if pst_template.is_static() {
             Ok(Policy::Static(pst_template.try_into()?))
         } else {
-            let values = values
+            let values = policy
+                .values
                 .into_iter()
                 .map(|(k, v)| (k.into(), v.into()))
                 .collect();
-            if let Some(ast_id) = id {
+            if let Some(ast_id) = policy.link {
                 Ok(Policy::Linked(LinkedPolicy {
                     body: Arc::new(pst_template),
                     values,
@@ -1043,7 +1043,7 @@ mod tests {
         let ast_policy2: ast::Policy = pst_policy.try_into().expect("pst->ast failed");
         let expected =
             normalize(r#"permit( principal == ?principal, action, resource in ?resource );"#);
-        assert_eq!(normalize(&ast_policy2.template().to_string()), expected);
+        assert_eq!(normalize(&ast_policy2.template.to_string()), expected);
     }
 
     /// Test expressions that get desugared/normalized during AST conversion

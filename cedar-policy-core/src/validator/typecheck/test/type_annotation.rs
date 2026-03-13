@@ -277,7 +277,7 @@ fn non_idempotent() {
             template.id().clone(),
             template.loc().cloned(),
         );
-        assert_matches!(typechecker.typecheck_by_single_request_env(&transformed.template(), &req_env), PolicyCheck::Success(retransformed) => {
+        assert_matches!(typechecker.typecheck_by_single_request_env(&transformed.template, &req_env), PolicyCheck::Success(retransformed) => {
             // after re-typechecking, the policy is transformed into this:
             assert_eq!(retransformed.to_string(), r#"true && (true && (true && (true && ((action in [Action::"action"]) && ((resource is a) && (((true && (if (if (if true then true else true) then (if true then true else true) else (if true then true else true)) then (a::"".hasTag(if true then "" else "")) else (a::"".hasTag(if true then "" else "")))) && (if (a::"".hasTag(if true then "" else "")) then (if (if true then true else true) then (if true then true else true) else (if true then true else true)) else (if (if true then true else true) then (if true then true else true) else (if true then true else true)))) && (a::"".hasTag(""))))))))"#);
             // in particular, note that it no longer contains the `principal in a::""` term

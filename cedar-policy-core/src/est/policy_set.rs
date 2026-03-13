@@ -235,7 +235,7 @@ mod test {
             .get_template_arc(&PolicyID::from_string("template"))
             .is_some());
         let link = ast_policy_set.get(&PolicyID::from_string("link")).unwrap();
-        assert_eq!(link.template().id(), &PolicyID::from_string("template"));
+        assert_eq!(link.template.id(), &PolicyID::from_string("template"));
         assert_eq!(
             link.env(),
             &HashMap::from_iter([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())])

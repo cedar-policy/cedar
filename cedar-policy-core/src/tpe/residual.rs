@@ -542,12 +542,11 @@ mod test {
         let expr = parse_expr(expr_str).unwrap();
         let policy_id = crate::ast::PolicyID::from_string("test");
         let policy = Policy::from_when_clause(Effect::Permit, expr, policy_id, None);
-        let t = policy.template();
 
         let schema = ValidatorSchema::from_cedarschema_str(r#"
             entity User in Organization { foo: Bool, str: String, num: Long, period: __cedar::duration, set: Set<String> } tags String;
             entity Organization;
-            entity Document in Organization; 
+            entity Document in Organization;
             action get appliesTo { principal: [User], resource: [Document] };"#,
             &Extensions::all_available(),
         )
@@ -572,11 +571,12 @@ mod test {
         .unwrap();
         let env = request.find_request_env(&schema).unwrap();
 
-        let errs: Vec<_> = Validator::validate_entity_types_and_literals(&schema, t).collect();
+        let errs: Vec<_> =
+            Validator::validate_entity_types_and_literals(&schema, &policy.template).collect();
         if !errs.is_empty() {
             panic!("unexpected type error in expression");
         }
-        match typechecker.typecheck_by_single_request_env(t, &env) {
+        match typechecker.typecheck_by_single_request_env(&policy.template, &env) {
             PolicyCheck::Success(expr) => Residual::try_from(&expr).unwrap(),
             PolicyCheck::Fail(errs) => {
                 println!("got {} type errors", errs.len());
@@ -606,9 +606,9 @@ mod test {
             parse_residual(
                 r#"
                 principal is User &&
-                principal in Organization::"foo" && 
-                action == Action::"get" && 
-                resource is Document && 
+                principal in Organization::"foo" &&
+                action == Action::"get" &&
+                resource is Document &&
                 resource in Organization::"foo"
                 "#
             )
@@ -633,8 +633,8 @@ mod test {
         assert_eq!(
             parse_residual(
                 r#"
-                if principal.hasTag("foo") then 
-                    principal in Organization::"foo" 
+                if principal.hasTag("foo") then
+                    principal in Organization::"foo"
                 else principal in Organization::"bar"
                 "#
             )
@@ -644,10 +644,10 @@ mod test {
         assert_eq!(
             parse_residual(
                 r#"
-                1 == 2 || 
-                !("a" == "b") && 
-                ["a", "b"].contains("a") && 
-                !["a", "b"].containsAll(["a"]) && 
+                1 == 2 ||
+                !("a" == "b") &&
+                ["a", "b"].contains("a") &&
+                !["a", "b"].containsAll(["a"]) &&
                 ["a", "b"].containsAny(["a"])
                 "#
             )
@@ -678,8 +678,8 @@ mod test {
             parse_residual(
                 r#"
                 !principal.set.isEmpty() && (
-                    principal.set.contains("foo") || 
-                    principal.set.containsAll(["foo", "bar"]) || 
+                    principal.set.contains("foo") ||
+                    principal.set.containsAll(["foo", "bar"]) ||
                     principal.set.containsAny(["foo", "bar"])
                 )"#
             )
