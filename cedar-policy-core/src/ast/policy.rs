@@ -181,6 +181,25 @@ impl Template {
         Template::from(body)
     }
 
+    /// Get the components of the underlying template.
+    ///
+    /// Returns `None` when the underlying template doesn't have any components (i.e., it's an error
+    /// node).
+    #[expect(clippy::type_complexity, reason = "policies just have many components")]
+    pub(crate) fn into_template_components_opt(
+        self,
+    ) -> Option<(
+        PolicyID,
+        Arc<Annotations>,
+        Effect,
+        PrincipalConstraint,
+        ActionConstraint,
+        ResourceConstraint,
+        Option<Arc<Expr>>,
+    )> {
+        self.body.into_components_opt()
+    }
+
     /// Get the principal constraint on the body
     pub fn principal_constraint(&self) -> &PrincipalConstraint {
         self.body.principal_constraint()
@@ -432,7 +451,7 @@ impl Policy {
     /// Link a policy to its template
     /// INVARIANT (values total map):
     /// `values` must bind every open slot in `template`
-    fn new(template: Arc<Template>, link_id: Option<PolicyID>, values: SlotEnv) -> Self {
+    pub(crate) fn new(template: Arc<Template>, link_id: Option<PolicyID>, values: SlotEnv) -> Self {
         #[cfg(debug_assertions)]
         {
             #[expect(
@@ -478,6 +497,12 @@ impl Policy {
             Some(when),
         );
         Self::new(Arc::new(t), None, SlotEnv::new())
+    }
+
+    /// Get the owned template, link id (if this is a template-linked policy)
+    /// and slot environment.
+    pub(crate) fn into_components(self) -> (Arc<Template>, Option<PolicyID>, SlotEnv) {
+        (self.template, self.link, self.values)
     }
 
     /// Get pointer to the template for this policy
@@ -1203,6 +1228,44 @@ impl TemplateBody {
             }) => non_scope_constraints.as_ref(),
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => Some(&DEFAULT_ERROR_EXPR),
+        }
+    }
+
+    /// destructure the `TemplateBody` into its components
+    /// returns `None` if the `TemplateBody` is an error
+    #[expect(clippy::type_complexity, reason = "policies just have many components")]
+    pub(crate) fn into_components_opt(
+        self,
+    ) -> Option<(
+        PolicyID,
+        Arc<Annotations>,
+        Effect,
+        PrincipalConstraint,
+        ActionConstraint,
+        ResourceConstraint,
+        Option<Arc<Expr>>,
+    )> {
+        match self {
+            TemplateBody::TemplateBody(TemplateBodyImpl {
+                id,
+                loc: _,
+                annotations,
+                effect,
+                principal_constraint,
+                action_constraint,
+                resource_constraint,
+                non_scope_constraints,
+            }) => Some((
+                id,
+                annotations,
+                effect,
+                principal_constraint,
+                action_constraint,
+                resource_constraint,
+                non_scope_constraints,
+            )),
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_, _) => None,
         }
     }
 

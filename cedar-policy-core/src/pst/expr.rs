@@ -19,12 +19,15 @@
 //! This module defines the expression tree used in Cedar policy conditions
 //! (`when` / `unless` clauses). Expressions are recursive via [`Arc<Expr>`].
 
-use super::err::{error_body, PstConstructionError};
+use super::err::{
+    error_body::{self},
+    PstConstructionError,
+};
 use crate::ast;
 use crate::expr_builder::ExprBuilder;
 use crate::extensions::Extensions;
 use smol_str::{SmolStr, ToSmolStr};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
 use std::sync::Arc;
 
@@ -726,6 +729,85 @@ impl Expr {
             _ => return Err(error_body::UnknownFunctionError::new(name).into()),
         })
     }
+
+    // === Expression reduction functions ===
+
+    /// Recursively accumulate a value over this expression tree.
+    ///
+    /// At each node, `f` is called first. If it returns `Some(t)`, that value is returned
+    /// immediately without recursing into children. Otherwise, the results of recursing into
+    /// all child expressions are merged pairwise with `op`. If a node has no children,
+    /// `zero` is returned.
+    pub fn reduce<T: Clone + Sized>(
+        &self,
+        f: &dyn Fn(&Self) -> Option<T>,
+        op: &dyn Fn(T, T) -> T,
+        zero: T,
+    ) -> T {
+        if let Some(t) = f(self) {
+            return t;
+        }
+        let recurse = |e: &Arc<Self>| e.reduce(f, op, zero.clone());
+        match self {
+            Expr::Literal(_)
+            | Expr::Var(_)
+            | Expr::Slot(_)
+            | Expr::Unknown { .. }
+            | Expr::Error(_) => zero,
+            Expr::UnaryOp { expr, .. }
+            | Expr::GetAttr { expr, .. }
+            | Expr::HasAttr { expr, .. }
+            | Expr::Like { expr, .. } => recurse(expr),
+            Expr::BinaryOp { left, right, .. } => op(recurse(left), recurse(right)),
+            Expr::Is { expr, in_expr, .. } => match in_expr {
+                Some(e) => op(recurse(expr), recurse(e)),
+                None => recurse(expr),
+            },
+            Expr::IfThenElse {
+                cond,
+                then_expr,
+                else_expr,
+            } => op(op(recurse(cond), recurse(then_expr)), recurse(else_expr)),
+            Expr::Set(exprs) => {
+                let mut iter = exprs.iter();
+                match iter.next() {
+                    None => zero,
+                    Some(first) => iter.fold(recurse(first), |acc, e| op(acc, recurse(e))),
+                }
+            }
+            Expr::Record(map) => {
+                let mut iter = map.values();
+                match iter.next() {
+                    None => zero,
+                    Some(first) => iter.fold(recurse(first), |acc, e| op(acc, recurse(e))),
+                }
+            }
+        }
+    }
+
+    /// Does this expression contain any slots?
+    pub fn has_slots(&self) -> bool {
+        self.reduce::<bool>(
+            &|e| match e {
+                Expr::Slot(_) => Some(true),
+                _ => None,
+            },
+            &|a, b| a || b,
+            false,
+        )
+    }
+
+    /// Return the slots used in this expression
+    pub fn slots(&self) -> HashSet<SlotId> {
+        self.reduce::<HashSet<SlotId>>(
+            &|e| match e {
+                Expr::Slot(id) => Some(HashSet::from([*id])),
+                _ => None,
+            },
+            &|a, b| a.union(&b).copied().collect(),
+            HashSet::new(),
+        )
+    }
 }
 
 /// Builder to construct a PST [`Expr`] that implements the [`ExprBuilder`] interface. Unlike the
@@ -1126,6 +1208,45 @@ impl std::fmt::Display for Expr {
 mod tests {
     use super::*;
     use std::str::FromStr;
+
+    #[test]
+    fn test_has_slots() {
+        // Leaf with no slot
+        assert!(!Expr::Literal(Literal::Long(1)).has_slots());
+        // Var has no slot
+        assert!(!Expr::Var(Var::Principal).has_slots());
+        // Slot itself
+        assert!(Expr::Slot(SlotId::Principal).has_slots());
+        assert!(Expr::Slot(SlotId::Resource).has_slots());
+        // Slot nested inside a BinaryOp
+        let slot = Arc::new(Expr::Slot(SlotId::Principal));
+        let lit = Arc::new(Expr::Literal(Literal::Long(42)));
+        let binop = Expr::BinaryOp {
+            op: BinaryOp::Eq,
+            left: slot,
+            right: lit.clone(),
+        };
+        assert!(binop.has_slots());
+        // BinaryOp with no slots
+        let binop_no_slot = Expr::BinaryOp {
+            op: BinaryOp::Eq,
+            left: lit.clone(),
+            right: lit.clone(),
+        };
+        assert!(!binop_no_slot.has_slots());
+        // Slot nested inside a Set
+        let set_with_slot = Expr::Set(vec![lit.clone(), Arc::new(Expr::Slot(SlotId::Resource))]);
+        assert!(set_with_slot.has_slots());
+        // Empty set
+        assert!(!Expr::Set(vec![]).has_slots());
+        // IfThenElse with slot in else branch
+        let ite = Expr::IfThenElse {
+            cond: lit.clone(),
+            then_expr: lit.clone(),
+            else_expr: Arc::new(Expr::Slot(SlotId::Principal)),
+        };
+        assert!(ite.has_slots());
+    }
 
     #[test]
     fn test_from_function_unknown_function() {

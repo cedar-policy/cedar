@@ -17,8 +17,8 @@
 //! Conversions between EST and PST representations.
 
 use super::{
-    ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Name, Policy,
-    PolicyID, PrincipalConstraint, PstConstructionError, ResourceConstraint,
+    ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Name, PolicyID,
+    PrincipalConstraint, PstConstructionError, ResourceConstraint, Template,
 };
 use crate::ast;
 use crate::entities;
@@ -32,7 +32,7 @@ use std::sync::Arc;
 // ============================================================================
 
 #[doc(hidden)]
-impl TryFrom<est::Policy> for Policy {
+impl TryFrom<est::Policy> for Template {
     type Error = PstConstructionError;
 
     fn try_from(est_policy: est::Policy) -> Result<Self, Self::Error> {
@@ -42,23 +42,26 @@ impl TryFrom<est::Policy> for Policy {
             .map(|c| c.try_into())
             .collect();
 
-        Ok(Policy {
-            id: PolicyID("policy".into()),
-            effect: match est_policy.effect {
-                ast::Effect::Permit => Effect::Permit,
-                ast::Effect::Forbid => Effect::Forbid,
-            },
-            principal: est_policy.principal.try_into()?,
-            action: est_policy.action.try_into()?,
-            resource: est_policy.resource.try_into()?,
-            clauses: clauses?,
-            annotations: est_policy
-                .annotations
-                .0
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v.map(|a| a.val).unwrap_or_default()))
-                .collect(),
-        })
+        let effect = match est_policy.effect {
+            ast::Effect::Permit => Effect::Permit,
+            ast::Effect::Forbid => Effect::Forbid,
+        };
+        let annotations = est_policy
+            .annotations
+            .0
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.map(|a| a.val).unwrap_or_default()))
+            .collect();
+
+        Template::new(
+            PolicyID("policy".into()),
+            effect,
+            est_policy.principal.try_into()?,
+            est_policy.action.try_into()?,
+            est_policy.resource.try_into()?,
+        )
+        .with_annotations(annotations)
+        .try_with_clauses(clauses?)
     }
 }
 
@@ -221,10 +224,10 @@ impl TryFrom<Expr> for est::Expr {
 }
 
 #[doc(hidden)]
-impl TryFrom<Policy> for est::Policy {
+impl TryFrom<Template> for est::Policy {
     type Error = PstConstructionError;
 
-    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
+    fn try_from(policy: Template) -> Result<Self, Self::Error> {
         let mut annotations = est::Annotations::new();
         for (k, val) in policy.annotations.into_iter() {
             let annotation = if val.is_empty() {
@@ -416,9 +419,9 @@ mod tests {
         assert!(roundtrip_e == e)
     }
 
-    fn policy_roundtrips(p: Policy) {
+    fn policy_roundtrips(p: Template) {
         let est: est::Policy = p.clone().try_into().unwrap();
-        let roundtrip_p: Policy = est.try_into().unwrap();
+        let roundtrip_p: Template = est.try_into().unwrap();
         assert!(roundtrip_p == p)
     }
 
@@ -444,14 +447,11 @@ mod tests {
     fn test_est_expr_slot() {
         let json = r#"{"Slot": "?principal"}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
+        let pst_expr: Expr = est_expr.clone().try_into().unwrap();
         assert!(matches!(pst_expr, Expr::Slot(_)));
-        // Roundtrip is not supported for slots
-        let result: Result<est::Expr, _> = pst_expr.try_into();
-        assert!(matches!(
-            result,
-            Err(PstConstructionError::NotImplemented(..))
-        ));
+        // Roundtrip: PST slot should convert back to EST slot
+        let est_roundtrip: est::Expr = pst_expr.try_into().unwrap();
+        assert_eq!(est_expr, est_roundtrip);
     }
 
     #[test]
@@ -760,7 +760,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(pst_policy.effect, pst::Effect::Permit));
         policy_roundtrips(pst_policy);
     }
@@ -783,7 +783,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(pst_policy.effect, pst::Effect::Forbid));
         assert!(matches!(
             pst_policy.principal,
@@ -816,7 +816,7 @@ mod tests {
             ]
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert_eq!(pst_policy.clauses.len(), 1);
         assert!(matches!(pst_policy.clauses[0], pst::Clause::When(..)));
         policy_roundtrips(pst_policy);
@@ -836,7 +836,7 @@ mod tests {
             }
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert_eq!(pst_policy.annotations.len(), 2);
         assert_eq!(
             pst_policy.annotations.get("reason").unwrap(),
@@ -862,7 +862,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         policy_roundtrips(pst_policy.clone());
         if let pst::ActionConstraint::In(actions) = pst_policy.action {
             assert_eq!(actions.len(), 2);
@@ -884,7 +884,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.resource,
             pst::ResourceConstraint::Eq(_)
@@ -905,7 +905,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.resource,
             pst::ResourceConstraint::Is(_)
@@ -927,7 +927,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.resource,
             pst::ResourceConstraint::IsIn(..)
@@ -948,7 +948,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(pst_policy.action, pst::ActionConstraint::Eq(_)));
         policy_roundtrips(pst_policy);
     }
@@ -966,7 +966,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         policy_roundtrips(pst_policy.clone());
         if let pst::ActionConstraint::In(actions) = pst_policy.action {
             assert_eq!(actions.len(), 1);
@@ -1001,7 +1001,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.principal,
             pst::PrincipalConstraint::Eq(_)
@@ -1022,7 +1022,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.principal,
             pst::PrincipalConstraint::Is(_)
@@ -1044,7 +1044,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.principal,
             pst::PrincipalConstraint::IsIn(..)
@@ -1065,7 +1065,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         if let pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(_)) = pst_policy.principal {
             // Success
         } else {
@@ -1087,7 +1087,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         if let pst::ResourceConstraint::In(pst::EntityOrSlot::Slot(_)) = pst_policy.resource {
             // Success
         } else {
@@ -1110,7 +1110,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         if let pst::PrincipalConstraint::IsIn(_, pst::EntityOrSlot::Slot(_)) = pst_policy.principal
         {
             // Success
@@ -1134,7 +1134,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         if let pst::ResourceConstraint::IsIn(_, pst::EntityOrSlot::Slot(_)) = pst_policy.resource {
             // Success
         } else {
@@ -1158,7 +1158,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert_eq!(pst_policy.annotations.len(), 1);
         policy_roundtrips(pst_policy);
     }
@@ -1168,15 +1168,14 @@ mod tests {
         let mut annotations = BTreeMap::new();
         annotations.insert("empty".to_string(), SmolStr::default());
         annotations.insert("nonempty".to_string(), SmolStr::new("hello"));
-        let policy = Policy {
-            id: PolicyID("p0".into()),
-            effect: Effect::Permit,
-            principal: PrincipalConstraint::Any,
-            action: ActionConstraint::Any,
-            resource: ResourceConstraint::Any,
-            clauses: vec![],
-            annotations,
-        };
+        let policy = Template::new(
+            "p0",
+            Effect::Permit,
+            PrincipalConstraint::Any,
+            ActionConstraint::Any,
+            ResourceConstraint::Any,
+        )
+        .with_annotations(annotations);
         let est_policy: est::Policy = policy.try_into().unwrap();
         let empty_key = "empty".parse::<ast::AnyId>().unwrap();
         let nonempty_key = "nonempty".parse::<ast::AnyId>().unwrap();
@@ -1198,15 +1197,14 @@ mod tests {
     fn test_pst_to_est_annotation_invalid_key() {
         let mut annotations = BTreeMap::new();
         annotations.insert("not valid!!".to_string(), SmolStr::new("v"));
-        let policy = Policy {
-            id: PolicyID("p0".into()),
-            effect: Effect::Permit,
-            principal: PrincipalConstraint::Any,
-            action: ActionConstraint::Any,
-            resource: ResourceConstraint::Any,
-            clauses: vec![],
-            annotations,
-        };
+        let policy = Template::new(
+            "p0",
+            Effect::Permit,
+            PrincipalConstraint::Any,
+            ActionConstraint::Any,
+            ResourceConstraint::Any,
+        )
+        .with_annotations(annotations);
         let result: Result<est::Policy, PstConstructionError> = policy.try_into();
         assert!(matches!(
             result,
