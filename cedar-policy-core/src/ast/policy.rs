@@ -451,7 +451,7 @@ impl Policy {
     /// Link a policy to its template
     /// INVARIANT (values total map):
     /// `values` must bind every open slot in `template`
-    fn new(template: Arc<Template>, link_id: Option<PolicyID>, values: SlotEnv) -> Self {
+    pub(crate) fn new(template: Arc<Template>, link_id: Option<PolicyID>, values: SlotEnv) -> Self {
         #[cfg(debug_assertions)]
         {
             #[expect(

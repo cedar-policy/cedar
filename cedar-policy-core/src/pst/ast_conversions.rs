@@ -21,7 +21,7 @@ use smol_str::ToSmolStr;
 use super::{
     ActionConstraint, BinaryOp, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr,
     LinkedPolicy, Literal, Name, PatternElem, Policy, PolicyID, PrincipalConstraint,
-    PstConstructionError, ResourceConstraint, SlotId, Template, UnaryOp, Var,
+    PstConstructionError, ResourceConstraint, SlotId, StaticPolicy, Template, UnaryOp, Var,
 };
 use crate::ast;
 use crate::expr_builder;
@@ -30,6 +30,7 @@ use crate::pst::err::error_body::{
 };
 use crate::pst::expr::{ErrorNode, PstBuilder};
 use itertools::Itertools;
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -38,20 +39,28 @@ impl TryFrom<Policy> for ast::Policy {
     type Error = PstConstructionError;
 
     fn try_from(policy: Policy) -> Result<Self, Self::Error> {
-        let static_policy = match policy {
-            Policy::Static(sp) => sp,
-            Policy::Linked(lp) => lp.link()?,
-        };
-        let template: ast::Template = static_policy.body.try_into()?;
-        ast::StaticPolicy::try_from(template)
-            .map(Into::into)
-            .map_err(|e| {
-                InvalidConversionError::new(format!(
-                    "Failed to convert template to static policy: {:?}",
-                    e
+        match policy {
+            Policy::Static(StaticPolicy { body }) => Ok(ast::Policy::new(
+                Arc::new(body.try_into()?),
+                Option::None,
+                HashMap::new(),
+            )),
+            Policy::Linked(LinkedPolicy {
+                body,
+                values,
+                instance_id,
+            }) => {
+                let ast_values: HashMap<ast::SlotId, ast::EntityUID> = values
+                    .into_iter()
+                    .map(|(k, v)| Ok((k.into(), ast::EntityUID::try_from(v)?)))
+                    .collect::<Result<_, PstConstructionError>>()?;
+                Ok(ast::Policy::new(
+                    Arc::new(Arc::unwrap_or_clone(body).try_into()?),
+                    Option::Some(instance_id.into()),
+                    ast_values,
                 ))
-                .into()
-            })
+            }
+        }
     }
 }
 
@@ -649,7 +658,7 @@ impl TryFrom<ast::Policy> for Policy {
                 .collect();
             if let Some(ast_id) = id {
                 Ok(Policy::Linked(LinkedPolicy {
-                    body: pst_template,
+                    body: Arc::new(pst_template),
                     values,
                     instance_id: ast_id.into(),
                 }))
@@ -1030,12 +1039,11 @@ mod tests {
         assert!(linked.values.contains_key(&SlotId::Principal));
         assert!(linked.values.contains_key(&SlotId::Resource));
 
-        // Should convert back to a static AST policy (linking happens during conversion)
+        // Should convert back to a linked AST policy
         let ast_policy2: ast::Policy = pst_policy.try_into().expect("pst->ast failed");
-        let expected = normalize(
-            r#"permit( principal == User::"alice", action, resource in Album::"trips" );"#,
-        );
-        assert_eq!(normalize(&ast_policy2.to_string()), expected);
+        let expected =
+            normalize(r#"permit( principal == ?principal, action, resource in ?resource );"#);
+        assert_eq!(normalize(&ast_policy2.template().to_string()), expected);
     }
 
     /// Test expressions that get desugared/normalized during AST conversion
