@@ -976,13 +976,17 @@ impl SExpr {
                 Ok(Term::Prim(TermPrim::Ext(Ext::Ipaddr {
                     ip: if ip == "V4" {
                         IPNet::V4(CIDRv4 {
-                            addr: IPv4Addr { val: addr },
-                            prefix: IPv4Prefix { val: prefix },
+                            addr: IPv4Addr::try_from_bitvec(addr)
+                                .ok_or_else(|| DecodeError::UnknownLiteral(self.clone()))?,
+                            prefix: IPv4Prefix::try_from_bitvec(prefix)
+                                .ok_or_else(|| DecodeError::UnknownLiteral(self.clone()))?,
                         })
                     } else {
                         IPNet::V6(CIDRv6 {
-                            addr: IPv6Addr { val: addr },
-                            prefix: IPv6Prefix { val: prefix },
+                            addr: IPv6Addr::try_from_bitvec(addr)
+                                .ok_or_else(|| DecodeError::UnknownLiteral(self.clone()))?,
+                            prefix: IPv6Prefix::try_from_bitvec(prefix)
+                                .ok_or_else(|| DecodeError::UnknownLiteral(self.clone()))?,
                         })
                     },
                 })))
