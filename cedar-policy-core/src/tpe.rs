@@ -22,6 +22,7 @@ pub mod evaluator;
 pub mod request;
 pub mod residual;
 pub mod response;
+pub(crate) mod test_utils;
 
 use std::{collections::HashMap, sync::Arc};
 
