@@ -31,6 +31,10 @@ use crate::est;
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum PstConstructionError {
+    /// Trying to construct an empty policy
+    #[error("empty policy")]
+    #[diagnostic(code(pst::empty_policy))]
+    EmptyPolicy,
     /// Action constraints cannot contain template slots
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -122,6 +126,13 @@ pub enum PstConstructionError {
     ContainsSlots(#[from] error_body::ContainsSlotError),
 }
 
+impl PstConstructionError {
+    /// Create an invalid conversion error with the given description.
+    pub fn invalid_conversion(description: impl Into<String>) -> Self {
+        Self::InvalidConversion(error_body::InvalidConversionError::new(description.into()))
+    }
+}
+
 #[doc(hidden)]
 impl From<est::FromJsonError> for PstConstructionError {
     fn from(err: est::FromJsonError) -> Self {
@@ -148,6 +159,13 @@ impl From<est::FromJsonError> for PstConstructionError {
                 err.to_string(),
             )),
         }
+    }
+}
+
+#[doc(hidden)]
+impl From<crate::parser::err::ParseErrors> for PstConstructionError {
+    fn from(value: crate::parser::err::ParseErrors) -> Self {
+        error_body::ParsingFailedError::from(value).into()
     }
 }
 
@@ -310,6 +328,7 @@ pub mod error_body {
     }
 
     impl InvalidConversionError {
+        /// Create a new `InvalidConversionError` with the given description
         pub(crate) fn new(description: String) -> Self {
             Self { description }
         }

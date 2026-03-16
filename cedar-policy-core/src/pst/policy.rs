@@ -22,7 +22,7 @@
 use super::constraints::{ActionConstraint, PrincipalConstraint, ResourceConstraint};
 use super::expr::{EntityUID, Expr, SlotId};
 use crate::ast;
-use crate::pst::err::error_body::ContainsSlotError;
+use crate::pst::err::error_body::{ContainsSlotError, LinkingError};
 use crate::pst::PstConstructionError;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -290,6 +290,7 @@ impl TryFrom<Template> for StaticPolicy {
 
 /// A linked policy, i.e. a template with information to fill the slots and the id of the link.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct LinkedPolicy {
     /// The body of the policy is a template with slots
     pub body: Arc<Template>,
@@ -300,6 +301,25 @@ pub struct LinkedPolicy {
 }
 
 impl LinkedPolicy {
+    /// Create a new `LinkedPolicy` from a template, slot values, and an instance id.
+    /// Returns an error if any slot in the template is not provided a value.
+    pub fn new(
+        template: Arc<Template>,
+        values: HashMap<SlotId, EntityUID>,
+        instance_id: PolicyID,
+    ) -> Result<Self, PstConstructionError> {
+        for slot in template.slots() {
+            if !values.contains_key(&slot) {
+                return Err(LinkingError::MissedSlot { slot }.into());
+            }
+        }
+        Ok(Self {
+            body: template,
+            values,
+            instance_id,
+        })
+    }
+
     /// Get the static policy statement that this linked policy represents.
     /// Loses the link between the template and the instantiation (the template is cloned
     /// and then the slots are replaced by the values in `vals` and the id is changed
@@ -316,10 +336,22 @@ impl LinkedPolicy {
     }
 }
 
+impl From<StaticPolicy> for Policy {
+    fn from(p: StaticPolicy) -> Self {
+        Policy::Static(p)
+    }
+}
+
+impl From<LinkedPolicy> for Policy {
+    fn from(p: LinkedPolicy) -> Self {
+        Policy::Linked(p)
+    }
+}
+
 /// A Policy can be represented either as a static policy or a linked policy. A linked policy
 /// can be transformed into a static one, but information about the template id and which slots
 /// are linked would be lost.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Policy {
     /// Static policy, i.e. a policy with no slots
     Static(StaticPolicy),

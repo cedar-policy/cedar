@@ -54,6 +54,7 @@ use cedar_policy_core::evaluator::Evaluator;
 use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::parser;
+pub use cedar_policy_core::pst;
 use cedar_policy_core::FromNormalizedStr;
 use itertools::{Either, Itertools};
 use linked_hash_map::LinkedHashMap;
@@ -2539,13 +2540,24 @@ impl FromStr for PolicySet {
                 Policy { lossless: LosslessPolicy::policy_or_template_text(*texts.get(p.id()).expect("internal invariant violation: policy id exists in asts but not texts")), ast: p.clone() }
             )
         ).collect();
-        #[expect(clippy::expect_used, reason = "By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.templates()` also occurs as a key in `text`.")]
-        let templates = pset.templates().map(|t|
-            (
-                PolicyId::new(t.id().clone()),
-                Template { lossless: LosslessPolicy::policy_or_template_text(*texts.get(t.id()).expect("internal invariant violation: template id exists in asts but not ests")), ast: t.clone() }
-            )
-        ).collect();
+        #[expect(
+            clippy::expect_used,
+            reason = "By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.templates()` also occurs as a key in `text`."
+        )]
+        let templates = pset
+            .templates()
+            .map(|t| {
+                (
+                    PolicyId::new(t.id().clone()),
+                    Template {
+                        lossless: LosslessTemplate::from_text(*texts.get(t.id()).expect(
+                            "internal invariant violation: template id exists in asts but not ests",
+                        )),
+                        ast: t.clone(),
+                    },
+                )
+            })
+            .collect();
         Ok(Self {
             ast: pset,
             policies,
@@ -2586,7 +2598,7 @@ impl PolicySet {
                 (
                     PolicyId::new(t.id().clone()),
                     Template {
-                        lossless: LosslessPolicy::Est(est.get_template(t.id()).expect(
+                        lossless: LosslessTemplate::Est(est.get_template(t.id()).expect(
                             "internal invariant violation: template id exists in asts but not ests",
                         )),
                         ast: t.clone(),
@@ -3286,10 +3298,7 @@ pub struct Template {
     /// we can't reconstruct an accurate CST/EST/policy-text from the AST, but
     /// we can from the EST (modulo whitespace and a few other things like the
     /// order of annotations).
-    ///
-    /// This is a `LosslessPolicy` (rather than something like `LosslessTemplate`)
-    /// because the EST doesn't distinguish between static policies and templates.
-    pub(crate) lossless: LosslessPolicy,
+    pub(crate) lossless: LosslessTemplate,
 }
 
 impl PartialEq for Template {
@@ -3315,6 +3324,34 @@ impl From<ast::Template> for Template {
 }
 
 impl Template {
+    /// Construct a [`Template`] from a PST template.
+    /// Returns an error if the PST template has no template slots.
+    pub fn from_pst(pst_template: pst::Template) -> Result<Self, pst::PstConstructionError> {
+        let ast: ast::Template = pst_template.clone().try_into()?;
+        if ast.slots().count() == 0 {
+            return Err(pst::PstConstructionError::invalid_conversion(
+                "expected a template with slots, but found a static policy",
+            ));
+        }
+        Ok(Self {
+            ast,
+            lossless: LosslessTemplate::Pst(pst_template),
+        })
+    }
+
+    /// Get the PST representation of this template.
+    pub fn to_pst(&self) -> Result<pst::Template, pst::PstConstructionError> {
+        self.lossless
+            .pst(|| pst::Template::try_from(self.ast.clone()))
+    }
+
+    /// Get an owned PST representation of this template.
+    /// Can return an error if the template was built from a non-PST representation that
+    /// is not a valid Cedar template.
+    pub fn try_into_pst(self) -> Result<pst::Template, pst::PstConstructionError> {
+        self.lossless.try_into_pst()
+    }
+
     /// Attempt to parse a [`Template`] from source.
     /// Returns an error if the input is a static policy (i.e., has no slots).
     /// If `id` is Some, then the resulting template will have that `id`.
@@ -3324,7 +3361,7 @@ impl Template {
         let ast = parser::parse_template(id.map(Into::into), src.as_ref())?;
         Ok(Self {
             ast,
-            lossless: LosslessPolicy::policy_or_template_text(Some(src.as_ref())),
+            lossless: LosslessTemplate::from_text(Some(src.as_ref())),
         })
     }
 
@@ -3476,13 +3513,13 @@ impl Template {
     fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
         Ok(Self {
             ast: est.clone().try_into_ast_template(id.map(PolicyId::into))?,
-            lossless: LosslessPolicy::Est(est),
+            lossless: LosslessTemplate::Est(est),
         })
     }
 
     pub(crate) fn from_ast(ast: ast::Template) -> Self {
         Self {
-            lossless: LosslessPolicy::Est(ast.clone().into()),
+            lossless: LosslessTemplate::Est(ast.clone().into()),
             ast,
         }
     }
@@ -3503,8 +3540,10 @@ impl Template {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> String {
         match &self.lossless {
-            LosslessPolicy::Empty | LosslessPolicy::Est(_) => self.ast.to_string(),
-            LosslessPolicy::Text { text, .. } => text.clone(),
+            LosslessTemplate::Empty | LosslessTemplate::Est(_) | LosslessTemplate::Pst(_) => {
+                self.ast.to_string()
+            }
+            LosslessTemplate::Text(text) => text.clone(),
         }
     }
 
@@ -3637,7 +3676,7 @@ pub struct Policy {
     pub(crate) ast: ast::Policy,
     /// Some "lossless" representation of the policy, whichever is most
     /// convenient to provide (and can be provided with the least overhead).
-    /// This is used just for `to_json()`.
+    /// This is for `to_json()` and `to_pst()`.
     /// We can't just derive this on-demand from `ast`, because the AST is lossy:
     /// we can't reconstruct an accurate CST/EST/policy-text from the AST, but
     /// we can from the EST (modulo whitespace and a few other things like the
@@ -3675,6 +3714,16 @@ impl From<ast::StaticPolicy> for Policy {
 }
 
 impl Policy {
+    /// Construct a [`Policy`] from a PST policy.
+    /// Accepts both static and linked PST policies.
+    pub fn from_pst(pst_policy: pst::Policy) -> Result<Self, pst::PstConstructionError> {
+        let ast = ast::Policy::try_from(pst_policy.clone())?;
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::Pst(pst_policy),
+        })
+    }
+
     /// Get the `PolicyId` of the `Template` this is linked to.
     /// If this is a static policy, this will return `None`.
     pub fn template_id(&self) -> Option<&PolicyId> {
@@ -4036,7 +4085,9 @@ impl Policy {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
         match &self.lossless {
-            LosslessPolicy::Empty | LosslessPolicy::Est(_) => Some(self.ast.to_string()),
+            LosslessPolicy::Empty | LosslessPolicy::Est(_) | LosslessPolicy::Pst(_) => {
+                Some(self.ast.to_string())
+            }
             LosslessPolicy::Text { text, slots } => {
                 if slots.is_empty() {
                     Some(text.clone())
@@ -4045,6 +4096,20 @@ impl Policy {
                 }
             }
         }
+    }
+
+    /// Get the PST representation of this policy.
+    pub fn to_pst(&self) -> Result<pst::Policy, pst::PstConstructionError> {
+        self.lossless
+            .pst(|| pst::Policy::try_from(self.ast.clone()))
+    }
+
+    /// Get an owned PST representation of this policy. May return an error when the policy
+    /// has been constructed from a different representation that is not a valid Cedar policy.
+    pub fn try_into_pst(self) -> Result<pst::Policy, pst::PstConstructionError> {
+        // no fallback for this one: caller is trying to get the policy's representation in order
+        // to manipulate it.
+        self.lossless.try_into_pst()
     }
 
     /// Get all the unknown entities from the policy
@@ -4093,28 +4158,139 @@ impl FromStr for Policy {
     }
 }
 
-/// See comments on `Policy` and `Template`.
-///
-/// This structure can be used for static policies, linked policies, and templates.
+/// Lossless representation of a template (no slot values).
+/// See comments on [`Template`].
+#[derive(Debug, Clone)]
+pub(crate) enum LosslessTemplate {
+    /// An empty representation
+    Empty,
+    /// EST representation
+    Est(est::Policy),
+    /// PST representation
+    Pst(pst::Template),
+    /// Text representation (templates never carry slot values)
+    Text(String),
+}
+
+impl LosslessTemplate {
+    /// Create a new `LosslessTemplate` from the text of a template.
+    fn from_text(text: Option<impl Into<String>>) -> Self {
+        text.map_or(Self::Empty, |text| Self::Text(text.into()))
+    }
+
+    /// Get the EST representation of this template.
+    fn est(
+        &self,
+        fallback_est: impl FnOnce() -> est::Policy,
+    ) -> Result<est::Policy, PolicyToJsonError> {
+        match self {
+            Self::Empty => Ok(fallback_est()),
+            Self::Est(est) => Ok(est.clone()),
+            Self::Pst(pst) => Ok(pst.clone().try_into()?),
+            Self::Text(text) => {
+                Ok(parser::parse_policy_or_template_to_est(text).map_err(ParseErrors::from)?)
+            }
+        }
+    }
+
+    /// Get the PST representation of this template.
+    fn pst(
+        &self,
+        fallback_pst: impl FnOnce() -> Result<pst::Template, pst::PstConstructionError>,
+    ) -> Result<pst::Template, pst::PstConstructionError> {
+        match self {
+            Self::Empty => fallback_pst(),
+            Self::Est(est) => Ok(est.clone().try_into()?),
+            Self::Pst(pst) => Ok(pst.clone()),
+            Self::Text(text) => Ok(parser::parse_policy_or_template_to_est(text)?.try_into()?),
+        }
+    }
+
+    /// Get an owned PST representation of this template.
+    fn try_into_pst(self) -> Result<pst::Template, pst::PstConstructionError> {
+        match self {
+            Self::Empty => Err(pst::PstConstructionError::EmptyPolicy),
+            Self::Est(est) => Ok(est.try_into()?),
+            Self::Pst(pst) => Ok(pst),
+            Self::Text(text) => Ok(parser::parse_policy_or_template_to_est(&text)?.try_into()?),
+        }
+    }
+
+    /// Link this template with slot values, producing a [`LosslessPolicy`].
+    fn link<'a>(
+        self,
+        vals: impl IntoIterator<Item = (ast::SlotId, &'a ast::EntityUID)>,
+    ) -> Result<LosslessPolicy, est::LinkingError> {
+        match self {
+            Self::Empty => Ok(LosslessPolicy::Empty),
+            Self::Est(est) => {
+                let unwrapped_vals: HashMap<
+                    ast::SlotId,
+                    cedar_policy_core::entities::EntityUidJson,
+                > = vals.into_iter().map(|(k, v)| (k, v.into())).collect();
+                Ok(LosslessPolicy::Est(est.link(&unwrapped_vals)?))
+            }
+            Self::Pst(template) => {
+                let pst_vals: HashMap<pst::SlotId, pst::EntityUID> = vals
+                    .into_iter()
+                    .map(|(k, v)| (k.into(), v.clone().into()))
+                    .collect();
+                // Linking replaces slots inline, producing a static policy.
+                // The AST still tracks the template-link relationship.
+                #[expect(
+                    clippy::expect_used,
+                    reason = "slots already validated by ast.link() at the call site"
+                )]
+                let static_policy = template
+                    .link(&pst_vals)
+                    .expect("slots already validated by ast.link()");
+                Ok(LosslessPolicy::Pst(pst::Policy::Static(static_policy)))
+            }
+            Self::Text(text) => {
+                let slots = vals.into_iter().map(|(k, v)| (k, v.clone())).collect();
+                Ok(LosslessPolicy::Text { text, slots })
+            }
+        }
+    }
+
+    fn fmt(
+        &self,
+        fallback_est: impl FnOnce() -> est::Policy,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            Self::Empty | Self::Pst(_) => match self.est(fallback_est) {
+                Ok(est) => write!(f, "{est}"),
+                Err(e) => write!(f, "<invalid policy: {e}>"),
+            },
+            Self::Est(est) => write!(f, "{est}"),
+            Self::Text(text) => write!(f, "{text}"),
+        }
+    }
+}
+
+/// Lossless representation of a static or linked policy.
+/// See comments on [`Policy`].
 #[derive(Debug, Clone)]
 pub(crate) enum LosslessPolicy {
     /// An empty representation
     Empty,
     /// EST representation
     Est(est::Policy),
+    /// PST representation
+    Pst(pst::Policy),
     /// Text representation
     Text {
-        /// actual policy text, of the policy or template
+        /// actual policy text
         text: String,
-        /// For linked policies, map of slot to UID. Only linked policies have
-        /// this; static policies and (unlinked) templates have an empty map
-        /// here
+        /// For linked policies, map of slot to UID. Static policies have an
+        /// empty map here.
         slots: HashMap<ast::SlotId, ast::EntityUID>,
     },
 }
 
 impl LosslessPolicy {
-    /// Create a new `LosslessPolicy` from the text of a policy or template.
+    /// Create a new `LosslessPolicy` from the text of a policy.
     fn policy_or_template_text(text: Option<impl Into<String>>) -> Self {
         text.map_or(Self::Empty, |text| Self::Text {
             text: text.into(),
@@ -4122,15 +4298,25 @@ impl LosslessPolicy {
         })
     }
 
-    /// Get the EST representation of this static policy, linked policy, or template.
+    /// Get the EST representation of this policy.
     fn est(
         &self,
         fallback_est: impl FnOnce() -> est::Policy,
     ) -> Result<est::Policy, PolicyToJsonError> {
         match self {
-            // Fall back to the `policy` AST if the lossless representation is empty
             Self::Empty => Ok(fallback_est()),
             Self::Est(est) => Ok(est.clone()),
+            Self::Pst(pst) => {
+                // Convert the effective body (with slots resolved for linked policies) to EST
+                // (same behavior as policies from text)
+                match pst {
+                    pst::Policy::Static(sp) => Ok(sp.body.clone().try_into()?),
+                    pst::Policy::Linked(lp) => {
+                        let static_policy = lp.into_static_policy()?;
+                        Ok(static_policy.body.try_into()?)
+                    }
+                }
+            }
             Self::Text { text, slots } => {
                 let est =
                     parser::parse_policy_or_template_to_est(text).map_err(ParseErrors::from)?;
@@ -4144,26 +4330,57 @@ impl LosslessPolicy {
         }
     }
 
-    fn link<'a>(
-        self,
-        vals: impl IntoIterator<Item = (ast::SlotId, &'a ast::EntityUID)>,
-    ) -> Result<Self, est::LinkingError> {
+    /// Get the PST representation of this policy.
+    fn pst(
+        &self,
+        fallback_pst: impl FnOnce() -> Result<pst::Policy, pst::PstConstructionError>,
+    ) -> Result<pst::Policy, pst::PstConstructionError> {
         match self {
-            Self::Empty => Ok(Self::Empty),
+            Self::Empty => fallback_pst(),
             Self::Est(est) => {
-                let unwrapped_est_vals: HashMap<
-                    ast::SlotId,
-                    cedar_policy_core::entities::EntityUidJson,
-                > = vals.into_iter().map(|(k, v)| (k, v.into())).collect();
-                Ok(Self::Est(est.link(&unwrapped_est_vals)?))
+                let template: pst::Template = est.clone().try_into()?;
+                Ok(pst::Policy::Static(pst::StaticPolicy::try_from(template)?))
             }
+            Self::Pst(pst) => Ok(pst.clone()),
             Self::Text { text, slots } => {
-                debug_assert!(
-                    slots.is_empty(),
-                    "shouldn't call link() on an already-linked policy"
-                );
-                let slots = vals.into_iter().map(|(k, v)| (k, v.clone())).collect();
-                Ok(Self::Text { text, slots })
+                let template: pst::Template =
+                    parser::parse_policy_or_template_to_est(text)?.try_into()?;
+                if slots.is_empty() {
+                    Ok(pst::Policy::Static(pst::StaticPolicy::try_from(template)?))
+                } else {
+                    let pst_vals: HashMap<pst::SlotId, pst::EntityUID> = slots
+                        .iter()
+                        .map(|(k, v)| ((*k).into(), v.clone().into()))
+                        .collect();
+                    let static_policy = template.link(&pst_vals)?;
+                    Ok(pst::Policy::Static(static_policy))
+                }
+            }
+        }
+    }
+
+    /// Get an owned PST representation of this policy.
+    fn try_into_pst(self) -> Result<pst::Policy, pst::PstConstructionError> {
+        match self {
+            Self::Empty => Err(pst::PstConstructionError::EmptyPolicy),
+            Self::Est(est) => {
+                let template: pst::Template = est.try_into()?;
+                Ok(pst::Policy::Static(pst::StaticPolicy::try_from(template)?))
+            }
+            Self::Pst(pst) => Ok(pst),
+            Self::Text { text, slots } => {
+                let template: pst::Template =
+                    parser::parse_policy_or_template_to_est(&text)?.try_into()?;
+                if slots.is_empty() {
+                    Ok(pst::Policy::Static(pst::StaticPolicy::try_from(template)?))
+                } else {
+                    let pst_vals: HashMap<pst::SlotId, pst::EntityUID> = slots
+                        .into_iter()
+                        .map(|(k, v)| (pst::SlotId::from(k), v.into()))
+                        .collect();
+                    let static_policy = template.link(&pst_vals)?;
+                    Ok(pst::Policy::Static(static_policy))
+                }
             }
         }
     }
@@ -4174,7 +4391,7 @@ impl LosslessPolicy {
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            Self::Empty => match self.est(fallback_est) {
+            Self::Empty | Self::Pst(_) => match self.est(fallback_est) {
                 Ok(est) => write!(f, "{est}"),
                 Err(e) => write!(f, "<invalid policy: {e}>"),
             },
@@ -4183,11 +4400,6 @@ impl LosslessPolicy {
                 if slots.is_empty() {
                     write!(f, "{text}")
                 } else {
-                    // need to replace placeholders according to `slots`.
-                    // just find-and-replace wouldn't be safe/perfect, we
-                    // want to use the actual parser; right now we reuse
-                    // another implementation by just converting to EST and
-                    // printing that
                     match self.est(fallback_est) {
                         Ok(est) => write!(f, "{est}"),
                         Err(e) => write!(f, "<invalid linked policy: {e}>"),
@@ -6590,7 +6802,7 @@ action CreateList in Create appliesTo {
 
 #[cfg(test)]
 mod test_lossless_empty {
-    use super::{LosslessPolicy, Policy, PolicyId, Template};
+    use super::{LosslessPolicy, LosslessTemplate, Policy, PolicyId, Template};
 
     #[test]
     fn test_lossless_empty_policy() {
@@ -6623,7 +6835,7 @@ mod test_lossless_empty {
             .expect("Failed to parse");
         let lossy_template0 = Template {
             ast: template0.ast.clone(),
-            lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+            lossless: LosslessTemplate::from_text(None::<&str>),
         };
         // The `to_cedar` representation becomes lossy since we didn't provide text
         assert_eq!(
