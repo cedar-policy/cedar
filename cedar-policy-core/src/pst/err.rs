@@ -173,6 +173,7 @@ impl From<crate::parser::err::ParseErrors> for PstConstructionError {
 pub mod error_body {
     use std::collections::HashSet;
 
+    use crate::est;
     use crate::extensions::ExtensionFunctionLookupError;
     use miette::Diagnostic;
     use smol_str::SmolStr;
@@ -374,6 +375,14 @@ pub mod error_body {
             /// Slot which didn't have a value provided for it
             slot: crate::pst::SlotId,
         },
+    }
+
+    impl From<LinkingError> for est::LinkingError {
+        fn from(err: LinkingError) -> Self {
+            match err {
+                LinkingError::MissedSlot { slot } => Self::MissedSlot { slot: slot.into() },
+            }
+        }
     }
 
     /// The policy or an expression contains slots

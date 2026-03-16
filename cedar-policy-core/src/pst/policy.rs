@@ -307,10 +307,10 @@ impl LinkedPolicy {
         template: Arc<Template>,
         values: HashMap<SlotId, EntityUID>,
         instance_id: PolicyID,
-    ) -> Result<Self, PstConstructionError> {
+    ) -> Result<Self, LinkingError> {
         for slot in template.slots() {
             if !values.contains_key(&slot) {
-                return Err(LinkingError::MissedSlot { slot }.into());
+                return Err(LinkingError::MissedSlot { slot });
             }
         }
         Ok(Self {
@@ -470,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn test_policy_link_missing_slot_errors() {
+    fn test_policy_link_or_new_linked_policy_missing_slot_errors() {
         use crate::pst::constraints::*;
         use crate::pst::expr::SlotId;
 
@@ -482,10 +482,17 @@ mod tests {
             ResourceConstraint::Any,
         );
 
-        let result = template.link(&HashMap::new());
+        let result = template.clone().link(&HashMap::new());
         assert!(matches!(
             result,
             Err(PstConstructionError::LinkingFailed(..))
+        ));
+        let new_policy = LinkedPolicy::new(Arc::new(template), HashMap::new(), "test0".into());
+        assert!(matches!(
+            new_policy,
+            Err(LinkingError::MissedSlot {
+                slot: SlotId::Principal
+            })
         ));
     }
 

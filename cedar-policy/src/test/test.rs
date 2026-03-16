@@ -11274,3 +11274,309 @@ mod has_non_scope_constraint {
         assert!(roundtrip_via_policy_set(p).has_non_scope_constraint());
     }
 }
+
+mod pst_api {
+    use super::super::super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    /// Helper: build a PST template with a ?principal slot and a when clause
+    fn pst_template_with_slot() -> pst::Template {
+        pst::Template::new(
+            "t1",
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Principal)),
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        )
+        .try_with_clauses([pst::Clause::When(Arc::new(pst::Expr::BinaryOp {
+            op: pst::BinaryOp::Eq,
+            left: Arc::new(pst::Expr::Var(pst::Var::Context)),
+            right: Arc::new(pst::Expr::Record(Default::default())),
+        }))])
+        .unwrap()
+    }
+
+    /// Helper: build a static PST template (no slots) with when and unless clauses
+    fn pst_static_template() -> pst::Template {
+        pst::Template::new(
+            "p1",
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        )
+        .try_with_clauses([
+            pst::Clause::When(Arc::new(pst::Expr::Literal(pst::Literal::Bool(true)))),
+            pst::Clause::Unless(Arc::new(pst::Expr::Literal(pst::Literal::Bool(false)))),
+        ])
+        .unwrap()
+    }
+
+    // --- Template::from_pst ---
+
+    #[test]
+    fn template_from_pst_with_slots() {
+        let t = Template::from_pst(pst_template_with_slot()).expect("should succeed");
+        assert_eq!(t.id().to_string(), "t1");
+        assert!(t.slots().any(|s| *s == SlotId::principal()));
+        // other representations
+        assert!(t.to_cedar().contains("?principal"));
+        t.to_json().expect("json should succeed");
+    }
+
+    #[test]
+    fn template_from_pst_rejects_static() {
+        let err = Template::from_pst(pst_static_template()).unwrap_err();
+        assert!(err.to_string().contains("static policy"));
+    }
+
+    // --- Template::to_pst / try_into_pst ---
+
+    #[test]
+    fn template_to_pst_roundtrip() {
+        let original = pst_template_with_slot();
+        let t = Template::from_pst(original.clone()).unwrap();
+        let recovered = t.to_pst().expect("should succeed");
+        assert_eq!(format!("{recovered}"), format!("{original}"));
+    }
+
+    #[test]
+    fn template_try_into_pst_roundtrip() {
+        let original = pst_template_with_slot();
+        let t = Template::from_pst(original.clone()).unwrap();
+        let recovered = t.try_into_pst().expect("should succeed");
+        assert_eq!(format!("{recovered}"), format!("{original}"));
+    }
+
+    #[test]
+    fn template_parsed_to_pst() {
+        let src = "permit(principal == ?principal, action, resource) when { context.x > 5 };";
+        let t = Template::parse(None, src).unwrap();
+        let pst = t.to_pst().expect("to_pst should succeed");
+        assert!(pst.principal.has_slot());
+        assert_eq!(pst.clauses().len(), 1);
+        assert!(matches!(pst.clauses()[0], pst::Clause::When(_)));
+        // also test try_into_pst
+        let t2 = Template::parse(None, src).unwrap();
+        let pst2 = t2.try_into_pst().expect("try_into_pst should succeed");
+        assert!(pst2.principal.has_slot());
+    }
+
+    // --- Policy::from_pst (static) ---
+
+    #[test]
+    fn policy_from_pst_static() {
+        let sp = pst::StaticPolicy::try_from(pst_static_template()).unwrap();
+        let p = Policy::from_pst(sp.into()).expect("should succeed");
+        assert_eq!(p.id().to_string(), "p1");
+        assert!(p.is_static());
+        // other representations
+        let cedar = p.to_cedar().unwrap();
+        assert!(cedar.contains("permit"));
+        assert!(cedar.contains("when"));
+        p.to_json().expect("json should succeed");
+    }
+
+    // --- Policy::from_pst (linked) ---
+
+    #[test]
+    fn policy_from_pst_linked() {
+        let template = Arc::new(pst_template_with_slot());
+        let uid = pst::EntityUID {
+            ty: pst::EntityType::from_name(pst::Name::unqualified("User")),
+            eid: "alice".into(),
+        };
+        let linked = pst::LinkedPolicy::new(
+            template,
+            HashMap::from([(pst::SlotId::Principal, uid)]),
+            "link1".into(),
+        )
+        .unwrap();
+        let p = Policy::from_pst(linked.into()).expect("should succeed");
+        assert!(!p.is_static());
+        assert_eq!(p.template_id().unwrap().to_string(), "t1");
+        // other representations
+        p.to_json().expect("json should succeed");
+    }
+
+    // --- Policy::to_pst / try_into_pst ---
+
+    #[test]
+    fn policy_to_pst_roundtrip() {
+        let sp = pst::StaticPolicy::try_from(pst_static_template()).unwrap();
+        let p = Policy::from_pst(sp.into()).unwrap();
+        let recovered = p.to_pst().expect("should succeed");
+        assert!(matches!(recovered, pst::Policy::Static(_)));
+    }
+
+    #[test]
+    fn policy_try_into_pst_roundtrip() {
+        let sp = pst::StaticPolicy::try_from(pst_static_template()).unwrap();
+        let p = Policy::from_pst(sp.into()).unwrap();
+        let recovered = p.try_into_pst().expect("should succeed");
+        assert!(matches!(recovered, pst::Policy::Static(_)));
+    }
+
+    #[test]
+    fn policy_empty_to_pst_with_valid_ast() {
+        let non_empty_ast = Template::from_pst(pst_template_with_slot()).unwrap().ast;
+        let p = Template {
+            lossless: LosslessTemplate::Empty,
+            ast: non_empty_ast,
+        };
+        assert_eq!(
+            p.clone().to_pst().unwrap().to_string(),
+            pst_template_with_slot().to_string()
+        );
+        assert_eq!(
+            p.try_into_pst().unwrap_err(),
+            pst::PstConstructionError::EmptyPolicy
+        )
+    }
+
+    #[test]
+    fn policy_parsed_to_pst() {
+        let src = r#"permit(principal, action, resource) when { context.x > 5 } unless { resource == User::"bob" };"#;
+        let p: Policy = src.parse().unwrap();
+        let pst = p.to_pst().expect("to_pst should succeed");
+        assert!(matches!(&pst, pst::Policy::Static(_)));
+        if let pst::Policy::Static(sp) = &pst {
+            assert_eq!(sp.body.clauses().len(), 2);
+            assert!(matches!(sp.body.clauses()[0], pst::Clause::When(_)));
+            assert!(matches!(sp.body.clauses()[1], pst::Clause::Unless(_)));
+        }
+        // also test try_into_pst
+        let p2: Policy = src.parse().unwrap();
+        let pst2 = p2.try_into_pst().expect("try_into_pst should succeed");
+        assert!(matches!(pst2, pst::Policy::Static(_)));
+    }
+
+    // --- Text → Template → PST → other representations ---
+
+    #[test]
+    fn text_template_pst_cross_repr() {
+        let src = "forbid(principal == ?principal, action, resource) when { context.admin };";
+        let t = Template::parse(Some(PolicyId::new("tmpl")), src).unwrap();
+        // text → PST (to_pst)
+        let pst = t.to_pst().expect("to_pst should succeed");
+        assert!(pst.principal.has_slot());
+        assert_eq!(pst.effect, pst::Effect::Forbid);
+        assert_eq!(pst.clauses().len(), 1);
+        // PST → Template → other representations
+        let t2 = Template::from_pst(pst).unwrap();
+        assert!(t2.to_cedar().contains("?principal"));
+        t2.to_json().expect("json should succeed");
+        // text → PST (try_into_pst)
+        let t3 = Template::parse(Some(PolicyId::new("tmpl")), src).unwrap();
+        let pst2 = t3.try_into_pst().expect("try_into_pst should succeed");
+        assert!(pst2.principal.has_slot());
+    }
+
+    // --- Text → Policy → PST → other representations ---
+
+    #[test]
+    fn text_policy_pst_cross_repr() {
+        let src = r#"forbid(principal, action == Action::"delete", resource) unless { principal.admin };"#;
+        let p: Policy = src.parse().unwrap();
+        // text → PST (to_pst)
+        let pst = p.to_pst().expect("to_pst should succeed");
+        if let pst::Policy::Static(sp) = &pst {
+            assert_eq!(sp.body.effect, pst::Effect::Forbid);
+            assert!(matches!(sp.body.action, pst::ActionConstraint::Eq(_)));
+            assert_eq!(sp.body.clauses().len(), 1);
+        } else {
+            panic!("expected static policy");
+        }
+        // PST → Policy → other representations
+        let p2 = Policy::from_pst(pst).unwrap();
+        let cedar = p2.to_cedar().unwrap();
+        assert!(cedar.contains("forbid"));
+        assert!(cedar.contains("Action::\"delete\""));
+        p2.to_json().expect("json should succeed");
+        // text → PST (try_into_pst)
+        let p3: Policy = src.parse().unwrap();
+        let pst2 = p3.try_into_pst().expect("try_into_pst should succeed");
+        assert!(matches!(pst2, pst::Policy::Static(_)));
+    }
+
+    // --- EST → PST ---
+
+    #[test]
+    fn est_policy_to_pst() {
+        let json = serde_json::json!({
+            "effect": "forbid",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [{ "kind": "when", "body": { "==": { "left": { "Var": "context" }, "right": { "Record": {} } } } }]
+        });
+        let p = Policy::from_json(None, json.clone()).unwrap();
+        let pst = p.to_pst().expect("to_pst should succeed");
+        if let pst::Policy::Static(sp) = &pst {
+            assert_eq!(sp.body.effect, pst::Effect::Forbid);
+            assert_eq!(sp.body.clauses().len(), 1);
+        } else {
+            panic!("expected static");
+        }
+        // also test try_into_pst
+        let p2 = Policy::from_json(None, json).unwrap();
+        let pst2 = p2.try_into_pst().expect("try_into_pst should succeed");
+        assert!(matches!(pst2, pst::Policy::Static(_)));
+    }
+
+    #[test]
+    fn est_template_to_pst() {
+        let json = serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "==", "slot": "?principal" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [{ "kind": "unless", "body": { "Var": "context" } }]
+        });
+        let t = Template::from_json(None, json.clone()).unwrap();
+        let pst = t.to_pst().expect("to_pst should succeed");
+        assert!(pst.principal.has_slot());
+        assert_eq!(pst.clauses().len(), 1);
+        assert!(matches!(pst.clauses()[0], pst::Clause::Unless(_)));
+        // also test try_into_pst
+        let t2 = Template::from_json(None, json).unwrap();
+        let pst2 = t2.try_into_pst().expect("try_into_pst should succeed");
+        assert!(pst2.principal.has_slot());
+    }
+
+    // --- LinkedPolicy::new ---
+
+    #[test]
+    fn linked_policy_new_missing_slot() {
+        let template = Arc::new(pst_template_with_slot());
+        let err = pst::LinkedPolicy::new(template, HashMap::new(), "link1".into()).unwrap_err();
+        assert!(err.to_string().contains("no value provided for"));
+    }
+
+    // --- PolicySet::link with PST-backed template ---
+
+    #[test]
+    fn policy_set_link_pst_template() {
+        let t = Template::from_pst(pst_template_with_slot()).unwrap();
+        let mut pset = PolicySet::new();
+        pset.add_template(t).unwrap();
+        let uid =
+            EntityUid::from_type_name_and_id("User".parse().unwrap(), "alice".parse().unwrap());
+        pset.link(
+            PolicyId::new("t1"),
+            PolicyId::new("link1"),
+            HashMap::from([(SlotId::principal(), uid)]),
+        )
+        .unwrap();
+        let linked = pset.policy(&PolicyId::new("link1")).unwrap();
+        let pst = linked.to_pst().expect("to_pst should succeed");
+        assert!(matches!(pst, pst::Policy::Linked(_)));
+        // also test try_into_pst
+        let pst2 = linked
+            .clone()
+            .try_into_pst()
+            .expect("try_into_pst should succeed");
+        assert!(matches!(pst2, pst::Policy::Linked(_)));
+    }
+}

@@ -3046,7 +3046,10 @@ impl PolicySet {
         let linked_lossless = template
             .lossless
             .clone()
-            .link(unwrapped_vals.iter().map(|(k, v)| (*k, v)))
+            .link(
+                new_id.clone().into(),
+                unwrapped_vals.iter().map(|(k, v)| (*k, v)),
+            )
             // The only error case for `lossless.link()` is a template with
             // slots which are not filled by the provided values. `ast.link()`
             // will have already errored if there are any unfilled slots in the
@@ -4207,6 +4210,8 @@ impl LosslessTemplate {
     }
 
     /// Get an owned PST representation of this template.
+    /// Does not attempt to convert from a translated representation; this policy must have
+    /// been constructed from a valid EST, PST or Cedar text.
     fn try_into_pst(self) -> Result<pst::Template, pst::PstConstructionError> {
         match self {
             Self::Empty => Err(pst::PstConstructionError::EmptyPolicy),
@@ -4219,6 +4224,7 @@ impl LosslessTemplate {
     /// Link this template with slot values, producing a [`LosslessPolicy`].
     fn link<'a>(
         self,
+        link_id: ast::PolicyID,
         vals: impl IntoIterator<Item = (ast::SlotId, &'a ast::EntityUID)>,
     ) -> Result<LosslessPolicy, est::LinkingError> {
         match self {
@@ -4231,20 +4237,13 @@ impl LosslessTemplate {
                 Ok(LosslessPolicy::Est(est.link(&unwrapped_vals)?))
             }
             Self::Pst(template) => {
-                let pst_vals: HashMap<pst::SlotId, pst::EntityUID> = vals
+                let values: HashMap<pst::SlotId, pst::EntityUID> = vals
                     .into_iter()
                     .map(|(k, v)| (k.into(), v.clone().into()))
                     .collect();
-                // Linking replaces slots inline, producing a static policy.
-                // The AST still tracks the template-link relationship.
-                #[expect(
-                    clippy::expect_used,
-                    reason = "slots already validated by ast.link() at the call site"
-                )]
-                let static_policy = template
-                    .link(&pst_vals)
-                    .expect("slots already validated by ast.link()");
-                Ok(LosslessPolicy::Pst(pst::Policy::Static(static_policy)))
+                let pst_policy = pst::LinkedPolicy::new(Arc::new(template), values, link_id.into())
+                    .map_err(est::LinkingError::from)?;
+                Ok(LosslessPolicy::Pst(pst::Policy::Linked(pst_policy)))
             }
             Self::Text(text) => {
                 let slots = vals.into_iter().map(|(k, v)| (k, v.clone())).collect();
@@ -6803,6 +6802,7 @@ action CreateList in Create appliesTo {
 #[cfg(test)]
 mod test_lossless_empty {
     use super::{LosslessPolicy, LosslessTemplate, Policy, PolicyId, Template};
+    use cedar_policy_core::pst;
 
     #[test]
     fn test_lossless_empty_policy() {
@@ -6848,6 +6848,40 @@ mod test_lossless_empty {
             .est(|| template0.ast.clone().into())
             .unwrap();
         assert_eq!(lossy_template0_est, template0.ast.into());
+    }
+
+    #[test]
+    fn try_into_pst_empty_policy() {
+        let p = Policy::parse(
+            Some(PolicyId::new("p")),
+            "permit(principal,action,resource);",
+        )
+        .expect("parse");
+        let empty = Policy {
+            ast: p.ast,
+            lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+        };
+        assert!(matches!(
+            empty.try_into_pst(),
+            Err(pst::PstConstructionError::EmptyPolicy)
+        ));
+    }
+
+    #[test]
+    fn try_into_pst_empty_template() {
+        let t = Template::parse(
+            Some(PolicyId::new("t")),
+            "permit(principal == ?principal,action,resource);",
+        )
+        .expect("parse");
+        let empty = Template {
+            ast: t.ast,
+            lossless: LosslessTemplate::from_text(None::<&str>),
+        };
+        assert!(matches!(
+            empty.try_into_pst(),
+            Err(pst::PstConstructionError::EmptyPolicy)
+        ));
     }
 }
 
