@@ -3683,6 +3683,7 @@ pub struct Policy {
     /// We can't just derive this on-demand from `ast`, because the AST is lossy:
     /// we can't reconstruct an accurate CST/EST/policy-text from the AST, but
     /// we can from the EST (modulo whitespace and a few other things like the
+    /// we can from the EST or PST (modulo whitespace and a few other things like the
     /// order of annotations).
     pub(crate) lossless: LosslessPolicy,
 }
