@@ -15,6 +15,7 @@ to make the API easier to use with fewer implicit ordering constraints (#2190)
 - Added `enable_models()` as a required method for the `Solver` trait, to allow
 some implementors of `Solver` to perform other initialization/configuration as
 required when models are being enabled (#2192)
+- Performance optimization for analysis of policies containing `.toDate()` (#2234)
 
 ## [0.3.1] - 2026-03-09
 Cedar Language Version: 4.4
