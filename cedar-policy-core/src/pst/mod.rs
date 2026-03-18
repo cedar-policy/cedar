@@ -151,6 +151,7 @@ mod expr;
 mod policy;
 
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
+pub use err::error_body;
 pub use err::PstConstructionError;
 pub use expr::{
     BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,

@@ -37,9 +37,10 @@ use cedar_policy_core::validator::entity_manifest::{
     self, PartialExpressionError, PartialRequestError, UnsupportedCedarFeatureError,
 };
 pub use cedar_policy_core::validator::{schema_errors, SchemaError};
-use cedar_policy_core::{ast, authorizer, est};
+use cedar_policy_core::{ast, authorizer, est, pst};
 use miette::Diagnostic;
 use ref_cast::RefCast;
+use serde::ser::Error;
 use smol_str::SmolStr;
 use thiserror::Error;
 use to_cedar_syntax_errors::NameCollisionsError;
@@ -966,6 +967,18 @@ impl From<est::LinkingError> for PolicyToJsonError {
 impl From<serde_json::Error> for PolicyToJsonError {
     fn from(e: serde_json::Error) -> Self {
         policy_to_json_errors::PolicyJsonSerializationError::from(e).into()
+    }
+}
+
+impl From<pst::PstConstructionError> for PolicyToJsonError {
+    fn from(e: pst::PstConstructionError) -> Self {
+        Self::JsonSerialization(serde_json::Error::custom(e.to_string()).into())
+    }
+}
+
+impl From<PolicyToJsonError> for pst::PstConstructionError {
+    fn from(e: PolicyToJsonError) -> Self {
+        Self::invalid_conversion(e.to_string())
     }
 }
 
