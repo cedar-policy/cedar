@@ -40,27 +40,38 @@ impl TryFrom<Policy> for ast::Policy {
 
     fn try_from(policy: Policy) -> Result<Self, Self::Error> {
         match policy {
-            Policy::Static(StaticPolicy { body }) => Ok(ast::Policy::new(
-                Arc::new(body.try_into()?),
-                Option::None,
-                HashMap::new(),
-            )),
-            Policy::Linked(LinkedPolicy {
-                body,
-                values,
-                instance_id,
-            }) => {
-                let ast_values: HashMap<ast::SlotId, ast::EntityUID> = values
-                    .into_iter()
-                    .map(|(k, v)| Ok((k.into(), ast::EntityUID::try_from(v)?)))
-                    .collect::<Result<_, PstConstructionError>>()?;
-                Ok(ast::Policy::new(
-                    Arc::new(Arc::unwrap_or_clone(body).try_into()?),
-                    Option::Some(instance_id.into()),
-                    ast_values,
-                ))
-            }
+            Policy::Static(static_policy) => static_policy.try_into(),
+            Policy::Linked(linked_policy) => linked_policy.try_into(),
         }
+    }
+}
+
+impl TryFrom<StaticPolicy> for ast::Policy {
+    type Error = PstConstructionError;
+
+    fn try_from(policy: StaticPolicy) -> Result<Self, Self::Error> {
+        Ok(ast::Policy::new(
+            Arc::new(policy.body.try_into()?),
+            Option::None,
+            HashMap::new(),
+        ))
+    }
+}
+
+impl TryFrom<LinkedPolicy> for ast::Policy {
+    type Error = PstConstructionError;
+
+    fn try_from(policy: LinkedPolicy) -> Result<Self, Self::Error> {
+        let ast_values: HashMap<ast::SlotId, ast::EntityUID> = policy
+            .values
+            .into_iter()
+            .map(|(k, v)| Ok((k.into(), ast::EntityUID::try_from(v)?)))
+            .collect::<Result<_, PstConstructionError>>()?;
+        Ok(ast::Policy::new(
+            Arc::new(Arc::unwrap_or_clone(policy.body).try_into()?),
+            Option::Some(policy.instance_id.into()),
+            ast_values,
+        ))
     }
 }
 
@@ -382,7 +393,7 @@ impl TryFrom<EntityUID> for ast::EntityUID {
 
     fn try_from(value: EntityUID) -> Result<Self, PstConstructionError> {
         let ast_et: ast::EntityType = value.ty.try_into()?;
-        let ast_eid = ast::Eid::new(value.eid.as_str());
+        let ast_eid = ast::Eid::new(value.eid);
         Ok(ast::EntityUID::from_components(ast_et, ast_eid, None))
     }
 }
@@ -439,7 +450,7 @@ impl From<ast::Name> for Name {
             namespace: Arc::new(
                 Arc::unwrap_or_clone(path)
                     .into_iter()
-                    .map(|id| id.to_smolstr())
+                    .map(|id| id.into_smolstr())
                     .collect(),
             ),
         }
@@ -472,6 +483,7 @@ impl From<ast::SlotId> for SlotId {
     }
 }
 
+#[doc(hidden)]
 impl From<SlotId> for ast::SlotId {
     fn from(slot: SlotId) -> Self {
         match slot {

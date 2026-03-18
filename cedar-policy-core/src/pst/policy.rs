@@ -24,8 +24,9 @@ use super::expr::{EntityUID, Expr, SlotId};
 use crate::ast;
 use crate::pst::err::error_body::{ContainsSlotError, LinkingError};
 use crate::pst::PstConstructionError;
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Display;
 use std::sync::Arc;
 
 /// A unique identifier for a policy statement
@@ -34,19 +35,25 @@ pub struct PolicyID(pub SmolStr);
 
 impl From<PolicyID> for ast::PolicyID {
     fn from(id: PolicyID) -> Self {
-        ast::PolicyID::from_string(id.0.as_str())
+        ast::PolicyID::from_smolstr(id.0)
     }
 }
 
 impl From<ast::PolicyID> for PolicyID {
     fn from(id: ast::PolicyID) -> Self {
-        Self(id.to_smolstr())
+        Self(id.into_smolstr())
     }
 }
 
 impl From<&str> for PolicyID {
     fn from(s: &str) -> Self {
         Self(s.into())
+    }
+}
+
+impl Display for PolicyID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
