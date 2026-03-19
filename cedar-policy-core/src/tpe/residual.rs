@@ -19,7 +19,9 @@
 use std::collections::HashSet;
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::ast::{Annotations, Effect, EntityUID, Literal, Policy, PolicyID, ValueKind};
+use crate::ast::{
+    Annotations, Effect, EntityUID, Literal, Policy, PolicyID, UnwrapInfallible, ValueKind,
+};
 #[cfg(feature = "tolerant-ast")]
 use crate::tpe::err::ErrorNotSupportedError;
 use crate::tpe::err::{
@@ -474,7 +476,8 @@ impl From<Residual> for Expr {
                                 .into_iter()
                                 .map(|arg| arg.into())
                                 .collect::<Vec<_>>(),
-                        ),
+                        )
+                        .unwrap_infallible(),
                     ResidualKind::GetAttr { expr, attr } => {
                         builder.get_attr(expr.as_ref().clone().into(), attr)
                     }
@@ -520,7 +523,9 @@ impl From<Residual> for Expr {
             Residual::Error(_) => {
                 let builder: ast::ExprBuilder<()> = ExprBuilder::with_data(());
                 #[expect(clippy::unwrap_used, reason = "`error` is a valid `Name`")]
-                builder.call_extension_fn("error".parse().unwrap(), std::iter::empty())
+                builder
+                    .call_extension_fn("error".parse().unwrap(), std::iter::empty())
+                    .unwrap_infallible() // The ast builder allows it, the pst would not allow this
             }
         }
     }
@@ -547,7 +552,7 @@ mod test {
         let schema = ValidatorSchema::from_cedarschema_str(r#"
             entity User in Organization { foo: Bool, str: String, num: Long, period: __cedar::duration, set: Set<String> } tags String;
             entity Organization;
-            entity Document in Organization; 
+            entity Document in Organization;
             action get appliesTo { principal: [User], resource: [Document] };"#,
             &Extensions::all_available(),
         )
@@ -606,9 +611,9 @@ mod test {
             parse_residual(
                 r#"
                 principal is User &&
-                principal in Organization::"foo" && 
-                action == Action::"get" && 
-                resource is Document && 
+                principal in Organization::"foo" &&
+                action == Action::"get" &&
+                resource is Document &&
                 resource in Organization::"foo"
                 "#
             )
@@ -633,8 +638,8 @@ mod test {
         assert_eq!(
             parse_residual(
                 r#"
-                if principal.hasTag("foo") then 
-                    principal in Organization::"foo" 
+                if principal.hasTag("foo") then
+                    principal in Organization::"foo"
                 else principal in Organization::"bar"
                 "#
             )
@@ -644,10 +649,10 @@ mod test {
         assert_eq!(
             parse_residual(
                 r#"
-                1 == 2 || 
-                !("a" == "b") && 
-                ["a", "b"].contains("a") && 
-                !["a", "b"].containsAll(["a"]) && 
+                1 == 2 ||
+                !("a" == "b") &&
+                ["a", "b"].contains("a") &&
+                !["a", "b"].containsAll(["a"]) &&
                 ["a", "b"].containsAny(["a"])
                 "#
             )
@@ -678,8 +683,8 @@ mod test {
             parse_residual(
                 r#"
                 !principal.set.isEmpty() && (
-                    principal.set.contains("foo") || 
-                    principal.set.containsAll(["foo", "bar"]) || 
+                    principal.set.contains("foo") ||
+                    principal.set.containsAll(["foo", "bar"]) ||
                     principal.set.containsAny(["foo", "bar"])
                 )"#
             )

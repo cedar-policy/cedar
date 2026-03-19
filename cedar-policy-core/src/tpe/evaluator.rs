@@ -731,6 +731,7 @@ impl Evaluator<'_> {
 mod tests {
     use std::collections::{BTreeMap, HashSet};
 
+    use crate::ast::UnwrapInfallible;
     use crate::validator::types::Type;
     use crate::{
         ast::{
@@ -1613,7 +1614,9 @@ mod tests {
         };
         assert_matches!(
             eval.interpret_expr(
-                &builder().call_extension_fn("decimal".parse().unwrap(), [builder().val("0.0")])
+                &builder()
+                    .call_extension_fn("decimal".parse().unwrap(), [builder().val("0.0")])
+                    .unwrap_infallible()
             )
             .unwrap(),
             Residual::Concrete {
@@ -1629,7 +1632,7 @@ mod tests {
             eval.interpret_expr(&builder().call_extension_fn(
                 "decimal".parse().unwrap(),
                 [builder().var(Var::Principal)]
-            )).unwrap(),
+            ).unwrap_infallible()).unwrap(),
             Residual::Partial {
                 kind: ResidualKind::ExtensionFunctionApp { fn_name, args, .. },
                 ..
@@ -1641,10 +1644,14 @@ mod tests {
 
         // Error is propagated
         assert_matches!(
-            eval.interpret_expr(&builder().call_extension_fn(
-                "decimal".parse().unwrap(),
-                [builder().neg(builder().val(i64::MIN))]
-            ))
+            eval.interpret_expr(
+                &builder()
+                    .call_extension_fn(
+                        "decimal".parse().unwrap(),
+                        [builder().neg(builder().val(i64::MIN))]
+                    )
+                    .unwrap_infallible()
+            )
             .unwrap(),
             Residual::Error(_)
         )

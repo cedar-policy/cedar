@@ -42,9 +42,9 @@ use super::{cst, Loc};
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
     self, ActionConstraint, Integer, PatternElem, PolicySetError, PrincipalConstraint,
-    PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
+    PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId, UnwrapInfallible,
 };
-use crate::expr_builder::ExprBuilder;
+use crate::expr_builder::{ExprBuilder, ExprBuilderInfallibleBuild};
 use crate::extensions::ExtStyles;
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
@@ -729,7 +729,7 @@ impl Node<Option<cst::Ident>> {
 }
 
 impl ast::UnreservedId {
-    fn to_meth<Build: ExprBuilder>(
+    fn to_meth<Build: ExprBuilderInfallibleBuild>(
         &self,
         e: Build::Expr,
         args: Vec<Build::Expr>,
@@ -757,7 +757,9 @@ impl ast::UnreservedId {
                         head: e,
                         tail: args,
                     };
-                    Ok(builder.call_extension_fn(ast::Name::unqualified_name(self.clone()), args))
+                    Ok(builder
+                        .call_extension_fn(ast::Name::unqualified_name(self.clone()), args)
+                        .unwrap_infallible())
                 } else {
                     let unqual_name = ast::Name::unqualified_name(self.clone());
                     if ExtStyles::is_function(&unqual_name) {
@@ -1029,7 +1031,7 @@ impl Node<Option<cst::Cond>> {
     /// `true` if the cond is a `when` clause, `false` if it is an `unless`
     /// clause. (The returned `expr` is already adjusted for this, the `bool` is
     /// for information only.)
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<(Build::Expr, bool)> {
+    fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<(Build::Expr, bool)> {
         let cond = self.try_as_inner()?;
         let is_when = cond.cond.to_cond_is_when()?;
 
@@ -1085,7 +1087,7 @@ impl Node<Option<cst::Str>> {
 }
 
 #[cfg(feature = "tolerant-ast")]
-fn build_ast_error_node_if_possible<Build: ExprBuilder>(
+fn build_ast_error_node_if_possible<Build: ExprBuilderInfallibleBuild>(
     error: ParseErrors,
     loc: Option<&Loc>,
 ) -> Result<Build::Expr> {
@@ -1096,7 +1098,7 @@ fn build_ast_error_node_if_possible<Build: ExprBuilder>(
     }
 }
 
-/// Since ExprBuilder ErrorType can be Infallible or ParseErrors, if we get an error from building the node pass the ParseErrors along
+/// Since InfallibleExprBuilder ErrorType can be Infallible or ParseErrors, if we get an error from building the node pass the ParseErrors along
 #[cfg_attr(
     not(feature = "tolerant-ast"),
     expect(
@@ -1104,7 +1106,7 @@ fn build_ast_error_node_if_possible<Build: ExprBuilder>(
         reason = "loc argument unused unless feature is enabled"
     )
 )]
-fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
+fn convert_expr_error_to_parse_error<Build: ExprBuilderInfallibleBuild>(
     error: ParseErrors,
     loc: Option<&Loc>,
 ) -> Result<Build::Expr> {
@@ -1152,7 +1154,7 @@ where
         ToASTError::new(kind.into(), self.loc().cloned())
     }
 
-    fn into_expr<Build: ExprBuilder<Expr = Expr>>(self) -> Result<Expr> {
+    fn into_expr<Build: ExprBuilderInfallibleBuild<Expr = Expr>>(self) -> Result<Expr> {
         match self {
             Self::Expr { expr, .. } => Ok(expr),
             Self::Var { var, loc } => Ok(Build::new().with_maybe_source_loc(loc.as_ref()).var(var)),
@@ -1267,10 +1269,10 @@ where
 
 impl Node<Option<cst::Expr>> {
     /// convert `cst::Expr` to `ast::Expr`
-    pub fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    pub fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    pub(crate) fn to_expr_or_special<Build: ExprBuilder>(
+    pub(crate) fn to_expr_or_special<Build: ExprBuilderInfallibleBuild>(
         &self,
     ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let expr_opt = self.try_as_inner()?;
@@ -1307,7 +1309,9 @@ impl Node<Option<cst::Expr>> {
 }
 
 impl Node<Option<cst::Or>> {
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: ExprBuilderInfallibleBuild>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let or = self.try_as_inner()?;
 
         let maybe_first = or.initial.to_expr_or_special::<Build>();
@@ -1330,10 +1334,12 @@ impl Node<Option<cst::Or>> {
 }
 
 impl Node<Option<cst::And>> {
-    pub(crate) fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    pub(crate) fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: ExprBuilderInfallibleBuild>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let and = self.try_as_inner()?;
 
         let maybe_first = and.initial.to_expr_or_special::<Build>();
@@ -1356,10 +1362,12 @@ impl Node<Option<cst::And>> {
 }
 
 impl Node<Option<cst::Relation>> {
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: ExprBuilderInfallibleBuild>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let rel = self.try_as_inner()?;
 
         match rel {
@@ -1460,7 +1468,7 @@ impl Node<Option<cst::Relation>> {
 }
 
 impl Node<Option<cst::Add>> {
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
 
@@ -1473,7 +1481,7 @@ impl Node<Option<cst::Add>> {
     // added to directly tackle the CST to AST conversion for the has operator,
     // This design choice should be noninvasive to existing CST to AST logic,
     // despite producing deadcode.
-    pub(crate) fn to_has_rhs<Build: ExprBuilder>(
+    pub(crate) fn to_has_rhs<Build: ExprBuilderInfallibleBuild>(
         &self,
     ) -> Result<Either<SmolStr, NonEmpty<UnreservedId>>> {
         let inner @ cst::Add { initial, extended } = self.try_as_inner()?;
@@ -1569,7 +1577,7 @@ impl Node<Option<cst::Add>> {
         }
     }
 
-    pub(crate) fn to_expr_or_special<Build: ExprBuilder>(
+    pub(crate) fn to_expr_or_special<Build: ExprBuilderInfallibleBuild>(
         &self,
     ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let add = self.try_as_inner()?;
@@ -1597,10 +1605,12 @@ impl Node<Option<cst::Add>> {
 }
 
 impl Node<Option<cst::Mult>> {
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: ExprBuilderInfallibleBuild>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let mult = self.try_as_inner()?;
 
         let maybe_first = mult.initial.to_expr_or_special::<Build>();
@@ -1631,10 +1641,12 @@ impl Node<Option<cst::Mult>> {
 }
 
 impl Node<Option<cst::Unary>> {
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: ExprBuilderInfallibleBuild>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let unary = self.try_as_inner()?;
 
         match unary.op {
@@ -1745,7 +1757,7 @@ impl Node<Option<cst::Member>> {
     /// acessors. In most cases, `tail` is returned unmodified, but in the method
     /// call case we need to pull off the `Call` element containing the arguments.
     #[expect(clippy::type_complexity, reason = "judged readable enough")]
-    fn build_expr_accessor<'a, Build: ExprBuilder>(
+    fn build_expr_accessor<'a, Build: ExprBuilderInfallibleBuild>(
         &self,
         head: Build::Expr,
         next: &mut AstAccessor<Build::Expr>,
@@ -1789,7 +1801,9 @@ impl Node<Option<cst::Member>> {
         }
     }
 
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: ExprBuilderInfallibleBuild>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let mem = self.try_as_inner()?;
 
         let maybe_prim = mem.item.to_expr_or_special::<Build>();
@@ -1915,7 +1929,7 @@ impl Node<Option<cst::Member>> {
 }
 
 impl Node<Option<cst::MemAccess>> {
-    fn to_access<Build: ExprBuilder>(&self) -> Result<AstAccessor<Build::Expr>> {
+    fn to_access<Build: ExprBuilderInfallibleBuild>(&self) -> Result<AstAccessor<Build::Expr>> {
         let acc = self.try_as_inner()?;
 
         match acc {
@@ -1936,10 +1950,12 @@ impl Node<Option<cst::MemAccess>> {
 }
 
 impl Node<Option<cst::Primary>> {
-    pub(crate) fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    pub(crate) fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: ExprBuilderInfallibleBuild>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let prim = self.try_as_inner()?;
 
         match prim {
@@ -2003,7 +2019,7 @@ impl Node<Option<cst::Primary>> {
     }
 
     /// convert `cst::Primary` representing a string literal to a `SmolStr`.
-    pub fn to_string_literal<Build: ExprBuilder>(&self) -> Result<SmolStr> {
+    pub fn to_string_literal<Build: ExprBuilderInfallibleBuild>(&self) -> Result<SmolStr> {
         let prim = self.try_as_inner()?;
 
         match prim {
@@ -2016,7 +2032,7 @@ impl Node<Option<cst::Primary>> {
 }
 
 impl Node<Option<cst::Slot>> {
-    fn into_expr<Build: ExprBuilder>(self) -> Result<Build::Expr> {
+    fn into_expr<Build: ExprBuilderInfallibleBuild>(self) -> Result<Build::Expr> {
         match self.try_as_inner()?.try_into() {
             Ok(slot_id) => Ok(Build::new()
                 .with_maybe_source_loc(self.loc.as_ref())
@@ -2049,7 +2065,7 @@ impl From<ast::SlotId> for cst::Slot {
 
 impl Node<Option<cst::Name>> {
     /// Build type constraints
-    fn to_type_constraint<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    fn to_type_constraint<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         match self.as_inner() {
             Some(_) => Err(self.to_ast_err(ToASTErrorKind::TypeConstraints).into()),
             None => Ok(Build::new()
@@ -2105,7 +2121,7 @@ impl ast::Name {
         }
     }
 
-    fn into_func<Build: ExprBuilder>(
+    fn into_func<Build: ExprBuilderInfallibleBuild>(
         self,
         args: Vec<Build::Expr>,
         loc: Option<Loc>,
@@ -2129,7 +2145,8 @@ impl ast::Name {
         if ExtStyles::is_function(&self) {
             Ok(Build::new()
                 .with_maybe_source_loc(loc.as_ref())
-                .call_extension_fn(self, args))
+                .call_extension_fn(self, args)
+                .unwrap_infallible())
         } else {
             let hint = ExtStyles::suggest_function(&self);
             Err(ToASTError::new(ToASTErrorKind::UnknownFunction { id: self, hint }, loc).into())
@@ -2165,7 +2182,7 @@ impl Node<Option<cst::Ref>> {
                 .into()),
         }
     }
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_ref().map(|euid| {
             Build::new()
                 .with_maybe_source_loc(self.loc.as_ref())
@@ -2175,7 +2192,9 @@ impl Node<Option<cst::Ref>> {
 }
 
 impl Node<Option<cst::Literal>> {
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: ExprBuilderInfallibleBuild>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let lit = self.try_as_inner()?;
 
         match lit {
@@ -2208,7 +2227,7 @@ impl Node<Option<cst::Literal>> {
 }
 
 impl Node<Option<cst::RecInit>> {
-    fn to_init<Build: ExprBuilder>(&self) -> Result<(SmolStr, Build::Expr)> {
+    fn to_init<Build: ExprBuilderInfallibleBuild>(&self) -> Result<(SmolStr, Build::Expr)> {
         let lit = self.try_as_inner()?;
 
         let maybe_attr = lit.0.to_expr_or_special::<Build>()?.into_valid_attr();
@@ -2275,7 +2294,7 @@ fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Option<Loc>) -> ast::Int
     }
 }
 
-fn construct_expr_rel<Build: ExprBuilder>(
+fn construct_expr_rel<Build: ExprBuilderInfallibleBuild>(
     f: Build::Expr,
     rel: cst::RelOp,
     s: Build::Expr,
