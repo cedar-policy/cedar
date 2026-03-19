@@ -658,18 +658,6 @@ pub enum Expr {
         /// Name of the unknown
         name: SmolStr,
     },
-    /// An error occurred during construction (not constructible by external callers).
-    #[expect(
-        private_interfaces,
-        reason = "intentionally private to prevent clients from constructing error nodes"
-    )]
-    Error(ErrorNode),
-}
-
-/// A private error node is used when other internal APIs require infallible methods
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ErrorNode {
-    pub(crate) error: PstConstructionError,
 }
 
 impl Expr {
@@ -749,11 +737,7 @@ impl Expr {
         }
         let recurse = |e: &Arc<Self>| e.reduce(f, op, zero.clone());
         match self {
-            Expr::Literal(_)
-            | Expr::Var(_)
-            | Expr::Slot(_)
-            | Expr::Unknown { .. }
-            | Expr::Error(_) => zero,
+            Expr::Literal(_) | Expr::Var(_) | Expr::Slot(_) | Expr::Unknown { .. } => zero,
             Expr::UnaryOp { expr, .. }
             | Expr::GetAttr { expr, .. }
             | Expr::HasAttr { expr, .. }
@@ -1043,21 +1027,10 @@ impl ExprBuilder for PstBuilder {
         Ok(Expr::Record(map))
     }
 
-    fn call_extension_fn(self, fn_name: ast::Name, args: impl IntoIterator<Item = Expr>) -> Expr {
-        let expr = Expr::from_function_ast_name_and_args(
-            &fn_name,
-            args.into_iter().map(Arc::new).collect(),
-        );
-        match expr {
-            Ok(e) => e,
-            Err(error) => Expr::Error(ErrorNode { error }),
-        }
-    }
-
-    fn try_call_extension_fn(
+    fn call_extension_fn(
         self,
         fn_name: ast::Name,
-        args: Vec<Expr>,
+        args: impl IntoIterator<Item = Expr>,
     ) -> Result<Expr, PstConstructionError> {
         Expr::from_function_ast_name_and_args(&fn_name, args.into_iter().map(Arc::new).collect())
     }
@@ -1195,7 +1168,6 @@ impl std::fmt::Display for Expr {
                 )
             }
             Expr::Unknown { name } => write!(f, "{}", name),
-            Expr::Error(e) => write!(f, "<error: {}>", e.error),
         }
     }
 }
@@ -1587,24 +1559,25 @@ mod tests {
                 ),
                 // Function calls
                 (
-                    builder().call_extension_fn(
-                        Name::unqualified("decimal").try_into().unwrap(),
-                        vec![builder().val("1.23")],
-                    ),
+                    builder()
+                        .call_extension_fn(
+                            Name::unqualified("decimal").try_into().unwrap(),
+                            vec![builder().val("1.23")],
+                        )
+                        .unwrap(),
                     "decimal(\"1.23\")",
-                ),
-                (
-                    builder().call_extension_fn(
-                        Name::unqualified("notAFunc").try_into().unwrap(),
-                        vec![builder().val("12.3")],
-                    ),
-                    "<error: extension function `notAFunc` does not exist>",
                 ),
             ];
 
             for (expr, expected) in cases {
                 assert_eq!(expr.to_string(), expected, "Failed for: {}", expected);
             }
+
+            let fail_func = builder().call_extension_fn(
+                Name::unqualified("notAFunc").try_into().unwrap(),
+                vec![builder().val("12.3")],
+            );
+            assert!(fail_func.is_err());
         }
 
         #[test]
