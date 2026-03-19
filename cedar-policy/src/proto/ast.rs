@@ -145,8 +145,8 @@ impl From<models::Entity> for ast::Entity {
         Self::new_with_attr_partial_value(
             ast::EntityUID::from(v.uid.expect("uid field should exist")),
             attrs,
-            ancestors,
             HashSet::new(),
+            ancestors,
             tags,
         )
     }
@@ -703,16 +703,18 @@ mod test {
         assert_eq!(euid3, ast::EntityUID::from(models::EntityUid::from(&euid3)));
 
         let attrs = (1..=7).map(|id| (format!("{id}").into(), ast::RestrictedExpr::val(true)));
+        let parent = ast::EntityUID::with_eid_and_type("Folder", "shared").unwrap();
         let entity = ast::Entity::new(
             r#"Foo::"bar""#.parse().unwrap(),
             attrs,
-            HashSet::new(),
+            HashSet::from([parent.clone()]),
             HashSet::new(),
             [],
             Extensions::none(),
         )
         .unwrap();
         assert_eq!(entity, ast::Entity::from(models::Entity::from(&entity)));
+        assert!(ast::Entity::from(models::Entity::from(&entity)).is_child_of(&parent));
     }
 
     #[test]
