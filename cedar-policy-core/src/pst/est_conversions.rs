@@ -17,7 +17,7 @@
 //! Conversions between EST and PST representations.
 
 use super::{
-    ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Name, PolicyID,
+    ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, PolicyID,
     PrincipalConstraint, PstConstructionError, ResourceConstraint, Template,
 };
 use crate::ast;
@@ -37,11 +37,9 @@ use std::sync::Arc;
 /// and error handling.
 fn parse_entity_type(s: &smol_str::SmolStr) -> Result<EntityType, PstConstructionError> {
     let ast_name = ast::Name::from_str(s).map_err(|e| {
-        PstConstructionError::ParsingFailed(error_body::ParsingFailedError {
-            description: e.to_string(),
-        })
+        PstConstructionError::ParsingFailed(error_body::ParsingFailedError::new(e.to_string()))
     })?;
-    Ok(EntityType::from_name(Name::from(ast_name)))
+    Ok(EntityType::from_name(ast_name))
 }
 
 #[doc(hidden)]
@@ -422,8 +420,8 @@ impl From<EntityUID> for entities::EntityUidJson {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pst::{self, BinaryOp, UnaryOp};
-    use smol_str::SmolStr;
+    use crate::pst::{self, BinaryOp, Name, UnaryOp};
+    use smol_str::{format_smolstr, SmolStr};
     use std::collections::BTreeMap;
 
     fn roundtrips(e: Expr) {
@@ -436,6 +434,22 @@ mod tests {
         let est: est::Policy = p.clone().try_into().unwrap();
         let roundtrip_p: Template = est.try_into().unwrap();
         assert!(roundtrip_p == p)
+    }
+
+    #[test]
+    fn test_parse_entities() {
+        // Success case: unqualified entity type
+        let et = parse_entity_type(&format_smolstr!("A")).unwrap();
+        assert_eq!(et.0.id, "A");
+        assert_eq!(et.0.namespace.len(), 0);
+        // Success case: qualified entity type
+        let et = parse_entity_type(&format_smolstr!("A::a")).unwrap();
+        assert_eq!(et.0.id, "a");
+        assert_eq!(et.0.namespace.len(), 1);
+        assert_eq!(et.0.namespace[0], "A");
+        // Failure
+        let et = parse_entity_type(&format_smolstr!("!!A::a"));
+        matches!(et, Err(PstConstructionError::ParsingFailed(_)));
     }
 
     #[test]
