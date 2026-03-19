@@ -21,6 +21,7 @@ use crate::entities_json_errors::{JsonDeserializationError, JsonSerializationErr
 use crate::ParseErrors;
 use cedar_policy_core::ast;
 use cedar_policy_core::entities::json::err::JsonDeserializationErrorContext;
+use cedar_policy_core::pst;
 use cedar_policy_core::FromNormalizedStr;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
@@ -328,6 +329,12 @@ impl From<EntityUid> for ast::EntityUID {
     }
 }
 
+impl From<EntityUid> for pst::EntityUID {
+    fn from(uid: EntityUid) -> Self {
+        uid.0.into()
+    }
+}
+
 #[doc(hidden)]
 impl From<ast::EntityUID> for EntityUid {
     fn from(uid: ast::EntityUID) -> Self {
@@ -395,6 +402,18 @@ impl From<PolicyId> for ast::PolicyID {
     }
 }
 
+impl From<pst::PolicyID> for PolicyId {
+    fn from(id: pst::PolicyID) -> Self {
+        Self(id.into())
+    }
+}
+
+impl From<PolicyId> for pst::PolicyID {
+    fn from(id: PolicyId) -> Self {
+        id.0.into()
+    }
+}
+
 /// Identifier for a Template slot
 #[repr(transparent)]
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast, Serialize, Deserialize)]
@@ -431,6 +450,18 @@ impl std::fmt::Display for SlotId {
 impl From<ast::SlotId> for SlotId {
     fn from(a: ast::SlotId) -> Self {
         Self(a)
+    }
+}
+
+impl From<pst::SlotId> for SlotId {
+    fn from(p: pst::SlotId) -> Self {
+        Self(p.into())
+    }
+}
+
+impl From<SlotId> for pst::SlotId {
+    fn from(s: SlotId) -> Self {
+        s.0.into()
     }
 }
 

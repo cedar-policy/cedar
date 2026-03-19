@@ -21,11 +21,10 @@
 //! - Converting between PST and other representations (EST, AST)
 //! - Validating PST structure and semantics
 
+use crate::est;
 use miette::Diagnostic;
 use smol_str::ToSmolStr;
 use thiserror::Error;
-
-use crate::est;
 
 /// Errors that can occur during PST construction or conversion
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
@@ -171,12 +170,12 @@ impl From<crate::parser::err::ParseErrors> for PstConstructionError {
 
 /// Error subtypes for [`PstConstructionError`]
 pub mod error_body {
-    use std::collections::HashSet;
-
     use crate::est;
     use crate::extensions::ExtensionFunctionLookupError;
+    use crate::pst::SlotId;
     use miette::Diagnostic;
     use smol_str::SmolStr;
+    use std::collections::HashSet;
     use thiserror::Error;
 
     /// Action constraints cannot contain template slots
@@ -373,7 +372,7 @@ pub mod error_body {
         #[error("failed to link template: no value provided for `{slot}`")]
         MissedSlot {
             /// Slot which didn't have a value provided for it
-            slot: crate::pst::SlotId,
+            slot: SlotId,
         },
     }
 

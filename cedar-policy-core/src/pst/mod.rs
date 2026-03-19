@@ -149,6 +149,7 @@ mod err;
 pub(crate) mod est_conversions;
 mod expr;
 mod policy;
+mod policy_set;
 
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
 pub use err::error_body;
@@ -157,3 +158,4 @@ pub use expr::{
     BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
 pub use policy::{Clause, Effect, LinkedPolicy, Policy, PolicyID, StaticPolicy, Template};
+pub use policy_set::{PolicySet, TemplateLink};

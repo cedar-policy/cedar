@@ -869,6 +869,10 @@ pub enum PolicySetError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     JsonPolicySet(#[from] policy_set_errors::JsonPolicySetError),
+    /// Error when converting from PST representation
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PstConversion(#[from] pst::PstConstructionError),
 }
 
 #[doc(hidden)]
