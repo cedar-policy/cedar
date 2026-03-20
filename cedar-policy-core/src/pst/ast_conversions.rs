@@ -16,8 +16,6 @@
 
 //! Conversions between PST and AST types
 
-use smol_str::ToSmolStr;
-
 use super::{
     ActionConstraint, BinaryOp, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr,
     LinkedPolicy, Literal, Name, PatternElem, Policy, PolicyID, PrincipalConstraint,
@@ -638,7 +636,7 @@ impl TryFrom<ast::Template> for Template {
         ) = template
             .into_template_components_opt()
             .ok_or_else(|| InvalidConversionError::new("template contained errors".to_string()))?;
-        let id = PolicyID(id.to_smolstr());
+        let id = PolicyID(id.into_smolstr());
         let effect = effect.into();
         let principal = principal_constraint.into();
         let action = action_constraint.into();
@@ -967,9 +965,12 @@ mod tests {
     /// Test roundtrip: parse Cedar text -> ast::Template -> pst::Policy -> ast::Template
     /// and verify the string representation is preserved.
     fn assert_template_roundtrip(cedar_text: &str) {
-        let ast_template = parser::parse_template(None, cedar_text).expect("parse failed");
+        let ast_template =
+            parser::parse_template(Some(ast::PolicyID::from_string("id\n")), cedar_text)
+                .expect("parse failed");
         let pst_policy: Template = ast_template.clone().try_into().expect("ast->pst failed");
         let ast_template2: ast::Template = pst_policy.try_into().expect("pst->ast failed");
+        assert_eq!(ast_template.id(), ast_template2.id());
         assert_eq!(
             normalize(&ast_template.to_string()),
             normalize(&ast_template2.to_string()),
