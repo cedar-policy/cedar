@@ -678,9 +678,7 @@ impl Expr {
         ast_name: &ast::Name,
         args: Vec<Arc<Expr>>,
     ) -> Result<Expr, PstConstructionError> {
-        let extension = Extensions::all_available()
-            .func(ast_name)
-            .map_err(error_body::FunctionLookupError)?;
+        let extension = Extensions::all_available().func(ast_name)?;
 
         let expected = extension.arg_types().len();
         let got = args.len();
@@ -1228,7 +1226,7 @@ mod tests {
         let result = Expr::from_function_ast_name_and_args(&name, args);
         assert!(matches!(
             result,
-            Err(PstConstructionError::FunctionLookup(..))
+            Err(PstConstructionError::UnknownFunction(..))
         ));
     }
 
