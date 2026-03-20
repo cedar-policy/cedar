@@ -188,6 +188,7 @@ impl From<ExtensionFunctionLookupError> for PstConstructionError {
 
 /// Error subtypes for [`PstConstructionError`]
 pub mod error_body {
+    use crate::pst::SlotId;
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use std::collections::HashSet;
@@ -394,7 +395,7 @@ pub mod error_body {
         #[error("failed to link template: no value provided for `{slot}`")]
         MissedSlot {
             /// Slot which didn't have a value provided for it
-            slot: crate::pst::SlotId,
+            slot: SlotId,
         },
     }
 

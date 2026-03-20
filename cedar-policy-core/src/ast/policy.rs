@@ -2008,6 +2008,11 @@ impl PolicyID {
     pub fn from_smolstr(id: SmolStr) -> Self {
         Self(id)
     }
+
+    /// Extract the inner `SmolStr`
+    pub fn into_smolstr(self) -> SmolStr {
+        self.0
+    }
 }
 
 impl std::fmt::Display for PolicyID {

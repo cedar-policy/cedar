@@ -2619,6 +2619,51 @@ impl PolicySet {
         Self::from_policies(ast.into_policies().map(Policy::from_ast))
     }
 
+    /// Construct a [`PolicySet`] from a PST [`pst::PolicySet`].
+    ///
+    /// Templates, static policies, and template links are all converted.
+    /// A subsequent call to [`to_pst()`](Self::to_pst) or
+    /// [`try_into_pst()`](Self::try_into_pst) will return the original PST
+    /// without re-conversion.
+    pub fn from_pst(pst_set: pst::PolicySet) -> Result<Self, PolicySetError> {
+        let mut set = Self::new();
+        for (id, template) in pst_set.templates {
+            let ast_template: ast::Template = template.clone().try_into()?;
+            set.ast.add_template(ast_template.clone())?;
+            set.templates.insert(
+                id.into(),
+                Template {
+                    ast: ast_template,
+                    lossless: LosslessTemplate::Pst(template),
+                },
+            );
+        }
+        for (id, static_policy) in pst_set.policies {
+            let pst_policy = pst::Policy::Static(static_policy);
+            let ast_policy: ast::Policy = pst_policy.clone().try_into()?;
+            set.ast.add(ast_policy.clone())?;
+            set.policies.insert(
+                id.into(),
+                Policy {
+                    ast: ast_policy,
+                    lossless: LosslessPolicy::Pst(pst_policy),
+                },
+            );
+        }
+        for link in pst_set.template_links {
+            let vals: HashMap<SlotId, EntityUid> = link
+                .values
+                .into_iter()
+                .map(|(k, v)| {
+                    let ast_uid = ast::EntityUID::try_from(v)?;
+                    Ok((k.into(), EntityUid(ast_uid)))
+                })
+                .collect::<Result<_, pst::PstConstructionError>>()?;
+            set.link(link.template_id.into(), link.new_id.into(), vals)?;
+        }
+        Ok(set)
+    }
+
     /// Deserialize the [`PolicySet`] from a JSON string
     pub fn from_json_str(src: impl AsRef<str>) -> Result<Self, PolicySetError> {
         let est: est::PolicySet = serde_json::from_str(src.as_ref())
@@ -2646,6 +2691,85 @@ impl PolicySet {
         let value = serde_json::to_value(est)
             .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
         Ok(value)
+    }
+
+    /// Get the PST representation of this [`PolicySet`].
+    ///
+    /// Returns a [`pst::PolicySet`] containing the templates, static policies,
+    /// and template links. Linked policies are decomposed into
+    /// [`pst::TemplateLink`] entries.
+    ///
+    /// If the `PolicySet` was originally constructed from PST, the stored
+    /// representation is cloned. Otherwise, each policy and template is
+    /// converted to PST.
+    pub fn to_pst(&self) -> Result<pst::PolicySet, PolicySetError> {
+        let templates = self
+            .templates
+            .iter()
+            .map(|(id, t)| Ok((id.clone().into(), t.to_pst()?)))
+            .collect::<Result<_, pst::PstConstructionError>>()?;
+        let mut policies = LinkedHashMap::new();
+        let mut template_links = Vec::new();
+        for (id, policy) in &self.policies {
+            if policy.is_static() {
+                if let pst::Policy::Static(sp) = policy.to_pst()? {
+                    policies.insert(id.clone().into(), sp);
+                }
+            } else {
+                template_links.push(pst::TemplateLink {
+                    template_id: policy.ast.template().id().clone().into(),
+                    new_id: id.clone().into(),
+                    values: policy
+                        .ast
+                        .env()
+                        .iter()
+                        .map(|(k, v)| ((*k).into(), v.clone().into()))
+                        .collect(),
+                });
+            }
+        }
+        Ok(pst::PolicySet {
+            templates,
+            policies,
+            template_links,
+        })
+    }
+
+    /// Get an owned PST representation of this [`PolicySet`].
+    ///
+    /// Like [`to_pst()`](Self::to_pst), but consumes `self` to avoid cloning
+    /// when the `PolicySet` was originally constructed from PST.
+    pub fn try_into_pst(self) -> Result<pst::PolicySet, PolicySetError> {
+        let templates = self
+            .templates
+            .into_iter()
+            .map(|(id, t)| Ok((id.into(), t.try_into_pst()?)))
+            .collect::<Result<_, pst::PstConstructionError>>()?;
+        let mut policies = LinkedHashMap::new();
+        let mut template_links = Vec::new();
+        for (id, policy) in self.policies {
+            if policy.is_static() {
+                if let pst::Policy::Static(sp) = policy.try_into_pst()? {
+                    policies.insert(id.into(), sp);
+                }
+            } else {
+                template_links.push(pst::TemplateLink {
+                    template_id: policy.ast.template().id().clone().into(),
+                    new_id: id.into(),
+                    values: policy
+                        .ast
+                        .env()
+                        .iter()
+                        .map(|(k, v)| ((*k).into(), v.clone().into()))
+                        .collect(),
+                });
+            }
+        }
+        Ok(pst::PolicySet {
+            templates,
+            policies,
+            template_links,
+        })
     }
 
     /// Get the EST representation of the [`PolicySet`]
