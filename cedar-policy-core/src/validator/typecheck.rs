@@ -28,6 +28,7 @@ pub(crate) use typecheck_answer::TypecheckAnswer;
 use std::sync::Arc;
 use std::{borrow::Cow, collections::HashSet};
 
+use crate::ast::UnwrapInfallible;
 use crate::validator::types::{BoolType, EntityLUB};
 use crate::validator::{
     extension_schema::ExtensionFunctionType,
@@ -2280,7 +2281,8 @@ impl<'a> SingleEnvTypechecker<'a> {
                         Some(exprs) => TypecheckAnswer::fail(
                             ExprBuilder::with_data(Some(ret_ty.clone()))
                                 .with_same_source_loc(ext_expr)
-                                .call_extension_fn(fn_name.clone(), exprs),
+                                .call_extension_fn(fn_name.clone(), exprs)
+                                .unwrap_infallible(),
                         ),
                         None => TypecheckAnswer::RecursionLimit,
                     }
@@ -2311,7 +2313,8 @@ impl<'a> SingleEnvTypechecker<'a> {
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(ret_ty.clone()))
                                     .with_same_source_loc(ext_expr)
-                                    .call_extension_fn(fn_name.clone(), typed_arg_exprs),
+                                    .call_extension_fn(fn_name.clone(), typed_arg_exprs)
+                                    .unwrap_infallible(),
                             )
                         },
                     )
@@ -2323,7 +2326,8 @@ impl<'a> SingleEnvTypechecker<'a> {
                     Some(typed_args) => TypecheckAnswer::fail(
                         ExprBuilder::with_data(None)
                             .with_same_source_loc(ext_expr)
-                            .call_extension_fn(fn_name.clone(), typed_args),
+                            .call_extension_fn(fn_name.clone(), typed_args)
+                            .unwrap_infallible(),
                     ),
                     None => TypecheckAnswer::RecursionLimit,
                 }

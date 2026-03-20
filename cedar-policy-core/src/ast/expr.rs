@@ -434,88 +434,102 @@ impl<T> Expr<T> {
     ///
     /// Preserves source location information and recursively transforms each expression node.
     /// Note: Data may be cloned if the source expression is retained elsewhere.
-    pub fn into_expr<B: expr_builder::ExprBuilder>(self) -> B::Expr
+    /// Convert this expression to a `B::Expr`, where `B` is a fallible builder.
+    /// Uses `try_call_extension_fn` for extension function calls.
+    pub fn try_into_expr<B: expr_builder::ExprBuilder>(self) -> Result<B::Expr, B::BuildError>
     where
         T: Clone,
     {
         let builder = B::new().with_maybe_source_loc(self.source_loc());
         match self.into_expr_kind() {
-            ExprKind::Lit(lit) => builder.val(lit),
-            ExprKind::Var(var) => builder.var(var),
-            ExprKind::Slot(slot) => builder.slot(slot),
-            ExprKind::Unknown(u) => builder.unknown(u),
+            ExprKind::Lit(lit) => Ok(builder.val(lit)),
+            ExprKind::Var(var) => Ok(builder.var(var)),
+            ExprKind::Slot(slot) => Ok(builder.slot(slot)),
+            ExprKind::Unknown(u) => Ok(builder.unknown(u)),
             ExprKind::If {
                 test_expr,
                 then_expr,
                 else_expr,
-            } => builder.ite(
-                Arc::unwrap_or_clone(test_expr).into_expr::<B>(),
-                Arc::unwrap_or_clone(then_expr).into_expr::<B>(),
-                Arc::unwrap_or_clone(else_expr).into_expr::<B>(),
-            ),
-            ExprKind::And { left, right } => builder.and(
-                Arc::unwrap_or_clone(left).into_expr::<B>(),
-                Arc::unwrap_or_clone(right).into_expr::<B>(),
-            ),
-            ExprKind::Or { left, right } => builder.or(
-                Arc::unwrap_or_clone(left).into_expr::<B>(),
-                Arc::unwrap_or_clone(right).into_expr::<B>(),
-            ),
+            } => Ok(builder.ite(
+                Arc::unwrap_or_clone(test_expr).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(then_expr).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(else_expr).try_into_expr::<B>()?,
+            )),
+            ExprKind::And { left, right } => Ok(builder.and(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
+            ExprKind::Or { left, right } => Ok(builder.or(
+                Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(right).try_into_expr::<B>()?,
+            )),
             ExprKind::UnaryApp { op, arg } => {
-                let arg = Arc::unwrap_or_clone(arg).into_expr::<B>();
-                builder.unary_app(op, arg)
+                Ok(builder.unary_app(op, Arc::unwrap_or_clone(arg).try_into_expr::<B>()?))
             }
-            ExprKind::BinaryApp { op, arg1, arg2 } => {
-                let arg1 = Arc::unwrap_or_clone(arg1).into_expr::<B>();
-                let arg2 = Arc::unwrap_or_clone(arg2).into_expr::<B>();
-                builder.binary_app(op, arg1, arg2)
-            }
+            ExprKind::BinaryApp { op, arg1, arg2 } => Ok(builder.binary_app(
+                op,
+                Arc::unwrap_or_clone(arg1).try_into_expr::<B>()?,
+                Arc::unwrap_or_clone(arg2).try_into_expr::<B>()?,
+            )),
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = Arc::unwrap_or_clone(args)
+                let args: Vec<_> = Arc::unwrap_or_clone(args)
                     .into_iter()
-                    .map(|e| e.into_expr::<B>());
+                    .map(|e| e.try_into_expr::<B>())
+                    .collect::<Result<_, _>>()?;
                 builder.call_extension_fn(fn_name, args)
             }
             ExprKind::GetAttr { expr, attr } => {
-                builder.get_attr(Arc::unwrap_or_clone(expr).into_expr::<B>(), attr)
+                Ok(builder.get_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attr))
             }
             ExprKind::HasAttr { expr, attr } => {
-                builder.has_attr(Arc::unwrap_or_clone(expr).into_expr::<B>(), attr)
+                Ok(builder.has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attr))
             }
             ExprKind::Like { expr, pattern } => {
-                builder.like(Arc::unwrap_or_clone(expr).into_expr::<B>(), pattern)
+                Ok(builder.like(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, pattern))
             }
-            ExprKind::Is { expr, entity_type } => {
-                builder.is_entity_type(Arc::unwrap_or_clone(expr).into_expr::<B>(), entity_type)
-            }
-            ExprKind::Set(set) => builder.set(
+            ExprKind::Is { expr, entity_type } => Ok(builder.is_entity_type(
+                Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
+                entity_type,
+            )),
+            ExprKind::Set(set) => Ok(builder.set(
                 Arc::unwrap_or_clone(set)
                     .into_iter()
-                    .map(|e| e.into_expr::<B>()),
-            ),
+                    .map(|e| e.try_into_expr::<B>())
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
             #[expect(
                 clippy::unwrap_used,
                 reason = "`map` is a map, so it will not have duplicate keys, so the `.record()` constructor cannot error"
             )]
-            ExprKind::Record(map) => builder
+            ExprKind::Record(map) => Ok(builder
                 .record(
                     Arc::unwrap_or_clone(map)
                         .into_iter()
-                        .map(|(k, v)| (k, v.into_expr::<B>())),
+                        .map(|(k, v)| Ok((k, v.try_into_expr::<B>()?)))
+                        .collect::<Result<Vec<_>, _>>()?,
                 )
-                .unwrap(),
+                .unwrap()),
             #[cfg(feature = "tolerant-ast")]
             #[expect(
                 clippy::unwrap_used,
                 reason = "error type is Infallible so can never happen"
             )]
-            ExprKind::Error { .. } => builder
+            ExprKind::Error { .. } => Ok(builder
                 .error(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::ASTErrorNode,
                     Some(Loc::new(0..1, "AST_ERROR_NODE".into())),
                 )))
-                .unwrap(),
+                .unwrap()), // we could have unwrap_infallible + trait bound  but attributes in where clauses are unstable
         }
+    }
+
+    /// Convert this expression to a `B::Expr`, where `B` is an infallible builder.
+    pub fn into_expr<B: expr_builder::ExprBuilder>(self) -> B::Expr
+    where
+        T: Clone,
+        B::BuildError: IsInfallible,
+    {
+        self.try_into_expr::<B>().unwrap_infallible()
     }
 }
 
@@ -691,7 +705,9 @@ impl Expr {
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
     pub fn call_extension_fn(fn_name: Name, args: Vec<Expr>) -> Self {
-        ExprBuilder::new().call_extension_fn(fn_name, args)
+        ExprBuilder::new()
+            .call_extension_fn(fn_name, args)
+            .unwrap_infallible()
     }
 
     /// Create an application `Expr` which applies the given built-in unary
@@ -1000,6 +1016,8 @@ pub struct ExprBuilder<T> {
     data: T,
 }
 
+impl<T: Default + Clone> expr_builder::ExprBuilderInfallibleBuild for ExprBuilder<T> {}
+
 impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     type Expr = Expr<T>;
 
@@ -1262,11 +1280,15 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
 
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
-    fn call_extension_fn(self, fn_name: Name, args: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
-        self.with_expr_kind(ExprKind::ExtensionFunctionApp {
+    fn call_extension_fn(
+        self,
+        fn_name: Name,
+        args: impl IntoIterator<Item = Expr<T>>,
+    ) -> Result<Expr<T>, Infallible> {
+        Ok(self.with_expr_kind(ExprKind::ExtensionFunctionApp {
             fn_name,
             args: Arc::new(args.into_iter().collect()),
-        })
+        }))
     }
 
     /// Create an application `Expr` which applies the given built-in unary
@@ -2182,7 +2204,8 @@ mod test {
             ),
             (
                 ExprBuilder::with_data(1)
-                    .call_extension_fn("foo".parse().unwrap(), vec![temp.clone()]),
+                    .call_extension_fn("foo".parse().unwrap(), vec![temp.clone()])
+                    .unwrap_infallible(),
                 Expr::call_extension_fn("foo".parse().unwrap(), vec![Expr::val(1)]),
             ),
             (

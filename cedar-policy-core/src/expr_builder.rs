@@ -22,8 +22,8 @@ use smol_str::SmolStr;
 
 use crate::{
     ast::{
-        BinaryOp, EntityType, ExpressionConstructionError, Literal, Name, Pattern, SlotId, UnaryOp,
-        Unknown, Var,
+        BinaryOp, EntityType, ExpressionConstructionError, IsInfallible, Literal, Name, Pattern,
+        SlotId, UnaryOp, Unknown, Var,
     },
     parser::{cst, Loc},
 };
@@ -32,6 +32,9 @@ use crate::{
 use crate::parser::err::ParseErrors;
 use std::fmt::Debug;
 use std::sync::Arc;
+
+/// Supertrait for `ExprBuilder` that has an infallible build error type.
+pub trait ExprBuilderInfallibleBuild: ExprBuilder<BuildError: IsInfallible> {}
 
 /// Defines a generic interface for building different expression data
 /// structures.
@@ -202,17 +205,7 @@ pub trait ExprBuilder: Clone {
         self,
         fn_name: Name,
         args: impl IntoIterator<Item = Self::Expr>,
-    ) -> Self::Expr;
-
-    /// Fallible version of `call_extension_fn` that can implement validation.
-    /// Default implementation is just `Ok(call_extension_fn(..))`
-    fn try_call_extension_fn(
-        self,
-        fn_name: Name,
-        args: Vec<Self::Expr>,
-    ) -> Result<Self::Expr, Self::BuildError> {
-        Ok(self.call_extension_fn(fn_name, args))
-    }
+    ) -> Result<Self::Expr, Self::BuildError>;
 
     /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
     fn get_attr(self, expr: Self::Expr, attr: SmolStr) -> Self::Expr {

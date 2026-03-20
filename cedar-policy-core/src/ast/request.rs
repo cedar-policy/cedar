@@ -705,6 +705,46 @@ impl RequestSchema for RequestSchemaAllPass {
 #[error(transparent)]
 pub struct Infallible(pub std::convert::Infallible);
 
+/// The trait of things that can return an infallible.
+/// You cannot implement this trait without being of `std::convert::Infallible`
+/// or having an element of that type yourself, or writing an implementation
+/// that doesn't return (e.g. always `panic!` or `loop {}`).
+/// Any type that implements this trait with an implementation that returns a value
+/// is guaranteed to be uninhabited.
+pub trait IsInfallible {
+    /// A function that cannot possibly return something
+    fn never_returns(self) -> std::convert::Infallible;
+}
+
+impl IsInfallible for std::convert::Infallible {
+    fn never_returns(self) -> std::convert::Infallible {
+        match self {}
+    }
+}
+
+impl IsInfallible for Infallible {
+    fn never_returns(self) -> std::convert::Infallible {
+        self.0.never_returns()
+    }
+}
+
+/// A trait for things that unwrap without fail.
+pub trait UnwrapInfallible<A> {
+    /// Unwrap an infallible result.
+    fn unwrap_infallible(self) -> A;
+}
+
+impl<A, B: IsInfallible> UnwrapInfallible<A> for Result<A, B> {
+    /// Unwrapping a Result whose error type is Infallible is always safe.
+    fn unwrap_infallible(self) -> A {
+        match self {
+            Ok(a) => a,
+            #[expect(unreachable_code, reason = "error type is uninhabited")]
+            Err(e) => match e.never_returns() {},
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::super::Name;

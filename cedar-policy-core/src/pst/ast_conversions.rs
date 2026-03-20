@@ -23,12 +23,13 @@ use super::{
     LinkedPolicy, Literal, Name, PatternElem, Policy, PolicyID, PrincipalConstraint,
     PstConstructionError, ResourceConstraint, SlotId, StaticPolicy, Template, UnaryOp, Var,
 };
-use crate::ast;
+use crate::ast::IsInfallible;
+use crate::ast::{self, UnwrapInfallible};
 use crate::expr_builder;
 use crate::pst::err::error_body::{
     InvalidConversionError, InvalidExpressionError, ParsingFailedError,
 };
-use crate::pst::expr::{ErrorNode, PstBuilder};
+use crate::pst::expr::PstBuilder;
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -248,7 +249,10 @@ impl TryFrom<Expr> for ast::Expr {
 impl Expr {
     pub(crate) fn try_into_expr<B: expr_builder::ExprBuilder>(
         self,
-    ) -> Result<B::Expr, PstConstructionError> {
+    ) -> Result<B::Expr, PstConstructionError>
+    where
+        B::BuildError: IsInfallible, // we can change this as needed
+    {
         let builder = B::new();
         match self {
             Expr::Literal(lit) => match lit {
@@ -272,7 +276,9 @@ impl Expr {
                     UnaryOp::IsEmpty => builder.is_empty(inner),
                     // The other unary operators are extension functions.
                     _ => match op.to_name() {
-                        Some(fn_name) => builder.call_extension_fn(fn_name.clone(), vec![inner]),
+                        Some(fn_name) => builder
+                            .call_extension_fn(fn_name.clone(), vec![inner])
+                            .unwrap_infallible(),
                         // This should never occur!
                         None => Err(PstConstructionError::from(InvalidExpressionError::new(
                             format!("unknown unary operator: {}", op),
@@ -304,9 +310,9 @@ impl Expr {
                     BinaryOp::HasTag => builder.has_tag(left_ast, right_ast),
                     // The other binary operators are extensions
                     _ => match op.to_name() {
-                        Some(fn_name) => {
-                            builder.call_extension_fn(fn_name.clone(), vec![left_ast, right_ast])
-                        }
+                        Some(fn_name) => builder
+                            .call_extension_fn(fn_name.clone(), vec![left_ast, right_ast])
+                            .unwrap_infallible(),
                         // This should never occur!
                         None => Err(PstConstructionError::from(InvalidExpressionError::new(
                             format!("unknown binary operator: {}", op),
@@ -372,7 +378,6 @@ impl Expr {
                 name,
                 type_annotation: None,
             })),
-            Expr::Error(ErrorNode { error }) => Err(error),
         }
     }
 }
@@ -530,9 +535,10 @@ impl From<ast::EntityUID> for EntityUID {
 }
 
 #[doc(hidden)]
-impl From<ast::Expr> for Expr {
-    fn from(ast_expr: ast::Expr) -> Self {
-        ast::Expr::into_expr::<PstBuilder>(ast_expr)
+impl TryFrom<ast::Expr> for Expr {
+    type Error = PstConstructionError;
+    fn try_from(ast_expr: ast::Expr) -> Result<Self, PstConstructionError> {
+        ast::Expr::try_into_expr::<PstBuilder>(ast_expr)
     }
 }
 
@@ -639,7 +645,9 @@ impl TryFrom<ast::Template> for Template {
         let resource = resource_constraint.into();
 
         let clauses = match clause {
-            Some(expr) => vec![Clause::When(Arc::new(Arc::unwrap_or_clone(expr).into()))],
+            Some(expr) => vec![Clause::When(Arc::new(
+                Arc::unwrap_or_clone(expr).try_into()?,
+            ))],
             None => vec![],
         };
 
@@ -697,8 +705,11 @@ mod tests {
 
     /// Test roundtrip: ast::Expr -> pst::Expr -> ast::Expr
     fn assert_expr_roundtrip(ast_expr: ast::Expr) {
-        let pst_expr: Expr = ast_expr.clone().into();
-        let ast_expr2: ast::Expr = pst_expr.try_into().expect("conversion failed");
+        let pst_expr: Expr = ast_expr
+            .clone()
+            .try_into()
+            .expect("ast -> pst onversion failed.");
+        let ast_expr2: ast::Expr = pst_expr.try_into().expect("pst -> ast conversion failed");
         assert_eq!(ast_expr, ast_expr2, "roundtrip failed");
     }
 
@@ -893,7 +904,7 @@ mod tests {
         for (expr_str, desc) in cases {
             let ast_expr = parse_expr(expr_str);
             // Convert to PST
-            let pst_expr: Expr = ast_expr.into();
+            let pst_expr: Expr = ast_expr.try_into().unwrap();
             // Convert back to AST - should succeed even if structure differs
             let _ast_expr2: ast::Expr = pst_expr.try_into().expect(desc);
         }
@@ -924,7 +935,7 @@ mod tests {
         use crate::ast;
         let unknown = ast::Unknown::new_untyped("test");
         let ast_expr = ast::Expr::unknown(unknown);
-        let pst_expr: Expr = ast_expr.clone().into();
+        let pst_expr: Expr = ast_expr.clone().try_into().unwrap();
         let ast_expr2: ast::Expr = pst_expr.try_into().expect("conversion failed");
         assert_eq!(ast_expr, ast_expr2);
     }
@@ -1069,7 +1080,7 @@ mod tests {
 
         for (input, expected_output, desc) in cases {
             let ast_expr = parse_expr(input);
-            let pst_expr: Expr = ast_expr.into();
+            let pst_expr: Expr = ast_expr.try_into().unwrap();
             let ast_expr2: ast::Expr = pst_expr.try_into().expect("conversion failed");
 
             // Normalize both for comparison
@@ -1086,28 +1097,6 @@ mod tests {
                 .join(" ");
 
             assert_eq!(actual, expected, "failed: {}", desc);
-        }
-    }
-
-    /// Test that ErrorNode in PST results in conversion error
-    #[test]
-    fn test_error_node_conversion() {
-        use crate::pst::expr::ErrorNode;
-
-        let error_expr = Expr::Error(ErrorNode {
-            error: InvalidExpressionError::new("test error".into()).into(),
-        });
-
-        let result: Result<ast::Expr, PstConstructionError> = error_expr.try_into();
-        assert!(result.is_err(), "ErrorNode should fail conversion");
-
-        match result {
-            Err(PstConstructionError::InvalidExpression(err)) => {
-                assert_eq!(err.description, "test error");
-                println!("✓ ErrorNode correctly produces conversion error");
-            }
-            Err(e) => panic!("Expected InvalidExpression error, got: {:?}", e),
-            Ok(_) => panic!("Expected error, got Ok"),
         }
     }
 }
