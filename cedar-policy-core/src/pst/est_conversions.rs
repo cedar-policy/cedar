@@ -17,7 +17,7 @@
 //! Conversions between EST and PST representations.
 
 use super::{
-    ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Name, PolicyID,
+    ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, PolicyID,
     PrincipalConstraint, PstConstructionError, ResourceConstraint, Template,
 };
 use crate::ast;
@@ -25,11 +25,22 @@ use crate::entities;
 use crate::est;
 use crate::pst::err::error_body;
 use itertools::Itertools;
+use std::str::FromStr;
 use std::sync::Arc;
 
 // ============================================================================
 // EST → PST Conversions
 // ============================================================================
+
+/// Parse an entity type string (e.g. `"A::a"`) into a properly qualified `EntityType`.
+/// Effectively just a wrapper around `ast::Name::from_str` with the appropriate type wrapping
+/// and error handling.
+fn parse_entity_type(s: &smol_str::SmolStr) -> Result<EntityType, PstConstructionError> {
+    let ast_name = ast::Name::from_str(s).map_err(|e| {
+        PstConstructionError::ParsingFailed(error_body::ParsingFailedError::new(e.to_string()))
+    })?;
+    Ok(EntityType::from_name(ast_name))
+}
 
 #[doc(hidden)]
 impl TryFrom<est::Policy> for Template {
@@ -117,7 +128,7 @@ impl TryFrom<est::PrincipalConstraint> for PrincipalConstraint {
             }
             E::Is(is_c) => {
                 let (entity_type_ast, in_constraint) = is_c.into_components();
-                let entity_type = EntityType::from_name(Name::unqualified(entity_type_ast));
+                let entity_type = parse_entity_type(&entity_type_ast)?;
                 match in_constraint {
                     None => Ok(PrincipalConstraint::Is(entity_type)),
                     Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
@@ -157,7 +168,7 @@ impl TryFrom<est::ResourceConstraint> for ResourceConstraint {
             }
             E::Is(is_c) => {
                 let (entity_type_ast, in_constraint) = is_c.into_components();
-                let entity_type = EntityType::from_name(Name::unqualified(entity_type_ast));
+                let entity_type = parse_entity_type(&entity_type_ast)?;
                 match in_constraint {
                     None => Ok(ResourceConstraint::Is(entity_type)),
                     Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
@@ -409,8 +420,8 @@ impl From<EntityUID> for entities::EntityUidJson {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pst::{self, BinaryOp, UnaryOp};
-    use smol_str::SmolStr;
+    use crate::pst::{self, BinaryOp, Name, UnaryOp};
+    use smol_str::{format_smolstr, SmolStr};
     use std::collections::BTreeMap;
 
     fn roundtrips(e: Expr) {
@@ -423,6 +434,22 @@ mod tests {
         let est: est::Policy = p.clone().try_into().unwrap();
         let roundtrip_p: Template = est.try_into().unwrap();
         assert!(roundtrip_p == p)
+    }
+
+    #[test]
+    fn test_parse_entities() {
+        // Success case: unqualified entity type
+        let et = parse_entity_type(&format_smolstr!("A")).unwrap();
+        assert_eq!(et.0.id, "A");
+        assert_eq!(et.0.namespace.len(), 0);
+        // Success case: qualified entity type
+        let et = parse_entity_type(&format_smolstr!("A::a")).unwrap();
+        assert_eq!(et.0.id, "a");
+        assert_eq!(et.0.namespace.len(), 1);
+        assert_eq!(et.0.namespace[0], "A");
+        // Failure
+        let et = parse_entity_type(&format_smolstr!("!!A::a"));
+        matches!(et, Err(PstConstructionError::ParsingFailed(_)));
     }
 
     #[test]
@@ -602,6 +629,42 @@ mod tests {
             }
         ));
         roundtrips(pst_expr2);
+
+        // Test is with in - now uses is_in_entity_type
+        let json3 = r#"{"is": {
+           "left": { "Var": "principal" },
+            "entity_type": "User::Intern",
+            "in": {"Value": {"__entity": { "type": "User::Intern", "id": "Public" }}}
+    }}"#;
+        let est_expr3: est::Expr = serde_json::from_str(json3).unwrap();
+        let pst_expr3: Expr = est_expr3.try_into().unwrap();
+        match &pst_expr3 {
+            Expr::Is {
+                in_expr: Some(_),
+                entity_type:
+                    EntityType {
+                        0: Name { id, namespace },
+                    },
+                ..
+            } => {
+                assert_eq!(id.to_string(), "Intern");
+                assert_eq!(namespace.len(), 1);
+            }
+            _ => assert!(false),
+        };
+        roundtrips(pst_expr3);
+
+        // Test is with in - parsing errors caught by PST but not by EST
+        let json4 = r#"{"is": {
+           "left": { "Var": "principal" },
+            "entity_type": "!cceeeadaWhatDO_NOT_PARSR::User::Intern::",
+            "in": {"Value": {"__entity": { "type": "User::Intern", "id": "Public" }}}
+    }}"#;
+        let est_expr4: est::Expr = serde_json::from_str(json4).unwrap();
+        matches!(
+            pst::Expr::try_from(est_expr4),
+            Err(PstConstructionError::InvalidEntityType(_))
+        );
     }
 
     #[test]
