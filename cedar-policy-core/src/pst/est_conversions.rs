@@ -196,7 +196,9 @@ impl TryFrom<est::ActionConstraint> for ActionConstraint {
                 Ok(ActionConstraint::In(euids))
             }
             #[cfg(feature = "tolerant-ast")]
-            E::ErrorConstraint => Err((error_body::UnsupportedErrorNode {}).into()),
+            E::ErrorConstraint => {
+                Err((error_body::UnsupportedErrorNode::new("a constraint failed to parse")).into())
+            }
         }
     }
 }
@@ -236,9 +238,9 @@ impl TryFrom<Template> for est::Policy {
                 Some(ast::Annotation { val, loc: None })
             };
             let id = k.parse::<ast::AnyId>().map_err(|p| {
-                PstConstructionError::ParsingFailed(error_body::ParsingFailedError {
-                    description: p.to_string(),
-                })
+                PstConstructionError::InvalidAnnotation(error_body::InvalidAnnotationError::new(
+                    format!("invalid key: {}", p.to_string()),
+                ))
             })?;
             annotations.0.insert(id, annotation);
         }
@@ -1208,7 +1210,7 @@ mod tests {
         let result: Result<est::Policy, PstConstructionError> = policy.try_into();
         assert!(matches!(
             result,
-            Err(PstConstructionError::ParsingFailed(..))
+            Err(PstConstructionError::InvalidAnnotation(..))
         ));
     }
 

@@ -27,7 +27,8 @@ use crate::ast::IsInfallible;
 use crate::ast::{self, UnwrapInfallible};
 use crate::expr_builder;
 use crate::pst::err::error_body::{
-    InvalidConversionError, InvalidExpressionError, ParsingFailedError,
+    InvalidExpressionError, ParsingFailedError, PolicyMissingLinkIdError, UnsupportedErrorNode,
+    WrongSlotPositionError,
 };
 use crate::pst::expr::PstBuilder;
 use itertools::Itertools;
@@ -150,10 +151,9 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalConstraint {
             // Wrong slot type (resource slot in principal position)
             PrincipalConstraint::Eq(EntityOrSlot::Slot(s))
             | PrincipalConstraint::In(EntityOrSlot::Slot(s))
-            | PrincipalConstraint::IsIn(_, EntityOrSlot::Slot(s)) => Err(
-                InvalidConversionError::new(format!("principal constraint cannot use slot `{s}`"))
-                    .into(),
-            ),
+            | PrincipalConstraint::IsIn(_, EntityOrSlot::Slot(s)) => {
+                Err(WrongSlotPositionError::new(s, SlotId::Principal).into())
+            }
         }
     }
 }
@@ -192,10 +192,9 @@ impl TryFrom<ResourceConstraint> for ast::ResourceConstraint {
             // Wrong slot type (principal slot in resource position)
             ResourceConstraint::Eq(EntityOrSlot::Slot(s))
             | ResourceConstraint::In(EntityOrSlot::Slot(s))
-            | ResourceConstraint::IsIn(_, EntityOrSlot::Slot(s)) => Err(
-                InvalidConversionError::new(format!("resource constraint cannot use slot `{s}`"))
-                    .into(),
-            ),
+            | ResourceConstraint::IsIn(_, EntityOrSlot::Slot(s)) => {
+                Err(WrongSlotPositionError::new(s, SlotId::Resource).into())
+            }
         }
     }
 }
@@ -353,16 +352,12 @@ impl Expr {
                 Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
                 elements_into_ast_pattern(pattern),
             )),
-            Expr::Record(elems) => builder
-                .record(
-                    elems
-                        .into_iter()
-                        .map(|(k, v)| Ok((k.into(), Arc::unwrap_or_clone(v).try_into_expr::<B>()?)))
-                        .collect::<Result<Vec<_>, PstConstructionError>>()?,
-                )
-                .map_err(|cstr_err: ast::ExpressionConstructionError| {
-                    InvalidConversionError::new(cstr_err.to_string()).into()
-                }),
+            Expr::Record(elems) => Ok(builder.record(
+                elems
+                    .into_iter()
+                    .map(|(k, v)| Ok((k.into(), Arc::unwrap_or_clone(v).try_into_expr::<B>()?)))
+                    .collect::<Result<Vec<_>, PstConstructionError>>()?,
+            )?),
             Expr::Unknown { name } => Ok(builder.unknown(ast::Unknown {
                 name,
                 type_annotation: None,
@@ -625,7 +620,7 @@ impl TryFrom<ast::Template> for Template {
             clause,
         ) = template
             .into_template_components_opt()
-            .ok_or_else(|| InvalidConversionError::new("template contained errors".to_string()))?;
+            .ok_or_else(|| UnsupportedErrorNode::new("template parsed with errors"))?;
         let id = PolicyID(id.to_smolstr());
         let effect = effect.into();
         let principal = principal_constraint.into();
@@ -672,10 +667,7 @@ impl TryFrom<ast::Policy> for Policy {
                 }))
             } else {
                 // We shouldn't get there if the invariant on ast policies hold
-                Err(
-                    InvalidConversionError::new("linked policy missing instance id".to_string())
-                        .into(),
-                )
+                Err(PolicyMissingLinkIdError.into())
             }
         }
     }

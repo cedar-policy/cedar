@@ -24,6 +24,7 @@
 )]
 
 mod id;
+use cedar_policy_core::pst::error_body;
 #[cfg(feature = "entity-manifest")]
 use cedar_policy_core::validator::entity_manifest;
 // TODO (#1157) implement wrappers for these structs before they become public
@@ -4215,7 +4216,7 @@ impl LosslessTemplate {
     /// been constructed from a valid EST, PST or Cedar text.
     fn try_into_pst(self) -> Result<pst::Template, pst::PstConstructionError> {
         match self {
-            Self::Empty => Err(pst::PstConstructionError::EmptyPolicy),
+            Self::Empty => Err(error_body::PolicyFromEmptyRepresentationError.into()),
             Self::Est(est) => Ok(est.try_into()?),
             Self::Pst(pst) => Ok(pst),
             Self::Text(text) => Ok(parser::parse_policy_or_template_to_est(&text)?.try_into()?),
@@ -4362,7 +4363,7 @@ impl LosslessPolicy {
     /// Get an owned PST representation of this policy.
     fn try_into_pst(self) -> Result<pst::Policy, pst::PstConstructionError> {
         match self {
-            Self::Empty => Err(pst::PstConstructionError::EmptyPolicy),
+            Self::Empty => Err(error_body::PolicyFromEmptyRepresentationError.into()),
             Self::Est(est) => {
                 let template: pst::Template = est.try_into()?;
                 Ok(pst::Policy::Static(pst::StaticPolicy::try_from(template)?))
@@ -6864,7 +6865,7 @@ mod test_lossless_empty {
         };
         assert!(matches!(
             empty.try_into_pst(),
-            Err(pst::PstConstructionError::EmptyPolicy)
+            Err(pst::PstConstructionError::PolicyFromEmptyRepresentation(..))
         ));
     }
 
@@ -6881,7 +6882,7 @@ mod test_lossless_empty {
         };
         assert!(matches!(
             empty.try_into_pst(),
-            Err(pst::PstConstructionError::EmptyPolicy)
+            Err(pst::PstConstructionError::PolicyFromEmptyRepresentation(..))
         ));
     }
 }
