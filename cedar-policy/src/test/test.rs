@@ -11430,10 +11430,10 @@ mod pst_api {
             p.clone().to_pst().unwrap().to_string(),
             pst_template_with_slot().to_string()
         );
-        assert_eq!(
+        assert!(matches!(
             p.try_into_pst().unwrap_err(),
-            pst::PstConstructionError::EmptyPolicy
-        )
+            pst::PstConstructionError::PolicyFromEmptyRepresentation(_)
+        ))
     }
 
     #[test]

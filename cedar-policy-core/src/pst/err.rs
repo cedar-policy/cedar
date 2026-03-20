@@ -33,7 +33,8 @@ use crate::est;
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum PstConstructionError {
-    /// Trying to construct a policy from an empty representation of another type
+    /// Trying to construct a policy from an empty representation of another type.
+    /// A toplevel `Policy` was constructed without any text, EST or PST representation.
     #[error(transparent)]
     #[diagnostic(transparent)]
     PolicyFromEmptyRepresentation(#[from] error_body::PolicyFromEmptyRepresentationError),
@@ -42,6 +43,11 @@ pub enum PstConstructionError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     PolicyMissingLinkId(#[from] error_body::PolicyMissingLinkIdError),
+
+    /// A template was expected, but instead a static policy without slots was received
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExpectedTemplate(#[from] crate::parser::err::parse_errors::ExpectedTemplate),
 
     /// Action constraints cannot contain template slots
     #[error(transparent)]
@@ -122,6 +128,15 @@ pub enum PstConstructionError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ContainsSlots(#[from] error_body::ContainsSlotError),
+}
+
+impl PstConstructionError {
+    /// Create an `ExpectedTemplate` error.
+    pub fn expected_template() -> PstConstructionError {
+        PstConstructionError::ExpectedTemplate(
+            crate::parser::err::parse_errors::ExpectedTemplate::new(),
+        )
+    }
 }
 
 #[doc(hidden)]

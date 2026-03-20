@@ -3457,9 +3457,7 @@ impl Template {
     pub fn from_pst(pst_template: pst::Template) -> Result<Self, pst::PstConstructionError> {
         let ast: ast::Template = pst_template.clone().try_into()?;
         if ast.slots().count() == 0 {
-            return Err(pst::PstConstructionError::invalid_conversion(
-                "expected a template with slots, but found a static policy",
-            ));
+            return Err(pst::PstConstructionError::expected_template());
         }
         Ok(Self {
             ast,

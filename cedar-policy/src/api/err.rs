@@ -980,12 +980,6 @@ impl From<pst::PstConstructionError> for PolicyToJsonError {
     }
 }
 
-impl From<PolicyToJsonError> for pst::PstConstructionError {
-    fn from(e: PolicyToJsonError) -> Self {
-        Self::invalid_conversion(e.to_string())
-    }
-}
-
 /// Error subtypes for [`PolicyToJsonError`]
 pub mod policy_to_json_errors {
     use cedar_policy_core::est;
