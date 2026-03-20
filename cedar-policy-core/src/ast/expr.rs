@@ -505,10 +505,7 @@ impl<T> Expr<T> {
                 .record(
                     Arc::unwrap_or_clone(map)
                         .into_iter()
-                        .map(|k_v| -> Result<_, B::BuildError> {
-                            let (k, v) = k_v;
-                            Ok((k, v.try_into_expr::<B>()?))
-                        })
+                        .map(|(k, v)| Ok((k, v.try_into_expr::<B>()?)))
                         .collect::<Result<Vec<_>, _>>()?,
                 )
                 .unwrap()),
@@ -522,7 +519,7 @@ impl<T> Expr<T> {
                     ToASTErrorKind::ASTErrorNode,
                     Some(Loc::new(0..1, "AST_ERROR_NODE".into())),
                 )))
-                .unwrap()), // we could have unwrap_infallible + trait bound  but attribtutes in where clauses are unstable
+                .unwrap()), // we could have unwrap_infallible + trait bound  but attributes in where clauses are unstable
         }
     }
 
