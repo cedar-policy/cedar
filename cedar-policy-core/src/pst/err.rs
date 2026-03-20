@@ -429,3 +429,175 @@ pub mod error_body {
         pub(crate) slots: HashSet<crate::pst::SlotId>,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast;
+    use crate::est;
+    use crate::expr_builder::ExprBuilder;
+    use crate::pst;
+    use crate::pst::constraints::*;
+    use crate::pst::expr::{Expr, Literal, PstBuilder, SlotId};
+    use smol_str::SmolStr;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    /// From<est::FromJsonError> conversion covers all branches
+    #[test]
+    fn from_est_json_error_branches() {
+        // UnknownExtensionFunction — not reachable via try_into_expr, but the From impl exists
+        let name = ast::Name::parse_unqualified_name("nonexistent").unwrap();
+        let err = PstConstructionError::from(est::FromJsonError::UnknownExtensionFunction(name));
+        assert!(matches!(err, PstConstructionError::UnknownFunction(_)));
+
+        // JsonDeserializationError
+        let json_err: serde_json::Error =
+            serde_json::from_str::<serde_json::Value>("{{").unwrap_err();
+        let err =
+            PstConstructionError::from(est::FromJsonError::JsonDeserializationError(json_err.into()));
+        assert!(matches!(err, PstConstructionError::ParsingFailed(_)));
+
+        // UnescapeError
+        let unescape_errs = crate::parser::unescape::to_unescaped_string(r"\q").unwrap_err();
+        let err = PstConstructionError::from(est::FromJsonError::UnescapeError(unescape_errs));
+        assert!(matches!(err, PstConstructionError::ParsingFailed(_)));
+
+        // MissingOperator (fallback branch)
+        let err = PstConstructionError::from(est::FromJsonError::MissingOperator);
+        assert!(matches!(err, PstConstructionError::UnknownFunction(_)));
+
+        // ActionSlot
+        let err = PstConstructionError::from(est::FromJsonError::ActionSlot);
+        assert!(matches!(
+            err,
+            PstConstructionError::ActionConstraintCannotHaveSlots(_)
+        ));
+    }
+
+    /// PST with ?resource slot in principal position → WrongSlotPosition on PST→AST conversion
+    #[test]
+    fn pst_wrong_slot_position() {
+        let template = pst::Template::new(
+            "t",
+            pst::Effect::Permit,
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Resource)), // wrong!
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        );
+        let err = ast::Template::try_from(template).unwrap_err();
+        assert!(matches!(err, PstConstructionError::WrongSlotPosition(_)));
+    }
+
+    /// Linking a template with a missing slot → LinkingFailed, then convert to EST
+    #[test]
+    fn link_missing_slot_converts_to_est() {
+        let template = pst::Template::new(
+            "t",
+            pst::Effect::Permit,
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)),
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        );
+        let err = template.link(&HashMap::new()).unwrap_err();
+        assert!(matches!(err, PstConstructionError::LinkingFailed(_)));
+        if let PstConstructionError::LinkingFailed(linking_err) = err {
+            let est_err: est::LinkingError = linking_err.into();
+            assert!(matches!(est_err, est::LinkingError::MissedSlot { .. }));
+        }
+    }
+
+    /// Adding a clause with slots to a template → ContainsSlots
+    #[test]
+    fn clause_with_slots_rejected() {
+        let template = pst::Template::new(
+            "t",
+            pst::Effect::Permit,
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)),
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        );
+        let err = template
+            .try_with_clauses(vec![pst::Clause::When(Arc::new(Expr::Slot(
+                SlotId::Principal,
+            )))])
+            .unwrap_err();
+        assert!(matches!(err, PstConstructionError::ContainsSlots(_)));
+        assert!(err.to_string().contains("slots"));
+    }
+
+    /// PST record with duplicate keys → DuplicateRecordKey with accessor
+    #[test]
+    fn pst_record_duplicate_keys() {
+        let pairs = vec![
+            (SmolStr::new("k"), PstBuilder.val(1i64)),
+            (SmolStr::new("k"), PstBuilder.val(2i64)),
+        ];
+        let err = PstBuilder.record(pairs).unwrap_err();
+        let pst_err = PstConstructionError::from(err);
+        assert!(matches!(pst_err, PstConstructionError::DuplicateRecordKey(_)));
+        if let PstConstructionError::DuplicateRecordKey(e) = &pst_err {
+            assert_eq!(e.key(), "k");
+        }
+    }
+
+    /// PST annotation with invalid key → InvalidAnnotation via EST conversion
+    #[test]
+    fn pst_invalid_annotation_key() {
+        use std::collections::BTreeMap;
+        let mut annotations = BTreeMap::new();
+        annotations.insert("not valid!!".to_string(), "v".into());
+        let policy = pst::Template::new(
+            "p",
+            pst::Effect::Permit,
+            PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        )
+        .with_annotations(annotations);
+        let err: Result<est::Policy, PstConstructionError> = policy.try_into();
+        assert!(matches!(
+            err,
+            Err(PstConstructionError::InvalidAnnotation(..))
+        ));
+    }
+
+    /// Unknown function via Expr builder → UnknownFunction with accessor
+    #[test]
+    fn pst_unknown_function() {
+        let name = ast::Name::parse_unqualified_name("nonexistentFunc").unwrap();
+        let args = vec![Arc::new(Expr::Literal(Literal::Long(1)))];
+        let err = Expr::from_function_ast_name_and_args(&name, args).unwrap_err();
+        assert!(matches!(err, PstConstructionError::UnknownFunction(_)));
+        if let PstConstructionError::UnknownFunction(e) = &err {
+            assert!(e.name().contains("nonexistent"));
+        }
+    }
+
+    /// Wrong arity via Expr builder → WrongArity with accessors
+    #[test]
+    fn pst_wrong_arity() {
+        let name = ast::Name::parse_unqualified_name("decimal").unwrap();
+        let args = vec![
+            Arc::new(Expr::Literal(Literal::Long(1))),
+            Arc::new(Expr::Literal(Literal::Long(2))),
+        ];
+        let err = Expr::from_function_ast_name_and_args(&name, args).unwrap_err();
+        if let PstConstructionError::WrongArity(e) = &err {
+            assert_eq!(e.name(), "decimal");
+            assert_eq!(e.expected(), 1);
+            assert_eq!(e.got(), 2);
+        } else {
+            panic!("expected WrongArity, got: {err}");
+        }
+    }
+
+    /// Invalid Cedar text → ParseErrors → PstConstructionError::ParsingFailed
+    #[test]
+    fn parse_errors_to_pst_error() {
+        let parse_errs: crate::parser::err::ParseErrors =
+            "bad!!!".parse::<ast::Expr>().unwrap_err();
+        let pst_err = PstConstructionError::from(parse_errs);
+        assert!(matches!(pst_err, PstConstructionError::ParsingFailed(_)));
+    }
+}

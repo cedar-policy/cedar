@@ -12421,4 +12421,23 @@ mod pst_api {
         let recovered = api_set.to_pst().unwrap();
         assert_pst_sets_eq(&pst_set, &recovered, "both_slots_linked roundtrip");
     }
+
+    // --- PolicySetError::PstConversion from PstConstructionError ---
+
+    #[test]
+    fn policy_set_error_pst_conversion() {
+        let pst_err = pst::PstConstructionError::expected_template();
+        let pse: PolicySetError = pst_err.into();
+        assert!(matches!(pse, PolicySetError::PstConversion(_)));
+        assert!(pse.to_string().contains("static policy"));
+    }
+
+    // --- PolicyToJsonError from PstConstructionError ---
+
+    #[test]
+    fn policy_to_json_error_from_pst_error() {
+        let pst_err = pst::PstConstructionError::expected_template();
+        let json_err: PolicyToJsonError = pst_err.into();
+        assert!(matches!(json_err, PolicyToJsonError::JsonSerialization(_)));
+    }
 }
