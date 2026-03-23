@@ -26,6 +26,8 @@ use super::{
 use crate::ast::IsInfallible;
 use crate::ast::{self, UnwrapInfallible};
 use crate::expr_builder;
+#[cfg(feature = "tolerant-ast")]
+use crate::pst::err::error_body::UnsupportedErrorNode;
 use crate::pst::err::error_body::{
     InvalidConversionError, InvalidExpressionError, ParsingFailedError,
 };
@@ -604,20 +606,21 @@ impl From<ast::ResourceConstraint> for ResourceConstraint {
 }
 
 #[doc(hidden)]
-impl From<ast::ActionConstraint> for ActionConstraint {
-    fn from(c: ast::ActionConstraint) -> Self {
+impl TryFrom<ast::ActionConstraint> for ActionConstraint {
+    type Error = PstConstructionError;
+    fn try_from(c: ast::ActionConstraint) -> Result<Self, PstConstructionError> {
         match c {
-            ast::ActionConstraint::Any => ActionConstraint::Any,
+            ast::ActionConstraint::Any => Ok(ActionConstraint::Any),
             ast::ActionConstraint::Eq(uid) => {
-                ActionConstraint::Eq(Arc::unwrap_or_clone(uid).into())
+                Ok(ActionConstraint::Eq(Arc::unwrap_or_clone(uid).into()))
             }
-            ast::ActionConstraint::In(uids) => ActionConstraint::In(
+            ast::ActionConstraint::In(uids) => Ok(ActionConstraint::In(
                 uids.into_iter()
                     .map(|uid| Arc::unwrap_or_clone(uid).into())
                     .collect(),
-            ),
+            )),
             #[cfg(feature = "tolerant-ast")]
-            ast::ActionConstraint::ErrorConstraint => ActionConstraint::Any,
+            ast::ActionConstraint::ErrorConstraint => Err((UnsupportedErrorNode {}).into()),
         }
     }
 }
@@ -641,7 +644,7 @@ impl TryFrom<ast::Template> for Template {
         let id = PolicyID(id.to_smolstr());
         let effect = effect.into();
         let principal = principal_constraint.into();
-        let action = action_constraint.into();
+        let action = action_constraint.try_into()?;
         let resource = resource_constraint.into();
 
         let clauses = match clause {
