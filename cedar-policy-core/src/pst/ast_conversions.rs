@@ -26,8 +26,10 @@ use super::{
 use crate::ast::IsInfallible;
 use crate::ast::{self, UnwrapInfallible};
 use crate::expr_builder;
+#[cfg(feature = "tolerant-ast")]
+use crate::pst::err::error_body::UnsupportedErrorNode;
 use crate::pst::err::error_body::{
-    InvalidConversionError, InvalidExpressionError, ParsingFailedError, UnsupportedErrorNode,
+    InvalidConversionError, InvalidExpressionError, ParsingFailedError,
 };
 use crate::pst::expr::PstBuilder;
 use itertools::Itertools;
