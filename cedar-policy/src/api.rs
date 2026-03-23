@@ -3584,9 +3584,7 @@ impl Template {
             ast::ActionConstraint::ErrorConstraint => {
                 // We will only have an ErrorConstraint if we are using a parser that allows Error nodes
                 // It is not recommended to evaluate an AST that allows error nodes
-                // If somehow someone tries to evaluate an AST that includes an Action constraint error, we will
-                // treat it as `Any`
-                ActionConstraint::Any
+                unimplemented!("It is not safe to evaluate a tolerant-ast with Error nodes.")
             }
         }
     }
@@ -3965,9 +3963,7 @@ impl Policy {
             ast::ActionConstraint::ErrorConstraint => {
                 // We will only have an ErrorConstraint if we are using a parser that allows Error nodes
                 // It is not recommended to evaluate an AST that allows error nodes
-                // If somehow someone tries to evaluate an AST that includes an Action constraint error, we will
-                // treat it as `Any`
-                ActionConstraint::Any
+                unimplemented!("It is not safe to evaluate a tolerant-ast with Error nodes.")
             }
         }
     }
