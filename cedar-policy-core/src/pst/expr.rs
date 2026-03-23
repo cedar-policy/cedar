@@ -419,6 +419,14 @@ pub enum BinaryOp {
     Offset,
     /// `left.durationSince(right)`
     DurationSince,
+    /// `left.lessThan(right)` (decimal less than)
+    DecimalLessThan,
+    /// `left.lessThanOrEqual(right)` (decimal less than or equal)
+    DecimalLessEq,
+    /// `left.greaterThan(right)` (decimal greater than)
+    DecimalGreater,
+    /// `left.greaterThanOrEqual(right)` (decimal greater than or equal)
+    DecimalGreaterEq,
 }
 
 impl BinaryOp {
@@ -428,6 +436,12 @@ impl BinaryOp {
             BinaryOp::IsInRange => Some(&extensions::ipaddr::names::IS_IN_RANGE),
             BinaryOp::Offset => Some(&extensions::datetime::constants::OFFSET_METHOD_NAME),
             BinaryOp::DurationSince => Some(&extensions::datetime::constants::DURATION_SINCE_NAME),
+            BinaryOp::DecimalLessThan => Some(&extensions::decimal::constants::LESS_THAN),
+            BinaryOp::DecimalLessEq => Some(&extensions::decimal::constants::LESS_THAN_OR_EQUAL),
+            BinaryOp::DecimalGreater => Some(&extensions::decimal::constants::GREATER_THAN),
+            BinaryOp::DecimalGreaterEq => {
+                Some(&extensions::decimal::constants::GREATER_THAN_OR_EQUAL)
+            }
             // those are operators, not names
             BinaryOp::Eq
             | BinaryOp::NotEq
@@ -452,10 +466,10 @@ impl BinaryOp {
     /// Parse a binary operator from a function name
     pub(crate) fn from_function_name(name: &str) -> Option<Self> {
         match name {
-            "lessThan" => Some(BinaryOp::Less),
-            "lessThanOrEqual" => Some(BinaryOp::LessEq),
-            "greaterThan" => Some(BinaryOp::Greater),
-            "greaterThanOrEqual" => Some(BinaryOp::GreaterEq),
+            "lessThan" => Some(BinaryOp::DecimalLessThan),
+            "lessThanOrEqual" => Some(BinaryOp::DecimalLessEq),
+            "greaterThan" => Some(BinaryOp::DecimalGreater),
+            "greaterThanOrEqual" => Some(BinaryOp::DecimalGreaterEq),
             "isInRange" => Some(BinaryOp::IsInRange),
             "offset" => Some(BinaryOp::Offset),
             "durationSince" => Some(BinaryOp::DurationSince),
@@ -1178,6 +1192,8 @@ impl std::fmt::Display for Expr {
 )]
 #[cfg(test)]
 mod tests {
+    use cool_asserts::assertion_failure;
+
     use super::*;
     use std::str::FromStr;
 
@@ -1276,20 +1292,40 @@ mod tests {
                             "Expected unary unknown function to be Unknown expr",
                         );
                     } else {
-                        assert!(
-                            matches!(actual, Expr::UnaryOp { .. }),
-                            "Unary function {} should produce UnaryOp",
-                            name
-                        );
+                        match actual {
+                            Expr::UnaryOp { op, .. } => {
+                                let op_name = op.to_name();
+                                assert!(
+                                    op_name.is_some(),
+                                    "UnaryOp from extension {} should have known ast::Name",
+                                    name
+                                );
+                                assert_eq!(
+                                    UnaryOp::from_function_name(&name.as_ref().to_string()),
+                                    Some(op)
+                                );
+                            }
+                            _ => {
+                                assertion_failure!("Unary function  should produce BinaryOp", name:name)
+                            }
+                        }
                     }
                 }
-                2 => {
-                    assert!(
-                        matches!(actual, Expr::BinaryOp { .. }),
-                        "Binary function {} should produce BinaryOp",
-                        name
-                    );
-                }
+                2 => match actual {
+                    Expr::BinaryOp { op, .. } => {
+                        let op_name = op.to_name();
+                        assert!(
+                            op_name.is_some(),
+                            "BinaryOp from extension {} should have known ast::Name",
+                            name
+                        );
+                        assert_eq!(
+                            BinaryOp::from_function_name(&name.as_ref().to_string()),
+                            Some(op)
+                        );
+                    }
+                    _ => assertion_failure!("Binary function  should produce BinaryOp", name:name),
+                },
                 _ => (),
             }
         }
