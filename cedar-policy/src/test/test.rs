@@ -12427,7 +12427,6 @@ mod pst_api {
 mod tolerant_ast_tests {
     use super::*;
     use cedar_policy_core::ast;
-    use std::sync::Arc;
 
     /// Helper: build a TemplateBody with ActionConstraint::ErrorConstraint
     fn template_body_with_error_action() -> ast::TemplateBody {
