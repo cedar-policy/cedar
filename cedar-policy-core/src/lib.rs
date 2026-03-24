@@ -53,7 +53,7 @@
 //!
 //! - `experimental` — Enables all experimental features listed below.
 //! - `variadic-is-in-range` — Variadic overload for the `isInRange` function.
-//! - `tpe` — Total policy evaluation / batched authorization. Enables the
+//! - `tpe` — Type-aware partial evaluation / batched authorization. Enables the
 //!   [`batched_evaluator`] and [`tpe`] modules.
 //! - `partial-eval` — Partial evaluation of Cedar policies. You should prefer `tpe` above.
 //! - `partial-validate` — Partial validation of Cedar policies.
