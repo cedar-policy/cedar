@@ -48,22 +48,35 @@
 //! ## Experimental features
 //!
 //! **WARNING:** Experimental features are unstable and subject to breaking
-//! changes in any release, including patch releases. They **must not** be used
-//! in an authorization path. This includes, but is not limited to, parsing,
-//! serializing, and deserializing policies. Use them only for development,
-//! testing, or prototyping purposes.
+//! changes in any release, including patch releases. Use those features at your
+//! own risk.
 //!
 //! - `experimental` — Enables all experimental features listed below.
-//! - `partial-eval` — Partial evaluation of Cedar policies.
+//! - `variadic-is-in-range` — Variadic overload for the `isInRange` function.
+//! - `tpe` — Total policy evaluation / batched authorization. Enables the
+//!   [`batched_evaluator`] and [`tpe`] modules.
+//! - `partial-eval` — Partial evaluation of Cedar policies. You should prefer `tpe` above.
 //! - `partial-validate` — Partial validation of Cedar policies.
+//! - (deprecated) `entity-manifest` — Entity manifest computation for entity slicing.
+//!   This feature is deprecated; you should use `tpe` instead.
+//!
+//! ## Unstable tooling features
+//!
+//! **WARNING** Unstable tooling features are subject to breaking changes in
+//! any release, including patch releases. They should never be enabled by clients.
+//! They are intended for language servers and other tools that need to use internal
+//! functionality, and manipulate error tolerant representations of the language
+//! to provide helpful error messages.
+//!
+//! They **must not** be used in an authorization path. This includes, but is not
+//! limited to, parsing, serializing, and deserializing policies. Use them only
+//! for development, testing, or prototyping purposes.
+//!
 //! - `tolerant-ast` — Error-tolerant parsing that produces a (possibly
 //!   incomplete) AST even when the input contains syntax errors. This should
 //!   only be used for providing helpful error handling in language servers.
-//! - `entity-manifest` — Entity manifest computation for entity slicing.
-//! - `extended-schema` — Extended schema features.
-//! - `tpe` — Total policy evaluation / batched authorization. Enables the
-//!   [`batched_evaluator`] and [`tpe`] modules.
-//! - `variadic-is-in-range` — Variadic overload for the `isInRange` function.
+//! - `extended-schema` — The extended schema feature is also intended for language servers.
+//!
 #![warn(missing_docs)]
 // enable doc_cfg feature when building on docs.rs
 #![cfg_attr(docsrs, feature(doc_cfg))]

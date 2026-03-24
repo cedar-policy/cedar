@@ -29,7 +29,7 @@ miette = { version = "7.6.0", features = ["serde"] }
 nonempty = { version = "0.12.0", features = ["serialize"] }
 educe = "0.6.0"
 unicode-security = "0.1.0"
-regex = { version = "1.12", features = ["unicode"]}
+regex = { version = "1.12", features = ["unicode"] }
 linked-hash-map = { version = "0.5.6", features = ["serde_impl"] }
 linked_hash_set = "0.1.6"
 
@@ -40,7 +40,7 @@ tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
 
 # datetime extension requires chrono
-chrono = { version = "0.4.44", optional = true, default-features = false}
+chrono = { version = "0.4.44", optional = true, default-features = false }
 
 [features]
 # by default, enable all Cedar extensions
@@ -58,13 +58,22 @@ test-util = []
 # Experimental features.
 partial-validate = []
 partial-eval = []
-tolerant-ast = []
 entity-manifest = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
-experimental = ["tpe", "tolerant-ast", "extended-schema", "entity-manifest", "partial-validate", "partial-eval", "variadic-is-in-range"]
-extended-schema = []
+experimental = [
+    "tpe",
+    "entity-manifest",
+    "partial-validate",
+    "partial-eval",
+    "variadic-is-in-range",
+]
 tpe = []
 variadic-is-in-range = []
+
+# Unstable tooling features
+unstable-tooling = ["tolerant-ast", "extended-schema"]
+tolerant-ast = []
+extended-schema = []
 
 [build-dependencies]
 lalrpop = "0.22.2"
@@ -79,5 +88,5 @@ insta = "1.46.3"
 workspace = true
 
 [package.metadata.docs.rs]
-features = ["experimental", "test-util"]
+features = ["experimental", "unstable-tooling", "test-util"]
 rustdoc-args = ["--cfg", "docsrs"]
