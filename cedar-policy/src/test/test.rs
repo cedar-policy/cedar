@@ -12446,7 +12446,7 @@ mod tolerant_ast_tests {
     }
 
     #[test]
-    #[should_panic(expected = "It is not safe to evaluate a tolerant-ast with Error nodes.")]
+    #[should_panic(expected = "internal ErrorConstraint cannot be represented in the public API")]
     fn template_action_constraint_error_panics() {
         let tb = template_body_with_error_action();
         let ast_template = ast::Template::from(tb);
@@ -12455,7 +12455,7 @@ mod tolerant_ast_tests {
     }
 
     #[test]
-    #[should_panic(expected = "It is not safe to evaluate a tolerant-ast with Error nodes.")]
+    #[should_panic(expected = "internal ErrorConstraint cannot be represented in the public API")]
     fn policy_action_constraint_error_panics() {
         let tb = template_body_with_error_action();
         let ast_template = ast::Template::from(tb);

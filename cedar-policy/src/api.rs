@@ -3583,9 +3583,7 @@ impl Template {
             #[cfg(feature = "tolerant-ast")]
             #[expect(clippy::unimplemented, reason = "experimental feature")]
             ast::ActionConstraint::ErrorConstraint => {
-                // We will only have an ErrorConstraint if we are using a parser that allows Error nodes
-                // It is not recommended to evaluate an AST that allows error nodes
-                unimplemented!("It is not safe to evaluate a tolerant-ast with Error nodes.")
+                unimplemented!("internal ErrorConstraint cannot be represented in the public API")
             }
         }
     }
@@ -3963,9 +3961,7 @@ impl Policy {
             #[cfg(feature = "tolerant-ast")]
             #[expect(clippy::unimplemented, reason = "experimental feature")]
             ast::ActionConstraint::ErrorConstraint => {
-                // We will only have an ErrorConstraint if we are using a parser that allows Error nodes
-                // It is not recommended to evaluate an AST that allows error nodes
-                unimplemented!("It is not safe to evaluate a tolerant-ast with Error nodes.")
+                unimplemented!("internal ErrorConstraint cannot be represented in the public API")
             }
         }
     }
