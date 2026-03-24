@@ -40,7 +40,7 @@ jobs:
       - run: cargo install cargo-audit --locked
 
       - run: cargo build --verbose
-      - run: cargo build --verbose --features "experimental"
+      - run: cargo build --verbose --features "experimental,unstable-tooling"
       - run: cargo doc --all-features --no-deps
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
 
@@ -97,7 +97,7 @@ jobs:
       - run: cargo test --verbose
       - run: cargo test --verbose --benches
       - run: cargo test --verbose --no-default-features
-      - run: cargo test --verbose --features "experimental"
+      - run: cargo test --verbose --features "experimental,unstable-tooling"
       - run: cargo test --verbose -p cedar-policy-cli --all-features # Specifically run cedar-policy-cli tests with --all-features
       - name: Create a coverage report
         if: ${{ inputs.collect_coverage }} && ${{ matrix.toolchain }} == 'stable'
