@@ -260,10 +260,10 @@ impl Solver for LocalSolver {
         self.solver_stdin.flush().await?;
         let mut output = String::new();
         self.read_line(&mut output).await?;
-        match output.as_str() {
-            "sat\n" => Ok(Decision::Sat),
-            "unsat\n" => Ok(Decision::Unsat),
-            "unknown\n" => Ok(Decision::Unknown),
+        match output.as_str().trim() {
+            "sat" => Ok(Decision::Sat),
+            "unsat" => Ok(Decision::Unsat),
+            "unknown" => Ok(Decision::Unknown),
             s => Err(self.process_error_output(s).await),
         }
     }
@@ -278,8 +278,8 @@ impl Solver for LocalSolver {
                 self.solver_stdin.flush().await?;
                 let mut output = String::new();
                 self.read_line(&mut output).await?;
-                match output.as_str() {
-                    "(\n" => {
+                match output.as_str().trim() {
+                    "(" => {
                         // Read until a line ")\n"
                         loop {
                             let len: usize = self.read_line(&mut output).await?;
@@ -287,7 +287,7 @@ impl Solver for LocalSolver {
                                 clippy::string_slice,
                                 reason = "`output.len() - len` gives the end index of `output` before the `read_line`"
                             )]
-                            if &output[output.len() - len..] == ")\n" {
+                            if output[output.len() - len..].trim() == ")" {
                                 break;
                             }
                         }
