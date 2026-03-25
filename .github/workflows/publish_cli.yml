@@ -2,27 +2,21 @@
 # ensure that the latest version of this workflow is used.
 # However, the release will not necessarily be performed from the 'main' branch
 # as the input `tag` is used to determine which GitHub tag will be checked out for the release.
-name: Publish Cedar SymCC to crates.io
+name: Publish Cedar CLI to crates.io
 on:
     workflow_dispatch:
         inputs:
             tag:
                 required: true
                 type: string
-                description: "The GitHub tag to be released. Must be of the form 'cedar-policy-symcc-v<MAJOR>.<MINOR>.<PATCH>'"
-
-# Declare default permissions as read only.
-permissions: read-all
+                description: "The GitHub tag to be released. Must be of the form 'v<MAJOR>.<MINOR>.<PATCH>'"
 
 jobs:
     publish:
         uses: ./.github/workflows/publish_reusable.yml
-        permissions:
-            contents: read
-            id-token: write
         with:
             tag: ${{ inputs.tag }}
-            tag_prefix: "cedar-policy-symcc-v"
-            version_toml_path: "./cedar-policy-symcc/Cargo.toml"
-            version_toml_key: "package.version"
-            publish_packages: "cedar-policy-symcc"
+            tag_prefix: "v"
+            version_toml_path: "Cargo.toml"
+            version_toml_key: "workspace.package.version"
+            publish_packages: "cedar-policy-cli"
