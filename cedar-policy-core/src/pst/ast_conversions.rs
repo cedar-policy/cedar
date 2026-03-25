@@ -24,11 +24,9 @@ use super::{
 use crate::ast::IsInfallible;
 use crate::ast::{self, UnwrapInfallible};
 use crate::expr_builder;
-#[cfg(feature = "tolerant-ast")]
-use crate::pst::err::error_body::UnsupportedErrorNode;
 use crate::pst::err::error_body::{
     InvalidEntityTypeError, InvalidExpressionError, ParsingFailedError, PolicyMissingLinkIdError,
-    WrongSlotPositionError,
+    UnsupportedErrorNode, WrongSlotPositionError,
 };
 use crate::pst::expr::PstBuilder;
 use itertools::Itertools;
