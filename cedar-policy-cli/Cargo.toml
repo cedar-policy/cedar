@@ -22,6 +22,7 @@ miette = { version = "7.6.0", features = ["fancy"] }
 thiserror = "2.0"
 semver = "1.0.27"
 owo-colors = { version = "4.3.0", features = ["supports-colors"] }
+similar = { version = "2", optional = true }
 tokio = { version = "1.50", features = ["rt-multi-thread"], optional = true }
 
 [features]
@@ -30,7 +31,7 @@ experimental = ["permissive-validate", "partial-validate", "partial-eval", "tpe"
 permissive-validate = ["cedar-policy/permissive-validate"]
 partial-validate = ["cedar-policy/partial-validate"]
 partial-eval = ["cedar-policy/partial-eval"]
-tpe = ["cedar-policy/tpe", "cedar-policy/partial-eval"]
+tpe = ["cedar-policy/tpe", "cedar-policy/partial-eval", "dep:similar"]
 analyze = ["dep:cedar-policy-symcc", "dep:tokio", "dep:itertools"]
 
 [dev-dependencies]

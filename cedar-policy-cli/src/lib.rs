@@ -2192,6 +2192,50 @@ pub fn tpe(_: &TpeArgs) -> CedarExitCode {
 }
 
 #[cfg(feature = "tpe")]
+fn print_policy_diff(id: &PolicyId, original: &str, residual: &str, col_width: usize) {
+    use owo_colors::OwoColorize;
+    use similar::{ChangeTag, TextDiff};
+
+    println!("{}", format!("┌─ @id(\"{id}\") ").bold());
+    println!(
+        "  {:<col_width$} │ {}",
+        "Original".dimmed(),
+        "Residual".dimmed()
+    );
+    println!(
+        "  {:<col_width$} │ {}",
+        "─".repeat(col_width),
+        "─".repeat(col_width)
+    );
+
+    let diff = TextDiff::from_lines(original, residual);
+    for op in diff.ops() {
+        for change in diff.iter_changes(op) {
+            let line = change.value().trim_end_matches('\n');
+            match change.tag() {
+                ChangeTag::Equal => {
+                    println!("  {:<col_width$} │ {}", line.dimmed(), line.dimmed());
+                }
+                ChangeTag::Delete => {
+                    println!(
+                        "  {:<col_width$} │",
+                        line.red().strikethrough()
+                    );
+                }
+                ChangeTag::Insert => {
+                    println!(
+                        "  {:<col_width$} │ {}",
+                        "",
+                        line.green()
+                    );
+                }
+            }
+        }
+    }
+    println!();
+}
+
+#[cfg(feature = "tpe")]
 pub fn tpe(args: &TpeArgs) -> CedarExitCode {
     println!();
     let ret = |errs| {
@@ -2249,8 +2293,32 @@ pub fn tpe(args: &TpeArgs) -> CedarExitCode {
                         None => {
                             println!("UNKNOWN");
                             println!("All policy residuals:");
-                            for p in ans.residual_policies() {
-                                println!("{p}");
+                            let mut residuals: Vec<_> =
+                                ans.residual_policies().collect();
+                            residuals
+                                .sort_by(|a, b| a.id().to_string().cmp(&b.id().to_string()));
+                            let col_width = residuals
+                                .iter()
+                                .filter_map(|r| {
+                                    policies.policy(r.id()).map(|p| {
+                                        format!("{p}")
+                                            .lines()
+                                            .map(str::len)
+                                            .max()
+                                            .unwrap_or(0)
+                                    })
+                                })
+                                .max()
+                                .unwrap_or(20)
+                                + 2;
+                            for residual in &residuals {
+                                let id = residual.id();
+                                let residual_str = format!("{residual}");
+                                let original_str = policies
+                                    .policy(id)
+                                    .map(|p| format!("{p}"))
+                                    .unwrap_or_default();
+                                print_policy_diff(id, &original_str, &residual_str, col_width);
                             }
                             CedarExitCode::Unknown
                         }
