@@ -331,7 +331,7 @@ impl LocalSolver {
     async fn process_error_output(&mut self, s: &str) -> SolverError {
         match s
             .strip_prefix("(error \"")
-            .and_then(|s| s.strip_suffix("\")\n"))
+            .and_then(|s| s.strip_suffix("\")"))
         {
             Some(e) => {
                 if e.starts_with("Parse Error: ") {
