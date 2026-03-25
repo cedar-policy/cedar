@@ -69,8 +69,6 @@ jobs:
         needs: [validate]
         runs-on: ubuntu-latest
         environment: release # See https://github.com/cedar-policy/cedar/settings/environments
-        permissions:
-            id-token: write # Required for OIDC token exchange
         steps:
             - name: Checkout tag
               uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
