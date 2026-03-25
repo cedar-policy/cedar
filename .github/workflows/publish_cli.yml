@@ -11,9 +11,15 @@ on:
                 type: string
                 description: "The GitHub tag to be released. Must be of the form 'v<MAJOR>.<MINOR>.<PATCH>'"
 
+# Declare default permissions as read only.
+permissions: read-all
+
 jobs:
     publish:
         uses: ./.github/workflows/publish_reusable.yml
+        permissions:
+            contents: read
+            id-token: write
         with:
             tag: ${{ inputs.tag }}
             tag_prefix: "v"
