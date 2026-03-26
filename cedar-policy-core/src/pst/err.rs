@@ -379,7 +379,7 @@ pub mod error_body {
 
     impl From<crate::parser::err::ParseErrors> for ParsingFailedError {
         fn from(value: crate::parser::err::ParseErrors) -> Self {
-            Self::new(format!("{value:?}"))
+            Self::new(format!("{value}"))
         }
     }
 
@@ -407,5 +407,119 @@ pub mod error_body {
     #[error("policy or expression contains slots: {slots:?}")]
     pub struct ContainsSlotError {
         pub(crate) slots: HashSet<crate::pst::SlotId>,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_json_error_conversions() {
+        use crate::est::FromJsonError;
+
+        // This is a set of rather shallow tests to cover the different cases in FromJsonError.
+        // We don't actually expect those to happen, cause you need a valid EST/AST to then convert
+        // to the PST, so those FromJsonError would already have happened. However, we want to
+        // cover nicely the conversion just in case. The real error cases should be covered in
+        // unit tests in the conversions.
+
+        // JsonDeserializationError
+        let serde_err = serde_json::from_str::<String>("bad").unwrap_err();
+        let json_deser_err: crate::entities::json::err::JsonDeserializationError = serde_err.into();
+        let err: PstConstructionError =
+            FromJsonError::JsonDeserializationError(json_deser_err).into();
+        assert!(matches!(err, PstConstructionError::ParsingFailed(..)));
+
+        // ActionSlot
+        let err: PstConstructionError = FromJsonError::ActionSlot.into();
+        assert!(matches!(
+            err,
+            PstConstructionError::ActionConstraintCannotHaveSlots(..)
+        ));
+
+        // InvalidActionType
+        let euid = ast::EntityUID::with_eid_and_type("Bad", "act").unwrap();
+        let err: PstConstructionError =
+            FromJsonError::InvalidActionType(crate::parser::err::parse_errors::InvalidActionType {
+                euids: nonempty::nonempty![std::sync::Arc::new(euid)],
+            })
+            .into();
+        assert!(matches!(err, PstConstructionError::InvalidEntityType(..)));
+
+        // InvalidSlotName
+        let err: PstConstructionError = FromJsonError::InvalidSlotName.into();
+        assert!(matches!(err, PstConstructionError::ParsingFailed(..)));
+
+        // TemplateToPolicy
+        let err: PstConstructionError = FromJsonError::TemplateToPolicy(
+            crate::parser::err::parse_errors::ExpectedStaticPolicy {
+                slot: ast::Slot {
+                    id: ast::SlotId::principal(),
+                    loc: None,
+                },
+            },
+        )
+        .into();
+        assert!(matches!(err, PstConstructionError::ContainsSlots(..)));
+
+        // PolicyToTemplate
+        let err: PstConstructionError = FromJsonError::PolicyToTemplate(
+            crate::parser::err::parse_errors::ExpectedTemplate::new(),
+        )
+        .into();
+        assert!(matches!(
+            err,
+            PstConstructionError::ExpectedTemplateWithSlots(..)
+        ));
+
+        // SlotsInConditionClause
+        let err: PstConstructionError = FromJsonError::SlotsInConditionClause(
+            crate::parser::err::parse_errors::SlotsInConditionClause {
+                slot: ast::Slot {
+                    id: ast::SlotId::resource(),
+                    loc: None,
+                },
+                clause_type: "when",
+            },
+        )
+        .into();
+        assert!(matches!(err, PstConstructionError::ContainsSlots(..)));
+
+        // MissingOperator
+        let err: PstConstructionError = FromJsonError::MissingOperator.into();
+        assert!(matches!(err, PstConstructionError::InvalidExpression(..)));
+
+        // MultipleOperators
+        let err: PstConstructionError = FromJsonError::MultipleOperators {
+            ops: vec!["a".into(), "b".into()],
+        }
+        .into();
+        assert!(matches!(err, PstConstructionError::InvalidExpression(..)));
+    }
+
+    #[test]
+    fn from_expression_construction_error() {
+        let err: PstConstructionError = ast::ExpressionConstructionError::DuplicateKey(
+            ast::expression_construction_errors::DuplicateKeyError {
+                key: "k".into(),
+                context: "in record literal",
+            },
+        )
+        .into();
+        assert!(matches!(err, PstConstructionError::DuplicateRecordKey(..)));
+    }
+
+    #[test]
+    fn from_extension_function_lookup_error() {
+        use crate::extensions::ExtensionFunctionLookupError;
+        let err: PstConstructionError = ExtensionFunctionLookupError::FuncDoesNotExist(
+            crate::extensions::extension_function_lookup_errors::FuncDoesNotExistError {
+                name: "bogus".parse().unwrap(),
+                source_loc: None,
+            },
+        )
+        .into();
+        assert!(matches!(err, PstConstructionError::UnknownFunction(..)));
     }
 }

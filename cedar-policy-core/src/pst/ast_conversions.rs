@@ -411,7 +411,7 @@ impl TryFrom<EntityType> for ast::EntityType {
         let name: ast::Name = et.0.try_into().map_err(|e: PstConstructionError| match e {
             PstConstructionError::ParsingFailed(pf) => {
                 PstConstructionError::InvalidEntityType(InvalidEntityTypeError {
-                    description: pf.description,
+                    description: format!("parse error on {}", pf.description),
                 })
             }
             other => other,
@@ -1101,5 +1101,45 @@ mod tests {
 
             assert_eq!(actual, expected, "failed: {}", desc);
         }
+    }
+
+    #[test]
+    fn test_wrong_slot_position() {
+        // Resource slot in principal position
+        let result: Result<ast::PrincipalConstraint, _> =
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Resource)).try_into();
+        assert!(matches!(
+            result,
+            Err(PstConstructionError::WrongSlotPosition(..))
+        ));
+        assert!(result.unwrap_err().to_string().contains(
+            "slot `?resource` cannot be used in this position (expected slot `?principal`)"
+        ));
+
+        // Principal slot in resource position
+        let result: Result<ast::ResourceConstraint, _> =
+            ResourceConstraint::In(EntityOrSlot::Slot(SlotId::Principal)).try_into();
+        assert!(matches!(
+            result,
+            Err(PstConstructionError::WrongSlotPosition(..))
+        ));
+
+        assert!(result.unwrap_err().to_string().contains(
+            "slot `?principal` cannot be used in this position (expected slot `?resource`)"
+        ));
+    }
+
+    #[test]
+    fn test_invalid_entity_type_conversion() {
+        let et = EntityType(Name::unqualified(":::bad"));
+        let result: Result<ast::EntityType, PstConstructionError> = et.try_into();
+        assert!(matches!(
+            result,
+            Err(PstConstructionError::InvalidEntityType(..))
+        ));
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "invalid entity type: `parse error on unexpected token `::``"
+        );
     }
 }
