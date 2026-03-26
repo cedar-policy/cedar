@@ -4,27 +4,49 @@
 # as the input `tag` is used to determine which GitHub tag will be checked out for the release.
 name: Publish base Cedar crates to crates.io
 on:
+    # This workflow must be triggered manually.
     workflow_dispatch:
         inputs:
             tag:
                 required: true
                 type: string
                 description: "The GitHub tag to be released. Must be of the form 'v<MAJOR>.<MINOR>.<PATCH>'"
-
 # Declare default permissions as read only.
 permissions: read-all
-
 jobs:
-    publish:
+    validate:
         uses: ./.github/workflows/publish_reusable.yml
-        permissions:
-            contents: read
-            id-token: write
         with:
             tag: ${{ inputs.tag }}
             tag_prefix: "v"
             version_toml_path: "Cargo.toml"
             version_toml_key: "workspace.package.version"
-            # Order matters: dependencies must be listed before dependents.
-            # cedar-policy-validator no longer exists on main but is kept for older release branches.
-            publish_packages: "cedar-policy-core cedar-policy-validator cedar-policy-formatter cedar-policy"
+    publish:
+        needs: [validate]
+        runs-on: ubuntu-latest
+        environment: release # See https://github.com/cedar-policy/cedar/settings/environments
+        permissions:
+            id-token: write # Required for OIDC token exchange
+        steps:
+            - name: Checkout tag
+              uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+              with:
+                ref: refs/tags/${{ inputs.tag }}
+            - name: Configure rust toolchain
+              run: rustup update stable && rustup default stable
+            - name: Authenticate with crates.io
+              id: auth
+              uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe # v1.0.4
+            - name: Publish to crates.io
+              # Order matters: dependencies must be listed before dependents.
+              # cedar-policy-validator no longer exists on main but is kept for older release branches.
+              run: |
+                for pkg in cedar-policy-core cedar-policy-validator cedar-policy-formatter cedar-policy; do
+                    if [ -f "$pkg/Cargo.toml" ]; then
+                        cargo publish -p "$pkg"
+                    else
+                        echo "Skipping $pkg (no $pkg/Cargo.toml)"
+                    fi
+                done
+              env:
+                CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
