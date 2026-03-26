@@ -286,19 +286,14 @@ impl DateTime {
             .map(|ms| Duration { ms })
     }
 
-    // essentially `self.epoch.div_floor(Self::DAY_IN_MILLISECONDS) * Self::DAY_IN_MILLISECONDS`
-    // but `div_floor` is only available on nightly
     fn to_date(self) -> Option<Self> {
-        if self.epoch.is_negative() {
-            if self.epoch % Self::DAY_IN_MILLISECONDS == 0 {
-                Some(self.epoch)
-            } else {
-                (self.epoch / Self::DAY_IN_MILLISECONDS - 1).checked_mul(Self::DAY_IN_MILLISECONDS)
-            }
-        } else {
-            Some((self.epoch / Self::DAY_IN_MILLISECONDS) * Self::DAY_IN_MILLISECONDS)
-        }
-        .map(|epoch| Self { epoch })
+        // `rem_euclid` has the desired property that
+        // \forall a b, 0 <= a.rem_euclid(b) < b
+        Some(Self {
+            epoch: self
+                .epoch
+                .checked_sub(self.epoch.checked_rem_euclid(Self::DAY_IN_MILLISECONDS)?)?,
+        })
     }
 
     fn to_time(self) -> Duration {
