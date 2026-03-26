@@ -3417,12 +3417,9 @@ impl Template {
             }
             ast::ActionConstraint::Eq(id) => ActionConstraint::Eq(id.as_ref().clone().into()),
             #[cfg(feature = "tolerant-ast")]
+            #[expect(clippy::unimplemented, reason = "experimental feature")]
             ast::ActionConstraint::ErrorConstraint => {
-                // We will only have an ErrorConstraint if we are using a parser that allows Error nodes
-                // It is not recommended to evaluate an AST that allows error nodes
-                // If somehow someone tries to evaluate an AST that includes an Action constraint error, we will
-                // treat it as `Any`
-                ActionConstraint::Any
+                unimplemented!("internal ErrorConstraint cannot be represented in the public API")
             }
         }
     }
@@ -3785,12 +3782,9 @@ impl Policy {
             ),
             ast::ActionConstraint::Eq(id) => ActionConstraint::Eq(EntityUid::ref_cast(id).clone()),
             #[cfg(feature = "tolerant-ast")]
+            #[expect(clippy::unimplemented, reason = "experimental feature")]
             ast::ActionConstraint::ErrorConstraint => {
-                // We will only have an ErrorConstraint if we are using a parser that allows Error nodes
-                // It is not recommended to evaluate an AST that allows error nodes
-                // If somehow someone tries to evaluate an AST that includes an Action constraint error, we will
-                // treat it as `Any`
-                ActionConstraint::Any
+                unimplemented!("internal ErrorConstraint cannot be represented in the public API")
             }
         }
     }
