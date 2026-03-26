@@ -480,4 +480,40 @@ mod test {
         let status = my_solver.child.try_wait().unwrap();
         assert!(status.is_some());
     }
+
+    #[tokio::test]
+    async fn check_sat_crlf_test() {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "read line && printf 'sat\r\n'"]);
+        let mut solver = LocalSolver::from_command(&mut cmd).unwrap();
+        let decision = solver.check_sat().await.unwrap();
+        assert_eq!(decision, Decision::Sat);
+    }
+
+    #[tokio::test]
+    async fn check_sat_with_model_crlf_test() {
+        let mut cmd = Command::new("sh");
+        cmd.args([
+            "-c",
+            "read line && printf 'sat\\r\\n' && read line && printf '(\\r\\n  define-fun x () Int 0\\r\\n)\\r\\n'",
+        ]);
+        let mut solver = LocalSolver::from_command(&mut cmd).unwrap();
+
+        let decision = solver.check_sat_with_model().await.unwrap();
+
+        assert_matches!(decision, DecisionWithModel::Sat { model } => {
+            assert_eq!(model, "(\r\n  define-fun x () Int 0\r\n)\r\n");
+        });
+    }
+
+    #[tokio::test]
+    async fn process_error_output_parse_error_no_line_ending_test() {
+        let mut solver = LocalSolver::cvc5().unwrap();
+        let res = solver
+            .process_error_output("(error \"Parse Error: mock windows error\")")
+            .await;
+        assert_matches!(res, SolverError::Solver(msg) => {
+            assert_eq!(msg, "Parse Error: mock windows error");
+        });
+    }
 }
