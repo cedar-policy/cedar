@@ -72,7 +72,7 @@ cool_asserts = "2.0"
 similar-asserts = "1.7.0"
 criterion = "0.8"
 globset = "0.4"
-insta = { version = "1.46.1", features = ["glob", "json"] }
+insta = { version = "1.47.0", features = ["glob", "json"] }
 cedar-policy-core = { version = "=4.10.0", features = [
     "test-util",
 ], path = "../cedar-policy-core" }
