@@ -12422,3 +12422,45 @@ mod pst_api {
         assert_pst_sets_eq(&pst_set, &recovered, "both_slots_linked roundtrip");
     }
 }
+
+#[cfg(feature = "tolerant-ast")]
+mod tolerant_ast_tests {
+    use super::*;
+    use cedar_policy_core::ast;
+
+    /// Helper: build a TemplateBody with ActionConstraint::ErrorConstraint
+    fn template_body_with_error_action() -> ast::TemplateBody {
+        let pc = ast::PrincipalConstraint::new(ast::PrincipalOrResourceConstraint::any());
+        let rc = ast::ResourceConstraint::new(ast::PrincipalOrResourceConstraint::any());
+        ast::TemplateBody::new(
+            ast::PolicyID::from_string("error_action_test"),
+            None,
+            ast::Annotations::default(),
+            ast::Effect::Permit,
+            pc,
+            ast::ActionConstraint::ErrorConstraint,
+            rc,
+            None,
+        )
+    }
+
+    #[test]
+    #[should_panic(expected = "internal ErrorConstraint cannot be represented in the public API")]
+    fn template_action_constraint_error_panics() {
+        let tb = template_body_with_error_action();
+        let ast_template = ast::Template::from(tb);
+        let template = Template::from_ast(ast_template);
+        let _ = template.action_constraint();
+    }
+
+    #[test]
+    #[should_panic(expected = "internal ErrorConstraint cannot be represented in the public API")]
+    fn policy_action_constraint_error_panics() {
+        let tb = template_body_with_error_action();
+        let ast_template = ast::Template::from(tb);
+        let static_policy = ast::StaticPolicy::try_from(ast_template).unwrap();
+        let ast_policy = ast::Policy::from(static_policy);
+        let policy = Policy::from_ast(ast_policy);
+        let _ = policy.action_constraint();
+    }
+}
