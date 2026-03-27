@@ -376,6 +376,137 @@ impl CedarValueJson {
         }
     }
 
+    /// Convert directly from `serde_json::Value` without re-deserialization via serde.
+    /// This avoids the double parsing overhead when we already have a parsed Value.
+    ///
+    /// This is more efficient than `serde_json::from_value()` because it avoids
+    /// re-deserialization via serde visitors and avoids intermediate `RawCedarValueJson`
+    /// construction.
+    ///
+    /// `ctx` is a function that provides error context when errors occur.
+    pub fn from_serde_value_direct(
+        val: serde_json::Value,
+        ctx: &dyn Fn() -> JsonDeserializationErrorContext,
+    ) -> Result<Self, JsonDeserializationError> {
+        match val {
+            serde_json::Value::Bool(b) => Ok(CedarValueJson::Bool(b)),
+
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Ok(CedarValueJson::Long(i))
+                } else {
+                    // Number is not a valid i64 (could be float, too large, etc.)
+                    // serde_json::Error has limited public constructors outside of the serde
+                    // deserialization APIs; using Error::io here preserves the existing error
+                    // category (JsonDeserializationError::Serde) for non-i64 numbers.
+                    use std::io;
+                    let io_err = io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "invalid number: expected a 64-bit signed integer, got {}",
+                            n
+                        ),
+                    );
+                    Err(JsonDeserializationError::from(serde_json::Error::io(
+                        io_err,
+                    )))
+                }
+            }
+
+            serde_json::Value::String(s) => {
+                // Direct conversion: String -> SmolStr (no intermediate parsing)
+                Ok(CedarValueJson::String(SmolStr::new(s)))
+            }
+
+            serde_json::Value::Array(arr) => {
+                // Recursively convert array elements
+                Ok(CedarValueJson::Set(
+                    arr.into_iter()
+                        .map(|v| Self::from_serde_value_direct(v, ctx))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ))
+            }
+
+            serde_json::Value::Object(obj) => {
+                // Check for escapes first (__expr, __entity, __extn)
+                // This matches the logic in From<RawCedarValueJson>
+                if obj.len() == 1 {
+                    // Check for __expr escape
+                    if let Some(val) = obj.get("__expr") {
+                        if let serde_json::Value::String(s) = val {
+                            return Ok(CedarValueJson::ExprEscape {
+                                __expr: SmolStr::new(s),
+                            });
+                        }
+                    }
+
+                    // Check for __entity escape
+                    if let Some(serde_json::Value::Object(entity_obj)) = obj.get("__entity") {
+                        if entity_obj.len() >= 2 {
+                            if let (
+                                Some(serde_json::Value::String(ty)),
+                                Some(serde_json::Value::String(id)),
+                            ) = (entity_obj.get("type"), entity_obj.get("id"))
+                            {
+                                return Ok(CedarValueJson::EntityEscape {
+                                    __entity: TypeAndId {
+                                        entity_type: SmolStr::new(ty),
+                                        id: SmolStr::new(id),
+                                    },
+                                });
+                            }
+                        }
+                    }
+
+                    // Check for __extn escape
+                    if let Some(serde_json::Value::Object(extn_obj)) = obj.get("__extn") {
+                        if extn_obj.len() >= 2 {
+                            if let Some(serde_json::Value::String(fn_name)) = extn_obj.get("fn") {
+                                // Single argument
+                                if let Some(arg) = extn_obj.get("arg") {
+                                    return Ok(CedarValueJson::ExtnEscape {
+                                        __extn: FnAndArgs::Single {
+                                            ext_fn: SmolStr::new(fn_name),
+                                            arg: Box::new(Self::from_serde_value_direct(
+                                                arg.clone(),
+                                                ctx,
+                                            )?),
+                                        },
+                                    });
+                                }
+                                // Multiple arguments
+                                if let Some(serde_json::Value::Array(args_arr)) =
+                                    extn_obj.get("args")
+                                {
+                                    return Ok(CedarValueJson::ExtnEscape {
+                                        __extn: FnAndArgs::Multi {
+                                            ext_fn: SmolStr::new(fn_name),
+                                            args: args_arr
+                                                .iter()
+                                                .map(|v| {
+                                                    Self::from_serde_value_direct(v.clone(), ctx)
+                                                })
+                                                .collect::<Result<Vec<_>, _>>()?,
+                                        },
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Regular record - convert all key-value pairs
+                let mut map = BTreeMap::new();
+                for (k, v) in obj {
+                    map.insert(SmolStr::new(k), Self::from_serde_value_direct(v, ctx)?);
+                }
+                Ok(CedarValueJson::Record(JsonRecord { values: map }))
+            }
+
+            serde_json::Value::Null => Err(JsonDeserializationError::Null(Box::new(ctx()))),
+        }
+    }
+
     /// Convert this `CedarValueJson` into a Cedar "restricted expression"
     pub fn into_expr(
         self,
@@ -801,7 +932,7 @@ impl<'e> ValueParser<'e> {
                 )),
                 val => {
                     let actual_val = {
-                        let jvalue: CedarValueJson = serde_json::from_value(val)?;
+                        let jvalue = CedarValueJson::from_serde_value_direct(val, ctx)?;
                         jvalue.into_expr(ctx)?
                     };
                     let err = TypeMismatchError::type_mismatch(
@@ -874,7 +1005,7 @@ impl<'e> ValueParser<'e> {
                 }
                 val => {
                     let actual_val = {
-                        let jvalue: CedarValueJson = serde_json::from_value(val)?;
+                        let jvalue = CedarValueJson::from_serde_value_direct(val, ctx)?;
                         jvalue.into_expr(ctx)?
                     };
                     let err = TypeMismatchError::type_mismatch(
@@ -900,9 +1031,10 @@ impl<'e> ValueParser<'e> {
             // The expected type is any other type, or we don't have an expected type.
             // No special parsing rules apply; we do ordinary, non-schema-based parsing.
             Some(_) | None => {
-                // Everything is parsed as `CedarValueJson`, and converted into
-                // `RestrictedExpr` from that.
-                let jvalue: CedarValueJson = serde_json::from_value(val)?;
+                // Use direct conversion instead of double parsing via serde
+                // This avoids the overhead of serde_json::from_value() which re-parses
+                // an already-parsed serde_json::Value
+                let jvalue = CedarValueJson::from_serde_value_direct(val, ctx)?;
                 Ok(jvalue.into_expr(ctx)?)
             }
         }
@@ -1065,4 +1197,476 @@ pub enum ExtnValueJson {
     // This is listed last so that it has lowest priority when deserializing.
     // If one of the above forms fits, we use that.
     ImplicitConstructor(CedarValueJson),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper function to categorize error types for equivalence checking
+    fn err_kind(e: &JsonDeserializationError) -> &'static str {
+        use JsonDeserializationError::*;
+        match e {
+            Null(_) => "Null",
+            Serde(_) => "Serde",
+            ParseEscape(_) => "ParseEscape",
+            TypeMismatch(_) => "TypeMismatch",
+            DuplicateKey(_) => "DuplicateKey",
+            ExprTag(_) => "ExprTag",
+            RestrictedExpressionError(_) => "RestrictedExpressionError",
+            ExpectedLiteralEntityRef(_) => "ExpectedLiteralEntityRef",
+            ExpectedExtnValue(_) => "ExpectedExtnValue",
+            ActionParentIsNotAction(_) => "ActionParentIsNotAction",
+            MissingImpliedConstructor(_) => "MissingImpliedConstructor",
+            IncorrectNumOfArguments(_) => "IncorrectNumOfArguments",
+            FailedExtensionFunctionLookup(_) => "FailedExtensionFunctionLookup",
+            EntityAttributeEvaluation(_) => "EntityAttributeEvaluation",
+            EntitySchemaConformance(_) => "EntitySchemaConformance",
+            UnexpectedRecordAttr(_) => "UnexpectedRecordAttr",
+            MissingRequiredRecordAttr(_) => "MissingRequiredRecordAttr",
+            ReservedName(_) => "ReservedName",
+            #[allow(deprecated)]
+            UnsupportedEntityTags => "UnsupportedEntityTags",
+            #[cfg(feature = "tolerant-ast")]
+            ASTErrorNode => "ASTErrorNode",
+        }
+    }
+
+    /// Test that `from_serde_value_direct` produces identical results to
+    /// `serde_json::from_value` for all non-null inputs; null is rejected in both
+    /// pipelines (direct rejects earlier).
+    #[test]
+    fn test_from_serde_value_direct_equivalence() {
+        let ctx = || JsonDeserializationErrorContext::Context;
+
+        // Test basic types
+        let mut test_cases = vec![
+            serde_json::json!(true),
+            serde_json::json!(false),
+            serde_json::json!(42),
+            serde_json::json!(-100),
+            serde_json::json!(0),
+            serde_json::json!("hello"),
+            serde_json::json!(""),
+            serde_json::json!([]),
+            serde_json::json!([1, 2, 3]),
+            serde_json::json!(["a", "b", "c"]),
+            serde_json::json!([true, false]),
+            serde_json::json!({}),
+            serde_json::json!({"key": "value"}),
+            serde_json::json!({"a": 1, "b": 2}),
+            serde_json::json!({"nested": {"inner": "value"}}),
+            // Boundary integer cases
+            serde_json::json!(i64::MAX),
+            serde_json::json!(i64::MIN),
+        ];
+
+        // Test number larger than i64::MAX (must be constructed from string)
+        // If serde_json can't represent this integer as a Number on this build,
+        // skip the case rather than failing the test harness itself.
+        let too_large_num_str = "9223372036854775808";
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(too_large_num_str) {
+            test_cases.push(v);
+        }
+
+        // Edge cases: empty objects with reserved keys but wrong shape
+        test_cases.push(serde_json::json!({"__entity": {}}));
+        test_cases.push(serde_json::json!({"__extn": {}}));
+        // Empty args array
+        test_cases.push(serde_json::json!({"__extn": {"fn": "ip", "args": []}}));
+
+        for val in test_cases {
+            let direct_result = CedarValueJson::from_serde_value_direct(val.clone(), &ctx);
+            let serde_result: Result<CedarValueJson, _> =
+                serde_json::from_value(val.clone()).map_err(JsonDeserializationError::from);
+
+            match (direct_result, serde_result) {
+                (Ok(direct), Ok(serde)) => {
+                    assert_eq!(
+                        direct,
+                        serde,
+                        "Results differ for value: {}",
+                        serde_json::to_string(&val).unwrap()
+                    );
+                }
+                (Err(d), Err(s)) => {
+                    assert_eq!(
+                        err_kind(&d),
+                        err_kind(&s),
+                        "Error kinds differ for value: {}",
+                        serde_json::to_string(&val).unwrap()
+                    );
+                }
+                (Ok(_), Err(e)) => {
+                    panic!(
+                        "Direct succeeded but serde failed for {}: {}",
+                        serde_json::to_string(&val).unwrap(),
+                        e
+                    );
+                }
+                (Err(e), Ok(_)) => {
+                    panic!(
+                        "Serde succeeded but direct failed for {}: {}",
+                        serde_json::to_string(&val).unwrap(),
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    /// Test escape sequence handling equivalence
+    #[test]
+    fn test_escape_sequences_equivalence() {
+        let ctx = || JsonDeserializationErrorContext::Context;
+
+        // Test __entity escape
+        let entity_val = serde_json::json!({
+            "__entity": {
+                "type": "User",
+                "id": "alice"
+            }
+        });
+        let direct_result = CedarValueJson::from_serde_value_direct(entity_val.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(entity_val).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for __entity escape"
+                );
+            }
+            _ => panic!("One succeeded and the other failed for __entity escape"),
+        }
+
+        // Test __extn escape with single arg
+        let extn_single = serde_json::json!({
+            "__extn": {
+                "fn": "ip",
+                "arg": "1.2.3.4"
+            }
+        });
+        let direct_result = CedarValueJson::from_serde_value_direct(extn_single.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(extn_single).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for __extn single arg"
+                );
+            }
+            _ => panic!("One succeeded and the other failed for __extn single arg"),
+        }
+
+        // Test __extn escape with multiple args
+        let extn_multi = serde_json::json!({
+            "__extn": {
+                "fn": "decimal",
+                "args": ["123.45", "67.89"]
+            }
+        });
+        let direct_result = CedarValueJson::from_serde_value_direct(extn_multi.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(extn_multi).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for __extn multi arg"
+                );
+            }
+            _ => panic!("One succeeded and the other failed for __extn multi arg"),
+        }
+
+        // Test __expr escape (should be rejected with ExprTag error)
+        let expr_val = serde_json::json!({
+            "__expr": "principal == User::\"alice\""
+        });
+        let direct_result = CedarValueJson::from_serde_value_direct(expr_val.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(expr_val).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for __expr escape"
+                );
+            }
+            _ => panic!("One succeeded and the other failed for __expr escape"),
+        }
+
+        // Test multi-key object containing __expr (should fall back to record, not escape)
+        let expr_extra = serde_json::json!({
+            "__expr": "x",
+            "y": 1
+        });
+        let direct_result = CedarValueJson::from_serde_value_direct(expr_extra.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(expr_extra).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for multi-key object with __expr"
+                );
+            }
+            _ => panic!("One succeeded and the other failed for multi-key object with __expr"),
+        }
+
+        // Test multi-key object containing __entity (should fall back to record)
+        let entity_extra = serde_json::json!({
+            "__entity": {
+                "type": "User",
+                "id": "alice"
+            },
+            "extra": "field"
+        });
+        let direct_result = CedarValueJson::from_serde_value_direct(entity_extra.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(entity_extra).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for multi-key object with __entity"
+                );
+            }
+            _ => panic!("One succeeded and the other failed for multi-key object with __entity"),
+        }
+
+        // Test multi-key object containing __extn (should fall back to record)
+        let extn_extra = serde_json::json!({
+            "__extn": {
+                "fn": "ip",
+                "arg": "1.2.3.4"
+            },
+            "extra": "field"
+        });
+        let direct_result = CedarValueJson::from_serde_value_direct(extn_extra.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(extn_extra).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for multi-key object with __extn"
+                );
+            }
+            _ => panic!("One succeeded and the other failed for multi-key object with __extn"),
+        }
+    }
+
+    /// Test invalid escape shape cases - these test precedence and fallback behavior
+    #[test]
+    fn test_invalid_escape_shapes() {
+        let ctx = || JsonDeserializationErrorContext::Context;
+
+        // Test __entity with non-object value (should fall back to record)
+        let invalid_entity = serde_json::json!({
+            "__entity": "not an object"
+        });
+        let direct_result = CedarValueJson::from_serde_value_direct(invalid_entity.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(invalid_entity).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for invalid __entity shape"
+                );
+            }
+            _ => panic!("One succeeded and the other failed for invalid __entity shape"),
+        }
+
+        // Test __extn with fn as non-string (should fall back to record)
+        let invalid_extn_fn = serde_json::json!({
+            "__extn": {
+                "fn": 123
+            }
+        });
+        let direct_result = CedarValueJson::from_serde_value_direct(invalid_extn_fn.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(invalid_extn_fn).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for invalid __extn fn shape"
+                );
+            }
+            _ => panic!("One succeeded and the other failed for invalid __extn fn shape"),
+        }
+
+        // Test __extn with missing required fields (should fall back to record)
+        let invalid_extn_missing = serde_json::json!({
+            "__extn": {
+                "fn": "ip"
+                // missing arg/args
+            }
+        });
+        let direct_result =
+            CedarValueJson::from_serde_value_direct(invalid_extn_missing.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(invalid_extn_missing).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for invalid __extn missing fields"
+                );
+            }
+            _ => panic!("One succeeded and the other failed for invalid __extn missing fields"),
+        }
+
+        // Test __extn with args as non-array (should fall back to record)
+        let invalid_extn_args_type = serde_json::json!({
+            "__extn": {
+                "fn": "decimal",
+                "args": "not an array"
+            }
+        });
+        let direct_result =
+            CedarValueJson::from_serde_value_direct(invalid_extn_args_type.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(invalid_extn_args_type).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for invalid __extn args type"
+                );
+            }
+            _ => panic!("One succeeded and the other failed for invalid __extn args type"),
+        }
+    }
+
+    /// Test error cases equivalence - verifies equivalent error category/variant
+    /// (e.g., Serde vs TypeMismatch vs Null), with direct path rejecting null earlier.
+    #[test]
+    fn test_error_cases_equivalence() {
+        let ctx = || JsonDeserializationErrorContext::Context;
+
+        // Test null: serde deserializes to CedarValueJson::Null, but direct function
+        // errors immediately. Both paths ultimately reject null when converting into
+        // an expression (via into_expr), so this divergence is acceptable.
+        let null_val = serde_json::Value::Null;
+        let direct_result = CedarValueJson::from_serde_value_direct(null_val.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(null_val).map_err(JsonDeserializationError::from);
+        // serde succeeds (produces Null variant), direct errors
+        assert!(
+            direct_result.is_err() && serde_result.is_ok(),
+            "Direct should error on null, serde should produce Null variant"
+        );
+        // Verify direct path returns Err(Null)
+        if let Err(e) = &direct_result {
+            assert_eq!(err_kind(e), "Null", "Direct path should return Null error");
+        }
+        // Verify serde path returns CedarValueJson::Null
+        if let Ok(serde_val) = &serde_result {
+            assert_eq!(serde_val, &CedarValueJson::Null);
+            // Verify that the Null variant also errors when converting to expression
+            assert!(
+                serde_val.clone().into_expr(&ctx).is_err(),
+                "Null variant must fail into_expr"
+            );
+        }
+
+        // Test invalid number (float) - both should error with same error kind
+        let float_val = serde_json::json!(3.14);
+        let direct_result = CedarValueJson::from_serde_value_direct(float_val.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(float_val).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Err(d), Err(s)) => {
+                assert_eq!(err_kind(&d), err_kind(&s), "Error kinds differ for float");
+                // Explicitly verify float errors are still Serde category
+                assert_eq!(err_kind(&d), "Serde", "Float errors must be Serde category");
+            }
+            _ => panic!("Both should error on float"),
+        }
+    }
+
+    /// Test nested structures equivalence
+    #[test]
+    fn test_nested_structures_equivalence() {
+        let ctx = || JsonDeserializationErrorContext::Context;
+
+        // Deeply nested structure
+        let _nested = serde_json::json!({
+            "level1": {
+                "level2": {
+                    "level3": {
+                        "level4": {
+                            "value": "deep"
+                        }
+                    }
+                }
+            }
+        });
+        // Deep array nesting (depth >= 50)
+        let mut deep_array = serde_json::json!([]);
+        for _ in 0..50 {
+            deep_array = serde_json::json!([deep_array]);
+        }
+        let direct_result = CedarValueJson::from_serde_value_direct(deep_array.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(deep_array).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for deep array nesting"
+                );
+            }
+            _ => panic!("Deep array nesting handling differs"),
+        }
+
+        // Array with nested objects
+        let array_nested = serde_json::json!([
+            {"a": 1},
+            {"b": 2},
+            {"c": {"d": 3}}
+        ]);
+        let direct_result = CedarValueJson::from_serde_value_direct(array_nested.clone(), &ctx);
+        let serde_result: Result<CedarValueJson, _> =
+            serde_json::from_value(array_nested).map_err(JsonDeserializationError::from);
+        match (direct_result, serde_result) {
+            (Ok(direct), Ok(serde)) => assert_eq!(direct, serde),
+            (Err(d), Err(s)) => {
+                assert_eq!(
+                    err_kind(&d),
+                    err_kind(&s),
+                    "Error kinds differ for array with nested objects"
+                );
+            }
+            _ => panic!("Array with nested objects handling differs"),
+        }
+    }
 }
