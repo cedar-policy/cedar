@@ -20,10 +20,10 @@ produce a counterexample (a synthesized request and entity store) if the propert
 
 ## Setup
 
-To get started, first download or compile the [cvc5-1.2.1](https://github.com/cvc5/cvc5/releases/tag/cvc5-1.2.1) SMT solver.
+To get started, first download or compile the [cvc5-1.3.1](https://github.com/cvc5/cvc5/releases/tag/cvc5-1.3.1) SMT solver.
 The following example assumes that you have set the following environment variable:
 ```sh
-CVC5=<path to cvc5 1.2.1 executable>
+CVC5=<path to cvc5 1.3.1 executable>
 ```
 
 ## Example
@@ -85,7 +85,7 @@ To learn more about what you can do with SymCC, see the documentation of the `Ce
 To build and test this crate, run the following commands from the root of the repository:
 ```sh
 cargo build -p cedar-policy-symcc
-CVC5=<absolute path to cvc5 1.2.1 executable> cargo test -p cedar-policy-symcc
+CVC5=<absolute path to cvc5 1.3.1 executable> cargo test -p cedar-policy-symcc
 ```
 
 Structure of this crate:
