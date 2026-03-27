@@ -2,19 +2,39 @@
 # ensure that the latest version of this workflow is used.
 # However, the release will not necessarily be performed from the 'main' branch
 # as the input `tag` is used to determine which GitHub tag will be checked out for the release.
-name: Publish base Cedar crates to crates.io
+name: Publish Cedar crates to crates.io
 on:
     # This workflow must be triggered manually.
     workflow_dispatch:
         inputs:
+            target:
+                required: true
+                type: choice
+                description: "Which crate group to publish."
+                options:
+                    - core
+                    - symcc
+                    - cli
+                    - all
             tag:
                 required: true
                 type: string
-                description: "The GitHub tag to be released. Must be of the form 'v<MAJOR>.<MINOR>.<PATCH>'"
-
+                description: "The tag to release from."
+            core_version:
+                required: true
+                type: string
+                description: "The core crate version. Must be of the form '<MAJOR>.<MINOR>.<PATCH>'. Required for all targets, either because being published or for validation."
+            symcc_version:
+                required: false
+                type: string
+                description: "The symcc crate version. Must be of the form '<MAJOR>.<MINOR>.<PATCH>'. Required for symcc and all."
+            # For now, cli_version is the same as core_version (they share the workspace version).
+            cli_version:
+                required: false
+                type: string
+                description: "The CLI crate version. Must be of the form '<MAJOR>.<MINOR>.<PATCH>'. Required for cli and all."
 # Declare default permissions as read only.
 permissions: read-all
-
 jobs:
     validate:
         runs-on: ubuntu-latest
@@ -25,19 +45,81 @@ jobs:
               uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
               with:
                   script: core.setFailed('This workflow must be triggered from the "main" branch.')
-
-            # Check that the input tag is welformed.
+            # Check that the input tag is well-formed.
+            # For core, cli and all, we expect a tag "v<MAJOR>.<MINOR>.<PATCH>"
+            # For symcc, we expect a tag "cedar-policy-symcc-v0.<MINOR>.<PATCH>"
+            # Note the explicit 0: the process will need changing once symcc is stable.
             - name: Validate tag
               run: |
-                  REGEX_PATTERN="^v[0-9]+\.[0-9]+\.[0-9]+$"
-                  if [[ ! "$TAG_NAME" =~ $REGEX_PATTERN ]]; then 
-                      echo "Specified tag must match $REGEX_PATTERN"
+                  CORE_TAG_PATTERN="^v[0-9]+\.[0-9]+\.[0-9]+$"
+                  SYMCC_TAG_PATTERN="^cedar-policy-symcc-v0\.[0-9]+\.[0-9]+$"
+                  case "$TARGET" in
+                      # For now, cli tag format is the same as core.
+                      # This should change if we want independent cli releases,
+                      # in which case we can match against two possibilities.
+                      core|cli|all)
+                          if [[ ! "$TAG" =~ $CORE_TAG_PATTERN ]]; then
+                              echo "::error::tag must match $CORE_TAG_PATTERN for target '$TARGET'"
+                              exit 1
+                          fi
+                          ;;
+                      symcc)
+                          if [[ ! "$TAG" =~ $SYMCC_TAG_PATTERN ]]; then
+                              echo "::error::tag must match $SYMCC_TAG_PATTERN for target '$TARGET'"
+                              exit 1
+                          fi
+                          ;;
+                  esac
+              env:
+                  TARGET: ${{ inputs.target }}
+                  TAG: ${{ inputs.tag }}
+            # Check the combination of inputs given is valid:
+            # - core version is always required, and must match semver. We use core to either
+            #.  validate the branch is in a good state with the expected core version dependency,
+            #.  or for actually checking the core version we are releasing.
+            # - symcc version is required for symcc and all targets, and must match semver pattern.
+            # - cli version is required for cli and all, and must match semver pattern.
+            - name: Validate inputs
+              run: |
+                  SEMVER_PATTERN="^[0-9]+\.[0-9]+\.[0-9]+$"
+                  errors=()
+
+                  # core_version is always required and must be semver.
+                  if [[ -z "$CORE_VERSION" ]]; then
+                      errors+=("core_version is required for all targets.")
+                  elif [[ ! "$CORE_VERSION" =~ $SEMVER_PATTERN ]]; then
+                      errors+=("core_version must match $SEMVER_PATTERN")
+                  fi
+
+                  # symcc_version is required for symcc and all.
+                  if [[ "$TARGET" == "symcc" || "$TARGET" == "all" ]]; then
+                      if [[ -z "$SYMCC_VERSION" ]]; then
+                          errors+=("symcc_version is required for target '$TARGET'.")
+                      elif [[ ! "$SYMCC_VERSION" =~ $SEMVER_PATTERN ]]; then
+                          errors+=("symcc_version must match $SEMVER_PATTERN")
+                      fi
+                  fi
+
+                  # cli_version is required for cli and all.
+                  if [[ "$TARGET" == "cli" || "$TARGET" == "all" ]]; then
+                      if [[ -z "$CLI_VERSION" ]]; then
+                          errors+=("cli_version is required for target '$TARGET'.")
+                      elif [[ ! "$CLI_VERSION" =~ $SEMVER_PATTERN ]]; then
+                          errors+=("cli_version must match $SEMVER_PATTERN")
+                      fi
+                  fi
+
+                  if [[ ${#errors[@]} -gt 0 ]]; then
+                      for err in "${errors[@]}"; do
+                          echo "::error::$err"
+                      done
                       exit 1
                   fi
               env:
-                  TAG_NAME: ${{ inputs.tag }}
-
-            # Check that the cargo workspace's version matches the input tag.
+                  TARGET: ${{ inputs.target }}
+                  CORE_VERSION: ${{ inputs.core_version }}
+                  SYMCC_VERSION: ${{ inputs.symcc_version }}
+                  CLI_VERSION: ${{ inputs.cli_version }}
             - name: Checkout tag
               uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
               with:
@@ -46,14 +128,50 @@ jobs:
               run: rustup update stable && rustup default stable
             - name: Install toml-cli
               run: cargo install toml-cli --locked
-            - name: Validate workspace version
-              run: test "v$(toml get --raw Cargo.toml workspace.package.version)" = "$TAG_NAME"
-              env:
-                  TAG_NAME: ${{ inputs.tag }}
 
-    publish-crates:
-        # Only publish if validation succeeds.
+            # For all targets, we validate the core version in the code for the given tag
+            - name: Validate core version against Cargo.toml for given tag
+              run: |
+                  ACTUAL=$(toml get --raw Cargo.toml workspace.package.version)
+                  if [[ "$ACTUAL" != "$CORE_VERSION" ]]; then
+                      echo "::error::core_version mismatch: input '$CORE_VERSION' but Cargo.toml has '$ACTUAL'"
+                      exit 1
+                  fi
+              env:
+                  CORE_VERSION: ${{ inputs.core_version }}
+
+            # For symcc and all targets, we validate the symcc version for the given tag
+            - name: Validate symcc version against Cargo.toml for given tag
+              if: inputs.target == 'symcc' || inputs.target == 'all'
+              run: |
+                  ACTUAL=$(toml get --raw ./cedar-policy-symcc/Cargo.toml package.version)
+                  if [[ "$ACTUAL" != "$SYMCC_VERSION" ]]; then
+                      echo "::error::symcc_version mismatch: input '$SYMCC_VERSION' but Cargo.toml has '$ACTUAL'"
+                      exit 1
+                  fi
+              env:
+                  SYMCC_VERSION: ${{ inputs.symcc_version }}
+
+            # For now, cli_version is the same as core_version (they share the workspace version).
+            # We still additionally validate the cli version for the given tag.
+            # Note: cedar-policy-cli inherits its version from the workspace (version.workspace = true),
+            # so we validate against the workspace version in the root Cargo.toml.
+            - name: Validate cli version against Cargo.toml
+              if: inputs.target == 'cli' || inputs.target == 'all'
+              run: |
+                  ACTUAL=$(toml get --raw Cargo.toml workspace.package.version)
+                  if [[ "$ACTUAL" != "$CLI_VERSION" ]]; then
+                      echo "::error::cli_version mismatch: input '$CLI_VERSION' but workspace version is '$ACTUAL'"
+                      exit 1
+                  fi
+              env:
+                  CLI_VERSION: ${{ inputs.cli_version }}
+    publish-core:
+        if: inputs.target == 'core'
         needs: [validate]
+        # Validate succeeded for core:
+        # - the given tag matches the core tag format (i.e. tag is v<MAJOR>.<MINOR>.<PATCH>)
+        # - the workspace version in the root Cargo.toml is the provided core version
         runs-on: ubuntu-latest
         environment: release # See https://github.com/cedar-policy/cedar/settings/environments
         permissions:
@@ -69,20 +187,91 @@ jobs:
               id: auth
               uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe # v1.0.4
             - name: Publish to crates.io
+              # Order matters: dependencies must be listed before dependents.
+              # cedar-policy-validator is conditionally published for backwards compatibility.
+              # If we ever need to publish it again, use the core target.
               run: |
                   if [ -f "cedar-policy-validator/Cargo.toml" ]; then
-                    cargo publish \
-                        -p cedar-policy-core \
-                        -p cedar-policy-validator \
-                        -p cedar-policy-formatter \
-                        -p cedar-policy \
-                        -p cedar-policy-cli
-                  else 
-                    cargo publish \
-                        -p cedar-policy-core \
-                        -p cedar-policy-formatter \
-                        -p cedar-policy \
-                        -p cedar-policy-cli
+                      cargo publish -p cedar-policy-core -p cedar-policy-validator -p cedar-policy-formatter -p cedar-policy
+                  else
+                      cargo publish -p cedar-policy-core -p cedar-policy-formatter -p cedar-policy
                   fi
+              env:
+                  CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+    publish-symcc:
+        if: inputs.target == 'symcc'
+        needs: [validate]
+        # Validate succeeded for symcc:
+        # - the given tag matches the symcc tag format (i.e. tag is cedar-policy-symcc-v0.<MINOR>.<PATCH>)
+        # - the workspace version in the root Cargo.toml is the provided core version
+        # - the version of the symcc package in its Cargo.toml is the provided symcc version
+        runs-on: ubuntu-latest
+        environment: release # See https://github.com/cedar-policy/cedar/settings/environments
+        permissions:
+            id-token: write # Required for OIDC token exchange
+        steps:
+            - name: Checkout tag
+              uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+              with:
+                  ref: refs/tags/${{ inputs.tag }}
+            - name: Configure rust toolchain
+              run: rustup update stable && rustup default stable
+            - name: Authenticate with crates.io
+              id: auth
+              uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe # v1.0.4
+            - name: Publish to crates.io
+              run: cargo publish -p cedar-policy-symcc
+              env:
+                  CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+    publish-cli:
+        if: inputs.target == 'cli'
+        needs: [validate]
+        # Validate succeeded for cli:
+        # - the given tag matches the core tag format (i.e. tag is v<MAJOR>.<MINOR>.<PATCH>)
+        # - the workspace version in the root Cargo.toml is the provided core version
+        # - the workspace version in the root Cargo.toml is the provided cli version
+        runs-on: ubuntu-latest
+        environment: release # See https://github.com/cedar-policy/cedar/settings/environments
+        permissions:
+            id-token: write # Required for OIDC token exchange
+        steps:
+            - name: Checkout tag
+              uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+              with:
+                  ref: refs/tags/${{ inputs.tag }}
+            - name: Configure rust toolchain
+              run: rustup update stable && rustup default stable
+            - name: Authenticate with crates.io
+              id: auth
+              uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe # v1.0.4
+            - name: Publish to crates.io
+              run: cargo publish -p cedar-policy-cli
+              env:
+                  CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+    publish-all:
+        if: inputs.target == 'all'
+        needs: [validate]
+        # Validate succeeded for all:
+        # - the given tag matches the core tag format (i.e. tag is v<MAJOR>.<MINOR>.<PATCH>)
+        # - the workspace version in the root Cargo.toml is the provided core version
+        # - the version of the symcc package in its Cargo.toml is the provided symcc version
+        # - the workspace version in the root Cargo.toml is the provided cli version
+        runs-on: ubuntu-latest
+        environment: release # See https://github.com/cedar-policy/cedar/settings/environments
+        permissions:
+            id-token: write # Required for OIDC token exchange
+        steps:
+            - name: Checkout tag
+              uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+              with:
+                  ref: refs/tags/${{ inputs.tag }}
+            - name: Configure rust toolchain
+              run: rustup update stable && rustup default stable
+            - name: Authenticate with crates.io
+              id: auth
+              uses: rust-lang/crates-io-auth-action@bbd81622f20ce9e2dd9622e3218b975523e45bbe # v1.0.4
+            - name: Publish to crates.io
+              # Order matters: dependencies must be listed before dependents.
+              run: cargo publish -p cedar-policy-core -p cedar-policy-formatter -p cedar-policy -p cedar-policy-symcc -p cedar-policy-cli
               env:
                   CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
