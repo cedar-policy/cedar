@@ -15,7 +15,6 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ### Added
 
 - Public syntax tree representation for `Policy`, `Template` and `PolicySet` allowing programmatic manipulation of Cedar syntax (#816, #366).
-- Explicit failure when using experimental features `tolerant-ast` and `protobuf` together: serialization of policies with error in action constraint fails.
 
 ## [4.10.0] - Coming soon
 
@@ -23,7 +22,16 @@ Cedar Language Version: 4.5
 
 ### Added
 
-- Extended `has` operator in JSON policies, maintaining backwards-compatible desugaring of extended `has` in Cedar policies to json (#1889)
+- Extended `has` operator in JSON policies, maintaining backwards-compatible desugaring of extended `has` in Cedar policies to json (#1889).
+
+### Changed
+
+- Explicit failure when using experimental features `tolerant-ast` and `protobuf` together: serialization of policies with error in action constraint fails (#2248, #2247).
+
+### Fixed
+
+- Decoding entities with parents and indirect ancestors in `protobuf` (#2240).
+
 
 ## [4.9.1] - 2026-02-27
 
