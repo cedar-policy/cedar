@@ -477,7 +477,16 @@ pub struct Entity {
     /// We use a `BTreeMap` so that the keys have a deterministic order.
     attrs: BTreeMap<SmolStr, PartialValue>,
 
-    /// Set of indirect ancestors of this `Entity` as UIDs
+    /// Set of indirect ancestors of this `Entity` as UIDs.
+    ///
+    /// We do not expect to explicitly construct `Entity`s with indirect
+    /// ancestors other than through the transitive closure algorithm, so
+    /// `Entity` constructors leave this empty, assuming all ancestors provided
+    /// when constructing an entity are direct.
+    ///
+    /// Use `add_indirect_ancestor` if you do need explicitly indirect
+    /// ancestors. This function will also ensure that `indirect_ancestors` and
+    /// `parents` are disjoint.
     indirect_ancestors: HashSet<EntityUID>,
 
     /// Set of direct ancestors (i.e., parents) as UIDs
@@ -508,7 +517,6 @@ impl Entity {
     pub fn new(
         uid: EntityUID,
         attrs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
-        indirect_ancestors: HashSet<EntityUID>,
         parents: HashSet<EntityUID>,
         tags: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         extensions: &Extensions<'_>,
@@ -536,7 +544,7 @@ impl Entity {
         Ok(Entity {
             uid,
             attrs: evaluated_attrs,
-            indirect_ancestors,
+            indirect_ancestors: HashSet::new(),
             parents,
             tags: evaluated_tags,
         })
@@ -549,14 +557,13 @@ impl Entity {
     pub fn new_with_attr_partial_value(
         uid: EntityUID,
         attrs: impl IntoIterator<Item = (SmolStr, PartialValue)>,
-        indirect_ancestors: HashSet<EntityUID>,
         parents: HashSet<EntityUID>,
         tags: impl IntoIterator<Item = (SmolStr, PartialValue)>,
     ) -> Self {
         Self {
             uid,
             attrs: attrs.into_iter().collect(),
-            indirect_ancestors,
+            indirect_ancestors: HashSet::new(),
             parents,
             tags: tags.into_iter().collect(),
         }

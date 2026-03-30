@@ -206,7 +206,6 @@ impl AccessTrie {
             entity.uid().clone(),
             new_entity,
             Default::default(),
-            Default::default(),
             [], // TODO: entity slicing does not yet support tags
         ))
     }

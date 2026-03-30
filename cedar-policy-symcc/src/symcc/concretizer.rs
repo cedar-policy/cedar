@@ -420,7 +420,6 @@ impl SymEntityData {
                 .clone()
                 .into_iter()
                 .map(|(k, v)| (k, v.into())),
-            HashSet::new(),
             concrete_ancestors,
             tags,
             Extensions::all_available(),

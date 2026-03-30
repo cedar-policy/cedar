@@ -336,6 +336,10 @@ fn merge_entities(e1: Entity, e2: Entity) -> Entity {
         ancestors1, ancestors2,
         "attempting to merge entities with different ancestors!"
     );
+    assert!(
+        ancestors1.is_empty(),
+        "attempting to merge non-empty ancestors"
+    );
     assert_eq!(
         parents1, parents2,
         "attempting to merge entities with different parents!"
@@ -374,7 +378,7 @@ fn merge_entities(e1: Entity, e2: Entity) -> Entity {
         }
     }
 
-    Entity::new_with_attr_partial_value(uid1, attrs1, ancestors1, parents1, [])
+    Entity::new_with_attr_partial_value(uid1, attrs1, parents1, [])
 }
 
 /// Merge two value for corresponding attributes in the slice.

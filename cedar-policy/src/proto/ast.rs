@@ -145,7 +145,6 @@ impl From<models::Entity> for ast::Entity {
         Self::new_with_attr_partial_value(
             ast::EntityUID::from(v.uid.expect("uid field should exist")),
             attrs,
-            HashSet::new(),
             ancestors,
             tags,
         )
@@ -707,7 +706,6 @@ mod test {
         let entity = ast::Entity::new(
             r#"Foo::"bar""#.parse().unwrap(),
             attrs,
-            HashSet::from([parent.clone()]),
             HashSet::new(),
             [],
             Extensions::none(),

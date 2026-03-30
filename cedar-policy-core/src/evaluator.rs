@@ -1257,7 +1257,6 @@ pub(crate) mod test {
             EntityUID::with_eid("entity_with_attrs"),
             attrs.clone(),
             HashSet::new(),
-            HashSet::new(),
             HashMap::new(),
             Extensions::none(),
         )
@@ -1266,7 +1265,6 @@ pub(crate) mod test {
         let tags = HashMap::from([("spoon".into(), RestrictedExpr::val(-121))]);
         let entity_with_tags = Entity::new(
             EntityUID::with_eid("entity_with_tags"),
-            HashMap::new(),
             HashSet::new(),
             HashSet::new(),
             tags.clone(),
@@ -1277,7 +1275,6 @@ pub(crate) mod test {
         let entity_with_tags_and_attrs = Entity::new(
             EntityUID::with_eid("entity_with_tags_and_attrs"),
             attrs,
-            HashSet::new(),
             HashSet::new(),
             tags,
             Extensions::none(),
@@ -2618,7 +2615,6 @@ pub(crate) mod test {
         let entity = Entity::new(
             r#"Foo::"bar""#.parse().unwrap(),
             attrs,
-            HashSet::new(),
             HashSet::new(),
             [],
             Extensions::none(),

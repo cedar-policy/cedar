@@ -1071,7 +1071,6 @@ impl ValidatorSchema {
             Entity::new_with_attr_partial_value(
                 action_id.clone(),
                 [],
-                HashSet::new(),
                 action_ancestors.remove(action_id).unwrap_or_default(),
                 [], // actions cannot have entity tags
             )
@@ -2828,13 +2827,7 @@ pub(crate) mod test {
         let view_photo = actions.entity(&action_uid);
         assert_eq!(
             view_photo.unwrap(),
-            &Entity::new_with_attr_partial_value(
-                action_uid,
-                [],
-                HashSet::new(),
-                HashSet::new(),
-                []
-            )
+            &Entity::new_with_attr_partial_value(action_uid, [], HashSet::new(), [])
         );
     }
 
@@ -2869,7 +2862,6 @@ pub(crate) mod test {
             &Entity::new_with_attr_partial_value(
                 view_photo_uid,
                 [],
-                HashSet::new(),
                 HashSet::from([view_uid, read_uid.clone()]),
                 [],
             )
@@ -2878,7 +2870,7 @@ pub(crate) mod test {
         let read_entity = actions.entity(&read_uid);
         assert_eq!(
             read_entity.unwrap(),
-            &Entity::new_with_attr_partial_value(read_uid, [], HashSet::new(), HashSet::new(), [])
+            &Entity::new_with_attr_partial_value(read_uid, [], HashSet::new(), [])
         );
     }
 

@@ -98,7 +98,6 @@ impl Schema for AllEntitiesNoAttrsSchema {
             action.clone(),
             [],
             HashSet::new(),
-            HashSet::new(),
             [],
         )))
     }

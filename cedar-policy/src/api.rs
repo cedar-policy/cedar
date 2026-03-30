@@ -151,7 +151,6 @@ impl Entity {
         Self(ast::Entity::new_with_attr_partial_value(
             uid.into(),
             [],
-            HashSet::new(),
             parents.into_iter().map(EntityUid::into).collect(),
             [],
         ))
@@ -172,7 +171,6 @@ impl Entity {
         Ok(Self(ast::Entity::new(
             uid.into(),
             attrs.into_iter().map(|(k, v)| (k.into(), v.0)),
-            HashSet::new(),
             parents.into_iter().map(EntityUid::into).collect(),
             tags.into_iter().map(|(k, v)| (k.into(), v.0)),
             Extensions::all_available(),

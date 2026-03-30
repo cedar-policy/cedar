@@ -421,14 +421,7 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
                 })
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        Ok(Entity::new(
-            uid,
-            attrs,
-            HashSet::new(),
-            parents,
-            tags,
-            self.extensions,
-        )?)
+        Ok(Entity::new(uid, attrs, parents, tags, self.extensions)?)
     }
 }
 

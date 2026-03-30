@@ -586,7 +586,6 @@ mod json_parsing_tests {
         assert_deep_eq, extensions::Extensions, test_utils::*, transitive_closure::TcError,
     };
     use cool_asserts::assert_matches;
-    use std::collections::HashSet;
 
     #[test]
     fn simple_json_parse1() {
@@ -1995,7 +1994,6 @@ mod json_parsing_tests {
                     ),
                 ),
             ],
-            HashSet::new(),
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
@@ -2040,7 +2038,6 @@ mod json_parsing_tests {
                 "oops".into(),
                 RestrictedExpr::record([("__entity".into(), RestrictedExpr::val("hi"))]).unwrap(),
             )],
-            HashSet::new(),
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
@@ -2498,7 +2495,6 @@ mod schema_based_parsing_tests {
                 r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partial_value(
                     action.clone(),
                     [(SmolStr::from("foo"), PartialValue::from(34))],
-                    HashSet::new(),
                     HashSet::from([r#"Action::"readOnly""#.parse().expect("valid uid")]),
                     [],
                 ))),
