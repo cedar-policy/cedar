@@ -12423,6 +12423,1230 @@ mod pst_api {
     }
 }
 
+/// Tests in this module mirror `policy_set_tests` but construct policies via PST.
+///
+/// The helpers and merge tests use `PolicySet::from_pst` and `Template::from_pst`
+/// / `Policy::from_pst` to construct everything from PST types rather than parsing
+/// from Cedar text.
+mod policy_set_pst_tests {
+    use super::*;
+    use cool_asserts::assert_matches;
+    use linked_hash_map::LinkedHashMap;
+    use similar_asserts::assert_eq;
+    use std::collections::HashMap;
+
+    fn permit_all(id: impl Into<pst::PolicyID>) -> pst::StaticPolicy {
+        pst::StaticPolicy::try_from(pst::Template::new(
+            id,
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        ))
+        .unwrap()
+    }
+
+    fn principal_slot_template(id: impl Into<pst::PolicyID>) -> pst::Template {
+        pst::Template::new(
+            id,
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Principal)),
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        )
+    }
+
+    fn resource_slot_template(id: impl Into<pst::PolicyID>) -> pst::Template {
+        pst::Template::new(
+            id,
+            pst::Effect::Forbid,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Resource)),
+        )
+    }
+
+    fn pst_set_with_static(id: &str) -> pst::PolicySet {
+        let mut policies = LinkedHashMap::new();
+        policies.insert(pst::PolicyID(id.into()), permit_all(id));
+        pst::PolicySet {
+            templates: LinkedHashMap::new(),
+            policies,
+            template_links: vec![],
+        }
+    }
+
+    fn entities_for_test() -> Entities {
+        let e = r#"[
+            {"uid": {"type":"Test","id":"test"}, "attrs": {}, "parents": []},
+            {"uid": {"type":"Action","id":"a"}, "attrs": {}, "parents": []},
+            {"uid": {"type":"Resource","id":"b"}, "attrs": {}, "parents": []}
+        ]"#;
+        Entities::from_json_str(e, None).unwrap()
+    }
+
+    fn test_request() -> Request {
+        Request::new(
+            EntityUid::from_strs("Test", "test"),
+            EntityUid::from_strs("Action", "a"),
+            EntityUid::from_strs("Resource", "b"),
+            Context::empty(),
+            None,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn new_is_empty() {
+        let ps = PolicySet::from_pst(pst::PolicySet {
+            templates: LinkedHashMap::new(),
+            policies: LinkedHashMap::new(),
+            template_links: vec![],
+        })
+        .unwrap();
+        assert!(ps.is_empty());
+        assert_eq!(ps.num_of_policies(), 0);
+        assert_eq!(ps.num_of_templates(), 0);
+    }
+
+    #[test]
+    fn template_link_lookup() {
+        let mut pset = PolicySet::from_pst(pst_set_with_static("p")).unwrap();
+        let t = Template::from_pst(principal_slot_template("t")).unwrap();
+        pset.add_template(t).unwrap();
+
+        let env: HashMap<SlotId, EntityUid> =
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("t"), PolicyId::new("id"), env.clone())
+            .unwrap();
+
+        assert_eq!(
+            pset.policy(&PolicyId::new("p")).unwrap().template_links(),
+            None
+        );
+        assert_eq!(
+            pset.policy(&PolicyId::new("id")).unwrap().template_links(),
+            Some(env)
+        );
+    }
+
+    #[test]
+    fn link_conflicts() {
+        let mut pset = PolicySet::from_pst(pst_set_with_static("id")).unwrap();
+        let t = Template::from_pst(principal_slot_template("t")).unwrap();
+        pset.add_template(t).unwrap();
+
+        let env: HashMap<SlotId, EntityUid> =
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        let before_link = pset.clone();
+        let r = pset.link(PolicyId::new("t"), PolicyId::new("id"), env);
+        assert_matches!(r, Err(PolicySetError::Linking(_)));
+        assert_eq!(pset, before_link);
+    }
+
+    #[test]
+    fn policyset_add() {
+        let mut pset = PolicySet::from_pst(pst_set_with_static("id")).unwrap();
+        assert!(!pset.is_empty());
+        assert_eq!(pset.num_of_policies(), 1);
+
+        let t = Template::from_pst(principal_slot_template("t")).unwrap();
+        pset.add_template(t).unwrap();
+        assert_eq!(pset.num_of_templates(), 1);
+
+        let env1 = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test1"))]);
+        pset.link(PolicyId::new("t"), PolicyId::new("link"), env1)
+            .unwrap();
+
+        let env2 = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test2"))]);
+        assert_matches!(
+            pset.link(PolicyId::new("t"), PolicyId::new("link"), env2.clone()),
+            Err(PolicySetError::Linking(_))
+        );
+        pset.link(PolicyId::new("t"), PolicyId::new("link2"), env2)
+            .unwrap();
+
+        // Duplicate template id
+        let t2 = Template::from_pst(resource_slot_template("t")).unwrap();
+        pset.add_template(t2)
+            .expect_err("should conflict on template id");
+
+        let t2 = Template::from_pst(resource_slot_template("t2")).unwrap();
+        pset.add_template(t2).unwrap();
+
+        let env3 = HashMap::from([(SlotId::resource(), EntityUid::from_strs("Test", "test3"))]);
+        pset.link(PolicyId::new("t"), PolicyId::new("unique3"), env3.clone())
+            .expect_err("wrong slots for template t");
+        pset.link(PolicyId::new("t2"), PolicyId::new("unique3"), env3)
+            .unwrap();
+    }
+
+    #[test]
+    fn policyset_remove() {
+        let authorizer = Authorizer::new();
+        let request = test_request();
+        let entities = entities_for_test();
+
+        let mut pset = PolicySet::from_pst(pst_set_with_static("id")).unwrap();
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Allow);
+
+        pset.remove_static(PolicyId::new("id")).unwrap();
+        assert!(pset.is_empty());
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Deny);
+
+        let t = Template::from_pst(principal_slot_template("t")).unwrap();
+        pset.add_template(t).unwrap();
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("t"), PolicyId::new("linked"), env)
+            .unwrap();
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Allow);
+
+        assert_matches!(
+            pset.remove_static(PolicyId::new("t")),
+            Err(PolicySetError::PolicyNonexistent(_))
+        );
+
+        pset.unlink(PolicyId::new("linked")).unwrap();
+        assert_matches!(
+            pset.remove_static(PolicyId::new("t")),
+            Err(PolicySetError::PolicyNonexistent(_))
+        );
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Deny);
+
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("t"), PolicyId::new("linked"), env)
+            .unwrap();
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Allow);
+
+        assert_matches!(
+            pset.remove_template(PolicyId::new("t")),
+            Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
+        );
+
+        pset.unlink(PolicyId::new("linked")).unwrap();
+        pset.remove_template(PolicyId::new("t")).unwrap();
+        assert!(pset.is_empty());
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Deny);
+    }
+
+    #[test]
+    fn pset_removal_prop_test_1() {
+        let t = Template::from_pst(principal_slot_template("policy0")).unwrap();
+        let mut pset = PolicySet::new();
+        pset.add_template(t).unwrap();
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("policy0"), PolicyId::new("policy3"), env)
+            .unwrap();
+
+        let t2 = Template::from_pst(principal_slot_template("policy3")).unwrap();
+        assert_matches!(
+            pset.add_template(t2),
+            Err(PolicySetError::AlreadyDefined(_))
+        );
+        assert_matches!(
+            pset.remove_static(PolicyId::new("policy3")),
+            Err(PolicySetError::PolicyNonexistent(_))
+        );
+        assert_matches!(
+            pset.remove_template(PolicyId::new("policy3")),
+            Err(PolicySetError::TemplateNonexistent(_))
+        );
+    }
+
+    #[test]
+    fn pset_requests() {
+        let t = Template::from_pst(principal_slot_template("template")).unwrap();
+        let sp = Policy::from_pst(permit_all("static").into()).unwrap();
+        let pid_static = PolicyId::new("static");
+        let pid_linked = PolicyId::new("linked");
+        let pid_linked2 = PolicyId::new("linked2");
+        let id_template = PolicyId::new("template");
+        // Policy set: 1 template, 1 static policy, two links
+        let mut pset = PolicySet::new();
+        pset.add_template(t).unwrap();
+        pset.add(sp).unwrap();
+        pset.link(
+            id_template.clone(),
+            pid_linked.clone(),
+            HashMap::from([(
+                SlotId::principal(),
+                EntityUid::from_strs("Concierge", "test"),
+            )]),
+        )
+        .unwrap();
+        pset.link(
+            id_template.clone(),
+            pid_linked2.clone(),
+            HashMap::from([(
+                SlotId::principal(),
+                EntityUid::from_strs("Concierge", "test2"),
+            )]),
+        )
+        .unwrap();
+
+        assert_eq!(pset.num_of_templates(), 1);
+        assert_eq!(pset.num_of_policies(), 3);
+        assert_eq!(pset.policies().filter(|p| p.is_static()).count(), 1);
+        assert_eq!(
+            pset.template(&id_template).unwrap().id(),
+            &"template".parse().unwrap()
+        );
+        for id in [&pid_static, &pid_linked, &pid_linked2] {
+            assert_eq!(pset.policy(id).unwrap().id(), id);
+        }
+    }
+
+    #[test]
+    fn link_static_policy_errors_expected_template() {
+        let mut pset = PolicySet::new();
+        pset.add(Policy::from_pst(permit_all("static").into()).unwrap())
+            .unwrap();
+
+        let before_link = pset.clone();
+        let result = pset.link(
+            PolicyId::new("static"),
+            PolicyId::new("linked"),
+            HashMap::new(),
+        );
+        assert_matches!(result, Err(PolicySetError::ExpectedTemplate(_)));
+        assert_eq!(pset, before_link);
+    }
+
+    #[test]
+    fn link_linked_policy_errors_expected_template() {
+        let t = Template::from_pst(principal_slot_template("template")).unwrap();
+        let mut pset = PolicySet::new();
+        let id_linked = PolicyId::new("linked");
+        let id_linked2 = PolicyId::new("linked2");
+        let id_template = PolicyId::new("template");
+        pset.add_template(t).unwrap();
+        pset.link(
+            id_template,
+            id_linked.clone(),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
+        )
+        .unwrap();
+
+        let before_link = pset.clone();
+        let result = pset.link(id_linked, id_linked2, HashMap::new());
+        assert_matches!(result, Err(PolicySetError::ExpectedTemplate(_)));
+        assert_eq!(pset, before_link);
+    }
+
+    #[test]
+    fn unlink_linked_policy() {
+        let t = Template::from_pst(principal_slot_template("template")).unwrap();
+        let mut pset = PolicySet::new();
+        pset.add_template(t).unwrap();
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("linked"),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
+        )
+        .unwrap();
+
+        let authorizer = Authorizer::new();
+        let request = test_request();
+        let entities = entities_for_test();
+
+        assert_eq!(
+            authorizer
+                .is_authorized(&request, &pset, &entities)
+                .decision(),
+            Decision::Allow
+        );
+
+        pset.unlink(PolicyId::new("linked")).unwrap();
+        assert_eq!(
+            authorizer
+                .is_authorized(&request, &pset, &entities)
+                .decision(),
+            Decision::Deny
+        );
+
+        assert_matches!(
+            pset.unlink(PolicyId::new("linked")),
+            Err(PolicySetError::LinkNonexistent(_))
+        );
+    }
+
+    #[test]
+    fn get_linked_policy() {
+        let t = Template::from_pst(principal_slot_template("template")).unwrap();
+        let mut pset = PolicySet::new();
+        pset.add_template(t).unwrap();
+
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("linked"),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
+        )
+        .unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            1
+        );
+
+        pset.unlink(PolicyId::new("linked")).unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            0
+        );
+        assert_matches!(
+            pset.unlink(PolicyId::new("linked")),
+            Err(PolicySetError::LinkNonexistent(_))
+        );
+
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("linked"),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
+        )
+        .unwrap();
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("linked2"),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
+        )
+        .unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            2
+        );
+
+        // Can't re-add template
+        let t2 = Template::from_pst(principal_slot_template("template")).unwrap();
+        assert_matches!(
+            pset.add_template(t2),
+            Err(PolicySetError::AlreadyDefined(_))
+        );
+
+        // Add another template
+        let t3 = Template::from_pst(principal_slot_template("template2")).unwrap();
+        pset.add_template(t3).unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template2"))
+                .unwrap()
+                .count(),
+            0
+        );
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            2
+        );
+
+        // Can't remove template with active links
+        assert_matches!(
+            pset.remove_template(PolicyId::new("template")),
+            Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
+        );
+
+        // Can't add policy named "template" or "linked"
+        let p = Policy::from_pst(permit_all("template").into()).unwrap();
+        assert_matches!(pset.add(p), Err(PolicySetError::AlreadyDefined(_)));
+        let p = Policy::from_pst(permit_all("linked").into()).unwrap();
+        assert_matches!(pset.add(p), Err(PolicySetError::AlreadyDefined(_)));
+
+        // Can add and remove "policy"
+        let p = Policy::from_pst(permit_all("policy").into()).unwrap();
+        pset.add(p).unwrap();
+        pset.remove_static(PolicyId::new("policy")).unwrap();
+
+        // Cannot remove linked or template as static
+        assert_matches!(
+            pset.remove_static(PolicyId::new("linked")),
+            Err(PolicySetError::PolicyNonexistent(_))
+        );
+        assert_matches!(
+            pset.remove_static(PolicyId::new("template")),
+            Err(PolicySetError::PolicyNonexistent(_))
+        );
+
+        // Unlink, remove
+        pset.unlink(PolicyId::new("linked")).unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            1
+        );
+        pset.remove_template(PolicyId::new("template2")).unwrap();
+        assert_matches!(
+            pset.remove_template(PolicyId::new("template")),
+            Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
+        );
+        pset.unlink(PolicyId::new("linked2")).unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            0
+        );
+        pset.remove_template(PolicyId::new("template")).unwrap();
+        assert!(pset.get_linked_policies(PolicyId::new("template")).is_err());
+    }
+
+    #[test]
+    fn pset_add_conflict() {
+        let mut pset = PolicySet::new();
+        let t = Template::from_pst(principal_slot_template("policy0")).unwrap();
+        pset.add_template(t).unwrap();
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("policy0"), PolicyId::new("policy1"), env)
+            .unwrap();
+
+        // template id; static
+        let p = Policy::from_pst(permit_all("policy0").into()).unwrap();
+        assert_matches!(pset.add(p), Err(PolicySetError::AlreadyDefined(_)));
+        // link id; static
+        let p = Policy::from_pst(permit_all("policy1").into()).unwrap();
+        assert_matches!(pset.add(p), Err(PolicySetError::AlreadyDefined(_)));
+        // static; static
+        let p = Policy::from_pst(permit_all("policy2").into()).unwrap();
+        pset.add(p.clone()).unwrap();
+        assert_matches!(pset.add(p), Err(PolicySetError::AlreadyDefined(_)));
+    }
+
+    #[test]
+    fn pset_add_template_conflict() {
+        let mut pset = PolicySet::new();
+        let t = Template::from_pst(principal_slot_template("policy0")).unwrap();
+        pset.add_template(t).unwrap();
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("policy0"), PolicyId::new("policy3"), env)
+            .unwrap();
+
+        // link; template
+        let t = Template::from_pst(principal_slot_template("policy3")).unwrap();
+        assert_matches!(pset.add_template(t), Err(PolicySetError::AlreadyDefined(_)));
+        // template; template
+        let t = Template::from_pst(principal_slot_template("policy0")).unwrap();
+        assert_matches!(pset.add_template(t), Err(PolicySetError::AlreadyDefined(_)));
+        // static; template
+        let p = Policy::from_pst(permit_all("policy1").into()).unwrap();
+        pset.add(p).unwrap();
+        let t = Template::from_pst(principal_slot_template("policy1")).unwrap();
+        assert_matches!(pset.add_template(t), Err(PolicySetError::AlreadyDefined(_)));
+    }
+
+    #[test]
+    fn pset_link_conflict() {
+        let mut pset = PolicySet::new();
+        let t = Template::from_pst(principal_slot_template("policy0")).unwrap();
+        pset.add_template(t).unwrap();
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+
+        // link; link
+        pset.link(
+            PolicyId::new("policy0"),
+            PolicyId::new("policy3"),
+            env.clone(),
+        )
+        .unwrap();
+        assert_matches!(
+            pset.link(
+                PolicyId::new("policy0"),
+                PolicyId::new("policy3"),
+                env.clone()
+            ),
+            Err(PolicySetError::Linking(_))
+        );
+        // template; link
+        assert_matches!(
+            pset.link(
+                PolicyId::new("policy0"),
+                PolicyId::new("policy0"),
+                env.clone()
+            ),
+            Err(PolicySetError::Linking(_))
+        );
+        // static; link
+        let p = Policy::from_pst(permit_all("policy1").into()).unwrap();
+        pset.add(p).unwrap();
+        assert_matches!(
+            pset.link(PolicyId::new("policy0"), PolicyId::new("policy1"), env),
+            Err(PolicySetError::Linking(_))
+        );
+    }
+
+    // --- Merge tests ---
+
+    #[test]
+    fn merge_empty_into_empty() {
+        let empty = || pst::PolicySet {
+            templates: LinkedHashMap::new(),
+            policies: LinkedHashMap::new(),
+            template_links: vec![],
+        };
+        let mut ps0 = PolicySet::from_pst(empty()).unwrap();
+        let ps1 = PolicySet::from_pst(empty()).unwrap();
+        let names = ps0.merge(&ps1, false).unwrap();
+        assert_eq!(names, HashMap::new());
+        assert!(ps0.is_empty());
+    }
+
+    #[test]
+    fn merge_policy_into_empty() {
+        let empty = pst::PolicySet {
+            templates: LinkedHashMap::new(),
+            policies: LinkedHashMap::new(),
+            template_links: vec![],
+        };
+        let mut ps0 = PolicySet::from_pst(empty).unwrap();
+        let p = Policy::from_pst(permit_all("policy0").into()).unwrap();
+        let ps1 = PolicySet::from_policies([p.clone()]).unwrap();
+        let names = ps0.merge(&ps1, false).unwrap();
+        assert_eq!(names, HashMap::new());
+        assert!(!ps0.is_empty());
+        assert_eq!(ps0, ps1);
+    }
+
+    #[test]
+    fn merge_empty_into_policy() {
+        let p = Policy::from_pst(permit_all("policy0").into()).unwrap();
+        let mut ps0 = PolicySet::from_policies([p]).unwrap();
+        let ps0_copy = ps0.clone();
+        let ps1 = PolicySet::new();
+        let names = ps0.merge(&ps1, false).unwrap();
+        assert_eq!(names, HashMap::new());
+        assert_eq!(ps0, ps0_copy);
+    }
+
+    #[test]
+    fn merge_policies_disjoint() {
+        let pid0 = PolicyId::new("0");
+        let pid1 = PolicyId::new("1");
+        let p0 = Policy::from_pst(permit_all(pid0).into()).unwrap();
+        let forbid_tmpl = pst::Template::new(
+            pid1,
+            pst::Effect::Forbid,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        );
+        let p1 =
+            Policy::from_pst(pst::StaticPolicy::try_from(forbid_tmpl).unwrap().into()).unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p0.clone()]).unwrap();
+        let ps1 = PolicySet::from_policies([p1.clone()]).unwrap();
+        let names = ps0.merge(&ps1, false).unwrap();
+        assert_eq!(names, HashMap::new());
+        let expected = PolicySet::from_policies([p0, p1]).unwrap();
+        assert_eq!(ps0, expected);
+    }
+
+    #[test]
+    fn merge_policies_collision_error() {
+        let colliding_pid = PolicyId::new("0");
+        let p0 = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let p1 = Policy::from_pst(
+            pst::StaticPolicy::try_from(pst::Template::new(
+                colliding_pid.clone(),
+                pst::Effect::Forbid,
+                pst::PrincipalConstraint::Any,
+                pst::ActionConstraint::Any,
+                pst::ResourceConstraint::Any,
+            ))
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p0]).unwrap();
+        let ps1 = PolicySet::from_policies([p1]).unwrap();
+        assert_matches!(
+            ps0.merge(&ps1, false),
+            Err(PolicySetError::AlreadyDefined(e)) => {
+                assert_eq!(e.duplicate_id(), &colliding_pid)
+            }
+        );
+    }
+
+    #[test]
+    fn merge_policies_collision_rename() {
+        let colliding_pid = PolicyId::new("0");
+        let name_after_merge = PolicyId::new("policy0");
+        let p0 = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let p1 = Policy::from_pst(
+            pst::StaticPolicy::try_from(pst::Template::new(
+                colliding_pid.clone(),
+                pst::Effect::Forbid,
+                pst::PrincipalConstraint::Any,
+                pst::ActionConstraint::Any,
+                pst::ResourceConstraint::Any,
+            ))
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p0.clone()]).unwrap();
+        let ps1 = PolicySet::from_policies([p1.clone()]).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid.clone(), name_after_merge.clone())])
+        );
+        assert_eq!(ps0.policy(&colliding_pid), Some(&p0));
+        let p1_rename = p1.new_id(name_after_merge.clone());
+        assert_eq!(ps0.policy(&name_after_merge), Some(&p1_rename));
+    }
+
+    #[test]
+    fn merge_policies_collision_eq_policies() {
+        let colliding_pid = PolicyId::new("0");
+        let p0 = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let mut ps0 = PolicySet::from_policies([p0.clone()]).unwrap();
+        let ps1 = PolicySet::from_policies([p0.clone()]).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(names, HashMap::new());
+        let expected = PolicySet::from_policies([p0]).unwrap();
+        assert_eq!(ps0, expected);
+    }
+
+    #[test]
+    fn merge_policies_templates_no_collision() {
+        let template0_pid = PolicyId::new("0");
+        let template1_pid = PolicyId::new("2");
+        let link_pid = PolicyId::new("1");
+        let t0 = Template::from_pst(principal_slot_template(template0_pid.clone())).unwrap();
+        let t1 = Template::from_pst(resource_slot_template(template1_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            template1_pid,
+            link_pid.clone(),
+            HashMap::from([(SlotId::resource(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(names, HashMap::new());
+
+        let original_linked = ps1.policy(&link_pid).unwrap();
+        let merged_linked = ps0.policy(&link_pid).unwrap();
+        assert_eq!(original_linked, merged_linked);
+    }
+
+    #[test]
+    fn merge_policies_templates_collision() {
+        let colliding_pid = PolicyId::new("0");
+        let link_pid = PolicyId::new("1");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+        let t1 = Template::from_pst(resource_slot_template(colliding_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            colliding_pid.clone(),
+            link_pid.clone(),
+            HashMap::from([(SlotId::resource(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid, name_after_merge.clone())])
+        );
+
+        let merged_link = ps0.policy(&link_pid).unwrap();
+        assert_eq!(merged_link.template_id(), Some(&name_after_merge));
+    }
+
+    #[test]
+    fn merge_policies_policy_template_collision() {
+        let colliding_pid = PolicyId::new("0");
+        let name_after_merge = PolicyId::new("policy0");
+        let p0 = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let t1 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p0.clone()]).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid.clone(), name_after_merge.clone())])
+        );
+        assert_eq!(ps0.policy(&colliding_pid), Some(&p0));
+        assert!(ps0.template(&name_after_merge).is_some());
+    }
+
+    #[test]
+    fn merge_policies_link_collision() {
+        let template0_pid = PolicyId::new("0");
+        let template1_pid = PolicyId::new("1");
+        let colliding_link_pid = PolicyId::new("2");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(template0_pid.clone())).unwrap();
+        let t1 = Template::from_pst(resource_slot_template(template1_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            template0_pid,
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            template1_pid.clone(),
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::resource(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_link_pid, name_after_merge.clone())])
+        );
+
+        let merged_linked = ps0.policy(&name_after_merge).unwrap();
+        assert_eq!(merged_linked.template_id(), Some(&template1_pid));
+    }
+
+    #[test]
+    fn merge_policies_template_and_link_collision() {
+        let colliding_template_pid = PolicyId::new("0");
+        let colliding_link_pid = PolicyId::new("2");
+        let template_name_after_merge = PolicyId::new("policy0");
+        let link_name_after_merge = PolicyId::new("policy1");
+        let t0 =
+            Template::from_pst(principal_slot_template(colliding_template_pid.clone())).unwrap();
+        let t1 = Template::from_pst(pst::Template::new(
+            colliding_template_pid.clone(),
+            pst::Effect::Forbid,
+            pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Principal)),
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        ))
+        .unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            colliding_template_pid.clone(),
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            colliding_template_pid.clone(),
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([
+                (colliding_template_pid, template_name_after_merge.clone()),
+                (colliding_link_pid, link_name_after_merge.clone()),
+            ])
+        );
+
+        let merged_linked = ps0.policy(&link_name_after_merge).unwrap();
+        assert_eq!(
+            merged_linked.template_id(),
+            Some(&template_name_after_merge)
+        );
+    }
+
+    #[test]
+    fn merge_policies_eq_templates_different_links() {
+        let shared_template_pid = PolicyId::new("0");
+        let link0_pid = PolicyId::new("1");
+        let link1_pid = PolicyId::new("2");
+        let t0 = Template::from_pst(principal_slot_template(shared_template_pid.clone())).unwrap();
+        let t0_dup =
+            Template::from_pst(principal_slot_template(shared_template_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            shared_template_pid.clone(),
+            link0_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t0_dup).unwrap();
+        ps1.link(
+            shared_template_pid,
+            link1_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(names, HashMap::new());
+        assert!(ps0.policy(&link0_pid).is_some());
+        assert!(ps0.policy(&link1_pid).is_some());
+    }
+
+    #[test]
+    fn merge_policies_eq_templates_link_collision() {
+        let shared_template_pid = PolicyId::new("0");
+        let colliding_link_pid = PolicyId::new("1");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(shared_template_pid.clone())).unwrap();
+        let t0_dup =
+            Template::from_pst(principal_slot_template(shared_template_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            shared_template_pid.clone(),
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t0_dup).unwrap();
+        ps1.link(
+            shared_template_pid,
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_link_pid, name_after_merge)])
+        );
+    }
+
+    #[test]
+    fn merge_policies_template_collides_with_link() {
+        let template0_pid = PolicyId::new("0");
+        let colliding_pid = PolicyId::new("1");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(template0_pid.clone())).unwrap();
+        let t1 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            template0_pid,
+            colliding_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid, name_after_merge.clone())])
+        );
+        assert!(ps0.template(&name_after_merge).is_some());
+    }
+
+    #[test]
+    fn merge_policies_link_collides_with_template() {
+        let original_pid = PolicyId::new("0");
+        let colliding_pid = PolicyId::new("1");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+        let t1 = Template::from_pst(principal_slot_template(original_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            original_pid.clone(),
+            colliding_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid.clone(), name_after_merge.clone())])
+        );
+        assert!(ps0.policy(&name_after_merge).is_some());
+    }
+
+    /// The generated fresh name "policy0" is already taken by an existing
+    /// policy in ps0, so the renaming must skip to "policy1".
+    #[test]
+    fn merge_policies_fresh_id_skips_existing() {
+        let colliding_pid = PolicyId::new("0");
+        let blocker_pid = PolicyId::new("policy0");
+        let expected_fresh_pid = PolicyId::new("policy1");
+        let p_colliding = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let p_blocker = Policy::from_pst(
+            pst::StaticPolicy::try_from(pst::Template::new(
+                blocker_pid.clone(),
+                pst::Effect::Forbid,
+                pst::PrincipalConstraint::Any,
+                pst::ActionConstraint::Any,
+                pst::ResourceConstraint::Any,
+            ))
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+        let p_other = Policy::from_pst(
+            pst::StaticPolicy::try_from(pst::Template::new(
+                colliding_pid.clone(),
+                pst::Effect::Forbid,
+                pst::PrincipalConstraint::Any,
+                pst::ActionConstraint::Any,
+                pst::ResourceConstraint::Any,
+            ))
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p_colliding.clone(), p_blocker.clone()]).unwrap();
+        let ps1 = PolicySet::from_policies([p_other]).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid, expected_fresh_pid.clone())])
+        );
+        assert!(ps0.policy(&expected_fresh_pid).is_some());
+        assert!(ps0.policy(&blocker_pid).is_some());
+    }
+
+    /// Both sets have the same template and the same link (same slot values).
+    /// Everything should be deduped with no renames.
+    #[test]
+    fn merge_policies_eq_templates_eq_links() {
+        let template_pid = PolicyId::new("0");
+        let link_pid = PolicyId::new("1");
+        let t0 = Template::from_pst(principal_slot_template(template_pid.clone())).unwrap();
+        let t0_dup = Template::from_pst(principal_slot_template(template_pid.clone())).unwrap();
+        let env = HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]);
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(template_pid.clone(), link_pid.clone(), env.clone())
+            .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t0_dup).unwrap();
+        ps1.link(template_pid, link_pid.clone(), env).unwrap();
+
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(names, HashMap::new());
+        assert!(ps0.policy(&link_pid).is_some());
+    }
+
+    /// Three collisions at once force the fresh-ID generator to produce
+    /// policy0, policy1, and policy2.
+    #[test]
+    fn merge_policies_triple_collision() {
+        let pid_a = PolicyId::new("a");
+        let pid_b = PolicyId::new("b");
+        let pid_c = PolicyId::new("c");
+        let p0a = Policy::from_pst(permit_all(pid_a.clone()).into()).unwrap();
+        let p0b = Policy::from_pst(permit_all(pid_b.clone()).into()).unwrap();
+        let p0c = Policy::from_pst(permit_all(pid_c.clone()).into()).unwrap();
+        // Build ps1 with the same IDs but different effects so they collide
+        let make_forbid = |id: PolicyId| {
+            Policy::from_pst(
+                pst::StaticPolicy::try_from(pst::Template::new(
+                    id,
+                    pst::Effect::Forbid,
+                    pst::PrincipalConstraint::Any,
+                    pst::ActionConstraint::Any,
+                    pst::ResourceConstraint::Any,
+                ))
+                .unwrap()
+                .into(),
+            )
+            .unwrap()
+        };
+        let p1a = make_forbid(pid_a.clone());
+        let p1b = make_forbid(pid_b.clone());
+        let p1c = make_forbid(pid_c.clone());
+
+        let mut ps0 = PolicySet::from_policies([p0a, p0b, p0c]).unwrap();
+        let ps1 = PolicySet::from_policies([p1a, p1b, p1c]).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(names.len(), 3);
+        // All three original IDs were renamed
+        assert!(names.contains_key(&pid_a));
+        assert!(names.contains_key(&pid_b));
+        assert!(names.contains_key(&pid_c));
+        // The fresh names are all distinct
+        let fresh: HashSet<_> = names.values().collect();
+        assert_eq!(fresh.len(), 3);
+    }
+
+    /// After merging a renamed template, we can still link against it
+    /// using its new name.
+    #[test]
+    fn merge_policies_link_against_renamed_template() {
+        let colliding_pid = PolicyId::new("0");
+        let name_after_merge = PolicyId::new("policy0");
+        // ps0 has a principal-slot template "0"
+        let t0 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+        // ps1 has a different resource-slot template also named "0"
+        let t1 = Template::from_pst(resource_slot_template(colliding_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid, name_after_merge.clone())])
+        );
+
+        // The renamed template should be linkable
+        let link_pid = PolicyId::new("new_link");
+        ps0.link(
+            name_after_merge,
+            link_pid.clone(),
+            HashMap::from([(SlotId::resource(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        assert!(ps0.policy(&link_pid).is_some());
+    }
+
+    /// After merging with a rename, `to_pst()` should produce a PST where
+    /// the renamed static policy carries its new ID, not the old one.
+    /// This is a PST-specific concern because the lossless representation
+    /// is cloned from `other` (which still has the old ID).
+    #[test]
+    fn merge_pst_roundtrip_renamed_static_policy() {
+        let colliding_pid = PolicyId::new("0");
+        let name_after_merge = PolicyId::new("policy0");
+        let p0 = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let p1 = Policy::from_pst(
+            pst::StaticPolicy::try_from(pst::Template::new(
+                colliding_pid.clone(),
+                pst::Effect::Forbid,
+                pst::PrincipalConstraint::Any,
+                pst::ActionConstraint::Any,
+                pst::ResourceConstraint::Any,
+            ))
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p0]).unwrap();
+        let ps1 = PolicySet::from_policies([p1]).unwrap();
+        ps0.merge(&ps1, true).unwrap();
+
+        let pst_set = ps0.to_pst().unwrap();
+        // The renamed policy should appear under its new ID in the PST
+        assert!(pst_set
+            .policies
+            .contains_key(&name_after_merge.clone().into()));
+        // And the PST's internal ID should also be the new one
+        let renamed_pst = &pst_set.policies[&name_after_merge.clone().into()];
+        assert_eq!(PolicyId::from(renamed_pst.id().clone()), name_after_merge);
+    }
+
+    /// After merging with a rename, `to_pst()` should produce a PST where
+    /// the renamed template carries its new ID. Verify the full round-trip:
+    /// `from_pst(to_pst())` should yield an equivalent PolicySet.
+    #[test]
+    fn merge_pst_roundtrip_renamed_template() {
+        let colliding_pid = PolicyId::new("0");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+        let t1 = Template::from_pst(resource_slot_template(colliding_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps0.merge(&ps1, true).unwrap();
+
+        let pst_set = ps0.to_pst().unwrap();
+        // The renamed template should appear under its new ID
+        assert!(pst_set
+            .templates
+            .contains_key(&name_after_merge.clone().into()));
+        // And its internal ID should match
+        let renamed_tmpl = &pst_set.templates[&name_after_merge.clone().into()];
+        assert_eq!(PolicyId::from(renamed_tmpl.id.clone()), name_after_merge);
+
+        // Full round-trip: from_pst(to_pst()) should be equivalent
+        let roundtripped = PolicySet::from_pst(pst_set).unwrap();
+        assert_eq!(ps0, roundtripped);
+    }
+
+    /// After merging a template with a link that both get renamed,
+    /// the PST round-trip should preserve the link's reference to
+    /// the renamed template.
+    #[test]
+    fn merge_pst_roundtrip_renamed_template_and_link() {
+        let colliding_template_pid = PolicyId::new("0");
+        let colliding_link_pid = PolicyId::new("2");
+        let t0 =
+            Template::from_pst(principal_slot_template(colliding_template_pid.clone())).unwrap();
+        let t1 = Template::from_pst(pst::Template::new(
+            colliding_template_pid.clone(),
+            pst::Effect::Forbid,
+            pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Principal)),
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        ))
+        .unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            colliding_template_pid.clone(),
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            colliding_template_pid,
+            colliding_link_pid,
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        ps0.merge(&ps1, true).unwrap();
+
+        let pst_set = ps0.to_pst().unwrap();
+        // Round-trip should produce an equivalent PolicySet
+        let roundtripped = PolicySet::from_pst(pst_set).unwrap();
+        assert_eq!(ps0, roundtripped);
+    }
+}
+
 #[cfg(feature = "tolerant-ast")]
 mod tolerant_ast_tests {
     use super::*;
