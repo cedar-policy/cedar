@@ -44,6 +44,7 @@ impl TryFrom<Policy> for ast::Policy {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<StaticPolicy> for ast::Policy {
     type Error = PstConstructionError;
 
@@ -56,6 +57,7 @@ impl TryFrom<StaticPolicy> for ast::Policy {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<LinkedPolicy> for ast::Policy {
     type Error = PstConstructionError;
 
@@ -88,9 +90,7 @@ impl TryFrom<Template> for ast::Template {
                 Clause::When(expr) => Arc::unwrap_or_clone(expr).into(),
                 Clause::Unless(expr) => builder.clone().not(Arc::unwrap_or_clone(expr).into()),
             })
-            .rev()
-            .collect::<Vec<ast::Expr>>()
-            .into_iter();
+            .rev();
 
         let conditions = conds_rev_iter.next().map(|last_expr| {
             conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc))
@@ -212,10 +212,9 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
         match constraint {
             ActionConstraint::Any => Ok(ast::ActionConstraint::any()),
             ActionConstraint::Eq(uid) => Ok(ast::ActionConstraint::is_eq(uid.into())),
-            ActionConstraint::In(uids) => {
-                let ast_uids: Vec<_> = uids.into_iter().map(ast::EntityUID::from).collect();
-                Ok(ast::ActionConstraint::is_in(ast_uids))
-            }
+            ActionConstraint::In(uids) => Ok(ast::ActionConstraint::is_in(
+                uids.into_iter().map(ast::EntityUID::from),
+            )),
         }
     }
 }
@@ -258,7 +257,7 @@ impl Expr {
                 let inner = Arc::unwrap_or_clone(expr).into_expr::<B>();
                 // Each variant is matched explicitly so the compiler enforces
                 // that new variants are handled. Extension-function variants
-                // mirror UnaryOp::to_name() but avoid the Option indirection.
+                // mirror UnaryOp::to_name().
                 // This part of the conversion is infallible.
                 match op {
                     UnaryOp::Not => builder.not(inner),
@@ -373,8 +372,7 @@ impl Expr {
                     BinaryOp::GetTag => builder.get_tag(left_ast, right_ast),
                     BinaryOp::HasTag => builder.has_tag(left_ast, right_ast),
                     // Extension-function variants: each maps directly to its
-                    // extension name, mirroring BinaryOp::to_name() but without
-                    // the Option indirection.
+                    // extension name, mirroring BinaryOp::to_name()
                     BinaryOp::IsInRange => builder
                         .call_extension_fn(
                             extensions::ipaddr::names::IS_IN_RANGE.clone(),
@@ -511,7 +509,6 @@ impl From<ast::EntityType> for EntityType {
     }
 }
 
-/// Infallible: `pst::Name` components are already validated.
 #[doc(hidden)]
 impl From<EntityType> for ast::EntityType {
     fn from(et: EntityType) -> Self {
@@ -832,7 +829,30 @@ mod tests {
 
     #[test]
     fn test_unary_op_roundtrips() {
-        let cases = ["!true", "-42", "[].isEmpty()"];
+        let cases = [
+            // Built-in unary operators
+            "!true",
+            "-42",
+            "[].isEmpty()",
+            // Extension constructors
+            r#"decimal("1.23")"#,
+            r#"ip("10.0.0.1")"#,
+            r#"datetime("2024-01-01")"#,
+            r#"duration("1h30m")"#,
+            // IP extension methods
+            r#"ip("10.0.0.1").isIpv4()"#,
+            r#"ip("::1").isIpv6()"#,
+            r#"ip("127.0.0.1").isLoopback()"#,
+            r#"ip("224.0.0.1").isMulticast()"#,
+            // Datetime extension methods
+            r#"datetime("2024-01-01").toDate()"#,
+            r#"datetime("2024-01-01T12:00:00Z").toTime()"#,
+            r#"duration("1h30m").toMilliseconds()"#,
+            r#"duration("1h30m").toSeconds()"#,
+            r#"duration("1h30m").toMinutes()"#,
+            r#"duration("1h30m").toHours()"#,
+            r#"duration("30d").toDays()"#,
+        ];
 
         for expr_str in cases {
             let expr = parse_expr(expr_str);
@@ -862,6 +882,14 @@ mod tests {
             r#"[1, 2].containsAny([2, 3])"#,
             r#"User::"alice".getTag("role")"#,
             r#"User::"alice".hasTag("role")"#,
+            // Extension binary operators
+            r#"ip("10.0.0.1").isInRange(ip("10.0.0.0/24"))"#,
+            r#"datetime("2024-01-01").offset(duration("1d"))"#,
+            r#"datetime("2024-01-02").durationSince(datetime("2024-01-01"))"#,
+            r#"decimal("1.23").lessThan(decimal("4.56"))"#,
+            r#"decimal("1.23").lessThanOrEqual(decimal("4.56"))"#,
+            r#"decimal("4.56").greaterThan(decimal("1.23"))"#,
+            r#"decimal("4.56").greaterThanOrEqual(decimal("1.23"))"#,
         ];
 
         for expr_str in cases {
