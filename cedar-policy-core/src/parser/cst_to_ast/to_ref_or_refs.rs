@@ -493,13 +493,14 @@ mod test {
     use crate::parser::cst_to_ast::TolerantAstSetting;
     use crate::parser::Loc;
     use crate::parser::Node;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn to_ref_or_refs_tolerant_ast() {
         let n = test_primary_name_node();
         let result =
             n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
-        assert!(matches!(result.unwrap().0, EntityUID::Error));
+        assert_matches!(result.unwrap().0, EntityUID::Error);
 
         let n = test_primary_literal_node();
         let result =
@@ -514,17 +515,17 @@ mod test {
         let n = test_primary_expr_error_node();
         let result =
             n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
-        assert!(matches!(result.unwrap().0, EntityUID::Error));
+        assert_matches!(result.unwrap().0, EntityUID::Error);
 
         let n = test_primary_expr_node();
         let result =
             n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
-        assert!(matches!(result.unwrap().0, EntityUID::EntityUID(_)));
+        assert_matches!(result.unwrap().0, EntityUID::EntityUID(_));
 
         let n = test_primary_ref_node();
         let result =
             n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
-        assert!(matches!(result.unwrap().0, EntityUID::EntityUID(_)));
+        assert_matches!(result.unwrap().0, EntityUID::EntityUID(_));
 
         let n = test_primary_elist_node();
         let result =

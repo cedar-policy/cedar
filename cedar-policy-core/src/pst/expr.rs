@@ -1190,7 +1190,7 @@ impl std::fmt::Display for Expr {
 )]
 #[cfg(test)]
 mod tests {
-    use cool_asserts::assertion_failure;
+    use cool_asserts::{assert_matches, assertion_failure};
 
     use super::*;
     use std::str::FromStr;
@@ -1255,7 +1255,7 @@ mod tests {
         ];
 
         let result = Expr::from_function_ast_name_and_args(&name, args);
-        assert!(matches!(result, Err(PstConstructionError::WrongArity(..))));
+        assert_matches!(result, Err(PstConstructionError::WrongArity(..)));
     }
 
     #[test]
@@ -1346,13 +1346,13 @@ mod tests {
     fn test_builder_additional_methods() {
         // Test unknown
         let expr = PstBuilder::new().unknown(ast::Unknown::new_untyped("test"));
-        assert!(matches!(expr, Expr::Unknown { .. }));
+        assert_matches!(expr, Expr::Unknown { .. });
 
         // Test like
         let base = PstBuilder::new().val("test");
         let pattern = ast::Pattern::from(vec![ast::PatternElem::Char('a')]);
         let expr = PstBuilder::new().like(base, pattern);
-        assert!(matches!(expr, Expr::Like { .. }));
+        assert_matches!(expr, Expr::Like { .. });
 
         // Test is_in_entity_type
         let base = PstBuilder::new().var(ast::Var::Principal);

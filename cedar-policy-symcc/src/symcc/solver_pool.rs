@@ -45,7 +45,7 @@
 use super::smtlib_script::SmtLibScript;
 use super::solver::{Decision, DecisionWithModel, LocalSolver, Solver, SolverError};
 use miette::Diagnostic;
-use std::io::{self, ErrorKind};
+use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -79,7 +79,7 @@ struct FailedWriter;
 
 impl FailedWriter {
     fn error() -> io::Error {
-        io::Error::new(ErrorKind::Other, SolverError::SolverMarkedFailed)
+        io::Error::other(SolverError::SolverMarkedFailed)
     }
 }
 
