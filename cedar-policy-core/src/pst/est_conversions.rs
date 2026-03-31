@@ -37,7 +37,9 @@ use std::sync::Arc;
 /// and error handling.
 fn parse_entity_type(s: &smol_str::SmolStr) -> Result<EntityType, PstConstructionError> {
     let ast_name = ast::Name::from_str(s).map_err(|e| {
-        PstConstructionError::ParsingFailed(error_body::ParsingFailedError::new(e.to_string()))
+        PstConstructionError::InvalidEntityType(error_body::InvalidEntityTypeError {
+            description: e.to_string(),
+        })
     })?;
     Ok(EntityType::from_name(ast_name))
 }
@@ -207,7 +209,9 @@ impl TryFrom<est::ActionConstraint> for ActionConstraint {
                 Ok(ActionConstraint::In(euids))
             }
             #[cfg(feature = "tolerant-ast")]
-            E::ErrorConstraint => Err((error_body::UnsupportedErrorNode {}).into()),
+            E::ErrorConstraint => {
+                Err((error_body::UnsupportedErrorNode::new("a constraint failed to parse")).into())
+            }
         }
     }
 }
@@ -247,9 +251,9 @@ impl TryFrom<Template> for est::Policy {
                 Some(ast::Annotation { val, loc: None })
             };
             let id = k.parse::<ast::AnyId>().map_err(|p| {
-                PstConstructionError::ParsingFailed(error_body::ParsingFailedError {
-                    description: p.to_string(),
-                })
+                PstConstructionError::InvalidAnnotation(error_body::InvalidAnnotationError::new(
+                    format!("invalid key: {p}"),
+                ))
             })?;
             annotations.0.insert(id, annotation);
         }
@@ -1271,7 +1275,7 @@ mod tests {
         let result: Result<est::Policy, PstConstructionError> = policy.try_into();
         assert!(matches!(
             result,
-            Err(PstConstructionError::ParsingFailed(..))
+            Err(PstConstructionError::InvalidAnnotation(..))
         ));
     }
 
@@ -1379,5 +1383,101 @@ mod tests {
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let result: Result<Expr, _> = est_expr.try_into();
         assert!(matches!(result, Err(PstConstructionError::WrongArity(..))));
+    }
+
+    // ========================================================================
+    // FromJsonError -> PstConstructionError conversion tests
+    // ========================================================================
+
+    #[test]
+    fn est_invalid_entity_type_in_is_expr() {
+        // An `is` expression with an unparseable entity type triggers
+        // FromJsonError::InvalidEntityType -> PstConstructionError::InvalidEntityType
+        let json = r#"{"is": {"left": {"Var": "principal"}, "entity_type": ":::bad", "in": null}}"#;
+        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
+        let result: Result<Expr, PstConstructionError> = est_expr.try_into();
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, PstConstructionError::InvalidEntityType(..)),
+            "expected InvalidEntityType, got: {err}"
+        );
+        assert!(err.to_string().contains("invalid entity type"));
+    }
+
+    #[test]
+    fn est_malformed_value_literal() {
+        // A Value with an entity literal that has a bad type triggers
+        // FromJsonError::JsonDeserializationError -> PstConstructionError::ParsingFailed
+        let json = r#"{"Value": {"__entity": {"type": ":::", "id": "x"}}}"#;
+        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
+        let result: Result<Expr, PstConstructionError> = est_expr.try_into();
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, PstConstructionError::ParsingFailed(..)),
+            "expected ParsingFailed, got: {err}"
+        );
+    }
+
+    // The following FromJsonError variants are not reachable through any EST -> PST
+    // conversion path. They either only occur in EST -> AST conversions, or cannot
+    // be produced through JSON deserialization. These display tests verify the
+    // mapping produces a sensible error message and are included for completeness.
+
+    #[test]
+    fn from_json_error_unreachable_variants_display() {
+        use crate::est::FromJsonError;
+
+        // MissingOperator: empty {} deserializes as Record, not ExtFuncCall
+        let err: PstConstructionError = FromJsonError::MissingOperator.into();
+        assert!(
+            matches!(err, PstConstructionError::InvalidExpression(..)),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("missing operator"));
+
+        // MultipleOperators: caught by custom Expr deserializer before reaching ExtFuncCall
+        let err: PstConstructionError = FromJsonError::MultipleOperators {
+            ops: vec!["ip".into(), "decimal".into()],
+        }
+        .into();
+        assert!(
+            matches!(err, PstConstructionError::InvalidExpression(..)),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("multiple operators"));
+
+        // UnknownExtensionFunction: only produced by try_into_ast, not try_into_expr
+        let name = crate::ast::Name::parse_unqualified_name("bogus").unwrap();
+        let err: PstConstructionError = FromJsonError::UnknownExtensionFunction(name).into();
+        assert!(
+            matches!(err, PstConstructionError::UnknownFunction(..)),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("bogus"));
+
+        // InvalidSlotName: only produced by EST -> AST constraint conversion
+        let err: PstConstructionError = FromJsonError::InvalidSlotName.into();
+        assert!(
+            matches!(err, PstConstructionError::ParsingFailed(..)),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("slot"));
+
+        // ActionSlot: only produced by EST -> AST constraint conversion
+        let err: PstConstructionError = FromJsonError::ActionSlot.into();
+        assert!(matches!(
+            err,
+            PstConstructionError::ActionConstraintCannotHaveSlots(..)
+        ));
+
+        // PolicyToTemplate: only produced by EST -> AST policy conversion
+        let err: PstConstructionError = FromJsonError::PolicyToTemplate(
+            crate::parser::err::parse_errors::ExpectedTemplate::new(),
+        )
+        .into();
+        assert!(matches!(
+            err,
+            PstConstructionError::ExpectedTemplateWithSlots(..)
+        ));
     }
 }
