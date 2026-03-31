@@ -1254,6 +1254,124 @@ mod tests {
     use super::*;
     use std::str::FromStr;
 
+    // --- Id tests ---
+
+    #[test]
+    fn test_id_valid_identifiers() {
+        // Simple identifiers
+        assert!(Id::new("x").is_ok());
+        assert!(Id::new("userName").is_ok());
+        assert!(Id::new("_private").is_ok());
+        assert!(Id::new("a1").is_ok());
+        assert!(Id::new("ABC").is_ok());
+    }
+
+    #[test]
+    fn test_id_reserved_keywords_rejected() {
+        for kw in [
+            "if", "then", "else", "true", "false", "in", "is", "like", "has",
+        ] {
+            assert!(Id::new(kw).is_err(), "keyword `{kw}` should be rejected");
+        }
+    }
+
+    #[test]
+    fn test_id_invalid_strings_rejected() {
+        assert!(Id::new("").is_err());
+        assert!(Id::new("1abc").is_err()); // starts with digit
+        assert!(Id::new("a b").is_err()); // space
+        assert!(Id::new("a+b").is_err()); // special char
+        assert!(Id::new("::").is_err());
+    }
+
+    #[test]
+    fn test_id_accessors() {
+        let id = Id::new("hello").unwrap();
+        assert_eq!(id.as_str(), "hello");
+        assert_eq!(id.as_ref(), "hello");
+        assert_eq!(id.to_string(), "hello");
+        assert_eq!(id.clone().into_smolstr(), SmolStr::from("hello"));
+    }
+
+    #[test]
+    fn test_id_equality_and_ordering() {
+        let a = Id::new("aaa").unwrap();
+        let b = Id::new("bbb").unwrap();
+        let a2 = Id::new("aaa").unwrap();
+        assert_eq!(a, a2);
+        assert_ne!(a, b);
+        assert!(a < b);
+    }
+
+    #[test]
+    fn test_id_from_ast_id() {
+        let ast_id = crate::ast::Id::from_str("myIdent").unwrap();
+        let pst_id = Id::from(ast_id);
+        assert_eq!(pst_id.as_str(), "myIdent");
+    }
+
+    // --- Name tests ---
+
+    #[test]
+    fn test_name_unqualified() {
+        let name = Name::unqualified("User").unwrap();
+        assert_eq!(name.id.as_str(), "User");
+        assert!(name.namespace.is_empty());
+        assert_eq!(name.to_string(), "User");
+    }
+
+    #[test]
+    fn test_name_qualified() {
+        let name = Name::qualified(["MyApp", "Auth"], "User").unwrap();
+        assert_eq!(name.id.as_str(), "User");
+        assert_eq!(name.namespace.len(), 2);
+        assert_eq!(name.namespace[0].as_str(), "MyApp");
+        assert_eq!(name.namespace[1].as_str(), "Auth");
+        assert_eq!(name.to_string(), "MyApp::Auth::User");
+    }
+
+    #[test]
+    fn test_name_rejects_invalid_basename() {
+        assert!(Name::unqualified("if").is_err());
+        assert!(Name::unqualified("1bad").is_err());
+        assert!(Name::qualified(["Good"], "if").is_err());
+    }
+
+    #[test]
+    fn test_name_rejects_invalid_namespace_component() {
+        assert!(Name::qualified(["true"], "User").is_err());
+        assert!(Name::qualified(["ok", "1bad"], "User").is_err());
+    }
+
+    #[test]
+    fn test_name_roundtrip_through_ast() {
+        let pst_name = Name::qualified(["NS"], "Foo").unwrap();
+        let ast_name: crate::ast::Name = pst_name.clone().into();
+        let back: Name = ast_name.into();
+        assert_eq!(pst_name, back);
+    }
+
+    // --- EntityType / EntityUID with validated names ---
+
+    #[test]
+    fn test_entity_type_display_with_valid_name() {
+        let et = EntityType::from_name(Name::unqualified("User").unwrap());
+        assert_eq!(et.to_string(), "User");
+        let et = EntityType::from_name(Name::qualified(["App"], "Photo").unwrap());
+        assert_eq!(et.to_string(), "App::Photo");
+    }
+
+    #[test]
+    fn test_entity_uid_roundtrip_through_ast() {
+        let uid = EntityUID {
+            ty: EntityType::from_name(Name::qualified(["NS"], "Type").unwrap()),
+            eid: SmolStr::from("eid123"),
+        };
+        let ast_uid: crate::ast::EntityUID = uid.clone().into();
+        let back: EntityUID = ast_uid.into();
+        assert_eq!(uid, back);
+    }
+
     #[test]
     fn test_has_slots() {
         // Leaf with no slot
