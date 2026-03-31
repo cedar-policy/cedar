@@ -230,11 +230,9 @@ impl TryFrom<est::Expr> for Expr {
 // ============================================================================
 
 #[doc(hidden)]
-impl TryFrom<Expr> for est::Expr {
-    type Error = PstConstructionError;
-
-    fn try_from(expr: Expr) -> Result<Self, PstConstructionError> {
-        expr.try_into_expr::<est::Builder>()
+impl From<Expr> for est::Expr {
+    fn from(expr: Expr) -> Self {
+        expr.into_expr::<est::Builder>()
     }
 }
 
@@ -281,8 +279,8 @@ impl TryFrom<Clause> for est::Clause {
 
     fn try_from(clause: Clause) -> Result<Self, Self::Error> {
         Ok(match clause {
-            Clause::When(expr) => est::Clause::When(Arc::unwrap_or_clone(expr).try_into()?),
-            Clause::Unless(expr) => est::Clause::Unless(Arc::unwrap_or_clone(expr).try_into()?),
+            Clause::When(expr) => est::Clause::When(Arc::unwrap_or_clone(expr).into()),
+            Clause::Unless(expr) => est::Clause::Unless(Arc::unwrap_or_clone(expr).into()),
         })
     }
 }
@@ -444,13 +442,13 @@ mod tests {
     fn test_parse_entities() {
         // Success case: unqualified entity type
         let et = parse_entity_type(&format_smolstr!("A")).unwrap();
-        assert_eq!(et.0.id, "A");
+        assert_eq!(et.0.id.as_str(), "A");
         assert_eq!(et.0.namespace.len(), 0);
         // Success case: qualified entity type
         let et = parse_entity_type(&format_smolstr!("A::a")).unwrap();
-        assert_eq!(et.0.id, "a");
+        assert_eq!(et.0.id.as_str(), "a");
         assert_eq!(et.0.namespace.len(), 1);
-        assert_eq!(et.0.namespace[0], "A");
+        assert_eq!(et.0.namespace[0].as_str(), "A");
         // Failure
         let et = parse_entity_type(&format_smolstr!("!!A::a"));
         matches!(et, Err(PstConstructionError::ParsingFailed(_)));

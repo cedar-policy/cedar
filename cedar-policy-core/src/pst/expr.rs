@@ -29,6 +29,7 @@ use crate::extensions::Extensions;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// Constants for core Cedar operator names
@@ -39,6 +40,66 @@ mod constants {
     pub static GREATER_EQ_STR: &str = ">=";
     pub static AND_STR: &str = "&&";
     pub static OR_STR: &str = "||";
+}
+
+/// A validated Cedar identifier.
+///
+/// Wraps a [`SmolStr`] that has been checked to be a valid Cedar identifier
+/// (not a reserved keyword, no special characters, etc.).
+///
+/// The only way to create an `Id` is through [`Id::new()`] (which validates
+/// that the input is a valid identifier) or through conversion from other
+/// validated identifier representations.
+/// Accessing the inner string is free via [`as_str()`](Id::as_str) or
+/// [`into_smolstr()`](Id::into_smolstr).
+///
+/// ```
+/// # use cedar_policy_core::pst::Id;
+/// let id = Id::new("userName").expect("valid identifier");
+/// assert_eq!(id.as_str(), "userName");
+///
+/// // Reserved keywords are rejected:
+/// assert!(Id::new("if").is_err());
+/// assert!(Id::new("true").is_err());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Id(SmolStr);
+
+impl Id {
+    /// Create a new `Id`, validating that the string is a legal Cedar identifier.
+    pub fn new(s: impl AsRef<str>) -> Result<Self, PstConstructionError> {
+        let ast_id = ast::Id::from_str(s.as_ref())?;
+        Ok(Self(ast_id.into_smolstr()))
+    }
+
+    /// Get the underlying string as a `&str`. Zero-cost.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consume the `Id` and return the underlying `SmolStr`. Zero-cost.
+    pub fn into_smolstr(self) -> SmolStr {
+        self.0
+    }
+}
+
+impl AsRef<str> for Id {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
+/// Infallible: `ast::Id` is already validated.
+impl From<ast::Id> for Id {
+    fn from(id: ast::Id) -> Self {
+        Id(id.into_smolstr())
+    }
 }
 
 /// Slot identifier for template policies.
@@ -88,30 +149,31 @@ impl Display for SlotId {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     /// Basename (the final component of the name)
-    pub id: SmolStr,
+    pub id: Id,
     /// Namespace components (empty for unqualified names)
-    pub namespace: Arc<Vec<SmolStr>>,
+    pub namespace: Arc<Vec<Id>>,
 }
 
 impl Name {
-    /// Constructs an unqualified name.
-    pub fn unqualified(id: impl Into<SmolStr>) -> Self {
-        Name {
-            id: id.into(),
+    /// Constructs an unqualified name. Validates that `id` is a legal Cedar identifier.
+    pub fn unqualified(id: impl AsRef<str>) -> Result<Self, PstConstructionError> {
+        Ok(Name {
+            id: Id::new(id)?,
             namespace: Arc::new(vec![]),
-        }
+        })
     }
 
-    /// Constructs a qualified name (i.e. with a possible non-empty namespace)
-    pub fn qualified<I, T>(namespace: I, id: impl Into<SmolStr>) -> Self
+    /// Constructs a qualified name. Validates that all components are legal Cedar identifiers.
+    pub fn qualified<I, T>(namespace: I, id: impl AsRef<str>) -> Result<Self, PstConstructionError>
     where
         I: IntoIterator<Item = T>,
-        T: Into<SmolStr>,
+        T: AsRef<str>,
     {
-        Name {
-            id: id.into(),
-            namespace: Arc::new(namespace.into_iter().map(|x| x.into()).collect()),
-        }
+        let ns: Result<Vec<Id>, _> = namespace.into_iter().map(|s| Id::new(s)).collect();
+        Ok(Name {
+            id: Id::new(id)?,
+            namespace: Arc::new(ns?),
+        })
     }
 }
 
@@ -145,11 +207,8 @@ impl EntityType {
 
 impl Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ast_et: Result<ast::EntityType, _> = self.clone().try_into();
-        match ast_et {
-            Ok(n) => write!(f, "{}", n),
-            Err(_) => write!(f, "<invalid entity type>"),
-        }
+        let ast_et: ast::EntityType = self.clone().into();
+        write!(f, "{}", ast_et)
     }
 }
 
@@ -1398,10 +1457,9 @@ mod tests {
         use smol_str::SmolStr;
 
         #[test]
-        fn cant_display_unsparseable_entity_type() {
+        fn invalid_name_rejected_at_construction() {
             let name = "!__Cedar!";
-            let et = EntityType::from_name(Name::unqualified(name));
-            assert_eq!(format!("{}", et), "<invalid entity type>");
+            assert!(Name::unqualified(name).is_err());
         }
 
         // NOTE: These tests verify Display output for expressions constructed via the
@@ -1595,7 +1653,7 @@ mod tests {
                 (
                     builder()
                         .call_extension_fn(
-                            Name::unqualified("decimal").try_into().unwrap(),
+                            Name::unqualified("decimal").unwrap().into(),
                             vec![builder().val("1.23")],
                         )
                         .unwrap(),
@@ -1608,7 +1666,7 @@ mod tests {
             }
 
             let fail_func = builder().call_extension_fn(
-                Name::unqualified("notAFunc").try_into().unwrap(),
+                Name::unqualified("notAFunc").unwrap().into(),
                 vec![builder().val("12.3")],
             );
             assert!(fail_func.is_err());

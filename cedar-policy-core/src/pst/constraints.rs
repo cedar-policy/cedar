@@ -272,7 +272,7 @@ mod tests {
 
     fn make_entity_uid(ty: &str, id: &str) -> EntityUID {
         EntityUID {
-            ty: EntityType(Name::unqualified(ty)),
+            ty: EntityType(Name::unqualified(ty).unwrap()),
             eid: id.into(),
         }
     }
@@ -281,8 +281,8 @@ mod tests {
     fn test_principal_constraint_display() {
         let uid = make_entity_uid("User", "alice");
         let eos = EntityOrSlot::Entity(uid.clone());
-        let et = EntityType(Name::unqualified("User"));
-        let etq = EntityType(Name::qualified(vec!["Admins"], "User"));
+        let et = EntityType(Name::unqualified("User").unwrap());
+        let etq = EntityType(Name::qualified(vec!["Admins"], "User").unwrap());
         let cases = vec![
             (PrincipalConstraint::Any, ""),
             (PrincipalConstraint::Eq(eos.clone()), "== User::\"alice\""),
@@ -308,10 +308,7 @@ mod tests {
     fn test_resource_constraint_display() {
         let uid = make_entity_uid("File", "doc.txt");
         let eos = EntityOrSlot::Entity(uid.clone());
-        let et = EntityType(Name {
-            id: SmolStr::from("File"),
-            namespace: Arc::new(vec![]),
-        });
+        let et = EntityType(Name::unqualified("File").unwrap());
 
         let cases = vec![
             (ResourceConstraint::Any, ""),
@@ -396,7 +393,7 @@ mod tests {
     fn test_principal_constraint_link_all_variants() {
         let vals = make_vals();
         let alice = make_entity_uid("User", "alice");
-        let et = EntityType(Name::unqualified("User"));
+        let et = EntityType(Name::unqualified("User").unwrap());
 
         // Any passes through
         assert_eq!(
