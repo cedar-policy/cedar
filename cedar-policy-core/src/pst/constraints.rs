@@ -267,8 +267,6 @@ impl std::fmt::Display for ActionConstraint {
 mod tests {
     use super::*;
     use crate::pst::expr::Name;
-    use smol_str::SmolStr;
-    use std::sync::Arc;
 
     fn make_entity_uid(ty: &str, id: &str) -> EntityUID {
         EntityUID {
