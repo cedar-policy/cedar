@@ -2917,15 +2917,15 @@ impl PolicySet {
                 for (old_pid, op) in &other.policies {
                     let pid = renaming.get(old_pid).unwrap_or(old_pid);
                     if !self.policies.contains_key(pid) {
+                        let lossless = if renaming.contains_key(old_pid) {
+                            op.lossless.new_id(pid.clone())
+                        } else {
+                            op.lossless.clone()
+                        };
                         #[expect(
                             clippy::unwrap_used,
                             reason = "`pid` is the new id of a policy from `other`, so it will be in `self` after merging"
                         )]
-                        let lossless = if renaming.contains_key(old_pid) {
-                            op.lossless.new_id(pid)
-                        } else {
-                            op.lossless.clone()
-                        };
                         let new_p = Policy {
                             // Use the representation from `self.ast` so that we get a version with internal references to
                             // policy ids updated to account for the renaming.
@@ -2938,15 +2938,15 @@ impl PolicySet {
                 for (old_pid, ot) in &other.templates {
                     let pid = renaming.get(old_pid).unwrap_or(old_pid);
                     if !self.templates.contains_key(pid) {
+                        let lossless = if renaming.contains_key(old_pid) {
+                            ot.lossless.new_id(pid.clone())
+                        } else {
+                            ot.lossless.clone()
+                        };
                         #[expect(
                             clippy::unwrap_used,
                             reason = "`pid` is the new id of a template from `other`, so it will be in `self` after merging"
                         )]
-                        let lossless = if renaming.contains_key(old_pid) {
-                            ot.lossless.new_id(pid)
-                        } else {
-                            ot.lossless.clone()
-                        };
                         let new_t = Template {
                             ast: self.ast.get_template(pid.as_ref()).unwrap().clone(),
                             lossless,
@@ -3512,7 +3512,7 @@ impl Template {
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
             ast: self.ast.new_id(id.clone().into()),
-            lossless: self.lossless.new_id(&id),
+            lossless: self.lossless.new_id(id),
         }
     }
 
@@ -3924,7 +3924,7 @@ impl Policy {
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
             ast: self.ast.new_id(id.clone().into()),
-            lossless: self.lossless.new_id(&id),
+            lossless: self.lossless.new_id(id),
         }
     }
 
@@ -4312,11 +4312,11 @@ impl LosslessTemplate {
 
     /// Clone this `LosslessTemplate` with a new policy ID.
     /// Only the PST variant embeds the ID; other variants are unaffected.
-    fn new_id(&self, id: &PolicyId) -> Self {
+    fn new_id(&self, id: PolicyId) -> Self {
         match self {
             Self::Pst(pst) => {
                 let mut pst = pst.clone();
-                pst.id = id.clone().into();
+                pst.id = id.into();
                 Self::Pst(pst)
             }
             other => other.clone(),
@@ -4441,9 +4441,9 @@ impl LosslessPolicy {
 
     /// Clone this `LosslessPolicy` with a new policy ID.
     /// Only the PST variant embeds the ID; other variants are unaffected.
-    fn new_id(&self, id: &PolicyId) -> Self {
+    fn new_id(&self, id: PolicyId) -> Self {
         match self {
-            Self::Pst(pst) => Self::Pst(pst.new_id(id.clone().into())),
+            Self::Pst(pst) => Self::Pst(pst.new_id(id.into())),
             other => other.clone(),
         }
     }
