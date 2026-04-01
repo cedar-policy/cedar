@@ -65,9 +65,6 @@ pub enum Error {
     /// Empty-list of policies was passed to a function that expects at least one policy
     #[error("expected to have at least one policy")]
     NoPolicies,
-    /// Unsupported features.
-    #[error("unsupported feature in SymCC: {0}")]
-    UnsupportedFeature(String),
 }
 
 /// A result type that potentially returns a SymCC [`enum@Error`].

@@ -712,9 +712,10 @@ pub fn well_typed_policies(
     schema: &Schema,
 ) -> Result<PolicySet> {
     if policies.policies().any(|p| !p.is_static()) {
-        return Err(Error::UnsupportedFeature(
+        return Err(CompileError::UnsupportedFeature(
             "template-linked policies are not supported".to_string(),
-        ));
+        )
+        .into());
     }
     let env = to_validator_request_env(env, schema.as_ref())
         .ok_or_else(|| Error::ActionNotInSchema(env.action().to_string()))?;
