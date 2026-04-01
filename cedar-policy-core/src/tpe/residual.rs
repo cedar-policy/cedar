@@ -17,7 +17,7 @@
 //! This module contains the residual.
 
 use std::collections::HashSet;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc, sync::LazyLock};
 
 use crate::ast::{
     Annotations, Effect, EntityUID, Literal, Policy, PolicyID, UnwrapInfallible, ValueKind,
@@ -34,6 +34,12 @@ use crate::{
     expr_builder::ExprBuilder,
 };
 use smol_str::SmolStr;
+
+/// The [`Name`] used to represent error nodes in the AST when converting from
+/// [`Residual::Error`]. This is a synthetic extension function call that does
+/// not correspond to any real Cedar extension.
+#[expect(clippy::unwrap_used, reason = "error is a valid name")]
+pub(crate) static ERROR_NAME: LazyLock<Name> = LazyLock::new(|| "error".parse().unwrap());
 
 /// The residual produced by TPE
 #[derive(Debug, Clone)]
@@ -522,10 +528,9 @@ impl From<Residual> for Expr {
             Residual::Concrete { value, .. } => value.into(),
             Residual::Error(_) => {
                 let builder: ast::ExprBuilder<()> = ExprBuilder::with_data(());
-                #[expect(clippy::unwrap_used, reason = "`error` is a valid `Name`")]
                 builder
-                    .call_extension_fn("error".parse().unwrap(), std::iter::empty())
-                    .unwrap_infallible() // The ast builder allows it, the pst would not allow this
+                    .call_extension_fn(ERROR_NAME.clone(), std::iter::empty())
+                    .unwrap_infallible()
             }
         }
     }

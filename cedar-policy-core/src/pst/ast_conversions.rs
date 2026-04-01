@@ -478,6 +478,10 @@ impl Expr {
                 name,
                 type_annotation: None,
             }),
+            #[cfg(feature = "tpe")]
+            Expr::ResidualError => builder
+                .call_extension_fn(crate::tpe::residual::ERROR_NAME.clone(), std::iter::empty())
+                .unwrap_infallible(),
         }
     }
 }
@@ -1261,5 +1265,37 @@ mod tests {
             result,
             Err(PstConstructionError::ParsingFailed(..))
         ));
+    }
+}
+
+#[cfg(feature = "tpe")]
+#[cfg(test)]
+mod tpe_pst_tests {
+    use crate::ast;
+    use crate::expr_builder::ExprBuilder;
+    use cool_asserts::assert_matches;
+
+    use super::*;
+
+    #[test]
+    fn test_ast_error_conversion() {
+        // We can't just use parse_expr here, it would fail, so we build directly
+        let builder = ast::ExprBuilder::<()>::new();
+        let ast_expr = builder
+            .clone()
+            .call_extension_fn(ast::Name::parse_unqualified_name("error").unwrap(), vec![])
+            .unwrap();
+        let pst_expr: Expr = ast_expr.clone().try_into().unwrap();
+        assert_matches!(pst_expr, Expr::ResidualError);
+        let ast_expr2 = builder.clone().set(vec![ast_expr]);
+        let pst_expr2: Expr = ast_expr2.try_into().unwrap();
+        assert!(pst_expr2.has_error());
+        match pst_expr2 {
+            Expr::Set(exprs) => match exprs.as_slice() {
+                [x] if x.as_ref() == &Expr::ResidualError => (),
+                _ => assert!(false),
+            },
+            _ => assert!(false),
+        }
     }
 }
