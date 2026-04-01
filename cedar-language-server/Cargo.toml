@@ -42,7 +42,7 @@ wasm-bindgen = { version = "0.2.97", optional = true }
 tracing-test = "0.2.6"
 cool_asserts = "2.0.4"
 similar-asserts = "1.7.0"
-insta = "1.46.1"
+insta = "1.47.2"
 tempfile = "3.27.0"
 proptest = "1.11"
 
