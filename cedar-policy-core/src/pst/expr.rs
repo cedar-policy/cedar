@@ -155,7 +155,11 @@ pub struct Name {
 }
 
 impl Name {
-    /// Constructs an unqualified name. Validates that `id` is a legal Cedar identifier.
+    /// Constructs an unqualified name. This is a convenience constructor that validates
+    /// that `id` is a legal Cedar identifier.
+    ///
+    /// If you have an `Id` (which is `AsRef<str>`), you can infallibly construct the name
+    /// yourself.
     pub fn unqualified(id: impl AsRef<str>) -> Result<Self, PstConstructionError> {
         Ok(Name {
             id: Id::new(id)?,
@@ -164,6 +168,9 @@ impl Name {
     }
 
     /// Constructs a qualified name. Validates that all components are legal Cedar identifiers.
+    ///
+    /// If you have an `Id` and a namespace in the form of a `Vec<Id>`, you can infallibly
+    /// construct the name yourself.
     pub fn qualified<I, T>(namespace: I, id: impl AsRef<str>) -> Result<Self, PstConstructionError>
     where
         I: IntoIterator<Item = T>,
