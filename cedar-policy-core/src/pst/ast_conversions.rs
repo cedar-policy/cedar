@@ -26,7 +26,7 @@ use crate::ast::{self, UnwrapInfallible};
 use crate::expr_builder;
 use crate::extensions;
 use crate::pst::err::error_body::{
-    PolicyMissingLinkIdError, UnsupportedErrorNode, WrongSlotPositionError,
+    InvalidEntityTypeError, PolicyMissingLinkIdError, UnsupportedErrorNode, WrongSlotPositionError,
 };
 use crate::pst::expr::{Id, PstBuilder};
 use std::collections::HashMap;
@@ -209,13 +209,33 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
     type Error = PstConstructionError;
 
     fn try_from(constraint: ActionConstraint) -> Result<Self, Self::Error> {
-        match constraint {
-            ActionConstraint::Any => Ok(ast::ActionConstraint::any()),
-            ActionConstraint::Eq(uid) => Ok(ast::ActionConstraint::is_eq(uid.into())),
-            ActionConstraint::In(uids) => Ok(ast::ActionConstraint::is_in(
-                uids.into_iter().map(ast::EntityUID::from),
-            )),
-        }
+        let ast_constraint = match constraint {
+            ActionConstraint::Any => ast::ActionConstraint::any(),
+            ActionConstraint::Eq(uid) => ast::ActionConstraint::is_eq(uid.into()),
+            ActionConstraint::In(uids) => {
+                ast::ActionConstraint::is_in(uids.into_iter().map(ast::EntityUID::from))
+            }
+        };
+        ast_constraint
+            .contains_only_action_types()
+            .map_err(|non_action_euids| {
+                let subject = if non_action_euids.len() > 1 {
+                    "entity uids"
+                } else {
+                    "an entity uid"
+                };
+                let entities = non_action_euids
+                    .iter()
+                    .map(|e| format!("`{e}`"))
+                    .collect::<Vec<_>>()
+                    .join(" and ");
+                InvalidEntityTypeError {
+                    description: format!(
+                        "expected {subject} with type `Action` but got {entities}"
+                    ),
+                }
+                .into()
+            })
     }
 }
 
@@ -1261,5 +1281,46 @@ mod tests {
             result,
             Err(PstConstructionError::ParsingFailed(..))
         ));
+    }
+
+    #[test]
+    fn test_non_action_entity_type_in_action_constraint_rejected() {
+        // Eq with non-Action type
+        let constraint = ActionConstraint::Eq(EntityUID::from(ast::EntityUID::from_components(
+            ast::EntityType::from_normalized_str("User").unwrap(),
+            ast::Eid::new("alice"),
+            None,
+        )));
+        let result: Result<ast::ActionConstraint, _> = constraint.try_into();
+        assert!(matches!(
+            result,
+            Err(PstConstructionError::InvalidEntityType(..))
+        ));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected an entity uid with type `Action`"));
+
+        // In with non-Action type
+        let constraint =
+            ActionConstraint::In(vec![EntityUID::from(ast::EntityUID::from_components(
+                ast::EntityType::from_normalized_str("Folder").unwrap(),
+                ast::Eid::new("docs"),
+                None,
+            ))]);
+        let result: Result<ast::ActionConstraint, _> = constraint.try_into();
+        assert!(matches!(
+            result,
+            Err(PstConstructionError::InvalidEntityType(..))
+        ));
+
+        // Action type should succeed
+        let constraint = ActionConstraint::Eq(EntityUID::from(ast::EntityUID::from_components(
+            ast::EntityType::from_normalized_str("Action").unwrap(),
+            ast::Eid::new("view"),
+            None,
+        )));
+        let result: Result<ast::ActionConstraint, _> = constraint.try_into();
+        assert!(result.is_ok());
     }
 }

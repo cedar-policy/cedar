@@ -11333,6 +11333,53 @@ mod pst_api {
         assert!(err.to_string().contains("static policy"));
     }
 
+    #[test]
+    fn from_pst_rejects_non_action_entity_type() {
+        // Template with non-Action entity in action constraint
+        let t = pst::Template::new(
+            "t1",
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Principal)),
+            pst::ActionConstraint::Eq(pst::EntityUID::from(
+                cedar_policy_core::ast::EntityUID::from_components(
+                    // `User::"alice"` won't work here!
+                    cedar_policy_core::ast::EntityType::from_normalized_str("User").unwrap(),
+                    cedar_policy_core::ast::Eid::new("alice"),
+                    None,
+                ),
+            )),
+            pst::ResourceConstraint::Any,
+        );
+        let err = Template::from_pst(t).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid entity type: `expected an entity uid with type `Action` but got `User::\"alice\"``",
+            "expected Action type error, got: {err}"
+        );
+
+        // Static policy with non-Action entity in action constraint, just like building from JSON
+        let sp = pst::StaticPolicy::try_from(pst::Template::new(
+            "p1",
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::In(vec![pst::EntityUID::from(
+                cedar_policy_core::ast::EntityUID::from_components(
+                    cedar_policy_core::ast::EntityType::from_normalized_str("Folder").unwrap(),
+                    cedar_policy_core::ast::Eid::new("docs"),
+                    None,
+                ),
+            )]),
+            pst::ResourceConstraint::Any,
+        ))
+        .unwrap();
+        let err = Policy::from_pst(sp.into()).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid entity type: `expected an entity uid with type `Action` but got `Folder::\"docs\"``",
+            "expected Action type error, got: {err}"
+        );
+    }
+
     // --- Template::to_pst / try_into_pst ---
 
     #[test]
@@ -11349,6 +11396,27 @@ mod pst_api {
         let t = Template::from_pst(original.clone()).unwrap();
         let recovered = t.try_into_pst().expect("should succeed");
         assert_eq!(format!("{recovered}"), format!("{original}"));
+    }
+
+    #[test]
+    fn template_to_pst_preserves_id_from_text() {
+        let src = "permit(principal == ?principal, action, resource);";
+        let t = Template::parse(Some(PolicyId::new("my_template")), src).unwrap();
+        let pst = t.to_pst().expect("should succeed");
+        assert_eq!(pst.id, pst::PolicyID("my_template".into()));
+    }
+
+    #[test]
+    fn policy_to_pst_preserves_id_from_text() {
+        let src = "permit(principal, action, resource);";
+        // When text is parsed and parse given a policy id, we should preserve that id in the PST
+        let p = Policy::parse(Some(PolicyId::new("my_policy")), src).unwrap();
+        let pst = p.to_pst().expect("should succeed");
+        if let pst::Policy::Static(sp) = &pst {
+            assert_eq!(sp.body.id, pst::PolicyID("my_policy".into()));
+        } else {
+            panic!("expected static policy");
+        }
     }
 
     #[test]

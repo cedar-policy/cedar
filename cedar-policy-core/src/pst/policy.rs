@@ -211,6 +211,11 @@ impl Template {
         }
     }
 
+    /// Return a copy of this template with a new id.
+    pub fn with_id(self, id: PolicyID) -> Self {
+        Self { id, ..self }
+    }
+
     /// Fill in any slots in this policy using the values in `vals`.
     /// Performing the link operation should result in a StaticPolicy.
     /// If there are unfilled slots, this results in an Error.
