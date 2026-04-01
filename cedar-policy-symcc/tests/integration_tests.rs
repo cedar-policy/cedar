@@ -17,7 +17,7 @@ use std::str::FromStr;
  */
 use cedar_policy::{EntityUid, Policy, PolicyId, PolicySet, Schema, SlotId, Template, Validator};
 use cedar_policy_symcc::{
-    err::CompileError, solver::LocalSolver, CedarSymCompiler, CompiledPolicySet,
+    err::CompileError, solver::LocalSolver, CedarSymCompiler, WellTypedPolicies,
 };
 use cool_asserts::assert_matches;
 use std::collections::HashMap;
@@ -2363,7 +2363,7 @@ async fn template_linked_policy_unsupported() {
     )
     .unwrap();
     let envs = Environments::new(validator.schema(), "User", r#"Action::"view""#, "Thing");
-    let result = CompiledPolicySet::compile(&pset, &envs.req_env, validator.schema());
+    let result = WellTypedPolicies::from_policies(&pset, &envs.req_env, validator.schema());
     assert_matches!(
         result.err(),
         Some(cedar_policy_symcc::err::Error::CompileError(
