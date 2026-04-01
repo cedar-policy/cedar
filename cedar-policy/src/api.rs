@@ -2655,10 +2655,10 @@ impl PolicySet {
                 .values
                 .into_iter()
                 .map(|(k, v)| {
-                    let ast_uid = ast::EntityUID::try_from(v)?;
-                    Ok((k.into(), EntityUid(ast_uid)))
+                    let ast_uid = ast::EntityUID::from(v);
+                    (k.into(), EntityUid(ast_uid))
                 })
-                .collect::<Result<_, pst::PstConstructionError>>()?;
+                .collect();
             set.link(link.template_id.into(), link.new_id.into(), vals)?;
         }
         Ok(set)

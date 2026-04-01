@@ -442,7 +442,7 @@ mod tests {
 
     fn make_uid(ty: &str, id: &str) -> EntityUID {
         EntityUID {
-            ty: crate::pst::EntityType::from_name(crate::pst::Name::unqualified(ty)),
+            ty: crate::pst::EntityType::from_name(crate::pst::Name::unqualified(ty).unwrap()),
             eid: SmolStr::from(id),
         }
     }

@@ -11386,7 +11386,7 @@ mod pst_api {
     fn policy_from_pst_linked() {
         let template = Arc::new(pst_template_with_slot());
         let uid = pst::EntityUID {
-            ty: pst::EntityType::from_name(pst::Name::unqualified("User")),
+            ty: pst::EntityType::from_name(pst::Name::unqualified("User").unwrap()),
             eid: "alice".into(),
         };
         let linked = pst::LinkedPolicy::new(
@@ -11586,14 +11586,14 @@ mod pst_api {
 
     fn uid(ty: &str, eid: &str) -> pst::EntityUID {
         pst::EntityUID {
-            ty: pst::EntityType::from_name(pst::Name::unqualified(ty)),
+            ty: pst::EntityType::from_name(pst::Name::unqualified(ty).unwrap()),
             eid: eid.into(),
         }
     }
 
     fn action_uid(eid: &str) -> pst::EntityUID {
         pst::EntityUID {
-            ty: pst::EntityType::from_name(pst::Name::unqualified("Action")),
+            ty: pst::EntityType::from_name(pst::Name::unqualified("Action").unwrap()),
             eid: eid.into(),
         }
     }
@@ -11716,7 +11716,7 @@ mod pst_api {
             ),
             (
                 "is_principal",
-                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("User"))),
+                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("User").unwrap())),
                 ActionConstraint::Any,
                 ResourceConstraint::Eq(EntityOrSlot::Entity(uid("Photo", "pic.jpg"))),
                 vec![],
@@ -11726,7 +11726,7 @@ mod pst_api {
                 PrincipalConstraint::Eq(EntityOrSlot::Entity(uid("User", "bob"))),
                 ActionConstraint::Any,
                 ResourceConstraint::IsIn(
-                    EntityType::from_name(Name::unqualified("Photo")),
+                    EntityType::from_name(Name::unqualified("Photo").unwrap()),
                     EntityOrSlot::Entity(uid("Album", "shared")),
                 ),
                 vec![when_true()],
@@ -11822,7 +11822,7 @@ mod pst_api {
             let t = slotted_template(
                 "tmpl_resource",
                 Effect::Forbid,
-                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("User"))),
+                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("User").unwrap())),
                 ActionConstraint::Any,
                 ResourceConstraint::In(EntityOrSlot::Slot(SlotId::Resource)),
                 vec![unless_false()],
@@ -11933,7 +11933,7 @@ mod pst_api {
             let sp = StaticPolicy::try_from(static_template(
                 "admin_bypass",
                 Effect::Permit,
-                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("Admin"))),
+                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("Admin").unwrap())),
                 ActionConstraint::Any,
                 ResourceConstraint::Any,
                 vec![],

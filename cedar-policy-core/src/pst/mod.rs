@@ -21,6 +21,14 @@
 //! The PST is a syntax tree representation of Cedar policies designed for programmatic
 //! manipulation.
 //!
+//! # Identifiers and names
+//!
+//! Entity type names and other identifiers are validated at construction time via [`Id`].
+//! [`Id::new()`] checks that a string is a legal Cedar identifier (not a reserved keyword,
+//! no special characters). [`Name`] is built from `Id` components, so
+//! [`Name::unqualified()`] and [`Name::qualified()`] are fallible. This ensures that
+//! conversion from PST to AST cannot fail due to invalid names.
+//!
 //! # Constructing a policy
 //!
 //! Build a PST [`Template`] directly from its constituent types. This example constructs:
@@ -41,15 +49,15 @@
 //!     PolicyID(SmolStr::from("policy0")),
 //!     Effect::Permit,
 //!     PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
-//!         ty: EntityType::from_name(Name::unqualified("User")),
+//!         ty: EntityType::from_name(Name::unqualified("User").unwrap()),
 //!         eid: SmolStr::from("alice"),
 //!     })),
 //!     ActionConstraint::Eq(EntityUID {
-//!         ty: EntityType::from_name(Name::unqualified("Action")),
+//!         ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
 //!         eid: SmolStr::from("view"),
 //!     }),
 //!     ResourceConstraint::In(EntityOrSlot::Entity(EntityUID {
-//!         ty: EntityType::from_name(Name::unqualified("Album")),
+//!         ty: EntityType::from_name(Name::unqualified("Album").unwrap()),
 //!         eid: SmolStr::from("vacation"),
 //!     })),
 //! )
@@ -70,9 +78,10 @@
 //! # Matching / inspecting a policy
 //!
 //! The PST types that are likely to be extended in the future are marked `#[non_exhaustive]`
-//! ([`Expr`], [`Literal`], [`BinaryOp`], [`UnaryOp`], [`SlotId`]), so match arms must include
-//! a wildcard. Types that are *not* `#[non_exhaustive]` (constraints, [`Effect`], [`Clause`],
-//! [`Var`], [`PatternElem`]) can be exhaustively matched.
+//! ([`Expr`], [`Literal`], [`BinaryOp`], [`UnaryOp`], [`SlotId`], [`StaticPolicy`],
+//! [`LinkedPolicy`]), so match arms must include a wildcard. Types that are *not*
+//! `#[non_exhaustive]` (constraints, [`Effect`], [`Clause`], [`Var`], [`PatternElem`],
+//! [`Policy`]) can be exhaustively matched.
 //!
 //! ```
 //! # use cedar_policy_core::pst::*;
@@ -83,11 +92,11 @@
 //! #     PolicyID(SmolStr::from("policy0")),
 //! #     Effect::Permit,
 //! #     PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
-//! #         ty: EntityType::from_name(Name::unqualified("User")),
+//! #         ty: EntityType::from_name(Name::unqualified("User").unwrap()),
 //! #         eid: SmolStr::from("alice"),
 //! #     })),
 //! #     ActionConstraint::Eq(EntityUID {
-//! #         ty: EntityType::from_name(Name::unqualified("Action")),
+//! #         ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
 //! #         eid: SmolStr::from("view"),
 //! #     }),
 //! #     ResourceConstraint::Any,
@@ -155,7 +164,7 @@ pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, Resou
 pub use err::error_body;
 pub use err::PstConstructionError;
 pub use expr::{
-    BinaryOp, EntityType, EntityUID, Expr, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
+    BinaryOp, EntityType, EntityUID, Expr, Id, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
 pub use policy::{Clause, Effect, LinkedPolicy, Policy, PolicyID, StaticPolicy, Template};
 pub use policy_set::{PolicySet, TemplateLink};
