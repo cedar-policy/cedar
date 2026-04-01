@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Fixed
+
+- Return an error when attempting to create a `CompiledPolicySet` from a policy set containing template-linked policies instead of silently dropping them.
+
 ## [0.4.0] - Coming soon
 Cedar Language Version: 4.5
 
