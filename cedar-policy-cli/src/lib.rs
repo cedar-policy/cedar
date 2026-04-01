@@ -1599,7 +1599,7 @@ pub fn symcc(args: &SymccArgs) -> CedarExitCode {
 
 #[cfg(feature = "analyze")]
 fn initialize_solver(
-    cvc5_path: &Option<PathBuf>,
+    cvc5_path: Option<&PathBuf>,
 ) -> Result<cedar_policy_symcc::solver::LocalSolver> {
     match cvc5_path {
         Some(p) => cedar_policy_symcc::solver::LocalSolver::from_command(
@@ -1734,7 +1734,7 @@ fn build_request_env(args: &SymccArgs) -> Result<RequestEnv> {
 async fn symcc_async(args: &SymccArgs) -> Result<()> {
     use cedar_policy_symcc::{CedarSymCompiler, CompiledPolicy, CompiledPolicySet};
 
-    let solver = initialize_solver(&args.cvc5_path)?;
+    let solver = initialize_solver(args.cvc5_path.as_ref())?;
     let mut compiler = CedarSymCompiler::new(solver)
         .map_err(|e| miette!("Failed to initialize SymCC compiler: {e}"))?;
     let req_env = build_request_env(args)?;

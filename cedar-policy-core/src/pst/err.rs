@@ -413,6 +413,7 @@ pub mod error_body {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn from_json_error_conversions() {
@@ -429,7 +430,7 @@ mod tests {
         let json_deser_err: crate::entities::json::err::JsonDeserializationError = serde_err.into();
         let err: PstConstructionError =
             FromJsonError::JsonDeserializationError(json_deser_err).into();
-        assert!(matches!(err, PstConstructionError::ParsingFailed(..)));
+        assert_matches!(err, PstConstructionError::ParsingFailed(..));
 
         // ActionSlot
         let err: PstConstructionError = FromJsonError::ActionSlot.into();
@@ -445,11 +446,11 @@ mod tests {
                 euids: nonempty::nonempty![std::sync::Arc::new(euid)],
             })
             .into();
-        assert!(matches!(err, PstConstructionError::InvalidEntityType(..)));
+        assert_matches!(err, PstConstructionError::InvalidEntityType(..));
 
         // InvalidSlotName
         let err: PstConstructionError = FromJsonError::InvalidSlotName.into();
-        assert!(matches!(err, PstConstructionError::ParsingFailed(..)));
+        assert_matches!(err, PstConstructionError::ParsingFailed(..));
 
         // TemplateToPolicy
         let err: PstConstructionError = FromJsonError::TemplateToPolicy(
@@ -461,7 +462,7 @@ mod tests {
             },
         )
         .into();
-        assert!(matches!(err, PstConstructionError::ContainsSlots(..)));
+        assert_matches!(err, PstConstructionError::ContainsSlots(..));
 
         // PolicyToTemplate
         let err: PstConstructionError = FromJsonError::PolicyToTemplate(
@@ -484,18 +485,18 @@ mod tests {
             },
         )
         .into();
-        assert!(matches!(err, PstConstructionError::ContainsSlots(..)));
+        assert_matches!(err, PstConstructionError::ContainsSlots(..));
 
         // MissingOperator
         let err: PstConstructionError = FromJsonError::MissingOperator.into();
-        assert!(matches!(err, PstConstructionError::InvalidExpression(..)));
+        assert_matches!(err, PstConstructionError::InvalidExpression(..));
 
         // MultipleOperators
         let err: PstConstructionError = FromJsonError::MultipleOperators {
             ops: vec!["a".into(), "b".into()],
         }
         .into();
-        assert!(matches!(err, PstConstructionError::InvalidExpression(..)));
+        assert_matches!(err, PstConstructionError::InvalidExpression(..));
     }
 
     #[test]
@@ -507,7 +508,7 @@ mod tests {
             },
         )
         .into();
-        assert!(matches!(err, PstConstructionError::DuplicateRecordKey(..)));
+        assert_matches!(err, PstConstructionError::DuplicateRecordKey(..));
     }
 
     #[test]
@@ -520,6 +521,6 @@ mod tests {
             },
         )
         .into();
-        assert!(matches!(err, PstConstructionError::UnknownFunction(..)));
+        assert_matches!(err, PstConstructionError::UnknownFunction(..));
     }
 }

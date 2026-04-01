@@ -425,6 +425,7 @@ impl From<EntityUID> for entities::EntityUidJson {
 mod tests {
     use super::*;
     use crate::pst::{self, BinaryOp, Name, UnaryOp};
+    use cool_asserts::assert_matches;
     use smol_str::{format_smolstr, SmolStr};
     use std::collections::BTreeMap;
 
@@ -461,7 +462,7 @@ mod tests {
         let json = r#"{"Value": true}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Literal(_)));
+        assert_matches!(pst_expr, Expr::Literal(_));
         roundtrips(pst_expr);
     }
 
@@ -470,7 +471,7 @@ mod tests {
         let json = r#"{"Var": "principal"}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Var(pst::expr::Var::Principal)));
+        assert_matches!(pst_expr, Expr::Var(pst::expr::Var::Principal));
         roundtrips(pst_expr);
     }
 
@@ -479,7 +480,7 @@ mod tests {
         let json = r#"{"Slot": "?principal"}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.clone().try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Slot(_)));
+        assert_matches!(pst_expr, Expr::Slot(_));
         // Roundtrip: PST slot should convert back to EST slot
         let est_roundtrip: est::Expr = pst_expr.try_into().unwrap();
         assert_eq!(est_expr, est_roundtrip);
@@ -547,7 +548,7 @@ mod tests {
         }"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::IfThenElse { .. }));
+        assert_matches!(pst_expr, Expr::IfThenElse { .. });
         roundtrips(pst_expr);
     }
 
@@ -569,7 +570,7 @@ mod tests {
         let json = r#"{"Record": {"foo": {"Var": "principal"}}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Record(_)));
+        assert_matches!(pst_expr, Expr::Record(_));
         roundtrips(pst_expr);
     }
 
@@ -578,7 +579,7 @@ mod tests {
         let json = r#"{".": {"left": {"Var": "principal"}, "attr": "name"}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::GetAttr { .. }));
+        assert_matches!(pst_expr, Expr::GetAttr { .. });
         roundtrips(pst_expr);
     }
 
@@ -587,13 +588,13 @@ mod tests {
         let json = r#"{"has": {"left": {"Var": "principal"}, "attr": "name"}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::HasAttr { .. }));
+        assert_matches!(pst_expr, Expr::HasAttr { .. });
         roundtrips(pst_expr);
         // Extended has attr — does not roundtrip because the EST builder desugars it
         let json2 = r#"{"has": {"left": {"Var": "principal"}, "attr": ["name", "nested"]}}"#;
         let est_expr2: est::Expr = serde_json::from_str(json2).unwrap();
         let pst_expr2: Expr = est_expr2.try_into().unwrap();
-        assert!(matches!(pst_expr2, Expr::HasAttr { .. }));
+        assert_matches!(pst_expr2, Expr::HasAttr { .. });
     }
 
     #[test]
@@ -601,7 +602,7 @@ mod tests {
         let json = r#"{"like": {"left": {"Var": "principal"}, "pattern": [{"Wildcard": null}, {"Literal": "@example.com"}]}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Like { .. }));
+        assert_matches!(pst_expr, Expr::Like { .. });
         roundtrips(pst_expr);
     }
 
@@ -614,7 +615,7 @@ mod tests {
     }}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Is { in_expr: None, .. }));
+        assert_matches!(pst_expr, Expr::Is { in_expr: None, .. });
         roundtrips(pst_expr);
 
         // Test is with in - now uses is_in_entity_type
@@ -676,7 +677,7 @@ mod tests {
         // Test simple value conversion
         let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::Var(ast::Var::Principal));
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Var(pst::expr::Var::Principal)));
+        assert_matches!(pst_expr, Expr::Var(pst::expr::Var::Principal));
         roundtrips(pst_expr);
     }
 
@@ -745,7 +746,7 @@ mod tests {
             attr: "name".try_into().unwrap(),
         });
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::GetAttr { .. }));
+        assert_matches!(pst_expr, Expr::GetAttr { .. });
         roundtrips(pst_expr);
     }
 
@@ -759,7 +760,7 @@ mod tests {
             attr: "name".try_into().unwrap(),
         }));
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::HasAttr { .. }));
+        assert_matches!(pst_expr, Expr::HasAttr { .. });
         roundtrips(pst_expr);
     }
 
@@ -774,7 +775,7 @@ mod tests {
         ];
         let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::Like { left, pattern });
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Like { .. }));
+        assert_matches!(pst_expr, Expr::Like { .. });
         roundtrips(pst_expr);
     }
 
@@ -789,7 +790,7 @@ mod tests {
             in_expr: None,
         });
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Is { .. }));
+        assert_matches!(pst_expr, Expr::Is { .. });
         roundtrips(pst_expr);
     }
 
@@ -828,7 +829,7 @@ mod tests {
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
         let pst_policy: pst::Template = est_policy.try_into().unwrap();
-        assert!(matches!(pst_policy.effect, pst::Effect::Permit));
+        assert_matches!(pst_policy.effect, pst::Effect::Permit);
         policy_roundtrips(pst_policy);
     }
 
@@ -851,7 +852,7 @@ mod tests {
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
         let pst_policy: pst::Template = est_policy.try_into().unwrap();
-        assert!(matches!(pst_policy.effect, pst::Effect::Forbid));
+        assert_matches!(pst_policy.effect, pst::Effect::Forbid);
         assert!(matches!(
             pst_policy.principal,
             pst::PrincipalConstraint::In(_)
@@ -885,7 +886,7 @@ mod tests {
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
         let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert_eq!(pst_policy.clauses.len(), 1);
-        assert!(matches!(pst_policy.clauses[0], pst::Clause::When(..)));
+        assert_matches!(pst_policy.clauses[0], pst::Clause::When(..));
         policy_roundtrips(pst_policy);
     }
 
@@ -1016,7 +1017,7 @@ mod tests {
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
         let pst_policy: pst::Template = est_policy.try_into().unwrap();
-        assert!(matches!(pst_policy.action, pst::ActionConstraint::Eq(_)));
+        assert_matches!(pst_policy.action, pst::ActionConstraint::Eq(_));
         policy_roundtrips(pst_policy);
     }
 
@@ -1382,7 +1383,7 @@ mod tests {
         let json = r#"{"offset": []}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let result: Result<Expr, _> = est_expr.try_into();
-        assert!(matches!(result, Err(PstConstructionError::WrongArity(..))));
+        assert_matches!(result, Err(PstConstructionError::WrongArity(..)));
     }
 
     // ========================================================================

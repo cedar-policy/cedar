@@ -10264,7 +10264,7 @@ when { principal in resource.admins };
             let mut loader = TestEntityLoader::new(&entities);
             let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
 
-            assert!(matches!(result, Err(BatchedEvalError::PartialRequest(_))));
+            assert_matches!(result, Err(BatchedEvalError::PartialRequest(_)));
         }
 
         #[test]
@@ -10320,7 +10320,7 @@ when { principal in resource.admins };
             let mut loader = InvalidEntityLoader;
             let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
 
-            assert!(matches!(result, Err(BatchedEvalError::Entities(_))));
+            assert_matches!(result, Err(BatchedEvalError::Entities(_)));
         }
 
         #[test]
@@ -11277,6 +11277,7 @@ mod has_non_scope_constraint {
 
 mod pst_api {
     use super::super::super::*;
+    use cool_asserts::assert_matches;
     use std::collections::{BTreeMap, HashMap};
     use std::str::FromStr;
     use std::sync::Arc;
@@ -11357,7 +11358,7 @@ mod pst_api {
         let pst = t.to_pst().expect("to_pst should succeed");
         assert!(pst.principal.has_slot());
         assert_eq!(pst.clauses().len(), 1);
-        assert!(matches!(pst.clauses()[0], pst::Clause::When(_)));
+        assert_matches!(pst.clauses()[0], pst::Clause::When(_));
         // also test try_into_pst
         let t2 = Template::parse(None, src).unwrap();
         let pst2 = t2.try_into_pst().expect("try_into_pst should succeed");
@@ -11408,7 +11409,7 @@ mod pst_api {
         let sp = pst::StaticPolicy::try_from(pst_static_template()).unwrap();
         let p = Policy::from_pst(sp.into()).unwrap();
         let recovered = p.to_pst().expect("should succeed");
-        assert!(matches!(recovered, pst::Policy::Static(_)));
+        assert_matches!(recovered, pst::Policy::Static(_));
     }
 
     #[test]
@@ -11416,7 +11417,7 @@ mod pst_api {
         let sp = pst::StaticPolicy::try_from(pst_static_template()).unwrap();
         let p = Policy::from_pst(sp.into()).unwrap();
         let recovered = p.try_into_pst().expect("should succeed");
-        assert!(matches!(recovered, pst::Policy::Static(_)));
+        assert_matches!(recovered, pst::Policy::Static(_));
     }
 
     #[test]
@@ -11441,16 +11442,16 @@ mod pst_api {
         let src = r#"permit(principal, action, resource) when { context.x > 5 } unless { resource == User::"bob" };"#;
         let p: Policy = src.parse().unwrap();
         let pst = p.to_pst().expect("to_pst should succeed");
-        assert!(matches!(&pst, pst::Policy::Static(_)));
+        assert_matches!(&pst, pst::Policy::Static(_));
         if let pst::Policy::Static(sp) = &pst {
             assert_eq!(sp.body.clauses().len(), 2);
-            assert!(matches!(sp.body.clauses()[0], pst::Clause::When(_)));
-            assert!(matches!(sp.body.clauses()[1], pst::Clause::Unless(_)));
+            assert_matches!(sp.body.clauses()[0], pst::Clause::When(_));
+            assert_matches!(sp.body.clauses()[1], pst::Clause::Unless(_));
         }
         // also test try_into_pst
         let p2: Policy = src.parse().unwrap();
         let pst2 = p2.try_into_pst().expect("try_into_pst should succeed");
-        assert!(matches!(pst2, pst::Policy::Static(_)));
+        assert_matches!(pst2, pst::Policy::Static(_));
     }
 
     // --- Text → Template → PST → other representations ---
@@ -11484,7 +11485,7 @@ mod pst_api {
         let pst = p.to_pst().expect("to_pst should succeed");
         if let pst::Policy::Static(sp) = &pst {
             assert_eq!(sp.body.effect, pst::Effect::Forbid);
-            assert!(matches!(sp.body.action, pst::ActionConstraint::Eq(_)));
+            assert_matches!(sp.body.action, pst::ActionConstraint::Eq(_));
             assert_eq!(sp.body.clauses().len(), 1);
         } else {
             panic!("expected static policy");
@@ -11498,7 +11499,7 @@ mod pst_api {
         // text → PST (try_into_pst)
         let p3: Policy = src.parse().unwrap();
         let pst2 = p3.try_into_pst().expect("try_into_pst should succeed");
-        assert!(matches!(pst2, pst::Policy::Static(_)));
+        assert_matches!(pst2, pst::Policy::Static(_));
     }
 
     // --- EST → PST ---
@@ -11523,7 +11524,7 @@ mod pst_api {
         // also test try_into_pst
         let p2 = Policy::from_json(None, json).unwrap();
         let pst2 = p2.try_into_pst().expect("try_into_pst should succeed");
-        assert!(matches!(pst2, pst::Policy::Static(_)));
+        assert_matches!(pst2, pst::Policy::Static(_));
     }
 
     #[test]
@@ -11539,7 +11540,7 @@ mod pst_api {
         let pst = t.to_pst().expect("to_pst should succeed");
         assert!(pst.principal.has_slot());
         assert_eq!(pst.clauses().len(), 1);
-        assert!(matches!(pst.clauses()[0], pst::Clause::Unless(_)));
+        assert_matches!(pst.clauses()[0], pst::Clause::Unless(_));
         // also test try_into_pst
         let t2 = Template::from_json(None, json).unwrap();
         let pst2 = t2.try_into_pst().expect("try_into_pst should succeed");
@@ -11572,13 +11573,13 @@ mod pst_api {
         .unwrap();
         let linked = pset.policy(&PolicyId::new("link1")).unwrap();
         let pst = linked.to_pst().expect("to_pst should succeed");
-        assert!(matches!(pst, pst::Policy::Linked(_)));
+        assert_matches!(pst, pst::Policy::Linked(_));
         // also test try_into_pst
         let pst2 = linked
             .clone()
             .try_into_pst()
             .expect("try_into_pst should succeed");
-        assert!(matches!(pst2, pst::Policy::Linked(_)));
+        assert_matches!(pst2, pst::Policy::Linked(_));
     }
 
     // ===== PolicySet PST tests =====
@@ -12280,8 +12281,8 @@ mod pst_api {
 
         assert_eq!(pst_set.policies.len(), 1);
         let sp = pst_set.policies.values().next().unwrap();
-        assert!(matches!(sp.body.principal, pst::PrincipalConstraint::Is(_)));
-        assert!(matches!(sp.body.action, pst::ActionConstraint::In(_)));
+        assert_matches!(sp.body.principal, pst::PrincipalConstraint::Is(_));
+        assert_matches!(sp.body.action, pst::ActionConstraint::In(_));
         assert!(matches!(
             sp.body.resource,
             pst::ResourceConstraint::In(pst::EntityOrSlot::Entity(_))
@@ -12344,7 +12345,7 @@ mod pst_api {
         assert_eq!(pst_set.policies.len(), 1);
         let sp = pst_set.policies.values().next().unwrap();
         assert_eq!(sp.body.effect, pst::Effect::Permit);
-        assert!(matches!(sp.body.action, pst::ActionConstraint::Eq(_)));
+        assert_matches!(sp.body.action, pst::ActionConstraint::Eq(_));
     }
 
     // --- Mixed: PST + text policies in same PolicySet → to_pst ---
