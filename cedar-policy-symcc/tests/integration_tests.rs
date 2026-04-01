@@ -15,8 +15,12 @@ use std::str::FromStr;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use cedar_policy::{Policy, PolicySet, Schema, Validator};
-use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
+use cedar_policy::{EntityUid, Policy, PolicyId, PolicySet, Schema, SlotId, Template, Validator};
+use cedar_policy_symcc::{
+    err::CompileError, solver::LocalSolver, CedarSymCompiler, CompiledPolicySet,
+};
+use cool_asserts::assert_matches;
+use std::collections::HashMap;
 
 mod utils;
 use utils::Environments;
@@ -2326,4 +2330,44 @@ action "" appliesTo {
         &validator,
     );
     assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+}
+
+#[tokio::test]
+async fn template_linked_policy_unsupported() {
+    let schema = utils::schema_from_cedarstr(
+        r#"
+        entity Thing;
+        entity User;
+        action view appliesTo {
+            principal: [User],
+            resource: [Thing],
+            context: {}
+        };
+    "#,
+    );
+    let validator = Validator::new(schema);
+    let mut pset = utils::pset_from_text("permit(principal, action, resource);", &validator);
+    let tmpl = Template::parse(
+        Some(PolicyId::new("forbid_tmpl")),
+        "forbid(principal == ?principal, action, resource);",
+    )
+    .unwrap();
+    pset.add_template(tmpl).unwrap();
+    pset.link(
+        PolicyId::new("forbid_tmpl"),
+        PolicyId::new("forbid_alice"),
+        HashMap::from([(
+            SlotId::principal(),
+            EntityUid::from_type_name_and_id("User".parse().unwrap(), "alice".parse().unwrap()),
+        )]),
+    )
+    .unwrap();
+    let envs = Environments::new(validator.schema(), "User", r#"Action::"view""#, "Thing");
+    let result = CompiledPolicySet::compile(&pset, &envs.req_env, validator.schema());
+    assert_matches!(
+        result.err(),
+        Some(cedar_policy_symcc::err::Error::CompileError(
+            CompileError::UnsupportedFeature(..)
+        ))
+    );
 }
