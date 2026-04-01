@@ -424,7 +424,6 @@ pub enum RequestValidationError {
 /// Errors related to validation
 pub mod request_validation_errors {
     use crate::ast;
-    use crate::impl_diagnostic_from_method_on_field;
     use itertools::Itertools;
     use miette::Diagnostic;
     use std::sync::Arc;

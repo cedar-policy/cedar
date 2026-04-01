@@ -24,7 +24,6 @@ use std::{
 
 use crate::{
     ast::AnyId,
-    impl_diagnostic_from_source_loc_opt_field, impl_diagnostic_from_two_source_loc_opt_fields,
     parser::{
         err::{expected_to_string, ExpectedTokenConfig},
         unescape::UnescapeError,
@@ -744,7 +743,7 @@ impl Diagnostic for DuplicateNamespace {
 
 /// Error subtypes for [`SchemaWarning`]
 pub mod schema_warnings {
-    use crate::{impl_diagnostic_from_source_loc_opt_field, parser::Loc};
+    use crate::parser::Loc;
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;
