@@ -4,7 +4,7 @@ set -euo pipefail
 cedar_policy_version="$(
   cd head &&
   cargo metadata --format-version 1 |
-    jq --raw-output '.packages[] | select(.name == "cedar-policy") | .version'
+    jq --raw-output '[.packages[] | select(.name == "cedar-policy")][0] | .version'
 )"
 echo "HEAD has cedar-policy at ${cedar_policy_version}"
 
