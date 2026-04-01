@@ -374,6 +374,22 @@ impl Policy {
             Policy::Linked(p) => &p.body,
         }
     }
+
+    /// Clone this `Policy` with a new ID
+    pub fn new_id(&self, id: PolicyID) -> Self {
+        match self {
+            Policy::Static(sp) => {
+                let mut body = sp.body.clone();
+                body.id = id;
+                Policy::Static(StaticPolicy { body })
+            }
+            Policy::Linked(lp) => Policy::Linked(LinkedPolicy {
+                body: lp.body.clone(),
+                values: lp.values.clone(),
+                instance_id: id,
+            }),
+        }
+    }
 }
 
 impl std::fmt::Display for StaticPolicy {
@@ -644,5 +660,55 @@ mod tests {
         });
         let _ = linked_p.body();
         let _ = linked_p.to_string();
+    }
+
+    #[test]
+    fn test_new_id_static() {
+        let policy = Policy::Static(
+            StaticPolicy::try_from(Template::new(
+                "old",
+                Effect::Permit,
+                PrincipalConstraint::Any,
+                ActionConstraint::Any,
+                ResourceConstraint::Any,
+            ))
+            .unwrap(),
+        );
+        let renamed = policy.new_id("new".into());
+        match &renamed {
+            Policy::Static(sp) => assert_eq!(sp.id().0.as_str(), "new"),
+            Policy::Linked(_) => panic!("expected Static"),
+        }
+    }
+
+    #[test]
+    fn test_new_id_linked() {
+        use crate::pst::constraints::*;
+        use crate::pst::expr::SlotId;
+
+        let template = Arc::new(Template::new(
+            "tmpl",
+            Effect::Permit,
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)),
+            ActionConstraint::Any,
+            ResourceConstraint::Any,
+        ));
+        let policy = Policy::Linked(
+            LinkedPolicy::new(
+                template.clone(),
+                HashMap::from([(SlotId::Principal, make_uid("User", "alice"))]),
+                "old_link".into(),
+            )
+            .unwrap(),
+        );
+        let renamed = policy.new_id("new_link".into());
+        match &renamed {
+            Policy::Linked(lp) => {
+                assert_eq!(lp.id().0.as_str(), "new_link");
+                // Template body should be unchanged
+                assert_eq!(lp.body.id.0.as_str(), "tmpl");
+            }
+            Policy::Static(_) => panic!("expected Linked"),
+        }
     }
 }

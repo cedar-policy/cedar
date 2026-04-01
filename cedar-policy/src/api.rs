@@ -2915,9 +2915,14 @@ impl PolicySet {
                     .map(|(old_pid, new_pid)| (PolicyId::new(old_pid), PolicyId::new(new_pid)))
                     .collect();
 
-                for (pid, op) in &other.policies {
-                    let pid = renaming.get(pid).unwrap_or(pid);
+                for (old_pid, op) in &other.policies {
+                    let pid = renaming.get(old_pid).unwrap_or(old_pid);
                     if !self.policies.contains_key(pid) {
+                        let lossless = if renaming.contains_key(old_pid) {
+                            op.lossless.new_id(pid.clone())
+                        } else {
+                            op.lossless.clone()
+                        };
                         #[expect(
                             clippy::unwrap_used,
                             reason = "`pid` is the new id of a policy from `other`, so it will be in `self` after merging"
@@ -2926,21 +2931,26 @@ impl PolicySet {
                             // Use the representation from `self.ast` so that we get a version with internal references to
                             // policy ids updated to account for the renaming.
                             ast: self.ast.get(pid.as_ref()).unwrap().clone(),
-                            lossless: op.lossless.clone(),
+                            lossless,
                         };
                         self.policies.insert(pid.clone(), new_p);
                     }
                 }
-                for (pid, ot) in &other.templates {
-                    let pid = renaming.get(pid).unwrap_or(pid);
+                for (old_pid, ot) in &other.templates {
+                    let pid = renaming.get(old_pid).unwrap_or(old_pid);
                     if !self.templates.contains_key(pid) {
+                        let lossless = if renaming.contains_key(old_pid) {
+                            ot.lossless.new_id(pid.clone())
+                        } else {
+                            ot.lossless.clone()
+                        };
                         #[expect(
                             clippy::unwrap_used,
                             reason = "`pid` is the new id of a template from `other`, so it will be in `self` after merging"
                         )]
                         let new_t = Template {
                             ast: self.ast.get_template(pid.as_ref()).unwrap().clone(),
-                            lossless: ot.lossless.clone(),
+                            lossless,
                         };
                         self.templates.insert(pid.clone(), new_t);
                     }
@@ -3500,8 +3510,8 @@ impl Template {
     #[must_use]
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
-            ast: self.ast.new_id(id.into()),
-            lossless: self.lossless.clone(), // Lossless representation doesn't include the `PolicyId`
+            ast: self.ast.new_id(id.clone().into()),
+            lossless: self.lossless.new_id(id),
         }
     }
 
@@ -3912,8 +3922,8 @@ impl Policy {
     #[must_use]
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
-            ast: self.ast.new_id(id.into()),
-            lossless: self.lossless.clone(), // Lossless representation doesn't include the `PolicyId`
+            ast: self.ast.new_id(id.clone().into()),
+            lossless: self.lossless.new_id(id),
         }
     }
 
@@ -4299,6 +4309,19 @@ impl LosslessTemplate {
         text.map_or(Self::Empty, |text| Self::Text(text.into()))
     }
 
+    /// Clone this `LosslessTemplate` with a new policy ID.
+    /// Only the PST variant embeds the ID; other variants are unaffected.
+    fn new_id(&self, id: PolicyId) -> Self {
+        match self {
+            Self::Pst(pst) => {
+                let mut pst = pst.clone();
+                pst.id = id.into();
+                Self::Pst(pst)
+            }
+            other => other.clone(),
+        }
+    }
+
     /// Get the EST representation of this template.
     fn est(
         &self,
@@ -4413,6 +4436,15 @@ impl LosslessPolicy {
             text: text.into(),
             slots: HashMap::new(),
         })
+    }
+
+    /// Clone this `LosslessPolicy` with a new policy ID.
+    /// Only the PST variant embeds the ID; other variants are unaffected.
+    fn new_id(&self, id: PolicyId) -> Self {
+        match self {
+            Self::Pst(pst) => Self::Pst(pst.new_id(id.into())),
+            other => other.clone(),
+        }
     }
 
     /// Get the EST representation of this policy.
