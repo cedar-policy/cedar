@@ -975,6 +975,101 @@ fn test_always_denies_does_not_hold_no_counterexample() {
 }
 
 #[test]
+fn test_warn_if_contains_templates_single_policy_set() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    // A policy set with one template (uses ?principal slot) and one static policy
+    let policy = write_temp(
+        r#"
+        permit(principal, action, resource);
+        forbid(principal == ?principal, action, resource);
+        "#,
+    );
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-allows")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stderr(predicates::str::contains(
+            "policy set contains 1 policy template(s)",
+        ));
+}
+
+#[test]
+fn test_no_template_warning_without_templates() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-allows")
+        .arg("--policies")
+        .arg(policy.path())
+        .assert()
+        .success()
+        .stderr(predicates::str::contains("will be ignored by analysis").not());
+}
+
+#[test]
+fn test_warn_if_contains_templates_two_policy_sets() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    // First policy set has a template
+    let ps1 = write_temp(
+        r#"
+        permit(principal, action, resource);
+        permit(principal == ?principal, action, resource);
+        "#,
+    );
+    // Second policy set has no templates
+    let ps2 = write_temp(PERMIT_ALL);
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("equivalent")
+        .arg("--policies1")
+        .arg(ps1.path())
+        .arg("--policies2")
+        .arg(ps2.path())
+        .assert()
+        .success()
+        .stderr(predicates::str::contains(
+            "first policy set contains 1 policy template(s)",
+        ));
+}
+
+#[test]
 fn test_equivalent_does_not_hold_no_counterexample() {
     let schema = write_temp(SAMPLE_SCHEMA);
     let policy1 = write_temp(PERMIT_ALL);
