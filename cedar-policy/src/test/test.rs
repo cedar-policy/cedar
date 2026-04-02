@@ -10996,6 +10996,111 @@ when { principal in resource.admins };
             assert_eq!(actions, Vec::new(),);
         }
     }
+
+    /// TPE produces `Residual::Error` when a concrete entity lacks an accessed
+    /// attribute. The residual policy should be convertible to PST via
+    /// `Policy::to_pst()`, with the error node represented as
+    /// `pst::Expr::ResidualError`.
+    #[test]
+    fn residual_error_to_pst() {
+        use cedar_policy_core::pst;
+        use std::str::FromStr;
+
+        let (schema, _) = crate::Schema::from_cedarschema_str(
+            r#"
+            entity User = { name: String };
+            entity Account = { name: String, assignedTo?: User };
+            action RevealCredentials appliesTo {
+                principal: [User],
+                resource: [Account],
+                context: { flag: Bool },
+            };
+            "#,
+        )
+        .unwrap();
+
+        let policies = crate::PolicySet::from_str(
+            r#"
+            permit(
+                principal is User,
+                action == Action::"RevealCredentials",
+                resource is Account
+            ) when {
+                context.flag &&
+                resource has assignedTo &&
+                resource.assignedTo == principal
+            };
+            "#,
+        )
+        .unwrap();
+
+        // Account without assignedTo — TPE will produce an error node for
+        // `resource.assignedTo`
+        let entities = crate::Entities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "User", "id": "u1" },
+                    "attrs": { "name": "alice" },
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "Account", "id": "a1" },
+                    "attrs": { "name": "shared" },
+                    "parents": []
+                }
+            ]),
+            Some(&schema),
+        )
+        .unwrap();
+
+        let partial_entities = crate::PartialEntities::from_concrete(entities, &schema).unwrap();
+
+        // Context is unknown — forces a residual on `context has flag`
+        let request = crate::PartialRequest::new(
+            crate::PartialEntityUid::from_concrete(r#"User::"u1""#.parse().unwrap()),
+            r#"Action::"RevealCredentials""#.parse().unwrap(),
+            crate::PartialEntityUid::from_concrete(r#"Account::"a1""#.parse().unwrap()),
+            None,
+            &schema,
+        )
+        .unwrap();
+
+        let response = policies
+            .tpe(&request, &partial_entities, &schema)
+            .expect("tpe should succeed");
+
+        // There should be exactly one nontrivial residual
+        let residual_policies: Vec<_> = response.nontrivial_residual_policies().collect();
+        assert_eq!(
+            residual_policies.len(),
+            1,
+            "decision={:?}, all residuals: {:?}",
+            response.decision(),
+            response
+                .residual_policies()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+        );
+
+        let policy = &residual_policies[0];
+
+        // Convert to PST
+        let pst_policy = policy.to_pst().expect("to_pst should succeed");
+        let clauses = pst_policy.body().clauses();
+        assert_eq!(clauses.len(), 1);
+
+        let expr = match &clauses[0] {
+            pst::Clause::When(e) => e,
+            pst::Clause::Unless(_) => panic!("expected when clause"),
+        };
+
+        // The expression should contain a ResidualError node (from
+        // `resource.assignedTo` on an entity without that attribute)
+        assert!(
+            expr.has_error(),
+            "residual expression should contain an error node"
+        );
+    }
 }
 
 mod deep_eq {

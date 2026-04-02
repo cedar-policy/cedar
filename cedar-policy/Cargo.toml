@@ -50,14 +50,28 @@ corpus-timing = []
 
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
-experimental = ["partial-eval", "permissive-validate", "partial-validate", "entity-manifest", "protobufs", "tolerant-ast", "extended-schema", "deprecated-schema-compat", "tpe", "variadic-is-in-range"]
+experimental = [
+    "partial-eval",
+    "permissive-validate",
+    "partial-validate",
+    "entity-manifest",
+    "protobufs",
+    "tolerant-ast",
+    "extended-schema",
+    "deprecated-schema-compat",
+    "tpe",
+    "variadic-is-in-range",
+]
 entity-manifest = ["cedar-policy-core/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-core/partial-validate"]
 protobufs = ["dep:nonempty", "dep:prost", "dep:prost-build"]
 wasm = ["tsify", "wasm-bindgen"]
-tolerant-ast = ["cedar-policy-core/tolerant-ast", "cedar-policy-formatter/tolerant-ast"]
+tolerant-ast = [
+    "cedar-policy-core/tolerant-ast",
+    "cedar-policy-formatter/tolerant-ast",
+]
 extended-schema = ["cedar-policy-core/extended-schema"]
 # Not exactly experimental but rather a feature for supporting deprecated
 # parsing behavior. API is stable, but hopefully will be removed in a future
@@ -105,6 +119,10 @@ harness = false
 
 [[bench]]
 name = "deeply_nested_est"
+harness = false
+
+[[bench]]
+name = "from_ast"
 harness = false
 
 [package.metadata.docs.rs]

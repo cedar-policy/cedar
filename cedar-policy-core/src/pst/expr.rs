@@ -738,6 +738,14 @@ pub enum Expr {
         /// Name of the unknown
         name: SmolStr,
     },
+    /// A TPE residual error node: indicates that this subexpression would
+    /// produce an evaluation error if reached at runtime.
+    ///
+    /// This is distinct from tolerant-ast parse errors — `ResidualError`
+    /// represents a semantically meaningful result from type-aware partial
+    /// evaluation (e.g., arithmetic overflow).
+    #[cfg(feature = "tpe")]
+    ResidualError,
 }
 
 impl Expr {
@@ -758,6 +766,13 @@ impl Expr {
         ast_name: &ast::Name,
         args: Vec<Arc<Expr>>,
     ) -> Result<Expr, PstConstructionError> {
+        // TPE residual error nodes are represented as `error()` in the AST.
+        // Intercept them here before the extension function lookup fails.
+        #[cfg(feature = "tpe")]
+        if *ast_name == *crate::tpe::residual::ERROR_NAME {
+            return Ok(Expr::ResidualError);
+        }
+
         let extension = Extensions::all_available().func(ast_name)?;
 
         let expected = extension.arg_types().len();
@@ -816,6 +831,8 @@ impl Expr {
         let recurse = |e: &Arc<Self>| e.reduce(f, op, zero.clone());
         match self {
             Expr::Literal(_) | Expr::Var(_) | Expr::Slot(_) | Expr::Unknown { .. } => zero,
+            #[cfg(feature = "tpe")]
+            Expr::ResidualError => zero,
             Expr::UnaryOp { expr, .. }
             | Expr::GetAttr { expr, .. }
             | Expr::HasAttr { expr, .. }
@@ -868,6 +885,22 @@ impl Expr {
             },
             &|a, b| a.union(&b).copied().collect(),
             HashSet::new(),
+        )
+    }
+
+    /// Does this expression contain any [`Expr::ResidualError`] nodes?
+    ///
+    /// Returns `true` if any subexpression represents a statically-known
+    /// evaluation error (as determined by TPE).
+    #[cfg(feature = "tpe")]
+    pub fn has_error(&self) -> bool {
+        self.reduce::<bool>(
+            &|e| match e {
+                Expr::ResidualError => Some(true),
+                _ => None,
+            },
+            &|a, b| a || b,
+            false,
         )
     }
 }
@@ -1246,6 +1279,8 @@ impl std::fmt::Display for Expr {
                 )
             }
             Expr::Unknown { name } => write!(f, "{}", name),
+            #[cfg(feature = "tpe")]
+            Expr::ResidualError => write!(f, "<residual error>"),
         }
     }
 }
