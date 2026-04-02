@@ -207,14 +207,7 @@ pub(crate) fn allow_all() -> Policy {
 
 /// The policyset that allows all requests
 pub(crate) fn allow_all_pset() -> PolicySet {
-    let mut pset = PolicySet::new();
-    #[expect(
-        clippy::expect_used,
-        reason = "Adding allow_all to a `PolicySet` should not error"
-    )]
-    pset.add(allow_all())
-        .expect("Could not add policy to policy set.");
-    pset
+    PolicySet::singleton(allow_all())
 }
 
 /// Returns asserts that are unsatisfiable iff `policies` allows all inputs in `env`.
