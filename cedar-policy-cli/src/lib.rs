@@ -890,11 +890,11 @@ pub struct SymccArgs {
 pub enum SymccCommands {
     // --- Single-policy primitives ---
     /// Verify that a policy never produces runtime errors
-    NeverErrors(PoliciesArgs),
+    NeverErrors(SymccPoliciesArgs),
     /// Verify that a policy always matches (is always true)
-    AlwaysMatches(PoliciesArgs),
+    AlwaysMatches(SymccPoliciesArgs),
     /// Verify that a policy never matches (is always false)
-    NeverMatches(PoliciesArgs),
+    NeverMatches(SymccPoliciesArgs),
 
     // --- Two-policy comparison primitives ---
     /// Check if two individual policies have equivalent match conditions
@@ -906,17 +906,39 @@ pub enum SymccCommands {
 
     // --- Single-policy-set primitives ---
     /// Verify that policy set always allows all well-formed requests
-    AlwaysAllows(PoliciesArgs),
+    AlwaysAllows(SymccPoliciesArgs),
     /// Verify that policy set always denies all well-formed requests
-    AlwaysDenies(PoliciesArgs),
+    AlwaysDenies(SymccPoliciesArgs),
 
     // --- Two-policy-set comparison primitives ---
     /// Verify that two policy sets are logically equivalent
-    Equivalent(TwoPoliciesArgs),
+    Equivalent(SymccTwoPoliciesArgs),
     /// Verify that one policy set implies another (subsumption)
-    Implies(TwoPoliciesArgs),
+    Implies(SymccTwoPoliciesArgs),
     /// Verify that two policy sets are disjoint (no overlapping permissions)
-    Disjoint(TwoPoliciesArgs),
+    Disjoint(SymccTwoPoliciesArgs),
+}
+
+/// This struct contains the arguments that together specify an input policy or policy set without linked policies.
+#[derive(Args, Debug)]
+pub struct SymccPoliciesArgs {
+    /// File containing the Cedar policies. If not provided, read policies from stdin.
+    #[arg(short, long = "policies", value_name = "FILE")]
+    pub policies_file: Option<String>,
+    /// Format of policies in the `--policies` file
+    #[arg(long = "policy-format", default_value_t, value_enum)]
+    pub policy_format: PolicyFormat,
+}
+
+#[cfg(feature = "analyze")]
+impl SymccPoliciesArgs {
+    /// Turn this `SymccPoliciesArgs` into the appropriate `PolicySet` object
+    fn get_policy_set(&self) -> Result<PolicySet> {
+        match self.policy_format {
+            PolicyFormat::Cedar => read_cedar_policy_set(self.policies_file.as_ref()),
+            PolicyFormat::Json => read_json_policy_set(self.policies_file.as_ref()),
+        }
+    }
 }
 
 /// Two-policy comparison: policy inputs
@@ -957,45 +979,37 @@ impl TwoPolicyArgs {
     }
 }
 
-/// Two policy-set comparison: policy set inputs
+/// Two policy-set comparison: policy set inputs without linked policies.
 #[derive(Args, Debug)]
-pub struct TwoPoliciesArgs {
+pub struct SymccTwoPoliciesArgs {
     /// File containing the first policy set
     #[arg(long = "policies1", value_name = "FILE")]
     pub policies1_file: Option<String>,
     /// Format of the first policy set file
     #[arg(long = "policies1-format", default_value_t, value_enum)]
     pub policies1_format: PolicyFormat,
-    /// Template-linked policies for the first policy set
-    #[arg(long = "template-linked1", value_name = "FILE")]
-    pub template_linked1_file: Option<String>,
     /// File containing the second policy set
     #[arg(long = "policies2", value_name = "FILE")]
     pub policies2_file: Option<String>,
     /// Format of the second policy set file
     #[arg(long = "policies2-format", default_value_t, value_enum)]
     pub policies2_format: PolicyFormat,
-    /// Template-linked policies for the second policy set
-    #[arg(long = "template-linked2", value_name = "FILE")]
-    pub template_linked2_file: Option<String>,
 }
 
 #[cfg(feature = "analyze")]
-impl TwoPoliciesArgs {
+impl SymccTwoPoliciesArgs {
     fn get_policy_set_1(&self) -> Result<PolicySet> {
-        let pargs = PoliciesArgs {
+        let pargs = SymccPoliciesArgs {
             policies_file: self.policies1_file.clone(),
             policy_format: self.policies1_format,
-            template_linked_file: self.template_linked1_file.clone(),
         };
         pargs.get_policy_set()
     }
 
     fn get_policy_set_2(&self) -> Result<PolicySet> {
-        let pargs = PoliciesArgs {
+        let pargs = SymccPoliciesArgs {
             policies_file: self.policies2_file.clone(),
             policy_format: self.policies2_format,
-            template_linked_file: self.template_linked2_file.clone(),
         };
         pargs.get_policy_set()
     }
@@ -1617,8 +1631,20 @@ fn initialize_solver(
 }
 
 #[cfg(feature = "analyze")]
+fn warn_if_contains_templates(pset: &PolicySet, name: &str) {
+    let num_templates = pset.templates().count();
+    if num_templates > 0 {
+        let report = miette!(
+            severity = miette::Severity::Warning,
+            "{name} contains {num_templates} policy template(s), which will be ignored by analysis"
+        );
+        eprintln!("{report:?}");
+    }
+}
+
+#[cfg(feature = "analyze")]
 fn load_single_policy(
-    policies: &PoliciesArgs,
+    policies: &SymccPoliciesArgs,
     schema_args: &SchemaArgs,
 ) -> Result<(Policy, Schema)> {
     let pset = policies.get_policy_set()?;
@@ -1664,21 +1690,24 @@ fn load_two_policies(
 
 #[cfg(feature = "analyze")]
 fn load_policy_set(
-    policies: &PoliciesArgs,
+    policies: &SymccPoliciesArgs,
     schema_args: &SchemaArgs,
 ) -> Result<(PolicySet, Schema)> {
     let pset = policies.get_policy_set()?;
+    warn_if_contains_templates(&pset, "policy set");
     let schema = schema_args.get_schema()?;
     Ok((pset, schema))
 }
 
 #[cfg(feature = "analyze")]
 fn load_two_policy_sets(
-    args: &TwoPoliciesArgs,
+    args: &SymccTwoPoliciesArgs,
     schema_args: &SchemaArgs,
 ) -> Result<(PolicySet, PolicySet, Schema)> {
     let pset1 = args.get_policy_set_1()?;
     let pset2 = args.get_policy_set_2()?;
+    warn_if_contains_templates(&pset1, "first policy set");
+    warn_if_contains_templates(&pset2, "second policy set");
     let schema = schema_args.get_schema()?;
     Ok((pset1, pset2, schema))
 }
