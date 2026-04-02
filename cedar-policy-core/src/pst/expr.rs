@@ -743,7 +743,7 @@ pub enum Expr {
     ///
     /// This is distinct from tolerant-ast parse errors — `ResidualError`
     /// represents a semantically meaningful result from type-aware partial
-    /// evaluation (e.g., accessing a missing attribute on a concrete entity).
+    /// evaluation (e.g., arithmetic overflow).
     #[cfg(feature = "tpe")]
     ResidualError,
 }
