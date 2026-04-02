@@ -3479,6 +3479,7 @@ impl Template {
     pub fn to_pst(&self) -> Result<pst::Template, pst::PstConstructionError> {
         self.lossless
             .pst(|| pst::Template::try_from(self.ast.clone()))
+            .map(|t| t.with_id(self.ast.id().clone().into()))
     }
 
     /// Get an owned PST representation of this template.
@@ -4233,6 +4234,7 @@ impl Policy {
     pub fn to_pst(&self) -> Result<pst::Policy, pst::PstConstructionError> {
         self.lossless
             .pst(|| pst::Policy::try_from(self.ast.clone()))
+            .map(|p| p.new_id(self.ast.id().clone().into()))
     }
 
     /// Get an owned PST representation of this policy. May return an error when the policy
