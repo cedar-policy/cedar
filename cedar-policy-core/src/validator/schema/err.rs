@@ -347,10 +347,7 @@ pub mod schema_errors {
 
     use crate::ast::{EntityType, EntityUID, InternalName, Name};
     use crate::parser::{join_with_conjunction, Loc};
-    use crate::{
-        impl_diagnostic_from_method_on_field, impl_diagnostic_from_method_on_nonempty_field,
-        transitive_closure,
-    };
+    use crate::transitive_closure;
     use itertools::Itertools;
     use miette::Diagnostic;
     use nonempty::NonEmpty;
