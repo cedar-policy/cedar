@@ -19,13 +19,17 @@
 //! This module defines the expression tree used in Cedar policy conditions
 //! (`when` / `unless` clauses). Expressions are recursive via [`Arc<Expr>`].
 
-use super::err::{error_body, PstConstructionError};
+use super::err::{
+    error_body::{self},
+    PstConstructionError,
+};
 use crate::ast;
 use crate::expr_builder::ExprBuilder;
 use crate::extensions::Extensions;
 use smol_str::{SmolStr, ToSmolStr};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// Constants for core Cedar operator names
@@ -36,6 +40,66 @@ mod constants {
     pub static GREATER_EQ_STR: &str = ">=";
     pub static AND_STR: &str = "&&";
     pub static OR_STR: &str = "||";
+}
+
+/// A validated Cedar identifier.
+///
+/// Wraps a [`SmolStr`] that has been checked to be a valid Cedar identifier
+/// (not a reserved keyword, no special characters, etc.).
+///
+/// The only way to create an `Id` is through [`Id::new()`] (which validates
+/// that the input is a valid identifier) or through conversion from other
+/// validated identifier representations.
+/// Accessing the inner string is free via [`as_str()`](Id::as_str) or
+/// [`into_smolstr()`](Id::into_smolstr).
+///
+/// ```
+/// # use cedar_policy_core::pst::Id;
+/// let id = Id::new("userName").expect("valid identifier");
+/// assert_eq!(id.as_str(), "userName");
+///
+/// // Reserved keywords are rejected:
+/// assert!(Id::new("if").is_err());
+/// assert!(Id::new("true").is_err());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Id(SmolStr);
+
+impl Id {
+    /// Create a new `Id`, validating that the string is a legal Cedar identifier.
+    pub fn new(s: impl AsRef<str>) -> Result<Self, PstConstructionError> {
+        let ast_id = ast::Id::from_str(s.as_ref())?;
+        Ok(Self(ast_id.into_smolstr()))
+    }
+
+    /// Get the underlying string as a `&str`. Zero-cost.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consume the `Id` and return the underlying `SmolStr`. Zero-cost.
+    pub fn into_smolstr(self) -> SmolStr {
+        self.0
+    }
+}
+
+impl AsRef<str> for Id {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
+/// Infallible: `ast::Id` is already validated.
+impl From<ast::Id> for Id {
+    fn from(id: ast::Id) -> Self {
+        Id(id.into_smolstr())
+    }
 }
 
 /// Slot identifier for template policies.
@@ -85,30 +149,38 @@ impl Display for SlotId {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     /// Basename (the final component of the name)
-    pub id: SmolStr,
+    pub id: Id,
     /// Namespace components (empty for unqualified names)
-    pub namespace: Arc<Vec<SmolStr>>,
+    pub namespace: Arc<Vec<Id>>,
 }
 
 impl Name {
-    /// Constructs an unqualified name.
-    pub fn unqualified(id: impl Into<SmolStr>) -> Self {
-        Name {
-            id: id.into(),
+    /// Constructs an unqualified name. This is a convenience constructor that validates
+    /// that `id` is a legal Cedar identifier.
+    ///
+    /// If you have an `Id` (which is `AsRef<str>`), you can infallibly construct the name
+    /// yourself.
+    pub fn unqualified(id: impl AsRef<str>) -> Result<Self, PstConstructionError> {
+        Ok(Name {
+            id: Id::new(id)?,
             namespace: Arc::new(vec![]),
-        }
+        })
     }
 
-    /// Constructs a qualified name (i.e. with a possible non-empty namespace)
-    pub fn qualified<I, T>(namespace: I, id: impl Into<SmolStr>) -> Self
+    /// Constructs a qualified name. Validates that all components are legal Cedar identifiers.
+    ///
+    /// If you have an `Id` and a namespace in the form of a `Vec<Id>`, you can infallibly
+    /// construct the name yourself.
+    pub fn qualified<I, T>(namespace: I, id: impl AsRef<str>) -> Result<Self, PstConstructionError>
     where
         I: IntoIterator<Item = T>,
-        T: Into<SmolStr>,
+        T: AsRef<str>,
     {
-        Name {
-            id: id.into(),
-            namespace: Arc::new(namespace.into_iter().map(|x| x.into()).collect()),
-        }
+        let ns: Result<Vec<Id>, _> = namespace.into_iter().map(|s| Id::new(s)).collect();
+        Ok(Name {
+            id: Id::new(id)?,
+            namespace: Arc::new(ns?),
+        })
     }
 }
 
@@ -142,11 +214,8 @@ impl EntityType {
 
 impl Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ast_et: Result<ast::EntityType, _> = self.clone().try_into();
-        match ast_et {
-            Ok(n) => write!(f, "{}", n),
-            Err(_) => write!(f, "<invalid entity type>"),
-        }
+        let ast_et: ast::EntityType = self.clone().into();
+        write!(f, "{}", ast_et)
     }
 }
 
@@ -416,6 +485,14 @@ pub enum BinaryOp {
     Offset,
     /// `left.durationSince(right)`
     DurationSince,
+    /// `left.lessThan(right)` (decimal less than)
+    DecimalLessThan,
+    /// `left.lessThanOrEqual(right)` (decimal less than or equal)
+    DecimalLessEq,
+    /// `left.greaterThan(right)` (decimal greater than)
+    DecimalGreater,
+    /// `left.greaterThanOrEqual(right)` (decimal greater than or equal)
+    DecimalGreaterEq,
 }
 
 impl BinaryOp {
@@ -425,6 +502,12 @@ impl BinaryOp {
             BinaryOp::IsInRange => Some(&extensions::ipaddr::names::IS_IN_RANGE),
             BinaryOp::Offset => Some(&extensions::datetime::constants::OFFSET_METHOD_NAME),
             BinaryOp::DurationSince => Some(&extensions::datetime::constants::DURATION_SINCE_NAME),
+            BinaryOp::DecimalLessThan => Some(&extensions::decimal::constants::LESS_THAN),
+            BinaryOp::DecimalLessEq => Some(&extensions::decimal::constants::LESS_THAN_OR_EQUAL),
+            BinaryOp::DecimalGreater => Some(&extensions::decimal::constants::GREATER_THAN),
+            BinaryOp::DecimalGreaterEq => {
+                Some(&extensions::decimal::constants::GREATER_THAN_OR_EQUAL)
+            }
             // those are operators, not names
             BinaryOp::Eq
             | BinaryOp::NotEq
@@ -449,10 +532,10 @@ impl BinaryOp {
     /// Parse a binary operator from a function name
     pub(crate) fn from_function_name(name: &str) -> Option<Self> {
         match name {
-            "lessThan" => Some(BinaryOp::Less),
-            "lessThanOrEqual" => Some(BinaryOp::LessEq),
-            "greaterThan" => Some(BinaryOp::Greater),
-            "greaterThanOrEqual" => Some(BinaryOp::GreaterEq),
+            "lessThan" => Some(BinaryOp::DecimalLessThan),
+            "lessThanOrEqual" => Some(BinaryOp::DecimalLessEq),
+            "greaterThan" => Some(BinaryOp::DecimalGreater),
+            "greaterThanOrEqual" => Some(BinaryOp::DecimalGreaterEq),
             "isInRange" => Some(BinaryOp::IsInRange),
             "offset" => Some(BinaryOp::Offset),
             "durationSince" => Some(BinaryOp::DurationSince),
@@ -655,18 +738,6 @@ pub enum Expr {
         /// Name of the unknown
         name: SmolStr,
     },
-    /// An error occurred during construction (not constructible by external callers).
-    #[expect(
-        private_interfaces,
-        reason = "intentionally private to prevent clients from constructing error nodes"
-    )]
-    Error(ErrorNode),
-}
-
-/// A private error node is used when other internal APIs require infallible methods
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ErrorNode {
-    pub(crate) error: PstConstructionError,
 }
 
 impl Expr {
@@ -687,9 +758,7 @@ impl Expr {
         ast_name: &ast::Name,
         args: Vec<Arc<Expr>>,
     ) -> Result<Expr, PstConstructionError> {
-        let extension = Extensions::all_available()
-            .func(ast_name)
-            .map_err(error_body::FunctionLookupError)?;
+        let extension = Extensions::all_available().func(ast_name)?;
 
         let expected = extension.arg_types().len();
         let got = args.len();
@@ -725,6 +794,81 @@ impl Expr {
             }
             _ => return Err(error_body::UnknownFunctionError::new(name).into()),
         })
+    }
+
+    // === Expression reduction functions ===
+
+    /// Recursively accumulate a value over this expression tree.
+    ///
+    /// At each node, `f` is called first. If it returns `Some(t)`, that value is returned
+    /// immediately without recursing into children. Otherwise, the results of recursing into
+    /// all child expressions are merged pairwise with `op`. If a node has no children,
+    /// `zero` is returned.
+    pub fn reduce<T: Clone + Sized>(
+        &self,
+        f: &dyn Fn(&Self) -> Option<T>,
+        op: &dyn Fn(T, T) -> T,
+        zero: T,
+    ) -> T {
+        if let Some(t) = f(self) {
+            return t;
+        }
+        let recurse = |e: &Arc<Self>| e.reduce(f, op, zero.clone());
+        match self {
+            Expr::Literal(_) | Expr::Var(_) | Expr::Slot(_) | Expr::Unknown { .. } => zero,
+            Expr::UnaryOp { expr, .. }
+            | Expr::GetAttr { expr, .. }
+            | Expr::HasAttr { expr, .. }
+            | Expr::Like { expr, .. } => recurse(expr),
+            Expr::BinaryOp { left, right, .. } => op(recurse(left), recurse(right)),
+            Expr::Is { expr, in_expr, .. } => match in_expr {
+                Some(e) => op(recurse(expr), recurse(e)),
+                None => recurse(expr),
+            },
+            Expr::IfThenElse {
+                cond,
+                then_expr,
+                else_expr,
+            } => op(op(recurse(cond), recurse(then_expr)), recurse(else_expr)),
+            Expr::Set(exprs) => {
+                let mut iter = exprs.iter();
+                match iter.next() {
+                    None => zero,
+                    Some(first) => iter.fold(recurse(first), |acc, e| op(acc, recurse(e))),
+                }
+            }
+            Expr::Record(map) => {
+                let mut iter = map.values();
+                match iter.next() {
+                    None => zero,
+                    Some(first) => iter.fold(recurse(first), |acc, e| op(acc, recurse(e))),
+                }
+            }
+        }
+    }
+
+    /// Does this expression contain any slots?
+    pub fn has_slots(&self) -> bool {
+        self.reduce::<bool>(
+            &|e| match e {
+                Expr::Slot(_) => Some(true),
+                _ => None,
+            },
+            &|a, b| a || b,
+            false,
+        )
+    }
+
+    /// Return the slots used in this expression
+    pub fn slots(&self) -> HashSet<SlotId> {
+        self.reduce::<HashSet<SlotId>>(
+            &|e| match e {
+                Expr::Slot(id) => Some(HashSet::from([*id])),
+                _ => None,
+            },
+            &|a, b| a.union(&b).copied().collect(),
+            HashSet::new(),
+        )
     }
 }
 
@@ -961,21 +1105,10 @@ impl ExprBuilder for PstBuilder {
         Ok(Expr::Record(map))
     }
 
-    fn call_extension_fn(self, fn_name: ast::Name, args: impl IntoIterator<Item = Expr>) -> Expr {
-        let expr = Expr::from_function_ast_name_and_args(
-            &fn_name,
-            args.into_iter().map(Arc::new).collect(),
-        );
-        match expr {
-            Ok(e) => e,
-            Err(error) => Expr::Error(ErrorNode { error }),
-        }
-    }
-
-    fn try_call_extension_fn(
+    fn call_extension_fn(
         self,
         fn_name: ast::Name,
-        args: Vec<Expr>,
+        args: impl IntoIterator<Item = Expr>,
     ) -> Result<Expr, PstConstructionError> {
         Expr::from_function_ast_name_and_args(&fn_name, args.into_iter().map(Arc::new).collect())
     }
@@ -1113,7 +1246,6 @@ impl std::fmt::Display for Expr {
                 )
             }
             Expr::Unknown { name } => write!(f, "{}", name),
-            Expr::Error(e) => write!(f, "<error: {}>", e.error),
         }
     }
 }
@@ -1124,8 +1256,167 @@ impl std::fmt::Display for Expr {
 )]
 #[cfg(test)]
 mod tests {
+    use cool_asserts::{assert_matches, assertion_failure};
+
     use super::*;
     use std::str::FromStr;
+
+    // --- Id tests ---
+
+    #[test]
+    fn test_id_valid_identifiers() {
+        // Simple identifiers
+        assert!(Id::new("x").is_ok());
+        assert!(Id::new("userName").is_ok());
+        assert!(Id::new("_private").is_ok());
+        assert!(Id::new("a1").is_ok());
+        assert!(Id::new("ABC").is_ok());
+    }
+
+    #[test]
+    fn test_id_reserved_keywords_rejected() {
+        for kw in [
+            "if", "then", "else", "true", "false", "in", "is", "like", "has",
+        ] {
+            assert!(Id::new(kw).is_err(), "keyword `{kw}` should be rejected");
+        }
+    }
+
+    #[test]
+    fn test_id_invalid_strings_rejected() {
+        assert!(Id::new("").is_err());
+        assert!(Id::new("1abc").is_err()); // starts with digit
+        assert!(Id::new("a b").is_err()); // space
+        assert!(Id::new("a+b").is_err()); // special char
+        assert!(Id::new("::").is_err());
+    }
+
+    #[test]
+    fn test_id_accessors() {
+        let id = Id::new("hello").unwrap();
+        assert_eq!(id.as_str(), "hello");
+        assert_eq!(id.as_ref(), "hello");
+        assert_eq!(id.to_string(), "hello");
+        assert_eq!(id.clone().into_smolstr(), SmolStr::from("hello"));
+    }
+
+    #[test]
+    fn test_id_equality_and_ordering() {
+        let a = Id::new("aaa").unwrap();
+        let b = Id::new("bbb").unwrap();
+        let a2 = Id::new("aaa").unwrap();
+        assert_eq!(a, a2);
+        assert_ne!(a, b);
+        assert!(a < b);
+    }
+
+    #[test]
+    fn test_id_from_ast_id() {
+        let ast_id = crate::ast::Id::from_str("myIdent").unwrap();
+        let pst_id = Id::from(ast_id);
+        assert_eq!(pst_id.as_str(), "myIdent");
+    }
+
+    // --- Name tests ---
+
+    #[test]
+    fn test_name_unqualified() {
+        let name = Name::unqualified("User").unwrap();
+        assert_eq!(name.id.as_str(), "User");
+        assert!(name.namespace.is_empty());
+        assert_eq!(name.to_string(), "User");
+    }
+
+    #[test]
+    fn test_name_qualified() {
+        let name = Name::qualified(["MyApp", "Auth"], "User").unwrap();
+        assert_eq!(name.id.as_str(), "User");
+        assert_eq!(name.namespace.len(), 2);
+        assert_eq!(name.namespace[0].as_str(), "MyApp");
+        assert_eq!(name.namespace[1].as_str(), "Auth");
+        assert_eq!(name.to_string(), "MyApp::Auth::User");
+    }
+
+    #[test]
+    fn test_name_rejects_invalid_basename() {
+        assert!(Name::unqualified("if").is_err());
+        assert!(Name::unqualified("1bad").is_err());
+        assert!(Name::qualified(["Good"], "if").is_err());
+    }
+
+    #[test]
+    fn test_name_rejects_invalid_namespace_component() {
+        assert!(Name::qualified(["true"], "User").is_err());
+        assert!(Name::qualified(["ok", "1bad"], "User").is_err());
+    }
+
+    #[test]
+    fn test_name_roundtrip_through_ast() {
+        let pst_name = Name::qualified(["NS"], "Foo").unwrap();
+        let ast_name: crate::ast::Name = pst_name.clone().into();
+        let back: Name = ast_name.into();
+        assert_eq!(pst_name, back);
+    }
+
+    // --- EntityType / EntityUID with validated names ---
+
+    #[test]
+    fn test_entity_type_display_with_valid_name() {
+        let et = EntityType::from_name(Name::unqualified("User").unwrap());
+        assert_eq!(et.to_string(), "User");
+        let et = EntityType::from_name(Name::qualified(["App"], "Photo").unwrap());
+        assert_eq!(et.to_string(), "App::Photo");
+    }
+
+    #[test]
+    fn test_entity_uid_roundtrip_through_ast() {
+        let uid = EntityUID {
+            ty: EntityType::from_name(Name::qualified(["NS"], "Type").unwrap()),
+            eid: SmolStr::from("eid123"),
+        };
+        let ast_uid: crate::ast::EntityUID = uid.clone().into();
+        let back: EntityUID = ast_uid.into();
+        assert_eq!(uid, back);
+    }
+
+    #[test]
+    fn test_has_slots() {
+        // Leaf with no slot
+        assert!(!Expr::Literal(Literal::Long(1)).has_slots());
+        // Var has no slot
+        assert!(!Expr::Var(Var::Principal).has_slots());
+        // Slot itself
+        assert!(Expr::Slot(SlotId::Principal).has_slots());
+        assert!(Expr::Slot(SlotId::Resource).has_slots());
+        // Slot nested inside a BinaryOp
+        let slot = Arc::new(Expr::Slot(SlotId::Principal));
+        let lit = Arc::new(Expr::Literal(Literal::Long(42)));
+        let binop = Expr::BinaryOp {
+            op: BinaryOp::Eq,
+            left: slot,
+            right: lit.clone(),
+        };
+        assert!(binop.has_slots());
+        // BinaryOp with no slots
+        let binop_no_slot = Expr::BinaryOp {
+            op: BinaryOp::Eq,
+            left: lit.clone(),
+            right: lit.clone(),
+        };
+        assert!(!binop_no_slot.has_slots());
+        // Slot nested inside a Set
+        let set_with_slot = Expr::Set(vec![lit.clone(), Arc::new(Expr::Slot(SlotId::Resource))]);
+        assert!(set_with_slot.has_slots());
+        // Empty set
+        assert!(!Expr::Set(vec![]).has_slots());
+        // IfThenElse with slot in else branch
+        let ite = Expr::IfThenElse {
+            cond: lit.clone(),
+            then_expr: lit.clone(),
+            else_expr: Arc::new(Expr::Slot(SlotId::Principal)),
+        };
+        assert!(ite.has_slots());
+    }
 
     #[test]
     fn test_from_function_unknown_function() {
@@ -1135,7 +1426,7 @@ mod tests {
         let result = Expr::from_function_ast_name_and_args(&name, args);
         assert!(matches!(
             result,
-            Err(PstConstructionError::FunctionLookup(..))
+            Err(PstConstructionError::UnknownFunction(..))
         ));
     }
 
@@ -1148,7 +1439,7 @@ mod tests {
         ];
 
         let result = Expr::from_function_ast_name_and_args(&name, args);
-        assert!(matches!(result, Err(PstConstructionError::WrongArity(..))));
+        assert_matches!(result, Err(PstConstructionError::WrongArity(..)));
     }
 
     #[test]
@@ -1183,20 +1474,40 @@ mod tests {
                             "Expected unary unknown function to be Unknown expr",
                         );
                     } else {
-                        assert!(
-                            matches!(actual, Expr::UnaryOp { .. }),
-                            "Unary function {} should produce UnaryOp",
-                            name
-                        );
+                        match actual {
+                            Expr::UnaryOp { op, .. } => {
+                                let op_name = op.to_name();
+                                assert!(
+                                    op_name.is_some(),
+                                    "UnaryOp from extension {} should have known ast::Name",
+                                    name
+                                );
+                                assert_eq!(
+                                    UnaryOp::from_function_name(&name.as_ref().to_string()),
+                                    Some(op)
+                                );
+                            }
+                            _ => {
+                                assertion_failure!("Unary function  should produce BinaryOp", name:name)
+                            }
+                        }
                     }
                 }
-                2 => {
-                    assert!(
-                        matches!(actual, Expr::BinaryOp { .. }),
-                        "Binary function {} should produce BinaryOp",
-                        name
-                    );
-                }
+                2 => match actual {
+                    Expr::BinaryOp { op, .. } => {
+                        let op_name = op.to_name();
+                        assert!(
+                            op_name.is_some(),
+                            "BinaryOp from extension {} should have known ast::Name",
+                            name
+                        );
+                        assert_eq!(
+                            BinaryOp::from_function_name(&name.as_ref().to_string()),
+                            Some(op)
+                        );
+                    }
+                    _ => assertion_failure!("Binary function  should produce BinaryOp", name:name),
+                },
                 _ => (),
             }
         }
@@ -1219,13 +1530,13 @@ mod tests {
     fn test_builder_additional_methods() {
         // Test unknown
         let expr = PstBuilder::new().unknown(ast::Unknown::new_untyped("test"));
-        assert!(matches!(expr, Expr::Unknown { .. }));
+        assert_matches!(expr, Expr::Unknown { .. });
 
         // Test like
         let base = PstBuilder::new().val("test");
         let pattern = ast::Pattern::from(vec![ast::PatternElem::Char('a')]);
         let expr = PstBuilder::new().like(base, pattern);
-        assert!(matches!(expr, Expr::Like { .. }));
+        assert_matches!(expr, Expr::Like { .. });
 
         // Test is_in_entity_type
         let base = PstBuilder::new().var(ast::Var::Principal);
@@ -1271,10 +1582,9 @@ mod tests {
         use smol_str::SmolStr;
 
         #[test]
-        fn cant_display_unsparseable_entity_type() {
+        fn invalid_name_rejected_at_construction() {
             let name = "!__Cedar!";
-            let et = EntityType::from_name(Name::unqualified(name));
-            assert_eq!(format!("{}", et), "<invalid entity type>");
+            assert!(Name::unqualified(name).is_err());
         }
 
         // NOTE: These tests verify Display output for expressions constructed via the
@@ -1466,24 +1776,25 @@ mod tests {
                 ),
                 // Function calls
                 (
-                    builder().call_extension_fn(
-                        Name::unqualified("decimal").try_into().unwrap(),
-                        vec![builder().val("1.23")],
-                    ),
+                    builder()
+                        .call_extension_fn(
+                            Name::unqualified("decimal").unwrap().into(),
+                            vec![builder().val("1.23")],
+                        )
+                        .unwrap(),
                     "decimal(\"1.23\")",
-                ),
-                (
-                    builder().call_extension_fn(
-                        Name::unqualified("notAFunc").try_into().unwrap(),
-                        vec![builder().val("12.3")],
-                    ),
-                    "<error: extension function `notAFunc` does not exist>",
                 ),
             ];
 
             for (expr, expected) in cases {
                 assert_eq!(expr.to_string(), expected, "Failed for: {}", expected);
             }
+
+            let fail_func = builder().call_extension_fn(
+                Name::unqualified("notAFunc").unwrap().into(),
+                vec![builder().val("12.3")],
+            );
+            assert!(fail_func.is_err());
         }
 
         #[test]

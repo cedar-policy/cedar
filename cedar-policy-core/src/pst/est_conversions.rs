@@ -17,22 +17,35 @@
 //! Conversions between EST and PST representations.
 
 use super::{
-    ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, Name, Policy,
-    PolicyID, PrincipalConstraint, PstConstructionError, ResourceConstraint,
+    ActionConstraint, Clause, Effect, EntityOrSlot, EntityType, EntityUID, Expr, PolicyID,
+    PrincipalConstraint, PstConstructionError, ResourceConstraint, Template,
 };
 use crate::ast;
 use crate::entities;
 use crate::est;
 use crate::pst::err::error_body;
 use itertools::Itertools;
+use std::str::FromStr;
 use std::sync::Arc;
 
 // ============================================================================
 // EST → PST Conversions
 // ============================================================================
 
+/// Parse an entity type string (e.g. `"A::a"`) into a properly qualified `EntityType`.
+/// Effectively just a wrapper around `ast::Name::from_str` with the appropriate type wrapping
+/// and error handling.
+fn parse_entity_type(s: &smol_str::SmolStr) -> Result<EntityType, PstConstructionError> {
+    let ast_name = ast::Name::from_str(s).map_err(|e| {
+        PstConstructionError::InvalidEntityType(error_body::InvalidEntityTypeError {
+            description: e.to_string(),
+        })
+    })?;
+    Ok(EntityType::from_name(ast_name))
+}
+
 #[doc(hidden)]
-impl TryFrom<est::Policy> for Policy {
+impl TryFrom<est::Policy> for Template {
     type Error = PstConstructionError;
 
     fn try_from(est_policy: est::Policy) -> Result<Self, Self::Error> {
@@ -42,23 +55,26 @@ impl TryFrom<est::Policy> for Policy {
             .map(|c| c.try_into())
             .collect();
 
-        Ok(Policy {
-            id: PolicyID("policy".into()),
-            effect: match est_policy.effect {
-                ast::Effect::Permit => Effect::Permit,
-                ast::Effect::Forbid => Effect::Forbid,
-            },
-            principal: est_policy.principal.try_into()?,
-            action: est_policy.action.try_into()?,
-            resource: est_policy.resource.try_into()?,
-            clauses: clauses?,
-            annotations: est_policy
-                .annotations
-                .0
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v.map(|a| a.val).unwrap_or_default()))
-                .collect(),
-        })
+        let effect = match est_policy.effect {
+            ast::Effect::Permit => Effect::Permit,
+            ast::Effect::Forbid => Effect::Forbid,
+        };
+        let annotations = est_policy
+            .annotations
+            .0
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.map(|a| a.val).unwrap_or_default()))
+            .collect();
+
+        Template::new(
+            PolicyID("policy".into()),
+            effect,
+            est_policy.principal.try_into()?,
+            est_policy.action.try_into()?,
+            est_policy.resource.try_into()?,
+        )
+        .with_annotations(annotations)
+        .try_with_clauses(clauses?)
     }
 }
 
@@ -114,7 +130,7 @@ impl TryFrom<est::PrincipalConstraint> for PrincipalConstraint {
             }
             E::Is(is_c) => {
                 let (entity_type_ast, in_constraint) = is_c.into_components();
-                let entity_type = EntityType::from_name(Name::unqualified(entity_type_ast));
+                let entity_type = parse_entity_type(&entity_type_ast)?;
                 match in_constraint {
                     None => Ok(PrincipalConstraint::Is(entity_type)),
                     Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
@@ -154,7 +170,7 @@ impl TryFrom<est::ResourceConstraint> for ResourceConstraint {
             }
             E::Is(is_c) => {
                 let (entity_type_ast, in_constraint) = is_c.into_components();
-                let entity_type = EntityType::from_name(Name::unqualified(entity_type_ast));
+                let entity_type = parse_entity_type(&entity_type_ast)?;
                 match in_constraint {
                     None => Ok(ResourceConstraint::Is(entity_type)),
                     Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
@@ -193,7 +209,9 @@ impl TryFrom<est::ActionConstraint> for ActionConstraint {
                 Ok(ActionConstraint::In(euids))
             }
             #[cfg(feature = "tolerant-ast")]
-            E::ErrorConstraint => Err((error_body::UnsupportedErrorNode {}).into()),
+            E::ErrorConstraint => {
+                Err((error_body::UnsupportedErrorNode::new("a constraint failed to parse")).into())
+            }
         }
     }
 }
@@ -212,19 +230,17 @@ impl TryFrom<est::Expr> for Expr {
 // ============================================================================
 
 #[doc(hidden)]
-impl TryFrom<Expr> for est::Expr {
-    type Error = PstConstructionError;
-
-    fn try_from(expr: Expr) -> Result<Self, PstConstructionError> {
-        expr.try_into_expr::<est::Builder>()
+impl From<Expr> for est::Expr {
+    fn from(expr: Expr) -> Self {
+        expr.into_expr::<est::Builder>()
     }
 }
 
 #[doc(hidden)]
-impl TryFrom<Policy> for est::Policy {
+impl TryFrom<Template> for est::Policy {
     type Error = PstConstructionError;
 
-    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
+    fn try_from(policy: Template) -> Result<Self, Self::Error> {
         let mut annotations = est::Annotations::new();
         for (k, val) in policy.annotations.into_iter() {
             let annotation = if val.is_empty() {
@@ -233,9 +249,9 @@ impl TryFrom<Policy> for est::Policy {
                 Some(ast::Annotation { val, loc: None })
             };
             let id = k.parse::<ast::AnyId>().map_err(|p| {
-                PstConstructionError::ParsingFailed(error_body::ParsingFailedError {
-                    description: p.to_string(),
-                })
+                PstConstructionError::InvalidAnnotation(error_body::InvalidAnnotationError::new(
+                    format!("invalid key: {p}"),
+                ))
             })?;
             annotations.0.insert(id, annotation);
         }
@@ -263,8 +279,8 @@ impl TryFrom<Clause> for est::Clause {
 
     fn try_from(clause: Clause) -> Result<Self, Self::Error> {
         Ok(match clause {
-            Clause::When(expr) => est::Clause::When(Arc::unwrap_or_clone(expr).try_into()?),
-            Clause::Unless(expr) => est::Clause::Unless(Arc::unwrap_or_clone(expr).try_into()?),
+            Clause::When(expr) => est::Clause::When(Arc::unwrap_or_clone(expr).into()),
+            Clause::Unless(expr) => est::Clause::Unless(Arc::unwrap_or_clone(expr).into()),
         })
     }
 }
@@ -406,8 +422,9 @@ impl From<EntityUID> for entities::EntityUidJson {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pst::{self, BinaryOp, UnaryOp};
-    use smol_str::SmolStr;
+    use crate::pst::{self, BinaryOp, Name, UnaryOp};
+    use cool_asserts::assert_matches;
+    use smol_str::{format_smolstr, SmolStr};
     use std::collections::BTreeMap;
 
     fn roundtrips(e: Expr) {
@@ -416,10 +433,26 @@ mod tests {
         assert!(roundtrip_e == e)
     }
 
-    fn policy_roundtrips(p: Policy) {
+    fn policy_roundtrips(p: Template) {
         let est: est::Policy = p.clone().try_into().unwrap();
-        let roundtrip_p: Policy = est.try_into().unwrap();
+        let roundtrip_p: Template = est.try_into().unwrap();
         assert!(roundtrip_p == p)
+    }
+
+    #[test]
+    fn test_parse_entities() {
+        // Success case: unqualified entity type
+        let et = parse_entity_type(&format_smolstr!("A")).unwrap();
+        assert_eq!(et.0.id.as_str(), "A");
+        assert_eq!(et.0.namespace.len(), 0);
+        // Success case: qualified entity type
+        let et = parse_entity_type(&format_smolstr!("A::a")).unwrap();
+        assert_eq!(et.0.id.as_str(), "a");
+        assert_eq!(et.0.namespace.len(), 1);
+        assert_eq!(et.0.namespace[0].as_str(), "A");
+        // Failure
+        let et = parse_entity_type(&format_smolstr!("!!A::a"));
+        matches!(et, Err(PstConstructionError::ParsingFailed(_)));
     }
 
     #[test]
@@ -427,7 +460,7 @@ mod tests {
         let json = r#"{"Value": true}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Literal(_)));
+        assert_matches!(pst_expr, Expr::Literal(_));
         roundtrips(pst_expr);
     }
 
@@ -436,7 +469,7 @@ mod tests {
         let json = r#"{"Var": "principal"}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Var(pst::expr::Var::Principal)));
+        assert_matches!(pst_expr, Expr::Var(pst::expr::Var::Principal));
         roundtrips(pst_expr);
     }
 
@@ -444,14 +477,11 @@ mod tests {
     fn test_est_expr_slot() {
         let json = r#"{"Slot": "?principal"}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Slot(_)));
-        // Roundtrip is not supported for slots
-        let result: Result<est::Expr, _> = pst_expr.try_into();
-        assert!(matches!(
-            result,
-            Err(PstConstructionError::NotImplemented(..))
-        ));
+        let pst_expr: Expr = est_expr.clone().try_into().unwrap();
+        assert_matches!(pst_expr, Expr::Slot(_));
+        // Roundtrip: PST slot should convert back to EST slot
+        let est_roundtrip: est::Expr = pst_expr.try_into().unwrap();
+        assert_eq!(est_expr, est_roundtrip);
     }
 
     #[test]
@@ -516,7 +546,7 @@ mod tests {
         }"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::IfThenElse { .. }));
+        assert_matches!(pst_expr, Expr::IfThenElse { .. });
         roundtrips(pst_expr);
     }
 
@@ -538,7 +568,7 @@ mod tests {
         let json = r#"{"Record": {"foo": {"Var": "principal"}}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Record(_)));
+        assert_matches!(pst_expr, Expr::Record(_));
         roundtrips(pst_expr);
     }
 
@@ -547,7 +577,7 @@ mod tests {
         let json = r#"{".": {"left": {"Var": "principal"}, "attr": "name"}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::GetAttr { .. }));
+        assert_matches!(pst_expr, Expr::GetAttr { .. });
         roundtrips(pst_expr);
     }
 
@@ -556,13 +586,13 @@ mod tests {
         let json = r#"{"has": {"left": {"Var": "principal"}, "attr": "name"}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::HasAttr { .. }));
+        assert_matches!(pst_expr, Expr::HasAttr { .. });
         roundtrips(pst_expr);
         // Extended has attr — does not roundtrip because the EST builder desugars it
         let json2 = r#"{"has": {"left": {"Var": "principal"}, "attr": ["name", "nested"]}}"#;
         let est_expr2: est::Expr = serde_json::from_str(json2).unwrap();
         let pst_expr2: Expr = est_expr2.try_into().unwrap();
-        assert!(matches!(pst_expr2, Expr::HasAttr { .. }));
+        assert_matches!(pst_expr2, Expr::HasAttr { .. });
     }
 
     #[test]
@@ -570,7 +600,7 @@ mod tests {
         let json = r#"{"like": {"left": {"Var": "principal"}, "pattern": [{"Wildcard": null}, {"Literal": "@example.com"}]}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Like { .. }));
+        assert_matches!(pst_expr, Expr::Like { .. });
         roundtrips(pst_expr);
     }
 
@@ -583,7 +613,7 @@ mod tests {
     }}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Is { in_expr: None, .. }));
+        assert_matches!(pst_expr, Expr::Is { in_expr: None, .. });
         roundtrips(pst_expr);
 
         // Test is with in - now uses is_in_entity_type
@@ -602,6 +632,42 @@ mod tests {
             }
         ));
         roundtrips(pst_expr2);
+
+        // Test is with in - now uses is_in_entity_type
+        let json3 = r#"{"is": {
+           "left": { "Var": "principal" },
+            "entity_type": "User::Intern",
+            "in": {"Value": {"__entity": { "type": "User::Intern", "id": "Public" }}}
+    }}"#;
+        let est_expr3: est::Expr = serde_json::from_str(json3).unwrap();
+        let pst_expr3: Expr = est_expr3.try_into().unwrap();
+        match &pst_expr3 {
+            Expr::Is {
+                in_expr: Some(_),
+                entity_type:
+                    EntityType {
+                        0: Name { id, namespace },
+                    },
+                ..
+            } => {
+                assert_eq!(id.to_string(), "Intern");
+                assert_eq!(namespace.len(), 1);
+            }
+            _ => assert!(false),
+        };
+        roundtrips(pst_expr3);
+
+        // Test is with in - parsing errors caught by PST but not by EST
+        let json4 = r#"{"is": {
+           "left": { "Var": "principal" },
+            "entity_type": "!cceeeadaWhatDO_NOT_PARSR::User::Intern::",
+            "in": {"Value": {"__entity": { "type": "User::Intern", "id": "Public" }}}
+    }}"#;
+        let est_expr4: est::Expr = serde_json::from_str(json4).unwrap();
+        matches!(
+            pst::Expr::try_from(est_expr4),
+            Err(PstConstructionError::InvalidEntityType(_))
+        );
     }
 
     #[test]
@@ -609,7 +675,7 @@ mod tests {
         // Test simple value conversion
         let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::Var(ast::Var::Principal));
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Var(pst::expr::Var::Principal)));
+        assert_matches!(pst_expr, Expr::Var(pst::expr::Var::Principal));
         roundtrips(pst_expr);
     }
 
@@ -678,7 +744,7 @@ mod tests {
             attr: "name".try_into().unwrap(),
         });
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::GetAttr { .. }));
+        assert_matches!(pst_expr, Expr::GetAttr { .. });
         roundtrips(pst_expr);
     }
 
@@ -692,7 +758,7 @@ mod tests {
             attr: "name".try_into().unwrap(),
         }));
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::HasAttr { .. }));
+        assert_matches!(pst_expr, Expr::HasAttr { .. });
         roundtrips(pst_expr);
     }
 
@@ -707,7 +773,7 @@ mod tests {
         ];
         let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::Like { left, pattern });
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Like { .. }));
+        assert_matches!(pst_expr, Expr::Like { .. });
         roundtrips(pst_expr);
     }
 
@@ -722,7 +788,7 @@ mod tests {
             in_expr: None,
         });
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert!(matches!(pst_expr, Expr::Is { .. }));
+        assert_matches!(pst_expr, Expr::Is { .. });
         roundtrips(pst_expr);
     }
 
@@ -760,8 +826,8 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(pst_policy.effect, pst::Effect::Permit));
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
+        assert_matches!(pst_policy.effect, pst::Effect::Permit);
         policy_roundtrips(pst_policy);
     }
 
@@ -783,8 +849,8 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(pst_policy.effect, pst::Effect::Forbid));
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
+        assert_matches!(pst_policy.effect, pst::Effect::Forbid);
         assert!(matches!(
             pst_policy.principal,
             pst::PrincipalConstraint::In(_)
@@ -816,9 +882,9 @@ mod tests {
             ]
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert_eq!(pst_policy.clauses.len(), 1);
-        assert!(matches!(pst_policy.clauses[0], pst::Clause::When(..)));
+        assert_matches!(pst_policy.clauses[0], pst::Clause::When(..));
         policy_roundtrips(pst_policy);
     }
 
@@ -836,7 +902,7 @@ mod tests {
             }
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert_eq!(pst_policy.annotations.len(), 2);
         assert_eq!(
             pst_policy.annotations.get("reason").unwrap(),
@@ -862,7 +928,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         policy_roundtrips(pst_policy.clone());
         if let pst::ActionConstraint::In(actions) = pst_policy.action {
             assert_eq!(actions.len(), 2);
@@ -884,7 +950,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.resource,
             pst::ResourceConstraint::Eq(_)
@@ -905,7 +971,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.resource,
             pst::ResourceConstraint::Is(_)
@@ -927,7 +993,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.resource,
             pst::ResourceConstraint::IsIn(..)
@@ -948,8 +1014,8 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
-        assert!(matches!(pst_policy.action, pst::ActionConstraint::Eq(_)));
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
+        assert_matches!(pst_policy.action, pst::ActionConstraint::Eq(_));
         policy_roundtrips(pst_policy);
     }
 
@@ -966,7 +1032,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         policy_roundtrips(pst_policy.clone());
         if let pst::ActionConstraint::In(actions) = pst_policy.action {
             assert_eq!(actions.len(), 1);
@@ -1001,7 +1067,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.principal,
             pst::PrincipalConstraint::Eq(_)
@@ -1022,7 +1088,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.principal,
             pst::PrincipalConstraint::Is(_)
@@ -1044,7 +1110,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert!(matches!(
             pst_policy.principal,
             pst::PrincipalConstraint::IsIn(..)
@@ -1065,7 +1131,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         if let pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(_)) = pst_policy.principal {
             // Success
         } else {
@@ -1087,7 +1153,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         if let pst::ResourceConstraint::In(pst::EntityOrSlot::Slot(_)) = pst_policy.resource {
             // Success
         } else {
@@ -1110,7 +1176,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         if let pst::PrincipalConstraint::IsIn(_, pst::EntityOrSlot::Slot(_)) = pst_policy.principal
         {
             // Success
@@ -1134,7 +1200,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         if let pst::ResourceConstraint::IsIn(_, pst::EntityOrSlot::Slot(_)) = pst_policy.resource {
             // Success
         } else {
@@ -1158,7 +1224,7 @@ mod tests {
             "conditions": []
         }"#;
         let est_policy: est::Policy = serde_json::from_str(json).unwrap();
-        let pst_policy: pst::Policy = est_policy.try_into().unwrap();
+        let pst_policy: pst::Template = est_policy.try_into().unwrap();
         assert_eq!(pst_policy.annotations.len(), 1);
         policy_roundtrips(pst_policy);
     }
@@ -1168,15 +1234,14 @@ mod tests {
         let mut annotations = BTreeMap::new();
         annotations.insert("empty".to_string(), SmolStr::default());
         annotations.insert("nonempty".to_string(), SmolStr::new("hello"));
-        let policy = Policy {
-            id: PolicyID("p0".into()),
-            effect: Effect::Permit,
-            principal: PrincipalConstraint::Any,
-            action: ActionConstraint::Any,
-            resource: ResourceConstraint::Any,
-            clauses: vec![],
-            annotations,
-        };
+        let policy = Template::new(
+            "p0",
+            Effect::Permit,
+            PrincipalConstraint::Any,
+            ActionConstraint::Any,
+            ResourceConstraint::Any,
+        )
+        .with_annotations(annotations);
         let est_policy: est::Policy = policy.try_into().unwrap();
         let empty_key = "empty".parse::<ast::AnyId>().unwrap();
         let nonempty_key = "nonempty".parse::<ast::AnyId>().unwrap();
@@ -1198,19 +1263,18 @@ mod tests {
     fn test_pst_to_est_annotation_invalid_key() {
         let mut annotations = BTreeMap::new();
         annotations.insert("not valid!!".to_string(), SmolStr::new("v"));
-        let policy = Policy {
-            id: PolicyID("p0".into()),
-            effect: Effect::Permit,
-            principal: PrincipalConstraint::Any,
-            action: ActionConstraint::Any,
-            resource: ResourceConstraint::Any,
-            clauses: vec![],
-            annotations,
-        };
+        let policy = Template::new(
+            "p0",
+            Effect::Permit,
+            PrincipalConstraint::Any,
+            ActionConstraint::Any,
+            ResourceConstraint::Any,
+        )
+        .with_annotations(annotations);
         let result: Result<est::Policy, PstConstructionError> = policy.try_into();
         assert!(matches!(
             result,
-            Err(PstConstructionError::ParsingFailed(..))
+            Err(PstConstructionError::InvalidAnnotation(..))
         ));
     }
 
@@ -1317,6 +1381,102 @@ mod tests {
         let json = r#"{"offset": []}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let result: Result<Expr, _> = est_expr.try_into();
-        assert!(matches!(result, Err(PstConstructionError::WrongArity(..))));
+        assert_matches!(result, Err(PstConstructionError::WrongArity(..)));
+    }
+
+    // ========================================================================
+    // FromJsonError -> PstConstructionError conversion tests
+    // ========================================================================
+
+    #[test]
+    fn est_invalid_entity_type_in_is_expr() {
+        // An `is` expression with an unparseable entity type triggers
+        // FromJsonError::InvalidEntityType -> PstConstructionError::InvalidEntityType
+        let json = r#"{"is": {"left": {"Var": "principal"}, "entity_type": ":::bad", "in": null}}"#;
+        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
+        let result: Result<Expr, PstConstructionError> = est_expr.try_into();
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, PstConstructionError::InvalidEntityType(..)),
+            "expected InvalidEntityType, got: {err}"
+        );
+        assert!(err.to_string().contains("invalid entity type"));
+    }
+
+    #[test]
+    fn est_malformed_value_literal() {
+        // A Value with an entity literal that has a bad type triggers
+        // FromJsonError::JsonDeserializationError -> PstConstructionError::ParsingFailed
+        let json = r#"{"Value": {"__entity": {"type": ":::", "id": "x"}}}"#;
+        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
+        let result: Result<Expr, PstConstructionError> = est_expr.try_into();
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, PstConstructionError::ParsingFailed(..)),
+            "expected ParsingFailed, got: {err}"
+        );
+    }
+
+    // The following FromJsonError variants are not reachable through any EST -> PST
+    // conversion path. They either only occur in EST -> AST conversions, or cannot
+    // be produced through JSON deserialization. These display tests verify the
+    // mapping produces a sensible error message and are included for completeness.
+
+    #[test]
+    fn from_json_error_unreachable_variants_display() {
+        use crate::est::FromJsonError;
+
+        // MissingOperator: empty {} deserializes as Record, not ExtFuncCall
+        let err: PstConstructionError = FromJsonError::MissingOperator.into();
+        assert!(
+            matches!(err, PstConstructionError::InvalidExpression(..)),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("missing operator"));
+
+        // MultipleOperators: caught by custom Expr deserializer before reaching ExtFuncCall
+        let err: PstConstructionError = FromJsonError::MultipleOperators {
+            ops: vec!["ip".into(), "decimal".into()],
+        }
+        .into();
+        assert!(
+            matches!(err, PstConstructionError::InvalidExpression(..)),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("multiple operators"));
+
+        // UnknownExtensionFunction: only produced by try_into_ast, not try_into_expr
+        let name = crate::ast::Name::parse_unqualified_name("bogus").unwrap();
+        let err: PstConstructionError = FromJsonError::UnknownExtensionFunction(name).into();
+        assert!(
+            matches!(err, PstConstructionError::UnknownFunction(..)),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("bogus"));
+
+        // InvalidSlotName: only produced by EST -> AST constraint conversion
+        let err: PstConstructionError = FromJsonError::InvalidSlotName.into();
+        assert!(
+            matches!(err, PstConstructionError::ParsingFailed(..)),
+            "got: {err}"
+        );
+        assert!(err.to_string().contains("slot"));
+
+        // ActionSlot: only produced by EST -> AST constraint conversion
+        let err: PstConstructionError = FromJsonError::ActionSlot.into();
+        assert!(matches!(
+            err,
+            PstConstructionError::ActionConstraintCannotHaveSlots(..)
+        ));
+
+        // PolicyToTemplate: only produced by EST -> AST policy conversion
+        let err: PstConstructionError = FromJsonError::PolicyToTemplate(
+            crate::parser::err::parse_errors::ExpectedTemplate::new(),
+        )
+        .into();
+        assert!(matches!(
+            err,
+            PstConstructionError::ExpectedTemplateWithSlots(..)
+        ));
     }
 }

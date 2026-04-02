@@ -63,7 +63,6 @@ cfg_tolerant_ast! {
     static DEFAULT_ACTION_CONSTRAINT: std::sync::LazyLock<ActionConstraint> =
         std::sync::LazyLock::new(ActionConstraint::any);
 
-    #[cfg_attr(feature = "tolerant-ast", expect(clippy::unwrap_used, reason = "Infallible error type - can never fail"))]
     static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> = std::sync::LazyLock::new(|| {
         // Non scope constraint expression of an Error policy should also be an error
         // This const represents an error expression that is part of an Error policy
@@ -73,7 +72,7 @@ cfg_tolerant_ast! {
                     ToASTErrorKind::ASTErrorNode,
                     Some(Loc::new(0..1, "ASTErrorNode".into())),
                 )))
-                .unwrap(),
+                .unwrap_infallible(),
         )
     });
 }
@@ -179,6 +178,25 @@ impl Template {
         // INVARIANT (slot cache correctness)
         // This invariant is maintained in the body of the From impl
         Template::from(body)
+    }
+
+    /// Get the components of the underlying template.
+    ///
+    /// Returns `None` when the underlying template doesn't have any components (i.e., it's an error
+    /// node).
+    #[expect(clippy::type_complexity, reason = "policies just have many components")]
+    pub(crate) fn into_template_components_opt(
+        self,
+    ) -> Option<(
+        PolicyID,
+        Arc<Annotations>,
+        Effect,
+        PrincipalConstraint,
+        ActionConstraint,
+        ResourceConstraint,
+        Option<Arc<Expr>>,
+    )> {
+        self.body.into_components_opt()
     }
 
     /// Get the principal constraint on the body
@@ -432,7 +450,7 @@ impl Policy {
     /// Link a policy to its template
     /// INVARIANT (values total map):
     /// `values` must bind every open slot in `template`
-    fn new(template: Arc<Template>, link_id: Option<PolicyID>, values: SlotEnv) -> Self {
+    pub(crate) fn new(template: Arc<Template>, link_id: Option<PolicyID>, values: SlotEnv) -> Self {
         #[cfg(debug_assertions)]
         {
             #[expect(
@@ -478,6 +496,12 @@ impl Policy {
             Some(when),
         );
         Self::new(Arc::new(t), None, SlotEnv::new())
+    }
+
+    /// Get the owned template, link id (if this is a template-linked policy)
+    /// and slot environment.
+    pub(crate) fn into_components(self) -> (Arc<Template>, Option<PolicyID>, SlotEnv) {
+        (self.template, self.link, self.values)
     }
 
     /// Get pointer to the template for this policy
@@ -1203,6 +1227,44 @@ impl TemplateBody {
             }) => non_scope_constraints.as_ref(),
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => Some(&DEFAULT_ERROR_EXPR),
+        }
+    }
+
+    /// destructure the `TemplateBody` into its components
+    /// returns `None` if the `TemplateBody` is an error
+    #[expect(clippy::type_complexity, reason = "policies just have many components")]
+    pub(crate) fn into_components_opt(
+        self,
+    ) -> Option<(
+        PolicyID,
+        Arc<Annotations>,
+        Effect,
+        PrincipalConstraint,
+        ActionConstraint,
+        ResourceConstraint,
+        Option<Arc<Expr>>,
+    )> {
+        match self {
+            TemplateBody::TemplateBody(TemplateBodyImpl {
+                id,
+                loc: _,
+                annotations,
+                effect,
+                principal_constraint,
+                action_constraint,
+                resource_constraint,
+                non_scope_constraints,
+            }) => Some((
+                id,
+                annotations,
+                effect,
+                principal_constraint,
+                action_constraint,
+                resource_constraint,
+                non_scope_constraints,
+            )),
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_, _) => None,
         }
     }
 
@@ -1945,6 +2007,11 @@ impl PolicyID {
     /// Create a PolicyID from a `SmolStr`
     pub fn from_smolstr(id: SmolStr) -> Self {
         Self(id)
+    }
+
+    /// Extract the inner `SmolStr`
+    pub fn into_smolstr(self) -> SmolStr {
+        self.0
     }
 }
 

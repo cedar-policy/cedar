@@ -215,6 +215,23 @@ impl PolicySet {
         }
     }
 
+    /// Create a `PolicySet` containing a single policy.
+    pub fn singleton(p: Policy) -> Self {
+        let t = p.template_arc();
+
+        let templates = [(t.id().clone(), t.clone())].into_iter().collect();
+        let template_to_links_map = [(t.id().clone(), [p.id().clone()].into_iter().collect())]
+            .into_iter()
+            .collect();
+        let links = [(p.id().clone(), p)].into_iter().collect();
+
+        Self {
+            templates,
+            links,
+            template_to_links_map,
+        }
+    }
+
     /// Add a `Policy` to the `PolicySet`.
     pub fn add(&mut self, policy: Policy) -> Result<(), PolicySetError> {
         let t = policy.template_arc();
@@ -247,12 +264,8 @@ impl PolicySet {
         // if we get here, there will be no errors.  So actually do the
         // insertions.
         if let Some(ventry) = template_ventry {
-            self.template_to_links_map.insert(
-                t.id().clone(),
-                vec![policy.id().clone()]
-                    .into_iter()
-                    .collect::<LinkedHashSet<PolicyID>>(),
-            );
+            self.template_to_links_map
+                .insert(t.id().clone(), [policy.id().clone()].into_iter().collect());
             ventry.insert(t);
         } else {
             //`template_ventry` is None, so `templates` has `t` and we never use the `HashSet::new()`
@@ -806,6 +819,43 @@ mod test {
                 assert_eq!(id, PolicyID::from_string("t"))
             }
         }
+    }
+
+    #[test]
+    fn policy_set_singleton_static() {
+        let policy: Policy = parser::parse_policy(
+            Some(PolicyID::from_string("id")),
+            "permit(principal,action,resource);",
+        )
+        .unwrap()
+        .into();
+
+        let pset_singleton = PolicySet::singleton(policy.clone());
+        let mut pset_add = PolicySet::new();
+        pset_add.add(policy).unwrap();
+        assert_eq!(pset_singleton, pset_add);
+    }
+
+    #[test]
+    fn policy_set_singleton_link() {
+        let template = Arc::new(
+            parser::parse_policy_or_template(
+                Some(PolicyID::from_string("t")),
+                "permit(principal == ?principal, action, resource);",
+            )
+            .expect("Failed to parse"),
+        );
+        let env1 = HashMap::from([(
+            SlotId::principal(),
+            r#"Test::"test1""#.parse().expect("Failed to parse"),
+        )]);
+        let policy =
+            Template::link(template, PolicyID::from_string("link"), env1).expect("Failed to link");
+
+        let pset_singleton = PolicySet::singleton(policy.clone());
+        let mut pset_add = PolicySet::new();
+        pset_add.add(policy).unwrap();
+        assert_eq!(pset_singleton, pset_add);
     }
 
     #[test]
