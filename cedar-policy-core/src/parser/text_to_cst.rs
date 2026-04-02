@@ -186,14 +186,14 @@ pub fn parse_expr_tolerant(text: &str) -> Result<Node<Option<cst::Expr>>, err::P
 #[expect(clippy::indexing_slicing, reason = "unit test code")]
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[cfg(feature = "tolerant-ast")]
     use crate::parser::cst::Expr;
     #[cfg(feature = "tolerant-ast")]
     use crate::parser::cst::Policy;
     use crate::parser::test_utils::*;
     use crate::test_utils::*;
-
-    use super::*;
+    use cool_asserts::assert_matches;
 
     #[track_caller]
     fn assert_parse_succeeds<T>(
@@ -1536,9 +1536,9 @@ mod tests {
         let policies = assert_parse_succeeds(parse_policies_tolerant, src);
         assert_eq!(policies.0.len(), 2);
         let (policy1, _) = policies.0[0].clone().into_inner();
-        assert!(matches!(policy1.unwrap(), Policy::PolicyError));
+        assert_matches!(policy1.unwrap(), Policy::PolicyError);
         let (policy2, _) = policies.0[1].clone().into_inner();
-        assert!(matches!(policy2.unwrap(), Policy::Policy(_)));
+        assert_matches!(policy2.unwrap(), Policy::Policy(_));
 
         let src = r#"
         permit(principal, action, resource);
@@ -1547,9 +1547,9 @@ mod tests {
         let policies = assert_parse_succeeds(parse_policies_tolerant, src);
         assert_eq!(policies.0.len(), 2);
         let (policy1, _) = policies.0[1].clone().into_inner();
-        assert!(matches!(policy1.unwrap(), Policy::PolicyError));
+        assert_matches!(policy1.unwrap(), Policy::PolicyError);
         let (policy2, _) = policies.0[0].clone().into_inner();
-        assert!(matches!(policy2.unwrap(), Policy::Policy(_)));
+        assert_matches!(policy2.unwrap(), Policy::Policy(_));
     }
 
     #[test]
@@ -1559,13 +1559,13 @@ mod tests {
             permit(principal, action, resource);
         "#;
         let policy = assert_parse_succeeds(parse_policy_tolerant, src);
-        assert!(matches!(policy, Policy::Policy(_)));
+        assert_matches!(policy, Policy::Policy(_));
 
         let src = r#"
             permit(principal, act;
         "#;
         let policy = assert_parse_succeeds(parse_policy_tolerant, src);
-        assert!(matches!(policy, Policy::PolicyError));
+        assert_matches!(policy, Policy::PolicyError);
     }
 
     #[test]
@@ -1575,24 +1575,24 @@ mod tests {
             x ==
         "#;
         let e = assert_parse_succeeds(parse_expr_tolerant, src);
-        assert!(matches!(e, Expr::ErrorExpr));
+        assert_matches!(e, Expr::ErrorExpr);
 
         let src = r#"
              == y
         "#;
         let e = assert_parse_succeeds(parse_expr_tolerant, src);
-        assert!(matches!(e, Expr::ErrorExpr));
+        assert_matches!(e, Expr::ErrorExpr);
 
         let src = r#"
             (1 + 2) -
         "#;
         let e = assert_parse_succeeds(parse_expr_tolerant, src);
-        assert!(matches!(e, Expr::ErrorExpr));
+        assert_matches!(e, Expr::ErrorExpr);
 
         let src = r#"
             x == y
         "#;
         let e = assert_parse_succeeds(parse_expr_tolerant, src);
-        assert!(matches!(e, Expr::Expr(_)));
+        assert_matches!(e, Expr::Expr(_));
     }
 }

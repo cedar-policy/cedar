@@ -23,7 +23,7 @@ use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
     CedarValueJson, FnAndArgs,
 };
-use crate::expr_builder::ExprBuilder;
+use crate::expr_builder::{ExprBuilder, ExprBuilderInfallibleBuild};
 use crate::extensions::{ExtStyles, Extensions};
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use crate::parser::{cst, err::ParseErrors, Loc, Node};
@@ -469,6 +469,8 @@ impl ExtFuncCall {
 #[derive(Clone, Debug)]
 pub struct Builder;
 
+impl ExprBuilderInfallibleBuild for Builder {}
+
 impl ExprBuilder for Builder {
     type Expr = Expr;
     type BuildError = Infallible;
@@ -759,10 +761,14 @@ impl ExprBuilder for Builder {
     }
 
     /// extension function call, including method calls
-    fn call_extension_fn(self, fn_name: ast::Name, args: impl IntoIterator<Item = Expr>) -> Expr {
-        Expr::ExtFuncCall(ExtFuncCall {
+    fn call_extension_fn(
+        self,
+        fn_name: ast::Name,
+        args: impl IntoIterator<Item = Expr>,
+    ) -> Result<Expr, Infallible> {
+        Ok(Expr::ExtFuncCall(ExtFuncCall {
             call: HashMap::from([(fn_name.to_smolstr(), args.into_iter().collect())]),
-        })
+        }))
     }
 
     #[cfg(feature = "tolerant-ast")]
@@ -983,7 +989,7 @@ impl Expr {
                     })
                     .map(ast::Expr::from)
                     .map_err(|j| B::BuildError::from(j.into()))?;
-                Ok(ast_expr.into_expr::<B>())
+                ast_expr.try_into_expr::<B>()
             }
             Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(builder.var(var)),
             Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(builder.slot(slot)),
@@ -1132,7 +1138,7 @@ impl Expr {
                 })?;
                 // unlike into_ast, some validation is handled by calling the fallible version
                 // of the extension call builder
-                builder.try_call_extension_fn(
+                builder.call_extension_fn(
                     fn_name,
                     args.into_iter()
                         .map(|arg| arg.try_into_expr::<B>())

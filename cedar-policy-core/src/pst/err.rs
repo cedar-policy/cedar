@@ -21,30 +21,55 @@
 //! - Converting between PST and other representations (EST, AST)
 //! - Validating PST structure and semantics
 
+use std::collections::HashSet;
+
+use crate::extensions::ExtensionFunctionLookupError;
+use crate::pst;
 use miette::Diagnostic;
 use smol_str::ToSmolStr;
 use thiserror::Error;
 
-use crate::est::FromJsonError;
+use crate::ast;
+use crate::est;
 
 /// Errors that can occur during PST construction or conversion
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum PstConstructionError {
+    /// Trying to construct a policy from an empty representation of another type
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PolicyFromEmptyRepresentation(#[from] error_body::PolicyFromEmptyRepresentationError),
+
+    /// A policy is a linked policy but no link id has been provided
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PolicyMissingLinkId(#[from] error_body::PolicyMissingLinkIdError),
+
     /// Action constraints cannot contain template slots
     #[error(transparent)]
     #[diagnostic(transparent)]
     ActionConstraintCannotHaveSlots(#[from] error_body::ActionConstraintCannotHaveSlotsError),
+
+    /// Expected a template with slots, but found a static policy
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExpectedTemplateWithSlots(#[from] error_body::ExpectedTemplateWithSlotsError),
+
+    /// Slot occurs in the wrong position (e.g., principal slot in resource)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    WrongSlotPosition(#[from] error_body::WrongSlotPositionError),
 
     /// Duplicate key found in a record literal
     #[error(transparent)]
     #[diagnostic(transparent)]
     DuplicateRecordKey(#[from] error_body::DuplicateRecordKeyError),
 
-    /// Failed to parse a Cedar name (e.g., entity type, attribute name)
+    /// Invalid annotation in a policy or template
     #[error(transparent)]
     #[diagnostic(transparent)]
-    InvalidName(#[from] error_body::InvalidNameError),
+    InvalidAnnotation(#[from] error_body::InvalidAnnotationError),
 
     /// Invalid entity UID format or structure
     #[error(transparent)]
@@ -55,21 +80,6 @@ pub enum PstConstructionError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidEntityType(#[from] error_body::InvalidEntityTypeError),
-
-    /// Invalid attribute path format or structure
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    InvalidAttributePath(#[from] error_body::InvalidAttributePathError),
-
-    /// Attempted to construct a `has` expression with an empty attribute path
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    EmptyAttributePath(#[from] error_body::EmptyAttributePathError),
-
-    /// Invalid record structure (e.g., malformed key-value pairs)
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    InvalidRecord(#[from] error_body::InvalidRecordError),
 
     /// A generic invalid expression error with a description
     #[error(transparent)]
@@ -86,76 +96,157 @@ pub enum PstConstructionError {
     #[diagnostic(transparent)]
     WrongArity(#[from] error_body::WrongArityError),
 
-    /// Extension function lookup failed (function not found or invalid)
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    FunctionLookup(#[from] error_body::FunctionLookupError),
-
-    /// Invalid conversion between representations with description
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    InvalidConversion(#[from] error_body::InvalidConversionError),
-
     /// Error nodes from parsing are not supported in PST conversion
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnsupportedErrorNode(#[from] error_body::UnsupportedErrorNode),
 
-    /// Conversion functionality not yet implemented
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    NotImplemented(#[from] error_body::NotImplementedError),
-
     /// A parsing error occurred, usually in names
     #[error(transparent)]
     #[diagnostic(transparent)]
     ParsingFailed(#[from] error_body::ParsingFailedError),
+
+    /// A linking error occurred.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    LinkingFailed(#[from] error_body::LinkingError),
+
+    /// Contains unexpected slots
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ContainsSlots(#[from] error_body::ContainsSlotError),
 }
 
 #[doc(hidden)]
-impl From<crate::est::FromJsonError> for PstConstructionError {
-    fn from(err: crate::est::FromJsonError) -> Self {
+impl From<est::FromJsonError> for PstConstructionError {
+    fn from(err: est::FromJsonError) -> Self {
         match err {
-            FromJsonError::UnknownExtensionFunction(e) => PstConstructionError::UnknownFunction(
-                error_body::UnknownFunctionError::new(e.to_smolstr()),
-            ),
-            FromJsonError::InvalidEntityType(e) => {
-                PstConstructionError::InvalidEntityType(error_body::InvalidEntityTypeError {
-                    description: e.to_string(),
-                })
+            est::FromJsonError::UnknownExtensionFunction(e) => {
+                error_body::UnknownFunctionError::new(e.to_smolstr()).into()
             }
-            FromJsonError::UnescapeError(e) => PstConstructionError::ParsingFailed(
+            est::FromJsonError::InvalidEntityType(e) => error_body::InvalidEntityTypeError {
+                description: e.to_string(),
+            }
+            .into(),
+            est::FromJsonError::JsonDeserializationError(e) => {
+                // An error while deserializing JSON can occur only in small transformations; this
+                // is likely a parsing error on a literal.
+                error_body::ParsingFailedError::new(e.to_string()).into()
+            }
+            est::FromJsonError::UnescapeError(e) => {
                 // Show just first error in main error message, like original err
-                error_body::ParsingFailedError::new(e.head.to_string()),
-            ),
-            #[cfg(feature = "tolerant-ast")]
-            FromJsonError::ASTErrorNode => {
-                PstConstructionError::UnsupportedErrorNode(error_body::UnsupportedErrorNode {})
+                error_body::ParsingFailedError::new(e.head.to_string()).into()
             }
-            _ => PstConstructionError::InvalidConversion(error_body::InvalidConversionError::new(
-                err.to_string(),
-            )),
+
+            // Errors below should not occur in normal expression conversion paths, but we still
+            // map them to the closest PST error for completeness.
+            est::FromJsonError::ActionSlot => {
+                error_body::ActionConstraintCannotHaveSlotsError.into()
+            }
+            est::FromJsonError::InvalidActionType(e) => error_body::InvalidEntityTypeError {
+                description: e.to_string(),
+            }
+            .into(),
+            est::FromJsonError::InvalidSlotName => {
+                error_body::ParsingFailedError::new(err.to_string()).into()
+            }
+            est::FromJsonError::TemplateToPolicy(e) => {
+                let mut slots: HashSet<pst::SlotId, _> = HashSet::new();
+                slots.insert(e.slot.id.into());
+                error_body::ContainsSlotError { slots }.into()
+            }
+            est::FromJsonError::PolicyToTemplate(_) => {
+                error_body::ExpectedTemplateWithSlotsError.into()
+            }
+            est::FromJsonError::SlotsInConditionClause(e) => error_body::ContainsSlotError {
+                slots: std::iter::once(e.slot.id.into()).collect(),
+            }
+            .into(),
+            est::FromJsonError::MissingOperator | est::FromJsonError::MultipleOperators { .. } => {
+                error_body::InvalidExpressionError::new(err.to_string()).into()
+            }
+            #[cfg(feature = "tolerant-ast")]
+            est::FromJsonError::ASTErrorNode => {
+                error_body::UnsupportedErrorNode::new("AST contains an error node").into()
+            }
         }
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::ExpressionConstructionError> for PstConstructionError {
+    fn from(err: ast::ExpressionConstructionError) -> Self {
+        let ast::ExpressionConstructionError::DuplicateKey(k) = err;
+        error_body::DuplicateRecordKeyError { key: k.key }.into()
+    }
+}
+
+#[doc(hidden)]
+impl From<crate::parser::err::ParseErrors> for PstConstructionError {
+    fn from(value: crate::parser::err::ParseErrors) -> Self {
+        error_body::ParsingFailedError::from(value).into()
+    }
+}
+
+// Extension function lookup failed
+
+#[doc(hidden)]
+impl From<ExtensionFunctionLookupError> for PstConstructionError {
+    fn from(err: ExtensionFunctionLookupError) -> Self {
+        let ExtensionFunctionLookupError::FuncDoesNotExist(body) = err;
+        error_body::UnknownFunctionError::new(body.name.to_smolstr()).into()
     }
 }
 
 /// Error subtypes for [`PstConstructionError`]
 pub mod error_body {
-    use crate::extensions::ExtensionFunctionLookupError;
     use miette::Diagnostic;
     use smol_str::SmolStr;
+    use std::collections::HashSet;
     use thiserror::Error;
+
+    use crate::est;
+    use crate::pst;
+
+    /// Trying to construct a policy from an empty representation of another type
+    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
+    #[error("cannot construct policy from empty representation")]
+    pub struct PolicyFromEmptyRepresentationError;
+
+    /// A policy is a linked policy but no link id has been provided
+    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
+    #[error("linked policy is missing an instance id")]
+    pub struct PolicyMissingLinkIdError;
 
     /// Action constraints cannot contain template slots
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
     #[error("action constraint cannot have slots")]
     pub struct ActionConstraintCannotHaveSlotsError;
 
+    /// Expected a template with slots, but found a static policy
+    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
+    #[error("expected a template with slots, but found a static policy")]
+    pub struct ExpectedTemplateWithSlotsError;
+
+    /// Slot occurs in the wrong position (e.g., principal slot in resource)
+    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
+    #[error("slot `{found}` cannot be used in this position (expected slot `{expected}`)")]
+    pub struct WrongSlotPositionError {
+        found: pst::SlotId,
+        expected: pst::SlotId,
+    }
+
+    impl WrongSlotPositionError {
+        pub(crate) fn new(found: pst::SlotId, expected: pst::SlotId) -> Self {
+            Self { found, expected }
+        }
+    }
+
     /// Duplicate key found in a record literal
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
     #[error("duplicate record key: `{key}`")]
     pub struct DuplicateRecordKeyError {
-        pub(crate) key: String,
+        pub(crate) key: SmolStr,
     }
 
     impl DuplicateRecordKeyError {
@@ -165,17 +256,18 @@ pub mod error_body {
         }
     }
 
-    /// Failed to parse a Cedar name
+    /// Invalid annotation in a policy or template
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-    #[error("invalid name: `{name}`")]
-    pub struct InvalidNameError {
-        pub(crate) name: SmolStr,
+    #[error("invalid annotation: {description}")]
+    pub struct InvalidAnnotationError {
+        description: String,
     }
 
-    impl InvalidNameError {
-        /// The invalid name
-        pub fn name(&self) -> &str {
-            &self.name
+    impl InvalidAnnotationError {
+        pub(crate) fn new(description: impl Into<String>) -> Self {
+            Self {
+                description: description.into(),
+            }
         }
     }
 
@@ -190,25 +282,6 @@ pub mod error_body {
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
     #[error("invalid entity type: `{description}`")]
     pub struct InvalidEntityTypeError {
-        pub(crate) description: String,
-    }
-
-    /// Invalid attribute path format or structure
-    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-    #[error("invalid attribute path: {description}")]
-    pub struct InvalidAttributePathError {
-        pub(crate) description: String,
-    }
-
-    /// Attempted to construct a `has` expression with an empty attribute path
-    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-    #[error("attribute path cannot be empty")]
-    pub struct EmptyAttributePathError;
-
-    /// Invalid record structure
-    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-    #[error("invalid record: {description}")]
-    pub struct InvalidRecordError {
         pub(crate) description: String,
     }
 
@@ -277,44 +350,16 @@ pub mod error_body {
         }
     }
 
-    /// Extension function lookup failed
-    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-    #[error(transparent)]
-    pub struct FunctionLookupError(pub(crate) ExtensionFunctionLookupError);
-
-    impl From<ExtensionFunctionLookupError> for FunctionLookupError {
-        fn from(err: ExtensionFunctionLookupError) -> Self {
-            Self(err)
-        }
-    }
-
-    /// Invalid conversion between representations
-    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-    #[error("conversion failed: {description}")]
-    pub struct InvalidConversionError {
-        pub(crate) description: String,
-    }
-
-    impl InvalidConversionError {
-        pub(crate) fn new(description: String) -> Self {
-            Self { description }
-        }
-    }
-
     /// Error nodes from parsing are not supported in PST conversion
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-    #[error("error nodes not supported in conversion")]
-    pub struct UnsupportedErrorNode {}
-
-    /// Conversion functionality not yet implemented
-    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-    #[error("not implemented: {description}")]
-    pub struct NotImplementedError {
-        pub(crate) description: String,
+    #[error("error nodes not supported in conversion: {description}")]
+    pub struct UnsupportedErrorNode {
+        /// Information about where this error node might come from
+        description: &'static str,
     }
 
-    impl NotImplementedError {
-        pub(crate) fn new(description: String) -> Self {
+    impl UnsupportedErrorNode {
+        pub(crate) fn new(description: &'static str) -> Self {
             Self { description }
         }
     }
@@ -334,7 +379,148 @@ pub mod error_body {
 
     impl From<crate::parser::err::ParseErrors> for ParsingFailedError {
         fn from(value: crate::parser::err::ParseErrors) -> Self {
-            Self::new(format!("{value:?}"))
+            Self::new(format!("{value}"))
         }
+    }
+
+    /// Errors that can occur when linking a template policy
+    #[derive(Debug, PartialEq, Eq, Diagnostic, Error, Clone)]
+    pub enum LinkingError {
+        /// Template contains this slot, but a value wasn't provided for it
+        #[error("failed to link template: no value provided for `{slot}`")]
+        MissedSlot {
+            /// Slot which didn't have a value provided for it
+            slot: pst::SlotId,
+        },
+    }
+
+    impl From<LinkingError> for est::LinkingError {
+        fn from(err: LinkingError) -> Self {
+            match err {
+                LinkingError::MissedSlot { slot } => Self::MissedSlot { slot: slot.into() },
+            }
+        }
+    }
+
+    /// The policy or an expression contains slots
+    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
+    #[error("policy or expression contains slots: {slots:?}")]
+    pub struct ContainsSlotError {
+        pub(crate) slots: HashSet<crate::pst::SlotId>,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    #[test]
+    fn from_json_error_conversions() {
+        use crate::est::FromJsonError;
+
+        // This is a set of rather shallow tests to cover the different cases in FromJsonError.
+        // We don't actually expect those to happen, cause you need a valid EST/AST to then convert
+        // to the PST, so those FromJsonError would already have happened. However, we want to
+        // cover nicely the conversion just in case. The real error cases should be covered in
+        // unit tests in the conversions.
+
+        // JsonDeserializationError
+        let serde_err = serde_json::from_str::<String>("bad").unwrap_err();
+        let json_deser_err: crate::entities::json::err::JsonDeserializationError = serde_err.into();
+        let err: PstConstructionError =
+            FromJsonError::JsonDeserializationError(json_deser_err).into();
+        assert_matches!(err, PstConstructionError::ParsingFailed(..));
+
+        // ActionSlot
+        let err: PstConstructionError = FromJsonError::ActionSlot.into();
+        assert!(matches!(
+            err,
+            PstConstructionError::ActionConstraintCannotHaveSlots(..)
+        ));
+
+        // InvalidActionType
+        let euid = ast::EntityUID::with_eid_and_type("Bad", "act").unwrap();
+        let err: PstConstructionError =
+            FromJsonError::InvalidActionType(crate::parser::err::parse_errors::InvalidActionType {
+                euids: nonempty::nonempty![std::sync::Arc::new(euid)],
+            })
+            .into();
+        assert_matches!(err, PstConstructionError::InvalidEntityType(..));
+
+        // InvalidSlotName
+        let err: PstConstructionError = FromJsonError::InvalidSlotName.into();
+        assert_matches!(err, PstConstructionError::ParsingFailed(..));
+
+        // TemplateToPolicy
+        let err: PstConstructionError = FromJsonError::TemplateToPolicy(
+            crate::parser::err::parse_errors::ExpectedStaticPolicy {
+                slot: ast::Slot {
+                    id: ast::SlotId::principal(),
+                    loc: None,
+                },
+            },
+        )
+        .into();
+        assert_matches!(err, PstConstructionError::ContainsSlots(..));
+
+        // PolicyToTemplate
+        let err: PstConstructionError = FromJsonError::PolicyToTemplate(
+            crate::parser::err::parse_errors::ExpectedTemplate::new(),
+        )
+        .into();
+        assert!(matches!(
+            err,
+            PstConstructionError::ExpectedTemplateWithSlots(..)
+        ));
+
+        // SlotsInConditionClause
+        let err: PstConstructionError = FromJsonError::SlotsInConditionClause(
+            crate::parser::err::parse_errors::SlotsInConditionClause {
+                slot: ast::Slot {
+                    id: ast::SlotId::resource(),
+                    loc: None,
+                },
+                clause_type: "when",
+            },
+        )
+        .into();
+        assert_matches!(err, PstConstructionError::ContainsSlots(..));
+
+        // MissingOperator
+        let err: PstConstructionError = FromJsonError::MissingOperator.into();
+        assert_matches!(err, PstConstructionError::InvalidExpression(..));
+
+        // MultipleOperators
+        let err: PstConstructionError = FromJsonError::MultipleOperators {
+            ops: vec!["a".into(), "b".into()],
+        }
+        .into();
+        assert_matches!(err, PstConstructionError::InvalidExpression(..));
+    }
+
+    #[test]
+    fn from_expression_construction_error() {
+        let err: PstConstructionError = ast::ExpressionConstructionError::DuplicateKey(
+            ast::expression_construction_errors::DuplicateKeyError {
+                key: "k".into(),
+                context: "in record literal",
+            },
+        )
+        .into();
+        assert_matches!(err, PstConstructionError::DuplicateRecordKey(..));
+    }
+
+    #[test]
+    fn from_extension_function_lookup_error() {
+        use crate::extensions::ExtensionFunctionLookupError;
+        let err: PstConstructionError = ExtensionFunctionLookupError::FuncDoesNotExist(
+            crate::extensions::extension_function_lookup_errors::FuncDoesNotExistError {
+                name: "bogus".parse().unwrap(),
+                source_loc: None,
+            },
+        )
+        .into();
+        assert_matches!(err, PstConstructionError::UnknownFunction(..));
     }
 }

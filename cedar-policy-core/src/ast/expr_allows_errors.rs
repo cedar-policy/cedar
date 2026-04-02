@@ -33,6 +33,9 @@ pub struct ExprWithErrsBuilder<T = ()> {
     data: T,
 }
 
+#[cfg(feature = "tolerant-ast")]
+impl<T: Default + Clone> expr_builder::ExprBuilderInfallibleBuild for ExprWithErrsBuilder<T> {}
+
 impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
     type Expr = Expr<T>;
     type BuildError = Infallible;
@@ -300,11 +303,15 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
 
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
-    fn call_extension_fn(self, fn_name: Name, args: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
-        self.with_expr_kind(ExprKind::ExtensionFunctionApp {
+    fn call_extension_fn(
+        self,
+        fn_name: Name,
+        args: impl IntoIterator<Item = Expr<T>>,
+    ) -> Result<Expr<T>, Infallible> {
+        Ok(self.with_expr_kind(ExprKind::ExtensionFunctionApp {
             fn_name,
             args: Arc::new(args.into_iter().collect()),
-        })
+        }))
     }
 
     /// Create an application `Expr` which applies the given built-in unary

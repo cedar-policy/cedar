@@ -27,7 +27,9 @@
 //! );
 //! ```
 
+use super::err::error_body::LinkingError;
 use super::expr::{EntityType, EntityUID, SlotId};
+use std::collections::HashMap;
 
 /// Entity UID or template slot.
 ///
@@ -44,6 +46,19 @@ pub enum EntityOrSlot {
     Entity(EntityUID),
     /// A template slot
     Slot(SlotId),
+}
+
+impl EntityOrSlot {
+    /// Fill in any slot using the values in `vals`.
+    fn link(self, vals: &HashMap<SlotId, EntityUID>) -> Result<EntityOrSlot, LinkingError> {
+        match self {
+            EntityOrSlot::Entity(_) => Ok(self),
+            EntityOrSlot::Slot(slot) => match vals.get(&slot) {
+                Some(uid) => Ok(EntityOrSlot::Entity(uid.clone())),
+                None => Err(LinkingError::MissedSlot { slot }),
+            },
+        }
+    }
 }
 
 /// Principal scope constraint.
@@ -70,6 +85,41 @@ pub enum PrincipalConstraint {
     IsIn(EntityType, EntityOrSlot),
 }
 
+impl PrincipalConstraint {
+    /// Fill in any slots in this constraint using the values in `vals`.
+    pub fn link(self, vals: &HashMap<SlotId, EntityUID>) -> Result<Self, LinkingError> {
+        match self {
+            PrincipalConstraint::Any => Ok(PrincipalConstraint::Any),
+            PrincipalConstraint::Eq(eos) => Ok(PrincipalConstraint::Eq(eos.link(vals)?)),
+            PrincipalConstraint::In(eos) => Ok(PrincipalConstraint::In(eos.link(vals)?)),
+            PrincipalConstraint::Is(et) => Ok(PrincipalConstraint::Is(et)),
+            PrincipalConstraint::IsIn(et, eos) => {
+                Ok(PrincipalConstraint::IsIn(et, eos.link(vals)?))
+            }
+        }
+    }
+
+    /// Test whether the constraint contains any slots.
+    pub fn has_slot(&self) -> bool {
+        matches!(
+            self,
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(_))
+                | PrincipalConstraint::In(EntityOrSlot::Slot(_))
+                | PrincipalConstraint::IsIn(_, EntityOrSlot::Slot(_))
+        )
+    }
+
+    /// Get the slot, if any
+    pub fn slot(&self) -> Option<SlotId> {
+        match self {
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(s))
+            | PrincipalConstraint::In(EntityOrSlot::Slot(s))
+            | PrincipalConstraint::IsIn(_, EntityOrSlot::Slot(s)) => Some(*s),
+            _ => None,
+        }
+    }
+}
+
 /// Resource scope constraint (same shape as [`PrincipalConstraint`]).
 ///
 /// ```cedar
@@ -94,6 +144,39 @@ pub enum ResourceConstraint {
     IsIn(EntityType, EntityOrSlot),
 }
 
+impl ResourceConstraint {
+    /// Fill in any slots in this constraint using the values in `vals`.
+    pub fn link(self, vals: &HashMap<SlotId, EntityUID>) -> Result<Self, LinkingError> {
+        match self {
+            ResourceConstraint::Any => Ok(ResourceConstraint::Any),
+            ResourceConstraint::Eq(eos) => Ok(ResourceConstraint::Eq(eos.link(vals)?)),
+            ResourceConstraint::In(eos) => Ok(ResourceConstraint::In(eos.link(vals)?)),
+            ResourceConstraint::Is(et) => Ok(ResourceConstraint::Is(et)),
+            ResourceConstraint::IsIn(et, eos) => Ok(ResourceConstraint::IsIn(et, eos.link(vals)?)),
+        }
+    }
+
+    /// Test whether the constraint contains any slots.
+    pub fn has_slot(&self) -> bool {
+        matches!(
+            self,
+            ResourceConstraint::Eq(EntityOrSlot::Slot(_))
+                | ResourceConstraint::In(EntityOrSlot::Slot(_))
+                | ResourceConstraint::IsIn(_, EntityOrSlot::Slot(_)),
+        )
+    }
+
+    /// Get the slot, if any
+    pub fn slot(&self) -> Option<SlotId> {
+        match self {
+            ResourceConstraint::Eq(EntityOrSlot::Slot(s))
+            | ResourceConstraint::In(EntityOrSlot::Slot(s))
+            | ResourceConstraint::IsIn(_, EntityOrSlot::Slot(s)) => Some(*s),
+            _ => None,
+        }
+    }
+}
+
 /// Action scope constraint.
 ///
 /// ```cedar
@@ -109,6 +192,23 @@ pub enum ActionConstraint {
     Eq(EntityUID),
     /// `action in [<entity_uid>, ...]`
     In(Vec<EntityUID>),
+}
+
+impl ActionConstraint {
+    /// Actions cannot contain slots, so linking is a no-op.
+    pub fn link(self, _vals: &HashMap<SlotId, EntityUID>) -> Result<Self, LinkingError> {
+        Ok(self)
+    }
+
+    /// Actions cannot contains slots: returns false
+    pub fn has_slot(&self) -> bool {
+        false
+    }
+
+    /// Action cannot have slots
+    pub fn slot(&self) -> Option<SlotId> {
+        None
+    }
 }
 
 impl std::fmt::Display for EntityOrSlot {
@@ -167,12 +267,10 @@ impl std::fmt::Display for ActionConstraint {
 mod tests {
     use super::*;
     use crate::pst::expr::Name;
-    use smol_str::SmolStr;
-    use std::sync::Arc;
 
     fn make_entity_uid(ty: &str, id: &str) -> EntityUID {
         EntityUID {
-            ty: EntityType(Name::unqualified(ty)),
+            ty: EntityType(Name::unqualified(ty).unwrap()),
             eid: id.into(),
         }
     }
@@ -181,8 +279,8 @@ mod tests {
     fn test_principal_constraint_display() {
         let uid = make_entity_uid("User", "alice");
         let eos = EntityOrSlot::Entity(uid.clone());
-        let et = EntityType(Name::unqualified("User"));
-        let etq = EntityType(Name::qualified(vec!["Admins"], "User"));
+        let et = EntityType(Name::unqualified("User").unwrap());
+        let etq = EntityType(Name::qualified(vec!["Admins"], "User").unwrap());
         let cases = vec![
             (PrincipalConstraint::Any, ""),
             (PrincipalConstraint::Eq(eos.clone()), "== User::\"alice\""),
@@ -208,10 +306,7 @@ mod tests {
     fn test_resource_constraint_display() {
         let uid = make_entity_uid("File", "doc.txt");
         let eos = EntityOrSlot::Entity(uid.clone());
-        let et = EntityType(Name {
-            id: SmolStr::from("File"),
-            namespace: Arc::new(vec![]),
-        });
+        let et = EntityType(Name::unqualified("File").unwrap());
 
         let cases = vec![
             (ResourceConstraint::Any, ""),
@@ -255,5 +350,120 @@ mod tests {
         for (constraint, expected) in cases {
             assert_eq!(constraint.to_string(), expected);
         }
+    }
+
+    fn make_vals() -> HashMap<SlotId, EntityUID> {
+        let mut vals = HashMap::new();
+        vals.insert(SlotId::Principal, make_entity_uid("User", "alice"));
+        vals.insert(SlotId::Resource, make_entity_uid("File", "doc.txt"));
+        vals
+    }
+
+    #[test]
+    fn test_entity_or_slot_link_entity_passthrough() {
+        let uid = make_entity_uid("User", "alice");
+        let eos = EntityOrSlot::Entity(uid.clone());
+        assert_eq!(eos.link(&make_vals()).unwrap(), EntityOrSlot::Entity(uid));
+    }
+
+    #[test]
+    fn test_entity_or_slot_link_slot_resolves() {
+        let eos = EntityOrSlot::Slot(SlotId::Principal);
+        assert_eq!(
+            eos.link(&make_vals()).unwrap(),
+            EntityOrSlot::Entity(make_entity_uid("User", "alice"))
+        );
+    }
+
+    #[test]
+    fn test_entity_or_slot_link_missing_slot() {
+        let eos = EntityOrSlot::Slot(SlotId::Resource);
+        let empty = HashMap::new();
+        assert!(matches!(
+            eos.link(&empty),
+            Err(LinkingError::MissedSlot {
+                slot: SlotId::Resource
+            })
+        ));
+    }
+
+    #[test]
+    fn test_principal_constraint_link_all_variants() {
+        let vals = make_vals();
+        let alice = make_entity_uid("User", "alice");
+        let et = EntityType(Name::unqualified("User").unwrap());
+
+        // Any passes through
+        assert_eq!(
+            PrincipalConstraint::Any.link(&vals).unwrap(),
+            PrincipalConstraint::Any
+        );
+        // Eq with entity passes through
+        assert_eq!(
+            PrincipalConstraint::Eq(EntityOrSlot::Entity(alice.clone()))
+                .link(&vals)
+                .unwrap(),
+            PrincipalConstraint::Eq(EntityOrSlot::Entity(alice.clone()))
+        );
+        // Eq with slot resolves
+        assert_eq!(
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal))
+                .link(&vals)
+                .unwrap(),
+            PrincipalConstraint::Eq(EntityOrSlot::Entity(alice.clone()))
+        );
+        // In with slot resolves
+        assert_eq!(
+            PrincipalConstraint::In(EntityOrSlot::Slot(SlotId::Principal))
+                .link(&vals)
+                .unwrap(),
+            PrincipalConstraint::In(EntityOrSlot::Entity(alice.clone()))
+        );
+        // Is passes through (no slot)
+        assert_eq!(
+            PrincipalConstraint::Is(et.clone()).link(&vals).unwrap(),
+            PrincipalConstraint::Is(et.clone())
+        );
+        // IsIn with slot resolves
+        assert_eq!(
+            PrincipalConstraint::IsIn(et.clone(), EntityOrSlot::Slot(SlotId::Principal))
+                .link(&vals)
+                .unwrap(),
+            PrincipalConstraint::IsIn(et, EntityOrSlot::Entity(alice))
+        );
+    }
+
+    #[test]
+    fn test_resource_constraint_link_slot_resolves() {
+        let vals = make_vals();
+        let doc = make_entity_uid("File", "doc.txt");
+
+        assert_eq!(
+            ResourceConstraint::Eq(EntityOrSlot::Slot(SlotId::Resource))
+                .link(&vals)
+                .unwrap(),
+            ResourceConstraint::Eq(EntityOrSlot::Entity(doc))
+        );
+    }
+
+    #[test]
+    fn test_principal_constraint_link_missing_slot() {
+        let empty = HashMap::new();
+        assert!(matches!(
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)).link(&empty),
+            Err(LinkingError::MissedSlot {
+                slot: SlotId::Principal
+            })
+        ));
+    }
+
+    #[test]
+    fn test_action_constraint_link_noop() {
+        let uid = make_entity_uid("Action", "read");
+        let vals = make_vals();
+        assert_eq!(
+            ActionConstraint::Eq(uid.clone()).link(&vals).unwrap(),
+            ActionConstraint::Eq(uid)
+        );
     }
 }
