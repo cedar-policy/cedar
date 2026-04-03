@@ -109,9 +109,9 @@ impl EntityTypeDescription {
 }
 
 impl entities::EntityTypeDescription for EntityTypeDescription {
-    fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+    fn enum_entity_eids(&self) -> Option<&NonEmpty<Eid>> {
         match &self.validator_type.kind {
-            ValidatorEntityTypeKind::Enum(choices) => Some(choices.clone().map(Eid::new)),
+            ValidatorEntityTypeKind::Enum(choices) => Some(choices),
             _ => None,
         }
     }
@@ -249,11 +249,8 @@ impl ast::RequestSchema for ValidatorSchema {
                     ..
                 } = et
                 {
-                    is_valid_enumerated_entity(
-                        &Vec::from(choices.clone().map(Eid::new)),
-                        principal,
-                    )
-                    .map_err(RequestValidationError::InvalidEnumEntity)?;
+                    is_valid_enumerated_entity(choices, principal)
+                        .map_err(RequestValidationError::InvalidEnumEntity)?;
                 }
             } else {
                 return Err(request_validation_errors::UndeclaredPrincipalTypeError {
@@ -272,7 +269,7 @@ impl ast::RequestSchema for ValidatorSchema {
                     ..
                 } = et
                 {
-                    is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), resource)
+                    is_valid_enumerated_entity(choices, resource)
                         .map_err(RequestValidationError::InvalidEnumEntity)?;
                 }
             } else {

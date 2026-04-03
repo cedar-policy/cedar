@@ -595,6 +595,7 @@ mod enumerated_entity_types {
     };
     use cool_asserts::assert_matches;
     use itertools::Itertools;
+    use nonempty::nonempty;
 
     use crate::validator::{
         typecheck::test::test_utils::get_loc,
@@ -675,7 +676,7 @@ mod enumerated_entity_types {
             validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
-            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
             assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "fo").unwrap());
         });
 
@@ -689,7 +690,7 @@ mod enumerated_entity_types {
             validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
-            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
             assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
         });
 
@@ -703,7 +704,7 @@ mod enumerated_entity_types {
             validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
-            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
             assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
         });
 
@@ -719,7 +720,7 @@ mod enumerated_entity_types {
             validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
-            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
             assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
         });
 
@@ -735,7 +736,7 @@ mod enumerated_entity_types {
             validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
-            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
             assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
         });
 
@@ -751,7 +752,7 @@ mod enumerated_entity_types {
             validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
-            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
             assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
         });
     }

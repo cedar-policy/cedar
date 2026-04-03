@@ -20,6 +20,7 @@ use crate::extensions::ExtensionFunctionLookupError;
 use crate::impl_diagnostic_from_method_on_field;
 use itertools::Itertools;
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
 
@@ -334,7 +335,7 @@ pub struct InvalidEnumEntityError {
     /// Entity where the error occurred
     pub uid: EntityUID,
     /// Name of the attribute where the error occurred
-    pub choices: Vec<Eid>,
+    pub choices: NonEmpty<Eid>,
 }
 
 impl Diagnostic for InvalidEnumEntityError {

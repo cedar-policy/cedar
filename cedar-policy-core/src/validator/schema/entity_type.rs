@@ -18,9 +18,9 @@
 
 use educe::Educe;
 use nonempty::NonEmpty;
-use smol_str::SmolStr;
 use std::collections::HashSet;
 
+use crate::ast::Eid;
 use crate::{ast::EntityType, parser::Loc, transitive_closure::TCNode};
 
 use crate::validator::types::{AttributeType, Attributes, OpenTag, Type};
@@ -62,7 +62,7 @@ pub enum ValidatorEntityTypeKind {
     /// Standard, aka non-enum
     Standard(StandardValidatorEntityType),
     /// Enumerated
-    Enum(NonEmpty<SmolStr>),
+    Enum(NonEmpty<Eid>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -111,7 +111,7 @@ impl ValidatorEntityType {
     pub fn new_enum(
         name: EntityType,
         descendants: impl IntoIterator<Item = EntityType>,
-        values: NonEmpty<SmolStr>,
+        values: NonEmpty<Eid>,
         loc: Option<Loc>,
     ) -> Self {
         Self {

@@ -2480,7 +2480,7 @@ mod schema_based_parsing_tests {
     use serde_json::json;
     use smol_str::SmolStr;
     use std::collections::{BTreeMap, HashSet};
-    use std::sync::Arc;
+    use std::sync::{Arc, LazyLock};
 
     /// Mock schema impl used for most of these tests
     struct MockSchema;
@@ -2566,7 +2566,7 @@ mod schema_based_parsing_tests {
     /// Mock schema impl for the `Employee` type used in most of these tests
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
-        fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+        fn enum_entity_eids(&self) -> Option<&NonEmpty<Eid>> {
             None
         }
         fn entity_type(&self) -> EntityType {
@@ -3824,7 +3824,7 @@ mod schema_based_parsing_tests {
 
         struct MockEmployeeDescription;
         impl EntityTypeDescription for MockEmployeeDescription {
-            fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+            fn enum_entity_eids(&self) -> Option<&NonEmpty<Eid>> {
                 None
             }
             fn entity_type(&self) -> EntityType {
@@ -3958,6 +3958,8 @@ mod schema_based_parsing_tests {
 
     #[test]
     fn enumerated_entities() {
+        static TEST_ENUM_EIDS: LazyLock<NonEmpty<Eid>> =
+            LazyLock::new(|| nonempty::nonempty![Eid::new("🌎"), Eid::new("🌕")]);
         struct MockSchema;
         struct StarTypeDescription;
         impl EntityTypeDescription for StarTypeDescription {
@@ -3985,8 +3987,8 @@ mod schema_based_parsing_tests {
                 false
             }
 
-            fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
-                Some(nonempty::nonempty![Eid::new("🌎"), Eid::new("🌕"),])
+            fn enum_entity_eids(&self) -> Option<&NonEmpty<Eid>> {
+                Some(&TEST_ENUM_EIDS)
             }
         }
         impl Schema for MockSchema {

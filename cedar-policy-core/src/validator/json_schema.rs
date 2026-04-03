@@ -599,7 +599,8 @@ pub enum EntityTypeKind<N> {
     Enum {
         #[serde(rename = "enum")]
         /// The nonempty set of possible EIDs
-        choices: NonEmpty<SmolStr>,
+        #[cfg_attr(feature = "wasm", tsify(type = "NonEmpty<string>"))]
+        choices: NonEmpty<Eid>,
     },
 }
 
@@ -678,7 +679,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
             tags: RealOption<Type<N>>,
             #[serde(default)]
             #[serde(rename = "enum")]
-            choices: RealOption<NonEmpty<SmolStr>>,
+            choices: RealOption<NonEmpty<Eid>>,
             #[serde(default)]
             annotations: Annotations,
         }
@@ -4223,10 +4224,14 @@ mod ord {
 #[expect(clippy::indexing_slicing, reason = "tests")]
 mod enumerated_entity_types {
     use cool_asserts::assert_matches;
+    use nonempty::nonempty;
 
-    use crate::validator::{
-        json_schema::{EntityType, EntityTypeKind, Fragment},
-        RawName,
+    use crate::{
+        ast::Eid,
+        validator::{
+            json_schema::{EntityType, EntityTypeKind, Fragment},
+            RawName,
+        },
     };
 
     #[test]
@@ -4250,7 +4255,7 @@ mod enumerated_entity_types {
                 kind: EntityTypeKind::Enum {choices},
                 ..
             } => {
-                assert_eq!(Vec::from(choices.clone()), ["foo", "bar"]);
+                assert_eq!(choices, &nonempty![Eid::new("foo"), Eid::new("bar")]);
             });
         });
 

@@ -257,7 +257,7 @@ impl<N: Display> IndentedDisplay for json_schema::EntityType<N> {
                 " enum [{}]",
                 choices
                     .iter()
-                    .map(|e| format!("\"{}\"", e.escape_debug()))
+                    .map(|e| format!("\"{}\"", e.as_ref().escape_debug()))
                     .join(", ")
             ),
         }
