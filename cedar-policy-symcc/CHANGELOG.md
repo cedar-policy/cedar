@@ -8,9 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
-### Fixed
-
-- Return an error when attempting to create a `CompiledPolicySet` from a policy set containing template-linked policies instead of silently dropping them.
 
 ## [0.4.0] - Coming soon
 Cedar Language Version: 4.5
@@ -23,6 +20,13 @@ to make the API easier to use with fewer implicit ordering constraints (#2190)
 some implementors of `Solver` to perform other initialization/configuration as
 required when models are being enabled (#2192)
 - Performance optimization for analysis of policies containing `.toDate()` (#2234)
+
+## [0.3.2] - Coming soon
+Cedar Language Version: 4.4
+
+### Fixed
+
+- Return an error when attempting to create a `CompiledPolicySet` from a policy set containing template-linked policies instead of silently dropping them.
 
 ## [0.3.1] - 2026-03-09
 Cedar Language Version: 4.4
@@ -71,6 +75,12 @@ cycles in the entity data for entities irrelevant to the given policies (#2089)
 
 - Experimental `WellFormedAsserts::from_asserts_unchecked()` API. But note the
 addition of `CedarSymCompiler::check_unsat_raw()` as an experimental API. (#2102)
+## [0.2.1] - Coming soon
+Cedar Language Version: 4.4
+
+### Fixed
+
+- Return an error when attempting to create a `CompiledPolicySet` from a policy set containing template-linked policies instead of silently dropping them.
 
 ## [0.2.0] - 2025-12-12
 Cedar Language Version: 4.4
@@ -82,6 +92,13 @@ to precompile policies (see `CompiledPolicy` and `CompiledPolicies`) and reuse
 them across many queries. (#2013, #2019)
 - `always_matches` and `never_matches` primitives for single policies (#2014)
 - Performance optimizations (#1947, #1970, #2017, #2020, #2021)
+
+## [0.1.4] - Coming soon
+Cedar Language Version: 4.4
+
+### Fixed
+
+- Return an error when attempting to create a `CompiledPolicySet` from a policy set containing template-linked policies instead of silently dropping them.
 
 ## [0.1.3] - 2025-12-12
 Cedar Language Version: 4.4
