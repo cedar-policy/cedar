@@ -599,6 +599,7 @@ pub enum EntityTypeKind<N> {
     Enum {
         #[serde(rename = "enum")]
         /// The nonempty set of possible EIDs
+        #[cfg_attr(feature = "wasm", tsify(type = "Array<string>"))]
         choices: NonEmpty<Eid>,
     },
 }
