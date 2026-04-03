@@ -8,7 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
-
 ## [0.4.0] - Coming soon
 Cedar Language Version: 4.5
 
@@ -75,6 +74,7 @@ cycles in the entity data for entities irrelevant to the given policies (#2089)
 
 - Experimental `WellFormedAsserts::from_asserts_unchecked()` API. But note the
 addition of `CedarSymCompiler::check_unsat_raw()` as an experimental API. (#2102)
+
 ## [0.2.1] - Coming soon
 Cedar Language Version: 4.4
 
