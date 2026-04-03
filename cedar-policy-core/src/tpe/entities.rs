@@ -144,6 +144,27 @@ impl PartialEntity {
         e.validate(schema)?;
         Ok(e)
     }
+
+    /// Get the uid of this partial entity
+    pub fn uid(&self) -> &EntityUID {
+        &self.uid
+    }
+
+    /// Get the optional attributes of this partial entity
+    pub fn attrs(&self) -> Option<&BTreeMap<SmolStr, Value>> {
+        self.attrs.as_ref()
+    }
+
+    /// Get the optional ancestors of this partial entity
+    pub fn ancestors(&self) -> Option<&HashSet<EntityUID>> {
+        self.ancestors.as_ref()
+    }
+
+    /// Get the optional tags of this partial entity
+    pub fn tags(&self) -> Option<&BTreeMap<SmolStr, Value>> {
+        self.tags.as_ref()
+    }
+
     /// Check if an [`Entity`] is consistent with a [`PartialEntity`]
     pub(crate) fn check_consistency(
         &self,
