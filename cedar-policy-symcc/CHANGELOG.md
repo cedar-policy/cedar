@@ -25,7 +25,8 @@ Cedar Language Version: 4.4
 
 ### Fixed
 
-- Return an error when attempting to create a `CompiledPolicySet` from a policy set containing template-linked policies instead of silently dropping them.
+- Return an error when attempting to create a `CompiledPolicySet` from a policy
+ set containing template-linked policies instead of silently dropping them. (#2276)
 
 ## [0.3.1] - 2026-03-09
 Cedar Language Version: 4.4
@@ -80,7 +81,8 @@ Cedar Language Version: 4.4
 
 ### Fixed
 
-- Return an error when attempting to create a `CompiledPolicySet` from a policy set containing template-linked policies instead of silently dropping them.
+- Return an error when attempting to create a `CompiledPolicySet` from a policy
+ set containing template-linked policies instead of silently dropping them. (#2277)
 
 ## [0.2.0] - 2025-12-12
 Cedar Language Version: 4.4
@@ -98,7 +100,8 @@ Cedar Language Version: 4.4
 
 ### Fixed
 
-- Return an error when attempting to create a `CompiledPolicySet` from a policy set containing template-linked policies instead of silently dropping them.
+- Return an error when attempting to create a `CompiledPolicySet` from a policy
+ set containing template-linked policies instead of silently dropping them. (#2278)
 
 ## [0.1.3] - 2025-12-12
 Cedar Language Version: 4.4
