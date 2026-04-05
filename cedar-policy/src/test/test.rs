@@ -6229,6 +6229,243 @@ mod issue_596 {
     }
 }
 
+mod issue_611 {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    // ── Helper: build a minimal entity JSON string with one Long attribute ──
+
+    fn entity_json_with_int(value_str: &str) -> String {
+        format!(
+            r#"[{{"uid":{{"type":"E","id":"test"}},"attrs":{{"n":{value_str}}},"parents":[]}}]"#
+        )
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Context A: attribute value in entities JSON
+    // ══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn entity_attr_i64_min() {
+        // i64::MIN is a valid Cedar integer — parsing should succeed
+        let src = entity_json_with_int("-9223372036854775808");
+        assert_matches!(Entities::from_json_str(&src, None), Ok(_));
+    }
+
+    #[test]
+    fn entity_attr_i64_max() {
+        // i64::MAX is a valid Cedar integer — parsing should succeed
+        let src = entity_json_with_int("9223372036854775807");
+        assert_matches!(Entities::from_json_str(&src, None), Ok(_));
+    }
+
+    #[test]
+    fn entity_attr_i64_max_plus_1() {
+        // 9223372036854775808 (i64::MAX + 1) is out of range for Cedar — should fail
+        let src = entity_json_with_int("9223372036854775808");
+        assert_matches!(Entities::from_json_str(&src, None), Err(_));
+    }
+
+    #[test]
+    fn entity_attr_u64_max() {
+        // 18446744073709551615 (u64::MAX) is out of range for Cedar — should fail
+        let src = entity_json_with_int("18446744073709551615");
+        assert_matches!(Entities::from_json_str(&src, None), Err(_));
+    }
+
+    #[test]
+    fn entity_attr_i64_min_minus_1() {
+        // -9223372036854775809 (i64::MIN - 1) cannot be represented in serde_json — should fail
+        let src = entity_json_with_int("-9223372036854775809");
+        assert_matches!(Entities::from_json_str(&src, None), Err(_));
+    }
+
+    #[test]
+    fn entity_attr_u64_max_plus_1() {
+        // 18446744073709551616 (u64::MAX + 1) cannot be represented in serde_json — should fail
+        let src = entity_json_with_int("18446744073709551616");
+        assert_matches!(Entities::from_json_str(&src, None), Err(_));
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Context B: literal in policy JSON
+    // ══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn policy_json_i64_max() {
+        // i64::MAX as a JSON literal — should deserialize successfully
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775807}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        assert!(p.to_string().contains("9223372036854775807"));
+    }
+
+    #[test]
+    fn policy_json_i64_min() {
+        // i64::MIN as a JSON literal — should deserialize successfully
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        assert!(p.to_string().contains("-9223372036854775808"));
+    }
+
+    #[test]
+    fn policy_json_i64_max_plus_1() {
+        // 9223372036854775808 (i64::MAX + 1) is representable as u64 in JSON but out of range for Cedar — should fail
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        Policy::from_json(None, v).unwrap_err();
+    }
+
+    #[test]
+    fn policy_json_u64_max() {
+        // 18446744073709551615 (u64::MAX) is out of range for Cedar — should fail
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":18446744073709551615}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        Policy::from_json(None, v).unwrap_err();
+    }
+
+    #[test]
+    fn policy_json_i64_min_minus_1() {
+        // -9223372036854775809 overflows i64; serde_json parses it as a float approximation,
+        // which Cedar's policy JSON deserializer rejects because it requires exact i64 integers
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775809}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        Policy::from_json(None, v).unwrap_err();
+    }
+
+    #[test]
+    fn policy_json_u64_max_plus_1() {
+        // 18446744073709551616 (u64::MAX + 1) overflows u64; serde_json parses it as a float
+        // approximation, which Cedar's policy JSON deserializer rejects
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":18446744073709551616}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        Policy::from_json(None, v).unwrap_err();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Context C: literal in human-syntax policy → convert to JSON
+    // ══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn human_syntax_i64_max_to_json() {
+        // i64::MAX as a human-syntax literal should parse and convert to JSON preserving the value
+        let src =
+            "permit(principal, action, resource) when { principal.n == 9223372036854775807 };";
+        let policy = Policy::parse(None, src).unwrap();
+        let json = policy.to_json().unwrap();
+        assert!(json.to_string().contains("9223372036854775807"));
+    }
+
+    #[test]
+    fn human_syntax_i64_min_to_json() {
+        // Cedar parses -9223372036854775808 as i64::MIN (special-cased in the negation handler)
+        // and should round-trip through JSON correctly
+        let src =
+            "permit(principal, action, resource) when { principal.n == -9223372036854775808 };";
+        let policy = Policy::parse(None, src).unwrap();
+        let json = policy.to_json().unwrap();
+        assert!(json.to_string().contains("-9223372036854775808"));
+    }
+
+    #[test]
+    fn human_syntax_i64_max_plus_1_too_large() {
+        // 9223372036854775808 as a positive literal (no negation) is > i64::MAX — must fail
+        let src = "permit(principal, action, resource) when { 9223372036854775808 };";
+        let err = PolicySet::from_str(src).unwrap_err();
+        assert!(
+            err.to_string().contains("integer literal"),
+            "expected IntegerLiteralTooLarge, got: {err}"
+        );
+    }
+
+    #[test]
+    fn human_syntax_u64_max_too_large() {
+        // 18446744073709551615 (u64::MAX) fits u64 in the grammar but exceeds i64::MAX — must fail
+        let src = "permit(principal, action, resource) when { 18446744073709551615 };";
+        let err = PolicySet::from_str(src).unwrap_err();
+        assert!(
+            err.to_string().contains("integer literal"),
+            "expected IntegerLiteralTooLarge, got: {err}"
+        );
+    }
+
+    #[test]
+    fn human_syntax_i64_min_minus_1_too_large() {
+        // -9223372036854775809: the absolute value (9223372036854775809) exceeds i64::MAX — must fail
+        let src = "permit(principal, action, resource) when { -9223372036854775809 };";
+        let err = PolicySet::from_str(src).unwrap_err();
+        assert!(
+            err.to_string().contains("integer literal"),
+            "expected IntegerLiteralTooLarge, got: {err}"
+        );
+    }
+
+    #[test]
+    fn human_syntax_u64_max_plus_1_overflow() {
+        // 18446744073709551616 overflows u64 during tokenization — must fail
+        let src = "permit(principal, action, resource) when { 18446744073709551616 };";
+        PolicySet::from_str(src).unwrap_err();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Evaluator: verify that boundary integer values evaluate correctly
+    // ══════════════════════════════════════════════════════════════════════
+
+    fn authorize_with_int_attr(int_value: i64) -> Decision {
+        let entity_type = "E";
+        let entity_id = "test";
+        // Build entities JSON with the given integer as attribute "n"
+        let entities_src = format!(
+            r#"[{{"uid":{{"type":"{entity_type}","id":"{entity_id}"}},"attrs":{{"n":{int_value}}},"parents":[]}}]"#
+        );
+        let entities = Entities::from_json_str(&entities_src, None).unwrap();
+        // Build a policy that allows when principal.n equals the value
+        let policy_src = format!(
+            r#"permit(principal == {entity_type}::"{entity_id}", action, resource) when {{ principal.n == {int_value} }};"#
+        );
+        let policies: PolicySet = policy_src.parse().unwrap();
+        let euid: EntityUid = format!(r#"{entity_type}::"{entity_id}""#).parse().unwrap();
+        let request =
+            Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
+        Authorizer::new()
+            .is_authorized(&request, &policies, &entities)
+            .decision()
+    }
+
+    #[test]
+    fn eval_entity_attr_i64_min() {
+        // i64::MIN attribute value should evaluate correctly
+        assert_eq!(authorize_with_int_attr(i64::MIN), Decision::Allow);
+    }
+
+    #[test]
+    fn eval_entity_attr_i64_max() {
+        // i64::MAX attribute value should evaluate correctly
+        assert_eq!(authorize_with_int_attr(i64::MAX), Decision::Allow);
+    }
+
+    #[test]
+    fn eval_policy_literal_i64_min() {
+        // Policy JSON with i64::MIN literal should round-trip and evaluate to the correct value
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        // The round-tripped policy should preserve the exact i64::MIN value
+        assert!(p.to_string().contains("-9223372036854775808"));
+    }
+
+    #[test]
+    fn eval_policy_literal_i64_max() {
+        // Policy JSON with i64::MAX literal should round-trip and evaluate to the correct value
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775807}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        // The round-tripped policy should preserve the exact i64::MAX value
+        assert!(p.to_string().contains("9223372036854775807"));
+    }
+}
+
 mod decimal_ip_constructors {
     use cool_asserts::assert_matches;
 
