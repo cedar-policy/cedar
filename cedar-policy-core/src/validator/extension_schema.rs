@@ -64,12 +64,31 @@ impl ExtensionSchema {
     }
 }
 
+/// Additional diagnostic details for custom extension argument validation.
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub(crate) struct ArgumentValidationError {
+    /// Main validation error message.
+    pub(crate) msg: String,
+    /// Optional help text describing valid input.
+    pub(crate) help: Option<String>,
+}
+
+impl ArgumentValidationError {
+    /// Create a new argument-validation error.
+    pub(crate) fn new(msg: impl Into<String>, help: Option<String>) -> Self {
+        Self {
+            msg: msg.into(),
+            help,
+        }
+    }
+}
+
 /// The type of a function used to perform custom argument validation on an
 /// extension function application. An `ArgumentCheckFn` is passed a slice
 /// containing the arguments to the extension function call and returns `Err` if
 /// it can statically determine that the arguments are invalid.
 pub(crate) type ArgumentCheckFn =
-    Box<dyn Fn(&[Expr]) -> Result<(), String> + Sync + Send + 'static>;
+    Box<dyn Fn(&[Expr]) -> Result<(), ArgumentValidationError> + Sync + Send + 'static>;
 
 /// Type information for a single extension function.
 pub struct ExtensionFunctionType {
@@ -119,7 +138,7 @@ impl ExtensionFunctionType {
     }
 
     /// Call the `check_arguments` function with the given args
-    pub fn check_arguments(&self, args: &[Expr]) -> Result<(), String> {
+    pub fn check_arguments(&self, args: &[Expr]) -> Result<(), ArgumentValidationError> {
         if let Some(f) = &self.check_arguments {
             return (f)(args);
         }

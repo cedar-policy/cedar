@@ -465,10 +465,16 @@ pub struct FunctionArgumentValidation {
     pub policy_id: PolicyID,
     /// Error message
     pub msg: String,
+    /// Optional help for resolving the error
+    pub help: Option<String>,
 }
 
 impl Diagnostic for FunctionArgumentValidation {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.help.as_ref().map(|h| Box::new(h) as Box<dyn Display>)
+    }
 }
 
 /// Structure containing details about a hierarchy not respected error
