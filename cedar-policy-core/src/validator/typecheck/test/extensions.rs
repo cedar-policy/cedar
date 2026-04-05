@@ -71,7 +71,10 @@ fn ip_extension_typecheck_fails() {
         ValidationError::function_argument_validation(
             get_loc(src, src),
             expr_id_placeholder(),
-            "Failed to parse as IP address: `\"foo\"`".into(),
+            "failed to parse as IP address: `\"foo\"`".into(),
+            Some(
+                "valid IP strings are IPv4/IPv6 addresses or CIDR ranges like `127.0.0.1`, `127.0.0.1/24`, or `ffee::/64`".into(),
+            ),
         )
     );
     let src = "ip(\"127.0.0.1\").isIpv4(3)";
@@ -189,7 +192,10 @@ fn decimal_extension_typecheck_fails() {
         ValidationError::function_argument_validation(
             get_loc(src, src),
             expr_id_placeholder(),
-            "Failed to parse as a decimal value: `\"foo\"`".into(),
+            "failed to parse as a decimal value: `\"foo\"`".into(),
+            Some(
+                "valid decimal strings look like `12.34`: digits are required on both sides of `.`, up to 4 fractional digits are allowed, and the value must be in range -922337203685477.5808 to 922337203685477.5807".into(),
+            ),
         )
     );
     let src = "decimal(\"1.23\").lessThan(3, 4)";
@@ -309,7 +315,10 @@ fn datetime_extension_typecheck_fails() {
         ValidationError::function_argument_validation(
             get_loc(src, src),
             expr_id_placeholder(),
-            "Failed to parse as a datetime value: `\"foo\"`".into(),
+            "failed to parse as a datetime value: `\"foo\"`".into(),
+            Some(
+                "valid datetime strings start with `YYYY-MM-DD` and may optionally include `THH:MM:SS` plus `Z`, `.SSSZ`, or an offset like `+0700`".into(),
+            ),
         )
     );
 
@@ -338,7 +347,30 @@ fn datetime_extension_typecheck_fails() {
         ValidationError::function_argument_validation(
             get_loc(src, src),
             expr_id_placeholder(),
-            "Failed to parse as a duration value: `\"foo\"`".into(),
+            "failed to parse as a duration value: `\"foo\"`".into(),
+            Some(
+                "valid duration strings are concatenated quantity-unit pairs with an optional leading `-`, for example `1d2h3m4s50ms`".into(),
+            ),
+        )
+    );
+
+    // "2024-13-01" matches the date pattern but has an invalid month (13),
+    // triggering DateTimeParseError::InvalidDate which has no help text.
+    // This exercises the fallback to VALID_DATETIME_HELP.
+    let src = r#"datetime("2024-13-01")"#;
+    let expr = Expr::from_str(src).expect("parsing should succeed");
+    let errors =
+        assert_typecheck_fails_empty_schema(&expr, &Type::extension(datetime_name.clone()));
+    let type_error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        type_error,
+        ValidationError::function_argument_validation(
+            get_loc(src, src),
+            expr_id_placeholder(),
+            "failed to parse as a datetime value: `\"2024-13-01\"`".into(),
+            Some(
+                "valid datetime strings start with `YYYY-MM-DD` and may optionally include `THH:MM:SS` plus `Z`, `.SSSZ`, or an offset like `+0700`".into(),
+            ),
         )
     );
 
