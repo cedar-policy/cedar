@@ -410,6 +410,44 @@ mod test {
     }
 
     #[test]
+    fn test_validation_errors_include_function_argument_help() {
+        let json = json!({
+            "schema": {
+                "": {
+                    "entityTypes": {
+                        "User": {},
+                        "Document": {}
+                    },
+                    "actions": {
+                        "view": {
+                            "appliesTo": {
+                                "principalTypes": ["User"],
+                                "resourceTypes": ["Document"]
+                            }
+                        }
+                    }
+                }
+            },
+            "policies": {
+                "staticPolicies": {
+                    "policy0": "permit(principal == User::\"alice\", action == Action::\"view\", resource == Document::\"doc\") when { decimal(\"foo\").lessThan(decimal(\"1.0\")) };"
+                }
+            }
+        });
+
+        let errs = assert_validates_with_errors(json);
+        assert_length_matches(&errs, 1);
+        assert_eq!(errs[0].policy_id, PolicyId::new("policy0"));
+        assert_error_matches(
+            &errs[0].error,
+            "for policy `policy0`, error during extension function argument validation: failed to parse as a decimal value: `\"foo\"`",
+            Some(
+                "valid decimal strings look like `12.34`: digits are required on both sides of `.`, up to 4 fractional digits are allowed, and the value must be in range -922337203685477.5808 to 922337203685477.5807",
+            ),
+        );
+    }
+
+    #[test]
     fn test_nontrivial_correct_policy_validates_without_errors_concatenated_policies() {
         let json = json!({
         "schema": { "": {

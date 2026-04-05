@@ -347,11 +347,13 @@ impl ValidationError {
         source_loc: Option<Loc>,
         policy_id: PolicyID,
         msg: String,
+        help: Option<String>,
     ) -> Self {
         validation_errors::FunctionArgumentValidation {
             source_loc,
             policy_id,
             msg,
+            help,
         }
         .into()
     }

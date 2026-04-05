@@ -20,9 +20,12 @@
 
 use crate::ast::{Expr, ExprKind, Literal, Name};
 use crate::extensions::datetime;
-use crate::validator::extension_schema::{ArgumentCheckFn, ExtensionFunctionType, ExtensionSchema};
+use crate::validator::extension_schema::{
+    ArgumentCheckFn, ArgumentValidationError, ExtensionFunctionType, ExtensionSchema,
+};
 use crate::validator::types::{self, Type};
 use itertools::Itertools;
+use miette::Diagnostic;
 
 use super::eval_extension_constructor;
 
@@ -30,6 +33,9 @@ use super::eval_extension_constructor;
 // This module depends on the Cedar parser only constructing AST with valid extension calls
 // If any of the panics in this file are triggered, that means that this file has become
 // out-of-date with the datetime extension definition in Core.
+
+const VALID_DATETIME_HELP: &str = "valid datetime strings start with `YYYY-MM-DD` and may optionally include `THH:MM:SS` plus `Z`, `.SSSZ`, or an offset like `+0700`";
+const VALID_DURATION_HELP: &str = "valid duration strings are concatenated quantity-unit pairs with an optional leading `-`, for example `1d2h3m4s50ms`";
 
 #[expect(clippy::panic, reason = "see `Note on safety` above")]
 fn get_argument_types(fname: &Name, datetime_ty: &Type, duration_ty: &Type) -> Vec<types::Type> {
@@ -120,12 +126,23 @@ pub fn extension_schema() -> ExtensionSchema {
 /// Extra validation step for the `datetime` function.
 /// Note we already checked that `exprs` contains correct number of arguments,
 /// these arguments have the correct types, and that they are all literals.
-fn validate_datetime_string(datetime_constructor_name: Name, exprs: &[Expr]) -> Result<(), String> {
+fn validate_datetime_string(
+    datetime_constructor_name: Name,
+    exprs: &[Expr],
+) -> Result<(), ArgumentValidationError> {
     match exprs.iter().exactly_one().map(|a| a.expr_kind()) {
         Ok(ExprKind::Lit(lit_arg @ Literal::String(s))) => {
-            eval_extension_constructor(datetime_constructor_name, s.clone())
-                .map(|_| ())
-                .map_err(|_| format!("Failed to parse as a datetime value: `{lit_arg}`"))
+            match eval_extension_constructor(datetime_constructor_name, s.clone()) {
+                Ok(_) => Ok(()),
+                Err(err) => Err(ArgumentValidationError::new(
+                    format!("failed to parse as a datetime value: `{lit_arg}`"),
+                    Some(
+                        err.help()
+                            .map(|h| h.to_string())
+                            .unwrap_or_else(|| VALID_DATETIME_HELP.to_string()),
+                    ),
+                )),
+            }
         }
         _ => Ok(()),
     }
@@ -134,12 +151,23 @@ fn validate_datetime_string(datetime_constructor_name: Name, exprs: &[Expr]) -> 
 /// Extra validation step for the `duration` function.
 /// Note we already checked that `exprs` contains correct number of arguments,
 /// these arguments have the correct types, and that they are all literals.
-fn validate_duration_string(duration_constructor_name: Name, exprs: &[Expr]) -> Result<(), String> {
+fn validate_duration_string(
+    duration_constructor_name: Name,
+    exprs: &[Expr],
+) -> Result<(), ArgumentValidationError> {
     match exprs.iter().exactly_one().map(|a| a.expr_kind()) {
         Ok(ExprKind::Lit(lit_arg @ Literal::String(s))) => {
-            eval_extension_constructor(duration_constructor_name, s.clone())
-                .map(|_| ())
-                .map_err(|_| format!("Failed to parse as a duration value: `{lit_arg}`"))
+            match eval_extension_constructor(duration_constructor_name, s.clone()) {
+                Ok(_) => Ok(()),
+                Err(err) => Err(ArgumentValidationError::new(
+                    format!("failed to parse as a duration value: `{lit_arg}`"),
+                    Some(
+                        err.help()
+                            .map(|h| h.to_string())
+                            .unwrap_or_else(|| VALID_DURATION_HELP.to_string()),
+                    ),
+                )),
+            }
         }
         _ => Ok(()),
     }

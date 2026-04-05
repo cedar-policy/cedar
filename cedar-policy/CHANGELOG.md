@@ -15,6 +15,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ### Added
 
 - Public syntax tree representation for `Policy`, `Template` and `PolicySet` allowing programmatic manipulation of Cedar syntax (#816, #366).
+- `FunctionArgumentValidation` errors now include a help message describing the expected format for extension function arguments: `decimal`, `ip`, `datetime`, and `duration` (#834).
 
 ## [4.10.0] - Coming soon
 

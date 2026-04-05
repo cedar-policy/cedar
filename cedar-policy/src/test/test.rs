@@ -5980,6 +5980,60 @@ permit(principal, action, resource) when { {"\n": 0} };"#,
         round_trip(r#"permit(principal, action, resource) when { Foo::"\n\r\\" };"#);
     }
 }
+
+mod function_argument_validation_help_tests {
+    use crate::{Policy, PolicySet, ValidationError, ValidationMode, Validator};
+    use cool_asserts::assert_matches;
+    use miette::Diagnostic;
+    use serde_json::json;
+
+    use super::Schema;
+
+    #[test]
+    fn validator_surfaces_help_for_invalid_extension_constructor_arguments() {
+        let schema = Schema::from_json_value(json!({
+            "": {
+                "entityTypes": {
+                    "User": {},
+                    "Document": {},
+                },
+                "actions": {
+                    "view": {
+                        "appliesTo": {
+                            "principalTypes": ["User"],
+                            "resourceTypes": ["Document"],
+                        }
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(
+            principal == User::"alice",
+            action == Action::"view",
+            resource == Document::"doc"
+        ) when { decimal("foo").lessThan(decimal("1.0")) };"#;
+        let policy = Policy::parse(None, src).unwrap();
+        set.add(policy).unwrap();
+
+        let result = validator.validate(&set, ValidationMode::Strict);
+        let errors: Vec<_> = result.validation_errors().collect();
+        assert_eq!(errors.len(), 1, "unexpected validation errors: {errors:?}");
+
+        let err = errors[0];
+        assert_matches!(err, ValidationError::FunctionArgumentValidation(_));
+        assert_matches!(err.help().map(|h| h.to_string()), Some(h) => {
+            assert_eq!(
+                h,
+                "valid decimal strings look like `12.34`: digits are required on both sides of `.`, up to 4 fractional digits are allowed, and the value must be in range -922337203685477.5808 to 922337203685477.5807"
+            );
+        });
+    }
+}
+
 mod issue_604 {
     use crate::Policy;
     use cedar_policy_core::parser::parse_policy_or_template_to_est;

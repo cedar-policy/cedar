@@ -20,9 +20,12 @@
 
 use crate::ast::{Expr, ExprKind, Literal, Name};
 use crate::extensions::ipaddr;
-use crate::validator::extension_schema::{ArgumentCheckFn, ExtensionFunctionType, ExtensionSchema};
+use crate::validator::extension_schema::{
+    ArgumentCheckFn, ArgumentValidationError, ExtensionFunctionType, ExtensionSchema,
+};
 use crate::validator::types::{self, Type};
 use itertools::Itertools;
+use miette::Diagnostic;
 
 use super::eval_extension_constructor;
 
@@ -30,6 +33,8 @@ use super::eval_extension_constructor;
 // This module depends on the Cedar parser only constructing AST with valid extension calls
 // If any of the panics in this file are triggered, that means that this file has become
 // out-of-date with the ipaddr extension definition in Core.
+
+const VALID_IP_HELP: &str = "valid IP strings are IPv4/IPv6 addresses or CIDR ranges like `127.0.0.1`, `127.0.0.1/24`, or `ffee::/64`";
 
 #[expect(clippy::panic, reason = "see `Note on safety` above")]
 fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
@@ -101,12 +106,23 @@ pub fn extension_schema() -> ExtensionSchema {
 /// Extra validation step for the `ip` function.
 /// Note we already checked that `exprs` contains correct number of arguments,
 /// these arguments have the correct types, and that they are all literals.
-fn validate_ip_string(ip_constructor_name: Name, exprs: &[Expr]) -> Result<(), String> {
+fn validate_ip_string(
+    ip_constructor_name: Name,
+    exprs: &[Expr],
+) -> Result<(), ArgumentValidationError> {
     match exprs.iter().exactly_one().map(|a| a.expr_kind()) {
         Ok(ExprKind::Lit(lit_arg @ Literal::String(s))) => {
-            eval_extension_constructor(ip_constructor_name, s.clone())
-                .map(|_| ())
-                .map_err(|_| format!("Failed to parse as IP address: `{lit_arg}`"))
+            match eval_extension_constructor(ip_constructor_name, s.clone()) {
+                Ok(_) => Ok(()),
+                Err(err) => Err(ArgumentValidationError::new(
+                    format!("failed to parse as IP address: `{lit_arg}`"),
+                    Some(
+                        err.help()
+                            .map(|h| h.to_string())
+                            .unwrap_or_else(|| VALID_IP_HELP.to_string()),
+                    ),
+                )),
+            }
         }
         _ => Ok(()),
     }
