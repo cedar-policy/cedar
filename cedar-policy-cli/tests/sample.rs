@@ -1204,6 +1204,42 @@ fn test_authorize_json_policy() {
 }
 
 #[test]
+fn test_authorize_allow_with_errors() {
+    let dir = tempfile::tempdir().expect("failed to create tempdir");
+    let policies = dir.path().join("policies.cedar");
+    std::fs::write(
+        &policies,
+        "permit(principal, action, resource);\nforbid(principal, action, resource) when { resource.isPublic };",
+    )
+    .unwrap();
+    let entities = dir.path().join("entities.json");
+    std::fs::write(&entities, r#"[]"#).unwrap();
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("authorize")
+        .arg("--principal")
+        .arg(r#"User::"alice""#)
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource")
+        .arg(r#"Photo::"pic""#)
+        .arg("--policies")
+        .arg(&policies)
+        .arg("--entities")
+        .arg(&entities)
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    insta::assert_snapshot!(stdout, @r###"
+
+    ALLOW
+
+    error while evaluating policy `policy1`: entity `Photo::"pic"` does not exist
+    "###);
+    assert!(output.status.success());
+}
+
+#[test]
 fn test_translate_policy() {
     let cedar_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar";
     let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar.json";
@@ -1687,4 +1723,106 @@ fn check_parse_expr_err(#[case] expr: &str) {
         .arg(expr)
         .assert()
         .code(1);
+}
+
+#[test]
+fn test_cedar_policy_from_stdin_success() {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .write_stdin("permit(principal, action, resource);")
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_json_policy_from_stdin_success() {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .write_stdin(r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[]}"#)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_cedar_policy_from_stdin_parse_error() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .write_stdin("not a valid policy")
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r"
+     × failed to parse policy set
+     ╰─▶ unexpected token `a`
+      ╭────
+    1 │ not a valid policy
+      ·     ┬
+      ·     ╰── expected `(`
+      ╰────
+    ");
+}
+
+#[test]
+fn test_json_policy_from_stdin_parse_error() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .write_stdin(r#"{"effect":"forbid","principal":{"op":"bogus"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[]}"#)
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r"
+    × failed to parse JSON policy
+    ├─▶ error deserializing a policy/template from JSON
+    ╰─▶ unknown variant `bogus`, expected one of `All`, `all`, `==`, `in`, `is`
+    ");
+}
+
+#[test]
+fn test_check_parse_invalid_entities() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--entities")
+        .arg("sample-data/sandbox_a/policies_1.cedar") // not valid entities JSON
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r"
+    × failed to parse entities from file sample-data/sandbox_a/policies_1.cedar
+    ├─▶ error during entity deserialization
+    ╰─▶ expected value at line 1 column 1
+    ");
+}
+
+#[test]
+fn test_check_parse_invalid_schema() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--schema")
+        .arg("sample-data/sandbox_a/policies_1.cedar") // not a valid schema
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r#"
+     × failed to parse schema from file sample-data/sandbox_a/policies_1.cedar
+     ╰─▶ error parsing schema: unexpected token `permit`
+      ╭─[3:1]
+    2 │ @id("jane's friends view-permission policy")
+    3 │ permit (
+      · ───┬──
+      ·    ╰── expected `@`, `action`, `entity`, `namespace`, or `type`
+    4 │   principal in UserGroup::"jane_friends",
+      ╰────
+    "#);
 }

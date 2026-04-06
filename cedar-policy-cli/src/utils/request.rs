@@ -55,6 +55,9 @@ impl RequestArgs {
     ///
     /// `self.request_validation` has no effect if `schema` is `None`.
     pub(crate) fn get_request(&self, schema: Option<&Schema>) -> Result<Request> {
+        fn missing_req_var() -> miette::Report {
+            miette!("All three (`principal`, `action`, `resource`) variables must be specified")
+        }
         match &self.request_json_file {
             Some(jsonfile) => {
                 let jsonstring = std::fs::read_to_string(jsonfile)
@@ -63,15 +66,27 @@ impl RequestArgs {
                 let qjson: RequestJSON = serde_json::from_str(&jsonstring)
                     .into_diagnostic()
                     .wrap_err_with(|| format!("failed to parse request-json file {jsonfile}"))?;
-                let principal = qjson.principal.parse().wrap_err_with(|| {
-                    format!("failed to parse principal in {jsonfile} as entity Uid")
-                })?;
-                let action = qjson.action.parse().wrap_err_with(|| {
-                    format!("failed to parse action in {jsonfile} as entity Uid")
-                })?;
-                let resource = qjson.resource.parse().wrap_err_with(|| {
-                    format!("failed to parse resource in {jsonfile} as entity Uid")
-                })?;
+                let principal = qjson
+                    .principal
+                    .ok_or_else(missing_req_var)?
+                    .parse()
+                    .wrap_err_with(|| {
+                        format!("failed to parse principal in {jsonfile} as entity Uid")
+                    })?;
+                let action = qjson
+                    .action
+                    .ok_or_else(missing_req_var)?
+                    .parse()
+                    .wrap_err_with(|| {
+                        format!("failed to parse action in {jsonfile} as entity Uid")
+                    })?;
+                let resource = qjson
+                    .resource
+                    .ok_or_else(missing_req_var)?
+                    .parse()
+                    .wrap_err_with(|| {
+                        format!("failed to parse resource in {jsonfile} as entity Uid")
+                    })?;
                 let context = Context::from_json_value(qjson.context, schema.map(|s| (s, &action)))
                     .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?;
                 Request::new(
@@ -139,9 +154,7 @@ impl RequestArgs {
                         },
                     )
                     .map_err(|e| miette!("{e}")),
-                    _ => Err(miette!(
-                        "All three (`principal`, `action`, `resource`) variables must be specified"
-                    )),
+                    _ => Err(missing_req_var()),
                 }
             }
         }
@@ -153,13 +166,109 @@ impl RequestArgs {
 pub(crate) struct RequestJSON {
     /// Principal for the request
     #[serde(default)]
-    pub principal: String,
+    pub principal: Option<String>,
     /// Action for the request
     #[serde(default)]
-    pub action: String,
+    pub action: Option<String>,
     /// Resource for the request
     #[serde(default)]
-    pub resource: String,
+    pub resource: Option<String>,
     /// Context for the request
     pub context: serde_json::Value,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::test_utils::{render_err, TEMPFILE_FILTER};
+    use std::io::Write;
+
+    fn mk_request(
+        principal: Option<&str>,
+        action: Option<&str>,
+        resource: Option<&str>,
+        context_file: Option<&str>,
+        request_json_file: Option<&str>,
+    ) -> RequestArgs {
+        RequestArgs {
+            principal: principal.map(String::from),
+            action: action.map(String::from),
+            resource: resource.map(String::from),
+            context_json_file: context_file.map(String::from),
+            request_json_file: request_json_file.map(String::from),
+            request_validation: false,
+        }
+    }
+
+    #[test]
+    fn request_missing_args() {
+        let args = mk_request(Some(r#"User::"alice""#), None, None, None, None);
+        let err = args.get_request(None).unwrap_err();
+        insta::assert_snapshot!(render_err(&err), @r"× All three (`principal`, `action`, `resource`) variables must be specified");
+    }
+
+    #[test]
+    fn request_bad_principal() {
+        let args = mk_request(
+            Some("not_an_euid"),
+            Some(r#"Action::"view""#),
+            Some(r#"Photo::"pic""#),
+            None,
+            None,
+        );
+        let err = args.get_request(None).unwrap_err();
+        insta::assert_snapshot!(render_err(&err), @r"
+         × failed to parse principal not_an_euid as entity Uid
+         ╰─▶ unexpected end of input
+          ╭────
+        1 │ not_an_euid
+          ╰────
+        ");
+    }
+
+    #[test]
+    fn request_from_json_file_invalid() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(
+            br#"{"principal":"User::\"alice\"", "resource":"Photo::\"pic\"","context":{}}"#,
+        )
+        .unwrap();
+        let args = mk_request(None, None, None, None, Some(f.path().to_str().unwrap()));
+        let err = args.get_request(None).unwrap_err();
+        insta::with_settings!({filters => vec![TEMPFILE_FILTER]}, {
+            insta::assert_snapshot!(render_err(&err), @"  × All three (`principal`, `action`, `resource`) variables must be specified");
+        });
+    }
+
+    #[test]
+    fn request_from_missing_json_file() {
+        let args = mk_request(
+            None,
+            None,
+            None,
+            None,
+            Some("/tmp/nonexistent_request.json"),
+        );
+        let err = args.get_request(None).unwrap_err();
+        insta::assert_snapshot!(render_err(&err), @r"
+        × failed to open request-json file /tmp/nonexistent_request.json
+        ╰─▶ No such file or directory (os error 2)
+        ");
+    }
+
+    #[test]
+    fn request_with_missing_context_file() {
+        let args = mk_request(
+            Some(r#"User::"alice""#),
+            Some(r#"Action::"view""#),
+            Some(r#"Photo::"pic""#),
+            Some("/tmp/nonexistent_context.json"),
+            None,
+        );
+        let err = args.get_request(None).unwrap_err();
+        insta::assert_snapshot!(render_err(&err), @r"
+        × error while loading context from /tmp/nonexistent_context.json
+        ╰─▶ No such file or directory (os error 2)
+        ");
+    }
 }

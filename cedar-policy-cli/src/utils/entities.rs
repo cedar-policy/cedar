@@ -42,3 +42,49 @@ pub(crate) fn load_entities(
         }),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::test_utils::{render_err, TEMPFILE_FILTER};
+    use std::io::Write;
+
+    #[test]
+    fn error_on_invalid_entity_data() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"not valid json").unwrap();
+        let err = load_entities(f.path(), None).unwrap_err();
+        insta::with_settings!({filters => vec![TEMPFILE_FILTER]}, {
+            insta::assert_snapshot!(render_err(&err), @r"
+            × failed to parse entities from file <TEMPFILE>
+            ├─▶ error during entity deserialization
+            ╰─▶ expected ident at line 1 column 2
+            ");
+        });
+    }
+
+    #[test]
+    fn error_on_ill_typed_entities() {
+        let (schema, _) = Schema::from_cedarschema_str("entity Photo;").unwrap();
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(br#"[{"uid":{"__entity":{"type":"Album","id":"a"}},"attrs":{},"parents":[]}]"#)
+            .unwrap();
+        let err = load_entities(f.path(), Some(&schema)).unwrap_err();
+        insta::with_settings!({filters => vec![TEMPFILE_FILTER]}, {
+            insta::assert_snapshot!(render_err(&err), @r#"
+            × failed to parse entities from file <TEMPFILE>
+            ├─▶ error during entity deserialization
+            ╰─▶ entity `Album::"a"` has type `Album` which is not declared in the schema
+            "#);
+        });
+    }
+
+    #[test]
+    fn error_on_missing_entity_file() {
+        let err = load_entities("/tmp/nonexistent_cedar_test_file.json", None).unwrap_err();
+        insta::assert_snapshot!(render_err(&err), @r"
+        × failed to open entities file /tmp/nonexistent_cedar_test_file.json
+        ╰─▶ No such file or directory (os error 2)
+        ");
+    }
+}

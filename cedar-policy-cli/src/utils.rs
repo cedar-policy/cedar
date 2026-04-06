@@ -55,3 +55,20 @@ pub(crate) fn read_from_file_or_stdin(
 fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
     read_from_file_or_stdin(Some(&filename), context)
 }
+
+#[cfg(test)]
+pub(crate) mod test_utils {
+    /// Insta filter to replace non-deterministic temp file paths.
+    pub const TEMPFILE_FILTER: (&str, &str) = (r"/tmp/\.tmp[A-Za-z0-9]+", "<TEMPFILE>");
+
+    /// Render a miette Report as unicode text without ANSI color codes.  ANSI
+    /// codes cause inconsistent snapshots depending whether miette decides the
+    /// environment supports colors.
+    pub fn render_err(err: &miette::Report) -> String {
+        let mut buf = String::new();
+        miette::GraphicalReportHandler::new_themed(miette::GraphicalTheme::unicode_nocolor())
+            .render_report(&mut buf, err.as_ref())
+            .unwrap();
+        buf
+    }
+}

@@ -201,3 +201,54 @@ fn rename_from_id_annotation(ps: &PolicySet) -> Result<PolicySet> {
     }
     Ok(new_ps)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::test_utils::{render_err, TEMPFILE_FILTER};
+    use std::io::Write;
+
+    #[test]
+    fn cedar_policy_from_file_parse_error() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"not a valid policy").unwrap();
+        let err = read_cedar_policy_set(Some(f.path())).unwrap_err();
+        insta::with_settings!({filters => vec![TEMPFILE_FILTER]}, {
+            insta::assert_snapshot!(render_err(&err), @r"
+             × failed to parse policy set
+             ╰─▶ unexpected token `a`
+              ╭────
+            1 │ not a valid policy
+              ·     ┬
+              ·     ╰── expected `(`
+              ╰────
+            ");
+        });
+    }
+
+    #[test]
+    fn json_policy_from_file_invalid_json() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"not json at all").unwrap();
+        let err = read_json_policy_set(Some(f.path())).unwrap_err();
+        insta::with_settings!({filters => vec![TEMPFILE_FILTER]}, {
+            insta::assert_snapshot!(render_err(&err), @"  × expected ident at line 1 column 2");
+        });
+    }
+
+    #[test]
+    fn json_policy_from_file_bad_policy() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        // Valid JSON with policy properties, but invalid policy content —
+        // hits the Template::from_json fallback and the wrap_err "failed to parse" path
+        f.write_all(br#"{"effect":"permit","principal":{"op":"bogus"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[]}"#).unwrap();
+        let err = read_json_policy_set(Some(f.path())).unwrap_err();
+        insta::with_settings!({filters => vec![TEMPFILE_FILTER]}, {
+            insta::assert_snapshot!(render_err(&err), @r#"
+            × failed to parse JSON policy
+            ├─▶ error deserializing a policy/template from JSON
+            ╰─▶ unknown variant `bogus`, expected one of `All`, `all`, `==`, `in`, `is`
+            "#);
+        });
+    }
+}
