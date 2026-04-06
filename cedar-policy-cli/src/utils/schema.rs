@@ -87,3 +87,52 @@ fn read_schema_from_file(path: impl AsRef<Path>, format: SchemaFormat) -> Result
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::test_utils::{render_err, TEMPFILE_FILTER};
+    use std::io::Write;
+
+    #[test]
+    fn cedar_schema_from_file_parse_error() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"not a valid schema").unwrap();
+        let err = read_schema_from_file(f.path(), SchemaFormat::Cedar).unwrap_err();
+        insta::with_settings!({filters => vec![TEMPFILE_FILTER]}, {
+            insta::assert_snapshot!(render_err(&err), @r"
+             × failed to parse schema from file <TEMPFILE>
+             ╰─▶ error parsing schema: unexpected token `not`
+              ╭────
+            1 │ not a valid schema
+              · ─┬─
+              ·  ╰── expected `@`, `action`, `entity`, `namespace`, or `type`
+              ╰────
+            ");
+        });
+    }
+
+    #[test]
+    fn json_schema_from_file_parse_error() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"not json").unwrap();
+        let err = read_schema_from_file(f.path(), SchemaFormat::Json).unwrap_err();
+        insta::with_settings!({filters => vec![TEMPFILE_FILTER]}, {
+            insta::assert_snapshot!(render_err(&err), @r"
+            × failed to parse schema from file <TEMPFILE>
+            ╰─▶ expected ident at line 1 column 2
+            help: this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?
+            ");
+        });
+    }
+
+    #[test]
+    fn schema_from_missing_file() {
+        let err = read_schema_from_file("/tmp/nonexistent_cedar_schema.json", SchemaFormat::Cedar)
+            .unwrap_err();
+        insta::assert_snapshot!(render_err(&err), @r"
+        × failed to open schema file /tmp/nonexistent_cedar_schema.json
+        ╰─▶ No such file or directory (os error 2)
+        ");
+    }
+}

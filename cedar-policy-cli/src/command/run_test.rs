@@ -252,25 +252,25 @@ impl<'de, 'a> DeserializeSeed<'de> for CheckedTestCaseSeed<'a> {
             num_errors,
         } = UncheckedTestCase::deserialize(deserializer)?;
 
-        let principal = request.principal.parse().map_err(|e| {
-            serde::de::Error::custom(format!(
-                "failed to parse principal `{}`: {}",
-                request.principal, e
-            ))
+        let principal = request
+            .principal
+            .ok_or_else(|| serde::de::Error::missing_field("principal"))?;
+        let principal = principal.parse().map_err(|e| {
+            serde::de::Error::custom(format!("failed to parse principal `{principal}`: {e}",))
         })?;
 
-        let action = request.action.parse().map_err(|e| {
-            serde::de::Error::custom(format!(
-                "failed to parse action `{}`: {}",
-                request.action, e
-            ))
+        let action = request
+            .action
+            .ok_or_else(|| serde::de::Error::missing_field("action"))?;
+        let action = action.parse().map_err(|e| {
+            serde::de::Error::custom(format!("failed to parse action `{action}`: {e}",))
         })?;
 
-        let resource = request.resource.parse().map_err(|e| {
-            serde::de::Error::custom(format!(
-                "failed to parse resource `{}`: {}",
-                request.resource, e
-            ))
+        let resource = request
+            .resource
+            .ok_or_else(|| serde::de::Error::missing_field("resource"))?;
+        let resource = resource.parse().map_err(|e| {
+            serde::de::Error::custom(format!("failed to parse resource `{resource}`: {e}",))
         })?;
 
         let context = Context::from_json_value(request.context.clone(), None).map_err(|e| {
