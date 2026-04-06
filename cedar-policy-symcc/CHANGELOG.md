@@ -20,7 +20,7 @@ some implementors of `Solver` to perform other initialization/configuration as
 required when models are being enabled (#2192)
 - Performance optimization for analysis of policies containing `.toDate()` (#2234)
 
-## [0.3.2] - Coming soon
+## [0.3.2] - 2026-04-06
 Cedar Language Version: 4.4
 
 ### Fixed
@@ -76,7 +76,7 @@ cycles in the entity data for entities irrelevant to the given policies (#2089)
 - Experimental `WellFormedAsserts::from_asserts_unchecked()` API. But note the
 addition of `CedarSymCompiler::check_unsat_raw()` as an experimental API. (#2102)
 
-## [0.2.1] - Coming soon
+## [0.2.1] - 2026-04-06
 Cedar Language Version: 4.4
 
 ### Fixed
@@ -95,7 +95,7 @@ them across many queries. (#2013, #2019)
 - `always_matches` and `never_matches` primitives for single policies (#2014)
 - Performance optimizations (#1947, #1970, #2017, #2020, #2021)
 
-## [0.1.4] - Coming soon
+## [0.1.4] - 2026-04-06
 Cedar Language Version: 4.4
 
 ### Fixed
