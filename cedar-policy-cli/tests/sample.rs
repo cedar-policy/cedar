@@ -17,6 +17,7 @@
 #![allow(clippy::expect_used, reason = "tests")]
 #![allow(clippy::unwrap_used, reason = "tests")]
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use cedar_policy::EvalResult;
@@ -1825,4 +1826,27 @@ fn test_check_parse_invalid_schema() {
     4 │   principal in UserGroup::"jane_friends",
       ╰────
     "#);
+}
+
+#[test]
+fn test_check_parse_warning_schema() {
+    let mut schema = tempfile::NamedTempFile::new().expect("Failed to create linked file");
+    schema.write(b"entity Long;").unwrap();
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--schema")
+        .arg(schema.path())
+        .output()
+        .expect("failed to run cedar");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success());
+    insta::assert_snapshot!(stderr, @r###"
+     ⚠ The name `Long` shadows a builtin Cedar name. You'll have to refer to the
+     │ builtin as `__cedar::Long`.
+      ╭────
+    1 │ entity Long;
+      ·        ────
+      ╰────
+    "###);
 }
