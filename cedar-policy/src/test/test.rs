@@ -6229,6 +6229,273 @@ mod issue_596 {
     }
 }
 
+mod issue_611 {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    fn entity_json_with_int(value_str: &str) -> String {
+        format!(
+            r#"[{{"uid":{{"type":"E","id":"test"}},"attrs":{{"n":{value_str}}},"parents":[]}}]"#
+        )
+    }
+
+    // Context A: integer as an attribute value in entities JSON
+
+    #[test]
+    fn entity_attr_i64_min() {
+        let src = entity_json_with_int("-9223372036854775808");
+        let entities = Entities::from_json_str(&src, None).unwrap();
+        let euid: EntityUid = r#"E::"test""#.parse().unwrap();
+        let n = entities.get(&euid).unwrap().attr("n").unwrap().unwrap();
+        insta::assert_snapshot!(n, @"-9223372036854775808");
+    }
+
+    #[test]
+    fn entity_attr_i64_max() {
+        let src = entity_json_with_int("9223372036854775807");
+        let entities = Entities::from_json_str(&src, None).unwrap();
+        let euid: EntityUid = r#"E::"test""#.parse().unwrap();
+        let n = entities.get(&euid).unwrap().attr("n").unwrap().unwrap();
+        insta::assert_snapshot!(n, @"9223372036854775807");
+    }
+
+    #[test]
+    fn entity_attr_above_i64_max() {
+        // i64::MAX + 1 is representable as u64 but exceeds Cedar's integer range
+        let src = entity_json_with_int("9223372036854775808");
+        assert_matches!(Entities::from_json_str(&src, None), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                    .source("data did not match any variant of untagged enum RawCedarValueJson")
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn entity_attr_u64_max() {
+        // u64::MAX exceeds Cedar's integer range (i64::MAX)
+        let src = entity_json_with_int("18446744073709551615");
+        assert_matches!(Entities::from_json_str(&src, None), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                    .source("data did not match any variant of untagged enum RawCedarValueJson")
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn entity_attr_below_i64_min() {
+        // i64::MIN - 1 overflows i64; serde_json represents it as f64, which Cedar rejects
+        let src = entity_json_with_int("-9223372036854775809");
+        assert_matches!(Entities::from_json_str(&src, None), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                    .source("data did not match any variant of untagged enum RawCedarValueJson")
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn entity_attr_above_u64_max() {
+        // u64::MAX + 1 overflows u64; serde_json represents it as f64, which Cedar rejects
+        let src = entity_json_with_int("18446744073709551616");
+        assert_matches!(Entities::from_json_str(&src, None), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                    .source("data did not match any variant of untagged enum RawCedarValueJson")
+                    .build(),
+            );
+        });
+    }
+
+    // Context B: integer as a literal in policy JSON
+
+    #[test]
+    fn policy_json_i64_min() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        insta::assert_snapshot!(p, @"permit(principal, action, resource) when { (principal.x) == (-9223372036854775808) };");
+    }
+
+    #[test]
+    fn policy_json_i64_max() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775807}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        insta::assert_snapshot!(p, @"permit(principal, action, resource) when { (principal.x) == 9223372036854775807 };");
+    }
+
+    #[test]
+    fn policy_json_above_i64_max() {
+        // i64::MAX + 1 is representable as u64 in JSON but exceeds Cedar's integer range
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let err = Policy::from_json(None, v).unwrap_err();
+        expect_err(
+            src,
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
+                .source("data did not match any variant of untagged enum RawCedarValueJson")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn policy_json_u64_max() {
+        // u64::MAX exceeds Cedar's integer range (i64::MAX)
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":18446744073709551615}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let err = Policy::from_json(None, v).unwrap_err();
+        expect_err(
+            src,
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
+                .source("data did not match any variant of untagged enum RawCedarValueJson")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn policy_json_below_i64_min() {
+        // i64::MIN - 1 overflows i64; serde_json represents it as f64, which Cedar rejects
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775809}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let err = Policy::from_json(None, v).unwrap_err();
+        expect_err(
+            src,
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
+                .source("data did not match any variant of untagged enum RawCedarValueJson")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn policy_json_above_u64_max() {
+        // u64::MAX + 1 overflows u64; serde_json represents it as f64, which Cedar rejects
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":18446744073709551616}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let err = Policy::from_json(None, v).unwrap_err();
+        expect_err(
+            src,
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
+                .source("data did not match any variant of untagged enum RawCedarValueJson")
+                .build(),
+        );
+    }
+
+    // Context C: integer literals in human-syntax policies converted to JSON
+
+    #[test]
+    fn human_syntax_i64_max_to_json() {
+        let src =
+            "permit(principal, action, resource) when { principal.n == 9223372036854775807 };";
+        let json = Policy::parse(None, src).unwrap().to_json().unwrap();
+        assert_eq!(
+            json["conditions"][0]["body"]["=="]["right"]["Value"],
+            serde_json::json!(i64::MAX)
+        );
+    }
+
+    #[test]
+    fn human_syntax_i64_min_to_json() {
+        // Cedar special-cases i64::MIN in its negation handler so that
+        // `-9223372036854775808` is accepted as a literal even though the
+        // absolute value 9223372036854775808 would overflow i64.
+        let src =
+            "permit(principal, action, resource) when { principal.n == -9223372036854775808 };";
+        let json = Policy::parse(None, src).unwrap().to_json().unwrap();
+        assert_eq!(
+            json["conditions"][0]["body"]["=="]["right"]["Value"],
+            serde_json::json!(i64::MIN)
+        );
+    }
+
+    #[test]
+    fn human_syntax_above_i64_max() {
+        // 9223372036854775808 as a positive literal exceeds i64::MAX
+        let src = "permit(principal, action, resource) when { 9223372036854775808 };";
+        assert_matches!(PolicySet::from_str(src), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "integer literal `9223372036854775808` is too large",
+                )
+                .help("maximum allowed integer literal is `9223372036854775807`")
+                .exactly_one_underline("9223372036854775808")
+                .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn human_syntax_u64_max() {
+        // u64::MAX fits in the u64 token but exceeds i64::MAX
+        let src = "permit(principal, action, resource) when { 18446744073709551615 };";
+        assert_matches!(PolicySet::from_str(src), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "integer literal `18446744073709551615` is too large",
+                )
+                .help("maximum allowed integer literal is `9223372036854775807`")
+                .exactly_one_underline("18446744073709551615")
+                .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn human_syntax_below_i64_min() {
+        // The absolute value 9223372036854775809 exceeds i64::MAX, so negation cannot recover it
+        let src = "permit(principal, action, resource) when { -9223372036854775809 };";
+        assert_matches!(PolicySet::from_str(src), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "integer literal `9223372036854775809` is too large",
+                )
+                .help("maximum allowed integer literal is `9223372036854775807`")
+                .exactly_one_underline("-9223372036854775809")
+                .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn human_syntax_above_u64_max() {
+        // u64::MAX + 1 overflows u64 in the lexer, producing a parse error
+        let src = "permit(principal, action, resource) when { 18446744073709551616 };";
+        assert_matches!(PolicySet::from_str(src), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "integer parse error: number too large to fit in target type",
+                )
+                .exactly_one_underline("18446744073709551616")
+                .build(),
+            );
+        });
+    }
+}
+
 mod decimal_ip_constructors {
     use cool_asserts::assert_matches;
 
