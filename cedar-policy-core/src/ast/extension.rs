@@ -420,6 +420,16 @@ pub trait ExtensionValue: Debug + Send + Sync + UnwindSafe + RefUnwindSafe {
 
     /// If it supports operator overloading
     fn supports_operator_overloading(&self) -> bool;
+
+    /// Return the canonical representation of this extension value, if it
+    /// differs from the one stored by the constructor. The canonical representation
+    /// is likely to differ from the constructed value by the formatting of its
+    /// arrguments.
+    /// Used by TPE to normalize residuals.  The default (`None`) means "keep whatever the
+    /// constructor stored".
+    fn canonical_repr(&self) -> Option<(Name, Vec<RestrictedExpr>)> {
+        None
+    }
 }
 
 impl<V: ExtensionValue> StaticallyTyped for V {

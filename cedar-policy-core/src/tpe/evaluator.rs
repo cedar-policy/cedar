@@ -524,7 +524,10 @@ impl Evaluator<'_> {
                     // `Residual::Error` of appropriate types
                     if let Ok(ext_fn) = self.extensions.func(fn_name) {
                         if let Ok(PartialValue::Value(value)) = ext_fn.call(&vals) {
-                            return Residual::Concrete { value, ty };
+                            return Residual::Concrete {
+                                value: normalize_ext_value(value),
+                                ty,
+                            };
                         }
                     }
                     Residual::Error(ty)
@@ -724,6 +727,28 @@ impl Evaluator<'_> {
                 }
             }
         }
+    }
+}
+
+/// If the value is an extension value whose type provides a [`canonical_repr`],
+/// rebuild the [`RepresentableExtensionValue`] so that the stored `func`/`args`
+/// match the canonical form.  This ensures TPE residuals are deterministic
+/// regardless of which constructor originally created the value.
+fn normalize_ext_value(value: Value) -> Value {
+    match &value.value {
+        ValueKind::ExtensionValue(ev) => {
+            if let Some((func, args)) = ev.value().canonical_repr() {
+                Value {
+                    value: ValueKind::ExtensionValue(Arc::new(
+                        ast::RepresentableExtensionValue::new(ev.value.clone(), func, args),
+                    )),
+                    loc: value.loc,
+                }
+            } else {
+                value
+            }
+        }
+        _ => value,
     }
 }
 
@@ -1988,5 +2013,127 @@ mod tests {
                 });
             }
         );
+    }
+
+    #[test]
+    fn test_datetime_residual_normalization() {
+        // When the TPE evaluator evaluates datetime("6640-02-11") with all
+        // concrete args, the resulting residual should use the canonical
+        // offset(datetime("1970-01-01"), duration("Nms")) form — not the
+        // original datetime("6640-02-11") string.
+        // The Lean side will for now always produce the offset(datetime("1970-01-01"), _) repr,
+        // while the Rust side representation without canonicalization can be either the
+        // direct datetime or the offset from the Unix Epoch, depending on where the term
+        // originated from.
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let residual = eval
+            .interpret_expr(
+                &builder()
+                    .call_extension_fn("datetime".parse().unwrap(), [builder().val("6640-02-11")])
+                    .unwrap_infallible(),
+            )
+            .unwrap();
+        // Convert to Expr and check the top-level function is "offset"
+        let expr: crate::ast::Expr = residual.into();
+        assert_matches!(expr.expr_kind(), crate::ast::ExprKind::ExtensionFunctionApp { fn_name, .. } => {
+            assert_eq!(fn_name.to_string(), "offset");
+        });
+    }
+
+    #[test]
+    fn test_decimal_residual_normalization() {
+        // decimal("0.0") should be normalized to decimal("0.0000") (4-digit padded)
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let residual = eval
+            .interpret_expr(
+                &builder()
+                    .call_extension_fn("decimal".parse().unwrap(), [builder().val("0.0")])
+                    .unwrap_infallible(),
+            )
+            .unwrap();
+        let expr: crate::ast::Expr = residual.into();
+        assert_eq!(expr.to_string(), r#"decimal("0.0000")"#);
+    }
+
+    #[test]
+    fn test_ip_residual_normalization() {
+        // ip("::1") should be normalized to include the prefix: ip("::1/128")
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let residual = eval
+            .interpret_expr(
+                &builder()
+                    .call_extension_fn("ip".parse().unwrap(), [builder().val("::1")])
+                    .unwrap_infallible(),
+            )
+            .unwrap();
+        let expr: crate::ast::Expr = residual.into();
+        assert_eq!(expr.to_string(), r#"ip("::1/128")"#);
+    }
+
+    #[test]
+    fn test_duration_residual_normalization() {
+        // duration("1d") should be normalized to duration("86400000ms")
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let residual = eval
+            .interpret_expr(
+                &builder()
+                    .call_extension_fn("duration".parse().unwrap(), [builder().val("1d")])
+                    .unwrap_infallible(),
+            )
+            .unwrap();
+        let expr: crate::ast::Expr = residual.into();
+        assert_eq!(expr.to_string(), r#"duration("86400000ms")"#);
     }
 }

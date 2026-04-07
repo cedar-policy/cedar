@@ -243,6 +243,15 @@ impl ExtensionValue for IPAddr {
     fn supports_operator_overloading(&self) -> bool {
         false
     }
+
+    /// The canonical representation of an IP Address formats the IP address string
+    /// argument of the `ip` extension.
+    fn canonical_repr(&self) -> Option<(Name, Vec<crate::ast::RestrictedExpr>)> {
+        Some((
+            names::IP_FROM_STR_NAME.clone(),
+            vec![crate::ast::RestrictedExpr::val(self.to_string())],
+        ))
+    }
 }
 
 fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
