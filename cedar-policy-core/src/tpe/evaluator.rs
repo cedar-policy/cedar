@@ -127,51 +127,54 @@ impl Evaluator<'_> {
                         ..
                     } => self.interpret(right),
                     Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
-                    Residual::Partial { .. } => match &self.interpret(right) {
-                        Residual::Concrete {
-                            value:
-                                Value {
-                                    value: ValueKind::Lit(ast::Literal::Bool(true)),
-                                    ..
-                                },
-                            ..
-                        } => left,
-                        Residual::Concrete {
-                            value:
-                                Value {
-                                    value: ValueKind::Lit(ast::Literal::Bool(false)),
-                                    ..
-                                },
-                            ..
-                        } => {
-                            if !left.can_error_assuming_well_formed() {
-                                // simplify <error-free> && false == false
-                                Residual::Concrete {
-                                    value: false.into(),
-                                    ty,
-                                }
-                            } else {
-                                // cannot simplify <non-error-free> && false
-                                Residual::Partial {
-                                    kind: ResidualKind::And {
-                                        left: Arc::new(left),
-                                        right: Arc::new(Residual::Concrete {
-                                            value: false.into(),
-                                            ty: ty.clone(),
-                                        }),
+                    Residual::Partial { .. } => {
+                        let right = self.interpret(right);
+                        match &right {
+                            Residual::Concrete {
+                                value:
+                                    Value {
+                                        value: ValueKind::Lit(ast::Literal::Bool(true)),
+                                        ..
                                     },
-                                    ty,
+                                ..
+                            } => left,
+                            Residual::Concrete {
+                                value:
+                                    Value {
+                                        value: ValueKind::Lit(ast::Literal::Bool(false)),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                if !left.can_error_assuming_well_formed() {
+                                    // simplify <error-free> && false == false
+                                    Residual::Concrete {
+                                        value: false.into(),
+                                        ty,
+                                    }
+                                } else {
+                                    // cannot simplify <non-error-free> && false
+                                    Residual::Partial {
+                                        kind: ResidualKind::And {
+                                            left: Arc::new(left),
+                                            right: Arc::new(Residual::Concrete {
+                                                value: false.into(),
+                                                ty: ty.clone(),
+                                            }),
+                                        },
+                                        ty,
+                                    }
                                 }
                             }
-                        }
-                        right => Residual::Partial {
-                            kind: ResidualKind::And {
-                                left: Arc::new(left),
-                                right: Arc::new(right.clone()),
+                            _ => Residual::Partial {
+                                kind: ResidualKind::And {
+                                    left: Arc::new(left),
+                                    right: Arc::new(right.clone()),
+                                },
+                                ty,
                             },
-                            ty,
-                        },
-                    },
+                        }
+                    }
                     Residual::Error(_) => Residual::Error(ty),
                 }
             }
@@ -198,51 +201,54 @@ impl Evaluator<'_> {
                         ..
                     } => self.interpret(right),
                     Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
-                    Residual::Partial { .. } => match &self.interpret(right) {
-                        Residual::Concrete {
-                            value:
-                                Value {
-                                    value: ValueKind::Lit(ast::Literal::Bool(false)),
-                                    ..
-                                },
-                            ..
-                        } => left,
-                        Residual::Concrete {
-                            value:
-                                Value {
-                                    value: ValueKind::Lit(ast::Literal::Bool(true)),
-                                    ..
-                                },
-                            ..
-                        } => {
-                            if !left.can_error_assuming_well_formed() {
-                                // simplify <error-free> || true == true
-                                Residual::Concrete {
-                                    value: true.into(),
-                                    ty,
-                                }
-                            } else {
-                                // cannot simplify <non-error-free> || true
-                                Residual::Partial {
-                                    kind: ResidualKind::Or {
-                                        left: Arc::new(left),
-                                        right: Arc::new(Residual::Concrete {
-                                            value: true.into(),
-                                            ty: ty.clone(),
-                                        }),
+                    Residual::Partial { .. } => {
+                        let right = self.interpret(right);
+                        match &right {
+                            Residual::Concrete {
+                                value:
+                                    Value {
+                                        value: ValueKind::Lit(ast::Literal::Bool(false)),
+                                        ..
                                     },
-                                    ty,
+                                ..
+                            } => left,
+                            Residual::Concrete {
+                                value:
+                                    Value {
+                                        value: ValueKind::Lit(ast::Literal::Bool(true)),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                if !left.can_error_assuming_well_formed() {
+                                    // simplify <error-free> || true == true
+                                    Residual::Concrete {
+                                        value: true.into(),
+                                        ty,
+                                    }
+                                } else {
+                                    // cannot simplify <non-error-free> || true
+                                    Residual::Partial {
+                                        kind: ResidualKind::Or {
+                                            left: Arc::new(left),
+                                            right: Arc::new(Residual::Concrete {
+                                                value: true.into(),
+                                                ty: ty.clone(),
+                                            }),
+                                        },
+                                        ty,
+                                    }
                                 }
                             }
-                        }
-                        right => Residual::Partial {
-                            kind: ResidualKind::Or {
-                                left: Arc::new(left),
-                                right: Arc::new(right.clone()),
+                            _ => Residual::Partial {
+                                kind: ResidualKind::Or {
+                                    left: Arc::new(left),
+                                    right: Arc::new(right.clone()),
+                                },
+                                ty,
                             },
-                            ty,
-                        },
-                    },
+                        }
+                    }
                     Residual::Error(_) => Residual::Error(ty),
                 }
             }
@@ -251,8 +257,8 @@ impl Evaluator<'_> {
                 then_expr,
                 else_expr,
             } => {
-                let cond = self.interpret(test_expr);
-                match &cond {
+                let test_expr = self.interpret(test_expr);
+                match &test_expr {
                     Residual::Concrete {
                         value:
                             Value {
@@ -270,7 +276,7 @@ impl Evaluator<'_> {
                     Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
                     Residual::Partial { .. } => Residual::Partial {
                         kind: ResidualKind::If {
-                            test_expr: Arc::new(cond),
+                            test_expr: Arc::new(test_expr),
                             then_expr: Arc::new(self.interpret(then_expr)),
                             else_expr: Arc::new(self.interpret(else_expr)),
                         },
@@ -280,8 +286,8 @@ impl Evaluator<'_> {
                 }
             }
             ResidualKind::Is { expr, entity_type } => {
-                let r = self.interpret(expr);
-                match &r {
+                let expr = self.interpret(expr);
+                match &expr {
                     Residual::Concrete {
                         value:
                             Value {
@@ -310,7 +316,7 @@ impl Evaluator<'_> {
                     },
                     Residual::Partial { .. } => Residual::Partial {
                         kind: ResidualKind::Is {
-                            expr: Arc::new(r),
+                            expr: Arc::new(expr),
                             entity_type: entity_type.clone(),
                         },
                         ty,
@@ -319,8 +325,8 @@ impl Evaluator<'_> {
                 }
             }
             ResidualKind::Like { expr, pattern } => {
-                let r = self.interpret(expr);
-                match &r {
+                let expr = self.interpret(expr);
+                match &expr {
                     Residual::Concrete {
                         value:
                             Value {
@@ -335,7 +341,7 @@ impl Evaluator<'_> {
                     Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
                     Residual::Partial { .. } => Residual::Partial {
                         kind: ResidualKind::Like {
-                            expr: Arc::new(r),
+                            expr: Arc::new(expr),
                             pattern: pattern.clone(),
                         },
                         ty,
@@ -541,8 +547,8 @@ impl Evaluator<'_> {
                 }
             }
             ResidualKind::GetAttr { expr, attr } => {
-                let r = self.interpret(expr);
-                match &r {
+                let expr = self.interpret(expr);
+                match &expr {
                     Residual::Concrete {
                         value:
                             Value {
@@ -582,7 +588,7 @@ impl Evaluator<'_> {
                         }
                         Residual::Partial {
                             kind: ResidualKind::GetAttr {
-                                expr: Arc::new(r),
+                                expr: Arc::new(expr),
                                 attr: attr.clone(),
                             },
                             ty,
@@ -591,7 +597,7 @@ impl Evaluator<'_> {
                     Residual::Concrete { .. } => Residual::Error(ty),
                     Residual::Partial { .. } => Residual::Partial {
                         kind: ResidualKind::GetAttr {
-                            expr: Arc::new(r),
+                            expr: Arc::new(expr),
                             attr: attr.clone(),
                         },
                         ty,
@@ -600,8 +606,8 @@ impl Evaluator<'_> {
                 }
             }
             ResidualKind::HasAttr { expr, attr } => {
-                let r = self.interpret(expr);
-                match &r {
+                let expr = self.interpret(expr);
+                match &expr {
                     Residual::Concrete {
                         value:
                             Value {
@@ -631,7 +637,7 @@ impl Evaluator<'_> {
                         }
                         Residual::Partial {
                             kind: ResidualKind::HasAttr {
-                                expr: Arc::new(r),
+                                expr: Arc::new(expr),
                                 attr: attr.clone(),
                             },
                             ty,
@@ -640,7 +646,7 @@ impl Evaluator<'_> {
                     Residual::Concrete { .. } => Residual::Error(ty),
                     Residual::Partial { .. } => Residual::Partial {
                         kind: ResidualKind::HasAttr {
-                            expr: Arc::new(r),
+                            expr: Arc::new(expr),
                             attr: attr.clone(),
                         },
                         ty,
@@ -669,8 +675,8 @@ impl Evaluator<'_> {
                 }
             }
             ResidualKind::Set(es) => {
-                let rs = es.iter().map(|a| self.interpret(a)).collect::<Vec<_>>();
-                if let Ok(vals) = rs
+                let es = es.iter().map(|a| self.interpret(a)).collect::<Vec<_>>();
+                if let Ok(vals) = es
                     .iter()
                     .map(|a| Value::try_from(a.clone()))
                     .collect::<std::result::Result<Vec<_>, _>>()
@@ -682,11 +688,11 @@ impl Evaluator<'_> {
                         },
                         ty,
                     }
-                } else if rs.iter().any(|r| matches!(r, Residual::Error(_))) {
+                } else if es.iter().any(|r| matches!(r, Residual::Error(_))) {
                     Residual::Error(ty)
                 } else {
                     Residual::Partial {
-                        kind: ResidualKind::Set(Arc::new(rs)),
+                        kind: ResidualKind::Set(Arc::new(es)),
                         ty,
                     }
                 }
