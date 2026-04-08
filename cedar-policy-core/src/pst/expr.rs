@@ -876,6 +876,18 @@ impl Expr {
         )
     }
 
+    /// Does this expression contain any [`Expr::Unknown`] nodes?
+    pub fn has_unknowns(&self) -> bool {
+        self.reduce::<bool>(
+            &|e| match e {
+                Expr::Unknown { .. } => Some(true),
+                _ => None,
+            },
+            &|a, b| a || b,
+            false,
+        )
+    }
+
     /// Return the slots used in this expression
     pub fn slots(&self) -> HashSet<SlotId> {
         self.reduce::<HashSet<SlotId>>(
