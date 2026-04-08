@@ -15,7 +15,6 @@
  */
 
 use clap::Subcommand;
-
 mod authorize;
 pub use authorize::*;
 mod evaluate;
@@ -52,7 +51,8 @@ pub use language_version::*;
 
 #[cfg(not(feature = "tpe"))]
 mod tpe {
-    #[derive(Debug, Args)]
+    use crate::CedarExitCode;
+    #[derive(Debug, clap::Args)]
     pub struct TpeArgs;
 
     pub fn tpe(_: &TpeArgs) -> CedarExitCode {
@@ -62,8 +62,9 @@ mod tpe {
 }
 
 #[cfg(not(feature = "partial-eval"))]
-mod tpe {
-    #[derive(Debug, Args)]
+mod partial_eval {
+    use crate::CedarExitCode;
+    #[derive(Debug, clap::Args)]
     pub struct PartiallyAuthorizeArgs;
 
     pub fn partial_authorize(_: &PartiallyAuthorizeArgs) -> CedarExitCode {
@@ -74,8 +75,9 @@ mod tpe {
 
 #[cfg(not(feature = "analyze"))]
 mod symcc {
-    #[derive(Debug, Args)]
-    pub struct SymCCArgs;
+    use crate::CedarExitCode;
+    #[derive(Debug, clap::Args)]
+    pub struct SymccArgs;
 
     pub fn symcc(_: &SymccArgs) -> CedarExitCode {
         eprintln!("Error: subcommand `symcc` is experimental, but this executable was not built with `analyze` experimental feature enabled");
