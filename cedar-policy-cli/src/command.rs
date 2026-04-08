@@ -56,7 +56,7 @@ mod tpe {
     pub struct TpeArgs;
 
     pub fn tpe(_: &TpeArgs) -> CedarExitCode {
-        eprintln!("Error: option `tpe` is experimental, but this executable was not built with `tpe` experimental feature enabled");
+        eprintln!("Error: subcommand `tpe` is experimental, but this executable was not built with `tpe` experimental feature enabled");
         CedarExitCode::Failure
     }
 }
@@ -67,7 +67,7 @@ mod tpe {
     pub struct PartiallyAuthorizeArgs;
 
     pub fn partial_authorize(_: &PartiallyAuthorizeArgs) -> CedarExitCode {
-        eprintln!("Error: option `partially-authorize` is experimental, but this executable was not built with `partial-eval` experimental feature enabled");
+        eprintln!("Error: subcommand `partially-authorize` is experimental, but this executable was not built with `partial-eval` experimental feature enabled");
         CedarExitCode::Failure
     }
 }
@@ -78,9 +78,7 @@ mod symcc {
     pub struct SymCCArgs;
 
     pub fn symcc(_: &SymccArgs) -> CedarExitCode {
-        eprintln!(
-            "Cannot run `symcc`: this Cedar CLI was built without the 'analyze' feature enabled"
-        );
+        eprintln!("Error: subcommand `symcc` is experimental, but this executable was not built with `analyze` experimental feature enabled");
         CedarExitCode::Failure
     }
 }
