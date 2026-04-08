@@ -30,7 +30,7 @@ linked-hash-map = { version = "0.5.6", features = ["serde_impl"] }
 # Intentionally not updated to 0.5.5, see issue #1744
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
-semver = "1.0.27"
+semver = "1.0.28"
 
 [build-dependencies]
 prost-build = { version = "0.14", optional = true }
@@ -83,7 +83,7 @@ variadic-is-in-range = ["cedar-policy-core/variadic-is-in-range"]
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }
 cool_asserts = "2.0"
-similar-asserts = "1.7.0"
+similar-asserts = "2.0.0"
 criterion = "0.8"
 globset = "0.4"
 insta = { version = "1.47.2", features = ["glob", "json"] }
