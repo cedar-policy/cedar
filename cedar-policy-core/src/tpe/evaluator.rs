@@ -169,7 +169,7 @@ impl Evaluator<'_> {
                             _ => Residual::Partial {
                                 kind: ResidualKind::And {
                                     left: Arc::new(left),
-                                    right: Arc::new(right.clone()),
+                                    right: Arc::new(right),
                                 },
                                 ty,
                             },
@@ -243,7 +243,7 @@ impl Evaluator<'_> {
                             _ => Residual::Partial {
                                 kind: ResidualKind::Or {
                                     left: Arc::new(left),
-                                    right: Arc::new(right.clone()),
+                                    right: Arc::new(right),
                                 },
                                 ty,
                             },
@@ -656,9 +656,9 @@ impl Evaluator<'_> {
             }
             ResidualKind::UnaryApp { op, arg } => {
                 let arg = self.interpret(arg);
-                match &arg {
+                match arg {
                     Residual::Concrete { value, .. } => {
-                        if let Ok(v) = crate::evaluator::unary_app(*op, value.clone(), None) {
+                        if let Ok(v) = crate::evaluator::unary_app(*op, value, None) {
                             Residual::Concrete { value: v, ty }
                         } else {
                             Residual::Error(ty)
