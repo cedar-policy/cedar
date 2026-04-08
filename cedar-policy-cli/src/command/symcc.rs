@@ -14,17 +14,13 @@
  * limitations under the License.
  */
 
-#[cfg(feature = "analyze")]
 use cedar_policy::*;
 use clap::{Args, Subcommand};
-#[cfg(feature = "analyze")]
 use itertools::Itertools;
-#[cfg(feature = "analyze")]
 use miette::{miette, Result};
 use std::path::PathBuf;
 
 use crate::CedarExitCode;
-#[cfg(feature = "analyze")]
 use crate::{read_cedar_policy_set, read_json_policy_set, PoliciesArgs};
 use crate::{PolicyFormat, SchemaArgs};
 
@@ -102,7 +98,6 @@ pub struct SymccPoliciesArgs {
     pub policy_format: PolicyFormat,
 }
 
-#[cfg(feature = "analyze")]
 impl SymccPoliciesArgs {
     /// Turn this `SymccPoliciesArgs` into the appropriate `PolicySet` object
     fn get_policy_set(&self) -> Result<PolicySet> {
@@ -130,7 +125,6 @@ pub struct TwoPolicyArgs {
     pub policy2_format: PolicyFormat,
 }
 
-#[cfg(feature = "analyze")]
 impl TwoPolicyArgs {
     fn get_policy_set_1(&self) -> Result<PolicySet> {
         let pargs = PoliciesArgs {
@@ -168,7 +162,6 @@ pub struct SymccTwoPoliciesArgs {
     pub policies2_format: PolicyFormat,
 }
 
-#[cfg(feature = "analyze")]
 impl SymccTwoPoliciesArgs {
     fn get_policy_set_1(&self) -> Result<PolicySet> {
         let pargs = SymccPoliciesArgs {
@@ -187,13 +180,6 @@ impl SymccTwoPoliciesArgs {
     }
 }
 
-#[cfg(not(feature = "analyze"))]
-pub fn symcc(_: &SymccArgs) -> CedarExitCode {
-    eprintln!("Cannot run `symcc`: this Cedar CLI was built without the 'analyze' feature enabled");
-    CedarExitCode::Failure
-}
-
-#[cfg(feature = "analyze")]
 pub fn symcc(args: &SymccArgs) -> CedarExitCode {
     let rt = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -217,7 +203,6 @@ pub fn symcc(args: &SymccArgs) -> CedarExitCode {
     })
 }
 
-#[cfg(feature = "analyze")]
 fn initialize_solver(
     cvc5_path: Option<&PathBuf>,
 ) -> Result<cedar_policy_symcc::solver::LocalSolver> {
@@ -236,7 +221,6 @@ fn initialize_solver(
     }
 }
 
-#[cfg(feature = "analyze")]
 fn warn_if_contains_templates(pset: &PolicySet, name: &str) {
     let num_templates = pset.templates().count();
     if num_templates > 0 {
@@ -248,7 +232,6 @@ fn warn_if_contains_templates(pset: &PolicySet, name: &str) {
     }
 }
 
-#[cfg(feature = "analyze")]
 fn load_single_policy(
     policies: &SymccPoliciesArgs,
     schema_args: &SchemaArgs,
@@ -263,7 +246,6 @@ fn load_single_policy(
     Ok((policy, schema))
 }
 
-#[cfg(feature = "analyze")]
 fn load_two_policies(
     args: &TwoPolicyArgs,
     schema_args: &SchemaArgs,
@@ -294,7 +276,6 @@ fn load_two_policies(
     Ok((p1, p2, schema))
 }
 
-#[cfg(feature = "analyze")]
 fn load_policy_set(
     policies: &SymccPoliciesArgs,
     schema_args: &SchemaArgs,
@@ -305,7 +286,6 @@ fn load_policy_set(
     Ok((pset, schema))
 }
 
-#[cfg(feature = "analyze")]
 fn load_two_policy_sets(
     args: &SymccTwoPoliciesArgs,
     schema_args: &SchemaArgs,
@@ -318,7 +298,6 @@ fn load_two_policy_sets(
     Ok((pset1, pset2, schema))
 }
 
-#[cfg(feature = "analyze")]
 fn format_bool_result(holds: bool, property: &str) {
     if holds {
         println!("✓ {property}: VERIFIED");
@@ -327,7 +306,6 @@ fn format_bool_result(holds: bool, property: &str) {
     }
 }
 
-#[cfg(feature = "analyze")]
 fn format_counterexample_result(
     cex: Option<cedar_policy_symcc::Env>,
     property: &str,
@@ -348,7 +326,6 @@ fn format_counterexample_result(
     }
 }
 
-#[cfg(feature = "analyze")]
 fn build_request_env(args: &SymccArgs) -> Result<RequestEnv> {
     let principal_type: EntityTypeName = args
         .principal_type
@@ -365,7 +342,6 @@ fn build_request_env(args: &SymccArgs) -> Result<RequestEnv> {
     Ok(RequestEnv::new(principal_type, action, resource_type))
 }
 
-#[cfg(feature = "analyze")]
 async fn symcc_async(args: &SymccArgs) -> Result<()> {
     use cedar_policy_symcc::{CedarSymCompiler, CompiledPolicy, CompiledPolicySet};
 
