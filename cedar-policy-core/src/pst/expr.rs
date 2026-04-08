@@ -1196,92 +1196,8 @@ impl ExprBuilder for PstBuilder {
 
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // This Display implementation is mostly for debugging purposes, and it does not print
-        // valid Cedar expressions.
-        // If you need to print a valid Cedar expression from a PST expression, you should convert
-        // it to an EST expression first.
-        match self {
-            Expr::Literal(lit) => match lit {
-                Literal::Bool(b) => write!(f, "{}", b),
-                Literal::Long(i) => write!(f, "{}", i),
-                Literal::String(s) => write!(f, "\"{}\"", s.escape_default()),
-                Literal::EntityUID(uid) => write!(f, "{}", uid),
-            },
-            Expr::Var(v) => match v {
-                Var::Principal => write!(f, "principal"),
-                Var::Action => write!(f, "action"),
-                Var::Resource => write!(f, "resource"),
-                Var::Context => write!(f, "context"),
-            },
-            Expr::Slot(s) => write!(f, "{}", s),
-            Expr::UnaryOp { op, expr } => write!(f, "{}({})", op, expr),
-            Expr::BinaryOp { op, left, right } => write!(f, "({} {} {})", left, op, right),
-            Expr::GetAttr { expr, attr } => write!(f, "{}.{}", expr, attr),
-            Expr::HasAttr { expr, attrs } => {
-                write!(
-                    f,
-                    "{} has {}",
-                    expr,
-                    attrs
-                        .iter()
-                        .map(|s| s.as_str())
-                        .collect::<Vec<_>>()
-                        .join(".")
-                )
-            }
-            Expr::Like { expr, pattern } => {
-                write!(f, "{} like \"", expr)?;
-                for elem in pattern {
-                    match elem {
-                        PatternElem::Char(c) => write!(f, "{}", c.escape_default())?,
-                        PatternElem::Wildcard => write!(f, "*")?,
-                    }
-                }
-                write!(f, "\"")
-            }
-            Expr::Is {
-                expr,
-                entity_type,
-                in_expr,
-            } => {
-                if let Some(in_e) = in_expr {
-                    write!(f, "{} is {} in {}", expr, entity_type, in_e)
-                } else {
-                    write!(f, "{} is {}", expr, entity_type)
-                }
-            }
-            Expr::IfThenElse {
-                cond,
-                then_expr,
-                else_expr,
-            } => {
-                write!(f, "if {} then {} else {}", cond, then_expr, else_expr)
-            }
-            Expr::Set(exprs) => {
-                write!(
-                    f,
-                    "[{}]",
-                    exprs
-                        .iter()
-                        .map(|e| e.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            Expr::Record(map) => {
-                write!(
-                    f,
-                    "{{{}}}",
-                    map.iter()
-                        .map(|(k, v)| format!("\"{}\": {}", k.escape_default(), v))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            Expr::Unknown { name } => write!(f, "{}", name),
-            #[cfg(feature = "tpe")]
-            Expr::ResidualError => write!(f, "<residual error>"),
-        }
+        let est: crate::est::Expr = self.clone().into();
+        write!(f, "{est}")
     }
 }
 
@@ -1642,7 +1558,7 @@ mod tests {
                 (builder().val(true), "true"),
                 (builder().val(false), "false"),
                 (builder().val(42i64), "42"),
-                (builder().val(-123i64), "-123"),
+                (builder().val(-123i64), "(-123)"),
                 (builder().val("hello"), "\"hello\""),
                 (
                     builder().val(ast::EntityUID::from_components(
@@ -1661,54 +1577,54 @@ mod tests {
                 (builder().slot(ast::SlotId::principal()), "?principal"),
                 (builder().slot(ast::SlotId::resource()), "?resource"),
                 // Basic unary ops
-                (builder().not(builder().val(true)), "!(true)"),
+                (builder().not(builder().val(true)), "!true"),
                 (builder().neg(builder().val(42i64)), "-(42)"),
                 // Binary ops - comparison
                 (
                     builder().is_eq(builder().val(1i64), builder().val(2i64)),
-                    "(1 == 2)",
+                    "1 == 2",
                 ),
                 (
                     builder().noteq(builder().val(1i64), builder().val(2i64)),
-                    "(1 != 2)",
+                    "1 != 2",
                 ),
                 (
                     builder().less(builder().val(1i64), builder().val(2i64)),
-                    "(1 < 2)",
+                    "1 < 2",
                 ),
                 (
                     builder().lesseq(builder().val(1i64), builder().val(2i64)),
-                    "(1 <= 2)",
+                    "1 <= 2",
                 ),
                 (
                     builder().greater(builder().val(1i64), builder().val(2i64)),
-                    "(1 > 2)",
+                    "1 > 2",
                 ),
                 (
                     builder().greatereq(builder().val(1i64), builder().val(2i64)),
-                    "(1 >= 2)",
+                    "1 >= 2",
                 ),
                 // Binary ops - logical
                 (
                     builder().and(builder().val(true), builder().val(false)),
-                    "(true && false)",
+                    "true && false",
                 ),
                 (
                     builder().or(builder().val(true), builder().val(false)),
-                    "(true || false)",
+                    "true || false",
                 ),
                 // Binary ops - arithmetic
                 (
                     builder().add(builder().val(1i64), builder().val(2i64)),
-                    "(1 + 2)",
+                    "1 + 2",
                 ),
                 (
                     builder().sub(builder().val(5i64), builder().val(3i64)),
-                    "(5 - 3)",
+                    "5 - 3",
                 ),
                 (
                     builder().mul(builder().val(2i64), builder().val(3i64)),
-                    "(2 * 3)",
+                    "2 * 3",
                 ),
                 // Binary ops - set/hierarchy
                 (
@@ -1716,25 +1632,25 @@ mod tests {
                         builder().var(ast::Var::Principal),
                         builder().var(ast::Var::Resource),
                     ),
-                    "(principal in resource)",
+                    "principal in resource",
                 ),
                 (
                     builder().contains(builder().set([builder().val(1i64)]), builder().val(1i64)),
-                    "([1] contains 1)",
+                    "[1].contains(1)",
                 ),
                 (
                     builder().contains_all(
                         builder().set([builder().val(1i64)]),
                         builder().set([builder().val(1i64)]),
                     ),
-                    "([1] containsAll [1])",
+                    "[1].containsAll([1])",
                 ),
                 (
                     builder().contains_any(
                         builder().set([builder().val(1i64)]),
                         builder().set([builder().val(1i64)]),
                     ),
-                    "([1] containsAny [1])",
+                    "[1].containsAny([1])",
                 ),
                 // Attribute access
                 (
@@ -1778,7 +1694,7 @@ mod tests {
                     builder()
                         .record([(SmolStr::from("a"), builder().val(1i64))])
                         .unwrap(),
-                    "{\"a\": 1}",
+                    "{a: 1}",
                 ),
                 (
                     builder()
@@ -1787,16 +1703,16 @@ mod tests {
                             (SmolStr::from("b"), builder().val(2i64)),
                         ])
                         .unwrap(),
-                    "{\"a\": 1, \"b\": 2}",
+                    "{a: 1, b: 2}",
                 ),
                 // Tags
                 (
                     builder().has_tag(builder().var(ast::Var::Action), builder().val("tag")),
-                    "(action hasTag \"tag\")",
+                    "action.hasTag(\"tag\")",
                 ),
                 (
                     builder().get_tag(builder().var(ast::Var::Action), builder().val("tag")),
-                    "(action getTag \"tag\")",
+                    "action.getTag(\"tag\")",
                 ),
                 // Like
                 (
@@ -1839,7 +1755,7 @@ mod tests {
                 builder().add(builder().val(1i64), builder().val(2i64)),
                 builder().val(3i64),
             );
-            assert_eq!(nested.to_string(), "((1 + 2) == 3)");
+            assert_eq!(nested.to_string(), "(1 + 2) == 3");
 
             // Complex if-then-else
             let complex = builder().ite(
@@ -1852,12 +1768,12 @@ mod tests {
             );
             assert_eq!(
                 complex.to_string(),
-                "if (principal.age > 18) then principal.name else \"unknown\""
+                "if ((principal.age) > 18) then (principal.name) else \"unknown\""
             );
 
             // isEmpty
             let is_empty = builder().is_empty(builder().set([]));
-            assert_eq!(is_empty.to_string(), "isEmpty([])");
+            assert_eq!(is_empty.to_string(), "[].isEmpty()");
         }
 
         #[test]

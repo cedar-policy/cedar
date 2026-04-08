@@ -4415,10 +4415,11 @@ impl LosslessTemplate {
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            Self::Empty | Self::Pst(_) => match self.est(fallback_est) {
+            Self::Empty => match self.est(fallback_est) {
                 Ok(est) => write!(f, "{est}"),
                 Err(e) => write!(f, "<invalid policy: {e}>"),
             },
+            Self::Pst(pst) => write!(f, "{pst}"), // PST -> EST conversion in display
             Self::Est(est) => write!(f, "{est}"),
             Self::Text(text) => write!(f, "{text}"),
         }
@@ -4556,10 +4557,11 @@ impl LosslessPolicy {
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            Self::Empty | Self::Pst(_) => match self.est(fallback_est) {
+            Self::Empty => match self.est(fallback_est) {
                 Ok(est) => write!(f, "{est}"),
                 Err(e) => write!(f, "<invalid policy: {e}>"),
             },
+            Self::Pst(pst) => write!(f, "{pst}"), // Does PST -> EST
             Self::Est(est) => write!(f, "{est}"),
             Self::Text { text, slots } => {
                 if slots.is_empty() {

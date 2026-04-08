@@ -253,20 +253,11 @@ impl Template {
 
 impl std::fmt::Display for Template {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // This Display implementation is only for debugging purposes. It does not print valid
-        // Cedar syntax.
-        // Currently, there is no goal to display valid Cedar syntax from the PST directly.
-        write!(f, "{} (", self.effect)?;
-        write!(f, "principal {}, ", self.principal)?;
-        write!(f, "action {}, ", self.action)?;
-        write!(f, "resource {}", self.resource)?;
-        write!(f, ")")?;
-
-        for clause in &self.clauses {
-            write!(f, " {}", clause)?;
+        let est_res: Result<crate::est::Policy, PstConstructionError> = self.clone().try_into();
+        match est_res {
+            Ok(est) => write!(f, "{est}"),
+            Err(e) => write!(f, "<invalid policy: {e}>"),
         }
-
-        write!(f, ";")
     }
 }
 
