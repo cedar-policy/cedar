@@ -22,6 +22,7 @@ use crate::tpe::err::ExprToResidualError;
 use crate::validator::types::Type;
 use crate::{
     ast::{self, BinaryOp, EntityUID, Expr, PartialValue, Set, Value, ValueKind, Var},
+    evaluator::stack_size_check,
     extensions::Extensions,
 };
 
@@ -60,6 +61,13 @@ impl Evaluator<'_> {
             }
             Residual::Partial { kind, ty: _ty } => kind,
         };
+
+        // Guard against stack overflows (just like the concrete evaluator), given the recursive nature of interpret
+        match stack_size_check() {
+            Ok(_) => (),
+            Err(_) => return Residual::Error(ty),
+        }
+
         match kind {
             ResidualKind::Var(Var::Action) => Residual::Concrete {
                 value: self.request.action.clone().into(),
