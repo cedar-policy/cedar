@@ -19,21 +19,15 @@
 //! (type-aware partial evaluation) which you can find in the `tpe` module.
 
 use clap::Args;
-#[cfg(feature = "partial-eval")]
 use miette::{IntoDiagnostic, Report, Result, WrapErr};
-#[cfg(feature = "partial-eval")]
 use serde::Deserialize;
-#[cfg(feature = "partial-eval")]
 use std::{path::Path, time::Instant};
 
-#[cfg(feature = "partial-eval")]
 use cedar_policy::*;
 
 use crate::CedarExitCode;
-#[cfg(feature = "partial-eval")]
 use crate::{load_entities, OptionalSchemaArgs, PoliciesArgs};
 
-#[cfg(feature = "partial-eval")]
 #[derive(Args, Debug)]
 pub struct PartiallyAuthorizeArgs {
     /// Request args (incorporated by reference)
@@ -56,11 +50,6 @@ pub struct PartiallyAuthorizeArgs {
     pub timing: bool,
 }
 
-#[cfg(not(feature = "partial-eval"))]
-#[derive(Debug, Args)]
-pub struct PartiallyAuthorizeArgs;
-
-#[cfg(feature = "partial-eval")]
 /// This struct contains the arguments that together specify a request.
 #[derive(Args, Debug)]
 pub struct PartialRequestArgs {
@@ -85,7 +74,6 @@ pub struct PartialRequestArgs {
     pub request_json_file: Option<String>,
 }
 
-#[cfg(feature = "partial-eval")]
 impl PartialRequestArgs {
     fn get_request(&self, schema: Option<&Schema>) -> Result<Request> {
         let mut builder = RequestBuilder::default();
@@ -180,7 +168,6 @@ impl PartialRequestArgs {
     }
 }
 
-#[cfg(feature = "partial-eval")]
 /// This struct is the serde structure expected for --request-json
 #[derive(Deserialize)]
 struct PartialRequestJSON {
@@ -194,13 +181,6 @@ struct PartialRequestJSON {
     pub(self) context: Option<serde_json::Value>,
 }
 
-#[cfg(not(feature = "partial-eval"))]
-pub fn partial_authorize(_: &PartiallyAuthorizeArgs) -> CedarExitCode {
-    eprintln!("Error: option `partially-authorize` is experimental, but this executable was not built with `partial-eval` experimental feature enabled");
-    CedarExitCode::Failure
-}
-
-#[cfg(feature = "partial-eval")]
 pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
     println!();
     let ans = execute_partial_request(
@@ -238,7 +218,6 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
     }
 }
 
-#[cfg(feature = "partial-eval")]
 fn execute_partial_request(
     request: &PartialRequestArgs,
     policies: &PoliciesArgs,

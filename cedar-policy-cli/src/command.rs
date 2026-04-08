@@ -24,10 +24,13 @@ mod validate;
 pub use validate::*;
 mod check_parse;
 pub use check_parse::*;
+#[cfg(feature = "analyze")]
 mod symcc;
 pub use symcc::*;
+#[cfg(feature = "tpe")]
 mod tpe;
 pub use tpe::*;
+#[cfg(feature = "partial-eval")]
 mod partial_eval;
 pub use partial_eval::*;
 mod run_test;
@@ -46,6 +49,41 @@ mod new;
 pub use new::*;
 mod language_version;
 pub use language_version::*;
+
+#[cfg(not(feature = "tpe"))]
+mod tpe {
+    #[derive(Debug, Args)]
+    pub struct TpeArgs;
+
+    pub fn tpe(_: &TpeArgs) -> CedarExitCode {
+        eprintln!("Error: option `tpe` is experimental, but this executable was not built with `tpe` experimental feature enabled");
+        CedarExitCode::Failure
+    }
+}
+
+#[cfg(not(feature = "partial-eval"))]
+mod tpe {
+    #[derive(Debug, Args)]
+    pub struct PartiallyAuthorizeArgs;
+
+    pub fn partial_authorize(_: &PartiallyAuthorizeArgs) -> CedarExitCode {
+        eprintln!("Error: option `partially-authorize` is experimental, but this executable was not built with `partial-eval` experimental feature enabled");
+        CedarExitCode::Failure
+    }
+}
+
+#[cfg(not(feature = "analyze"))]
+mod symcc {
+    #[derive(Debug, Args)]
+    pub struct SymCCArgs;
+
+    pub fn symcc(_: &SymccArgs) -> CedarExitCode {
+        eprintln!(
+            "Cannot run `symcc`: this Cedar CLI was built without the 'analyze' feature enabled"
+        );
+        CedarExitCode::Failure
+    }
+}
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {

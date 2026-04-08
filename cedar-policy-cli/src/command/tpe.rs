@@ -17,21 +17,15 @@
 use crate::CedarExitCode;
 use clap::Args;
 
-#[cfg(feature = "tpe")]
 use crate::{PoliciesArgs, SchemaArgs};
-#[cfg(feature = "tpe")]
 use cedar_policy::{
     Context, Decision, EntityId, EntityUid, PartialEntities, PartialEntityUid, PartialRequest,
     PolicySet, Schema,
 };
-#[cfg(feature = "tpe")]
 use miette::{miette, IntoDiagnostic, Result, WrapErr};
-#[cfg(feature = "tpe")]
 use serde::Deserialize;
-#[cfg(feature = "tpe")]
 use std::{path::Path, time::Instant};
 
-#[cfg(feature = "tpe")]
 #[derive(Args, Debug)]
 pub struct TpeArgs {
     /// Request args (incorporated by reference)
@@ -54,11 +48,6 @@ pub struct TpeArgs {
     pub timing: bool,
 }
 
-#[cfg(not(feature = "tpe"))]
-#[derive(Debug, Args)]
-pub struct TpeArgs;
-
-#[cfg(feature = "tpe")]
 /// This struct contains the arguments that together specify a request.
 #[derive(Args, Debug)]
 pub struct TpeRequestArgs {
@@ -89,7 +78,6 @@ pub struct TpeRequestArgs {
     pub request_json_file: Option<String>,
 }
 
-#[cfg(feature = "tpe")]
 // This struct is the serde structure expected for --request-json
 #[derive(Deserialize)]
 struct TpeRequestJSON {
@@ -107,7 +95,6 @@ struct TpeRequestJSON {
     pub(self) context: Option<serde_json::Value>,
 }
 
-#[cfg(feature = "tpe")]
 impl TpeRequestArgs {
     fn get_request(&self, schema: &Schema) -> Result<PartialRequest> {
         let qjson: TpeRequestJSON = match self.request_json_file.as_ref() {
@@ -172,13 +159,6 @@ impl TpeRequestArgs {
     }
 }
 
-#[cfg(not(feature = "tpe"))]
-pub fn tpe(_: &TpeArgs) -> CedarExitCode {
-    eprintln!("Error: option `tpe` is experimental, but this executable was not built with `partial-eval` experimental feature enabled");
-    CedarExitCode::Failure
-}
-
-#[cfg(feature = "tpe")]
 pub fn tpe(args: &TpeArgs) -> CedarExitCode {
     println!();
     let ret = |errs| {
@@ -257,7 +237,6 @@ pub fn tpe(args: &TpeArgs) -> CedarExitCode {
     }
 }
 
-#[cfg(feature = "tpe")]
 /// Load an `PartialEntities` object from the given JSON filename and optional schema.
 fn load_partial_entities(
     entities_filename: impl AsRef<Path>,
