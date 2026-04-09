@@ -110,6 +110,7 @@ impl std::fmt::Display for Clause {
 /// condition clauses, and annotations. If there are no slots used, this is effectively
 /// a policy.
 ///
+/// For example:
 /// ```cedar
 /// @id("policy0")
 /// permit (
@@ -119,6 +120,47 @@ impl std::fmt::Display for Clause {
 /// )
 /// when { resource.public == true }
 /// unless { context.is_blocked };
+/// ```
+/// Is the following [`Template`]:
+/// ```
+/// # use cedar_policy_core::pst::*;
+/// # use smol_str::SmolStr;
+/// # use std::sync::Arc;
+/// # use std::collections::BTreeMap;
+/// let template = Template::new(
+///     PolicyID(SmolStr::from("policy0")),
+///     Effect::Permit,
+///     PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
+///         ty: EntityType::from_name(Name::unqualified("User").unwrap()),
+///         eid: SmolStr::from("alice"),
+///     })),
+///     ActionConstraint::Eq(EntityUID {
+///         ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
+///         eid: SmolStr::from("view"),
+///     }),
+///     ResourceConstraint::In(EntityOrSlot::Entity(EntityUID {
+///         ty: EntityType::from_name(Name::unqualified("Album").unwrap()),
+///         eid: SmolStr::from("vacation"),
+///     })),
+/// )
+/// .try_with_clauses(vec![
+///     Clause::When(Arc::new(Expr::BinaryOp {
+///         op: BinaryOp::Eq,
+///         left: Arc::new(Expr::GetAttr {
+///             expr: Arc::new(Expr::Var(Var::Resource)),
+///             attr: SmolStr::from("public"),
+///         }),
+///         right: Arc::new(Expr::Literal(Literal::Bool(true))),
+///     })),
+///     Clause::Unless(Arc::new(Expr::GetAttr {
+///         expr: Arc::new(Expr::Var(Var::Context)),
+///         attr: SmolStr::from("is_blocked"),
+///     })),
+/// ])
+/// .unwrap()
+/// .with_annotations(BTreeMap::from([
+///     ("id".to_string(), SmolStr::from("policy0")),
+/// ]));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Template {
@@ -262,6 +304,9 @@ impl std::fmt::Display for Template {
 }
 
 /// A static policy, i.e. a policy without slots.
+///
+/// To build a [`StaticPolicy`] from its body (a [`Template`] without slots), you should use
+/// [`StaticPolicy::try_from`], which will validate that the body does not contain any slot.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct StaticPolicy {
@@ -297,6 +342,9 @@ impl TryFrom<Template> for StaticPolicy {
 }
 
 /// A linked policy, i.e. a template with information to fill the slots and the id of the link.
+///
+/// To build a [`LinkedPolicy`], you should use [`LinkedPolicy::new`], which will validate that
+/// the linked policy is provided values for all the slots in its body.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct LinkedPolicy {
