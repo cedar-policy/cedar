@@ -203,20 +203,7 @@ impl Template {
 
     /// Append a single clause to this template. Fails if the clause contains a slot or unknown.
     pub fn try_add_clause(&mut self, clause: Clause) -> Result<(), PstConstructionError> {
-        match &clause {
-            Clause::When(e) | Clause::Unless(e) => {
-                if e.has_slots() {
-                    return Err(ContainsSlotError { slots: e.slots() }.into());
-                }
-                if e.has_unknowns() {
-                    return Err(InvalidExpressionError::new(
-                        "clause contains an `Unknown`".to_string(),
-                    )
-                    .into());
-                }
-            }
-        }
-        self.clauses.push(clause);
+        self.clauses.push(validate_clause(clause)?);
         Ok(())
     }
 
