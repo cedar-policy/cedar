@@ -12864,6 +12864,46 @@ mod pst_api {
     }
 
     #[test]
+    fn try_with_clauses_rejects_unknown() {
+        let template = pst::Template::new(
+            "p1",
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        );
+        let err = template
+            .try_with_clauses(vec![pst::Clause::When(Arc::new(pst::Expr::Unknown {
+                name: smol_str::SmolStr::from("x"),
+            }))])
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("Unknown"),
+            "expected unknown error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn try_add_clause_rejects_unknown() {
+        let mut template = pst::Template::new(
+            "p1",
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        );
+        let err = template
+            .try_add_clause(pst::Clause::When(Arc::new(pst::Expr::Unknown {
+                name: smol_str::SmolStr::from("x"),
+            })))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("Unknown"),
+            "expected unknown error, got: {err}"
+        )
+    }
+
+    #[test]
     fn from_pst_rejects_invalid_annotation_key() {
         let mut annotations = BTreeMap::new();
         annotations.insert(

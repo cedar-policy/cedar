@@ -22,7 +22,7 @@
 use super::constraints::{ActionConstraint, PrincipalConstraint, ResourceConstraint};
 use super::expr::{EntityUID, Expr, SlotId};
 use crate::ast;
-use crate::pst::err::error_body::{ContainsSlotError, LinkingError};
+use crate::pst::err::error_body::{ContainsSlotError, InvalidExpressionError, LinkingError};
 use crate::pst::PstConstructionError;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -139,6 +139,24 @@ pub struct Template {
     _private: (),
 }
 
+/// Validate a clause to be used in a policy (template).
+fn validate_clause(clause: Clause) -> Result<Clause, PstConstructionError> {
+    match &clause {
+        Clause::When(e) | Clause::Unless(e) => {
+            if e.has_slots() {
+                return Err(ContainsSlotError { slots: e.slots() }.into());
+            }
+            if e.has_unknowns() {
+                return Err(InvalidExpressionError::new(
+                    "clause contains an `Unknown`".to_string(),
+                )
+                .into());
+            }
+            Ok(clause)
+        }
+    }
+}
+
 impl Template {
     /// Create a new policy with the given id, effect and scope.
     /// Constraints need to be added with try_with_clauses (or try_add_clause)
@@ -171,35 +189,21 @@ impl Template {
         self.clauses
     }
 
-    /// Replace all clauses on this template. Fails if any clause contains a slot.
+    /// Replace all clauses on this template. Fails if any clause contains a slot or unknown.
     pub fn try_with_clauses(
         self,
         clauses: impl IntoIterator<Item = Clause>,
     ) -> Result<Self, PstConstructionError> {
-        let clauses: Vec<Clause> = clauses.into_iter().collect();
-        // check that none of the clauses contain slots
-        for clause in &clauses {
-            match clause {
-                Clause::When(e) | Clause::Unless(e) => {
-                    if e.has_slots() {
-                        return Err(ContainsSlotError { slots: e.slots() }.into());
-                    }
-                }
-            }
-        }
+        let clauses: Vec<Clause> = clauses
+            .into_iter()
+            .map(validate_clause)
+            .collect::<Result<_, PstConstructionError>>()?;
         Ok(Self { clauses, ..self })
     }
 
-    /// Append a single clause to this template. Fails if the clause contains a slot.
+    /// Append a single clause to this template. Fails if the clause contains a slot or unknown.
     pub fn try_add_clause(&mut self, clause: Clause) -> Result<(), PstConstructionError> {
-        match &clause {
-            Clause::When(e) | Clause::Unless(e) => {
-                if e.has_slots() {
-                    return Err(ContainsSlotError { slots: e.slots() }.into());
-                }
-            }
-        }
-        self.clauses.push(clause);
+        self.clauses.push(validate_clause(clause)?);
         Ok(())
     }
 
@@ -600,6 +604,65 @@ mod tests {
             Err(PstConstructionError::ContainsSlots(..))
         ));
         assert!(StaticPolicy::try_from(template).is_err());
+    }
+
+    #[test]
+    fn test_unknown_rejected_in_clauses() {
+        let unknown = Arc::new(Expr::Unknown {
+            name: SmolStr::from("x"),
+        });
+
+        let template = Template::new(
+            "p",
+            Effect::Permit,
+            PrincipalConstraint::Any,
+            ActionConstraint::Any,
+            ResourceConstraint::Any,
+        );
+
+        // Direct unknown in try_with_clauses
+        let err = template
+            .clone()
+            .try_with_clauses(vec![Clause::When(unknown.clone())])
+            .unwrap_err();
+        assert!(
+            matches!(err,
+                PstConstructionError::InvalidExpression(ref e)
+                  if e.to_string().contains("clause contains an `Unknown`")),
+            "expected InvalidExpression mentioning unknown, got: {err}"
+        );
+
+        // Direct unknown in try_add_clause
+        let mut t2 = template.clone();
+        let err = t2
+            .try_add_clause(Clause::When(unknown.clone()))
+            .unwrap_err();
+        assert!(
+            matches!(err,
+                PstConstructionError::InvalidExpression(ref e)
+                  if e.to_string().contains("clause contains an `Unknown`")),
+            "expected InvalidExpression mentioning unknown, got: {err}"
+        );
+
+        // Unknown nested inside a larger expression
+        let nested = Arc::new(Expr::BinaryOp {
+            op: crate::pst::BinaryOp::And,
+            left: Arc::new(Expr::Literal(Literal::Bool(true))),
+            right: unknown,
+        });
+        let err = template
+            .clone()
+            .try_with_clauses(vec![Clause::Unless(nested.clone())])
+            .unwrap_err();
+        assert!(
+            matches!(err, PstConstructionError::InvalidExpression(ref e)
+            if e.to_string().contains("clause contains an `Unknown`")),
+            "expected nested unknown to be caught, got: {err}"
+        );
+
+        // Non-unknown clause should still succeed
+        let ok_clause = Clause::When(Arc::new(Expr::Literal(Literal::Bool(true))));
+        assert!(template.try_with_clauses(vec![ok_clause]).is_ok());
     }
 
     #[test]
