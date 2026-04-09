@@ -4476,10 +4476,10 @@ impl LosslessPolicy {
                 // Convert the effective body (with slots resolved for linked policies) to EST
                 // (same behavior as policies from text)
                 match pst {
-                    pst::Policy::Static(sp) => Ok(sp.body.clone().try_into()?),
+                    pst::Policy::Static(sp) => Ok(sp.body().clone().try_into()?),
                     pst::Policy::Linked(lp) => {
                         let static_policy = lp.into_static_policy()?;
-                        Ok(static_policy.body.try_into()?)
+                        Ok(static_policy.body().clone().try_into()?)
                     }
                 }
             }
