@@ -139,6 +139,24 @@ pub struct Template {
     _private: (),
 }
 
+/// Validate a clause to be used in a policy (template).
+fn validate_clause(clause: Clause) -> Result<Clause, PstConstructionError> {
+    match &clause {
+        Clause::When(e) | Clause::Unless(e) => {
+            if e.has_slots() {
+                return Err(ContainsSlotError { slots: e.slots() }.into());
+            }
+            if e.has_unknowns() {
+                return Err(InvalidExpressionError::new(
+                    "clause contains an `Unknown`".to_string(),
+                )
+                .into());
+            }
+            return Ok(clause);
+        }
+    }
+}
+
 impl Template {
     /// Create a new policy with the given id, effect and scope.
     /// Constraints need to be added with try_with_clauses (or try_add_clause)
@@ -176,22 +194,10 @@ impl Template {
         self,
         clauses: impl IntoIterator<Item = Clause>,
     ) -> Result<Self, PstConstructionError> {
-        let clauses: Vec<Clause> = clauses.into_iter().collect();
-        for clause in &clauses {
-            match clause {
-                Clause::When(e) | Clause::Unless(e) => {
-                    if e.has_slots() {
-                        return Err(ContainsSlotError { slots: e.slots() }.into());
-                    }
-                    if e.has_unknowns() {
-                        return Err(InvalidExpressionError::new(
-                            "clause contains an `Unknown`".to_string(),
-                        )
-                        .into());
-                    }
-                }
-            }
-        }
+        let clauses: Vec<Clause> = clauses
+            .into_iter()
+            .map(validate_clause)
+            .collect::<Result<_, PstConstructionError>>()?;
         Ok(Self { clauses, ..self })
     }
 
