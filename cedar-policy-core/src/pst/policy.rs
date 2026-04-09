@@ -471,6 +471,7 @@ impl std::fmt::Display for Policy {
 
 #[cfg(test)]
 mod tests {
+    use cool_asserts::assert_matches;
     use smol_str::ToSmolStr;
 
     use super::*;
@@ -699,13 +700,21 @@ mod tests {
             ))
             .unwrap(),
         );
-        let _ = static_p.body();
+        assert_matches!(
+            static_p.body(),
+            Template {
+                effect: Effect::Permit,
+                action: ActionConstraint::Any,
+                clauses: v,
+                ..
+            } if v.is_empty()
+        );
         let _ = static_p.to_string();
 
         let linked_p = Policy::Linked(LinkedPolicy {
             body: Arc::new(Template::new(
                 "tmpl2",
-                Effect::Permit,
+                Effect::Forbid,
                 PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)),
                 ActionConstraint::Any,
                 ResourceConstraint::Any,
@@ -717,7 +726,19 @@ mod tests {
             },
             instance_id: PolicyID("link2".into()),
         });
-        let _ = linked_p.body();
+        assert_matches!(
+            linked_p.body(),
+            Template {
+                effect: Effect::Forbid,
+                action: ActionConstraint::Any,
+                clauses: v,
+                ..
+            } if v.is_empty()
+        );
+        match &linked_p {
+            Policy::Linked(lp) => assert_eq!(lp.values().len(), 1),
+            _ => (),
+        };
         let _ = linked_p.to_string();
     }
 
