@@ -152,7 +152,7 @@ fn validate_clause(clause: Clause) -> Result<Clause, PstConstructionError> {
                 )
                 .into());
             }
-            return Ok(clause);
+            Ok(clause)
         }
     }
 }

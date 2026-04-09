@@ -26,7 +26,8 @@ use crate::ast::{self, UnwrapInfallible};
 use crate::expr_builder;
 use crate::extensions;
 use crate::pst::err::error_body::{
-    InvalidEntityTypeError, PolicyMissingLinkIdError, UnsupportedErrorNode, WrongSlotPositionError,
+    InvalidAnnotationError, InvalidEntityTypeError, PolicyMissingLinkIdError, UnsupportedErrorNode,
+    WrongSlotPositionError,
 };
 use crate::pst::expr::{Id, PstBuilder};
 use std::collections::HashMap;
@@ -102,12 +103,14 @@ impl TryFrom<Template> for ast::Template {
             .into_iter()
             .map(|(key, val)| {
                 let value = if val.is_empty() { None } else { Some(val) };
-                (
-                    ast::AnyId::new_unchecked(key),
-                    ast::Annotation::with_optional_value(value, None),
-                )
+                let id = key.parse::<ast::AnyId>().map_err(|p| {
+                    PstConstructionError::InvalidAnnotation(InvalidAnnotationError::new(format!(
+                        "invalid key: {p}"
+                    )))
+                })?;
+                Ok((id, ast::Annotation::with_optional_value(value, None)))
             })
-            .collect();
+            .collect::<Result<ast::Annotations, PstConstructionError>>()?;
 
         Ok(ast::Template::new(
             policy.id.into(),
@@ -815,6 +818,7 @@ impl TryFrom<ast::Policy> for Policy {
 mod tests {
     use super::*;
     use crate::parser;
+    use cool_asserts::assert_matches;
 
     /// Helper to create AST expressions from Cedar text
     fn parse_expr(s: &str) -> ast::Expr {
@@ -1257,10 +1261,7 @@ mod tests {
         // Resource slot in principal position
         let result: Result<ast::PrincipalConstraint, _> =
             PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Resource)).try_into();
-        assert!(matches!(
-            result,
-            Err(PstConstructionError::WrongSlotPosition(..))
-        ));
+        assert_matches!(result, Err(PstConstructionError::WrongSlotPosition(..)));
         assert!(result.unwrap_err().to_string().contains(
             "slot `?resource` cannot be used in this position (expected slot `?principal`)"
         ));
@@ -1268,10 +1269,7 @@ mod tests {
         // Principal slot in resource position
         let result: Result<ast::ResourceConstraint, _> =
             ResourceConstraint::In(EntityOrSlot::Slot(SlotId::Principal)).try_into();
-        assert!(matches!(
-            result,
-            Err(PstConstructionError::WrongSlotPosition(..))
-        ));
+        assert_matches!(result, Err(PstConstructionError::WrongSlotPosition(..)));
 
         assert!(result.unwrap_err().to_string().contains(
             "slot `?principal` cannot be used in this position (expected slot `?resource`)"
@@ -1281,10 +1279,7 @@ mod tests {
     #[test]
     fn test_invalid_entity_type_rejected_at_construction() {
         let result = Name::unqualified(":::bad");
-        assert!(matches!(
-            result,
-            Err(PstConstructionError::ParsingFailed(..))
-        ));
+        assert_matches!(result, Err(PstConstructionError::ParsingFailed(..)));
     }
 
     #[test]
@@ -1296,10 +1291,7 @@ mod tests {
             None,
         )));
         let result: Result<ast::ActionConstraint, _> = constraint.try_into();
-        assert!(matches!(
-            result,
-            Err(PstConstructionError::InvalidEntityType(..))
-        ));
+        assert_matches!(result, Err(PstConstructionError::InvalidEntityType(..)));
         assert!(result
             .unwrap_err()
             .to_string()
@@ -1313,10 +1305,7 @@ mod tests {
                 None,
             ))]);
         let result: Result<ast::ActionConstraint, _> = constraint.try_into();
-        assert!(matches!(
-            result,
-            Err(PstConstructionError::InvalidEntityType(..))
-        ));
+        assert_matches!(result, Err(PstConstructionError::InvalidEntityType(..)));
 
         // Action type should succeed
         let constraint = ActionConstraint::Eq(EntityUID::from(ast::EntityUID::from_components(
@@ -1326,6 +1315,27 @@ mod tests {
         )));
         let result: Result<ast::ActionConstraint, _> = constraint.try_into();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_invalid_annotation_key_rejected() {
+        use smol_str::SmolStr;
+        use std::collections::BTreeMap;
+
+        let mut annotations = BTreeMap::new();
+        annotations.insert("not valid!!".to_string(), SmolStr::new("v"));
+        let template = Template::new(
+            "p0",
+            Effect::Permit,
+            PrincipalConstraint::Any,
+            ActionConstraint::Any,
+            ResourceConstraint::Any,
+        )
+        .with_annotations(annotations);
+        let result: Result<ast::Template, _> = template.try_into();
+        assert_matches!(result, Err(PstConstructionError::InvalidAnnotation(e)) => {
+            assert!(e.to_string().contains("invalid key"), "got: {e}");
+        });
     }
 }
 

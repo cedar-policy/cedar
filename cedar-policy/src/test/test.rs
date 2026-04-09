@@ -12900,6 +12900,68 @@ mod pst_api {
         assert!(
             err.to_string().contains("Unknown"),
             "expected unknown error, got: {err}"
+        )
+    }
+
+    #[test]
+    fn from_pst_rejects_invalid_annotation_key() {
+        let mut annotations = BTreeMap::new();
+        annotations.insert(
+            "invalid key with spaces!".to_string(),
+            smol_str::SmolStr::from("value"),
+        );
+
+        let sp = Policy::from_pst({
+            use pst::*;
+            StaticPolicy::try_from(
+                Template::new(
+                    "p1",
+                    Effect::Permit,
+                    PrincipalConstraint::Any,
+                    ActionConstraint::Any,
+                    ResourceConstraint::Any,
+                )
+                .with_annotations(annotations),
+            )
+            .unwrap()
+            .into()
+        });
+
+        assert_matches!(sp, Err(pst::PstConstructionError::InvalidAnnotation(e)) => {
+            let msg = e.to_string();
+            assert!(msg.contains("invalid key"), "expected 'invalid key' in error, got: {msg}");
+        });
+    }
+
+    #[test]
+    fn from_pst_valid_annotation_key_roundtrips_to_json() {
+        let mut annotations = BTreeMap::new();
+        annotations.insert("reason".to_string(), smol_str::SmolStr::from("testing"));
+        let p = Policy::from_pst({
+            use pst::*;
+            StaticPolicy::try_from(
+                Template::new(
+                    "p1",
+                    Effect::Permit,
+                    PrincipalConstraint::Any,
+                    ActionConstraint::Any,
+                    ResourceConstraint::Any,
+                )
+                .with_annotations(annotations),
+            )
+            .unwrap()
+            .into()
+        })
+        .unwrap();
+
+        // Valid annotation key should roundtrip through to_json
+        let json = p
+            .to_json()
+            .expect("to_json should succeed for valid annotation keys");
+        let annotations = json.get("annotations").expect("missing annotations key");
+        assert_eq!(
+            annotations.get("reason").and_then(|v| v.as_str()),
+            Some("testing")
         );
     }
 }
