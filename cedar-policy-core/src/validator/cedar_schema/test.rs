@@ -44,6 +44,21 @@ mod demo_tests {
     use itertools::Itertools;
     use miette::Diagnostic;
 
+    fn assert_schema_parse_help(src: &str, expected_error: &str, expected_help: &str) {
+        assert_matches!(
+            collect_warnings(json_schema::Fragment::from_cedarschema_str(
+                src,
+                Extensions::all_available(),
+            )),
+            Err(err) => {
+                let report = miette::Report::new(err);
+                assert_eq!(report.to_string(), expected_error);
+                let help = report.help().map(|help| help.to_string());
+                assert_eq!(help.as_deref(), Some(expected_help));
+            }
+        );
+    }
+
     #[test]
     fn no_applies_to() {
         let src = r#"
@@ -115,6 +130,38 @@ mod demo_tests {
                     .build(),
             );
         });
+    }
+
+    #[test]
+    fn missing_applies_to_help() {
+        let src = r#"
+        namespace NS1 {
+            entity User, Resource;
+            action Read { principal: [User], resource: [Resource], context: { foo: String }};
+        }
+        "#;
+
+        assert_schema_parse_help(
+            src,
+            "error parsing schema: unexpected token `{`",
+            "action declarations require `appliesTo` before the `{ ... }` block",
+        );
+    }
+
+    #[test]
+    fn namespace_trailing_semicolon_help() {
+        let src = r#"
+        namespace NS1 {
+            entity User, Resource;
+            action Read appliesTo { principal: [User], resource: [Resource], context: { foo: String }};
+        };
+        "#;
+
+        assert_schema_parse_help(
+            src,
+            "error parsing schema: unexpected token `;`",
+            "namespace declarations are not followed by `;`; try removing this semicolon",
+        );
     }
 
     #[test]
