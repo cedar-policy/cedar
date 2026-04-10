@@ -16,6 +16,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 - Public syntax tree representation for `Policy`, `Template` and `PolicySet` allowing programmatic manipulation of Cedar syntax (#816, #366).
 
+### Fixed
+
+- Improved Cedar schema parse help for two common syntax mistakes: forgetting `appliesTo` before an action block, and adding `;` after a namespace declaration. (#1043, #1044)
+
 ## [4.10.0] - Coming soon
 
 Cedar Language Version: 4.5
