@@ -35,7 +35,12 @@ mod demo_tests {
     use smol_str::ToSmolStr;
 
     use crate::validator::{
-        cedar_schema::{self, err::NO_PR_HELP_MSG},
+        cedar_schema::{
+            self,
+            err::{
+                MISSING_APPLIES_TO_HELP_MSG, NO_PR_HELP_MSG, TRAILING_NAMESPACE_SEMICOLON_HELP_MSG,
+            },
+        },
         json_schema::{self, EntityType, EntityTypeKind},
         schema::test::utils::collect_warnings,
         CedarSchemaError, RawName,
@@ -43,21 +48,6 @@ mod demo_tests {
 
     use itertools::Itertools;
     use miette::Diagnostic;
-
-    fn assert_schema_parse_help(src: &str, expected_error: &str, expected_help: &str) {
-        assert_matches!(
-            collect_warnings(json_schema::Fragment::from_cedarschema_str(
-                src,
-                Extensions::all_available(),
-            )),
-            Err(err) => {
-                let report = miette::Report::new(err);
-                assert_eq!(report.to_string(), expected_error);
-                let help = report.help().map(|help| help.to_string());
-                assert_eq!(help.as_deref(), Some(expected_help));
-            }
-        );
-    }
 
     #[test]
     fn no_applies_to() {
@@ -141,11 +131,16 @@ mod demo_tests {
         }
         "#;
 
-        assert_schema_parse_help(
-            src,
-            "error parsing schema: unexpected token `{`",
-            "action declarations require `appliesTo` before the `{ ... }` block",
-        );
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error parsing schema: unexpected token `{`")
+                    .exactly_one_underline_with_label("{", "expected `,`, `;`, APPLIESTO, ATTRIBUTES, or `in`")
+                    .help(MISSING_APPLIES_TO_HELP_MSG)
+                    .build(),
+            );
+        });
     }
 
     #[test]
@@ -157,11 +152,16 @@ mod demo_tests {
         };
         "#;
 
-        assert_schema_parse_help(
-            src,
-            "error parsing schema: unexpected token `;`",
-            "namespace declarations are not followed by `;`; try removing this semicolon",
-        );
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error parsing schema: unexpected token `;`")
+                    .exactly_one_underline_with_label(";", "expected `@`, `action`, `entity`, `namespace`, or `type`")
+                    .help(TRAILING_NAMESPACE_SEMICOLON_HELP_MSG)
+                    .build(),
+            );
+        });
     }
 
     #[test]

@@ -111,9 +111,9 @@ static SCHEMA_TOKEN_CONFIG: LazyLock<ExpectedTokenConfig> = LazyLock::new(|| Exp
     first_set_sentinel: "\"{\"",
 });
 
-const MISSING_APPLIES_TO_HELP_MSG: &str =
+pub(crate) const MISSING_APPLIES_TO_HELP_MSG: &str =
     "action declarations require `appliesTo` before the `{ ... }` block";
-const TRAILING_NAMESPACE_SEMICOLON_HELP_MSG: &str =
+pub(crate) const TRAILING_NAMESPACE_SEMICOLON_HELP_MSG: &str =
     "namespace declarations are not followed by `;`; try removing this semicolon";
 
 /// For errors during parsing
@@ -153,12 +153,17 @@ impl ParseError {
         match &self.err {
             OwnedRawParseError::UnrecognizedToken {
                 token: (token_start, token, _),
-                ..
-            } if token == ";" => self
-                .src
-                .get(..*token_start)
-                .and_then(|prefix| prefix.chars().rev().find(|ch| !ch.is_whitespace()))
-                .and_then(|ch| (ch == '}').then_some(TRAILING_NAMESPACE_SEMICOLON_HELP_MSG)),
+                expected,
+            } if token == ";"
+                && expected.iter().any(|e| e == "NAMESPACE")
+                && self
+                    .src
+                    .get(..*token_start)
+                    .and_then(|prefix| prefix.chars().rev().find(|ch| !ch.is_whitespace()))
+                    == Some('}') =>
+            {
+                Some(TRAILING_NAMESPACE_SEMICOLON_HELP_MSG)
+            }
             _ => None,
         }
     }
