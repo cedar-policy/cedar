@@ -42,7 +42,7 @@ cargo add cedar-policy
 * [cedar-policy](./cedar-policy) : Main crate for using Cedar to authorize access requests in your applications, and validate Cedar policies against a schema
 * [cedar-policy-symcc](./cedar-policy-symcc) : Crate containing the Cedar symbolic compiler, enabling verification of properties about your Cedar policies with concrete counterexamples
 * [cedar-policy-cli](./cedar-policy-cli) : Crate containing a simple command-line interface (CLI) for interacting with Cedar
-* [cedar-language-server](./cedar-policy-server) : Contains the implementation for the Cedar Langauge Server
+* [cedar-language-server](./cedar-language-server) : Contains the implementation for the Cedar Langauge Server
 * [cedar-wasm](./cedar-wasm) : Crate defining the wasm interface for Cedar, enabling use with JavaScript and TypeScript
 * [cedar-policy-core](./cedar-policy-core) : Internal crate containing the Cedar parser, evaluator, typechecker, and other core components
 * [cedar-policy-formatter](./cedar-policy-formatter) : Internal crate containing an auto-formatter for Cedar policies
