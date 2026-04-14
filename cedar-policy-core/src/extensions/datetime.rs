@@ -268,6 +268,14 @@ impl ExtensionValue for DateTime {
     fn supports_operator_overloading(&self) -> bool {
         true
     }
+
+    /// The canonical representation of a Cedar [`DateTime`] is the one returned by
+    /// [`DateTime::as_ext_func_call`], i.e.
+    /// `offset(datetime(<UNIX_EPOCH_STR>), duration("<Offset in MS>ms"))`
+    fn canonical_repr(&self) -> Option<(crate::ast::Name, Vec<crate::ast::RestrictedExpr>)> {
+        let (func, args) = (*self).as_ext_func_call();
+        Some((func, args))
+    }
 }
 
 impl DateTime {
@@ -372,6 +380,12 @@ impl ExtensionValue for Duration {
     }
     fn supports_operator_overloading(&self) -> bool {
         true
+    }
+    /// The canonical representation of a Cedar [`Duration`] is the one returned by
+    /// duration("<MILLISECONDS>ms")
+    fn canonical_repr(&self) -> Option<(crate::ast::Name, Vec<RestrictedExpr>)> {
+        let (func, args) = (*self).as_ext_func_call();
+        Some((func, args))
     }
 }
 
