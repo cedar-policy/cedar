@@ -16,6 +16,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 - Public syntax tree representation for `Policy`, `Template` and `PolicySet` allowing programmatic manipulation of Cedar syntax (#816, #366).
 
+### Changed
+
+- (*) The human-readable schema syntax now accepts empty `principal` / `resource` lists in an action's `appliesTo` clause (e.g. `principal: []`), matching the semantics already defined by RFC 55 for the JSON schema: such an action applies to no entities of that kind. Omitting the `principal` / `resource` clause remains a parse error. The schema formatter now emits `principal: []` / `resource: []` explicitly when the corresponding list is empty, restoring JSON-to-human round-tripping for those schemas. (cedar-policy/rfcs#113)
+
 ### Fixed
 
 - Improved Cedar schema parse help for two common syntax mistakes: forgetting `appliesTo` before an action block, and adding `;` after a namespace declaration. (#1043, #1044)
