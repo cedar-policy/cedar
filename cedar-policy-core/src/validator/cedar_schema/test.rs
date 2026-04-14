@@ -35,7 +35,12 @@ mod demo_tests {
     use smol_str::ToSmolStr;
 
     use crate::validator::{
-        cedar_schema::{self, err::NO_PR_HELP_MSG},
+        cedar_schema::{
+            self,
+            err::{
+                MISSING_APPLIES_TO_HELP_MSG, NO_PR_HELP_MSG, TRAILING_NAMESPACE_SEMICOLON_HELP_MSG,
+            },
+        },
         json_schema::{self, EntityType, EntityTypeKind},
         schema::test::utils::collect_warnings,
         CedarSchemaError, RawName,
@@ -112,6 +117,48 @@ mod demo_tests {
                 &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
                     .help(NO_PR_HELP_MSG)
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn missing_applies_to_help() {
+        let src = r#"
+        namespace NS1 {
+            entity User, Resource;
+            action Read { principal: [User], resource: [Resource], context: { foo: String }};
+        }
+        "#;
+
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error parsing schema: unexpected token `{`")
+                    .exactly_one_underline_with_label("{", "expected `,`, `;`, APPLIESTO, ATTRIBUTES, or `in`")
+                    .help(MISSING_APPLIES_TO_HELP_MSG)
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn namespace_trailing_semicolon_help() {
+        let src = r#"
+        namespace NS1 {
+            entity User, Resource;
+            action Read appliesTo { principal: [User], resource: [Resource], context: { foo: String }};
+        };
+        "#;
+
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error parsing schema: unexpected token `;`")
+                    .exactly_one_underline_with_label(";", "expected `@`, `action`, `entity`, `namespace`, or `type`")
+                    .help(TRAILING_NAMESPACE_SEMICOLON_HELP_MSG)
                     .build(),
             );
         });
