@@ -22,7 +22,7 @@
 use super::constraints::{ActionConstraint, PrincipalConstraint, ResourceConstraint};
 use super::expr::{EntityUID, Expr, SlotId};
 use crate::ast;
-use crate::pst::err::error_body::{ContainsSlotError, LinkingError};
+use crate::pst::err::error_body::{ContainsSlotError, InvalidExpressionError, LinkingError};
 use crate::pst::PstConstructionError;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -110,6 +110,7 @@ impl std::fmt::Display for Clause {
 /// condition clauses, and annotations. If there are no slots used, this is effectively
 /// a policy.
 ///
+/// For example:
 /// ```cedar
 /// @id("policy0")
 /// permit (
@@ -119,6 +120,47 @@ impl std::fmt::Display for Clause {
 /// )
 /// when { resource.public == true }
 /// unless { context.is_blocked };
+/// ```
+/// Is the following [`Template`]:
+/// ```
+/// # use cedar_policy_core::pst::*;
+/// # use smol_str::SmolStr;
+/// # use std::sync::Arc;
+/// # use std::collections::BTreeMap;
+/// let template = Template::new(
+///     PolicyID(SmolStr::from("policy0")),
+///     Effect::Permit,
+///     PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
+///         ty: EntityType::from_name(Name::unqualified("User").unwrap()),
+///         eid: SmolStr::from("alice"),
+///     })),
+///     ActionConstraint::Eq(EntityUID {
+///         ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
+///         eid: SmolStr::from("view"),
+///     }),
+///     ResourceConstraint::In(EntityOrSlot::Entity(EntityUID {
+///         ty: EntityType::from_name(Name::unqualified("Album").unwrap()),
+///         eid: SmolStr::from("vacation"),
+///     })),
+/// )
+/// .try_with_clauses(vec![
+///     Clause::When(Arc::new(Expr::BinaryOp {
+///         op: BinaryOp::Eq,
+///         left: Arc::new(Expr::GetAttr {
+///             expr: Arc::new(Expr::Var(Var::Resource)),
+///             attr: SmolStr::from("public"),
+///         }),
+///         right: Arc::new(Expr::Literal(Literal::Bool(true))),
+///     })),
+///     Clause::Unless(Arc::new(Expr::GetAttr {
+///         expr: Arc::new(Expr::Var(Var::Context)),
+///         attr: SmolStr::from("is_blocked"),
+///     })),
+/// ])
+/// .unwrap()
+/// .with_annotations(BTreeMap::from([
+///     ("id".to_string(), SmolStr::from("policy0")),
+/// ]));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Template {
@@ -137,6 +179,24 @@ pub struct Template {
     /// Annotations (empty string for no value)
     pub annotations: BTreeMap<String, SmolStr>,
     _private: (),
+}
+
+/// Validate a clause to be used in a policy (template).
+fn validate_clause(clause: Clause) -> Result<Clause, PstConstructionError> {
+    match &clause {
+        Clause::When(e) | Clause::Unless(e) => {
+            if e.has_slots() {
+                return Err(ContainsSlotError { slots: e.slots() }.into());
+            }
+            if e.has_unknowns() {
+                return Err(InvalidExpressionError::new(
+                    "clause contains an `Unknown`".to_string(),
+                )
+                .into());
+            }
+            Ok(clause)
+        }
+    }
 }
 
 impl Template {
@@ -171,35 +231,21 @@ impl Template {
         self.clauses
     }
 
-    /// Replace all clauses on this template. Fails if any clause contains a slot.
+    /// Replace all clauses on this template. Fails if any clause contains a slot or unknown.
     pub fn try_with_clauses(
         self,
         clauses: impl IntoIterator<Item = Clause>,
     ) -> Result<Self, PstConstructionError> {
-        let clauses: Vec<Clause> = clauses.into_iter().collect();
-        // check that none of the clauses contain slots
-        for clause in &clauses {
-            match clause {
-                Clause::When(e) | Clause::Unless(e) => {
-                    if e.has_slots() {
-                        return Err(ContainsSlotError { slots: e.slots() }.into());
-                    }
-                }
-            }
-        }
+        let clauses: Vec<Clause> = clauses
+            .into_iter()
+            .map(validate_clause)
+            .collect::<Result<_, PstConstructionError>>()?;
         Ok(Self { clauses, ..self })
     }
 
-    /// Append a single clause to this template. Fails if the clause contains a slot.
+    /// Append a single clause to this template. Fails if the clause contains a slot or unknown.
     pub fn try_add_clause(&mut self, clause: Clause) -> Result<(), PstConstructionError> {
-        match &clause {
-            Clause::When(e) | Clause::Unless(e) => {
-                if e.has_slots() {
-                    return Err(ContainsSlotError { slots: e.slots() }.into());
-                }
-            }
-        }
-        self.clauses.push(clause);
+        self.clauses.push(validate_clause(clause)?);
         Ok(())
     }
 
@@ -253,35 +299,34 @@ impl Template {
 
 impl std::fmt::Display for Template {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // This Display implementation is only for debugging purposes. It does not print valid
-        // Cedar syntax.
-        // Currently, there is no goal to display valid Cedar syntax from the PST directly.
-        write!(f, "{} (", self.effect)?;
-        write!(f, "principal {}, ", self.principal)?;
-        write!(f, "action {}, ", self.action)?;
-        write!(f, "resource {}", self.resource)?;
-        write!(f, ")")?;
-
-        for clause in &self.clauses {
-            write!(f, " {}", clause)?;
+        let est_res: Result<crate::est::Policy, PstConstructionError> = self.clone().try_into();
+        match est_res {
+            Ok(est) => write!(f, "{est}"),
+            Err(e) => write!(f, "<invalid policy: {e}>"),
         }
-
-        write!(f, ";")
     }
 }
 
 /// A static policy, i.e. a policy without slots.
+///
+/// To build a [`StaticPolicy`] from its body (a [`Template`] without slots), you should use
+/// [`StaticPolicy::try_from`], which will validate that the body does not contain any slot.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct StaticPolicy {
     /// The body of the static policy: a policy template that doesn't have any slots
-    pub body: Template,
+    pub(crate) body: Template,
 }
 
 impl StaticPolicy {
     /// The id of a static policy is the id of its slot-free body
     pub fn id(&self) -> &PolicyID {
         &self.body.id
+    }
+
+    /// Get a reference to the body of this static policy
+    pub fn body(&self) -> &Template {
+        &self.body
     }
 }
 
@@ -301,15 +346,18 @@ impl TryFrom<Template> for StaticPolicy {
 }
 
 /// A linked policy, i.e. a template with information to fill the slots and the id of the link.
+///
+/// To build a [`LinkedPolicy`], you should use [`LinkedPolicy::new`], which will validate that
+/// the linked policy is provided values for all the slots in its body.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct LinkedPolicy {
     /// The body of the policy is a template with slots
-    pub body: Arc<Template>,
+    pub(crate) body: Arc<Template>,
     /// The values are the values the slots should be replaced with
-    pub values: HashMap<SlotId, EntityUID>,
+    pub(crate) values: HashMap<SlotId, EntityUID>,
     /// The instance id is the id of the static policy that will be generated by the linking
-    pub instance_id: PolicyID,
+    pub(crate) instance_id: PolicyID,
 }
 
 impl LinkedPolicy {
@@ -346,6 +394,16 @@ impl LinkedPolicy {
     pub fn id(&self) -> &PolicyID {
         &self.instance_id
     }
+
+    /// Get a reference to the template body
+    pub fn body(&self) -> &Template {
+        &self.body
+    }
+
+    /// Get a reference to the slot values
+    pub fn values(&self) -> &HashMap<SlotId, EntityUID> {
+        &self.values
+    }
 }
 
 impl From<StaticPolicy> for Policy {
@@ -375,8 +433,8 @@ impl Policy {
     /// Get a reference to the body of the policy
     pub fn body(&self) -> &Template {
         match self {
-            Policy::Static(p) => &p.body,
-            Policy::Linked(p) => &p.body,
+            Policy::Static(p) => p.body(),
+            Policy::Linked(p) => p.body(),
         }
     }
 
@@ -417,6 +475,7 @@ impl std::fmt::Display for Policy {
 
 #[cfg(test)]
 mod tests {
+    use cool_asserts::assert_matches;
     use smol_str::ToSmolStr;
 
     use super::*;
@@ -612,6 +671,65 @@ mod tests {
     }
 
     #[test]
+    fn test_unknown_rejected_in_clauses() {
+        let unknown = Arc::new(Expr::Unknown {
+            name: SmolStr::from("x"),
+        });
+
+        let template = Template::new(
+            "p",
+            Effect::Permit,
+            PrincipalConstraint::Any,
+            ActionConstraint::Any,
+            ResourceConstraint::Any,
+        );
+
+        // Direct unknown in try_with_clauses
+        let err = template
+            .clone()
+            .try_with_clauses(vec![Clause::When(unknown.clone())])
+            .unwrap_err();
+        assert!(
+            matches!(err,
+                PstConstructionError::InvalidExpression(ref e)
+                  if e.to_string().contains("clause contains an `Unknown`")),
+            "expected InvalidExpression mentioning unknown, got: {err}"
+        );
+
+        // Direct unknown in try_add_clause
+        let mut t2 = template.clone();
+        let err = t2
+            .try_add_clause(Clause::When(unknown.clone()))
+            .unwrap_err();
+        assert!(
+            matches!(err,
+                PstConstructionError::InvalidExpression(ref e)
+                  if e.to_string().contains("clause contains an `Unknown`")),
+            "expected InvalidExpression mentioning unknown, got: {err}"
+        );
+
+        // Unknown nested inside a larger expression
+        let nested = Arc::new(Expr::BinaryOp {
+            op: crate::pst::BinaryOp::And,
+            left: Arc::new(Expr::Literal(Literal::Bool(true))),
+            right: unknown,
+        });
+        let err = template
+            .clone()
+            .try_with_clauses(vec![Clause::Unless(nested.clone())])
+            .unwrap_err();
+        assert!(
+            matches!(err, PstConstructionError::InvalidExpression(ref e)
+            if e.to_string().contains("clause contains an `Unknown`")),
+            "expected nested unknown to be caught, got: {err}"
+        );
+
+        // Non-unknown clause should still succeed
+        let ok_clause = Clause::When(Arc::new(Expr::Literal(Literal::Bool(true))));
+        assert!(template.try_with_clauses(vec![ok_clause]).is_ok());
+    }
+
+    #[test]
     fn test_linked_policy() {
         use crate::pst::constraints::*;
         use crate::pst::expr::SlotId;
@@ -645,13 +763,21 @@ mod tests {
             ))
             .unwrap(),
         );
-        let _ = static_p.body();
+        assert_matches!(
+            static_p.body(),
+            Template {
+                effect: Effect::Permit,
+                action: ActionConstraint::Any,
+                clauses: v,
+                ..
+            } if v.is_empty()
+        );
         let _ = static_p.to_string();
 
         let linked_p = Policy::Linked(LinkedPolicy {
             body: Arc::new(Template::new(
                 "tmpl2",
-                Effect::Permit,
+                Effect::Forbid,
                 PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)),
                 ActionConstraint::Any,
                 ResourceConstraint::Any,
@@ -663,7 +789,19 @@ mod tests {
             },
             instance_id: PolicyID("link2".into()),
         });
-        let _ = linked_p.body();
+        assert_matches!(
+            linked_p.body(),
+            Template {
+                effect: Effect::Forbid,
+                action: ActionConstraint::Any,
+                clauses: v,
+                ..
+            } if v.is_empty()
+        );
+        match &linked_p {
+            Policy::Linked(lp) => assert_eq!(lp.values().len(), 1),
+            _ => (),
+        };
         let _ = linked_p.to_string();
     }
 

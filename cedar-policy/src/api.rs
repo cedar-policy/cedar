@@ -4415,10 +4415,11 @@ impl LosslessTemplate {
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            Self::Empty | Self::Pst(_) => match self.est(fallback_est) {
+            Self::Empty => match self.est(fallback_est) {
                 Ok(est) => write!(f, "{est}"),
                 Err(e) => write!(f, "<invalid policy: {e}>"),
             },
+            Self::Pst(pst) => write!(f, "{pst}"), // PST -> EST conversion in display
             Self::Est(est) => write!(f, "{est}"),
             Self::Text(text) => write!(f, "{text}"),
         }
@@ -4475,10 +4476,10 @@ impl LosslessPolicy {
                 // Convert the effective body (with slots resolved for linked policies) to EST
                 // (same behavior as policies from text)
                 match pst {
-                    pst::Policy::Static(sp) => Ok(sp.body.clone().try_into()?),
+                    pst::Policy::Static(sp) => Ok(sp.body().clone().try_into()?),
                     pst::Policy::Linked(lp) => {
                         let static_policy = lp.into_static_policy()?;
-                        Ok(static_policy.body.try_into()?)
+                        Ok(static_policy.body().clone().try_into()?)
                     }
                 }
             }
@@ -4556,10 +4557,11 @@ impl LosslessPolicy {
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            Self::Empty | Self::Pst(_) => match self.est(fallback_est) {
+            Self::Empty => match self.est(fallback_est) {
                 Ok(est) => write!(f, "{est}"),
                 Err(e) => write!(f, "<invalid policy: {e}>"),
             },
+            Self::Pst(pst) => write!(f, "{pst}"), // Does PST -> EST
             Self::Est(est) => write!(f, "{est}"),
             Self::Text { text, slots } => {
                 if slots.is_empty() {
