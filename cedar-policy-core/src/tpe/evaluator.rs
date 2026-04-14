@@ -1931,6 +1931,11 @@ mod tests {
         assert_matches!(expr.expr_kind(), crate::ast::ExprKind::ExtensionFunctionApp { fn_name, .. } => {
             assert_eq!(fn_name.to_string(), "offset");
         });
+        // String representation
+        assert_eq!(
+            expr.to_string(),
+            r#"(datetime("1970-01-01")).offset(duration("147374467200000ms"))"#
+        );
     }
 
     #[test]
