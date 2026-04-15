@@ -36,11 +36,6 @@ use crate::est;
 #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum PstConstructionError {
-    /// Trying to construct a policy from an empty representation of another type
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    PolicyFromEmptyRepresentation(#[from] error_body::PolicyFromEmptyRepresentationError),
-
     /// A policy is a linked policy but no link id has been provided
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -207,11 +202,6 @@ pub mod error_body {
 
     use crate::est;
     use crate::pst;
-
-    /// Trying to construct a policy from an empty representation of another type
-    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
-    #[error("cannot construct policy from empty representation")]
-    pub struct PolicyFromEmptyRepresentationError;
 
     /// A policy is a linked policy but no link id has been provided
     #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]

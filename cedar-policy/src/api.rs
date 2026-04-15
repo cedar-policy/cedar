@@ -1197,12 +1197,18 @@ impl PartialResponse {
         self.0.must_be_determining().map(Policy::from_ast)
     }
 
-    /// Returns the set of non-trivial (meaning more than just `true` or `false`) residuals expressions
+    /// Returns the set of non-trivial (meaning more than just `true` or `false`) residual expressions.
+    ///
+    /// Call [`Policy::to_pst()`] on each result to convert to [`pst::Policy`]
+    /// for structured inspection of the residual expression tree.
     pub fn nontrivial_residuals(&'_ self) -> impl Iterator<Item = Policy> + '_ {
         self.0.nontrivial_residuals().map(Policy::from_ast)
     }
 
-    /// Returns every policy as a residual expression
+    /// Returns every policy as a residual expression.
+    ///
+    /// Call [`Policy::to_pst()`] on each result to convert to [`pst::Policy`]
+    /// for structured inspection of the residual expression tree.
     pub fn all_residuals(&'_ self) -> impl Iterator<Item = Policy> + '_ {
         self.0.all_residuals().map(Policy::from_ast)
     }
@@ -3486,7 +3492,8 @@ impl Template {
     /// Can return an error if the template was built from a non-PST representation that
     /// is not a valid Cedar template.
     pub fn try_into_pst(self) -> Result<pst::Template, pst::PstConstructionError> {
-        self.lossless.try_into_pst()
+        self.lossless
+            .try_into_pst(|| pst::Template::try_from(self.ast))
     }
 
     /// Attempt to parse a [`Template`] from source.
@@ -4240,9 +4247,8 @@ impl Policy {
     /// Get an owned PST representation of this policy. May return an error when the policy
     /// has been constructed from a different representation that is not a valid Cedar policy.
     pub fn try_into_pst(self) -> Result<pst::Policy, pst::PstConstructionError> {
-        // no fallback for this one: caller is trying to get the policy's representation in order
-        // to manipulate it.
-        self.lossless.try_into_pst()
+        self.lossless
+            .try_into_pst(|| pst::Policy::try_from(self.ast.clone()))
     }
 
     /// Get all the unknown entities from the policy
@@ -4367,11 +4373,12 @@ impl LosslessTemplate {
     }
 
     /// Get an owned PST representation of this template.
-    /// Does not attempt to convert from a translated representation; this policy must have
-    /// been constructed from a valid EST, PST or Cedar text.
-    fn try_into_pst(self) -> Result<pst::Template, pst::PstConstructionError> {
+    fn try_into_pst(
+        self,
+        fallback_pst: impl FnOnce() -> Result<pst::Template, pst::PstConstructionError>,
+    ) -> Result<pst::Template, pst::PstConstructionError> {
         match self {
-            Self::Empty => Err(error_body::PolicyFromEmptyRepresentationError.into()),
+            Self::Empty => fallback_pst(),
             Self::Est(est) => Ok(est.try_into()?),
             Self::Pst(pst) => Ok(pst),
             Self::Text(text) => Ok(parser::parse_policy_or_template_to_est(&text)?.try_into()?),
@@ -4526,9 +4533,12 @@ impl LosslessPolicy {
     }
 
     /// Get an owned PST representation of this policy.
-    fn try_into_pst(self) -> Result<pst::Policy, pst::PstConstructionError> {
+    fn try_into_pst(
+        self,
+        fallback_pst: impl FnOnce() -> Result<pst::Policy, pst::PstConstructionError>,
+    ) -> Result<pst::Policy, pst::PstConstructionError> {
         match self {
-            Self::Empty => Err(error_body::PolicyFromEmptyRepresentationError.into()),
+            Self::Empty => fallback_pst(),
             Self::Est(est) => {
                 let template: pst::Template = est.try_into()?;
                 Ok(pst::Policy::Static(pst::StaticPolicy::try_from(template)?))
@@ -6035,12 +6045,28 @@ mod tpe {
                 .map_err(Into::into)
         }
 
-        /// Return residuals as [`Policy`]s
-        /// A [`Policy`] returned inherits [`crate::PolicyId`] and annotations from
-        /// the corresponding input policy
-        /// Its scope is unconstrained and its condition is in the form of a
-        /// single `when` clause with the residual as the expression
-        /// Use [`TpeResponse::nontrivial_residual_policies`] to get non-trivial residual policies
+        /// Return residuals as [`Policy`]s.
+        ///
+        /// Each returned [`Policy`] inherits its [`PolicyId`](crate::PolicyId) and
+        /// annotations from the corresponding input policy. Its scope is
+        /// unconstrained and its condition is a single `when` clause containing
+        /// the residual expression.
+        ///
+        /// Use [`TpeResponse::nontrivial_residual_policies`] to skip trivially
+        /// `true` or `false` residuals.
+        ///
+        /// The returned policies can be converted to PST for structured
+        /// inspection of the residual expression tree:
+        ///
+        /// ```text
+        /// let response = policy_set.tpe(&request, &entities, &schema)?;
+        /// for policy in response.residual_policies() {
+        ///     let pst_policy = policy.to_pst()?;
+        ///     for clause in pst_policy.body().clauses() {
+        ///         // inspect the residual expression via pst::Clause / pst::Expr
+        ///     }
+        /// }
+        /// ```
         pub fn residual_policies(&self) -> impl Iterator<Item = Policy> + '_ {
             self.0
                 .residual_policies()
@@ -6048,11 +6074,17 @@ mod tpe {
         }
 
         /// Returns an iterator of non-trivial (meaning more than just `true`
-        /// or `false`) residuals as [`Policy`]s
-        /// A [`Policy`] returned inherits [`crate::PolicyId`] and annotations from
-        /// the corresponding input policy
-        /// Its scope is unconstrained and its condition is in the form of a
-        /// single `when` clause with the residual as the expression
+        /// or `false`) residuals as [`Policy`]s.
+        ///
+        /// Each returned [`Policy`] inherits its [`PolicyId`](crate::PolicyId) and
+        /// annotations from the corresponding input policy. Its scope is
+        /// unconstrained and its condition is a single `when` clause containing
+        /// the residual expression.
+        ///
+        /// Call [`Policy::to_pst()`] on each result to get a [`crate::pst::Policy`]
+        /// for structured inspection. Residual expressions may contain
+        /// [`crate::pst::Expr::ResidualError`] nodes indicating subexpressions that
+        /// would error at runtime; use [`crate::pst::Expr::has_error()`] to check.
         pub fn nontrivial_residual_policies(&'_ self) -> impl Iterator<Item = Policy> + '_ {
             self.0
                 .residual_permits()
@@ -6128,9 +6160,15 @@ mod tpe {
     }
 
     impl PolicySet {
-        /// Perform type-aware partial evaluation on this [`PolicySet`]
-        /// If successful, the result is a [`PolicySet`] containing residual
-        /// policies ready for re-authorization
+        /// Perform type-aware partial evaluation on this [`PolicySet`].
+        ///
+        /// If successful, the result is a [`TpeResponse`] containing residual
+        /// policies ready for re-authorization. Use
+        /// [`TpeResponse::residual_policies()`] or
+        /// [`TpeResponse::nontrivial_residual_policies()`] to get the residuals
+        /// as [`Policy`] objects, then call [`Policy::to_pst()`] to convert them
+        /// to [`crate::pst::Policy`] for structured inspection of the residual
+        /// expression tree.
         #[doc = include_str!("../experimental_warning.md")]
         pub fn tpe<'a>(
             &self,
@@ -6971,6 +7009,7 @@ action CreateList in Create appliesTo {
 mod test_lossless_empty {
     use super::{LosslessPolicy, LosslessTemplate, Policy, PolicyId, Template};
     use cedar_policy_core::pst;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn test_lossless_empty_policy() {
@@ -7029,10 +7068,16 @@ mod test_lossless_empty {
             ast: p.ast,
             lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
         };
-        assert!(matches!(
-            empty.try_into_pst(),
-            Err(pst::PstConstructionError::PolicyFromEmptyRepresentation(..))
-        ));
+        assert_matches!(
+            empty.try_into_pst().unwrap().body(),
+            pst::Template {
+                effect: pst::Effect::Permit,
+                principal: pst::PrincipalConstraint::Any,
+                resource: pst::ResourceConstraint::Any,
+                action: pst::ActionConstraint::Any,
+                ..
+            },
+        );
     }
 
     #[test]
@@ -7046,10 +7091,18 @@ mod test_lossless_empty {
             ast: t.ast,
             lossless: LosslessTemplate::from_text(None::<&str>),
         };
-        assert!(matches!(
-            empty.try_into_pst(),
-            Err(pst::PstConstructionError::PolicyFromEmptyRepresentation(..))
-        ));
+        assert_matches!(
+            empty.try_into_pst().unwrap(),
+            pst::Template {
+                effect: pst::Effect::Permit,
+                principal: pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(
+                    pst::SlotId::Principal
+                )),
+                resource: pst::ResourceConstraint::Any,
+                action: pst::ActionConstraint::Any,
+                ..
+            },
+        );
     }
 }
 

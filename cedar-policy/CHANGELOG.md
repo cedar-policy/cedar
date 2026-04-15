@@ -14,7 +14,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ### Added
 
-- Public syntax tree representation for `Policy`, `Template` and `PolicySet` allowing programmatic manipulation of Cedar syntax (#816, #366).
+- Public syntax tree (`pst`) module for programmatic construction, inspection, and manipulation of Cedar policies. Accessible via `to_pst()` / `try_into_pst()` / `from_pst()` on `Policy`, `Template`, and `PolicySet`. `try_into_pst()` consumes the value to avoid cloning. TPE residual policies can be converted to PST for structured inspection of residual expressions. Third-party types used in PST fields (`SmolStr`, `LinkedHashMap`, `NonEmpty`) are re-exported from the `pst` module. (#816, #366)
 
 ### Fixed
 
