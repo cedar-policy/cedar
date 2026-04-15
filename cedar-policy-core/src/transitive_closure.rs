@@ -171,7 +171,7 @@ where
                 &mut component,
                 &mut comp_succ,
                 &mut comp_elts,
-            );    
+            );
         }
     }
     // component_tc => nodes_tc
@@ -1058,7 +1058,8 @@ mod tests {
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        compute_tc_internal(&mut entities);
+        let all_ids: Vec<_> = entities.keys().cloned().collect();
+        compute_tc_internal(all_ids.into_iter(), &mut entities, HashSet::new(), false);
         let a = &entities[&EntityUID::with_eid("A")];
         let b = &entities[&EntityUID::with_eid("B")];
         let c = &entities[&EntityUID::with_eid("C")];
@@ -1075,16 +1076,21 @@ mod tests {
         assert!(!a.has_edge_to(&EntityUID::with_eid("D")));
 
         // change from B -> C to B -> D
+        // Recreate A with only its original parent (B) to clear stale TC edges
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
         b.add_parent(EntityUID::with_eid("D"));
         let d = Entity::with_uid(EntityUID::with_eid("D"));
+        entities.insert(a.uid().clone(), a);
         entities.insert(b.uid().clone(), b);
         entities.insert(d.uid().clone(), d);
 
         // currently doesn't pass TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        compute_tc_internal(&mut entities);
+        let all_ids: Vec<_> = entities.keys().cloned().collect();
+        compute_tc_internal(all_ids.into_iter(), &mut entities, HashSet::new(), false);
         let a = &entities[&EntityUID::with_eid("A")];
         let b = &entities[&EntityUID::with_eid("B")];
         let c = &entities[&EntityUID::with_eid("C")];
