@@ -15,6 +15,8 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ### Added
 
 - Public syntax tree representation for `Policy`, `Template` and `PolicySet` allowing programmatic manipulation of Cedar syntax (#816, #366).
+- The Type-aware partial evaluation (TPE) experimental feature now supports template-linked policies. This would previously return a `SlotNotSupportedError` error.
+  This error variant is removed and replaced with `UnlinkedSlotError` (#2314).
 
 ### Fixed
 
