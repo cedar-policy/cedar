@@ -22,7 +22,7 @@ miette = { version = "7.6.0", features = ["fancy"] }
 thiserror = "2.0"
 semver = "1.0.28"
 owo-colors = { version = "4.3.0", features = ["supports-colors"] }
-tokio = { version = "1.51", features = ["rt-multi-thread"], optional = true }
+tokio = { version = "1.52", features = ["rt-multi-thread"], optional = true }
 
 [features]
 default = []
