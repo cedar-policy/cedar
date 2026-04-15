@@ -22,7 +22,7 @@ jobs:
             # Check that this workflow was triggered from the 'main' branch.
             - name: Validate branch
               if: github.ref != 'refs/heads/main'
-              uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+              uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
               with:
                   script: core.setFailed('This workflow must be triggered from the "main" branch.')
 
@@ -65,7 +65,7 @@ jobs:
             # Compute the name of the release branch associated with the specified tag.
             - name: Compute release branch.
               id: compute_release_branch
-              uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+              uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
               with:
                   script: |
                       const tag = '${{ inputs.tag }}';
@@ -83,7 +83,7 @@ jobs:
               run: echo "latest_npm_version=$(npm view @cedar-policy/cedar-wasm version)" >> "$GITHUB_OUTPUT"
             - name: Compute NPM tag
               id: compute_npm_tag
-              uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+              uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
               with:
                   script: |
                       const compareVersions = require('compare-versions');
