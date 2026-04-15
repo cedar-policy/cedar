@@ -236,11 +236,9 @@ impl<'a> Typechecker<'a> {
     ) -> Box<dyn Iterator<Item = RequestEnv<'b>> + 'c> {
         match env {
             RequestEnv::UndeclaredAction => Box::new(std::iter::once(RequestEnv::UndeclaredAction)),
-            RequestEnv::DeclaredAction {
+            env @ RequestEnv::DeclaredAction {
                 principal,
-                action,
                 resource,
-                context,
                 ..
             } => Box::new(
                 self.possible_slot_links(
@@ -256,14 +254,7 @@ impl<'a> Typechecker<'a> {
                         resource,
                         t.resource_constraint().as_inner(),
                     )
-                    .map(move |r_slot| RequestEnv::DeclaredAction {
-                        principal,
-                        action,
-                        resource,
-                        context,
-                        principal_slot: p_slot.clone(),
-                        resource_slot: r_slot,
-                    })
+                    .map(move |r_slot| env.clone().link(p_slot.clone(), r_slot))
                 }),
             ),
         }

@@ -25,29 +25,25 @@ pub mod response;
 
 use std::{collections::HashMap, sync::Arc};
 
-use crate::ast::{Expr, PolicyID};
-use crate::tpe::err::{NonstaticPolicyError, TpeError};
+use crate::ast::PolicyID;
+use crate::tpe::err::TpeError;
+use crate::tpe::residual::Residual;
 use crate::tpe::response::{ResidualPolicy, Response};
-use crate::validator::types::Type;
 use crate::validator::Validator;
 use crate::validator::{typecheck::PolicyCheck, typecheck::Typechecker, ValidatorSchema};
 use crate::{ast::PolicySet, extensions::Extensions};
 
 use crate::tpe::{entities::PartialEntities, evaluator::Evaluator, request::PartialRequest};
 
-pub(crate) fn policy_expr_map<'a>(
+pub(crate) fn policy_residual_map<'a>(
     request: &'a PartialRequest,
     ps: &'a PolicySet,
     schema: &ValidatorSchema,
-) -> std::result::Result<HashMap<&'a PolicyID, Expr<Option<Type>>>, TpeError> {
+) -> std::result::Result<HashMap<&'a PolicyID, Residual>, TpeError> {
     let mut exprs = HashMap::new();
     let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
     let env = request.find_request_env(schema)?;
     for p in ps.policies() {
-        if !p.is_static() {
-            return Err(NonstaticPolicyError.into());
-        }
-
         let t = p.template();
 
         let errs: Vec<_> = Validator::validate_entity_types_and_literals(schema, t).collect();
@@ -55,16 +51,19 @@ pub(crate) fn policy_expr_map<'a>(
             return Err(TpeError::Validation(errs));
         }
 
+        // Get an environment using the actual types of the entities linked with
+        // this template. If static, the slot env is empty and this is a no-op.
+        let env = env.clone().link_slot_env(p.env());
         match tc.typecheck_by_single_request_env(t, &env) {
             PolicyCheck::Success(expr) => {
-                exprs.insert(p.id(), expr);
+                exprs.insert(p.id(), Residual::try_from_typed_expr(&expr, p.env())?);
             }
             PolicyCheck::Fail(errs) => {
                 return Err(TpeError::Validation(errs));
             }
             PolicyCheck::Irrelevant(errs, expr) => {
                 if errs.is_empty() {
-                    exprs.insert(p.id(), expr);
+                    exprs.insert(p.id(), Residual::try_from_typed_expr(&expr, p.env())?);
                 } else {
                     return Err(TpeError::Validation(errs));
                 }
@@ -84,29 +83,26 @@ pub fn is_authorized<'a>(
     entities: &'a PartialEntities,
     schema: &'a ValidatorSchema,
 ) -> std::result::Result<Response<'a>, TpeError> {
-    let exprs = policy_expr_map(request, ps, schema)?;
+    let exprs = policy_residual_map(request, ps, schema)?;
     let evaluator = Evaluator {
         request,
         entities,
         extensions: Extensions::all_available(),
     };
-    let residuals: Result<Vec<_>, TpeError> = exprs
+    let residuals: Vec<_> = exprs
         .into_iter()
-        .map(|(id, expr)| {
-            let residual = evaluator.interpret_expr(&expr)?;
+        .map(|(id, residual)| {
+            let residual = evaluator.interpret(&residual);
             #[expect(
                 clippy::unwrap_used,
                 reason = "exprs and policy set contain the same policy ids"
             )]
-            Ok(ResidualPolicy::new(
-                Arc::new(residual),
-                Arc::new(ps.get(id).unwrap().clone()),
-            ))
+            ResidualPolicy::new(Arc::new(residual), Arc::new(ps.get(id).unwrap().clone()))
         })
         .collect();
 
     Ok(Response::new(
-        residuals?.into_iter(),
+        residuals.into_iter(),
         request,
         entities,
         schema,

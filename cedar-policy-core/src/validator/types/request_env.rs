@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::ast::{EntityType, EntityUID, RequestType};
+use crate::ast::{EntityType, EntityUID, RequestType, SlotEnv, SlotId};
 
 use crate::validator::ValidatorSchema;
 
@@ -66,6 +66,46 @@ impl<'a> RequestEnv<'a> {
                 resource: (*resource).clone(),
             }),
             RequestEnv::UndeclaredAction => None,
+        }
+    }
+
+    /// Create a linked request environment with type bindings derived from the
+    /// actual types of the entity bound in the argument environment.
+    pub fn link_slot_env(self, slot_env: &SlotEnv) -> RequestEnv<'a> {
+        self.link(
+            slot_env
+                .get(&SlotId::principal())
+                .map(|e| e.entity_type().clone()),
+            slot_env
+                .get(&SlotId::resource())
+                .map(|e| e.entity_type().clone()),
+        )
+    }
+
+    /// Create a linked request environment with type bindings for principal and
+    /// resource slots and with the same principal, action, resource and context
+    /// types.
+    pub fn link(
+        self,
+        principal_slot: Option<EntityType>,
+        resource_slot: Option<EntityType>,
+    ) -> RequestEnv<'a> {
+        match self {
+            RequestEnv::DeclaredAction {
+                principal,
+                action,
+                resource,
+                context,
+                ..
+            } => RequestEnv::DeclaredAction {
+                principal,
+                action,
+                resource,
+                context,
+                principal_slot,
+                resource_slot,
+            },
+            RequestEnv::UndeclaredAction => RequestEnv::UndeclaredAction,
         }
     }
 

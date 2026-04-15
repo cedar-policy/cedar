@@ -18,10 +18,8 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::tpe::err::ExprToResidualError;
-use crate::validator::types::Type;
 use crate::{
-    ast::{self, BinaryOp, EntityUID, Expr, PartialValue, Set, Value, ValueKind, Var},
+    ast::{self, BinaryOp, EntityUID, PartialValue, Set, Value, ValueKind, Var},
     evaluator::stack_size_check,
     extensions::Extensions,
 };
@@ -41,11 +39,6 @@ pub struct Evaluator<'e> {
 }
 
 impl Evaluator<'_> {
-    /// Interpret a typed expression by converting to a [`Residual`]
-    pub fn interpret_expr(&self, e: &Expr<Option<Type>>) -> Result<Residual, ExprToResidualError> {
-        Ok(self.interpret(&Residual::try_from(e)?))
-    }
-
     /// Interpret a typed expression into a residual
     /// This function always succeeds because it wraps an error encountered
     /// into a `ResidualKind::Error`
@@ -636,7 +629,8 @@ fn normalize_ext_value(value: Value) -> Value {
 mod tests {
     use std::collections::{BTreeMap, HashSet};
 
-    use crate::ast::UnwrapInfallible;
+    use crate::ast::{Expr, SlotEnv, UnwrapInfallible};
+    use crate::tpe::err::ExprToResidualError;
     use crate::validator::types::Type;
     use crate::{
         ast::{
@@ -666,6 +660,18 @@ mod tests {
     #[track_caller]
     fn dummy_uid() -> EntityUID {
         r#"E::"""#.parse().unwrap()
+    }
+
+    impl Evaluator<'_> {
+        /// Interpret a typed expression by converting to a [`Residual`] with an empty slot environment.
+        ///
+        /// This is a test-only utility because other callers should generally
+        /// be interpreting a residual with slots bounds appropriately by
+        /// `policy_residual_map` or else explicitly bindings slots (with an
+        /// empty environment or otherwise).
+        fn interpret_expr(&self, e: &Expr<Option<Type>>) -> Result<Residual, ExprToResidualError> {
+            Ok(self.interpret(&Residual::try_from_typed_expr(e, &SlotEnv::new())?))
+        }
     }
 
     #[test]

@@ -27,8 +27,8 @@ use crate::authorizer::Decision;
 use crate::batched_evaluator::err::{BatchedEvalError, InsufficientIterationsError};
 use crate::entities::TCComputation;
 use crate::tpe::entities::PartialEntity;
-use crate::tpe::err::{PartialRequestError, TpeError};
-use crate::tpe::policy_expr_map;
+use crate::tpe::err::PartialRequestError;
+use crate::tpe::policy_residual_map;
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
 use crate::tpe::residual::Residual;
 use crate::tpe::response::{ResidualPolicy, Response};
@@ -92,7 +92,7 @@ pub fn is_authorized_batched(
     max_iters: u32,
 ) -> Result<Decision, BatchedEvalError> {
     let request = concrete_request_to_partial(request, schema)?;
-    let exprs = policy_expr_map(&request, ps, schema)?;
+    let exprs = policy_residual_map(&request, ps, schema)?;
     let mut entities = PartialEntities::default();
     let initial_evaluator = Evaluator {
         request: &request,
@@ -102,9 +102,7 @@ pub fn is_authorized_batched(
     let residuals_res: Result<Vec<ResidualPolicy>, BatchedEvalError> = exprs
         .into_iter()
         .map(|(id, expr)| {
-            let residual = initial_evaluator
-                .interpret_expr(&expr)
-                .map_err(TpeError::from)?;
+            let residual = initial_evaluator.interpret(&expr);
             #[expect(
                 clippy::unwrap_used,
                 reason = "exprs and policy set contain the same policy ids"

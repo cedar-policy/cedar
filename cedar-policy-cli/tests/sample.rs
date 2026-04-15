@@ -1702,6 +1702,90 @@ fn test_tpe() {
         .code(0);
 }
 
+#[test]
+#[cfg(feature = "tpe")]
+fn test_tpe_link() {
+    let entities: &str = "sample-data/tpe_rfc/entities.json";
+    let schema: &str = "sample-data/tpe_rfc/schema.cedarschema";
+
+    let mut template_file = tempfile::NamedTempFile::new().expect("Failed to create template file");
+    writeln!(
+        template_file,
+        r#"@id("ViewTemplate")
+permit (
+  principal == ?principal,
+  action == Action::"View",
+  resource
+)
+when {{ resource.isPublic }};"#
+    )
+    .expect("Failed to write template file");
+
+    let links_file = tempfile::NamedTempFile::new().expect("Failed to create links file");
+    let template_path = template_file.path().to_str().unwrap().to_string();
+    let links_path = links_file.path().to_str().unwrap().to_string();
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("link")
+        .arg("-p")
+        .arg(&template_path)
+        .arg("--template-linked")
+        .arg(&links_path)
+        .arg("--template-id")
+        .arg("ViewTemplate")
+        .arg("--new-id")
+        .arg("AliceView")
+        .arg("-a")
+        .arg(r#"{"?principal": "User::\"Alice\""}"#)
+        .assert()
+        .code(0);
+
+    // TPE with linked template. No resource eid, so decision is unknown
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(&template_path)
+        .arg("--template-linked")
+        .arg(&links_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(predicate::str::contains("UNKNOWN"))
+        .code(0);
+
+    // Still no resource eid, but request is for bob, so deny
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Bob")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(&template_path)
+        .arg("--template-linked")
+        .arg(&links_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .code(2);
+}
+
 #[rstest]
 #[case("principal")]
 #[case("1 + 1")]
