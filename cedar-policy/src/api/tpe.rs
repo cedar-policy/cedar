@@ -757,64 +757,66 @@ impl PolicySet {
 }
 
 #[cfg(test)]
-mod tpe_tests {
-    use std::{
-        collections::{BTreeMap, HashSet},
-        str::FromStr,
-    };
+mod tpe_test {
+    mod test {
+        use std::{
+            collections::{BTreeMap, HashSet},
+            str::FromStr,
+        };
 
-    use cedar_policy_core::tpe::err::EntitiesError;
-    use cool_asserts::assert_matches;
+        use cedar_policy_core::tpe::err::EntitiesError;
+        use cool_asserts::assert_matches;
 
-    use crate::{PartialEntity, PartialEntityError, RestrictedExpression, Schema};
+        use crate::{PartialEntity, PartialEntityError, RestrictedExpression, Schema};
 
-    #[test]
-    fn entity_construction() {
-        let schema = Schema::from_str(
-            r"
+        #[test]
+        fn entity_construction() {
+            let schema = Schema::from_str(
+                r"
             entity A in B tags Long;
             entity B;
         ",
-        )
-        .unwrap();
-        PartialEntity::new(
-            r#"A::"foo""#.parse().unwrap(),
-            None,
-            Some(HashSet::from_iter([r#"B::"b""#.parse().unwrap()])),
-            Some(BTreeMap::from_iter([(
-                "".into(),
-                RestrictedExpression::new_long(1),
-            )])),
-            &schema,
-        )
-        .unwrap();
-        assert_matches!(
-            PartialEntity::new(
-                r#"A::"foo""#.parse().unwrap(),
-                None,
-                Some(HashSet::from_iter([r#"C::"c""#.parse().unwrap()])),
-                Some(BTreeMap::from_iter([(
-                    "".into(),
-                    RestrictedExpression::new_long(1)
-                )])),
-                &schema
-            ),
-            Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
-        );
-
-        assert_matches!(
+            )
+            .unwrap();
             PartialEntity::new(
                 r#"A::"foo""#.parse().unwrap(),
                 None,
                 Some(HashSet::from_iter([r#"B::"b""#.parse().unwrap()])),
                 Some(BTreeMap::from_iter([(
                     "".into(),
-                    RestrictedExpression::new_bool(true)
+                    RestrictedExpression::new_long(1),
                 )])),
-                &schema
-            ),
-            Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
-        );
+                &schema,
+            )
+            .unwrap();
+            assert_matches!(
+                PartialEntity::new(
+                    r#"A::"foo""#.parse().unwrap(),
+                    None,
+                    Some(HashSet::from_iter([r#"C::"c""#.parse().unwrap()])),
+                    Some(BTreeMap::from_iter([(
+                        "".into(),
+                        RestrictedExpression::new_long(1)
+                    )])),
+                    &schema
+                ),
+                Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
+            );
+
+            assert_matches!(
+                PartialEntity::new(
+                    r#"A::"foo""#.parse().unwrap(),
+                    None,
+                    Some(HashSet::from_iter([r#"B::"b""#.parse().unwrap()])),
+                    Some(BTreeMap::from_iter([(
+                        "".into(),
+                        RestrictedExpression::new_bool(true)
+                    )])),
+                    &schema
+                ),
+                Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
+            );
+        }
     }
 
     mod streaming_service {
@@ -931,55 +933,24 @@ mod tpe_tests {
         fn schema() -> Schema {
             Schema::from_cedarschema_str(
                 r"
-            // Types
-type Subscription = {
-  tier: String
-};
-type Profile = {
-  isKid: Bool
-};
+            type Subscription = { tier: String };
+            type Profile = { isKid: Bool };
 
-// Entities
-entity FreeMember;
-entity Subscriber = {
-  subscription: Subscription,
-  profile: Profile
-};
-entity Movie = {
-  isFree: Bool,
-  needsRentOrBuy: Bool,
-  isOscarNominated: Bool
-};
-entity Show = {
-  isFree: Bool,
-  releaseDate: datetime,
-  isEarlyAccess: Bool
-};
+            entity FreeMember;
+            entity Subscriber = { subscription: Subscription, profile: Profile };
+            entity Movie = { isFree: Bool, needsRentOrBuy: Bool, isOscarNominated: Bool };
+            entity Show = { isFree: Bool, releaseDate: datetime, isEarlyAccess: Bool };
 
-// Actions for content in general
-action watch
-  appliesTo {
-    principal: [FreeMember, Subscriber],
-    resource: [Movie, Show],
-    context: {
-      now: {
-        datetime: datetime,
-        localTimeOffset: duration
-      }
-    }
-  };
-
-// Actions for movies only
-action rent, buy
-  appliesTo {
-    principal: [FreeMember, Subscriber],
-    resource: Movie,
-    context: {
-      now: {
-        datetime: datetime
-      }
-    }
-  };
+            action watch appliesTo {
+                principal: [FreeMember, Subscriber],
+                resource: [Movie, Show],
+                context: { now: { datetime: datetime, localTimeOffset: duration } }
+            };
+            action rent, buy appliesTo {
+                principal: [FreeMember, Subscriber],
+                resource: Movie,
+                context: { now: { datetime: datetime } }
+            };
             ",
             )
             .unwrap()
@@ -989,218 +960,119 @@ action rent, buy
         #[track_caller]
         fn policy_set() -> PolicySet {
             PolicySet::from_str(
-                r#"
-            // Subscriber Content Access (Shows)
-@id("subscriber-content-access/show")
-permit (
-  principal is Subscriber,
-  action == Action::"watch",
-  resource is Show
-)
-unless
-{ resource.isEarlyAccess && context.now.datetime < resource.releaseDate };
+            r#"
+            @id("subscriber-content-access/show")
+            permit(principal is Subscriber, action == Action::"watch", resource is Show)
+            unless { resource.isEarlyAccess && context.now.datetime < resource.releaseDate };
 
-// Subscriber Content Access (Movies)
-@id("subscriber-content-access/movie")
-permit (
-  principal is Subscriber,
-  action == Action::"watch",
-  resource is Movie
-)
-unless { resource.needsRentOrBuy };
+            @id("subscriber-content-access/movie")
+            permit(principal is Subscriber, action == Action::"watch", resource is Movie)
+            unless { resource.needsRentOrBuy };
 
-// Free Content Access
-@id("free-content-access")
-permit (
-  principal is FreeMember,
-  action == Action::"watch",
-  resource
-)
-when { resource.isFree };
+            @id("free-content-access")
+            permit(principal is FreeMember, action == Action::"watch", resource)
+            when { resource.isFree };
 
-// Promo: Rent/Buy Oscar-Nominated Movies Until the Oscars
-@id("rent-buy-oscar-movie")
-permit (
-  principal is Subscriber,
-  action in [Action::"rent", Action::"buy"],
-  resource is Movie
-)
-when
-{
-  resource.isOscarNominated &&
-  context.now.datetime >= datetime("2025-02-02T19:00:00-0500") &&
-  context.now.datetime < datetime(
-      "2025-03-02T19:00:00-0500"
-    ) // Oscars Night
-};
+            @id("rent-buy-oscar-movie")
+            permit(principal is Subscriber, action in [Action::"rent", Action::"buy"], resource is Movie)
+            when {
+                resource.isOscarNominated &&
+                context.now.datetime >= datetime("2025-02-02T19:00:00-0500") &&
+                context.now.datetime < datetime("2025-03-02T19:00:00-0500")
+            };
 
-// Early Access (24h) to Shows for Premium Subscribers
-@id("early-access-show")
-permit (
-  principal is Subscriber,
-  action == Action::"watch",
-  resource is Show
-)
-when
-{
-  resource.isEarlyAccess &&
-  principal.subscription.tier == "premium" &&
-  context.now.datetime >= resource.releaseDate.offset(duration("-24h"))
-};
+            @id("early-access-show")
+            permit(principal is Subscriber, action == Action::"watch", resource is Show)
+            when {
+                resource.isEarlyAccess &&
+                principal.subscription.tier == "premium" &&
+                context.now.datetime >= resource.releaseDate.offset(duration("-24h"))
+            };
 
-// Forbid Bedtime Access to Kid Profile
-@id("forbid-bedtime-watch-kid-profile")
-forbid (
-  principal is Subscriber,
-  action == Action::"watch",
-  resource
-)
-when { principal.profile.isKid }
-unless
-{
-  // `toTime()` returns the duration modulo one day (i.e., it ignores the "date"
-  // component). Here, we use it to calculate the subscriber's local time and
-  // compare the result against durations that represent 6:00AM and 9:00PM.
-  duration("6h") <= context.now
-    .datetime
-    .offset
-    (
-      context.now.localTimeOffset
-    )
-    .toTime
-    (
-    ) &&
-  context.now.datetime.offset(context.now.localTimeOffset).toTime() <= duration(
-      "21h"
-    )
-};
+            @id("forbid-bedtime-watch-kid-profile")
+            forbid(principal is Subscriber, action == Action::"watch", resource)
+            when { principal.profile.isKid }
+            unless {
+                duration("6h") <= context.now.datetime.offset(context.now.localTimeOffset).toTime() &&
+                context.now.datetime.offset(context.now.localTimeOffset).toTime() <= duration("21h")
+            };
             "#,
-            )
-            .unwrap()
+        )
+        .unwrap()
         }
 
         #[track_caller]
         fn entities() -> Entities {
             Entities::from_json_value(
-                serde_json::json!(
-                                [
-                    {
-                        "uid": {
-                            "type": "Subscriber",
-                            "id": "Alice"
-                        },
-                        "attrs": {
-                            "subscription" : {
-                                "tier": "standard"
-                            },
-                            "profile" : {
-                                "isKid": false
-                            }
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "FreeMember",
-                            "id": "Bob"
-                        },
-                        "attrs": {},
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Subscriber",
-                            "id": "Charlie"
-                        },
-                        "attrs": {
-                            "subscription" : {
-                                "tier": "premium"
-                            },
-                            "profile" : {
-                                "isKid": false
-                            }
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Subscriber",
-                            "id": "Dave"
-                        },
-                        "attrs": {
-                            "subscription" : {
-                                "tier": "standard"
-                            },
-                            "profile" : {
-                                "isKid": true
-                            }
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Movie",
-                            "id": "The Godparent"
-                        },
-                        "attrs": {
-                            "isFree" : true,
-                            "needsRentOrBuy" : false,
-                            "isOscarNominated": true
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Movie",
-                            "id": "The Gleaming"
-                        },
-                        "attrs": {
-                            "isFree" : false,
-                            "needsRentOrBuy" : false,
-                            "isOscarNominated": false
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Movie",
-                            "id": "Devilish"
-                        },
-                        "attrs": {
-                            "isFree" : false,
-                            "needsRentOrBuy" : true,
-                            "isOscarNominated": true
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Show",
-                            "id": "Buddies"
-                        },
-                        "attrs": {
-                            "isFree" : false,
-                            "releaseDate": "2024-10-10",
-                            "isEarlyAccess": false
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Show",
-                            "id": "Breach"
-                        },
-                        "attrs": {
-                            "isFree" : false,
-                            "releaseDate": "2025-02-21",
-                            "isEarlyAccess": true
-                        },
-                        "parents": []
-                    }
-                ]
-                            ),
-                Some(&schema()),
-            )
+            serde_json::json!([
+                {
+                    "uid": { "type": "Subscriber", "id": "Alice" },
+                    "attrs": { "subscription": { "tier": "standard" }, "profile": { "isKid": false } },
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "FreeMember", "id": "Bob" },
+                    "attrs": {},
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "Subscriber", "id": "Charlie" },
+                    "attrs": { "subscription": { "tier": "premium" }, "profile": { "isKid": false } },
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "Subscriber", "id": "Dave" },
+                    "attrs": { "subscription": { "tier": "standard" }, "profile": { "isKid": true } },
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "Movie", "id": "The Godparent" },
+                    "attrs": { "isFree": true, "needsRentOrBuy": false, "isOscarNominated": true },
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "Movie", "id": "The Gleaming" },
+                    "attrs": { "isFree": false, "needsRentOrBuy": false, "isOscarNominated": false },
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "Movie", "id": "Devilish" },
+                    "attrs": { "isFree": false, "needsRentOrBuy": true, "isOscarNominated": true },
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "Show", "id": "Buddies" },
+                    "attrs": { "isFree": false, "releaseDate": "2024-10-10", "isEarlyAccess": false },
+                    "parents": []
+                },
+                {
+                    "uid": { "type": "Show", "id": "Breach" },
+                    "attrs": { "isFree": false, "releaseDate": "2025-02-21", "isEarlyAccess": true },
+                    "parents": []
+                },
+            ]),
+            Some(&schema()),
+        )
+        .unwrap()
+        }
+
+        /// Build a watch context with datetime="2025-07-22" and localTimeOffset="0h"
+        #[track_caller]
+        fn watch_context() -> Context {
+            Context::from_pairs([(
+                "now".into(),
+                RestrictedExpression::new_record([
+                    (
+                        "datetime".into(),
+                        RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
+                    ),
+                    (
+                        "localTimeOffset".into(),
+                        RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                    ),
+                ])
+                .unwrap(),
+            )])
             .unwrap()
         }
 
@@ -1211,24 +1083,7 @@ unless
                 PartialEntityUid::from_concrete(r#"Subscriber::"Alice""#.parse().unwrap()),
                 r#"Action::"watch""#.parse().unwrap(),
                 PartialEntityUid::new("Movie".parse().unwrap(), None),
-                Some(
-                    Context::from_pairs([(
-                        "now".into(),
-                        RestrictedExpression::new_record([
-                            (
-                                "datetime".into(),
-                                RestrictedExpression::from_str(r#"datetime("2025-07-22")"#)
-                                    .unwrap(),
-                            ),
-                            (
-                                "localTimeOffset".into(),
-                                RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                            ),
-                        ])
-                        .unwrap(),
-                    )])
-                    .unwrap(),
-                ),
+                Some(watch_context()),
                 &schema,
             )
             .unwrap();
@@ -1257,7 +1112,6 @@ unless
                     .unwrap(),
                 "subscriber-content-access/movie"
             );
-
             assert_eq!(response.decision(), None);
 
             let request = Request::new(
@@ -1270,21 +1124,7 @@ unless
                     "Movie".parse().unwrap(),
                     EntityId::new("The Godparent"),
                 ),
-                Context::from_pairs([(
-                    "now".into(),
-                    RestrictedExpression::new_record([
-                        (
-                            "datetime".into(),
-                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
-                        ),
-                        (
-                            "localTimeOffset".into(),
-                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                        ),
-                    ])
-                    .unwrap(),
-                )])
-                .unwrap(),
+                watch_context(),
                 Some(&schema),
             )
             .unwrap();
@@ -1302,21 +1142,7 @@ unless
                     "Movie".parse().unwrap(),
                     EntityId::new("Devilish"),
                 ),
-                Context::from_pairs([(
-                    "now".into(),
-                    RestrictedExpression::new_record([
-                        (
-                            "datetime".into(),
-                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
-                        ),
-                        (
-                            "localTimeOffset".into(),
-                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                        ),
-                    ])
-                    .unwrap(),
-                )])
-                .unwrap(),
+                watch_context(),
                 Some(&schema),
             )
             .unwrap();
@@ -1333,21 +1159,7 @@ unless
                 r#"Subscriber::"Alice""#.parse().unwrap(),
                 r#"Action::"watch""#.parse().unwrap(),
                 "Movie".parse().unwrap(),
-                Context::from_pairs([(
-                    "now".into(),
-                    RestrictedExpression::new_record([
-                        (
-                            "datetime".into(),
-                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
-                        ),
-                        (
-                            "localTimeOffset".into(),
-                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                        ),
-                    ])
-                    .unwrap(),
-                )])
-                .unwrap(),
+                watch_context(),
                 &schema,
             )
             .unwrap();
@@ -1372,26 +1184,11 @@ unless
         fn query_principal() {
             let schema = schema();
             let policies = policy_set();
-
             let request = PrincipalQueryRequest::new(
                 "Subscriber".parse().unwrap(),
                 r#"Action::"watch""#.parse().unwrap(),
                 r#"Movie::"The Godparent""#.parse().unwrap(),
-                Context::from_pairs([(
-                    "now".into(),
-                    RestrictedExpression::new_record([
-                        (
-                            "datetime".into(),
-                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
-                        ),
-                        (
-                            "localTimeOffset".into(),
-                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                        ),
-                    ])
-                    .unwrap(),
-                )])
-                .unwrap(),
+                watch_context(),
                 &schema,
             )
             .unwrap();
@@ -1504,6 +1301,7 @@ unless
         use cedar_policy_core::{authorizer::Decision, batched_evaluator::err::BatchedEvalError};
         use cool_asserts::assert_matches;
         use itertools::Itertools;
+        use serde_json::{json, Value};
         use similar_asserts::assert_eq;
 
         use crate::{
@@ -1515,274 +1313,120 @@ unless
         #[track_caller]
         fn schema() -> Schema {
             Schema::from_str(
-                r#"
+            r#"
             entity Team, UserGroup in [UserGroup];
-entity Issue  = {
-  "repo": Repository,
-  "reporter": User,
-};
-entity Org  = {
-  "members": UserGroup,
-  "owners": UserGroup,
-};
-entity Repository  = {
-  "admins": UserGroup,
-  "maintainers": UserGroup,
-  "readers": UserGroup,
-  "triagers": UserGroup,
-  "writers": UserGroup,
-};
-entity User in [UserGroup, Team];
+            entity Issue = { "repo": Repository, "reporter": User };
+            entity Org = { "members": UserGroup, "owners": UserGroup };
+            entity Repository = {
+                "admins": UserGroup, "maintainers": UserGroup,
+                "readers": UserGroup, "triagers": UserGroup, "writers": UserGroup,
+            };
+            entity User in [UserGroup, Team];
 
-action push, pull, fork appliesTo {
-  principal: [User],
-  resource: [Repository]
-};
-action assign_issue, delete_issue, edit_issue appliesTo {
-  principal: [User],
-  resource: [Issue]
-};
-action add_reader, add_writer, add_maintainer, add_admin, add_triager appliesTo {
-  principal: [User],
-  resource: [Repository]
-};
+            action push, pull, fork appliesTo { principal: [User], resource: [Repository] };
+            action assign_issue, delete_issue, edit_issue appliesTo { principal: [User], resource: [Issue] };
+            action add_reader, add_writer, add_maintainer, add_admin, add_triager
+                appliesTo { principal: [User], resource: [Repository] };
             "#,
-            )
-            .unwrap()
+        )
+        .unwrap()
         }
 
         fn policy_set() -> PolicySet {
             PolicySet::from_str(
                 r#"
-                //Actions for readers
-permit (
-  principal,
-  action == Action::"pull",
-  resource
-)
-when { principal in resource.readers };
+            // Readers
+            permit(principal, action == Action::"pull", resource)
+            when { principal in resource.readers };
+            permit(principal, action == Action::"fork", resource)
+            when { principal in resource.readers };
+            permit(principal, action == Action::"delete_issue", resource)
+            when { principal in resource.repo.readers && principal == resource.reporter };
+            permit(principal, action == Action::"edit_issue", resource)
+            when { principal in resource.repo.readers && principal == resource.reporter };
 
-permit (
-  principal,
-  action == Action::"fork",
-  resource
-)
-when { principal in resource.readers };
+            // Triagers
+            permit(principal, action == Action::"assign_issue", resource)
+            when { principal in resource.repo.triagers };
 
-permit (
-  principal,
-  action == Action::"delete_issue",
-  resource
-)
-when { principal in resource.repo.readers && principal == resource.reporter };
+            // Writers
+            permit(principal, action == Action::"push", resource)
+            when { principal in resource.writers };
+            permit(principal, action == Action::"edit_issue", resource)
+            when { principal in resource.repo.writers };
 
-permit (
-  principal,
-  action == Action::"edit_issue",
-  resource
-)
-when { principal in resource.repo.readers && principal == resource.reporter };
+            // Maintainers
+            permit(principal, action == Action::"delete_issue", resource)
+            when { principal in resource.repo.maintainers };
 
-//Actions for triagers
-permit (
-  principal,
-  action == Action::"assign_issue",
-  resource
-)
-when { principal in resource.repo.triagers };
-
-//Actions for writers
-permit (
-  principal,
-  action == Action::"push",
-  resource
-)
-when { principal in resource.writers };
-
-permit (
-  principal,
-  action == Action::"edit_issue",
-  resource
-)
-when { principal in resource.repo.writers };
-
-//Actions for maintainers
-permit (
-  principal,
-  action == Action::"delete_issue",
-  resource
-)
-when { principal in resource.repo.maintainers };
-
-//Actions for admins
-permit (
-  principal,
-  action in
-    [Action::"add_reader",
-     Action::"add_triager",
-     Action::"add_writer",
-     Action::"add_maintainer",
-     Action::"add_admin"],
-  resource
-)
-when { principal in resource.admins };
-//We use the same permissions for org owners, and rely on placing them in the admins group for every repository in the org
-//The other option is to duplicate all policies for the org base permissions (with a separate heirarchy for each org)
-"#,
+            // Admins
+            permit(
+                principal,
+                action in [Action::"add_reader", Action::"add_triager", Action::"add_writer",
+                           Action::"add_maintainer", Action::"add_admin"],
+                resource
+            )
+            when { principal in resource.admins };
+            "#,
             )
             .unwrap()
         }
 
         #[track_caller]
         fn entities() -> Entities {
-            Entities::from_json_value(serde_json::json!(
+            fn repo_with_groups(n: &str) -> Vec<Value> {
+                let Value::Array(arr) = json!([
+                    { "uid": { "__entity": { "type": "Repository", "id": n } },
+                      "attrs": {
+                          "readers": { "__entity": { "type": "UserGroup", "id": format!("{n}_readers") } },
+                          "triagers": { "__entity": { "type": "UserGroup", "id": format!("{n}_triagers") } },
+                          "writers": { "__entity": { "type": "UserGroup", "id": format!("{n}_writers") } },
+                          "maintainers": { "__entity": { "type": "UserGroup", "id": format!("{n}_maintainers") } },
+                          "admins": { "__entity": { "type": "UserGroup", "id": format!("{n}_admins") } }, },
+                      "parents": []
+                    },
+                    { "uid": { "__entity": { "type": "UserGroup", "id": format!("{n}_readers") } },
+                        "attrs": {}, "parents": [] },
+                    { "uid": { "__entity": { "type": "UserGroup", "id": format!("{n}_triagers") } },
+                        "attrs": {}, "parents": [{ "__entity": { "type": "UserGroup", "id": format!("{n}_readers") } }] },
+                    { "uid": { "__entity": { "type": "UserGroup", "id": format!("{n}_writers") } },
+                        "attrs": {}, "parents": [{ "__entity": { "type": "UserGroup", "id": format!("{n}_triagers") } }] },
+                    { "uid": { "__entity": { "type": "UserGroup", "id": format!("{n}_maintainers") } },
+                        "attrs": {}, "parents": [{ "__entity": { "type": "UserGroup", "id": format!("{n}_writers") } }] },
+                    { "uid": { "__entity": { "type": "UserGroup", "id": format!("{n}_admins") } },
+                        "attrs": {}, "parents": [{ "__entity": { "type": "UserGroup", "id": format!("{n}_maintainers") } }] },
+                ]) else {
+                    panic!();
+                };
+                arr
+            }
 
-                [
-    {
-      "uid": { "__entity": { "type": "User", "id": "alice"} },
-      "attrs": {},
-      "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} }, { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} } ]
-    },
-    {
-      "uid": { "__entity": { "type": "User", "id": "jane"} },
-      "attrs": {},
-      "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },  { "__entity": { "type": "Team", "id": "team_that_can_read_everything"} }]
-    },
-    {
-        "uid": { "__entity": { "type": "User", "id": "bob"} },
-        "attrs": {},
-        "parents": []
-    },
-    {
-        "uid": { "__entity": { "type": "Repository", "id": "common_knowledge"} },
-        "attrs": {
-            "readers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} },
-            "triagers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"} },
-            "writers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} },
-            "maintainers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },
-            "admins" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_admins"} }
-        },
-        "parents": []
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} },
-        "attrs": {
-        },
-        "parents": [  ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"} },
-        "attrs": {
-        },
-        "parents": [ { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} } ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_writers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_admins"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "Repository", "id": "secret"} },
-        "attrs": {
-            "readers" : { "__entity": { "type": "UserGroup", "id": "secret_readers"} },
-            "triagers" : { "__entity": { "type": "UserGroup", "id": "secret_triagers"} },
-            "writers" : { "__entity": { "type": "UserGroup", "id": "secret_writers"} },
-            "maintainers" : { "__entity": { "type": "UserGroup", "id": "secret_maintainers"} },
-            "admins" : { "__entity": { "type": "UserGroup", "id": "secret_admins"} }
-        },
-        "parents": []
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "secret_readers"} },
-        "attrs": {
-        },
-        "parents": [  ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "secret_triagers"} },
-        "attrs": {
-        },
-        "parents": [ { "__entity": { "type": "UserGroup", "id": "secret_readers"} } ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "secret_writers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_triagers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "secret_maintainers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_writers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "secret_admins"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_maintainers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "Repository", "id": "uncommon_knowledge"} },
-        "attrs": {
-            "readers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} },
-            "triagers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"} },
-            "writers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} },
-            "maintainers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"} },
-            "admins" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_admins"} }
-        },
-        "parents": []
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} },
-        "attrs": {
-        },
-        "parents": [  ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"} },
-        "attrs": {
-        },
-        "parents": [ { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} } ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_admins"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "Team", "id": "team_that_can_read_everything"} },
-        "attrs": {},
-        "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} }, { "__entity": { "type": "UserGroup", "id": "secret_readers"} }, { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} }]
-    },
-]
-            ), Some(&schema())).unwrap()
+            let Value::Array(mut entities) = json!([
+                { "uid": { "__entity": { "type": "User", "id": "alice" } }, "attrs": {},
+                  "parents": [
+                    { "__entity": { "type": "UserGroup", "id": "common_knowledge_writers" } },
+                    { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers" } },
+                  ] },
+                { "uid": { "__entity": { "type": "User", "id": "jane" } }, "attrs": {},
+                  "parents": [
+                    { "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers" } },
+                    { "__entity": { "type": "Team", "id": "team_that_can_read_everything" } },
+                  ] },
+                { "uid": { "__entity": { "type": "User", "id": "bob" } },
+                  "attrs": {}, "parents": [] },
+                { "uid": { "__entity": { "type": "Team", "id": "team_that_can_read_everything" } },
+                  "attrs": {}, "parents": [
+                      { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers" } },
+                      { "__entity": { "type": "UserGroup", "id": "secret_readers" } },
+                      { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers" } }]}
+            ]) else {
+                panic!();
+            };
+            entities.extend(repo_with_groups("common_knowledge"));
+            entities.extend(repo_with_groups("secret"));
+            entities.extend(repo_with_groups("uncommon_knowledge"));
+
+            Entities::from_json_value(serde_json::Value::Array(entities), Some(&schema())).unwrap()
         }
 
         #[test]
@@ -1848,53 +1492,53 @@ when { principal in resource.admins };
             );
         }
 
+        /// Build a Request with empty context and schema validation
+        #[track_caller]
+        fn request(principal: &str, action: &str, resource: &str, schema: &Schema) -> Request {
+            Request::new(
+                principal.parse().unwrap(),
+                action.parse().unwrap(),
+                resource.parse().unwrap(),
+                Context::empty(),
+                Some(schema),
+            )
+            .unwrap()
+        }
+
         #[test]
         fn test_is_authorized_vs_is_authorized_batched() {
-            use crate::{Authorizer, Request};
+            use crate::Authorizer;
 
             let schema = schema();
             let policies = policy_set();
             let entities = entities();
             let authorizer = Authorizer::new();
 
-            // Create a set of test requests
             let test_requests = vec![
-                // Request 1: alice can push to common_knowledge (should be allowed)
-                Request::new(
-                    r#"User::"alice""#.parse().unwrap(),
-                    r#"Action::"push""#.parse().unwrap(),
-                    r#"Repository::"common_knowledge""#.parse().unwrap(),
-                    Context::empty(),
-                    Some(&schema),
-                )
-                .unwrap(),
-                // Request 2: jane can pull from secret (should be allowed)
-                Request::new(
-                    r#"User::"jane""#.parse().unwrap(),
-                    r#"Action::"pull""#.parse().unwrap(),
-                    r#"Repository::"secret""#.parse().unwrap(),
-                    Context::empty(),
-                    Some(&schema),
-                )
-                .unwrap(),
-                // Request 3: bob cannot push to common_knowledge (should be denied)
-                Request::new(
-                    r#"User::"bob""#.parse().unwrap(),
-                    r#"Action::"push""#.parse().unwrap(),
-                    r#"Repository::"common_knowledge""#.parse().unwrap(),
-                    Context::empty(),
-                    Some(&schema),
-                )
-                .unwrap(),
-                // Request 4: alice can fork common_knowledge (should be allowed)
-                Request::new(
-                    r#"User::"alice""#.parse().unwrap(),
-                    r#"Action::"fork""#.parse().unwrap(),
-                    r#"Repository::"common_knowledge""#.parse().unwrap(),
-                    Context::empty(),
-                    Some(&schema),
-                )
-                .unwrap(),
+                request(
+                    r#"User::"alice""#,
+                    r#"Action::"push""#,
+                    r#"Repository::"common_knowledge""#,
+                    &schema,
+                ),
+                request(
+                    r#"User::"jane""#,
+                    r#"Action::"pull""#,
+                    r#"Repository::"secret""#,
+                    &schema,
+                ),
+                request(
+                    r#"User::"bob""#,
+                    r#"Action::"push""#,
+                    r#"Repository::"common_knowledge""#,
+                    &schema,
+                ),
+                request(
+                    r#"User::"alice""#,
+                    r#"Action::"fork""#,
+                    r#"Repository::"common_knowledge""#,
+                    &schema,
+                ),
             ];
 
             // Test each request with both methods and compare results
@@ -1912,13 +1556,13 @@ when { principal in resource.admins };
                 let standard_decision = standard_response.decision();
 
                 assert_eq!(
-                        standard_decision,
-                        batched_decision,
-                        "Request {}: is_authorized returned {:?} but is_authorized_batched returned {:?}",
-                        i + 1,
-                        standard_decision,
-                        batched_decision
-                    );
+                standard_decision,
+                batched_decision,
+                "Request {}: is_authorized returned {:?} but is_authorized_batched returned {:?}",
+                i + 1,
+                standard_decision,
+                batched_decision
+            );
             }
         }
 
@@ -1926,21 +1570,20 @@ when { principal in resource.admins };
         fn test_batched_evaluation_error_validation() {
             let schema = schema();
             let policies = PolicySet::from_str(
-                    r#"permit(principal, action, resource) when { principal.nonexistent_attr == "value" };"#
-                ).unwrap();
+            r#"permit(principal, action, resource) when { principal.nonexistent_attr == "value" };"#,
+        )
+        .unwrap();
 
-            let request = Request::new(
-                EntityUid::from_str("User::\"alice\"").unwrap(),
-                EntityUid::from_str("Action::\"push\"").unwrap(),
-                EntityUid::from_str("Repository::\"repo\"").unwrap(),
-                Context::empty(),
-                Some(&schema),
-            )
-            .unwrap();
+            let req = request(
+                r#"User::"alice""#,
+                r#"Action::"push""#,
+                r#"Repository::"repo""#,
+                &schema,
+            );
 
             let entities = entities();
             let mut loader = TestEntityLoader::new(&entities);
-            let result = policies.is_authorized_batched(&request, &schema, &mut loader, 10);
+            let result = policies.is_authorized_batched(&req, &schema, &mut loader, 10);
 
             assert!(matches!(
                 result,
@@ -2016,17 +1659,15 @@ when { principal in resource.admins };
             )
             .unwrap();
 
-            let request = Request::new(
-                r#"User::"alice""#.parse().unwrap(),
-                r#"Action::"push""#.parse().unwrap(),
-                r#"Repository::"common_knowledge""#.parse().unwrap(),
-                Context::empty(),
-                Some(&schema),
-            )
-            .unwrap();
+            let req = request(
+                r#"User::"alice""#,
+                r#"Action::"push""#,
+                r#"Repository::"common_knowledge""#,
+                &schema,
+            );
 
             let mut loader = InvalidEntityLoader;
-            let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
+            let result = pset.is_authorized_batched(&req, &schema, &mut loader, 10);
 
             assert_matches!(result, Err(BatchedEvalError::Entities(_)));
         }
@@ -2073,17 +1714,15 @@ when { principal in resource.admins };
             )
             .unwrap();
 
-            let request = Request::new(
-                r#"User::"alice""#.parse().unwrap(),
-                r#"Action::"push""#.parse().unwrap(),
-                r#"Repository::"common_knowledge""#.parse().unwrap(),
-                Context::empty(),
-                Some(&schema),
-            )
-            .unwrap();
+            let req = request(
+                r#"User::"alice""#,
+                r#"Action::"push""#,
+                r#"Repository::"common_knowledge""#,
+                &schema,
+            );
 
             let mut loader = PartialEntityLoader;
-            let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
+            let result = pset.is_authorized_batched(&req, &schema, &mut loader, 10);
 
             assert_matches!(result, Err(BatchedEvalError::PartialValueToValue(_)));
         }
@@ -2093,18 +1732,15 @@ when { principal in resource.admins };
             let schema = schema();
             let policies = policy_set();
             let entities = entities();
-
-            let request = Request::new(
-                r#"User::"alice""#.parse().unwrap(),
-                r#"Action::"push""#.parse().unwrap(),
-                r#"Repository::"common_knowledge""#.parse().unwrap(),
-                Context::empty(),
-                Some(&schema),
-            )
-            .unwrap();
+            let req = request(
+                r#"User::"alice""#,
+                r#"Action::"push""#,
+                r#"Repository::"common_knowledge""#,
+                &schema,
+            );
 
             let mut loader = TestEntityLoader::new(&entities);
-            let result = policies.is_authorized_batched(&request, &schema, &mut loader, 0);
+            let result = policies.is_authorized_batched(&req, &schema, &mut loader, 0);
 
             assert_matches!(result, Err(BatchedEvalError::InsufficientIterations(_)));
         }
@@ -2120,27 +1756,29 @@ when { principal in resource.admins };
         };
         use std::{i64, str::FromStr};
 
-        fn schema() -> Schema {
-            Schema::from_str("entity P, R; action A appliesTo { principal: P, resource: R };")
-                .unwrap()
-        }
-
-        fn entities() -> Entities {
-            Entities::from_json_value(
+        /// Run TPE, query_principal, and query_resource for a given policy string,
+        /// asserting the expected decision and expected entity lists.
+        #[track_caller]
+        fn assert_tpe_and_queries(
+            policy: &str,
+            expected_decision: Decision,
+            expected_principals: &[&str],
+            expected_resources: &[&str],
+        ) {
+            let schema =
+                Schema::from_str("entity P, R; action A appliesTo { principal: P, resource: R };")
+                    .unwrap();
+            let entities = Entities::from_json_value(
                 serde_json::json!([
                     { "uid": { "__entity": { "type": "P", "id": ""} }, "attrs": {}, "parents": [] },
                     { "uid": { "__entity": { "type": "R", "id": ""} }, "attrs": {}, "parents": [] },
                 ]),
                 None,
             )
-            .unwrap()
-        }
-
-        #[test]
-        fn trivial_permit_tpe() {
-            let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
-            let req = PartialRequest::new(
+            .unwrap();
+            let partial_entities =
+                PartialEntities::from_concrete(entities.clone(), &schema).unwrap();
+            let partial_req = PartialRequest::new(
                 PartialEntityUid::new("P".parse().unwrap(), None),
                 r#"Action::"A""#.parse().unwrap(),
                 PartialEntityUid::new("R".parse().unwrap(), None),
@@ -2148,18 +1786,14 @@ when { principal in resource.admins };
                 &schema,
             )
             .unwrap();
-            let response = PolicySet::from_str(r"permit(principal, action, resource);")
+
+            let response = PolicySet::from_str(policy)
                 .unwrap()
-                .tpe(&req, &partial_entities, &schema)
+                .tpe(&partial_req, &partial_entities, &schema)
                 .unwrap();
-            assert_eq!(response.decision(), Some(Decision::Allow));
-        }
+            assert_eq!(response.decision(), Some(expected_decision));
 
-        #[test]
-        fn trivial_permit_query_principal() {
-            let schema = schema();
-            let entities = entities();
-            let req = PrincipalQueryRequest::new(
+            let preq = PrincipalQueryRequest::new(
                 "P".parse().unwrap(),
                 r#"Action::"A""#.parse().unwrap(),
                 r#"R::"""#.parse().unwrap(),
@@ -2167,20 +1801,18 @@ when { principal in resource.admins };
                 &schema,
             )
             .unwrap();
-
-            let principals = PolicySet::from_str(r#"permit(principal, action, resource);"#)
+            let principals = PolicySet::from_str(policy)
                 .unwrap()
-                .query_principal(&req, &entities, &schema)
+                .query_principal(&preq, &entities, &schema)
                 .unwrap()
                 .collect_vec();
-            assert_eq!(&principals, &[r#"P::"""#.parse().unwrap()]);
-        }
+            let expected_p: Vec<crate::EntityUid> = expected_principals
+                .iter()
+                .map(|s| s.parse().unwrap())
+                .collect();
+            assert_eq!(&principals, &expected_p);
 
-        #[test]
-        fn trivial_permit_query_resource() {
-            let schema = schema();
-            let entities = entities();
-            let req = ResourceQueryRequest::new(
+            let rreq = ResourceQueryRequest::new(
                 r#"P::"""#.parse().unwrap(),
                 r#"Action::"A""#.parse().unwrap(),
                 "R".parse().unwrap(),
@@ -2188,205 +1820,54 @@ when { principal in resource.admins };
                 &schema,
             )
             .unwrap();
-
-            let resources = PolicySet::from_str(r#"permit(principal, action, resource);"#)
+            let resources = PolicySet::from_str(policy)
                 .unwrap()
-                .query_resource(&req, &entities, &schema)
-                .unwrap()
-                .collect_vec();
-            assert_eq!(&resources, &[r#"R::"""#.parse().unwrap()]);
-        }
-
-        #[test]
-        fn trivial_forbid_tpe() {
-            let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
-            let req = PartialRequest::new(
-                PartialEntityUid::new("P".parse().unwrap(), None),
-                r#"Action::"A""#.parse().unwrap(),
-                PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
-                &schema,
-            )
-            .unwrap();
-            let response = PolicySet::from_str(r#"forbid(principal, action, resource);"#)
-                .unwrap()
-                .tpe(&req, &partial_entities, &schema)
-                .unwrap();
-            assert_eq!(response.decision(), Some(Decision::Deny));
-        }
-
-        #[test]
-        fn trivial_forbid_query_principal() {
-            let schema = schema();
-            let entities = entities();
-            let req = PrincipalQueryRequest::new(
-                "P".parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                r#"R::"""#.parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let principals = PolicySet::from_str(r#"forbid(principal, action, resource);"#)
-                .unwrap()
-                .query_principal(&req, &entities, &schema)
+                .query_resource(&rreq, &entities, &schema)
                 .unwrap()
                 .collect_vec();
-            assert_eq!(&principals, &[]);
+            let expected_r: Vec<crate::EntityUid> = expected_resources
+                .iter()
+                .map(|s| s.parse().unwrap())
+                .collect();
+            assert_eq!(&resources, &expected_r);
         }
 
         #[test]
-        fn trivial_forbid_query_resource() {
-            let schema = schema();
-            let entities = entities();
-            let req = ResourceQueryRequest::new(
-                r#"P::"""#.parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                "R".parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let resources = PolicySet::from_str(r#"forbid(principal, action, resource);"#)
-                .unwrap()
-                .query_resource(&req, &entities, &schema)
-                .unwrap()
-                .collect_vec();
-            assert_eq!(&resources, &[]);
+        fn trivial_permit() {
+            assert_tpe_and_queries(
+                r"permit(principal, action, resource);",
+                Decision::Allow,
+                &[r#"P::"""#],
+                &[r#"R::"""#],
+            );
         }
 
         #[test]
-        fn error_tpe() {
-            let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
-            let req = PartialRequest::new(
-                PartialEntityUid::new("P".parse().unwrap(), None),
-                r#"Action::"A""#.parse().unwrap(),
-                PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
-                &schema,
-            )
-            .unwrap();
-            let response = PolicySet::from_str(&format!(
-                r#"permit(principal, action, resource) when {{ ({} + 1) == 0 || true }};"#,
-                i64::MAX
-            ))
-            .unwrap()
-            .tpe(&req, &partial_entities, &schema)
-            .unwrap();
-            assert_eq!(response.decision(), Some(Decision::Deny));
+        fn trivial_forbid() {
+            assert_tpe_and_queries(
+                r"forbid(principal, action, resource);",
+                Decision::Deny,
+                &[],
+                &[],
+            );
         }
 
         #[test]
-        fn error_query_principal() {
-            let schema = schema();
-            let entities = entities();
-            let req = PrincipalQueryRequest::new(
-                "P".parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                r#"R::"""#.parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let principals = PolicySet::from_str(&format!(
-                r#"permit(principal, action, resource) when {{ ({} + 1) == 0 || true }};"#,
-                i64::MAX
-            ))
-            .unwrap()
-            .query_principal(&req, &entities, &schema)
-            .unwrap()
-            .collect_vec();
-            assert_eq!(&principals, &[]);
+        fn error() {
+            assert_tpe_and_queries(
+                &format!(
+                    r#"permit(principal, action, resource) when {{ ({} + 1) == 0 || true }};"#,
+                    i64::MAX
+                ),
+                Decision::Deny,
+                &[],
+                &[],
+            );
         }
 
         #[test]
-        fn error_query_resource() {
-            let schema = schema();
-            let entities = entities();
-            let req = ResourceQueryRequest::new(
-                r#"P::"""#.parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                "R".parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let resources = PolicySet::from_str(&format!(
-                r#"permit(principal, action, resource) when {{ ({} + 1) == 0 || true }};"#,
-                i64::MAX
-            ))
-            .unwrap()
-            .query_resource(&req, &entities, &schema)
-            .unwrap()
-            .collect_vec();
-            assert_eq!(&resources, &[]);
-        }
-
-        #[test]
-        fn empty_tpe() {
-            let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
-            let req = PartialRequest::new(
-                PartialEntityUid::new("P".parse().unwrap(), None),
-                r#"Action::"A""#.parse().unwrap(),
-                PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
-                &schema,
-            )
-            .unwrap();
-            let response = PolicySet::from_str(r#""#)
-                .unwrap()
-                .tpe(&req, &partial_entities, &schema)
-                .unwrap();
-            assert_eq!(response.decision(), Some(Decision::Deny));
-        }
-
-        #[test]
-        fn empty_query_principal() {
-            let schema = schema();
-            let entities = entities();
-            let req = PrincipalQueryRequest::new(
-                "P".parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                r#"R::"""#.parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let principals = PolicySet::from_str(r#""#)
-                .unwrap()
-                .query_principal(&req, &entities, &schema)
-                .unwrap()
-                .collect_vec();
-            assert_eq!(&principals, &[]);
-        }
-
-        #[test]
-        fn empty_query_resource() {
-            let schema = schema();
-            let entities = entities();
-            let req = ResourceQueryRequest::new(
-                r#"P::"""#.parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                "R".parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let resources = PolicySet::from_str(r#""#)
-                .unwrap()
-                .query_resource(&req, &entities, &schema)
-                .unwrap()
-                .collect_vec();
-            assert_eq!(&resources, &[]);
+        fn empty() {
+            assert_tpe_and_queries("", Decision::Deny, &[], &[]);
         }
     }
 
@@ -2399,62 +1880,58 @@ when { principal in resource.admins };
         use similar_asserts::assert_eq;
         use std::str::FromStr;
 
+        /// Standard schema for User/Photo action query tests
+        fn photo_schema() -> Schema {
+            Schema::from_str(
+                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
+            )
+            .unwrap()
+        }
+
+        /// Build an ActionQueryRequest for User::"alice" on Photo::"vacation.jpg"
+        fn alice_photo_request(schema: Schema, context: Option<Context>) -> ActionQueryRequest {
+            ActionQueryRequest::new(
+                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
+                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
+                context,
+                schema,
+            )
+            .unwrap()
+        }
+
         #[test]
         fn test() {
             let policies = PolicySet::from_str(
                 r#"
-            // Edit might be alowed, depending on context
             permit(principal, action == Action::"edit", resource)
-            when {
-                context.ip.isInRange(resource.allowed_edit_range)
-            };
+            when { context.ip.isInRange(resource.allowed_edit_range) };
 
-            // We pass a concrete resource, so we know this will be allowed
             permit(principal, action == Action::"view", resource)
-            when {
-                resource.public
-            };
+            when { resource.public };
 
-            // never allowed for any request
             forbid(principal, action == Action::"delete", resource);
 
-            // allowed for this action, but it doesn't apply to the request types
             permit(principal, action == Action::"not_on_photo", resource);
-        "#,
+            "#,
             )
             .unwrap();
             let schema = Schema::from_str(
-                "
+                r#"
             entity User, Other;
-            entity Photo {
-              public: Bool,
-              allowed_edit_range: ipaddr,
-            };
+            entity Photo { public: Bool, allowed_edit_range: ipaddr };
             action view, edit, delete appliesTo {
-              principal: User,
-              resource: Photo,
-              context: {
-                ip: ipaddr,
-              }
+                principal: User, resource: Photo, context: { ip: ipaddr }
             };
-            action not_on_photo appliesTo {
-                principal: User,
-                resource: Other
-            };
-        ",
+            action not_on_photo appliesTo { principal: User, resource: Other };
+            "#,
             )
             .unwrap();
             let entities = PartialEntities::from_json_value(
-                serde_json::json!([
-                    {
-                        "uid": { "__entity": { "type": "Photo", "id": "vacation.jpg"} },
-                        "attrs": {
-                            "public": true,
-                            "allowed_edit_range": "192.0.2.0/24"
-                        },
-                        "parents": []
-                    },
-                ]),
+                serde_json::json!([{
+                    "uid": { "__entity": { "type": "Photo", "id": "vacation.jpg" } },
+                    "attrs": { "public": true, "allowed_edit_range": "192.0.2.0/24" },
+                    "parents": []
+                }]),
                 &schema,
             )
             .unwrap();
@@ -2484,19 +1961,9 @@ when { principal in resource.admins };
         #[test]
         fn permitted_action() {
             let policies = PolicySet::from_str("permit(principal, action, resource);").unwrap();
-            let schema = Schema::from_str(
-                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
-            )
-            .unwrap();
+            let schema = photo_schema();
             let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
+            let request = alice_photo_request(schema, None);
 
             let actions: Vec<_> = policies
                 .query_action(&request, &entities)
@@ -2519,14 +1986,7 @@ when { principal in resource.admins };
             )
             .unwrap();
             let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
+            let request = alice_photo_request(schema, None);
 
             let actions: Vec<_> = policies
                 .query_action(&request, &entities)
@@ -2538,19 +1998,9 @@ when { principal in resource.admins };
         #[test]
         fn forbidden_action() {
             let policies = PolicySet::from_str("forbid(principal, action, resource);").unwrap();
-            let schema = Schema::from_str(
-                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
-            )
-            .unwrap();
+            let schema = photo_schema();
             let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
+            let request = alice_photo_request(schema, None);
 
             let actions: Vec<_> = policies
                 .query_action(&request, &entities)
@@ -2562,16 +2012,12 @@ when { principal in resource.admins };
         #[test]
         fn invalid_permitted_action() {
             let policies = PolicySet::from_str("permit(principal, action, resource);").unwrap();
-            let schema = Schema::from_str("entity User, Photo, Other; action view appliesTo { principal: User, resource: Other};").unwrap();
+            let schema = Schema::from_str(
+            "entity User, Photo, Other; action view appliesTo { principal: User, resource: Other};",
+        )
+        .unwrap();
             let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
+            let request = alice_photo_request(schema, None);
 
             let actions: Vec<_> = policies
                 .query_action(&request, &entities)
@@ -2585,14 +2031,7 @@ when { principal in resource.admins };
             let policies = PolicySet::from_str("permit(principal, action, resource);").unwrap();
             let schema = Schema::from_str("entity User, Photo; action view appliesTo { principal: User, resource: Photo, context: {a: Long}};").unwrap();
             let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                Some(Context::empty()),
-                schema,
-            )
-            .unwrap();
+            let request = alice_photo_request(schema, Some(Context::empty()));
 
             let actions: Vec<_> = policies
                 .query_action(&request, &entities)
@@ -2606,14 +2045,7 @@ when { principal in resource.admins };
             let policies = PolicySet::from_str("permit(principal, action, resource);").unwrap();
             let schema = Schema::from_str("entity User, Photo;").unwrap();
             let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
+            let request = alice_photo_request(schema, None);
 
             let actions: Vec<_> = policies
                 .query_action(&request, &entities)
@@ -2625,19 +2057,9 @@ when { principal in resource.admins };
         #[test]
         fn permitted_action_error_permit() {
             let policies = PolicySet::from_str(&format!("permit(principal, action, resource);permit(principal, action, resource) when {{ {} + 1 == 0 || true }};", i64::MAX)).unwrap();
-            let schema = Schema::from_str(
-                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
-            )
-            .unwrap();
+            let schema = photo_schema();
             let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
+            let request = alice_photo_request(schema, None);
 
             let actions: Vec<_> = policies
                 .query_action(&request, &entities)
@@ -2652,19 +2074,9 @@ when { principal in resource.admins };
         #[test]
         fn permitted_action_error_forbid() {
             let policies = PolicySet::from_str(&format!("permit(principal, action, resource);forbid(principal, action, resource) when {{ {} + 1 == 0 || true }};", i64::MAX)).unwrap();
-            let schema = Schema::from_str(
-                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
-            )
-            .unwrap();
+            let schema = photo_schema();
             let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
+            let request = alice_photo_request(schema, None);
 
             let actions: Vec<_> = policies
                 .query_action(&request, &entities)
@@ -2683,19 +2095,9 @@ when { principal in resource.admins };
                 i64::MAX
             ))
             .unwrap();
-            let schema = Schema::from_str(
-                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
-            )
-            .unwrap();
+            let schema = photo_schema();
             let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
+            let request = alice_photo_request(schema, None);
 
             let actions: Vec<_> = policies
                 .query_action(&request, &entities)
@@ -2719,47 +2121,28 @@ when { principal in resource.admins };
             entity User = { name: String };
             entity Account = { name: String, assignedTo?: User };
             action RevealCredentials appliesTo {
-                principal: [User],
-                resource: [Account],
-                context: { flag: Bool },
+                principal: [User], resource: [Account], context: { flag: Bool }
             };
             "#,
         )
         .unwrap();
 
         let policies = crate::PolicySet::from_str(
-            r#"
-            permit(
-                principal is User,
-                action == Action::"RevealCredentials",
-                resource is Account
-            ) when {
-                context.flag &&
-                resource has assignedTo &&
-                resource.assignedTo == principal
-            };
-            "#,
+            r#"permit(principal is User, action == Action::"RevealCredentials", resource is Account)
+           when { context.flag && resource has assignedTo && resource.assignedTo == principal };"#,
         )
         .unwrap();
 
         // Account without assignedTo — TPE will produce an error node for
         // `resource.assignedTo`
         let entities = crate::Entities::from_json_value(
-            serde_json::json!([
-                {
-                    "uid": { "type": "User", "id": "u1" },
-                    "attrs": { "name": "alice" },
-                    "parents": []
-                },
-                {
-                    "uid": { "type": "Account", "id": "a1" },
-                    "attrs": { "name": "shared" },
-                    "parents": []
-                }
-            ]),
-            Some(&schema),
-        )
-        .unwrap();
+        serde_json::json!([
+            { "uid": { "type": "User", "id": "u1" }, "attrs": { "name": "alice" }, "parents": [] },
+            { "uid": { "type": "Account", "id": "a1" }, "attrs": { "name": "shared" }, "parents": [] },
+        ]),
+        Some(&schema),
+    )
+    .unwrap();
 
         let partial_entities = crate::PartialEntities::from_concrete(entities, &schema).unwrap();
 
@@ -2820,9 +2203,9 @@ when { principal in resource.admins };
 
         fn schema() -> Schema {
             Schema::from_str(
-                "entity User { age: Long }; entity Photo; action view appliesTo { principal: User, resource: Photo};",
-            )
-            .unwrap()
+            "entity User { age: Long }; entity Photo; action view appliesTo { principal: User, resource: Photo};",
+        )
+        .unwrap()
         }
 
         fn template_policy_set() -> PolicySet {
