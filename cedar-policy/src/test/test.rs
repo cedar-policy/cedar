@@ -9816,10 +9816,16 @@ mod pst_api {
             p.clone().to_pst().unwrap().to_string(),
             pst_template_with_slot().to_string()
         );
-        assert!(matches!(
-            p.try_into_pst().unwrap_err(),
-            pst::PstConstructionError::PolicyFromEmptyRepresentation(_)
-        ))
+        assert_matches!(
+            p.try_into_pst(),
+            Ok(pst::Template {
+                effect: pst::Effect::Permit,
+                principal: pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(
+                    pst::SlotId::Principal
+                )),
+                ..
+            })
+        )
     }
 
     #[test]

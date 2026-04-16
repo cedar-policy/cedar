@@ -127,21 +127,24 @@ impl std::fmt::Display for Clause {
 /// # use smol_str::SmolStr;
 /// # use std::sync::Arc;
 /// # use std::collections::BTreeMap;
+/// let user_alice = EntityUID {
+///     ty: EntityType::from_name(Name::unqualified("User").unwrap()),
+///     eid: SmolStr::from("alice"),
+/// };
+/// let action_view = EntityUID {
+///     ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
+///     eid: SmolStr::from("view"),
+/// };
+/// let album_vacation = EntityUID {
+///     ty: EntityType::from_name(Name::unqualified("Album").unwrap()),
+///     eid: SmolStr::from("vacation"),
+/// };
 /// let template = Template::new(
 ///     PolicyID(SmolStr::from("policy0")),
 ///     Effect::Permit,
-///     PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
-///         ty: EntityType::from_name(Name::unqualified("User").unwrap()),
-///         eid: SmolStr::from("alice"),
-///     })),
-///     ActionConstraint::Eq(EntityUID {
-///         ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
-///         eid: SmolStr::from("view"),
-///     }),
-///     ResourceConstraint::In(EntityOrSlot::Entity(EntityUID {
-///         ty: EntityType::from_name(Name::unqualified("Album").unwrap()),
-///         eid: SmolStr::from("vacation"),
-///     })),
+///     PrincipalConstraint::Eq(EntityOrSlot::Entity(user_alice)),
+///     ActionConstraint::Eq(action_view),
+///     ResourceConstraint::In(EntityOrSlot::Entity(album_vacation)),
 /// )
 /// .try_with_clauses(vec![
 ///     Clause::When(Arc::new(Expr::BinaryOp {
@@ -311,7 +314,7 @@ impl std::fmt::Display for Template {
 ///
 /// To build a [`StaticPolicy`] from its body (a [`Template`] without slots), you should use
 /// [`StaticPolicy::try_from`], which will validate that the body does not contain any slot.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct StaticPolicy {
     /// The body of the static policy: a policy template that doesn't have any slots
@@ -349,7 +352,7 @@ impl TryFrom<Template> for StaticPolicy {
 ///
 /// To build a [`LinkedPolicy`], you should use [`LinkedPolicy::new`], which will validate that
 /// the linked policy is provided values for all the slots in its body.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct LinkedPolicy {
     /// The body of the policy is a template with slots
@@ -421,7 +424,7 @@ impl From<LinkedPolicy> for Policy {
 /// A Policy can be represented either as a static policy or a linked policy. A linked policy
 /// can be transformed into a static one, but information about the template id and which slots
 /// are linked would be lost.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Policy {
     /// Static policy, i.e. a policy with no slots
     Static(StaticPolicy),
