@@ -237,16 +237,45 @@ impl Entities {
         extensions: &Extensions<'_>,
     ) -> Result<Self> {
         let checker = schema.map(|schema| EntitySchemaConformanceChecker::new(schema, extensions));
+        let mut entities_touched: HashSet<EntityUID> = HashSet::new();
         for entity in collection.into_iter() {
             if let Some(checker) = checker.as_ref() {
                 checker.validate_entity(&entity)?;
             }
+            let uid = entity.uid().clone();
+            // If overwriting an existing entity, strip stale TC edges from its descendants
+            if let Some(old_entity) = self.entities.get(&uid) {
+                let old_ancestors: HashSet<EntityUID> =
+                    old_entity.ancestors().cloned().collect();
+                for other in self.entities.values_mut() {
+                    if other.uid() != &uid && other.is_descendant_of(&uid) {
+                        entities_touched.insert(other.uid().clone());
+                        Arc::make_mut(other).remove_indirect_ancestor(&uid);
+                        for ancestor_uid in &old_ancestors {
+                            Arc::make_mut(other).remove_indirect_ancestor(ancestor_uid);
+                        }
+                    }
+                }
+            }
+            entities_touched.insert(uid);
             update_entity_map(&mut self.entities, entity, true)?;
         }
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => (),
             TCComputation::EnforceAlreadyComputed => enforce_tc_and_dag(&self.entities)?,
-            TCComputation::ComputeNow => compute_tc(&mut self.entities, true)?,
+            TCComputation::ComputeNow => {
+                for entity in self.entities.values() {
+                    if !entities_touched.is_disjoint(
+                        &entity
+                            .ancestors()
+                            .map(EntityUID::clone)
+                            .collect::<HashSet<EntityUID>>(),
+                    ) {
+                        entities_touched.insert(entity.uid().clone());
+                    }
+                }
+                repair_tc(entities_touched, &mut self.entities, true)?
+            }
         };
         Ok(self)
     }

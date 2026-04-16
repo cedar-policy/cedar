@@ -110,10 +110,12 @@ where
     // we assume that the graph is acyclic during the below call.
     // This allows the below call to do a single scan of each node
     // rather than two scans of each node.
-    compute_tc_internal::<K, V>(nodes_to_fix.into_iter(), nodes, seen, enforce_dag);
+    compute_tc_internal::<K, V>(nodes_to_fix.iter().cloned(), nodes, seen, enforce_dag);
 
     if enforce_dag {
-        return enforce_dag_from_tc(nodes);
+        // TC is correct by construction (same as compute_tc). Only need to
+        // check for self-loops, and only on nodes whose edges were modified.
+        return enforce_dag_from_tc_for(&nodes_to_fix, nodes);
     }
     Ok(())
 }
@@ -464,6 +466,27 @@ where
         let key = entity.get_key();
         if entity.out_edges().contains(&key) {
             return Err(TcError::has_cycle(key));
+        }
+    }
+    Ok(())
+}
+
+/// Like [`enforce_dag_from_tc`] but only checks nodes in `nodes_to_check`.
+/// This is sound after `repair_tc` because only nodes whose edges were modified
+/// could have gained a self-loop.
+fn enforce_dag_from_tc_for<K, V>(
+    nodes_to_check: &HashSet<K>,
+    entities: &HashMap<K, V>,
+) -> Result<(), K>
+where
+    K: Clone + Eq + Hash + Debug + Display,
+    V: TCNode<K>,
+{
+    for key in nodes_to_check {
+        if let Some(entity) = entities.get(key) {
+            if entity.has_edge_to(key) {
+                return Err(TcError::has_cycle(key.clone()));
+            }
         }
     }
     Ok(())
