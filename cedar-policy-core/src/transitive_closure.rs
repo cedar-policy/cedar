@@ -63,17 +63,15 @@ where
     K: Clone + Eq + Hash + Debug + Display,
     V: TCNode<K>,
 {
-    let all_node_ids = nodes.keys().map(K::clone).collect::<Vec<K>>();
-
-    // If the caller does not want to check that the graph is a DAG,
-    // we assume that the graph is acyclic during the below call.
-    // This allows the below call to do a single scan of each node
-    // rather than two scans of each node.
-    compute_tc_internal(all_node_ids.into_iter(), nodes, HashSet::new(), enforce_dag);
-
     if enforce_dag {
+        // Single-pass SCC-based algorithm: computes exact TC even for cyclic
+        // graphs, then checks for self-loops to detect cycles.
+        cyclic_tc(nodes);
         return enforce_dag_from_tc(nodes);
     }
+    // DAG assumed — single scan per node is sufficient.
+    let all_node_ids = nodes.keys().map(K::clone).collect::<Vec<K>>();
+    compute_tc_internal(all_node_ids.into_iter(), nodes, HashSet::new(), false);
     Ok(())
 }
 
@@ -140,9 +138,10 @@ fn compute_tc_internal<K, V>(
     V: TCNode<K>,
 {
     for node_id in node_ids {
-        if detect_cyles {
-            add_ancestors(&node_id, nodes, &mut seen);
-        } else if seen.insert(node_id.clone()) {
+        // When detect_cycles is false, skip nodes already in `seen` (single visit).
+        // When detect_cycles is true, always visit — the second pass propagates
+        // enough TC edges for self-loop detection on cyclic graphs.
+        if detect_cyles || seen.insert(node_id.clone()) {
             add_ancestors(&node_id, nodes, &mut seen);
         }
     }
@@ -332,18 +331,18 @@ fn cyclic_tc_internal<K, V>(
                 clippy::indexing_slicing,
                 reason = "both `i` and `i - 1` are guaranteed to be valid indices into `cstack_tail`."
             )]
-            if i == 0 || cstack_tail[i - 1] == cstack_tail[i] {
+            if i == 0 || cstack_tail[i - 1] != cstack_tail[i] {
                 #[expect(
                     clippy::indexing_slicing,
                     reason = "`i` is a valid index into `cstack_tail`."
                 )]
-                let X = cstack_tail[i];
-                if succ.insert(X) {
+                let tail_elt = cstack_tail[i];
+                if succ.insert(tail_elt) {
                     #[expect(
                         clippy::indexing_slicing,
-                        reason = "`X` is a component id created by a previous call to `cyclic_tc_internal` and thus must be a valid index to `comp_succ`."
+                        reason = "`tail_elt` is a component id created by a previous call to `cyclic_tc_internal` and thus must be a valid index to `comp_succ`."
                     )]
-                    succ.extend(comp_succ[X].clone());
+                    succ.extend(comp_succ[tail_elt].clone());
                 }
             }
         }
@@ -1162,5 +1161,319 @@ mod tests {
         assert!(enforce_tc(&entities).is_ok());
         // passes cycle check after TC enforcement
         assert!(enforce_dag_from_tc(&entities).is_ok());
+    }
+
+    /// Helper: collect the out-edge set for every node
+    fn snapshot(entities: &HashMap<EntityUID, Entity>) -> HashMap<EntityUID, HashSet<EntityUID>> {
+        entities
+            .iter()
+            .map(|(k, v)| (k.clone(), v.out_edges().cloned().collect()))
+            .collect()
+    }
+
+    /// Build a fresh copy of the entity map with only direct parent edges
+    fn fresh_copy(entities: &HashMap<EntityUID, Entity>) -> HashMap<EntityUID, Entity> {
+        entities
+            .values()
+            .map(|e| {
+                let mut fresh = Entity::with_uid(e.uid().clone());
+                for p in e.parents() {
+                    fresh.add_parent(p.clone());
+                }
+                (fresh.uid().clone(), fresh)
+            })
+            .collect()
+    }
+
+    /// Use `cyclic_tc` as a test oracle: verify that `cyclic_tc` produces
+    /// identical results to `compute_tc` on DAGs.
+    #[test]
+    fn cyclic_tc_oracle_on_dags() {
+        for (name, base) in &dag_test_graphs() {
+            let mut via_compute = fresh_copy(base);
+            compute_tc(&mut via_compute, false).expect("compute_tc failed");
+
+            let mut via_cyclic = fresh_copy(base);
+            cyclic_tc(&mut via_cyclic);
+
+            assert_eq!(
+                snapshot(&via_compute),
+                snapshot(&via_cyclic),
+                "TC mismatch on DAG '{name}'"
+            );
+        }
+    }
+
+    /// Use `cyclic_tc` as a test oracle on cyclic graphs: verify exact TC
+    /// and that enforce_tc passes afterwards.
+    #[test]
+    fn cyclic_tc_oracle_on_cycles() {
+        for (name, base) in &cyclic_test_graphs() {
+            let mut entities = fresh_copy(base);
+            cyclic_tc(&mut entities);
+
+            assert!(
+                enforce_tc(&entities).is_ok(),
+                "enforce_tc failed after cyclic_tc on '{name}'"
+            );
+            // All cyclic test graphs contain cycles, so DAG check must fail
+            assert!(
+                enforce_dag_from_tc(&entities).is_err(),
+                "expected cycle detection on '{name}'"
+            );
+        }
+    }
+
+    fn dag_test_graphs() -> Vec<(&'static str, HashMap<EntityUID, Entity>)> {
+        vec![
+            ("A->B->C", {
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let c = Entity::with_uid(EntityUID::with_eid("C"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                ])
+            }),
+            ("A->B->C->D->E", {
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("D"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("E"));
+                let e = Entity::with_uid(EntityUID::with_eid("E"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                ])
+            }),
+            ("multi_parents", {
+                //     B -> C
+                //   /
+                // A
+                //   \
+                //     D -> E
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                a.add_parent(EntityUID::with_eid("D"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let c = Entity::with_uid(EntityUID::with_eid("C"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("E"));
+                let e = Entity::with_uid(EntityUID::with_eid("E"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                ])
+            }),
+            ("diamond", {
+                // A -> B -> D
+                // A -> C -> D
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                a.add_parent(EntityUID::with_eid("C"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("D"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("D"));
+                let d = Entity::with_uid(EntityUID::with_eid("D"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                ])
+            }),
+            ("dag_with_join", {
+                //     B -> C
+                //   /  \
+                // A      D -> E -> H
+                //   \        /
+                //     F -> G
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                a.add_parent(EntityUID::with_eid("F"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                b.add_parent(EntityUID::with_eid("D"));
+                let c = Entity::with_uid(EntityUID::with_eid("C"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("E"));
+                let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+                e.add_parent(EntityUID::with_eid("H"));
+                let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+                f.add_parent(EntityUID::with_eid("G"));
+                let mut g = Entity::with_uid(EntityUID::with_eid("G"));
+                g.add_parent(EntityUID::with_eid("E"));
+                let h = Entity::with_uid(EntityUID::with_eid("H"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                    (f.uid().clone(), f),
+                    (g.uid().clone(), g),
+                    (h.uid().clone(), h),
+                ])
+            }),
+            ("already_edges", {
+                //     B --> E
+                //   /  \   /
+                // A ---> C
+                //   \   /
+                //     D --> F
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                a.add_parent(EntityUID::with_eid("C"));
+                a.add_parent(EntityUID::with_eid("D"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                b.add_parent(EntityUID::with_eid("E"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("E"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("C"));
+                d.add_parent(EntityUID::with_eid("F"));
+                let e = Entity::with_uid(EntityUID::with_eid("E"));
+                let f = Entity::with_uid(EntityUID::with_eid("F"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                    (f.uid().clone(), f),
+                ])
+            }),
+            ("disjoint", {
+                //     B -> C
+                //
+                // A      D -> E -> H
+                //   \
+                //     F -> G
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("F"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let c = Entity::with_uid(EntityUID::with_eid("C"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("E"));
+                let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+                e.add_parent(EntityUID::with_eid("H"));
+                let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+                f.add_parent(EntityUID::with_eid("G"));
+                let g = Entity::with_uid(EntityUID::with_eid("G"));
+                let h = Entity::with_uid(EntityUID::with_eid("H"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                    (f.uid().clone(), f),
+                    (g.uid().clone(), g),
+                    (h.uid().clone(), h),
+                ])
+            }),
+        ]
+    }
+
+    fn cyclic_test_graphs() -> Vec<(&'static str, HashMap<EntityUID, Entity>)> {
+        vec![
+            ("trivial_cycle", {
+                // A -> B -> B
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("B"));
+                HashMap::from([(a.uid().clone(), a), (b.uid().clone(), b)])
+            }),
+            ("simple_cycle", {
+                // A -> B -> C -> A, B -> D
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                b.add_parent(EntityUID::with_eid("D"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("A"));
+                let d = Entity::with_uid(EntityUID::with_eid("D"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                ])
+            }),
+            ("disjoint_cycles", {
+                // B -> C -> B,  D -> E -> H -> D
+                // A -> F -> G
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("F"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("B"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("E"));
+                let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+                e.add_parent(EntityUID::with_eid("H"));
+                let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+                f.add_parent(EntityUID::with_eid("G"));
+                let g = Entity::with_uid(EntityUID::with_eid("G"));
+                let mut h = Entity::with_uid(EntityUID::with_eid("H"));
+                h.add_parent(EntityUID::with_eid("D"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                    (f.uid().clone(), f),
+                    (g.uid().clone(), g),
+                    (h.uid().clone(), h),
+                ])
+            }),
+            ("intersecting_cycles", {
+                //  A -> B -> C -> E -> D -> A
+                //  D -> B, D -> F -> E
+                let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+                a.add_parent(EntityUID::with_eid("B"));
+                let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+                b.add_parent(EntityUID::with_eid("C"));
+                let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+                c.add_parent(EntityUID::with_eid("E"));
+                let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+                d.add_parent(EntityUID::with_eid("A"));
+                d.add_parent(EntityUID::with_eid("B"));
+                d.add_parent(EntityUID::with_eid("F"));
+                let mut e = Entity::with_uid(EntityUID::with_eid("E"));
+                e.add_parent(EntityUID::with_eid("D"));
+                let mut f = Entity::with_uid(EntityUID::with_eid("F"));
+                f.add_parent(EntityUID::with_eid("E"));
+                HashMap::from([
+                    (a.uid().clone(), a),
+                    (b.uid().clone(), b),
+                    (c.uid().clone(), c),
+                    (d.uid().clone(), d),
+                    (e.uid().clone(), e),
+                    (f.uid().clone(), f),
+                ])
+            }),
+        ]
     }
 }

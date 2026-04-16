@@ -565,9 +565,7 @@ impl PartialEntities {
             .into_iter()
             .map(|e| e.try_into().map(|e: PartialEntity| (e.uid.clone(), e)))
             .try_collect()?;
-        entities_map
-            .values()
-            .try_for_each(|e| e.validate(schema))?;
+        entities_map.values().try_for_each(|e| e.validate(schema))?;
         validate_ancestors(&entities_map)?;
         // TC is already computed in the source Entities — the conversion to
         // PartialEntity preserves all ancestors (direct + indirect).

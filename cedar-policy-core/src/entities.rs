@@ -245,8 +245,7 @@ impl Entities {
             let uid = entity.uid().clone();
             // If overwriting an existing entity, strip stale TC edges from its descendants
             if let Some(old_entity) = self.entities.get(&uid) {
-                let old_ancestors: HashSet<EntityUID> =
-                    old_entity.ancestors().cloned().collect();
+                let old_ancestors: HashSet<EntityUID> = old_entity.ancestors().cloned().collect();
                 for other in self.entities.values_mut() {
                     if other.uid() != &uid && other.is_descendant_of(&uid) {
                         entities_touched.insert(other.uid().clone());
