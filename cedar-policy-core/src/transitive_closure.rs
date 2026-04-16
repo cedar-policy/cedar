@@ -127,7 +127,7 @@ where
 /// the exact TC for graphs containing simple cycles. For more complex cyclic graphs,
 /// the below code computes enough of the transtive closure to ensure that if one
 /// calls `enforce_dag_from_tc` on `nodes` after this function returns then it will
-/// correctly detect any cycles (simple or compelx).
+/// correctly detect any cycles (simple or complex).
 fn compute_tc_internal<K, V>(
     node_ids: impl Iterator<Item = K>,
     nodes: &mut HashMap<K, V>,
@@ -163,7 +163,7 @@ where
         if !order_visited.contains_key(&node_id) {
             cyclic_tc_internal(
                 &node_id,
-                &nodes,
+                nodes,
                 &mut order_visited,
                 &mut root,
                 &mut vstack,
@@ -177,18 +177,25 @@ where
     // component_tc => nodes_tc
     for comp_id in 0..comp_elts.len() {
         let mut elt_succ = HashSet::new();
-        // PANIC SAFETY! `comp_succ` and `comp_elts` must have the same length, thus `comp_id` is a valid index to `comp_succ`.
-        #[allow(clippy::indexing_slicing)]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "`comp_succ` and `comp_elts` must have the same length, thus `comp_id` is a valid index to `comp_succ`."
+        )]
         for comp_parent_id in comp_succ[comp_id].iter() {
-            // PANIC SAFETY! `comp_parent_id` must be a valid component id to be inserted into `comp_succ` therefore must exist within `comp_elts`.
-            #[allow(clippy::indexing_slicing)]
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "`comp_parent_id` must be a valid component id to be inserted into `comp_succ` therefore must exist within `comp_elts`."
+            )]
             for node_id in comp_elts[*comp_parent_id].iter() {
                 // not fine to consume here
                 elt_succ.insert(node_id.clone());
             }
         }
-        // PANIC SAFETY! `comp_id` \in [0, |`comp_elts`|) is a valid index into `comp_elts`.
-        #[allow(clippy::indexing_slicing)]
+
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "`comp_id` in [0, |`comp_elts`|) is a valid index into `comp_elts`."
+        )]
         for node_id in comp_elts[comp_id].iter() {
             let node = match nodes.get_mut(node_id) {
                 Some(node) => node,
@@ -201,6 +208,10 @@ where
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "internal function in complex algorithm"
+)]
 fn cyclic_tc_internal<K, V>(
     node_id: &K,
     nodes: &HashMap<K, V>,
@@ -254,13 +265,17 @@ fn cyclic_tc_internal<K, V>(
             }
             match component.get(parent_id) {
                 None => {
-                    // PANIC SAFETY! `parent_id` must have been visited either by a previous call or just above
-                    #[allow(clippy::expect_used)]
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "`parent_id` must have been visited either by a previous call or just above"
+                    )]
                     let parent_root = root
                         .get(parent_id)
                         .expect("Parent has been visited so it must have a root.");
-                    // PANIC SAFETY! in order for `parent_root` to be the parent of `parent_id` it must have been visited.
-                    #[allow(clippy::expect_used)]
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "in order for `parent_root` to be the parent of `parent_id` it must have been visited."
+                    )]
                     let parent_root_order = order_visited
                         .get(parent_root)
                         .expect("The parent's root must have been visited.");
@@ -270,8 +285,10 @@ fn cyclic_tc_internal<K, V>(
                     }
                 }
                 Some(parent_component) => {
-                    // PANIC SAFETY! `parent_id` must have been visited either by a previous call or just above
-                    #[allow(clippy::expect_used)]
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "`parent_id` must have been visited either by a previous call or just above"
+                    )]
                     let parent_order = order_visited
                         .get(parent_id)
                         .expect("The parent must have been traversed by this point.");
@@ -283,8 +300,10 @@ fn cyclic_tc_internal<K, V>(
             }
         }
     } // end for loop over parents
-      // PANIC SAFETY! `node_id` must have a root. It was inserted at the begining of this function
-    #[allow(clippy::expect_used)]
+    #[expect(
+        clippy::expect_used,
+        reason = "`node_id` must have a root. It was inserted at the begining of this function"
+    )]
     let node_root = root
         .get(node_id)
         .expect("Node must have a root by this point.");
@@ -293,8 +312,10 @@ fn cyclic_tc_internal<K, V>(
         let component_id = comp_elts.len();
         let mut succ = HashSet::new();
         let mut elmts = HashSet::new();
-        // PANIC SAFETY! The vertex stack must not be empty because at least node_id must be on the stack!
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = " The vertex stack must not be empty because at least node_id must be on the stack!"
+        )]
         if self_loop || vstack.last().expect("vertex stack must be non-empty") != node_id {
             succ.insert(component_id);
         }
@@ -305,22 +326,30 @@ fn cyclic_tc_internal<K, V>(
         // iterate through components in topological order
         for i in 0..cstack_tail.len() {
             // update this component's successors with next component avoiding duplicate components
-            // PANIC SAFETY! both `i` and `i - 1` are gauranteed to be valid indices into `cstack_tail`.
-            #[allow(clippy::indexing_slicing)]
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "both `i` and `i - 1` are guaranteed to be valid indices into `cstack_tail`."
+            )]
             if i == 0 || cstack_tail[i - 1] == cstack_tail[i] {
-                // PANIC SAFETY! `i` is a valid index into `cstack_tail`.
-                #[allow(clippy::indexing_slicing)]
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "`i` is a valid index into `cstack_tail`."
+                )]
                 let X = cstack_tail[i];
                 if succ.insert(X) {
-                    // PANIC SAFETY! `X` is a component id created by a previous call to `cyclic_tc_internal` and thus must be a valid index to `comp_succ`.
-                    #[allow(clippy::indexing_slicing)]
+                    #[expect(
+                        clippy::indexing_slicing,
+                        reason = "`X` is a component id created by a previous call to `cyclic_tc_internal` and thus must be a valid index to `comp_succ`."
+                    )]
                     succ.extend(comp_succ[X].clone());
                 }
             }
         }
         loop {
-            // PANIC SAFETY! The vertex stack `vstack` must contain at least `node_id`
-            #[allow(clippy::expect_used)]
+            #[expect(
+                clippy::expect_used,
+                reason = "The vertex stack `vstack` must contain at least `node_id`"
+            )]
             let ancestor_id = vstack.pop().expect("Vetex stack must be non-empty");
             component.insert(ancestor_id.clone(), component_id);
             elmts.insert(ancestor_id.clone());
@@ -363,8 +392,10 @@ where
             }
         }
     }
-    // PANIC SAFETY this node should always exist because of the check to get `out_edges`
-    #[allow(clippy::expect_used)]
+    #[expect(
+        clippy::expect_used,
+        reason = "this node should always exist because of the check to get `out_edges`"
+    )]
     let node = nodes
         .get_mut(node_id)
         .expect("This node should always exist.");
