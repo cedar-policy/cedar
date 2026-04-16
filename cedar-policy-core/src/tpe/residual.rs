@@ -274,7 +274,7 @@ impl Residual {
                     // Any slot not bound in the env is an error now rather than waiting for evaluation
                     return Err(evaluation_errors::UnlinkedSlotError {
                         slot: *slot,
-                        source_loc: None,
+                        source_loc: expr.source_loc().cloned(),
                     }
                     .into());
                 }

@@ -92,14 +92,13 @@ pub fn is_authorized_batched(
     max_iters: u32,
 ) -> Result<Decision, BatchedEvalError> {
     let request = concrete_request_to_partial(request, schema)?;
-    let exprs = policy_residual_map(&request, ps, schema)?;
     let mut entities = PartialEntities::default();
     let initial_evaluator = Evaluator {
         request: &request,
         entities: &entities,
         extensions: Extensions::all_available(),
     };
-    let residuals_res: Result<Vec<ResidualPolicy>, BatchedEvalError> = exprs
+    let mut residuals: Vec<ResidualPolicy> = policy_residual_map(&request, ps, schema)?
         .into_iter()
         .map(|(id, expr)| {
             let residual = initial_evaluator.interpret(&expr);
@@ -107,18 +106,10 @@ pub fn is_authorized_batched(
                 clippy::unwrap_used,
                 reason = "exprs and policy set contain the same policy ids"
             )]
-            Ok(ResidualPolicy::new(
-                Arc::new(residual),
-                Arc::new(ps.get(id).unwrap().clone()),
-            ))
+            ResidualPolicy::new(Arc::new(residual), Arc::new(ps.get(id).unwrap().clone()))
         })
         .collect();
-    let mut residuals = residuals_res?;
 
-    #[expect(
-        clippy::unwrap_used,
-        reason = "residuals and policy set contain the same policy ids"
-    )]
     for _i in 0..max_iters {
         let ids = residuals.iter().flat_map(|r| r.all_literal_uids());
         let mut to_load = HashSet::new();
@@ -156,10 +147,15 @@ pub fn is_authorized_batched(
             entities: &entities,
             extensions: Extensions::all_available(),
         };
+
         // perform partial evaluation again
         residuals = residuals
             .into_iter()
             .map(|residual| {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "residuals and policy set contain the same policy ids"
+                )]
                 ResidualPolicy::new(
                     Arc::new(evaluator.interpret(&residual.get_residual())),
                     Arc::new(ps.get(&residual.get_policy_id()).unwrap().clone()),

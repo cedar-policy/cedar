@@ -83,13 +83,12 @@ pub fn is_authorized<'a>(
     entities: &'a PartialEntities,
     schema: &'a ValidatorSchema,
 ) -> std::result::Result<Response<'a>, TpeError> {
-    let exprs = policy_residual_map(request, ps, schema)?;
     let evaluator = Evaluator {
         request,
         entities,
         extensions: Extensions::all_available(),
     };
-    let residuals: Vec<_> = exprs
+    let residuals = policy_residual_map(request, ps, schema)?
         .into_iter()
         .map(|(id, residual)| {
             let residual = evaluator.interpret(&residual);
@@ -98,15 +97,9 @@ pub fn is_authorized<'a>(
                 reason = "exprs and policy set contain the same policy ids"
             )]
             ResidualPolicy::new(Arc::new(residual), Arc::new(ps.get(id).unwrap().clone()))
-        })
-        .collect();
+        });
 
-    Ok(Response::new(
-        residuals.into_iter(),
-        request,
-        entities,
-        schema,
-    ))
+    Ok(Response::new(residuals, request, entities, schema))
 }
 
 #[cfg(test)]

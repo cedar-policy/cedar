@@ -2783,11 +2783,11 @@ when { principal in resource.admins };
     }
 
     mod template_links {
-        use std::{collections::HashMap, str::FromStr, sync::Arc};
+        use std::{collections::HashMap, str::FromStr};
 
         use crate::{
-            pst, Decision, EntityUid, PartialEntities, PartialEntityUid, PartialRequest, PolicyId,
-            PolicySet, Schema, SlotId, Template,
+            pst, Decision, EntityUid, PartialEntities, PartialEntityUid, PartialRequest, Policy,
+            PolicyId, PolicySet, Schema, SlotId, Template,
         };
 
         fn schema() -> Schema {
@@ -2848,6 +2848,18 @@ when { principal in resource.admins };
         }
 
         #[test]
+        fn templates_no_links_deny() {
+            let schema = schema();
+            let policies = template_policy_set();
+
+            let request = partial_req();
+            let es = PartialEntities::empty();
+            let response = policies.tpe(&request, &es, &schema).unwrap();
+
+            assert_eq!(response.decision(), Some(Decision::Deny));
+        }
+
+        #[test]
         fn concrete_deny() {
             let schema = schema();
             let mut policies = template_policy_set();
@@ -2888,29 +2900,17 @@ when { principal in resource.admins };
             let es = PartialEntities::empty();
             let response = policies.tpe(&request, &es, &schema).unwrap();
 
-            assert_eq!(response.decision(), None);
-
-            let expected = pst::Template::new(
-                "l",
-                pst::Effect::Permit,
-                pst::PrincipalConstraint::Any,
-                pst::ActionConstraint::Any,
-                pst::ResourceConstraint::Any,
+            let expected: pst::Policy = Policy::parse(
+                Some(PolicyId::new("l")),
+                r#"permit(principal, action, resource) when { resource == Photo::"p" };"#,
             )
-            .try_with_clauses([pst::Clause::When(Arc::new(pst::Expr::BinaryOp {
-                op: pst::BinaryOp::Eq,
-                left: Arc::new(pst::Expr::Var(pst::Var::Resource)),
-                right: Arc::new(pst::Expr::Literal(pst::Literal::EntityUID(
-                    pst::EntityUID {
-                        ty: pst::EntityType::from_name(pst::Name::unqualified("Photo").unwrap()),
-                        eid: "p".into(),
-                    },
-                ))),
-            }))])
+            .unwrap()
+            .to_pst()
             .unwrap();
 
             let residuals: Vec<_> = response.nontrivial_residual_policies().collect();
-            assert_eq!(residuals[0].to_pst().unwrap().body(), &expected);
+            assert_eq!(residuals[0].to_pst().unwrap().body(), expected.body());
+            assert_eq!(response.decision(), None);
             assert_eq!(residuals.len(), 1);
         }
     }
