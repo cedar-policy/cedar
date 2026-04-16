@@ -396,12 +396,28 @@ impl TpeResponse<'_> {
             .map_err(Into::into)
     }
 
-    /// Return residuals as [`Policy`]s
-    /// A [`Policy`] returned inherits [`crate::PolicyId`] and annotations from
-    /// the corresponding input policy
-    /// Its scope is unconstrained and its condition is in the form of a
-    /// single `when` clause with the residual as the expression
-    /// Use [`TpeResponse::nontrivial_residual_policies`] to get non-trivial residual policies
+    /// Return residuals as [`Policy`]s.
+    ///
+    /// Each returned [`Policy`] inherits its [`PolicyId`](crate::PolicyId) and
+    /// annotations from the corresponding input policy. Its scope is
+    /// unconstrained and its condition is a single `when` clause containing
+    /// the residual expression.
+    ///
+    /// Use [`TpeResponse::nontrivial_residual_policies`] to skip trivially
+    /// `true` or `false` residuals.
+    ///
+    /// The returned policies can be converted to PST for structured
+    /// inspection of the residual expression tree:
+    ///
+    /// ```text
+    /// let response = policy_set.tpe(&request, &entities, &schema)?;
+    /// for policy in response.residual_policies() {
+    ///     let pst_policy = policy.to_pst()?;
+    ///     for clause in pst_policy.body().clauses() {
+    ///         // inspect the residual expression via pst::Clause / pst::Expr
+    ///     }
+    /// }
+    /// ```
     pub fn residual_policies(&self) -> impl Iterator<Item = Policy> + '_ {
         self.0
             .residual_policies()
@@ -409,11 +425,17 @@ impl TpeResponse<'_> {
     }
 
     /// Returns an iterator of non-trivial (meaning more than just `true`
-    /// or `false`) residuals as [`Policy`]s
-    /// A [`Policy`] returned inherits [`crate::PolicyId`] and annotations from
-    /// the corresponding input policy
-    /// Its scope is unconstrained and its condition is in the form of a
-    /// single `when` clause with the residual as the expression
+    /// or `false`) residuals as [`Policy`]s.
+    ///
+    /// Each returned [`Policy`] inherits its [`PolicyId`](crate::PolicyId) and
+    /// annotations from the corresponding input policy. Its scope is
+    /// unconstrained and its condition is a single `when` clause containing
+    /// the residual expression.
+    ///
+    /// Call [`Policy::to_pst()`] on each result to get a [`crate::pst::Policy`]
+    /// for structured inspection. Residual expressions may contain
+    /// [`crate::pst::Expr::ResidualError`] nodes indicating subexpressions that
+    /// would error at runtime; use [`crate::pst::Expr::has_error()`] to check.
     pub fn nontrivial_residual_policies(&'_ self) -> impl Iterator<Item = Policy> + '_ {
         self.0
             .residual_permits()
@@ -483,9 +505,15 @@ impl EntityLoader for TestEntityLoader<'_> {
 }
 
 impl PolicySet {
-    /// Perform type-aware partial evaluation on this [`PolicySet`]
-    /// If successful, the result is a [`PolicySet`] containing residual
-    /// policies ready for re-authorization
+    /// Perform type-aware partial evaluation on this [`PolicySet`].
+    ///
+    /// If successful, the result is a [`TpeResponse`] containing residual
+    /// policies ready for re-authorization. Use
+    /// [`TpeResponse::residual_policies()`] or
+    /// [`TpeResponse::nontrivial_residual_policies()`] to get the residuals
+    /// as [`Policy`] objects, then call [`Policy::to_pst()`] to convert them
+    /// to [`crate::pst::Policy`] for structured inspection of the residual
+    /// expression tree.
     #[doc = include_str!("../../experimental_warning.md")]
     pub fn tpe<'a>(
         &self,

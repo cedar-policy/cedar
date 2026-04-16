@@ -29,6 +29,13 @@
 //! [`Name::unqualified()`] and [`Name::qualified()`] are fallible. This ensures that
 //! conversion from PST to AST cannot fail due to invalid names.
 //!
+//! # Third-party type re-exports
+//!
+//! Several PST types use third-party crate types in their public fields
+//! ([`SmolStr`], [`LinkedHashMap`], [`NonEmpty`]). These are re-exported from this
+//! module so that you don't need to add separate dependencies or match the exact
+//! dependency versions that Cedar uses.
+//!
 //! # Constructing a policy
 //!
 //! Build a PST [`Template`] directly from its constituent types. This example constructs:
@@ -45,21 +52,24 @@
 //! # use smol_str::SmolStr;
 //! # use std::sync::Arc;
 //! # use std::collections::BTreeMap;
+//! let user_alice = EntityUID {
+//!     ty: EntityType::from_name(Name::unqualified("User").unwrap()),
+//!     eid: SmolStr::from("alice"),
+//! };
+//! let action_view = EntityUID {
+//!     ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
+//!     eid: SmolStr::from("view"),
+//! };
+//! let album_vacation = EntityUID {
+//!     ty: EntityType::from_name(Name::unqualified("Album").unwrap()),
+//!     eid: SmolStr::from("vacation"),
+//! };
 //! let template = Template::new(
 //!     PolicyID(SmolStr::from("policy0")),
 //!     Effect::Permit,
-//!     PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
-//!         ty: EntityType::from_name(Name::unqualified("User").unwrap()),
-//!         eid: SmolStr::from("alice"),
-//!     })),
-//!     ActionConstraint::Eq(EntityUID {
-//!         ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
-//!         eid: SmolStr::from("view"),
-//!     }),
-//!     ResourceConstraint::In(EntityOrSlot::Entity(EntityUID {
-//!         ty: EntityType::from_name(Name::unqualified("Album").unwrap()),
-//!         eid: SmolStr::from("vacation"),
-//!     })),
+//!     PrincipalConstraint::Eq(EntityOrSlot::Entity(user_alice)),
+//!     ActionConstraint::Eq(action_view),
+//!     ResourceConstraint::In(EntityOrSlot::Entity(album_vacation)),
 //! )
 //! .try_with_clauses(vec![Clause::When(Arc::new(Expr::BinaryOp {
 //!     op: BinaryOp::Eq,
@@ -88,17 +98,19 @@
 //! # use smol_str::SmolStr;
 //! # use std::sync::Arc;
 //! # use std::collections::BTreeMap;
+//! # let user_alice = EntityUID {
+//! #     ty: EntityType::from_name(Name::unqualified("User").unwrap()),
+//! #     eid: SmolStr::from("alice"),
+//! # };
+//! # let action_view = EntityUID {
+//! #     ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
+//! #     eid: SmolStr::from("view"),
+//! # };
 //! # let template = Template::new(
 //! #     PolicyID(SmolStr::from("policy0")),
 //! #     Effect::Permit,
-//! #     PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
-//! #         ty: EntityType::from_name(Name::unqualified("User").unwrap()),
-//! #         eid: SmolStr::from("alice"),
-//! #     })),
-//! #     ActionConstraint::Eq(EntityUID {
-//! #         ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
-//! #         eid: SmolStr::from("view"),
-//! #     }),
+//! #     PrincipalConstraint::Eq(EntityOrSlot::Entity(user_alice)),
+//! #     ActionConstraint::Eq(action_view),
 //! #     ResourceConstraint::Any,
 //! # )
 //! # .try_with_clauses(vec![Clause::When(Arc::new(Expr::BinaryOp {
@@ -151,6 +163,17 @@
 //!     }
 //! }
 //! ```
+//!
+//! # Converting to and from the `cedar-policy` API
+//!
+//! PST types convert to and from the public `cedar-policy` API types via
+//! methods on `Policy`, `Template`, and `PolicySet`:
+//!
+//! - `from_pst()` — construct from a PST value
+//! - `to_pst()` — convert to PST (clones the internal representation)
+//! - `try_into_pst()` — convert to PST by consuming the value, avoiding a clone
+//!
+//! All PST types also implement [`Display`](std::fmt::Display), producing valid Cedar syntax.
 
 pub(crate) mod ast_conversions;
 mod constraints;
@@ -168,3 +191,10 @@ pub use expr::{
 };
 pub use policy::{Clause, Effect, LinkedPolicy, Policy, PolicyID, StaticPolicy, Template};
 pub use policy_set::{PolicySet, TemplateLink};
+
+// Re-exported third-party types used in PST public fields and type signatures.
+// These are re-exported so that users don't need to add separate dependencies
+// or worry about matching the exact version Cedar uses.
+pub use linked_hash_map::LinkedHashMap;
+pub use nonempty::NonEmpty;
+pub use smol_str::SmolStr;
