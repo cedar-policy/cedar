@@ -20,14 +20,12 @@ use std::collections::HashSet;
 use std::{collections::BTreeMap, sync::Arc, sync::LazyLock};
 
 use crate::ast::{
-    Annotations, Effect, EntityUID, Literal, Policy, PolicyID, UnwrapInfallible, ValueKind,
+    Annotations, Effect, EntityUID, Literal, Policy, PolicyID, SlotEnv, UnwrapInfallible, ValueKind,
 };
+use crate::evaluator::evaluation_errors;
 #[cfg(feature = "tolerant-ast")]
 use crate::tpe::err::ErrorNotSupportedError;
-use crate::tpe::err::{
-    ExprToResidualError, MissingTypeAnnotationError, SlotNotSupportedError,
-    UnknownNotSupportedError,
-};
+use crate::tpe::err::{ExprToResidualError, MissingTypeAnnotationError, UnknownNotSupportedError};
 use crate::validator::types::Type;
 use crate::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
@@ -180,9 +178,16 @@ impl TryFrom<Residual> for Value {
     }
 }
 
-impl TryFrom<&Expr<Option<Type>>> for Residual {
-    type Error = ExprToResidualError;
-    fn try_from(expr: &Expr<Option<Type>>) -> std::result::Result<Self, ExprToResidualError> {
+impl Residual {
+    /// Convert a typed expression to a residual.
+    ///
+    /// Takes a `SlotEnv` used to resolve template slots to their values. Each
+    /// template slot expression becomes an entityUID literal for the binding of
+    /// that slot in the environment.
+    pub fn try_from_typed_expr(
+        expr: &Expr<Option<Type>>,
+        env: &SlotEnv,
+    ) -> std::result::Result<Self, ExprToResidualError> {
         let ty = expr.data().clone().ok_or(MissingTypeAnnotationError)?;
 
         // Otherwise, convert to a partial residual
@@ -193,59 +198,64 @@ impl TryFrom<&Expr<Option<Type>>> for Residual {
                 then_expr,
                 else_expr,
             } => ResidualKind::If {
-                test_expr: Arc::new(Self::try_from(test_expr.as_ref())?),
-                then_expr: Arc::new(Self::try_from(then_expr.as_ref())?),
-                else_expr: Arc::new(Self::try_from(else_expr.as_ref())?),
+                test_expr: Arc::new(Self::try_from_typed_expr(test_expr.as_ref(), env)?),
+                then_expr: Arc::new(Self::try_from_typed_expr(then_expr.as_ref(), env)?),
+                else_expr: Arc::new(Self::try_from_typed_expr(else_expr.as_ref(), env)?),
             },
             ast::ExprKind::And { left, right } => ResidualKind::And {
-                left: Arc::new(Self::try_from(left.as_ref())?),
-                right: Arc::new(Self::try_from(right.as_ref())?),
+                left: Arc::new(Self::try_from_typed_expr(left.as_ref(), env)?),
+                right: Arc::new(Self::try_from_typed_expr(right.as_ref(), env)?),
             },
             ast::ExprKind::Or { left, right } => ResidualKind::Or {
-                left: Arc::new(Self::try_from(left.as_ref())?),
-                right: Arc::new(Self::try_from(right.as_ref())?),
+                left: Arc::new(Self::try_from_typed_expr(left.as_ref(), env)?),
+                right: Arc::new(Self::try_from_typed_expr(right.as_ref(), env)?),
             },
             ast::ExprKind::UnaryApp { op, arg } => ResidualKind::UnaryApp {
                 op: *op,
-                arg: Arc::new(Self::try_from(arg.as_ref())?),
+                arg: Arc::new(Self::try_from_typed_expr(arg.as_ref(), env)?),
             },
             ast::ExprKind::BinaryApp { op, arg1, arg2 } => ResidualKind::BinaryApp {
                 op: *op,
-                arg1: Arc::new(Self::try_from(arg1.as_ref())?),
-                arg2: Arc::new(Self::try_from(arg2.as_ref())?),
+                arg1: Arc::new(Self::try_from_typed_expr(arg1.as_ref(), env)?),
+                arg2: Arc::new(Self::try_from_typed_expr(arg2.as_ref(), env)?),
             },
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let residual_args: Result<Vec<_>, _> = args.iter().map(Self::try_from).collect();
+                let residual_args: Result<Vec<_>, _> = args
+                    .iter()
+                    .map(|e| Self::try_from_typed_expr(e, env))
+                    .collect();
                 ResidualKind::ExtensionFunctionApp {
                     fn_name: fn_name.clone(),
                     args: Arc::new(residual_args?),
                 }
             }
             ast::ExprKind::GetAttr { expr, attr } => ResidualKind::GetAttr {
-                expr: Arc::new(Self::try_from(expr.as_ref())?),
+                expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
                 attr: attr.clone(),
             },
             ast::ExprKind::HasAttr { expr, attr } => ResidualKind::HasAttr {
-                expr: Arc::new(Self::try_from(expr.as_ref())?),
+                expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
                 attr: attr.clone(),
             },
             ast::ExprKind::Like { expr, pattern } => ResidualKind::Like {
-                expr: Arc::new(Self::try_from(expr.as_ref())?),
+                expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
                 pattern: pattern.clone(),
             },
             ast::ExprKind::Is { expr, entity_type } => ResidualKind::Is {
-                expr: Arc::new(Self::try_from(expr.as_ref())?),
+                expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
                 entity_type: entity_type.clone(),
             },
             ast::ExprKind::Set(elements) => {
-                let residual_elements: Result<Vec<_>, _> =
-                    elements.iter().map(Self::try_from).collect();
+                let residual_elements: Result<Vec<_>, _> = elements
+                    .iter()
+                    .map(|e| Self::try_from_typed_expr(e, env))
+                    .collect();
                 ResidualKind::Set(Arc::new(residual_elements?))
             }
             ast::ExprKind::Record(map) => {
                 let residual_map: Result<BTreeMap<_, _>, ExprToResidualError> = map
                     .iter()
-                    .map(|(k, v)| Ok((k.clone(), Self::try_from(v)?)))
+                    .map(|(k, v)| Ok((k.clone(), Self::try_from_typed_expr(v, env)?)))
                     .collect();
                 ResidualKind::Record(Arc::new(residual_map?))
             }
@@ -254,8 +264,21 @@ impl TryFrom<&Expr<Option<Type>>> for Residual {
                 let value = Value::new(lit.clone(), None);
                 return Ok(Residual::Concrete { value, ty });
             }
-            // These are not supported in residuals
-            ast::ExprKind::Slot(_) => return Err(SlotNotSupportedError.into()),
+            // Slots are resolved to their linked values in translation to residual
+            ast::ExprKind::Slot(slot) => match env.get(slot) {
+                Some(euid) => {
+                    let value = Value::from(euid.clone());
+                    return Ok(Residual::Concrete { value, ty });
+                }
+                None => {
+                    // Any slot not bound in the env is an error now rather than waiting for evaluation
+                    return Err(evaluation_errors::UnlinkedSlotError {
+                        slot: *slot,
+                        source_loc: expr.source_loc().cloned(),
+                    }
+                    .into());
+                }
+            },
             ast::ExprKind::Unknown(_) => return Err(UnknownNotSupportedError.into()),
             #[cfg(feature = "tolerant-ast")]
             ast::ExprKind::Error { .. } => {
@@ -539,20 +562,30 @@ impl From<Residual> for Expr {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::ast::{ActionConstraint, PrincipalConstraint, ResourceConstraint, SlotId, Template};
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
     use crate::tpe::request::{PartialEntityUID, PartialRequest};
     use crate::validator::typecheck::{PolicyCheck, Typechecker};
     use crate::validator::types::BoolType;
     use crate::validator::{ValidationMode, Validator, ValidatorSchema};
+    use cool_asserts::assert_matches;
     use similar_asserts::assert_eq;
 
     #[track_caller]
-    fn parse_residual(expr_str: &str) -> Residual {
+    fn parse_typed_expr(expr_str: &str, slot_env: &SlotEnv) -> Expr<Option<Type>> {
         let expr = parse_expr(expr_str).unwrap();
         let policy_id = crate::ast::PolicyID::from_string("test");
-        let policy = Policy::from_when_clause(Effect::Permit, expr, policy_id, None);
-        let t = policy.template();
+        let t = Template::new_shared(
+            policy_id,
+            None,
+            Arc::new(Annotations::default()),
+            Effect::Permit,
+            PrincipalConstraint::any(),
+            ActionConstraint::any(),
+            ResourceConstraint::any(),
+            Some(Arc::new(expr)),
+        );
 
         let schema = ValidatorSchema::from_cedarschema_str(r#"
             entity User in Organization { foo: Bool, str: String, num: Long, period: __cedar::duration, set: Set<String> } tags String;
@@ -580,14 +613,17 @@ mod test {
             &schema,
         )
         .unwrap();
-        let env = request.find_request_env(&schema).unwrap();
+        let env = request
+            .find_request_env(&schema)
+            .unwrap()
+            .link_slot_env(slot_env);
 
-        let errs: Vec<_> = Validator::validate_entity_types_and_literals(&schema, t).collect();
+        let errs: Vec<_> = Validator::validate_entity_types_and_literals(&schema, &t).collect();
         if !errs.is_empty() {
             panic!("unexpected type error in expression");
         }
-        match typechecker.typecheck_by_single_request_env(t, &env) {
-            PolicyCheck::Success(expr) => Residual::try_from(&expr).unwrap(),
+        match typechecker.typecheck_by_single_request_env(&t, &env) {
+            PolicyCheck::Success(expr) => expr,
             PolicyCheck::Fail(errs) => {
                 println!("got {} type errors", errs.len());
                 for e in errs {
@@ -597,7 +633,7 @@ mod test {
             }
             PolicyCheck::Irrelevant(errs, expr) => {
                 if errs.is_empty() {
-                    Residual::try_from(&expr).unwrap()
+                    expr
                 } else {
                     println!("got {} type errors", errs.len());
                     for e in errs {
@@ -607,6 +643,54 @@ mod test {
                 }
             }
         }
+    }
+
+    #[track_caller]
+    fn parse_residual(expr_str: &str) -> Residual {
+        let typed_expr = parse_typed_expr(expr_str, &SlotEnv::new());
+        Residual::try_from_typed_expr(&typed_expr, &SlotEnv::new()).unwrap()
+    }
+
+    #[test]
+    fn slot_to_residual() {
+        let env = SlotEnv::from([
+            (SlotId::principal(), r#"User::"alice""#.parse().unwrap()),
+            (
+                SlotId::resource(),
+                r#"Organization::"org""#.parse().unwrap(),
+            ),
+        ]);
+
+        assert_eq!(
+            Expr::from(
+                Residual::try_from_typed_expr(
+                    &parse_typed_expr(
+                        "principal == ?principal && resource in ?resource",
+                        &env
+                    ),
+                    &env
+                )
+                .unwrap()
+            ),
+            // extra `true &&` because `parse_type_expr` constructs a policy for typechecking
+            parse_expr(r#"true && (true && (true && (principal == User::"alice" && resource in Organization::"org")))"#)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn to_residual_missing_slot() {
+        let env = SlotEnv::new();
+
+        assert_matches!(
+            Residual::try_from_typed_expr(&parse_typed_expr("principal in ?principal", &env), &env),
+            Err(ExprToResidualError::UnlinkedSlotError(_))
+        );
+
+        assert_matches!(
+            Residual::try_from_typed_expr(&parse_typed_expr("resource in ?resource", &env), &env),
+            Err(ExprToResidualError::UnlinkedSlotError(_))
+        );
     }
 
     #[test]

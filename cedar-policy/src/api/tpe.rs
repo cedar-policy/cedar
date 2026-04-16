@@ -2809,4 +2809,137 @@ when { principal in resource.admins };
             "residual expression should contain an error node"
         );
     }
+
+    mod template_links {
+        use std::{collections::HashMap, str::FromStr};
+
+        use crate::{
+            pst, Decision, EntityUid, PartialEntities, PartialEntityUid, PartialRequest, Policy,
+            PolicyId, PolicySet, Schema, SlotId, Template,
+        };
+
+        fn schema() -> Schema {
+            Schema::from_str(
+                "entity User { age: Long }; entity Photo; action view appliesTo { principal: User, resource: Photo};",
+            )
+            .unwrap()
+        }
+
+        fn template_policy_set() -> PolicySet {
+            let mut policies = PolicySet::new();
+            let template = Template::parse(
+                Some(PolicyId::new("t0").clone()),
+                "permit(principal == ?principal, action, resource);",
+            )
+            .unwrap();
+            policies.add_template(template).unwrap();
+            let template = Template::parse(
+                Some(PolicyId::new("t1").clone()),
+                "permit(principal, action, resource == ?resource);",
+            )
+            .unwrap();
+            policies.add_template(template).unwrap();
+            policies
+        }
+
+        fn partial_req() -> PartialRequest {
+            PartialRequest::new(
+                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
+                r#"Action::"view""#.parse().unwrap(),
+                PartialEntityUid::new("Photo".parse().unwrap(), None),
+                None,
+                &schema(),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn concrete_allow() {
+            let schema = schema();
+            let mut policies = template_policy_set();
+            policies
+                .link(
+                    PolicyId::new("t0"),
+                    PolicyId::new("l"),
+                    HashMap::from([(
+                        SlotId::principal(),
+                        EntityUid::from_str(r#"User::"alice""#).unwrap(),
+                    )]),
+                )
+                .unwrap();
+
+            let request = partial_req();
+            let es = PartialEntities::empty();
+            let response = policies.tpe(&request, &es, &schema).unwrap();
+
+            assert_eq!(response.decision(), Some(Decision::Allow));
+        }
+
+        #[test]
+        fn templates_no_links_deny() {
+            let schema = schema();
+            let policies = template_policy_set();
+
+            let request = partial_req();
+            let es = PartialEntities::empty();
+            let response = policies.tpe(&request, &es, &schema).unwrap();
+
+            assert_eq!(response.decision(), Some(Decision::Deny));
+        }
+
+        #[test]
+        fn concrete_deny() {
+            let schema = schema();
+            let mut policies = template_policy_set();
+            policies
+                .link(
+                    PolicyId::new("t0"),
+                    PolicyId::new("l"),
+                    HashMap::from([(
+                        SlotId::principal(),
+                        EntityUid::from_str(r#"User::"bob""#).unwrap(),
+                    )]),
+                )
+                .unwrap();
+
+            let request = partial_req();
+            let es = PartialEntities::empty();
+            let response = policies.tpe(&request, &es, &schema).unwrap();
+
+            assert_eq!(response.decision(), Some(Decision::Deny));
+        }
+
+        #[test]
+        fn residual() {
+            let schema = schema();
+            let mut policies = template_policy_set();
+            policies
+                .link(
+                    PolicyId::new("t1"),
+                    PolicyId::new("l"),
+                    HashMap::from([(
+                        SlotId::resource(),
+                        EntityUid::from_str(r#"Photo::"p""#).unwrap(),
+                    )]),
+                )
+                .unwrap();
+
+            let request = partial_req();
+            let es = PartialEntities::empty();
+            let response = policies.tpe(&request, &es, &schema).unwrap();
+
+            let expected: pst::Policy = Policy::parse(
+                Some(PolicyId::new("l")),
+                r#"permit(principal, action, resource) when { resource == Photo::"p" };"#,
+            )
+            .unwrap()
+            .to_pst()
+            .unwrap();
+
+            let residuals: Vec<_> = response.nontrivial_residual_policies().collect();
+            assert_eq!(residuals[0].to_pst().unwrap().body(), expected.body());
+            assert_eq!(response.decision(), None);
+            assert_eq!(residuals.len(), 1);
+        }
+    }
 }

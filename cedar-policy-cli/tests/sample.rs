@@ -1648,6 +1648,14 @@ fn test_tpe() {
     let request_json_file: &str = "sample-data/tpe_rfc/request.json";
     let context_file: &str = "sample-data/tpe_rfc/context.json";
 
+    let contains_residuals = || {
+        use predicate::str::contains;
+        contains("UNKNOWN")
+            .and(contains("permit(principal, action, resource) when { resource.isPublic };"))
+            .and(contains("permit(principal, action, resource) when { false };"))
+            .and(contains(r#"permit(principal, action, resource) when { (context.hasMFA) && ((resource.owner) == User::"Alice") };"#))
+    };
+
     cargo::cargo_bin_cmd!("cedar")
         .arg("tpe")
         .arg("--principal-type")
@@ -1665,6 +1673,7 @@ fn test_tpe() {
         .arg("-s")
         .arg(schema)
         .assert()
+        .stdout(contains_residuals())
         .code(0);
 
     cargo::cargo_bin_cmd!("cedar")
@@ -1686,6 +1695,7 @@ fn test_tpe() {
         .arg("--context")
         .arg(context_file)
         .assert()
+        .stdout(predicate::str::contains("DENY"))
         .code(2);
 
     cargo::cargo_bin_cmd!("cedar")
@@ -1699,6 +1709,160 @@ fn test_tpe() {
         .arg("-s")
         .arg(schema)
         .assert()
+        .stdout(contains_residuals())
+        .code(0);
+}
+
+#[test]
+#[cfg(feature = "tpe")]
+fn test_tpe_link() {
+    let entities: &str = "sample-data/tpe_rfc/entities.json";
+    let schema: &str = "sample-data/tpe_rfc/schema.cedarschema";
+
+    let mut template_file = tempfile::NamedTempFile::new().expect("Failed to create template file");
+    writeln!(
+        template_file,
+        r#"@id("ViewTemplate")
+permit (
+  principal == ?principal,
+  action == Action::"View",
+  resource
+)
+when {{ resource.isPublic }};"#
+    )
+    .expect("Failed to write template file");
+
+    let links_file = tempfile::NamedTempFile::new().expect("Failed to create links file");
+    let template_path = template_file.path().to_str().unwrap();
+    let links_path = links_file.path().to_str().unwrap();
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("link")
+        .arg("-p")
+        .arg(&template_path)
+        .arg("--template-linked")
+        .arg(&links_path)
+        .arg("--template-id")
+        .arg("ViewTemplate")
+        .arg("--new-id")
+        .arg("AliceView")
+        .arg("-a")
+        .arg(r#"{"?principal": "User::\"Alice\""}"#)
+        .assert()
+        .code(0);
+
+    // Template link value has been substituted in residual
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(
+            predicate::str::contains("UNKNOWN").and(predicate::str::contains(
+                r#"permit(principal, action, resource) when { (principal == User::"Alice") && (resource.isPublic) };"#
+            )),
+        )
+        .code(0);
+
+    // Now providing principal eid, equality between slot and principal
+    // evaluates, but we still have a residual
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(
+            predicate::str::contains("UNKNOWN").and(predicate::str::contains(
+                "permit(principal, action, resource) when { resource.isPublic };",
+            )),
+        )
+        .code(0);
+
+    // Still no resource eid, but slot/principal equality is false for Bob, so deny
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Bob")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(predicate::str::contains("DENY"))
+        .code(2);
+
+    // Fully concrete request for Alice and a public doc, so allow
+    let entities = serde_json::json!(
+    [{
+        "uid": { "type": "Document", "id": "public" },
+        "attrs": {
+            "isPublic": true,
+            "owner": { "__entity": { "type": "User", "id": "Alice" } }
+        },
+        "parents": []
+    }]);
+    let mut entities_file = tempfile::NamedTempFile::new().expect("Failed to create entities file");
+    serde_json::to_writer(&mut entities_file, &entities).unwrap();
+    let entities_path = entities_file.path().to_str().unwrap();
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("--resource-eid")
+        .arg("public")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities_path)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(predicate::str::contains("ALLOW"))
         .code(0);
 }
 

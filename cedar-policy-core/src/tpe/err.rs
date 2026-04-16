@@ -28,7 +28,7 @@ use crate::{
         conformance::err::{EntitySchemaConformanceError, InvalidEnumEntityError},
         err::Duplicate,
     },
-    evaluator::EvaluationError,
+    evaluator::{evaluation_errors::UnlinkedSlotError, EvaluationError},
     transitive_closure::TcError,
     validator::{RequestValidationError, ValidationError},
 };
@@ -119,7 +119,7 @@ pub enum ExprToResidualError {
     MissingTypeAnnotation(#[from] MissingTypeAnnotationError),
     /// Expression contains a slot which is not supported in residuals
     #[error(transparent)]
-    SlotNotSupported(#[from] SlotNotSupportedError),
+    UnlinkedSlotError(#[from] UnlinkedSlotError),
     /// Expression contains an unknown which is not supported in residuals
     #[error(transparent)]
     UnknownNotSupported(#[from] UnknownNotSupportedError),
@@ -132,11 +132,6 @@ pub enum ExprToResidualError {
 #[derive(Debug, Error)]
 #[error("Expression is missing type annotation")]
 pub struct MissingTypeAnnotationError;
-
-/// Error thrown when expression contains a slot which is not supported in residuals
-#[derive(Debug, Error)]
-#[error("Expression contains a slot which is not supported in residuals")]
-pub struct SlotNotSupportedError;
 
 /// Error thrown when expression contains an unknown which is not supported in residuals
 #[derive(Debug, Error)]
