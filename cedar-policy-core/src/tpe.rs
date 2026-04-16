@@ -40,7 +40,7 @@ pub(crate) fn policy_residual_map<'a>(
     ps: &'a PolicySet,
     schema: &ValidatorSchema,
 ) -> std::result::Result<HashMap<&'a PolicyID, Residual>, TpeError> {
-    let mut exprs = HashMap::new();
+    let mut residuals = HashMap::new();
     let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
     let env = request.find_request_env(schema)?;
     for p in ps.policies() {
@@ -56,21 +56,21 @@ pub(crate) fn policy_residual_map<'a>(
         let env = env.clone().link_slot_env(p.env());
         match tc.typecheck_by_single_request_env(t, &env) {
             PolicyCheck::Success(expr) => {
-                exprs.insert(p.id(), Residual::try_from_typed_expr(&expr, p.env())?);
+                residuals.insert(p.id(), Residual::try_from_typed_expr(&expr, p.env())?);
             }
             PolicyCheck::Fail(errs) => {
                 return Err(TpeError::Validation(errs));
             }
             PolicyCheck::Irrelevant(errs, expr) => {
                 if errs.is_empty() {
-                    exprs.insert(p.id(), Residual::try_from_typed_expr(&expr, p.env())?);
+                    residuals.insert(p.id(), Residual::try_from_typed_expr(&expr, p.env())?);
                 } else {
                     return Err(TpeError::Validation(errs));
                 }
             }
         }
     }
-    Ok(exprs)
+    Ok(residuals)
 }
 
 /// Type-aware partial-evaluation on a `PolicySet`.
