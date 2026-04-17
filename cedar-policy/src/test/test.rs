@@ -5980,6 +5980,62 @@ permit(principal, action, resource) when { {"\n": 0} };"#,
         round_trip(r#"permit(principal, action, resource) when { Foo::"\n\r\\" };"#);
     }
 }
+
+mod function_argument_validation_help_tests {
+    use crate::{Policy, PolicySet, ValidationMode, Validator};
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use miette::Report;
+    use serde_json::json;
+
+    use super::Schema;
+
+    #[test]
+    fn validator_surfaces_help_for_invalid_extension_constructor_arguments() {
+        let schema = Schema::from_json_value(json!({
+            "": {
+                "entityTypes": {
+                    "User": {},
+                    "Document": {},
+                },
+                "actions": {
+                    "view": {
+                        "appliesTo": {
+                            "principalTypes": ["User"],
+                            "resourceTypes": ["Document"],
+                        }
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(
+            principal == User::"alice",
+            action == Action::"view",
+            resource == Document::"doc"
+        ) when { decimal("foo").lessThan(decimal("1.0")) };"#;
+        let policy = Policy::parse(None, src).unwrap();
+        set.add(policy).unwrap();
+
+        let result = validator.validate(&set, ValidationMode::Strict);
+        let errors: Vec<_> = result.validation_errors().cloned().collect();
+        assert_eq!(errors.len(), 1, "unexpected validation errors: {errors:?}");
+
+        expect_err(
+            src,
+            &Report::new(errors[0].clone()),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, error during extension function argument validation: failed to parse as a decimal value: `\"foo\"`",
+            )
+            .help("valid decimal strings look like `12.34`: digits are required on both sides of `.`, up to 4 fractional digits are allowed, and the value must be in range -922337203685477.5808 to 922337203685477.5807")
+            .exactly_one_underline(r#"decimal("foo").lessThan(decimal("1.0"))"#)
+            .build(),
+        );
+    }
+}
+
 mod issue_604 {
     use crate::Policy;
     use cedar_policy_core::parser::parse_policy_or_template_to_est;
@@ -7927,6 +7983,7 @@ mod context_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error while evaluating `ipaddr` extension function: invalid IP address: not_an_ip_address")
+                .help("valid IP strings are IPv4/IPv6 addresses or CIDR ranges like `127.0.0.1`, `127.0.0.1/24`, or `ffee::/64`")
                 .build(),
         );
 

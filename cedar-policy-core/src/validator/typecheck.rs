@@ -2245,11 +2245,12 @@ impl<'a> SingleEnvTypechecker<'a> {
                     ));
                     failed = true;
                 }
-                if let Err(msg) = efunc.check_arguments(args) {
+                if let Err(err) = efunc.check_arguments(args) {
                     type_errors.push(ValidationError::function_argument_validation(
                         ext_expr.source_loc().cloned(),
                         self.policy_id.clone(),
-                        msg,
+                        err.msg,
+                        err.help,
                     ));
                     failed = true;
                 }

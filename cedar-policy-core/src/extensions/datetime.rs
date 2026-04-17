@@ -33,6 +33,14 @@ use crate::{
 
 const DATETIME_EXTENSION_NAME: &str = "datetime";
 
+/// Help text describing the valid datetime format, used as a fallback when a
+/// specific parse error does not carry its own help text.
+const VALID_DATETIME_HELP: &str = "valid datetime strings start with `YYYY-MM-DD` and may optionally include `THH:MM:SS` plus `Z`, `.SSSZ`, or an offset like `+0700`";
+
+/// Help text describing the valid duration format, used as a fallback when a
+/// specific parse error does not carry its own help text.
+const VALID_DURATION_HELP: &str = "valid duration strings are concatenated quantity-unit pairs with an optional leading `-`, for example `1d2h3m4s50ms`";
+
 #[expect(
     clippy::expect_used,
     clippy::unwrap_used,
@@ -142,7 +150,11 @@ fn datetime_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
             extension_err(
                 err.to_string(),
                 &constants::DATETIME_CONSTRUCTOR_NAME,
-                err.help().map(|v| v.to_string()),
+                Some(
+                    err.help()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| VALID_DATETIME_HELP.to_string()),
+                ),
             )
         })
     })
@@ -415,7 +427,11 @@ fn duration_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
             extension_err(
                 err.to_string(),
                 &constants::DURATION_CONSTRUCTOR_NAME,
-                err.help().map(|v| v.to_string()),
+                Some(
+                    err.help()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| VALID_DURATION_HELP.to_string()),
+                ),
             )
         })
     })
@@ -1279,8 +1295,7 @@ mod tests {
             Err(EvaluationError::FailedExtensionFunctionExecution(err)) => {
                 assert_eq!(err.extension_name, *DATETIME_CONSTRUCTOR_NAME);
                 assert_eq!(err.msg, "invalid date pattern".to_owned());
-                // TODO: figure out why it's none given the help annotations
-                assert_eq!(err.advice, None);
+                assert_eq!(err.advice, Some("valid datetime strings start with `YYYY-MM-DD` and may optionally include `THH:MM:SS` plus `Z`, `.SSSZ`, or an offset like `+0700`".to_owned()));
             }
         );
 
@@ -1456,8 +1471,7 @@ mod tests {
             Err(EvaluationError::FailedExtensionFunctionExecution(err)) => {
                 assert_eq!(err.extension_name, *DURATION_CONSTRUCTOR_NAME);
                 assert_eq!(err.msg, "invalid duration pattern".to_owned());
-                // TODO: figure out why it's none given the help annotations
-                assert_eq!(err.advice, None);
+                assert_eq!(err.advice, Some("valid duration strings are concatenated quantity-unit pairs with an optional leading `-`, for example `1d2h3m4s50ms`".to_owned()));
             }
         );
 
