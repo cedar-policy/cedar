@@ -238,6 +238,16 @@ fn fmt_non_empty_slice<T: Display>(
     write!(f, "]")
 }
 
+fn fmt_slice_or_empty<T: Display>(
+    f: &mut std::fmt::Formatter<'_>,
+    slice: &[T],
+) -> std::fmt::Result {
+    match slice.split_first() {
+        None => write!(f, "[]"),
+        Some(split) => fmt_non_empty_slice(f, split),
+    }
+}
+
 impl<N: Display> Display for json_schema::EntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.fmt_indented(f, &BaseIndentation::none())
@@ -312,37 +322,23 @@ impl<N: Display> IndentedDisplay for json_schema::ActionType<N> {
             fmt_non_empty_slice(f, parents)?;
         }
         if let Some(spec) = &self.applies_to {
-            match (
-                spec.principal_types.split_first(),
-                spec.resource_types.split_first(),
-            ) {
-                // One of the lists is empty
-                // This can only be represented by the empty action
-                // This implies an action group
-                (None, _) | (_, None) => {
-                    write!(f, "")?;
-                }
-                // Both list are non empty
-                (Some(ps), Some(rs)) => {
-                    let member_indent = base_indentation.next();
-                    write!(f, " appliesTo {{")?;
-                    write!(f, "\n{member_indent}principal: ")?;
-                    fmt_non_empty_slice(f, ps)?;
-                    write!(f, ",\n{member_indent}resource: ")?;
-                    fmt_non_empty_slice(f, rs)?;
-                    if spec.context.0.is_empty_record() {
-                        write!(f, ",\n{member_indent}context: {{}}")?;
-                    } else {
-                        write!(
-                            f,
-                            ",\n{member_indent}context: {}",
-                            Indented(&spec.context.0, &member_indent)
-                        )?;
-                    }
-
-                    write!(f, "\n{base_indentation}}}")?;
-                }
+            let member_indent = base_indentation.next();
+            write!(f, " appliesTo {{")?;
+            write!(f, "\n{member_indent}principal: ")?;
+            fmt_slice_or_empty(f, &spec.principal_types)?;
+            write!(f, ",\n{member_indent}resource: ")?;
+            fmt_slice_or_empty(f, &spec.resource_types)?;
+            if spec.context.0.is_empty_record() {
+                write!(f, ",\n{member_indent}context: {{}}")?;
+            } else {
+                write!(
+                    f,
+                    ",\n{member_indent}context: {}",
+                    Indented(&spec.context.0, &member_indent)
+                )?;
             }
+
+            write!(f, "\n{base_indentation}}}")?;
         }
         // No `appliesTo` key: action does not apply to anything
         Ok(())
