@@ -373,6 +373,11 @@ where
     V: TCNode<K>,
 {
     let mut ancestors: HashSet<K> = HashSet::new();
+    // Track which ancestors we have already read out_edges from, to avoid
+    // redundant work. This is distinct from `ancestors` because an ancestor_id
+    // may appear in `ancestors` (added via some other node's out_edges) before
+    // we have actually read *its* out_edges.
+    let mut explored: HashSet<K> = HashSet::new();
     let out_edges: Vec<K> = match nodes.get(node_id) {
         Some(node) => node.out_edges().map(K::clone).collect(),
         None => return,
@@ -381,9 +386,9 @@ where
         if seen.insert(ancestor_id.clone()) {
             add_ancestors(&ancestor_id, nodes, seen);
         }
-        // a slight optimization to avoid adding the ancestors of `ancestor_id` if
-        // `ancestor_id` was an ancestor of any parent already explored by this loop.
-        if !ancestors.contains(&ancestor_id) {
+        // Only skip reading out_edges if we already explored this exact
+        // ancestor in a previous iteration of this loop.
+        if explored.insert(ancestor_id.clone()) {
             let ancestor = match nodes.get(&ancestor_id) {
                 Some(ancestor) => ancestor,
                 None => return,
@@ -1222,6 +1227,24 @@ mod tests {
                 "expected cycle detection on '{name}'"
             );
         }
+    }
+
+    #[test]
+    fn self_loop_with_grandchild() {
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        compute_tc(&mut entities, false).expect("compute_tc failed");
+        assert!(entities[&EntityUID::with_eid("A")].has_edge_to(&EntityUID::with_eid("C")));
+        assert!(enforce_tc(&entities).is_ok());
     }
 
     fn dag_test_graphs() -> Vec<(&'static str, HashMap<EntityUID, Entity>)> {
