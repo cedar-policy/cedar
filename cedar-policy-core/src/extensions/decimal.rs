@@ -94,7 +94,9 @@ enum Error {
 
     /// Overflow occurred when converting to a decimal value
     #[error("overflow when converting to decimal")]
-    #[diagnostic(help("the value must be in range -922337203685477.5808 to 922337203685477.5807"))]
+    #[diagnostic(help(
+        "the value must be in range -922337203685477.5808 to 922337203685477.5807"
+    ))]
     Overflow,
 }
 
