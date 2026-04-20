@@ -464,6 +464,7 @@ dependencies = [
  "smol_str",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
