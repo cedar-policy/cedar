@@ -248,6 +248,8 @@ mod demo_tests {
 
     #[test]
     fn empty_principal() {
+        // Per RFC: an empty `principal` list is accepted and means the action
+        // applies to no principal entity types.
         let src = r#"
             entity a;
             entity b;
@@ -256,15 +258,16 @@ mod demo_tests {
                 resource: [a, b]
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: for action `Foo`, `principal` is `[]`, which is invalid")
-                    .with_underlines_or_labels([("Foo", Some("for this action")), ("principal: []", Some("must not be `[]`"))])
-                    .help(NO_PR_HELP_MSG)
-                    .build(),
-            );
+        let (schema, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let unqual = schema.0.get(&None).unwrap();
+        let foo = unqual.actions.get("Foo").unwrap();
+        assert_matches!(&foo, json_schema::ActionType {
+            applies_to: Some(json_schema::ApplySpec { resource_types, principal_types, .. }),
+            ..
+        } => {
+            assert!(principal_types.is_empty());
+            assert_eq!(resource_types.len(), 2);
         });
     }
 
@@ -278,15 +281,37 @@ mod demo_tests {
                 resource: []
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
-            expect_err(
-                src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error parsing schema: for action `Foo`, `resource` is `[]`, which is invalid")
-                    .with_underlines_or_labels([("Foo", Some("for this action")), ("resource: []", Some("must not be `[]`"))])
-                    .help(NO_PR_HELP_MSG)
-                    .build(),
-            );
+        let (schema, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let unqual = schema.0.get(&None).unwrap();
+        let foo = unqual.actions.get("Foo").unwrap();
+        assert_matches!(&foo, json_schema::ActionType {
+            applies_to: Some(json_schema::ApplySpec { resource_types, principal_types, .. }),
+            ..
+        } => {
+            assert_eq!(principal_types.len(), 2);
+            assert!(resource_types.is_empty());
+        });
+    }
+
+    #[test]
+    fn both_empty() {
+        let src = r#"
+            action Foo appliesTo {
+                principal: [],
+                resource: []
+            };
+        "#;
+        let (schema, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let unqual = schema.0.get(&None).unwrap();
+        let foo = unqual.actions.get("Foo").unwrap();
+        assert_matches!(&foo, json_schema::ActionType {
+            applies_to: Some(json_schema::ApplySpec { resource_types, principal_types, .. }),
+            ..
+        } => {
+            assert!(principal_types.is_empty());
+            assert!(resource_types.is_empty());
         });
     }
 
@@ -526,7 +551,10 @@ namespace Baz {action "Foo" appliesTo {
         );
         let fragment = json_schema::Fragment(BTreeMap::from([(None, namespace)]));
         let src = fragment.to_cedarschema().unwrap();
-        assert!(src.contains(r#"action "j";"#), "schema was: `{src}`")
+        // An empty `resource_types` list is now represented explicitly as
+        // `resource: []` in the human schema (see RFC: accept empty principal/resource lists).
+        assert!(src.contains("principal: [a]"), "schema was: `{src}`");
+        assert!(src.contains("resource: []"), "schema was: `{src}`");
     }
 
     #[test]
