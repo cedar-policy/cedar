@@ -23,7 +23,7 @@ async fn emitln(
     w: &mut (impl tokio::io::AsyncWrite + Unpin + ?Sized),
     str: &str,
 ) -> tokio::io::Result<()> {
-    tracing::trace!(target: "smtlib", "{str}");
+    log::trace!(target: "smtlib", "{}", str);
     w.write_all(str.as_bytes()).await?;
     w.write_all(b"\n").await?;
     Ok(())

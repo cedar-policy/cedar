@@ -455,6 +455,7 @@ dependencies = [
  "cool_asserts",
  "insta",
  "itertools 0.14.0",
+ "log",
  "miette",
  "nonempty",
  "num-bigint",
@@ -464,7 +465,6 @@ dependencies = [
  "smol_str",
  "thiserror",
  "tokio",
- "tracing",
 ]
 
 [[package]]
