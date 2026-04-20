@@ -22,6 +22,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 - Improved Cedar schema parse help for two common syntax mistakes: forgetting `appliesTo` before an action block, and adding `;` after a namespace declaration. (#1043, #1044)
 - `FunctionArgumentValidation` errors now include a help message describing the expected format for extension function arguments: `decimal`, `ip`, `datetime`, and `duration`. (#834)
+- Serialization of residual policies with `error()` nodes does not fail, instead results in JSON with `{"error": []}`. (#2202)
 
 ## [4.10.0] - Coming soon
 
