@@ -2710,7 +2710,7 @@ when { principal in resource.admins };
     /// `Policy::to_pst()`, with the error node represented as
     /// `pst::Expr::ResidualError`.
     #[test]
-    fn residual_error_to_pst() {
+    fn residual_error_to_pst_and_json() {
         use cedar_policy_core::pst;
         use std::str::FromStr;
 
@@ -2776,7 +2776,6 @@ when { principal in resource.admins };
         let response = policies
             .tpe(&request, &partial_entities, &schema)
             .expect("tpe should succeed");
-
         // There should be exactly one nontrivial residual
         let residual_policies: Vec<_> = response.nontrivial_residual_policies().collect();
         assert_eq!(
@@ -2792,7 +2791,12 @@ when { principal in resource.admins };
 
         let policy = &residual_policies[0];
 
-        // Convert to PST
+        // We can serialize a policy with residual error to json
+        let json_res = policy.to_json();
+        assert!(json_res.is_ok());
+        assert!(json_res.unwrap().to_string().contains(r#"{"error":[]}"#));
+
+        // We can also convert it to PST
         let pst_policy = policy.to_pst().expect("to_pst should succeed");
         let clauses = pst_policy.body().clauses();
         assert_eq!(clauses.len(), 1);
