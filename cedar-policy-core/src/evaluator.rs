@@ -1159,7 +1159,7 @@ impl Value {
 }
 
 #[inline(always)]
-fn stack_size_check() -> Result<()> {
+pub(crate) fn stack_size_check() -> Result<()> {
     // We assume there's enough space if we cannot determine it with `remaining_stack`
     if stacker::remaining_stack().unwrap_or(REQUIRED_STACK_SPACE) < REQUIRED_STACK_SPACE {
         return Err(EvaluationError::recursion_limit(None));

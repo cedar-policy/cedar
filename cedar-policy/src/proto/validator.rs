@@ -17,7 +17,7 @@
 #![allow(clippy::use_self, reason = "readability")]
 
 use super::models;
-use cedar_policy_core::ast;
+use cedar_policy_core::ast::{self, Eid};
 use cedar_policy_core::validator::types;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
@@ -137,7 +137,10 @@ impl From<&cedar_policy_core::validator::ValidatorEntityType> for models::Entity
                 descendants,
                 attributes,
                 tags,
-                enum_choices: enum_choices.into_iter().map(ToString::to_string).collect(),
+                enum_choices: enum_choices
+                    .into_iter()
+                    .map(|eid| eid.as_ref().to_string())
+                    .collect(),
             },
         }
     }
@@ -163,7 +166,7 @@ impl From<models::EntityDecl> for cedar_policy_core::validator::ValidatorEntityT
                 // enumerated entity types must have no attributes or tags.
                 assert_eq!(v.attributes, HashMap::new());
                 assert_eq!(v.tags, None);
-                Self::new_enum(name, descendants, enum_choices, None)
+                Self::new_enum(name, descendants, enum_choices.map(Eid::new), None)
             }
         }
     }
@@ -266,5 +269,142 @@ impl From<&types::AttributeType> for models::AttributeType {
             attr_type: Some(models::Type::from(v.attr_type.as_ref())),
             is_required: v.is_required,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::Arc;
+
+    use super::models;
+    use cedar_policy_core::validator::types::{
+        AttributeType, BoolType, EntityKind, EntityLUB, OpenTag, Type,
+    };
+    use cedar_policy_core::validator::ValidatorSchema;
+    use similar_asserts::assert_eq;
+
+    #[test]
+    fn type_roundtrip() {
+        #[track_caller]
+        fn assert_type_roundtrip(ty: Type) {
+            assert_eq!(ty, models::Type::from(&ty).into());
+        }
+
+        assert_type_roundtrip(Type::Bool(BoolType::AnyBool));
+        assert_type_roundtrip(Type::Long);
+        assert_type_roundtrip(Type::String);
+        assert_type_roundtrip(Type::Entity(EntityKind::Entity(EntityLUB::single_entity(
+            "User".parse().unwrap(),
+        ))));
+        assert_type_roundtrip(Type::set(Arc::new(Type::Long)));
+        assert_type_roundtrip(Type::record_with_attributes(
+            None,
+            OpenTag::ClosedAttributes,
+        ));
+        assert_type_roundtrip(Type::ExtensionType {
+            name: "decimal".parse().unwrap(),
+        });
+        assert_type_roundtrip(Type::record_with_attributes(
+            [(
+                "a".into(),
+                AttributeType::optional_attribute(Arc::new(Type::String)),
+            )],
+            OpenTag::ClosedAttributes,
+        ));
+        assert_type_roundtrip(Type::record_with_attributes(
+            [(
+                "a".into(),
+                AttributeType::required_attribute(Arc::new(Type::String)),
+            )],
+            OpenTag::ClosedAttributes,
+        ));
+        assert_type_roundtrip(Type::record_with_attributes(
+            [
+                (
+                    "".into(),
+                    AttributeType::required_attribute(Arc::new(Type::String)),
+                ),
+                (
+                    "\0".into(),
+                    AttributeType::required_attribute(Arc::new(Type::String)),
+                ),
+                (
+                    r#"\0"#.into(),
+                    AttributeType::required_attribute(Arc::new(Type::String)),
+                ),
+                (
+                    "\n".into(),
+                    AttributeType::required_attribute(Arc::new(Type::String)),
+                ),
+                (
+                    "🐈".into(),
+                    AttributeType::required_attribute(Arc::new(Type::String)),
+                ),
+            ],
+            OpenTag::ClosedAttributes,
+        ));
+    }
+
+    #[track_caller]
+    fn assert_schema_roundtrip(src: &str) {
+        let schema: ValidatorSchema = src.parse().expect("failed to parse cedar schema");
+        assert_eq!(schema, models::Schema::from(&schema).into());
+    }
+
+    #[test]
+    fn schema_roundtrip_empty() {
+        assert_schema_roundtrip("");
+    }
+
+    #[test]
+    fn schema_roundtrip_entities() {
+        assert_schema_roundtrip("entity User;");
+        assert_schema_roundtrip("entity Group; entity User in [Group];");
+        assert_schema_roundtrip("entity User { foo : Long };");
+        assert_schema_roundtrip("entity User tags String;");
+        assert_schema_roundtrip(r#"entity User enum ["0"];"#);
+        assert_schema_roundtrip(r#"entity User enum ["", "\0", "🐈"];"#);
+    }
+
+    #[test]
+    fn schema_roundtrip_actions() {
+        assert_schema_roundtrip("action a;");
+        assert_schema_roundtrip(r#"action "\0", "", "🐈";"#);
+        assert_schema_roundtrip("action a; action b in [a];");
+        assert_schema_roundtrip(r#"action "🐈"; action a in ["🐈"];"#);
+        assert_schema_roundtrip(
+            "entity E0, E1; action a appliesTo { principal: E0, resource: E1};",
+        );
+        assert_schema_roundtrip(
+            "entity E0, E1; action a appliesTo { principal: [E0, E1], resource: [E0, E1]};",
+        );
+        assert_schema_roundtrip("entity E0, E1; action a appliesTo { principal: E0, resource: E1, context: { foo: String } };");
+    }
+
+    #[test]
+    fn schema_roundtrip_namespace() {
+        assert_schema_roundtrip("namespace n { entity E; }");
+        assert_schema_roundtrip("namespace n { action A; }");
+    }
+
+    #[test]
+    fn schema_roundtrip_complex() {
+        assert_schema_roundtrip(
+            r#"
+        entity Doc;
+        namespace Foo::Bar::Baz {
+          entity Group enum ["admin"];
+          entity User in [Group] { name: String };
+        }
+        namespace Other {
+          action Act in [Another::Action::"Do"] appliesTo {
+            principal: [Foo::Bar::Baz::User],
+            resource: Doc
+          };
+        }
+        namespace Another {
+          action Do;
+        }"#,
+        );
     }
 }

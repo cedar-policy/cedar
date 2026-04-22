@@ -24,6 +24,7 @@
 )]
 
 mod id;
+use cedar_policy_core::pst::error_body;
 #[cfg(feature = "entity-manifest")]
 use cedar_policy_core::validator::entity_manifest;
 // TODO (#1157) implement wrappers for these structs before they become public
@@ -40,6 +41,11 @@ mod deprecated_schema_compat;
 
 mod err;
 pub use err::*;
+
+#[cfg(feature = "tpe")]
+mod tpe;
+#[cfg(feature = "tpe")]
+pub use tpe::*;
 
 pub use ast::Effect;
 pub use authorizer::Decision;
@@ -1196,12 +1202,18 @@ impl PartialResponse {
         self.0.must_be_determining().map(Policy::from_ast)
     }
 
-    /// Returns the set of non-trivial (meaning more than just `true` or `false`) residuals expressions
+    /// Returns the set of non-trivial (meaning more than just `true` or `false`) residual expressions.
+    ///
+    /// Call [`Policy::to_pst()`] on each result to convert to [`pst::Policy`]
+    /// for structured inspection of the residual expression tree.
     pub fn nontrivial_residuals(&'_ self) -> impl Iterator<Item = Policy> + '_ {
         self.0.nontrivial_residuals().map(Policy::from_ast)
     }
 
-    /// Returns every policy as a residual expression
+    /// Returns every policy as a residual expression.
+    ///
+    /// Call [`Policy::to_pst()`] on each result to convert to [`pst::Policy`]
+    /// for structured inspection of the residual expression tree.
     pub fn all_residuals(&'_ self) -> impl Iterator<Item = Policy> + '_ {
         self.0.all_residuals().map(Policy::from_ast)
     }
@@ -2654,10 +2666,10 @@ impl PolicySet {
                 .values
                 .into_iter()
                 .map(|(k, v)| {
-                    let ast_uid = ast::EntityUID::try_from(v)?;
-                    Ok((k.into(), EntityUid(ast_uid)))
+                    let ast_uid = ast::EntityUID::from(v);
+                    (k.into(), EntityUid(ast_uid))
                 })
-                .collect::<Result<_, pst::PstConstructionError>>()?;
+                .collect();
             set.link(link.template_id.into(), link.new_id.into(), vals)?;
         }
         Ok(set)
@@ -2914,9 +2926,14 @@ impl PolicySet {
                     .map(|(old_pid, new_pid)| (PolicyId::new(old_pid), PolicyId::new(new_pid)))
                     .collect();
 
-                for (pid, op) in &other.policies {
-                    let pid = renaming.get(pid).unwrap_or(pid);
+                for (old_pid, op) in &other.policies {
+                    let pid = renaming.get(old_pid).unwrap_or(old_pid);
                     if !self.policies.contains_key(pid) {
+                        let lossless = if renaming.contains_key(old_pid) {
+                            op.lossless.new_id(pid.clone())
+                        } else {
+                            op.lossless.clone()
+                        };
                         #[expect(
                             clippy::unwrap_used,
                             reason = "`pid` is the new id of a policy from `other`, so it will be in `self` after merging"
@@ -2925,21 +2942,26 @@ impl PolicySet {
                             // Use the representation from `self.ast` so that we get a version with internal references to
                             // policy ids updated to account for the renaming.
                             ast: self.ast.get(pid.as_ref()).unwrap().clone(),
-                            lossless: op.lossless.clone(),
+                            lossless,
                         };
                         self.policies.insert(pid.clone(), new_p);
                     }
                 }
-                for (pid, ot) in &other.templates {
-                    let pid = renaming.get(pid).unwrap_or(pid);
+                for (old_pid, ot) in &other.templates {
+                    let pid = renaming.get(old_pid).unwrap_or(old_pid);
                     if !self.templates.contains_key(pid) {
+                        let lossless = if renaming.contains_key(old_pid) {
+                            ot.lossless.new_id(pid.clone())
+                        } else {
+                            ot.lossless.clone()
+                        };
                         #[expect(
                             clippy::unwrap_used,
                             reason = "`pid` is the new id of a template from `other`, so it will be in `self` after merging"
                         )]
                         let new_t = Template {
                             ast: self.ast.get_template(pid.as_ref()).unwrap().clone(),
-                            lossless: ot.lossless.clone(),
+                            lossless,
                         };
                         self.templates.insert(pid.clone(), new_t);
                     }
@@ -3456,9 +3478,7 @@ impl Template {
     pub fn from_pst(pst_template: pst::Template) -> Result<Self, pst::PstConstructionError> {
         let ast: ast::Template = pst_template.clone().try_into()?;
         if ast.slots().count() == 0 {
-            return Err(pst::PstConstructionError::invalid_conversion(
-                "expected a template with slots, but found a static policy",
-            ));
+            return Err(error_body::ExpectedTemplateWithSlotsError.into());
         }
         Ok(Self {
             ast,
@@ -3470,13 +3490,15 @@ impl Template {
     pub fn to_pst(&self) -> Result<pst::Template, pst::PstConstructionError> {
         self.lossless
             .pst(|| pst::Template::try_from(self.ast.clone()))
+            .map(|t| t.with_id(self.ast.id().clone().into()))
     }
 
     /// Get an owned PST representation of this template.
     /// Can return an error if the template was built from a non-PST representation that
     /// is not a valid Cedar template.
     pub fn try_into_pst(self) -> Result<pst::Template, pst::PstConstructionError> {
-        self.lossless.try_into_pst()
+        self.lossless
+            .try_into_pst(|| pst::Template::try_from(self.ast))
     }
 
     /// Attempt to parse a [`Template`] from source.
@@ -3501,8 +3523,8 @@ impl Template {
     #[must_use]
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
-            ast: self.ast.new_id(id.into()),
-            lossless: self.lossless.clone(), // Lossless representation doesn't include the `PolicyId`
+            ast: self.ast.new_id(id.clone().into()),
+            lossless: self.lossless.new_id(id),
         }
     }
 
@@ -3913,8 +3935,8 @@ impl Policy {
     #[must_use]
     pub fn new_id(&self, id: PolicyId) -> Self {
         Self {
-            ast: self.ast.new_id(id.into()),
-            lossless: self.lossless.clone(), // Lossless representation doesn't include the `PolicyId`
+            ast: self.ast.new_id(id.clone().into()),
+            lossless: self.lossless.new_id(id),
         }
     }
 
@@ -4224,14 +4246,14 @@ impl Policy {
     pub fn to_pst(&self) -> Result<pst::Policy, pst::PstConstructionError> {
         self.lossless
             .pst(|| pst::Policy::try_from(self.ast.clone()))
+            .map(|p| p.new_id(self.ast.id().clone().into()))
     }
 
     /// Get an owned PST representation of this policy. May return an error when the policy
     /// has been constructed from a different representation that is not a valid Cedar policy.
     pub fn try_into_pst(self) -> Result<pst::Policy, pst::PstConstructionError> {
-        // no fallback for this one: caller is trying to get the policy's representation in order
-        // to manipulate it.
-        self.lossless.try_into_pst()
+        self.lossless
+            .try_into_pst(|| pst::Policy::try_from(self.ast.clone()))
     }
 
     /// Get all the unknown entities from the policy
@@ -4251,10 +4273,24 @@ impl Policy {
     /// conversion to AST is lossy. ESTs for policies generated by this method
     /// will reflect the AST and not the original policy syntax.
     pub(crate) fn from_ast(ast: ast::Policy) -> Self {
-        let text = ast.to_string(); // assume that pretty-printing is faster than `est::Policy::from(ast.clone())`; is that true?
+        // In from_ast we have choices in the LosslessPolicy representation:
+        // - eagerly choose one representation and store it. If the consumer actually
+        //.  wants that representation, we saved time.
+        // - do not pick a representation, and trigger the conversion from AST every time
+        //.  the consumer needs a particular representation (test, EST or PST).
+        //
+        // A previous implementation stored the text printed to the ast, but this creates
+        // some overhead when calling `from_ast` (printing). Converting to any non-text
+        // representation is also expensive compared to AST to other syntax tree conversions.
+        //
+        // This implementation now picks LosslessPolicy::Empty, the cost of printing/converting
+        // is only paid when the consumer actually needs the representation.
+        //
+        // Benchmarked some choices in `benches/from_ast.rs`: the new path is ~22–190×
+        // faster than the old to_string + re-parse path on the sample of 4 policies.
         Self {
             ast,
-            lossless: LosslessPolicy::policy_or_template_text(Some(text)),
+            lossless: LosslessPolicy::Empty,
         }
     }
 }
@@ -4300,6 +4336,19 @@ impl LosslessTemplate {
         text.map_or(Self::Empty, |text| Self::Text(text.into()))
     }
 
+    /// Clone this `LosslessTemplate` with a new policy ID.
+    /// Only the PST variant embeds the ID; other variants are unaffected.
+    fn new_id(&self, id: PolicyId) -> Self {
+        match self {
+            Self::Pst(pst) => {
+                let mut pst = pst.clone();
+                pst.id = id.into();
+                Self::Pst(pst)
+            }
+            other => other.clone(),
+        }
+    }
+
     /// Get the EST representation of this template.
     fn est(
         &self,
@@ -4329,11 +4378,12 @@ impl LosslessTemplate {
     }
 
     /// Get an owned PST representation of this template.
-    /// Does not attempt to convert from a translated representation; this policy must have
-    /// been constructed from a valid EST, PST or Cedar text.
-    fn try_into_pst(self) -> Result<pst::Template, pst::PstConstructionError> {
+    fn try_into_pst(
+        self,
+        fallback_pst: impl FnOnce() -> Result<pst::Template, pst::PstConstructionError>,
+    ) -> Result<pst::Template, pst::PstConstructionError> {
         match self {
-            Self::Empty => Err(pst::PstConstructionError::EmptyPolicy),
+            Self::Empty => fallback_pst(),
             Self::Est(est) => Ok(est.try_into()?),
             Self::Pst(pst) => Ok(pst),
             Self::Text(text) => Ok(parser::parse_policy_or_template_to_est(&text)?.try_into()?),
@@ -4377,10 +4427,11 @@ impl LosslessTemplate {
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            Self::Empty | Self::Pst(_) => match self.est(fallback_est) {
+            Self::Empty => match self.est(fallback_est) {
                 Ok(est) => write!(f, "{est}"),
                 Err(e) => write!(f, "<invalid policy: {e}>"),
             },
+            Self::Pst(pst) => write!(f, "{pst}"), // PST -> EST conversion in display
             Self::Est(est) => write!(f, "{est}"),
             Self::Text(text) => write!(f, "{text}"),
         }
@@ -4416,6 +4467,15 @@ impl LosslessPolicy {
         })
     }
 
+    /// Clone this `LosslessPolicy` with a new policy ID.
+    /// Only the PST variant embeds the ID; other variants are unaffected.
+    fn new_id(&self, id: PolicyId) -> Self {
+        match self {
+            Self::Pst(pst) => Self::Pst(pst.new_id(id.into())),
+            other => other.clone(),
+        }
+    }
+
     /// Get the EST representation of this policy.
     fn est(
         &self,
@@ -4428,10 +4488,10 @@ impl LosslessPolicy {
                 // Convert the effective body (with slots resolved for linked policies) to EST
                 // (same behavior as policies from text)
                 match pst {
-                    pst::Policy::Static(sp) => Ok(sp.body.clone().try_into()?),
+                    pst::Policy::Static(sp) => Ok(sp.body().clone().try_into()?),
                     pst::Policy::Linked(lp) => {
                         let static_policy = lp.into_static_policy()?;
-                        Ok(static_policy.body.try_into()?)
+                        Ok(static_policy.body().clone().try_into()?)
                     }
                 }
             }
@@ -4478,9 +4538,12 @@ impl LosslessPolicy {
     }
 
     /// Get an owned PST representation of this policy.
-    fn try_into_pst(self) -> Result<pst::Policy, pst::PstConstructionError> {
+    fn try_into_pst(
+        self,
+        fallback_pst: impl FnOnce() -> Result<pst::Policy, pst::PstConstructionError>,
+    ) -> Result<pst::Policy, pst::PstConstructionError> {
         match self {
-            Self::Empty => Err(pst::PstConstructionError::EmptyPolicy),
+            Self::Empty => fallback_pst(),
             Self::Est(est) => {
                 let template: pst::Template = est.try_into()?;
                 Ok(pst::Policy::Static(pst::StaticPolicy::try_from(template)?))
@@ -4509,10 +4572,11 @@ impl LosslessPolicy {
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            Self::Empty | Self::Pst(_) => match self.est(fallback_est) {
+            Self::Empty => match self.est(fallback_est) {
                 Ok(est) => write!(f, "{est}"),
                 Err(e) => write!(f, "<invalid policy: {e}>"),
             },
+            Self::Pst(pst) => write!(f, "{pst}"), // Does PST -> EST
             Self::Est(est) => write!(f, "{est}"),
             Self::Text { text, slots } => {
                 if slots.is_empty() {
@@ -5598,742 +5662,6 @@ pub fn eval_expression(
     ))
 }
 
-#[cfg(feature = "tpe")]
-pub use tpe::*;
-
-#[cfg(feature = "tpe")]
-mod tpe {
-    use std::collections::{BTreeMap, HashMap, HashSet};
-    use std::sync::Arc;
-
-    use cedar_policy_core::ast::{self, Value};
-    use cedar_policy_core::authorizer::Decision;
-    use cedar_policy_core::batched_evaluator::is_authorized_batched;
-    use cedar_policy_core::batched_evaluator::{
-        err::BatchedEvalError, EntityLoader as EntityLoaderInternal,
-    };
-    use cedar_policy_core::evaluator::{EvaluationError, RestrictedEvaluator};
-    use cedar_policy_core::extensions::Extensions;
-    use cedar_policy_core::tpe;
-    use itertools::Itertools;
-    use ref_cast::RefCast;
-    use smol_str::SmolStr;
-
-    use crate::{
-        api, tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
-        PartialEntityError, PartialRequestCreationError, PermissionQueryError, Policy, PolicySet,
-        Request, RequestValidationError, RestrictedExpression, Schema,
-    };
-    use crate::{Entity, TpeReauthorizationError};
-
-    /// A partial [`EntityUid`].
-    /// That is, its [`EntityId`] could be unknown
-    #[doc = include_str!("../experimental_warning.md")]
-    #[repr(transparent)]
-    #[derive(Debug, Clone, RefCast)]
-    pub struct PartialEntityUid(pub(crate) tpe::request::PartialEntityUID);
-
-    #[doc(hidden)]
-    impl AsRef<tpe::request::PartialEntityUID> for PartialEntityUid {
-        fn as_ref(&self) -> &tpe::request::PartialEntityUID {
-            &self.0
-        }
-    }
-
-    impl PartialEntityUid {
-        /// Construct a [`PartialEntityUid`]
-        pub fn new(ty: EntityTypeName, id: Option<EntityId>) -> Self {
-            Self(tpe::request::PartialEntityUID {
-                ty: ty.0,
-                eid: id.map(|id| <EntityId as AsRef<ast::Eid>>::as_ref(&id).clone()),
-            })
-        }
-
-        /// Construct a [`PartialEntityUid`] from a concrete [`EntityUid`].
-        pub fn from_concrete(euid: EntityUid) -> Self {
-            let (ty, eid) = euid.0.components();
-            Self(tpe::request::PartialEntityUID { ty, eid: Some(eid) })
-        }
-    }
-
-    /// A partial [`Request`]
-    /// Its principal/resource types and action must be known and its context
-    /// must either be fully known or unknown
-    #[doc = include_str!("../experimental_warning.md")]
-    #[repr(transparent)]
-    #[derive(Debug, Clone, RefCast)]
-    pub struct PartialRequest(pub(crate) tpe::request::PartialRequest);
-
-    #[doc(hidden)]
-    impl AsRef<tpe::request::PartialRequest> for PartialRequest {
-        fn as_ref(&self) -> &tpe::request::PartialRequest {
-            &self.0
-        }
-    }
-
-    impl PartialRequest {
-        /// Construct a valid [`PartialRequest`] according to a [`Schema`]
-        pub fn new(
-            principal: PartialEntityUid,
-            action: EntityUid,
-            resource: PartialEntityUid,
-            context: Option<Context>,
-            schema: &Schema,
-        ) -> Result<Self, PartialRequestCreationError> {
-            let context = context
-                .map(|c| match c.0 {
-                    ast::Context::RestrictedResidual(_) => {
-                        Err(PartialRequestCreationError::ContextContainsUnknowns)
-                    }
-                    ast::Context::Value(m) => Ok(m),
-                })
-                .transpose()?;
-            tpe::request::PartialRequest::new(principal.0, action.0, resource.0, context, &schema.0)
-                .map(Self)
-                .map_err(|e| PartialRequestCreationError::Validation(e.into()))
-        }
-    }
-
-    /// Like [`PartialRequest`] but only `resource` can be unknown
-    #[doc = include_str!("../experimental_warning.md")]
-    #[repr(transparent)]
-    #[derive(Debug, Clone, RefCast)]
-    pub struct ResourceQueryRequest(pub(crate) PartialRequest);
-
-    impl ResourceQueryRequest {
-        /// Construct a valid [`ResourceQueryRequest`] according to a [`Schema`]
-        pub fn new(
-            principal: EntityUid,
-            action: EntityUid,
-            resource: EntityTypeName,
-            context: Context,
-            schema: &Schema,
-        ) -> Result<Self, PartialRequestCreationError> {
-            PartialRequest::new(
-                PartialEntityUid(principal.0.into()),
-                action,
-                PartialEntityUid::new(resource, None),
-                Some(context),
-                schema,
-            )
-            .map(Self)
-        }
-
-        /// Convert [`ResourceQueryRequest`] to a [`Request`] by providing the resource [`EntityId`]
-        pub fn to_request(
-            &self,
-            resource_id: EntityId,
-            schema: Option<&Schema>,
-        ) -> Result<Request, RequestValidationError> {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "various fields are validated through the constructor"
-            )]
-            Request::new(
-                EntityUid(self.0 .0.get_principal().try_into().unwrap()),
-                EntityUid(self.0 .0.get_action()),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName(self.0 .0.get_resource_type()),
-                    resource_id,
-                ),
-                Context::from_pairs(
-                    self.0
-                         .0
-                        .get_context_attrs()
-                        .unwrap()
-                        .iter()
-                        .map(|(a, v)| (a.to_string(), RestrictedExpression(v.clone().into()))),
-                )
-                .unwrap(),
-                schema,
-            )
-        }
-    }
-
-    /// Like [`PartialRequest`] but only `principal` can be unknown
-    #[doc = include_str!("../experimental_warning.md")]
-    #[repr(transparent)]
-    #[derive(Debug, Clone, RefCast)]
-    pub struct PrincipalQueryRequest(pub(crate) PartialRequest);
-
-    impl PrincipalQueryRequest {
-        /// Construct a valid [`PrincipalQueryRequest`] according to a [`Schema`]
-        pub fn new(
-            principal: EntityTypeName,
-            action: EntityUid,
-            resource: EntityUid,
-            context: Context,
-            schema: &Schema,
-        ) -> Result<Self, PartialRequestCreationError> {
-            PartialRequest::new(
-                PartialEntityUid::new(principal, None),
-                action,
-                PartialEntityUid(resource.0.into()),
-                Some(context),
-                schema,
-            )
-            .map(Self)
-        }
-
-        /// Convert [`PrincipalQueryRequest`] to a [`Request`] by providing the principal [`EntityId`]
-        pub fn to_request(
-            &self,
-            principal_id: EntityId,
-            schema: Option<&Schema>,
-        ) -> Result<Request, RequestValidationError> {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "various fields are validated through the constructor"
-            )]
-            Request::new(
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName(self.0 .0.get_principal_type()),
-                    principal_id,
-                ),
-                EntityUid(self.0 .0.get_action()),
-                EntityUid(self.0 .0.get_resource().try_into().unwrap()),
-                Context::from_pairs(
-                    self.0
-                         .0
-                        .get_context_attrs()
-                        .unwrap()
-                        .iter()
-                        .map(|(a, v)| (a.to_string(), RestrictedExpression(v.clone().into()))),
-                )
-                .unwrap(),
-                schema,
-            )
-        }
-    }
-
-    /// Defines a [`PartialRequest`] which additionally leaves the action
-    /// undefined, enabling queries listing what actions might be authorized.
-    ///
-    /// See [`PolicySet::query_action`] for documentation and example usage.
-    #[doc = include_str!("../experimental_warning.md")]
-    #[derive(Debug, Clone)]
-    pub struct ActionQueryRequest {
-        principal: PartialEntityUid,
-        resource: PartialEntityUid,
-        context: Option<Arc<BTreeMap<SmolStr, Value>>>,
-        schema: Schema,
-    }
-
-    impl ActionQueryRequest {
-        /// Construct a valid [`ActionQueryRequest`] according to a [`Schema`]
-        pub fn new(
-            principal: PartialEntityUid,
-            resource: PartialEntityUid,
-            context: Option<Context>,
-            schema: Schema,
-        ) -> Result<Self, PartialRequestCreationError> {
-            let context = context
-                .map(|c| match c.0 {
-                    ast::Context::RestrictedResidual(_) => {
-                        Err(PartialRequestCreationError::ContextContainsUnknowns)
-                    }
-                    ast::Context::Value(m) => Ok(m),
-                })
-                .transpose()?;
-            Ok(Self {
-                principal,
-                resource,
-                context,
-                schema,
-            })
-        }
-
-        fn partial_request(
-            &self,
-            action: EntityUid,
-        ) -> Result<PartialRequest, cedar_policy_core::validator::RequestValidationError> {
-            tpe::request::PartialRequest::new(
-                self.principal.0.clone(),
-                action.0,
-                self.resource.0.clone(),
-                self.context.clone(),
-                &self.schema.0,
-            )
-            .map(PartialRequest)
-        }
-    }
-
-    /// Partial [`Entity`]
-    #[doc = include_str!("../experimental_warning.md")]
-    #[repr(transparent)]
-    #[derive(Debug, Clone, RefCast)]
-    pub struct PartialEntity(pub(crate) tpe::entities::PartialEntity);
-
-    impl PartialEntity {
-        /// Construct a [`PartialEntity`]
-        pub fn new(
-            uid: EntityUid,
-            attrs: Option<BTreeMap<SmolStr, RestrictedExpression>>,
-            ancestors: Option<HashSet<EntityUid>>,
-            tags: Option<BTreeMap<SmolStr, RestrictedExpression>>,
-            schema: &Schema,
-        ) -> Result<Self, PartialEntityError> {
-            Ok(Self(tpe::entities::PartialEntity::new(
-                uid.0,
-                attrs
-                    .map(|ps| {
-                        ps.into_iter()
-                            .map(|(k, v)| {
-                                Ok((
-                                    k,
-                                    RestrictedEvaluator::new(Extensions::all_available())
-                                        .interpret(v.0.as_borrowed())?,
-                                ))
-                            })
-                            .collect::<Result<BTreeMap<_, _>, EvaluationError>>()
-                    })
-                    .transpose()?,
-                ancestors.map(|s| s.into_iter().map(|e| e.0).collect()),
-                tags.map(|ps| {
-                    ps.into_iter()
-                        .map(|(k, v)| {
-                            Ok((
-                                k,
-                                RestrictedEvaluator::new(Extensions::all_available())
-                                    .interpret(v.0.as_borrowed())?,
-                            ))
-                        })
-                        .collect::<Result<BTreeMap<_, _>, EvaluationError>>()
-                })
-                .transpose()?,
-                &schema.0,
-            )?))
-        }
-    }
-
-    /// Partial [`Entities`]
-    #[doc = include_str!("../experimental_warning.md")]
-    #[repr(transparent)]
-    #[derive(Debug, Clone, RefCast)]
-    pub struct PartialEntities(pub(crate) tpe::entities::PartialEntities);
-
-    #[doc(hidden)]
-    impl AsRef<tpe::entities::PartialEntities> for PartialEntities {
-        fn as_ref(&self) -> &tpe::entities::PartialEntities {
-            &self.0
-        }
-    }
-
-    impl PartialEntities {
-        /// Construct [`PartialEntities`] from a JSON value
-        /// The `parent`, `attrs`, `tags` field must be either fully known or
-        /// unknown. And parent entities cannot have unknown parents.
-        pub fn from_json_value(
-            value: serde_json::Value,
-            schema: &Schema,
-        ) -> Result<Self, tpe_err::EntitiesError> {
-            tpe::entities::PartialEntities::from_json_value(value, &schema.0).map(Self)
-        }
-
-        /// Construct [`PartialEntities`] given a fully concrete [`Entities`]
-        pub fn from_concrete(
-            entities: Entities,
-            schema: &Schema,
-        ) -> Result<Self, tpe_err::EntitiesError> {
-            tpe::entities::PartialEntities::from_concrete(entities.0, &schema.0).map(Self)
-        }
-
-        /// Create a `PartialEntities` with no entities
-        pub fn empty() -> Self {
-            Self(tpe::entities::PartialEntities::new())
-        }
-
-        /// Construct [`PartialEntities`] from an iterator of [`PartialEntity`]
-        pub fn from_partial_entities(
-            entities: impl IntoIterator<Item = PartialEntity>,
-            schema: &Schema,
-        ) -> Result<Self, tpe_err::EntitiesError> {
-            Ok(Self(tpe::entities::PartialEntities::from_entities(
-                entities.into_iter().map(|entity| entity.0),
-                &schema.0,
-            )?))
-        }
-    }
-
-    /// A partial version of [`crate::Response`].
-    #[doc = include_str!("../experimental_warning.md")]
-    #[repr(transparent)]
-    #[derive(Debug, Clone, RefCast)]
-    pub struct TpeResponse<'a>(pub(crate) tpe::response::Response<'a>);
-
-    #[doc(hidden)]
-    impl<'a> AsRef<tpe::response::Response<'a>> for TpeResponse<'a> {
-        fn as_ref(&self) -> &tpe::response::Response<'a> {
-            &self.0
-        }
-    }
-
-    impl TpeResponse<'_> {
-        /// Attempt to get the authorization decision
-        pub fn decision(&self) -> Option<Decision> {
-            self.0.decision()
-        }
-
-        /// Perform reauthorization
-        pub fn reauthorize(
-            &self,
-            request: &Request,
-            entities: &Entities,
-        ) -> Result<api::Response, TpeReauthorizationError> {
-            self.0
-                .reauthorize(&request.0, &entities.0)
-                .map(Into::into)
-                .map_err(Into::into)
-        }
-
-        /// Return residuals as [`Policy`]s
-        /// A [`Policy`] returned inherits [`crate::PolicyId`] and annotations from
-        /// the corresponding input policy
-        /// Its scope is unconstrained and its condition is in the form of a
-        /// single `when` clause with the residual as the expression
-        /// Use [`TpeResponse::nontrivial_residual_policies`] to get non-trivial residual policies
-        pub fn residual_policies(&self) -> impl Iterator<Item = Policy> + '_ {
-            self.0
-                .residual_policies()
-                .map(|p| Policy::from_ast(p.clone().into()))
-        }
-
-        /// Returns an iterator of non-trivial (meaning more than just `true`
-        /// or `false`) residuals as [`Policy`]s
-        /// A [`Policy`] returned inherits [`crate::PolicyId`] and annotations from
-        /// the corresponding input policy
-        /// Its scope is unconstrained and its condition is in the form of a
-        /// single `when` clause with the residual as the expression
-        pub fn nontrivial_residual_policies(&'_ self) -> impl Iterator<Item = Policy> + '_ {
-            self.0
-                .residual_permits()
-                .chain(self.0.residual_forbids())
-                .map(|p| Policy::from_ast(p.clone().into()))
-        }
-    }
-
-    /// Entity loader trait for batched evaluation.
-    ///
-    /// Loads entities on demand, returning `None` for missing entities.
-    /// The `load_entities` function must load all requested entities,
-    /// and must compute and include all ancestors of the requested entities.
-    /// Loading more entities than requested is allowed.
-    #[doc = include_str!("../experimental_warning.md")]
-    pub trait EntityLoader {
-        /// Load all entities for the given set of entity UIDs.
-        /// Returns a map from [`EntityUid`] to [`Option<Entity>`], where `None` indicates
-        /// the entity does not exist.
-        fn load_entities(
-            &mut self,
-            uids: &HashSet<EntityUid>,
-        ) -> HashMap<EntityUid, Option<Entity>>;
-    }
-
-    /// Wrapper struct used to convert an [`EntityLoader`] to an `EntityLoaderInternal`
-    struct EntityLoaderWrapper<'a>(&'a mut dyn EntityLoader);
-
-    impl EntityLoaderInternal for EntityLoaderWrapper<'_> {
-        fn load_entities(
-            &mut self,
-            uids: &HashSet<ast::EntityUID>,
-        ) -> HashMap<ast::EntityUID, Option<ast::Entity>> {
-            let ids = uids
-                .iter()
-                .map(|id| EntityUid::ref_cast(id).clone())
-                .collect();
-            self.0
-                .load_entities(&ids)
-                .into_iter()
-                .map(|(uid, entity)| (uid.0, entity.map(|e| e.0)))
-                .collect()
-        }
-    }
-
-    /// Simple entity loader implementation that loads from a pre-existing Entities store
-    #[doc = include_str!("../experimental_warning.md")]
-    #[derive(Debug)]
-
-    pub struct TestEntityLoader<'a> {
-        entities: &'a Entities,
-    }
-
-    impl<'a> TestEntityLoader<'a> {
-        /// Create a new [`TestEntityLoader`] from an existing Entities store
-        pub fn new(entities: &'a Entities) -> Self {
-            Self { entities }
-        }
-    }
-
-    impl EntityLoader for TestEntityLoader<'_> {
-        fn load_entities(
-            &mut self,
-            uids: &HashSet<EntityUid>,
-        ) -> HashMap<EntityUid, Option<Entity>> {
-            uids.iter()
-                .map(|uid| {
-                    let entity = self.entities.get(uid).cloned();
-                    (uid.clone(), entity)
-                })
-                .collect()
-        }
-    }
-
-    impl PolicySet {
-        /// Perform type-aware partial evaluation on this [`PolicySet`]
-        /// If successful, the result is a [`PolicySet`] containing residual
-        /// policies ready for re-authorization
-        #[doc = include_str!("../experimental_warning.md")]
-        pub fn tpe<'a>(
-            &self,
-            request: &'a PartialRequest,
-            entities: &'a PartialEntities,
-            schema: &'a Schema,
-        ) -> Result<TpeResponse<'a>, tpe_err::TpeError> {
-            use cedar_policy_core::tpe::is_authorized;
-            let ps = &self.ast;
-            let res = is_authorized(ps, &request.0, &entities.0, &schema.0)?;
-            Ok(TpeResponse(res))
-        }
-
-        /// Like [`Authorizer::is_authorized`] but uses an [`EntityLoader`] to load
-        /// entities on demand.
-        ///
-        /// Calls `loader` at most `max_iters` times, returning
-        /// early if an authorization result is reached.
-        /// Otherwise, it iterates `max_iters` times and returns
-        /// a partial result.
-        ///
-        #[doc = include_str!("../experimental_warning.md")]
-        pub fn is_authorized_batched(
-            &self,
-            query: &Request,
-            schema: &Schema,
-            loader: &mut dyn EntityLoader,
-            max_iters: u32,
-        ) -> Result<Decision, BatchedEvalError> {
-            is_authorized_batched(
-                &query.0,
-                &self.ast,
-                &schema.0,
-                &mut EntityLoaderWrapper(loader),
-                max_iters,
-            )
-        }
-
-        /// Perform a permission query on the resource
-        #[doc = include_str!("../experimental_warning.md")]
-        pub fn query_resource(
-            &self,
-            request: &ResourceQueryRequest,
-            entities: &Entities,
-            schema: &Schema,
-        ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
-            let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
-            let residuals = self.tpe(&request.0, &partial_entities, schema)?;
-            #[expect(
-                clippy::unwrap_used,
-                reason = "policy set construction should succeed because there shouldn't be any policy id conflicts"
-            )]
-            let policies = &Self::from_policies(
-                residuals
-                    .0
-                    .residual_policies()
-                    .map(|p| Policy::from_ast(p.clone().into())),
-            )
-            .unwrap();
-            #[expect(
-                clippy::unwrap_used,
-                reason = "request construction should succeed because each entity passes validation"
-            )]
-            match residuals.decision() {
-                Some(Decision::Allow) => Ok(entities
-                    .iter()
-                    .filter(|entity| {
-                        entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
-                    })
-                    .map(super::Entity::uid)
-                    .collect_vec()
-                    .into_iter()),
-                Some(Decision::Deny) => Ok(vec![].into_iter()),
-                None => Ok(entities
-                    .iter()
-                    .filter(|entity| {
-                        entity.0.uid().entity_type() == &request.0 .0.get_resource_type()
-                    })
-                    .filter(|entity| {
-                        let authorizer = Authorizer::new();
-                        authorizer
-                            .is_authorized(
-                                &request.to_request(entity.uid().id().clone(), None).unwrap(),
-                                policies,
-                                entities,
-                            )
-                            .decision
-                            == Decision::Allow
-                    })
-                    .map(super::Entity::uid)
-                    .collect_vec()
-                    .into_iter()),
-            }
-        }
-
-        /// Perform a permission query on the principal
-        #[doc = include_str!("../experimental_warning.md")]
-        pub fn query_principal(
-            &self,
-            request: &PrincipalQueryRequest,
-            entities: &Entities,
-            schema: &Schema,
-        ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
-            let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
-            let residuals = self.tpe(&request.0, &partial_entities, schema)?;
-            #[expect(
-                clippy::unwrap_used,
-                reason = "policy set construction should succeed because there shouldn't be any policy id conflicts"
-            )]
-            let policies = &Self::from_policies(
-                residuals
-                    .0
-                    .residual_policies()
-                    .map(|p| Policy::from_ast(p.clone().into())),
-            )
-            .unwrap();
-            #[expect(
-                clippy::unwrap_used,
-                reason = "request construction should succeed because each entity passes validation"
-            )]
-            match residuals.decision() {
-                Some(Decision::Allow) => Ok(entities
-                    .iter()
-                    .filter(|entity| {
-                        entity.0.uid().entity_type() == &request.0 .0.get_principal_type()
-                    })
-                    .map(super::Entity::uid)
-                    .collect_vec()
-                    .into_iter()),
-                Some(Decision::Deny) => Ok(vec![].into_iter()),
-                None => Ok(entities
-                    .iter()
-                    .filter(|entity| {
-                        entity.0.uid().entity_type() == &request.0 .0.get_principal_type()
-                    })
-                    .filter(|entity| {
-                        let authorizer = Authorizer::new();
-                        authorizer
-                            .is_authorized(
-                                &request.to_request(entity.uid().id().clone(), None).unwrap(),
-                                policies,
-                                entities,
-                            )
-                            .decision
-                            == Decision::Allow
-                    })
-                    .map(super::Entity::uid)
-                    .collect_vec()
-                    .into_iter()),
-            }
-        }
-
-        /// Given a [`ActionQueryRequest`] (a partial request without a concrete
-        /// action) enumerate actions in the schema which might be authorized
-        /// for that request.
-        ///
-        /// Each action is returned with a partial authorization decision.  If
-        /// the action is definitely authorized, then it is `Some(Decision::Allow)`.
-        /// If we did not reach a concrete authorization decision, then it is
-        /// `None`. Actions which are definitely not authorized (i.e., the
-        /// decision is `Some(Decision::Deny)`) are not returned by this
-        /// function. It is also possible that some actions without a concrete
-        /// authorization decision are never authorized if the residual
-        /// expressions after partial evaluation are not satisfiable.
-        ///
-        /// If the partial request for a particular action is invalid (e.g., the
-        /// action does not apply to the type of principal and resource), then
-        /// that action is not included in the result regardless of whether a
-        /// request with that action would be authorized.
-        ///
-        /// ```
-        /// # use cedar_policy::{PolicySet, Schema, ActionQueryRequest, PartialEntities, PartialEntityUid, Decision, EntityUid, Entities};
-        /// # use std::str::FromStr;
-        /// # let policies = PolicySet::from_str(r#"
-        /// #     permit(principal, action == Action::"edit", resource) when { context.should_allow };
-        /// #     permit(principal, action == Action::"view", resource);
-        /// # "#).unwrap();
-        /// # let schema = Schema::from_str("
-        /// #     entity User, Photo;
-        /// #     action view, edit appliesTo {
-        /// #       principal: User,
-        /// #       resource: Photo,
-        /// #       context: { should_allow: Bool, }
-        /// #     };
-        /// # ").unwrap();
-        /// # let entities = PartialEntities::empty();
-        ///
-        /// // Construct a request for a concrete principal and resource, but leaving the context unknown so
-        /// // that we can see all actions that might be authorized for some context.
-        /// let request = ActionQueryRequest::new(
-        ///     PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-        ///     PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-        ///     None,
-        ///     schema,
-        /// ).unwrap();
-        ///
-        /// // All actions which might be allowed for this principal and resource.
-        /// // The exact authorization result may depend on currently unknown
-        /// // context and entity data.
-        /// let possibly_allowed_actions: Vec<&EntityUid> =
-        ///     policies.query_action(&request, &entities)
-        ///             .unwrap()
-        ///             .map(|(a, _)| a)
-        ///             .collect();
-        /// # let mut possibly_allowed_actions = possibly_allowed_actions;
-        /// # possibly_allowed_actions.sort();
-        /// # assert_eq!(&possibly_allowed_actions, &[&r#"Action::"edit""#.parse().unwrap(), &r#"Action::"view""#.parse().unwrap()]);
-        ///
-        /// // These actions are definitely allowed for this principal and resource.
-        /// // These will be allowed for _any_ context.
-        /// let allowed_actions: Vec<&EntityUid> =
-        ///     policies.query_action(&request, &entities).unwrap()
-        ///             .filter(|(_, resp)| resp == &Some(Decision::Allow))
-        ///             .map(|(a, _)| a)
-        ///             .collect();
-        /// # assert_eq!(&allowed_actions, &[&r#"Action::"view""#.parse().unwrap()]);
-        /// ```
-        #[doc = include_str!("../experimental_warning.md")]
-        pub fn query_action<'a>(
-            &self,
-            request: &'a ActionQueryRequest,
-            entities: &PartialEntities,
-        ) -> Result<impl Iterator<Item = (&'a EntityUid, Option<Decision>)>, PermissionQueryError>
-        {
-            let mut authorized_actions = Vec::new();
-            // We only consider actions that apply to the type of the requested
-            // principal and resource. Any requests for different actions would
-            // be invalid, so they should never be authorized. Not however that
-            // an authorization request for _could_ return `Allow` if the caller
-            // ignores the request validation error.
-            for action in request
-                .schema
-                .0
-                .actions_for_principal_and_resource(&request.principal.0.ty, &request.resource.0.ty)
-            {
-                // If we fail to construct a partial request, then the partial context is not valid for
-                // the context type declared for this action. This action should never be authorized,
-                // but with the same caveats about invalid requests.
-                if let Ok(partial_request) = request.partial_request(action.clone().into()) {
-                    let decision = self
-                        .tpe(&partial_request, entities, &request.schema)?
-                        .decision();
-                    if decision != Some(Decision::Deny) {
-                        authorized_actions.push((RefCast::ref_cast(action), decision));
-                    }
-                }
-            }
-            Ok(authorized_actions.into_iter())
-        }
-    }
-}
-
 // These are the same tests in validator, just ensuring all the plumbing is done correctly
 #[cfg(test)]
 mod test_access {
@@ -6922,6 +6250,7 @@ action CreateList in Create appliesTo {
 mod test_lossless_empty {
     use super::{LosslessPolicy, LosslessTemplate, Policy, PolicyId, Template};
     use cedar_policy_core::pst;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn test_lossless_empty_policy() {
@@ -6980,10 +6309,16 @@ mod test_lossless_empty {
             ast: p.ast,
             lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
         };
-        assert!(matches!(
-            empty.try_into_pst(),
-            Err(pst::PstConstructionError::EmptyPolicy)
-        ));
+        assert_matches!(
+            empty.try_into_pst().unwrap().body(),
+            pst::Template {
+                effect: pst::Effect::Permit,
+                principal: pst::PrincipalConstraint::Any,
+                resource: pst::ResourceConstraint::Any,
+                action: pst::ActionConstraint::Any,
+                ..
+            },
+        );
     }
 
     #[test]
@@ -6997,10 +6332,18 @@ mod test_lossless_empty {
             ast: t.ast,
             lossless: LosslessTemplate::from_text(None::<&str>),
         };
-        assert!(matches!(
-            empty.try_into_pst(),
-            Err(pst::PstConstructionError::EmptyPolicy)
-        ));
+        assert_matches!(
+            empty.try_into_pst().unwrap(),
+            pst::Template {
+                effect: pst::Effect::Permit,
+                principal: pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(
+                    pst::SlotId::Principal
+                )),
+                resource: pst::ResourceConstraint::Any,
+                action: pst::ActionConstraint::Any,
+                ..
+            },
+        );
     }
 }
 

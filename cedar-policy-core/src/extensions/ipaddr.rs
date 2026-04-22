@@ -56,6 +56,9 @@ pub(crate) mod names {
 /// This error is likely due to confusion between "127.0.0.1" and ip("127.0.0.1").
 const ADVICE_MSG: &str = "maybe you forgot to apply the `ip` constructor?";
 
+/// Help text describing the valid IP address format, used when an IP parse error occurs.
+const VALID_IP_HELP: &str = "valid IP strings are IPv4/IPv6 addresses or CIDR ranges like `127.0.0.1`, `127.0.0.1/24`, or `ffee::/64`";
+
 /// Maximum prefix size for IpV4 addresses
 const PREFIX_MAX_LEN_V4: u8 = 32;
 /// Maximum prefix size for IpV6 addresses
@@ -243,14 +246,23 @@ impl ExtensionValue for IPAddr {
     fn supports_operator_overloading(&self) -> bool {
         false
     }
+
+    /// The canonical representation of an IP Address formats the IP address string
+    /// argument of the `ip` extension.
+    fn canonical_repr(&self) -> Option<(Name, Vec<crate::ast::RestrictedExpr>)> {
+        Some((
+            names::IP_FROM_STR_NAME.clone(),
+            vec![crate::ast::RestrictedExpr::val(self.to_string())],
+        ))
+    }
 }
 
-fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
+fn extension_err(msg: impl Into<String>, advice: Option<String>) -> evaluator::EvaluationError {
     evaluator::EvaluationError::failed_extension_function_application(
         names::EXTENSION_NAME.clone(),
         msg.into(),
         None, // source loc will be added by the evaluator
-        None,
+        advice,
     )
 }
 
@@ -319,7 +331,10 @@ fn ip_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let arg_source_loc = arg.source_loc();
     let ipaddr = RepresentableExtensionValue::new(
-        Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
+        Arc::new(
+            IPAddr::from_str(str.as_str())
+                .map_err(|e| extension_err(e, Some(VALID_IP_HELP.to_string())))?,
+        ),
         names::IP_FROM_STR_NAME.clone(),
         vec![arg.clone().into()],
     );

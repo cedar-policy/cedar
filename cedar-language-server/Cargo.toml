@@ -26,7 +26,7 @@ regex = "1.12.2"
 tower-lsp-server = "0.23.0"
 
 # Dependencies needed only for the language server binary
-tokio = { version = "1.50.0", features = ["full"], optional = true }
+tokio = { version = "1.52.0", features = ["full"], optional = true }
 tracing-appender = { version = "0.2.4", optional = true }
 tracing-subscriber = { version = "0.3.23", features = ["json"], optional = true}
 tower-service = { version = "0.3.3", optional = true}
@@ -41,8 +41,8 @@ wasm-bindgen = { version = "0.2.97", optional = true }
 [dev-dependencies]
 tracing-test = "0.2.6"
 cool_asserts = "2.0.4"
-similar-asserts = "1.7.0"
-insta = "1.46.1"
+similar-asserts = "2.0.0"
+insta = "1.47.2"
 tempfile = "3.27.0"
 proptest = "1.11"
 

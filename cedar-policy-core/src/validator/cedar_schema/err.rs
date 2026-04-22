@@ -111,6 +111,11 @@ static SCHEMA_TOKEN_CONFIG: LazyLock<ExpectedTokenConfig> = LazyLock::new(|| Exp
     first_set_sentinel: "\"{\"",
 });
 
+pub(crate) const MISSING_APPLIES_TO_HELP_MSG: &str =
+    "action declarations require `appliesTo` before the `{ ... }` block";
+pub(crate) const TRAILING_NAMESPACE_SEMICOLON_HELP_MSG: &str =
+    "namespace declarations are not followed by `;`; try removing this semicolon";
+
 /// For errors during parsing
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParseError {
@@ -130,6 +135,37 @@ impl ParseError {
 
     pub(crate) fn from_raw_error_recovery(recovery: RawErrorRecovery<'_>, src: Arc<str>) -> Self {
         Self::from_raw_parse_error(recovery.error, src)
+    }
+
+    fn missing_applies_to_help(&self) -> Option<&'static str> {
+        match &self.err {
+            OwnedRawParseError::UnrecognizedToken {
+                token: (_, token, _),
+                expected,
+            } if token == "{" && expected.iter().any(|expected| expected == "APPLIESTO") => {
+                Some(MISSING_APPLIES_TO_HELP_MSG)
+            }
+            _ => None,
+        }
+    }
+
+    fn trailing_namespace_semicolon_help(&self) -> Option<&'static str> {
+        match &self.err {
+            OwnedRawParseError::UnrecognizedToken {
+                token: (token_start, token, _),
+                expected,
+            } if token == ";"
+                && expected.iter().any(|e| e == "NAMESPACE")
+                && self
+                    .src
+                    .get(..*token_start)
+                    .and_then(|prefix| prefix.chars().rev().find(|ch| !ch.is_whitespace()))
+                    == Some('}') =>
+            {
+                Some(TRAILING_NAMESPACE_SEMICOLON_HELP_MSG)
+            }
+            _ => None,
+        }
     }
 }
 
@@ -177,6 +213,12 @@ impl std::error::Error for ParseError {}
 impl Diagnostic for ParseError {
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         Some(&self.src as &dyn miette::SourceCode)
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.missing_applies_to_help()
+            .or_else(|| self.trailing_namespace_semicolon_help())
+            .map(|help| Box::new(help) as Box<dyn Display + 'a>)
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {

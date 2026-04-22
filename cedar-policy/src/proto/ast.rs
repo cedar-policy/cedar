@@ -718,6 +718,24 @@ mod test {
     }
 
     #[test]
+    fn entity_tags_roundtrip() {
+        let tags = [
+            ("foo".into(), ast::RestrictedExpr::val(1)),
+            ("bar".into(), ast::RestrictedExpr::val("baz")),
+        ];
+        let entity = ast::Entity::new(
+            r#"Foo::"bar""#.parse().unwrap(),
+            [],
+            HashSet::new(),
+            HashSet::new(),
+            tags,
+            Extensions::none(),
+        )
+        .unwrap();
+        assert_eq!(entity, ast::Entity::from(models::Entity::from(&entity)));
+    }
+
+    #[test]
     fn expr_roundtrip() {
         let e1 = ast::Expr::val(33);
         assert_eq!(e1, ast::Expr::from(models::Expr::from(&e1)));
@@ -726,6 +744,12 @@ mod test {
         let e3 = ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "foo").unwrap());
         assert_eq!(e3, ast::Expr::from(models::Expr::from(&e3)));
         let e4 = ast::Expr::var(ast::Var::Principal);
+        assert_eq!(e4, ast::Expr::from(models::Expr::from(&e4)));
+        let e4 = ast::Expr::var(ast::Var::Action);
+        assert_eq!(e4, ast::Expr::from(models::Expr::from(&e4)));
+        let e4 = ast::Expr::var(ast::Var::Resource);
+        assert_eq!(e4, ast::Expr::from(models::Expr::from(&e4)));
+        let e4 = ast::Expr::var(ast::Var::Context);
         assert_eq!(e4, ast::Expr::from(models::Expr::from(&e4)));
         let e5 = ast::Expr::ite(
             ast::Expr::val(true),
@@ -770,6 +794,14 @@ mod test {
             ast::Expr::val("peas"),
         );
         assert_eq!(e14, ast::Expr::from(models::Expr::from(&e14)));
+        let e: ast::Expr = r#"ip("0.0.0.0").isInRange(ip("0.0.0.0"))"#.parse().unwrap();
+        assert_eq!(e, ast::Expr::from(models::Expr::from(&e)));
+        let e: ast::Expr = r#"principal.foo like "bar*""#.parse().unwrap();
+        assert_eq!(e, ast::Expr::from(models::Expr::from(&e)));
+        let e: ast::Expr = r#"principal.foo.isEmpty()"#.parse().unwrap();
+        assert_eq!(e, ast::Expr::from(models::Expr::from(&e)));
+        let e: ast::Expr = r#"- principal.foo"#.parse().unwrap();
+        assert_eq!(e, ast::Expr::from(models::Expr::from(&e)));
     }
 
     #[test]

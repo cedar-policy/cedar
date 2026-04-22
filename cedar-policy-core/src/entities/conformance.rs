@@ -27,6 +27,7 @@ use err::{
     UnexpectedEntityTypeError,
 };
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 use thiserror::Error;
@@ -229,17 +230,17 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
 
 /// Return an [`InvalidEnumEntityError`] if `uid`'s eid is not among valid `choices`
 pub fn is_valid_enumerated_entity(
-    choices: &[Eid],
+    choices: &NonEmpty<Eid>,
     uid: &EntityUID,
 ) -> Result<(), InvalidEnumEntityError> {
     choices
         .iter()
-        .find(|id| uid.eid() == *id)
+        .any(|id| uid.eid() == id)
+        .then_some(())
         .ok_or_else(|| InvalidEnumEntityError {
             uid: uid.clone(),
-            choices: choices.to_vec(),
+            choices: choices.clone(),
         })
-        .map(|_| ())
 }
 
 /// Errors returned from `validate_euid()` and friends
@@ -275,7 +276,7 @@ pub fn validate_euid(schema: &impl Schema, euid: &EntityUID) -> Result<(), Valid
     let entity_type = euid.entity_type();
     if let Some(desc) = schema.entity_type(entity_type) {
         if let Some(choices) = desc.enum_entity_eids() {
-            is_valid_enumerated_entity(&Vec::from(choices), euid)?;
+            is_valid_enumerated_entity(&choices, euid)?;
         }
     }
     if entity_type.is_action() && schema.action(euid).is_none() {

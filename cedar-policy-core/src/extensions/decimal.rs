@@ -28,6 +28,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
 
+/// Help text describing the valid decimal format, used when a decimal parse error occurs.
+const VALID_DECIMAL_HELP: &str = "valid decimal strings look like `12.34`: digits are required on both sides of `.`, up to 4 fractional digits are allowed, and the value must be in range -922337203685477.5808 to 922337203685477.5807";
+
 /// Number of digits supported after the decimal
 const NUM_DIGITS: u32 = 4;
 
@@ -81,6 +84,7 @@ const ADVICE_MSG: &str = "maybe you forgot to apply the `decimal` constructor?";
 enum Error {
     /// Error parsing the input string as a decimal value
     #[error("`{0}` is not a well-formed decimal value")]
+    #[diagnostic(help("{VALID_DECIMAL_HELP}"))]
     FailedParse(String),
 
     /// Too many digits after the decimal point
@@ -90,6 +94,9 @@ enum Error {
 
     /// Overflow occurred when converting to a decimal value
     #[error("overflow when converting to decimal")]
+    #[diagnostic(help(
+        "the value must be in range -922337203685477.5808 to 922337203685477.5807"
+    ))]
     Overflow,
 }
 
@@ -172,6 +179,15 @@ impl ExtensionValue for Decimal {
     fn supports_operator_overloading(&self) -> bool {
         false
     }
+    /// The canonical representation of a [`Decimal`] formats the argument string representing the
+    /// decimal with [`NUM_DIGITS`] digits after `.`, even though the [`Decimal`] might have been constructed
+    /// with a representation having fewer than [`NUM_DIGITS`].
+    fn canonical_repr(&self) -> Option<(Name, Vec<crate::ast::RestrictedExpr>)> {
+        Some((
+            constants::DECIMAL_FROM_STR_NAME.clone(),
+            vec![crate::ast::RestrictedExpr::val(self.to_string())],
+        ))
+    }
 }
 
 const EXTENSION_NAME: &str = "decimal";
@@ -189,8 +205,8 @@ fn extension_err(msg: impl Into<String>, advice: Option<String>) -> evaluator::E
 /// Cedar string
 fn decimal_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
-    let decimal =
-        Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string(), None))?;
+    let decimal = Decimal::from_str(str.as_str())
+        .map_err(|e| extension_err(e.to_string(), e.help().map(|h| h.to_string())))?;
     let arg_source_loc = arg.source_loc();
     let e = RepresentableExtensionValue::new(
         Arc::new(decimal),

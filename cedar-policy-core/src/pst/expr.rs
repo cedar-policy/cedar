@@ -29,6 +29,7 @@ use crate::extensions::Extensions;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// Constants for core Cedar operator names
@@ -39,6 +40,66 @@ mod constants {
     pub static GREATER_EQ_STR: &str = ">=";
     pub static AND_STR: &str = "&&";
     pub static OR_STR: &str = "||";
+}
+
+/// A validated Cedar identifier.
+///
+/// Wraps a [`SmolStr`] that has been checked to be a valid Cedar identifier
+/// (not a reserved keyword, no special characters, etc.).
+///
+/// The only way to create an `Id` is through [`Id::new()`] (which validates
+/// that the input is a valid identifier) or through conversion from other
+/// validated identifier representations.
+/// Accessing the inner string is free via [`as_str()`](Id::as_str) or
+/// [`into_smolstr()`](Id::into_smolstr).
+///
+/// ```
+/// # use cedar_policy_core::pst::Id;
+/// let id = Id::new("userName").expect("valid identifier");
+/// assert_eq!(id.as_str(), "userName");
+///
+/// // Reserved keywords are rejected:
+/// assert!(Id::new("if").is_err());
+/// assert!(Id::new("true").is_err());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Id(SmolStr);
+
+impl Id {
+    /// Create a new `Id`, validating that the string is a legal Cedar identifier.
+    pub fn new(s: impl AsRef<str>) -> Result<Self, PstConstructionError> {
+        let ast_id = ast::Id::from_str(s.as_ref())?;
+        Ok(Self(ast_id.into_smolstr()))
+    }
+
+    /// Get the underlying string as a `&str`. Zero-cost.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consume the `Id` and return the underlying `SmolStr`. Zero-cost.
+    pub fn into_smolstr(self) -> SmolStr {
+        self.0
+    }
+}
+
+impl AsRef<str> for Id {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
+/// Infallible: `ast::Id` is already validated.
+impl From<ast::Id> for Id {
+    fn from(id: ast::Id) -> Self {
+        Id(id.into_smolstr())
+    }
 }
 
 /// Slot identifier for template policies.
@@ -88,30 +149,38 @@ impl Display for SlotId {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     /// Basename (the final component of the name)
-    pub id: SmolStr,
+    pub id: Id,
     /// Namespace components (empty for unqualified names)
-    pub namespace: Arc<Vec<SmolStr>>,
+    pub namespace: Arc<Vec<Id>>,
 }
 
 impl Name {
-    /// Constructs an unqualified name.
-    pub fn unqualified(id: impl Into<SmolStr>) -> Self {
-        Name {
-            id: id.into(),
+    /// Constructs an unqualified name. This is a convenience constructor that validates
+    /// that `id` is a legal Cedar identifier.
+    ///
+    /// If you have an `Id` (which is `AsRef<str>`), you can infallibly construct the name
+    /// yourself.
+    pub fn unqualified(id: impl AsRef<str>) -> Result<Self, PstConstructionError> {
+        Ok(Name {
+            id: Id::new(id)?,
             namespace: Arc::new(vec![]),
-        }
+        })
     }
 
-    /// Constructs a qualified name (i.e. with a possible non-empty namespace)
-    pub fn qualified<I, T>(namespace: I, id: impl Into<SmolStr>) -> Self
+    /// Constructs a qualified name. Validates that all components are legal Cedar identifiers.
+    ///
+    /// If you have an `Id` and a namespace in the form of a `Vec<Id>`, you can infallibly
+    /// construct the name yourself.
+    pub fn qualified<I, T>(namespace: I, id: impl AsRef<str>) -> Result<Self, PstConstructionError>
     where
         I: IntoIterator<Item = T>,
-        T: Into<SmolStr>,
+        T: AsRef<str>,
     {
-        Name {
-            id: id.into(),
-            namespace: Arc::new(namespace.into_iter().map(|x| x.into()).collect()),
-        }
+        let ns: Result<Vec<Id>, _> = namespace.into_iter().map(|s| Id::new(s)).collect();
+        Ok(Name {
+            id: Id::new(id)?,
+            namespace: Arc::new(ns?),
+        })
     }
 }
 
@@ -145,11 +214,8 @@ impl EntityType {
 
 impl Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ast_et: Result<ast::EntityType, _> = self.clone().try_into();
-        match ast_et {
-            Ok(n) => write!(f, "{}", n),
-            Err(_) => write!(f, "<invalid entity type>"),
-        }
+        let ast_et: ast::EntityType = self.clone().into();
+        write!(f, "{}", ast_et)
     }
 }
 
@@ -672,6 +738,14 @@ pub enum Expr {
         /// Name of the unknown
         name: SmolStr,
     },
+    /// A TPE residual error node: indicates that this subexpression would
+    /// produce an evaluation error if reached at runtime.
+    ///
+    /// This is distinct from tolerant-ast parse errors — `ResidualError`
+    /// represents a semantically meaningful result from type-aware partial
+    /// evaluation (e.g., arithmetic overflow).
+    #[cfg(feature = "tpe")]
+    ResidualError,
 }
 
 impl Expr {
@@ -692,9 +766,14 @@ impl Expr {
         ast_name: &ast::Name,
         args: Vec<Arc<Expr>>,
     ) -> Result<Expr, PstConstructionError> {
-        let extension = Extensions::all_available()
-            .func(ast_name)
-            .map_err(error_body::FunctionLookupError)?;
+        // TPE residual error nodes are represented as `error()` in the AST.
+        // Intercept them here before the extension function lookup fails.
+        #[cfg(feature = "tpe")]
+        if *ast_name == *crate::tpe::residual::ERROR_NAME {
+            return Ok(Expr::ResidualError);
+        }
+
+        let extension = Extensions::all_available().func(ast_name)?;
 
         let expected = extension.arg_types().len();
         let got = args.len();
@@ -752,6 +831,8 @@ impl Expr {
         let recurse = |e: &Arc<Self>| e.reduce(f, op, zero.clone());
         match self {
             Expr::Literal(_) | Expr::Var(_) | Expr::Slot(_) | Expr::Unknown { .. } => zero,
+            #[cfg(feature = "tpe")]
+            Expr::ResidualError => zero,
             Expr::UnaryOp { expr, .. }
             | Expr::GetAttr { expr, .. }
             | Expr::HasAttr { expr, .. }
@@ -795,6 +876,18 @@ impl Expr {
         )
     }
 
+    /// Does this expression contain any [`Expr::Unknown`] nodes?
+    pub fn has_unknowns(&self) -> bool {
+        self.reduce::<bool>(
+            &|e| match e {
+                Expr::Unknown { .. } => Some(true),
+                _ => None,
+            },
+            &|a, b| a || b,
+            false,
+        )
+    }
+
     /// Return the slots used in this expression
     pub fn slots(&self) -> HashSet<SlotId> {
         self.reduce::<HashSet<SlotId>>(
@@ -804,6 +897,22 @@ impl Expr {
             },
             &|a, b| a.union(&b).copied().collect(),
             HashSet::new(),
+        )
+    }
+
+    /// Does this expression contain any [`Expr::ResidualError`] nodes?
+    ///
+    /// Returns `true` if any subexpression represents a statically-known
+    /// evaluation error (as determined by TPE).
+    #[cfg(feature = "tpe")]
+    pub fn has_error(&self) -> bool {
+        self.reduce::<bool>(
+            &|e| match e {
+                Expr::ResidualError => Some(true),
+                _ => None,
+            },
+            &|a, b| a || b,
+            false,
         )
     }
 }
@@ -1099,90 +1208,8 @@ impl ExprBuilder for PstBuilder {
 
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // This Display implementation is mostly for debugging purposes, and it does not print
-        // valid Cedar expressions.
-        // If you need to print a valid Cedar expression from a PST expression, you should convert
-        // it to an EST expression first.
-        match self {
-            Expr::Literal(lit) => match lit {
-                Literal::Bool(b) => write!(f, "{}", b),
-                Literal::Long(i) => write!(f, "{}", i),
-                Literal::String(s) => write!(f, "\"{}\"", s.escape_default()),
-                Literal::EntityUID(uid) => write!(f, "{}", uid),
-            },
-            Expr::Var(v) => match v {
-                Var::Principal => write!(f, "principal"),
-                Var::Action => write!(f, "action"),
-                Var::Resource => write!(f, "resource"),
-                Var::Context => write!(f, "context"),
-            },
-            Expr::Slot(s) => write!(f, "{}", s),
-            Expr::UnaryOp { op, expr } => write!(f, "{}({})", op, expr),
-            Expr::BinaryOp { op, left, right } => write!(f, "({} {} {})", left, op, right),
-            Expr::GetAttr { expr, attr } => write!(f, "{}.{}", expr, attr),
-            Expr::HasAttr { expr, attrs } => {
-                write!(
-                    f,
-                    "{} has {}",
-                    expr,
-                    attrs
-                        .iter()
-                        .map(|s| s.as_str())
-                        .collect::<Vec<_>>()
-                        .join(".")
-                )
-            }
-            Expr::Like { expr, pattern } => {
-                write!(f, "{} like \"", expr)?;
-                for elem in pattern {
-                    match elem {
-                        PatternElem::Char(c) => write!(f, "{}", c.escape_default())?,
-                        PatternElem::Wildcard => write!(f, "*")?,
-                    }
-                }
-                write!(f, "\"")
-            }
-            Expr::Is {
-                expr,
-                entity_type,
-                in_expr,
-            } => {
-                if let Some(in_e) = in_expr {
-                    write!(f, "{} is {} in {}", expr, entity_type, in_e)
-                } else {
-                    write!(f, "{} is {}", expr, entity_type)
-                }
-            }
-            Expr::IfThenElse {
-                cond,
-                then_expr,
-                else_expr,
-            } => {
-                write!(f, "if {} then {} else {}", cond, then_expr, else_expr)
-            }
-            Expr::Set(exprs) => {
-                write!(
-                    f,
-                    "[{}]",
-                    exprs
-                        .iter()
-                        .map(|e| e.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            Expr::Record(map) => {
-                write!(
-                    f,
-                    "{{{}}}",
-                    map.iter()
-                        .map(|(k, v)| format!("\"{}\": {}", k.escape_default(), v))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            Expr::Unknown { name } => write!(f, "{}", name),
-        }
+        let est: crate::est::Expr = self.clone().into();
+        write!(f, "{est}")
     }
 }
 
@@ -1192,10 +1219,128 @@ impl std::fmt::Display for Expr {
 )]
 #[cfg(test)]
 mod tests {
-    use cool_asserts::assertion_failure;
+    use cool_asserts::{assert_matches, assertion_failure};
 
     use super::*;
     use std::str::FromStr;
+
+    // --- Id tests ---
+
+    #[test]
+    fn test_id_valid_identifiers() {
+        // Simple identifiers
+        assert!(Id::new("x").is_ok());
+        assert!(Id::new("userName").is_ok());
+        assert!(Id::new("_private").is_ok());
+        assert!(Id::new("a1").is_ok());
+        assert!(Id::new("ABC").is_ok());
+    }
+
+    #[test]
+    fn test_id_reserved_keywords_rejected() {
+        for kw in [
+            "if", "then", "else", "true", "false", "in", "is", "like", "has",
+        ] {
+            assert!(Id::new(kw).is_err(), "keyword `{kw}` should be rejected");
+        }
+    }
+
+    #[test]
+    fn test_id_invalid_strings_rejected() {
+        assert!(Id::new("").is_err());
+        assert!(Id::new("1abc").is_err()); // starts with digit
+        assert!(Id::new("a b").is_err()); // space
+        assert!(Id::new("a+b").is_err()); // special char
+        assert!(Id::new("::").is_err());
+    }
+
+    #[test]
+    fn test_id_accessors() {
+        let id = Id::new("hello").unwrap();
+        assert_eq!(id.as_str(), "hello");
+        assert_eq!(id.as_ref(), "hello");
+        assert_eq!(id.to_string(), "hello");
+        assert_eq!(id.clone().into_smolstr(), SmolStr::from("hello"));
+    }
+
+    #[test]
+    fn test_id_equality_and_ordering() {
+        let a = Id::new("aaa").unwrap();
+        let b = Id::new("bbb").unwrap();
+        let a2 = Id::new("aaa").unwrap();
+        assert_eq!(a, a2);
+        assert_ne!(a, b);
+        assert!(a < b);
+    }
+
+    #[test]
+    fn test_id_from_ast_id() {
+        let ast_id = crate::ast::Id::from_str("myIdent").unwrap();
+        let pst_id = Id::from(ast_id);
+        assert_eq!(pst_id.as_str(), "myIdent");
+    }
+
+    // --- Name tests ---
+
+    #[test]
+    fn test_name_unqualified() {
+        let name = Name::unqualified("User").unwrap();
+        assert_eq!(name.id.as_str(), "User");
+        assert!(name.namespace.is_empty());
+        assert_eq!(name.to_string(), "User");
+    }
+
+    #[test]
+    fn test_name_qualified() {
+        let name = Name::qualified(["MyApp", "Auth"], "User").unwrap();
+        assert_eq!(name.id.as_str(), "User");
+        assert_eq!(name.namespace.len(), 2);
+        assert_eq!(name.namespace[0].as_str(), "MyApp");
+        assert_eq!(name.namespace[1].as_str(), "Auth");
+        assert_eq!(name.to_string(), "MyApp::Auth::User");
+    }
+
+    #[test]
+    fn test_name_rejects_invalid_basename() {
+        assert!(Name::unqualified("if").is_err());
+        assert!(Name::unqualified("1bad").is_err());
+        assert!(Name::qualified(["Good"], "if").is_err());
+    }
+
+    #[test]
+    fn test_name_rejects_invalid_namespace_component() {
+        assert!(Name::qualified(["true"], "User").is_err());
+        assert!(Name::qualified(["ok", "1bad"], "User").is_err());
+    }
+
+    #[test]
+    fn test_name_roundtrip_through_ast() {
+        let pst_name = Name::qualified(["NS"], "Foo").unwrap();
+        let ast_name: crate::ast::Name = pst_name.clone().into();
+        let back: Name = ast_name.into();
+        assert_eq!(pst_name, back);
+    }
+
+    // --- EntityType / EntityUID with validated names ---
+
+    #[test]
+    fn test_entity_type_display_with_valid_name() {
+        let et = EntityType::from_name(Name::unqualified("User").unwrap());
+        assert_eq!(et.to_string(), "User");
+        let et = EntityType::from_name(Name::qualified(["App"], "Photo").unwrap());
+        assert_eq!(et.to_string(), "App::Photo");
+    }
+
+    #[test]
+    fn test_entity_uid_roundtrip_through_ast() {
+        let uid = EntityUID {
+            ty: EntityType::from_name(Name::qualified(["NS"], "Type").unwrap()),
+            eid: SmolStr::from("eid123"),
+        };
+        let ast_uid: crate::ast::EntityUID = uid.clone().into();
+        let back: EntityUID = ast_uid.into();
+        assert_eq!(uid, back);
+    }
 
     #[test]
     fn test_has_slots() {
@@ -1244,7 +1389,7 @@ mod tests {
         let result = Expr::from_function_ast_name_and_args(&name, args);
         assert!(matches!(
             result,
-            Err(PstConstructionError::FunctionLookup(..))
+            Err(PstConstructionError::UnknownFunction(..))
         ));
     }
 
@@ -1257,7 +1402,7 @@ mod tests {
         ];
 
         let result = Expr::from_function_ast_name_and_args(&name, args);
-        assert!(matches!(result, Err(PstConstructionError::WrongArity(..))));
+        assert_matches!(result, Err(PstConstructionError::WrongArity(..)));
     }
 
     #[test]
@@ -1348,13 +1493,13 @@ mod tests {
     fn test_builder_additional_methods() {
         // Test unknown
         let expr = PstBuilder::new().unknown(ast::Unknown::new_untyped("test"));
-        assert!(matches!(expr, Expr::Unknown { .. }));
+        assert_matches!(expr, Expr::Unknown { .. });
 
         // Test like
         let base = PstBuilder::new().val("test");
         let pattern = ast::Pattern::from(vec![ast::PatternElem::Char('a')]);
         let expr = PstBuilder::new().like(base, pattern);
-        assert!(matches!(expr, Expr::Like { .. }));
+        assert_matches!(expr, Expr::Like { .. });
 
         // Test is_in_entity_type
         let base = PstBuilder::new().var(ast::Var::Principal);
@@ -1400,10 +1545,9 @@ mod tests {
         use smol_str::SmolStr;
 
         #[test]
-        fn cant_display_unsparseable_entity_type() {
+        fn invalid_name_rejected_at_construction() {
             let name = "!__Cedar!";
-            let et = EntityType::from_name(Name::unqualified(name));
-            assert_eq!(format!("{}", et), "<invalid entity type>");
+            assert!(Name::unqualified(name).is_err());
         }
 
         // NOTE: These tests verify Display output for expressions constructed via the
@@ -1426,7 +1570,7 @@ mod tests {
                 (builder().val(true), "true"),
                 (builder().val(false), "false"),
                 (builder().val(42i64), "42"),
-                (builder().val(-123i64), "-123"),
+                (builder().val(-123i64), "(-123)"),
                 (builder().val("hello"), "\"hello\""),
                 (
                     builder().val(ast::EntityUID::from_components(
@@ -1445,54 +1589,54 @@ mod tests {
                 (builder().slot(ast::SlotId::principal()), "?principal"),
                 (builder().slot(ast::SlotId::resource()), "?resource"),
                 // Basic unary ops
-                (builder().not(builder().val(true)), "!(true)"),
+                (builder().not(builder().val(true)), "!true"),
                 (builder().neg(builder().val(42i64)), "-(42)"),
                 // Binary ops - comparison
                 (
                     builder().is_eq(builder().val(1i64), builder().val(2i64)),
-                    "(1 == 2)",
+                    "1 == 2",
                 ),
                 (
                     builder().noteq(builder().val(1i64), builder().val(2i64)),
-                    "(1 != 2)",
+                    "1 != 2",
                 ),
                 (
                     builder().less(builder().val(1i64), builder().val(2i64)),
-                    "(1 < 2)",
+                    "1 < 2",
                 ),
                 (
                     builder().lesseq(builder().val(1i64), builder().val(2i64)),
-                    "(1 <= 2)",
+                    "1 <= 2",
                 ),
                 (
                     builder().greater(builder().val(1i64), builder().val(2i64)),
-                    "(1 > 2)",
+                    "1 > 2",
                 ),
                 (
                     builder().greatereq(builder().val(1i64), builder().val(2i64)),
-                    "(1 >= 2)",
+                    "1 >= 2",
                 ),
                 // Binary ops - logical
                 (
                     builder().and(builder().val(true), builder().val(false)),
-                    "(true && false)",
+                    "true && false",
                 ),
                 (
                     builder().or(builder().val(true), builder().val(false)),
-                    "(true || false)",
+                    "true || false",
                 ),
                 // Binary ops - arithmetic
                 (
                     builder().add(builder().val(1i64), builder().val(2i64)),
-                    "(1 + 2)",
+                    "1 + 2",
                 ),
                 (
                     builder().sub(builder().val(5i64), builder().val(3i64)),
-                    "(5 - 3)",
+                    "5 - 3",
                 ),
                 (
                     builder().mul(builder().val(2i64), builder().val(3i64)),
-                    "(2 * 3)",
+                    "2 * 3",
                 ),
                 // Binary ops - set/hierarchy
                 (
@@ -1500,25 +1644,25 @@ mod tests {
                         builder().var(ast::Var::Principal),
                         builder().var(ast::Var::Resource),
                     ),
-                    "(principal in resource)",
+                    "principal in resource",
                 ),
                 (
                     builder().contains(builder().set([builder().val(1i64)]), builder().val(1i64)),
-                    "([1] contains 1)",
+                    "[1].contains(1)",
                 ),
                 (
                     builder().contains_all(
                         builder().set([builder().val(1i64)]),
                         builder().set([builder().val(1i64)]),
                     ),
-                    "([1] containsAll [1])",
+                    "[1].containsAll([1])",
                 ),
                 (
                     builder().contains_any(
                         builder().set([builder().val(1i64)]),
                         builder().set([builder().val(1i64)]),
                     ),
-                    "([1] containsAny [1])",
+                    "[1].containsAny([1])",
                 ),
                 // Attribute access
                 (
@@ -1562,7 +1706,7 @@ mod tests {
                     builder()
                         .record([(SmolStr::from("a"), builder().val(1i64))])
                         .unwrap(),
-                    "{\"a\": 1}",
+                    "{a: 1}",
                 ),
                 (
                     builder()
@@ -1571,16 +1715,16 @@ mod tests {
                             (SmolStr::from("b"), builder().val(2i64)),
                         ])
                         .unwrap(),
-                    "{\"a\": 1, \"b\": 2}",
+                    "{a: 1, b: 2}",
                 ),
                 // Tags
                 (
                     builder().has_tag(builder().var(ast::Var::Action), builder().val("tag")),
-                    "(action hasTag \"tag\")",
+                    "action.hasTag(\"tag\")",
                 ),
                 (
                     builder().get_tag(builder().var(ast::Var::Action), builder().val("tag")),
-                    "(action getTag \"tag\")",
+                    "action.getTag(\"tag\")",
                 ),
                 // Like
                 (
@@ -1597,7 +1741,7 @@ mod tests {
                 (
                     builder()
                         .call_extension_fn(
-                            Name::unqualified("decimal").try_into().unwrap(),
+                            Name::unqualified("decimal").unwrap().into(),
                             vec![builder().val("1.23")],
                         )
                         .unwrap(),
@@ -1610,7 +1754,7 @@ mod tests {
             }
 
             let fail_func = builder().call_extension_fn(
-                Name::unqualified("notAFunc").try_into().unwrap(),
+                Name::unqualified("notAFunc").unwrap().into(),
                 vec![builder().val("12.3")],
             );
             assert!(fail_func.is_err());
@@ -1623,7 +1767,7 @@ mod tests {
                 builder().add(builder().val(1i64), builder().val(2i64)),
                 builder().val(3i64),
             );
-            assert_eq!(nested.to_string(), "((1 + 2) == 3)");
+            assert_eq!(nested.to_string(), "(1 + 2) == 3");
 
             // Complex if-then-else
             let complex = builder().ite(
@@ -1636,12 +1780,12 @@ mod tests {
             );
             assert_eq!(
                 complex.to_string(),
-                "if (principal.age > 18) then principal.name else \"unknown\""
+                "if ((principal.age) > 18) then (principal.name) else \"unknown\""
             );
 
             // isEmpty
             let is_empty = builder().is_empty(builder().set([]));
-            assert_eq!(is_empty.to_string(), "isEmpty([])");
+            assert_eq!(is_empty.to_string(), "[].isEmpty()");
         }
 
         #[test]

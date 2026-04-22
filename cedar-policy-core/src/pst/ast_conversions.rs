@@ -24,15 +24,13 @@ use super::{
 use crate::ast::IsInfallible;
 use crate::ast::{self, UnwrapInfallible};
 use crate::expr_builder;
-#[cfg(feature = "tolerant-ast")]
-use crate::pst::err::error_body::UnsupportedErrorNode;
+use crate::extensions;
 use crate::pst::err::error_body::{
-    InvalidConversionError, InvalidExpressionError, ParsingFailedError,
+    InvalidAnnotationError, InvalidEntityTypeError, PolicyMissingLinkIdError, UnsupportedErrorNode,
+    WrongSlotPositionError,
 };
-use crate::pst::expr::PstBuilder;
-use itertools::Itertools;
+use crate::pst::expr::{Id, PstBuilder};
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::Arc;
 
 #[doc(hidden)]
@@ -47,6 +45,7 @@ impl TryFrom<Policy> for ast::Policy {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<StaticPolicy> for ast::Policy {
     type Error = PstConstructionError;
 
@@ -59,6 +58,7 @@ impl TryFrom<StaticPolicy> for ast::Policy {
     }
 }
 
+#[doc(hidden)]
 impl TryFrom<LinkedPolicy> for ast::Policy {
     type Error = PstConstructionError;
 
@@ -66,8 +66,8 @@ impl TryFrom<LinkedPolicy> for ast::Policy {
         let ast_values: HashMap<ast::SlotId, ast::EntityUID> = policy
             .values
             .into_iter()
-            .map(|(k, v)| Ok((k.into(), ast::EntityUID::try_from(v)?)))
-            .collect::<Result<_, PstConstructionError>>()?;
+            .map(|(k, v)| (k.into(), ast::EntityUID::from(v)))
+            .collect();
         Ok(ast::Policy::new(
             Arc::new(Arc::unwrap_or_clone(policy.body).try_into()?),
             Option::Some(policy.instance_id.into()),
@@ -88,14 +88,10 @@ impl TryFrom<Template> for ast::Template {
             .clauses
             .into_iter()
             .map(|clause| match clause {
-                Clause::When(expr) => Arc::unwrap_or_clone(expr).try_into(),
-                Clause::Unless(expr) => Arc::unwrap_or_clone(expr)
-                    .try_into()
-                    .map(|x| builder.clone().not(x)),
+                Clause::When(expr) => Arc::unwrap_or_clone(expr).into(),
+                Clause::Unless(expr) => builder.clone().not(Arc::unwrap_or_clone(expr).into()),
             })
-            .rev()
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter();
+            .rev();
 
         let conditions = conds_rev_iter.next().map(|last_expr| {
             conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc))
@@ -107,12 +103,14 @@ impl TryFrom<Template> for ast::Template {
             .into_iter()
             .map(|(key, val)| {
                 let value = if val.is_empty() { None } else { Some(val) };
-                (
-                    ast::AnyId::new_unchecked(key),
-                    ast::Annotation::with_optional_value(value, None),
-                )
+                let id = key.parse::<ast::AnyId>().map_err(|p| {
+                    PstConstructionError::InvalidAnnotation(InvalidAnnotationError::new(format!(
+                        "invalid key: {p}"
+                    )))
+                })?;
+                Ok((id, ast::Annotation::with_optional_value(value, None)))
             })
-            .collect();
+            .collect::<Result<ast::Annotations, PstConstructionError>>()?;
 
         Ok(ast::Template::new(
             policy.id.into(),
@@ -135,36 +133,35 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalConstraint {
         match constraint {
             PrincipalConstraint::Any => Ok(ast::PrincipalConstraint::any()),
             PrincipalConstraint::Eq(EntityOrSlot::Entity(eos)) => {
-                Ok(ast::PrincipalConstraint::is_eq(Arc::new(eos.try_into()?)))
+                Ok(ast::PrincipalConstraint::is_eq(Arc::new(eos.into())))
             }
             PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)) => {
                 Ok(ast::PrincipalConstraint::is_eq_slot())
             }
             PrincipalConstraint::In(EntityOrSlot::Entity(eos)) => {
-                Ok(ast::PrincipalConstraint::is_in(Arc::new(eos.try_into()?)))
+                Ok(ast::PrincipalConstraint::is_in(Arc::new(eos.into())))
             }
             PrincipalConstraint::In(EntityOrSlot::Slot(SlotId::Principal)) => {
                 Ok(ast::PrincipalConstraint::is_in_slot())
             }
             PrincipalConstraint::Is(entity_type) => Ok(ast::PrincipalConstraint::is_entity_type(
-                Arc::new(entity_type.try_into()?),
+                Arc::new(entity_type.into()),
             )),
             PrincipalConstraint::IsIn(entity_type, EntityOrSlot::Entity(eos)) => {
                 Ok(ast::PrincipalConstraint::is_entity_type_in(
-                    Arc::new(entity_type.try_into()?),
-                    Arc::new(eos.try_into()?),
+                    Arc::new(entity_type.into()),
+                    Arc::new(eos.into()),
                 ))
             }
             PrincipalConstraint::IsIn(entity_type, EntityOrSlot::Slot(SlotId::Principal)) => Ok(
-                ast::PrincipalConstraint::is_entity_type_in_slot(Arc::new(entity_type.try_into()?)),
+                ast::PrincipalConstraint::is_entity_type_in_slot(Arc::new(entity_type.into())),
             ),
             // Wrong slot type (resource slot in principal position)
             PrincipalConstraint::Eq(EntityOrSlot::Slot(s))
             | PrincipalConstraint::In(EntityOrSlot::Slot(s))
-            | PrincipalConstraint::IsIn(_, EntityOrSlot::Slot(s)) => Err(
-                InvalidConversionError::new(format!("principal constraint cannot use slot `{s}`"))
-                    .into(),
-            ),
+            | PrincipalConstraint::IsIn(_, EntityOrSlot::Slot(s)) => {
+                Err(WrongSlotPositionError::new(s, SlotId::Principal).into())
+            }
         }
     }
 }
@@ -177,36 +174,35 @@ impl TryFrom<ResourceConstraint> for ast::ResourceConstraint {
         match constraint {
             ResourceConstraint::Any => Ok(ast::ResourceConstraint::any()),
             ResourceConstraint::Eq(EntityOrSlot::Entity(eos)) => {
-                Ok(ast::ResourceConstraint::is_eq(Arc::new(eos.try_into()?)))
+                Ok(ast::ResourceConstraint::is_eq(Arc::new(eos.into())))
             }
             ResourceConstraint::Eq(EntityOrSlot::Slot(SlotId::Resource)) => {
                 Ok(ast::ResourceConstraint::is_eq_slot())
             }
             ResourceConstraint::In(EntityOrSlot::Entity(eos)) => {
-                Ok(ast::ResourceConstraint::is_in(Arc::new(eos.try_into()?)))
+                Ok(ast::ResourceConstraint::is_in(Arc::new(eos.into())))
             }
             ResourceConstraint::In(EntityOrSlot::Slot(SlotId::Resource)) => {
                 Ok(ast::ResourceConstraint::is_in_slot())
             }
             ResourceConstraint::Is(entity_type) => Ok(ast::ResourceConstraint::is_entity_type(
-                Arc::new(entity_type.try_into()?),
+                Arc::new(entity_type.into()),
             )),
             ResourceConstraint::IsIn(entity_type, EntityOrSlot::Entity(eos)) => {
                 Ok(ast::ResourceConstraint::is_entity_type_in(
-                    Arc::new(entity_type.try_into()?),
-                    Arc::new(eos.try_into()?),
+                    Arc::new(entity_type.into()),
+                    Arc::new(eos.into()),
                 ))
             }
             ResourceConstraint::IsIn(entity_type, EntityOrSlot::Slot(SlotId::Resource)) => Ok(
-                ast::ResourceConstraint::is_entity_type_in_slot(Arc::new(entity_type.try_into()?)),
+                ast::ResourceConstraint::is_entity_type_in_slot(Arc::new(entity_type.into())),
             ),
             // Wrong slot type (principal slot in resource position)
             ResourceConstraint::Eq(EntityOrSlot::Slot(s))
             | ResourceConstraint::In(EntityOrSlot::Slot(s))
-            | ResourceConstraint::IsIn(_, EntityOrSlot::Slot(s)) => Err(
-                InvalidConversionError::new(format!("resource constraint cannot use slot `{s}`"))
-                    .into(),
-            ),
+            | ResourceConstraint::IsIn(_, EntityOrSlot::Slot(s)) => {
+                Err(WrongSlotPositionError::new(s, SlotId::Resource).into())
+            }
         }
     }
 }
@@ -216,15 +212,33 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
     type Error = PstConstructionError;
 
     fn try_from(constraint: ActionConstraint) -> Result<Self, Self::Error> {
-        match constraint {
-            ActionConstraint::Any => Ok(ast::ActionConstraint::any()),
-            ActionConstraint::Eq(uid) => Ok(ast::ActionConstraint::is_eq(uid.try_into()?)),
+        let ast_constraint = match constraint {
+            ActionConstraint::Any => ast::ActionConstraint::any(),
+            ActionConstraint::Eq(uid) => ast::ActionConstraint::is_eq(uid.into()),
             ActionConstraint::In(uids) => {
-                let ast_uids: Result<Vec<_>, _> =
-                    uids.into_iter().map(|uid| uid.try_into()).collect();
-                Ok(ast::ActionConstraint::is_in(ast_uids?))
+                ast::ActionConstraint::is_in(uids.into_iter().map(ast::EntityUID::from))
             }
-        }
+        };
+        ast_constraint
+            .contains_only_action_types()
+            .map_err(|non_action_euids| {
+                let subject = if non_action_euids.len() > 1 {
+                    "entity uids"
+                } else {
+                    "an entity uid"
+                };
+                let entities = non_action_euids
+                    .iter()
+                    .map(|e| format!("`{e}`"))
+                    .collect::<Vec<_>>()
+                    .join(" and ");
+                InvalidEntityTypeError {
+                    description: format!(
+                        "expected {subject} with type `Action` but got {entities}"
+                    ),
+                }
+                .into()
+            })
     }
 }
 
@@ -237,60 +251,132 @@ fn elements_into_ast_pattern(elems: impl IntoIterator<Item = PatternElem>) -> as
 }
 
 #[doc(hidden)]
-impl TryFrom<Expr> for ast::Expr {
-    type Error = PstConstructionError;
-
-    fn try_from(expr: Expr) -> Result<Self, PstConstructionError> {
-        expr.try_into_expr::<ast::ExprBuilder<()>>()
+impl From<Expr> for ast::Expr {
+    fn from(expr: Expr) -> Self {
+        expr.into_expr::<ast::ExprBuilder<()>>()
     }
 }
 
 #[doc(hidden)]
 impl Expr {
-    pub(crate) fn try_into_expr<B: expr_builder::ExprBuilder>(
-        self,
-    ) -> Result<B::Expr, PstConstructionError>
+    pub(crate) fn into_expr<B: expr_builder::ExprBuilder>(self) -> B::Expr
     where
         B::BuildError: IsInfallible, // we can change this as needed
     {
         let builder = B::new();
         match self {
             Expr::Literal(lit) => match lit {
-                Literal::Bool(b) => Ok(builder.val(b)),
-                Literal::Long(i) => Ok(builder.val(i)),
-                Literal::String(s) => Ok(builder.val(s)),
+                Literal::Bool(b) => builder.val(b),
+                Literal::Long(i) => builder.val(i),
+                Literal::String(s) => builder.val(s),
                 Literal::EntityUID(uid) => {
-                    let ast_et: ast::EntityType = uid.ty.try_into()?;
-                    let ast_eid = ast::Eid::new(uid.eid.as_str());
-                    let ast_uid = ast::EntityUID::from_components(ast_et, ast_eid, None);
-                    Ok(builder.val(ast_uid))
+                    let ast_uid: ast::EntityUID = uid.into();
+                    builder.val(ast_uid)
                 }
             },
-            Expr::Var(v) => Ok(builder.var(v.into())),
-            Expr::Slot(s) => Ok(builder.slot(s.into())),
+            Expr::Var(v) => builder.var(v.into()),
+            Expr::Slot(s) => builder.slot(s.into()),
             Expr::UnaryOp { op, expr } => {
-                let inner = Arc::unwrap_or_clone(expr).try_into_expr::<B>()?;
-                Ok(match op {
+                let inner = Arc::unwrap_or_clone(expr).into_expr::<B>();
+                // Each variant is matched explicitly so the compiler enforces
+                // that new variants are handled. Extension-function variants
+                // mirror UnaryOp::to_name().
+                // This part of the conversion is infallible.
+                match op {
                     UnaryOp::Not => builder.not(inner),
                     UnaryOp::Neg => builder.neg(inner),
                     UnaryOp::IsEmpty => builder.is_empty(inner),
-                    // The other unary operators are extension functions.
-                    _ => match op.to_name() {
-                        Some(fn_name) => builder
-                            .call_extension_fn(fn_name.clone(), vec![inner])
-                            .unwrap_infallible(),
-                        // This should never occur!
-                        None => Err(PstConstructionError::from(InvalidExpressionError::new(
-                            format!("unknown unary operator: {}", op),
-                        )))?,
-                    },
-                })
+                    UnaryOp::Decimal => builder
+                        .call_extension_fn(
+                            extensions::decimal::constants::DECIMAL_FROM_STR_NAME.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::Datetime => builder
+                        .call_extension_fn(
+                            extensions::datetime::constants::DATETIME_CONSTRUCTOR_NAME.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::Duration => builder
+                        .call_extension_fn(
+                            extensions::datetime::constants::DURATION_CONSTRUCTOR_NAME.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::Ip => builder
+                        .call_extension_fn(
+                            extensions::ipaddr::names::IP_FROM_STR_NAME.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::IsIPv4 => builder
+                        .call_extension_fn(extensions::ipaddr::names::IS_IPV4.clone(), vec![inner])
+                        .unwrap_infallible(),
+                    UnaryOp::IsIPV6 => builder
+                        .call_extension_fn(extensions::ipaddr::names::IS_IPV6.clone(), vec![inner])
+                        .unwrap_infallible(),
+                    UnaryOp::IsLoopback => builder
+                        .call_extension_fn(
+                            extensions::ipaddr::names::IS_LOOPBACK.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::IsMulticast => builder
+                        .call_extension_fn(
+                            extensions::ipaddr::names::IS_MULTICAST.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::ToDate => builder
+                        .call_extension_fn(
+                            extensions::datetime::constants::TO_DATE_NAME.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::ToTime => builder
+                        .call_extension_fn(
+                            extensions::datetime::constants::TO_TIME_NAME.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::ToMilliseconds => builder
+                        .call_extension_fn(
+                            extensions::datetime::constants::TO_MILLISECONDS_NAME.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::ToSeconds => builder
+                        .call_extension_fn(
+                            extensions::datetime::constants::TO_SECONDS_NAME.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::ToMinutes => builder
+                        .call_extension_fn(
+                            extensions::datetime::constants::TO_MINUTES_NAME.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::ToHours => builder
+                        .call_extension_fn(
+                            extensions::datetime::constants::TO_HOURS_NAME.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                    UnaryOp::ToDays => builder
+                        .call_extension_fn(
+                            extensions::datetime::constants::TO_DAYS_NAME.clone(),
+                            vec![inner],
+                        )
+                        .unwrap_infallible(),
+                }
             }
             Expr::BinaryOp { op, left, right } => {
-                let left_ast = Arc::unwrap_or_clone(left).try_into_expr::<B>()?;
-                let right_ast = Arc::unwrap_or_clone(right).try_into_expr::<B>()?;
-
-                Ok(match op {
+                let left_ast = Arc::unwrap_or_clone(left).into_expr::<B>();
+                let right_ast = Arc::unwrap_or_clone(right).into_expr::<B>();
+                // Each variant is also matched explicitly here.
+                match op {
                     BinaryOp::Eq => builder.is_eq(left_ast, right_ast),
                     BinaryOp::NotEq => builder.noteq(left_ast, right_ast),
                     BinaryOp::Less => builder.less(left_ast, right_ast),
@@ -308,76 +394,117 @@ impl Expr {
                     BinaryOp::ContainsAny => builder.contains_any(left_ast, right_ast),
                     BinaryOp::GetTag => builder.get_tag(left_ast, right_ast),
                     BinaryOp::HasTag => builder.has_tag(left_ast, right_ast),
-                    // The other binary operators are extensions
-                    _ => match op.to_name() {
-                        Some(fn_name) => builder
-                            .call_extension_fn(fn_name.clone(), vec![left_ast, right_ast])
-                            .unwrap_infallible(),
-                        // This should never occur!
-                        None => Err(PstConstructionError::from(InvalidExpressionError::new(
-                            format!("unknown binary operator: {}", op),
-                        )))?,
-                    },
-                })
+                    // Extension-function variants: each maps directly to its
+                    // extension name, mirroring BinaryOp::to_name()
+                    BinaryOp::IsInRange => builder
+                        .call_extension_fn(
+                            extensions::ipaddr::names::IS_IN_RANGE.clone(),
+                            vec![left_ast, right_ast],
+                        )
+                        .unwrap_infallible(),
+                    BinaryOp::Offset => builder
+                        .call_extension_fn(
+                            extensions::datetime::constants::OFFSET_METHOD_NAME.clone(),
+                            vec![left_ast, right_ast],
+                        )
+                        .unwrap_infallible(),
+                    BinaryOp::DurationSince => builder
+                        .call_extension_fn(
+                            extensions::datetime::constants::DURATION_SINCE_NAME.clone(),
+                            vec![left_ast, right_ast],
+                        )
+                        .unwrap_infallible(),
+                    BinaryOp::DecimalLessThan => builder
+                        .call_extension_fn(
+                            extensions::decimal::constants::LESS_THAN.clone(),
+                            vec![left_ast, right_ast],
+                        )
+                        .unwrap_infallible(),
+                    BinaryOp::DecimalLessEq => builder
+                        .call_extension_fn(
+                            extensions::decimal::constants::LESS_THAN_OR_EQUAL.clone(),
+                            vec![left_ast, right_ast],
+                        )
+                        .unwrap_infallible(),
+                    BinaryOp::DecimalGreater => builder
+                        .call_extension_fn(
+                            extensions::decimal::constants::GREATER_THAN.clone(),
+                            vec![left_ast, right_ast],
+                        )
+                        .unwrap_infallible(),
+                    BinaryOp::DecimalGreaterEq => builder
+                        .call_extension_fn(
+                            extensions::decimal::constants::GREATER_THAN_OR_EQUAL.clone(),
+                            vec![left_ast, right_ast],
+                        )
+                        .unwrap_infallible(),
+                }
             }
             Expr::Set(exprs) => {
-                let ast_exprs: Result<Vec<_>, _> = exprs
+                let ast_exprs: Vec<_> = exprs
                     .into_iter()
-                    .map(|e| Arc::unwrap_or_clone(e).try_into_expr::<B>())
+                    .map(|e| Arc::unwrap_or_clone(e).into_expr::<B>())
                     .collect();
-                Ok(builder.set(ast_exprs?))
+                builder.set(ast_exprs)
             }
             Expr::IfThenElse {
                 cond,
                 then_expr,
                 else_expr,
-            } => Ok(builder.ite(
-                Arc::unwrap_or_clone(cond).try_into_expr::<B>()?,
-                Arc::unwrap_or_clone(then_expr).try_into_expr::<B>()?,
-                Arc::unwrap_or_clone(else_expr).try_into_expr::<B>()?,
-            )),
+            } => builder.ite(
+                Arc::unwrap_or_clone(cond).into_expr::<B>(),
+                Arc::unwrap_or_clone(then_expr).into_expr::<B>(),
+                Arc::unwrap_or_clone(else_expr).into_expr::<B>(),
+            ),
             Expr::Is {
                 expr,
                 entity_type,
                 in_expr: None,
-            } => Ok(builder.is_entity_type(
-                Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
-                entity_type.try_into()?,
-            )),
+            } => builder.is_entity_type(
+                Arc::unwrap_or_clone(expr).into_expr::<B>(),
+                entity_type.into(),
+            ),
             Expr::Is {
                 expr,
                 entity_type,
                 in_expr: Some(e),
-            } => Ok(builder.is_in_entity_type(
-                Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
-                entity_type.try_into()?,
-                Arc::unwrap_or_clone(e).try_into_expr::<B>()?,
-            )),
+            } => builder.is_in_entity_type(
+                Arc::unwrap_or_clone(expr).into_expr::<B>(),
+                entity_type.into(),
+                Arc::unwrap_or_clone(e).into_expr::<B>(),
+            ),
             Expr::GetAttr { expr, attr } => {
-                Ok(builder.get_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attr))
+                builder.get_attr(Arc::unwrap_or_clone(expr).into_expr::<B>(), attr)
             }
             Expr::HasAttr { expr, attrs } => {
-                Ok(builder
-                    .extended_has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attrs))
+                builder.extended_has_attr(Arc::unwrap_or_clone(expr).into_expr::<B>(), attrs)
             }
-            Expr::Like { expr, pattern } => Ok(builder.like(
-                Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
+            Expr::Like { expr, pattern } => builder.like(
+                Arc::unwrap_or_clone(expr).into_expr::<B>(),
                 elements_into_ast_pattern(pattern),
-            )),
-            Expr::Record(elems) => builder
-                .record(
-                    elems
-                        .into_iter()
-                        .map(|(k, v)| Ok((k.into(), Arc::unwrap_or_clone(v).try_into_expr::<B>()?)))
-                        .collect::<Result<Vec<_>, PstConstructionError>>()?,
-                )
-                .map_err(|cstr_err: ast::ExpressionConstructionError| {
-                    InvalidConversionError::new(cstr_err.to_string()).into()
-                }),
-            Expr::Unknown { name } => Ok(builder.unknown(ast::Unknown {
+            ),
+            Expr::Record(elems) =>
+            {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "record is given a map, there cannot be duplicates"
+                )]
+                builder
+                    .record(
+                        elems
+                            .into_iter()
+                            .map(|(k, v)| (k.into(), Arc::unwrap_or_clone(v).into_expr::<B>())),
+                    )
+                    .unwrap()
+            }
+            Expr::Unknown { name } => builder.unknown(ast::Unknown {
                 name,
                 type_annotation: None,
-            })),
+            }),
+            #[cfg(feature = "tpe")]
+            Expr::ResidualError => builder
+                .call_extension_fn(crate::tpe::residual::ERROR_NAME.clone(), std::iter::empty())
+                .unwrap_infallible(),
         }
     }
 }
@@ -392,14 +519,13 @@ impl From<Effect> for ast::Effect {
     }
 }
 
+/// Infallible: `pst::EntityUID` contains a validated `pst::EntityType`.
 #[doc(hidden)]
-impl TryFrom<EntityUID> for ast::EntityUID {
-    type Error = PstConstructionError;
-
-    fn try_from(value: EntityUID) -> Result<Self, PstConstructionError> {
-        let ast_et: ast::EntityType = value.ty.try_into()?;
+impl From<EntityUID> for ast::EntityUID {
+    fn from(value: EntityUID) -> Self {
+        let ast_et: ast::EntityType = value.ty.into();
         let ast_eid = ast::Eid::new(value.eid);
-        Ok(ast::EntityUID::from_components(ast_et, ast_eid, None))
+        ast::EntityUID::from_components(ast_et, ast_eid, None)
     }
 }
 
@@ -411,12 +537,9 @@ impl From<ast::EntityType> for EntityType {
 }
 
 #[doc(hidden)]
-impl TryFrom<EntityType> for ast::EntityType {
-    type Error = PstConstructionError;
-
-    fn try_from(et: EntityType) -> Result<Self, Self::Error> {
-        let name: ast::Name = et.0.try_into()?;
-        Ok(ast::EntityType::EntityType(name))
+impl From<EntityType> for ast::EntityType {
+    fn from(et: EntityType) -> Self {
+        ast::EntityType::EntityType(et.0.into())
     }
 }
 
@@ -451,30 +574,28 @@ impl From<ast::Name> for Name {
             0: ast::InternalName { id, path, .. },
         } = name;
         Name {
-            id: id.into_smolstr(),
+            id: Id::from(id),
             namespace: Arc::new(
                 Arc::unwrap_or_clone(path)
                     .into_iter()
-                    .map(|id| id.into_smolstr())
+                    .map(Id::from)
                     .collect(),
             ),
         }
     }
 }
 
+/// Infallible: `pst::Id` components are already validated.
 #[doc(hidden)]
-impl TryFrom<Name> for ast::Name {
-    type Error = PstConstructionError;
-
-    fn try_from(name: Name) -> Result<Self, Self::Error> {
-        let basename = ast::Id::from_str(&name.id).map_err(ParsingFailedError::from)?;
+impl From<Name> for ast::Name {
+    fn from(name: Name) -> Self {
+        let basename = ast::Id::new_unchecked(name.id.into_smolstr());
         let path: Vec<ast::Id> = name
             .namespace
             .iter()
-            .map(|s| ast::Id::from_str(s.as_str()))
-            .try_collect()
-            .map_err(ParsingFailedError::from)?;
-        Ok(ast::Name(ast::InternalName::new(basename, path, None)))
+            .map(|id| ast::Id::new_unchecked(id.as_str()))
+            .collect();
+        ast::Name(ast::InternalName::new(basename, path, None))
     }
 }
 
@@ -618,7 +739,9 @@ impl TryFrom<ast::ActionConstraint> for ActionConstraint {
                     .collect(),
             )),
             #[cfg(feature = "tolerant-ast")]
-            ast::ActionConstraint::ErrorConstraint => Err((UnsupportedErrorNode {}).into()),
+            ast::ActionConstraint::ErrorConstraint => {
+                Err(UnsupportedErrorNode::new("error action constraint").into())
+            }
         }
     }
 }
@@ -638,7 +761,7 @@ impl TryFrom<ast::Template> for Template {
             clause,
         ) = template
             .into_template_components_opt()
-            .ok_or_else(|| InvalidConversionError::new("template contained errors".to_string()))?;
+            .ok_or_else(|| UnsupportedErrorNode::new("template parsed with errors"))?;
         let id = PolicyID(id.into_smolstr());
         let effect = effect.into();
         let principal = principal_constraint.into();
@@ -685,10 +808,7 @@ impl TryFrom<ast::Policy> for Policy {
                 }))
             } else {
                 // We shouldn't get there if the invariant on ast policies hold
-                Err(
-                    InvalidConversionError::new("linked policy missing instance id".to_string())
-                        .into(),
-                )
+                Err(PolicyMissingLinkIdError.into())
             }
         }
     }
@@ -698,6 +818,7 @@ impl TryFrom<ast::Policy> for Policy {
 mod tests {
     use super::*;
     use crate::parser;
+    use cool_asserts::assert_matches;
 
     /// Helper to create AST expressions from Cedar text
     fn parse_expr(s: &str) -> ast::Expr {
@@ -736,7 +857,30 @@ mod tests {
 
     #[test]
     fn test_unary_op_roundtrips() {
-        let cases = ["!true", "-42", "[].isEmpty()"];
+        let cases = [
+            // Built-in unary operators
+            "!true",
+            "-42",
+            "[].isEmpty()",
+            // Extension constructors
+            r#"decimal("1.23")"#,
+            r#"ip("10.0.0.1")"#,
+            r#"datetime("2024-01-01")"#,
+            r#"duration("1h30m")"#,
+            // IP extension methods
+            r#"ip("10.0.0.1").isIpv4()"#,
+            r#"ip("::1").isIpv6()"#,
+            r#"ip("127.0.0.1").isLoopback()"#,
+            r#"ip("224.0.0.1").isMulticast()"#,
+            // Datetime extension methods
+            r#"datetime("2024-01-01").toDate()"#,
+            r#"datetime("2024-01-01T12:00:00Z").toTime()"#,
+            r#"duration("1h30m").toMilliseconds()"#,
+            r#"duration("1h30m").toSeconds()"#,
+            r#"duration("1h30m").toMinutes()"#,
+            r#"duration("1h30m").toHours()"#,
+            r#"duration("30d").toDays()"#,
+        ];
 
         for expr_str in cases {
             let expr = parse_expr(expr_str);
@@ -766,6 +910,14 @@ mod tests {
             r#"[1, 2].containsAny([2, 3])"#,
             r#"User::"alice".getTag("role")"#,
             r#"User::"alice".hasTag("role")"#,
+            // Extension binary operators
+            r#"ip("10.0.0.1").isInRange(ip("10.0.0.0/24"))"#,
+            r#"datetime("2024-01-01").offset(duration("1d"))"#,
+            r#"datetime("2024-01-02").durationSince(datetime("2024-01-01"))"#,
+            r#"decimal("1.23").lessThan(decimal("4.56"))"#,
+            r#"decimal("1.23").lessThanOrEqual(decimal("4.56"))"#,
+            r#"decimal("4.56").greaterThan(decimal("1.23"))"#,
+            r#"decimal("4.56").greaterThanOrEqual(decimal("1.23"))"#,
         ];
 
         for expr_str in cases {
@@ -1101,6 +1253,120 @@ mod tests {
                 .join(" ");
 
             assert_eq!(actual, expected, "failed: {}", desc);
+        }
+    }
+
+    #[test]
+    fn test_wrong_slot_position() {
+        // Resource slot in principal position
+        let result: Result<ast::PrincipalConstraint, _> =
+            PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Resource)).try_into();
+        assert_matches!(result, Err(PstConstructionError::WrongSlotPosition(..)));
+        assert!(result.unwrap_err().to_string().contains(
+            "slot `?resource` cannot be used in this position (expected slot `?principal`)"
+        ));
+
+        // Principal slot in resource position
+        let result: Result<ast::ResourceConstraint, _> =
+            ResourceConstraint::In(EntityOrSlot::Slot(SlotId::Principal)).try_into();
+        assert_matches!(result, Err(PstConstructionError::WrongSlotPosition(..)));
+
+        assert!(result.unwrap_err().to_string().contains(
+            "slot `?principal` cannot be used in this position (expected slot `?resource`)"
+        ));
+    }
+
+    #[test]
+    fn test_invalid_entity_type_rejected_at_construction() {
+        let result = Name::unqualified(":::bad");
+        assert_matches!(result, Err(PstConstructionError::ParsingFailed(..)));
+    }
+
+    #[test]
+    fn test_non_action_entity_type_in_action_constraint_rejected() {
+        // Eq with non-Action type
+        let constraint = ActionConstraint::Eq(EntityUID::from(ast::EntityUID::from_components(
+            ast::EntityType::from_normalized_str("User").unwrap(),
+            ast::Eid::new("alice"),
+            None,
+        )));
+        let result: Result<ast::ActionConstraint, _> = constraint.try_into();
+        assert_matches!(result, Err(PstConstructionError::InvalidEntityType(..)));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected an entity uid with type `Action`"));
+
+        // In with non-Action type
+        let constraint =
+            ActionConstraint::In(vec![EntityUID::from(ast::EntityUID::from_components(
+                ast::EntityType::from_normalized_str("Folder").unwrap(),
+                ast::Eid::new("docs"),
+                None,
+            ))]);
+        let result: Result<ast::ActionConstraint, _> = constraint.try_into();
+        assert_matches!(result, Err(PstConstructionError::InvalidEntityType(..)));
+
+        // Action type should succeed
+        let constraint = ActionConstraint::Eq(EntityUID::from(ast::EntityUID::from_components(
+            ast::EntityType::from_normalized_str("Action").unwrap(),
+            ast::Eid::new("view"),
+            None,
+        )));
+        let result: Result<ast::ActionConstraint, _> = constraint.try_into();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_invalid_annotation_key_rejected() {
+        use smol_str::SmolStr;
+        use std::collections::BTreeMap;
+
+        let mut annotations = BTreeMap::new();
+        annotations.insert("not valid!!".to_string(), SmolStr::new("v"));
+        let template = Template::new(
+            "p0",
+            Effect::Permit,
+            PrincipalConstraint::Any,
+            ActionConstraint::Any,
+            ResourceConstraint::Any,
+        )
+        .with_annotations(annotations);
+        let result: Result<ast::Template, _> = template.try_into();
+        assert_matches!(result, Err(PstConstructionError::InvalidAnnotation(e)) => {
+            assert!(e.to_string().contains("invalid key"), "got: {e}");
+        });
+    }
+}
+
+#[cfg(feature = "tpe")]
+#[cfg(test)]
+mod tpe_pst_tests {
+    use crate::ast;
+    use crate::expr_builder::ExprBuilder;
+    use cool_asserts::assert_matches;
+
+    use super::*;
+
+    #[test]
+    fn test_ast_error_conversion() {
+        // We can't just use parse_expr here, it would fail, so we build directly
+        let builder = ast::ExprBuilder::<()>::new();
+        let ast_expr = builder
+            .clone()
+            .call_extension_fn(ast::Name::parse_unqualified_name("error").unwrap(), vec![])
+            .unwrap();
+        let pst_expr: Expr = ast_expr.clone().try_into().unwrap();
+        assert_matches!(pst_expr, Expr::ResidualError);
+        let ast_expr2 = builder.clone().set(vec![ast_expr]);
+        let pst_expr2: Expr = ast_expr2.try_into().unwrap();
+        assert!(pst_expr2.has_error());
+        match pst_expr2 {
+            Expr::Set(exprs) => match exprs.as_slice() {
+                [x] if x.as_ref() == &Expr::ResidualError => (),
+                _ => assert!(false),
+            },
+            _ => assert!(false),
         }
     }
 }

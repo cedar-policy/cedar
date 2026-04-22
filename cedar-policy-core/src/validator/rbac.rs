@@ -18,8 +18,8 @@
 
 use crate::{
     ast::{
-        self, ActionConstraint, Eid, EntityReference, EntityUID, Policy, PolicyID,
-        PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
+        self, ActionConstraint, EntityReference, EntityUID, Policy, PolicyID, PrincipalConstraint,
+        PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
     },
     entities::conformance::is_valid_enumerated_entity,
     parser::Loc,
@@ -51,7 +51,7 @@ impl Validator {
                     ..
                 }) = schema.get_entity_type(e.entity_type())
                 {
-                    match is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), e) {
+                    match is_valid_enumerated_entity(choices, e) {
                         Ok(_) => {}
                         Err(err) => {
                             return Some(ValidationError::invalid_enum_entity(

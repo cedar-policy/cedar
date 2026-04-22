@@ -30,7 +30,7 @@ linked-hash-map = { version = "0.5.6", features = ["serde_impl"] }
 # Intentionally not updated to 0.5.5, see issue #1744
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
-semver = "1.0.27"
+semver = "1.0.28"
 
 [build-dependencies]
 prost-build = { version = "0.14", optional = true }
@@ -50,14 +50,28 @@ corpus-timing = []
 
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
-experimental = ["partial-eval", "permissive-validate", "partial-validate", "entity-manifest", "protobufs", "tolerant-ast", "extended-schema", "deprecated-schema-compat", "tpe", "variadic-is-in-range"]
+experimental = [
+    "partial-eval",
+    "permissive-validate",
+    "partial-validate",
+    "entity-manifest",
+    "protobufs",
+    "tolerant-ast",
+    "extended-schema",
+    "deprecated-schema-compat",
+    "tpe",
+    "variadic-is-in-range",
+]
 entity-manifest = ["cedar-policy-core/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-core/partial-validate"]
 protobufs = ["dep:nonempty", "dep:prost", "dep:prost-build"]
 wasm = ["tsify", "wasm-bindgen"]
-tolerant-ast = ["cedar-policy-core/tolerant-ast", "cedar-policy-formatter/tolerant-ast"]
+tolerant-ast = [
+    "cedar-policy-core/tolerant-ast",
+    "cedar-policy-formatter/tolerant-ast",
+]
 extended-schema = ["cedar-policy-core/extended-schema"]
 # Not exactly experimental but rather a feature for supporting deprecated
 # parsing behavior. API is stable, but hopefully will be removed in a future
@@ -69,10 +83,10 @@ variadic-is-in-range = ["cedar-policy-core/variadic-is-in-range"]
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }
 cool_asserts = "2.0"
-similar-asserts = "1.7.0"
+similar-asserts = "2.0.0"
 criterion = "0.8"
 globset = "0.4"
-insta = { version = "1.46.1", features = ["glob", "json"] }
+insta = { version = "1.47.2", features = ["glob", "json"] }
 cedar-policy-core = { version = "=4.10.0", features = [
     "test-util",
 ], path = "../cedar-policy-core" }
@@ -105,6 +119,10 @@ harness = false
 
 [[bench]]
 name = "deeply_nested_est"
+harness = false
+
+[[bench]]
+name = "from_ast"
 harness = false
 
 [package.metadata.docs.rs]

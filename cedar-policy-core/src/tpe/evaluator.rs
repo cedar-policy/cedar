@@ -18,10 +18,9 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::tpe::err::ExprToResidualError;
-use crate::validator::types::Type;
 use crate::{
-    ast::{self, BinaryOp, EntityUID, Expr, PartialValue, Set, Value, ValueKind, Var},
+    ast::{self, BinaryOp, EntityUID, PartialValue, Set, Value, ValueKind, Var},
+    evaluator::stack_size_check,
     extensions::Extensions,
 };
 
@@ -40,17 +39,11 @@ pub struct Evaluator<'e> {
 }
 
 impl Evaluator<'_> {
-    /// Interpret a typed expression by converting to a [`Residual`]
-    pub fn interpret_expr(&self, e: &Expr<Option<Type>>) -> Result<Residual, ExprToResidualError> {
-        Ok(self.interpret(&Residual::try_from(e)?))
-    }
-
     /// Interpret a typed expression into a residual
     /// This function always succeeds because it wraps an error encountered
     /// into a `ResidualKind::Error`
     #[expect(clippy::cognitive_complexity, reason = "experimental feature")]
     pub fn interpret(&self, r: &Residual) -> Residual {
-        let ty = r.ty().clone();
         let kind = match r {
             Residual::Concrete { .. } => {
                 return r.clone();
@@ -58,50 +51,47 @@ impl Evaluator<'_> {
             Residual::Error(_) => {
                 return r.clone();
             }
-            Residual::Partial { kind, ty: _ty } => kind,
+            Residual::Partial { kind, .. } => kind,
         };
+        // Do not define a ty variable in this scope, to avoid ambiguity, but instead propagate the ty in the return value,
+        // the type does not change during evaluation.
+        let mk_error = || Residual::Error(r.ty().clone());
+        let mk_residual = |kind: ResidualKind| Residual::Partial {
+            kind,
+            ty: r.ty().clone(),
+        };
+        let mk_concrete = |v: Value| Residual::Concrete {
+            value: v,
+            ty: r.ty().clone(),
+        };
+
+        // Guard against stack overflows (just like the concrete evaluator), given the recursive nature of interpret
+        match stack_size_check() {
+            Ok(_) => (),
+            Err(_) => return mk_error(),
+        }
+
         match kind {
-            ResidualKind::Var(Var::Action) => Residual::Concrete {
-                value: self.request.action.clone().into(),
-                ty,
-            },
+            ResidualKind::Var(Var::Action) => mk_concrete(self.request.action.clone().into()),
             ResidualKind::Var(Var::Principal) => {
                 if let Ok(principal) = EntityUID::try_from(self.request.principal.clone()) {
-                    Residual::Concrete {
-                        value: principal.into(),
-                        ty,
-                    }
+                    mk_concrete(principal.into())
                 } else {
-                    Residual::Partial {
-                        kind: ResidualKind::Var(Var::Principal),
-                        ty,
-                    }
+                    mk_residual(ResidualKind::Var(Var::Principal))
                 }
             }
             ResidualKind::Var(Var::Resource) => {
                 if let Ok(resource) = EntityUID::try_from(self.request.resource.clone()) {
-                    Residual::Concrete {
-                        value: resource.into(),
-                        ty,
-                    }
+                    mk_concrete(resource.into())
                 } else {
-                    Residual::Partial {
-                        kind: ResidualKind::Var(Var::Resource),
-                        ty,
-                    }
+                    mk_residual(ResidualKind::Var(Var::Resource))
                 }
             }
             ResidualKind::Var(Var::Context) => {
                 if let Some(context) = &self.request.context {
-                    Residual::Concrete {
-                        value: Value::record_arc(context.clone(), None),
-                        ty,
-                    }
+                    mk_concrete(Value::record_arc(context.clone(), None))
                 } else {
-                    Residual::Partial {
-                        kind: ResidualKind::Var(Var::Context),
-                        ty,
-                    }
+                    mk_residual(ResidualKind::Var(Var::Context))
                 }
             }
             ResidualKind::And { left, right } => {
@@ -114,10 +104,7 @@ impl Evaluator<'_> {
                                 ..
                             },
                         ..
-                    } => Residual::Concrete {
-                        value: false.into(),
-                        ty,
-                    },
+                    } => mk_concrete(false.into()),
                     Residual::Concrete {
                         value:
                             Value {
@@ -126,53 +113,44 @@ impl Evaluator<'_> {
                             },
                         ..
                     } => self.interpret(right),
-                    Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
-                    Residual::Partial { .. } => match &self.interpret(right) {
-                        Residual::Concrete {
-                            value:
-                                Value {
-                                    value: ValueKind::Lit(ast::Literal::Bool(true)),
-                                    ..
-                                },
-                            ..
-                        } => left,
-                        Residual::Concrete {
-                            value:
-                                Value {
-                                    value: ValueKind::Lit(ast::Literal::Bool(false)),
-                                    ..
-                                },
-                            ..
-                        } => {
-                            if !left.can_error_assuming_well_formed() {
-                                // simplify <error-free> && false == false
-                                Residual::Concrete {
-                                    value: false.into(),
-                                    ty,
-                                }
-                            } else {
-                                // cannot simplify <non-error-free> && false
-                                Residual::Partial {
-                                    kind: ResidualKind::And {
-                                        left: Arc::new(left),
-                                        right: Arc::new(Residual::Concrete {
-                                            value: false.into(),
-                                            ty: ty.clone(),
-                                        }),
+                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Partial { .. } => {
+                        let right = self.interpret(right);
+                        match &right {
+                            Residual::Concrete {
+                                value:
+                                    Value {
+                                        value: ValueKind::Lit(ast::Literal::Bool(true)),
+                                        ..
                                     },
-                                    ty,
+                                ..
+                            } => left,
+                            Residual::Concrete {
+                                value:
+                                    Value {
+                                        value: ValueKind::Lit(ast::Literal::Bool(false)),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                if !left.can_error_assuming_well_formed() {
+                                    // simplify <error-free> && false == false
+                                    mk_concrete(false.into())
+                                } else {
+                                    // cannot simplify <non-error-free> && false
+                                    mk_residual(ResidualKind::And {
+                                        left: Arc::new(left),
+                                        right: Arc::new(mk_concrete(false.into())),
+                                    })
                                 }
                             }
-                        }
-                        right => Residual::Partial {
-                            kind: ResidualKind::And {
+                            _ => mk_residual(ResidualKind::And {
                                 left: Arc::new(left),
-                                right: Arc::new(right.clone()),
-                            },
-                            ty,
-                        },
-                    },
-                    Residual::Error(_) => Residual::Error(ty),
+                                right: Arc::new(right),
+                            }),
+                        }
+                    }
+                    Residual::Error(_) => mk_error(),
                 }
             }
             ResidualKind::Or { left, right } => {
@@ -185,10 +163,7 @@ impl Evaluator<'_> {
                                 ..
                             },
                         ..
-                    } => Residual::Concrete {
-                        value: true.into(),
-                        ty,
-                    },
+                    } => mk_concrete(true.into()),
                     Residual::Concrete {
                         value:
                             Value {
@@ -197,53 +172,44 @@ impl Evaluator<'_> {
                             },
                         ..
                     } => self.interpret(right),
-                    Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
-                    Residual::Partial { .. } => match &self.interpret(right) {
-                        Residual::Concrete {
-                            value:
-                                Value {
-                                    value: ValueKind::Lit(ast::Literal::Bool(false)),
-                                    ..
-                                },
-                            ..
-                        } => left,
-                        Residual::Concrete {
-                            value:
-                                Value {
-                                    value: ValueKind::Lit(ast::Literal::Bool(true)),
-                                    ..
-                                },
-                            ..
-                        } => {
-                            if !left.can_error_assuming_well_formed() {
-                                // simplify <error-free> || true == true
-                                Residual::Concrete {
-                                    value: true.into(),
-                                    ty,
-                                }
-                            } else {
-                                // cannot simplify <non-error-free> || true
-                                Residual::Partial {
-                                    kind: ResidualKind::Or {
-                                        left: Arc::new(left),
-                                        right: Arc::new(Residual::Concrete {
-                                            value: true.into(),
-                                            ty: ty.clone(),
-                                        }),
+                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Partial { .. } => {
+                        let right = self.interpret(right);
+                        match &right {
+                            Residual::Concrete {
+                                value:
+                                    Value {
+                                        value: ValueKind::Lit(ast::Literal::Bool(false)),
+                                        ..
                                     },
-                                    ty,
+                                ..
+                            } => left,
+                            Residual::Concrete {
+                                value:
+                                    Value {
+                                        value: ValueKind::Lit(ast::Literal::Bool(true)),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                if !left.can_error_assuming_well_formed() {
+                                    // simplify <error-free> || true == true
+                                    mk_concrete(true.into())
+                                } else {
+                                    // cannot simplify <non-error-free> || true
+                                    mk_residual(ResidualKind::Or {
+                                        left: Arc::new(left),
+                                        right: Arc::new(mk_concrete(true.into())),
+                                    })
                                 }
                             }
-                        }
-                        right => Residual::Partial {
-                            kind: ResidualKind::Or {
+                            _ => mk_residual(ResidualKind::Or {
                                 left: Arc::new(left),
-                                right: Arc::new(right.clone()),
-                            },
-                            ty,
-                        },
-                    },
-                    Residual::Error(_) => Residual::Error(ty),
+                                right: Arc::new(right),
+                            }),
+                        }
+                    }
+                    Residual::Error(_) => mk_error(),
                 }
             }
             ResidualKind::If {
@@ -251,8 +217,8 @@ impl Evaluator<'_> {
                 then_expr,
                 else_expr,
             } => {
-                let cond = self.interpret(test_expr);
-                match &cond {
+                let test_expr = self.interpret(test_expr);
+                match &test_expr {
                     Residual::Concrete {
                         value:
                             Value {
@@ -267,21 +233,18 @@ impl Evaluator<'_> {
                             self.interpret(else_expr)
                         }
                     }
-                    Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
-                    Residual::Partial { .. } => Residual::Partial {
-                        kind: ResidualKind::If {
-                            test_expr: Arc::new(cond),
-                            then_expr: Arc::new(self.interpret(then_expr)),
-                            else_expr: Arc::new(self.interpret(else_expr)),
-                        },
-                        ty,
-                    },
-                    Residual::Error(_) => Residual::Error(ty),
+                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Partial { .. } => mk_residual(ResidualKind::If {
+                        test_expr: Arc::new(test_expr),
+                        then_expr: Arc::new(self.interpret(then_expr)),
+                        else_expr: Arc::new(self.interpret(else_expr)),
+                    }),
+                    Residual::Error(_) => mk_error(),
                 }
             }
             ResidualKind::Is { expr, entity_type } => {
-                let r = self.interpret(expr);
-                match &r {
+                let expr = self.interpret(expr);
+                match &expr {
                     Residual::Concrete {
                         value:
                             Value {
@@ -289,38 +252,26 @@ impl Evaluator<'_> {
                                 ..
                             },
                         ..
-                    } => Residual::Concrete {
-                        value: (uid.entity_type() == entity_type).into(),
-                        ty,
-                    },
-                    Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
+                    } => mk_concrete((uid.entity_type() == entity_type).into()),
+                    Residual::Concrete { .. } => mk_error(),
                     Residual::Partial {
                         kind: ResidualKind::Var(Var::Principal),
                         ..
-                    } => Residual::Concrete {
-                        value: (entity_type == &self.request.principal.ty).into(),
-                        ty,
-                    },
+                    } => mk_concrete((entity_type == &self.request.principal.ty).into()),
                     Residual::Partial {
                         kind: ResidualKind::Var(Var::Resource),
                         ..
-                    } => Residual::Concrete {
-                        value: (entity_type == &self.request.resource.ty).into(),
-                        ty,
-                    },
-                    Residual::Partial { .. } => Residual::Partial {
-                        kind: ResidualKind::Is {
-                            expr: Arc::new(r),
-                            entity_type: entity_type.clone(),
-                        },
-                        ty,
-                    },
-                    Residual::Error(_) => Residual::Error(ty),
+                    } => mk_concrete((entity_type == &self.request.resource.ty).into()),
+                    Residual::Partial { .. } => mk_residual(ResidualKind::Is {
+                        expr: Arc::new(expr),
+                        entity_type: entity_type.clone(),
+                    }),
+                    Residual::Error(_) => mk_error(),
                 }
             }
             ResidualKind::Like { expr, pattern } => {
-                let r = self.interpret(expr);
-                match &r {
+                let expr = self.interpret(expr);
+                match &expr {
                     Residual::Concrete {
                         value:
                             Value {
@@ -328,31 +279,24 @@ impl Evaluator<'_> {
                                 ..
                             },
                         ..
-                    } => Residual::Concrete {
-                        value: pattern.wildcard_match(s).into(),
-                        ty,
-                    },
-                    Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
-                    Residual::Partial { .. } => Residual::Partial {
-                        kind: ResidualKind::Like {
-                            expr: Arc::new(r),
-                            pattern: pattern.clone(),
-                        },
-                        ty,
-                    },
-                    Residual::Error(_) => Residual::Error(ty),
+                    } => mk_concrete(pattern.wildcard_match(s).into()),
+                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Partial { .. } => mk_residual(ResidualKind::Like {
+                        expr: Arc::new(expr),
+                        pattern: pattern.clone(),
+                    }),
+                    Residual::Error(_) => mk_error(),
                 }
             }
             ResidualKind::BinaryApp { op, arg1, arg2 } => {
                 let arg1 = self.interpret(arg1);
                 let arg2 = self.interpret(arg2);
-                let residual = |arg1, arg2, ty| Residual::Partial {
-                    kind: ResidualKind::BinaryApp {
+                let binapp_residual = |arg1, arg2| {
+                    mk_residual(ResidualKind::BinaryApp {
                         op: *op,
                         arg1: Arc::new(arg1),
                         arg2: Arc::new(arg2),
-                    },
-                    ty,
+                    })
                 };
                 match (&arg1, &arg2) {
                     (
@@ -363,37 +307,31 @@ impl Evaluator<'_> {
                             if let Ok(v) =
                                 crate::evaluator::binary_relation(*op, v1, v2, self.extensions)
                             {
-                                Residual::Concrete { value: v, ty }
+                                mk_concrete(v)
                             } else {
-                                Residual::Error(ty)
+                                mk_error()
                             }
                         }
                         BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
                             if let Ok(v) =
                                 crate::evaluator::binary_arith(*op, v1.clone(), v2.clone(), None)
                             {
-                                Residual::Concrete { value: v, ty }
+                                mk_concrete(v)
                             } else {
-                                Residual::Error(ty)
+                                mk_error()
                             }
                         }
                         BinaryOp::In => {
                             if let Ok(uid1) = v1.get_as_entity() {
                                 if let Ok(uid2) = v2.get_as_entity() {
                                     if uid1 == uid2 {
-                                        return Residual::Concrete {
-                                            value: true.into(),
-                                            ty,
-                                        };
+                                        return mk_concrete(true.into());
                                     } else if let Some(entity) = self.entities.get(uid1) {
                                         if let Some(ancestors) = &entity.ancestors {
-                                            return Residual::Concrete {
-                                                value: ancestors.contains(uid2).into(),
-                                                ty,
-                                            };
+                                            return mk_concrete(ancestors.contains(uid2).into());
                                         }
                                     }
-                                    residual(arg1, arg2, ty)
+                                    binapp_residual(arg1, arg2)
                                 } else if let Ok(s) = v2.get_as_set() {
                                     if let Ok(uids) = s
                                         .iter()
@@ -402,37 +340,28 @@ impl Evaluator<'_> {
                                     {
                                         for uid2 in uids {
                                             if uid1 == uid2 {
-                                                return Residual::Concrete {
-                                                    value: true.into(),
-                                                    ty,
-                                                };
+                                                return mk_concrete(true.into());
                                             } else if let Some(entity) = self.entities.get(uid1) {
                                                 if let Some(ancestors) = &entity.ancestors {
                                                     if ancestors.contains(uid2) {
-                                                        return Residual::Concrete {
-                                                            value: true.into(),
-                                                            ty,
-                                                        };
+                                                        return mk_concrete(true.into());
                                                     }
                                                 } else {
-                                                    return residual(arg1, arg2, ty);
+                                                    return binapp_residual(arg1, arg2);
                                                 }
                                             } else {
-                                                return residual(arg1, arg2, ty);
+                                                return binapp_residual(arg1, arg2);
                                             }
                                         }
-                                        Residual::Concrete {
-                                            value: false.into(),
-                                            ty,
-                                        }
+                                        mk_concrete(false.into())
                                     } else {
-                                        Residual::Error(ty)
+                                        mk_error()
                                     }
                                 } else {
-                                    Residual::Error(ty)
+                                    mk_error()
                                 }
                             } else {
-                                Residual::Error(ty)
+                                mk_error()
                             }
                         }
                         BinaryOp::GetTag => {
@@ -441,24 +370,21 @@ impl Evaluator<'_> {
                                     if let Some(entity) = self.entities.get(uid) {
                                         if let Some(tags) = &entity.tags {
                                             if let Some(v) = tags.get(tag) {
-                                                Residual::Concrete {
-                                                    value: v.clone(),
-                                                    ty,
-                                                }
+                                                mk_concrete(v.clone())
                                             } else {
-                                                Residual::Error(ty)
+                                                mk_error()
                                             }
                                         } else {
-                                            residual(arg1, arg2, ty)
+                                            binapp_residual(arg1, arg2)
                                         }
                                     } else {
-                                        residual(arg1, arg2, ty)
+                                        binapp_residual(arg1, arg2)
                                     }
                                 } else {
-                                    Residual::Error(ty)
+                                    mk_error()
                                 }
                             } else {
-                                Residual::Error(ty)
+                                mk_error()
                             }
                         }
                         BinaryOp::HasTag => {
@@ -466,48 +392,40 @@ impl Evaluator<'_> {
                                 if let Ok(tag) = v2.get_as_string() {
                                     if let Some(entity) = self.entities.get(uid) {
                                         if let Some(tags) = &entity.tags {
-                                            Residual::Concrete {
-                                                value: tags.contains_key(tag).into(),
-                                                ty,
-                                            }
+                                            mk_concrete(tags.contains_key(tag).into())
                                         } else {
-                                            residual(arg1, arg2, ty)
+                                            binapp_residual(arg1, arg2)
                                         }
                                     } else {
-                                        residual(arg1, arg2, ty)
+                                        binapp_residual(arg1, arg2)
                                     }
                                 } else {
-                                    Residual::Error(ty)
+                                    mk_error()
                                 }
                             } else {
-                                Residual::Error(ty)
+                                mk_error()
                             }
                         }
                         BinaryOp::Contains => match &v1.value {
-                            ValueKind::Set(s) => Residual::Concrete {
-                                value: s.contains(v2).into(),
-                                ty,
-                            },
-                            _ => Residual::Error(ty),
+                            ValueKind::Set(s) => mk_concrete(s.contains(v2).into()),
+                            _ => mk_error(),
                         },
                         BinaryOp::ContainsAll => match (v1.get_as_set(), v2.get_as_set()) {
-                            (Ok(arg1_set), Ok(arg2_set)) => Residual::Concrete {
-                                value: arg2_set.is_subset(arg1_set).into(),
-                                ty,
-                            },
-                            _ => Residual::Error(ty),
+                            (Ok(arg1_set), Ok(arg2_set)) => {
+                                mk_concrete(arg2_set.is_subset(arg1_set).into())
+                            }
+                            _ => mk_error(),
                         },
                         BinaryOp::ContainsAny => match (v1.get_as_set(), v2.get_as_set()) {
-                            (Ok(arg1_set), Ok(arg2_set)) => Residual::Concrete {
-                                value: (!arg1_set.is_disjoint(arg2_set)).into(),
-                                ty,
-                            },
-                            _ => Residual::Error(ty),
+                            (Ok(arg1_set), Ok(arg2_set)) => {
+                                mk_concrete((!arg1_set.is_disjoint(arg2_set)).into())
+                            }
+                            _ => mk_error(),
                         },
                     },
-                    (Residual::Error(_), _) => Residual::Error(ty),
-                    (_, Residual::Error(_)) => Residual::Error(ty),
-                    (_, _) => residual(arg1, arg2, ty),
+                    (Residual::Error(_), _) => mk_error(),
+                    (_, Residual::Error(_)) => mk_error(),
+                    (_, _) => binapp_residual(arg1, arg2),
                 }
             }
             ResidualKind::ExtensionFunctionApp { fn_name, args } => {
@@ -524,25 +442,22 @@ impl Evaluator<'_> {
                     // `Residual::Error` of appropriate types
                     if let Ok(ext_fn) = self.extensions.func(fn_name) {
                         if let Ok(PartialValue::Value(value)) = ext_fn.call(&vals) {
-                            return Residual::Concrete { value, ty };
+                            return mk_concrete(normalize_ext_value(value));
                         }
                     }
-                    Residual::Error(ty)
+                    mk_error()
                 } else if args.iter().any(|r| matches!(r, Residual::Error(_))) {
-                    Residual::Error(ty)
+                    mk_error()
                 } else {
-                    Residual::Partial {
-                        kind: ResidualKind::ExtensionFunctionApp {
-                            fn_name: fn_name.clone(),
-                            args: Arc::new(args),
-                        },
-                        ty,
-                    }
+                    mk_residual(ResidualKind::ExtensionFunctionApp {
+                        fn_name: fn_name.clone(),
+                        args: Arc::new(args),
+                    })
                 }
             }
             ResidualKind::GetAttr { expr, attr } => {
-                let r = self.interpret(expr);
-                match &r {
+                let expr = self.interpret(expr);
+                match &expr {
                     Residual::Concrete {
                         value:
                             Value {
@@ -552,12 +467,9 @@ impl Evaluator<'_> {
                         ..
                     } => {
                         if let Some(val) = r.as_ref().get(attr) {
-                            Residual::Concrete {
-                                value: val.clone(),
-                                ty,
-                            }
+                            mk_concrete(val.clone())
                         } else {
-                            Residual::Error(ty)
+                            mk_error()
                         }
                     }
                     Residual::Concrete {
@@ -571,37 +483,28 @@ impl Evaluator<'_> {
                         if let Some(entity) = self.entities.get(uid.as_ref()) {
                             if let Some(attrs) = &entity.attrs {
                                 if let Some(val) = attrs.get(attr) {
-                                    return Residual::Concrete {
-                                        value: val.clone(),
-                                        ty,
-                                    };
+                                    return mk_concrete(val.clone());
                                 } else {
-                                    return Residual::Error(ty);
+                                    return mk_error();
                                 }
                             }
                         }
-                        Residual::Partial {
-                            kind: ResidualKind::GetAttr {
-                                expr: Arc::new(r),
-                                attr: attr.clone(),
-                            },
-                            ty,
-                        }
-                    }
-                    Residual::Concrete { .. } => Residual::Error(ty),
-                    Residual::Partial { .. } => Residual::Partial {
-                        kind: ResidualKind::GetAttr {
-                            expr: Arc::new(r),
+                        mk_residual(ResidualKind::GetAttr {
+                            expr: Arc::new(expr),
                             attr: attr.clone(),
-                        },
-                        ty,
-                    },
-                    Residual::Error(_) => Residual::Error(ty),
+                        })
+                    }
+                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Partial { .. } => mk_residual(ResidualKind::GetAttr {
+                        expr: Arc::new(expr),
+                        attr: attr.clone(),
+                    }),
+                    Residual::Error(_) => mk_error(),
                 }
             }
             ResidualKind::HasAttr { expr, attr } => {
-                let r = self.interpret(expr);
-                match &r {
+                let expr = self.interpret(expr);
+                match &expr {
                     Residual::Concrete {
                         value:
                             Value {
@@ -609,10 +512,7 @@ impl Evaluator<'_> {
                                 ..
                             },
                         ..
-                    } => Residual::Concrete {
-                        value: r.as_ref().contains_key(attr).into(),
-                        ty,
-                    },
+                    } => mk_concrete(r.as_ref().contains_key(attr).into()),
                     Residual::Concrete {
                         value:
                             Value {
@@ -623,72 +523,54 @@ impl Evaluator<'_> {
                     } => {
                         if let Some(entity) = self.entities.get(uid.as_ref()) {
                             if let Some(attrs) = &entity.attrs {
-                                return Residual::Concrete {
-                                    value: attrs.contains_key(attr).into(),
-                                    ty,
-                                };
+                                return mk_concrete(attrs.contains_key(attr).into());
                             }
                         }
-                        Residual::Partial {
-                            kind: ResidualKind::HasAttr {
-                                expr: Arc::new(r),
-                                attr: attr.clone(),
-                            },
-                            ty,
-                        }
-                    }
-                    Residual::Concrete { .. } => Residual::Error(ty),
-                    Residual::Partial { .. } => Residual::Partial {
-                        kind: ResidualKind::HasAttr {
-                            expr: Arc::new(r),
+                        mk_residual(ResidualKind::HasAttr {
+                            expr: Arc::new(expr),
                             attr: attr.clone(),
-                        },
-                        ty,
-                    },
-                    Residual::Error(_) => Residual::Error(ty),
+                        })
+                    }
+                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Partial { .. } => mk_residual(ResidualKind::HasAttr {
+                        expr: Arc::new(expr),
+                        attr: attr.clone(),
+                    }),
+                    Residual::Error(_) => mk_error(),
                 }
             }
             ResidualKind::UnaryApp { op, arg } => {
                 let arg = self.interpret(arg);
-                match &arg {
+                match arg {
                     Residual::Concrete { value, .. } => {
-                        if let Ok(v) = crate::evaluator::unary_app(*op, value.clone(), None) {
-                            Residual::Concrete { value: v, ty }
+                        if let Ok(v) = crate::evaluator::unary_app(*op, value, None) {
+                            mk_concrete(v)
                         } else {
-                            Residual::Error(ty)
+                            mk_error()
                         }
                     }
-                    Residual::Partial { .. } => Residual::Partial {
-                        kind: ResidualKind::UnaryApp {
-                            op: *op,
-                            arg: Arc::new(arg),
-                        },
-                        ty,
-                    },
-                    Residual::Error(_) => Residual::Error(ty),
+                    Residual::Partial { .. } => mk_residual(ResidualKind::UnaryApp {
+                        op: *op,
+                        arg: Arc::new(arg),
+                    }),
+                    Residual::Error(_) => mk_error(),
                 }
             }
             ResidualKind::Set(es) => {
-                let rs = es.iter().map(|a| self.interpret(a)).collect::<Vec<_>>();
-                if let Ok(vals) = rs
+                let es = es.iter().map(|a| self.interpret(a)).collect::<Vec<_>>();
+                if let Ok(vals) = es
                     .iter()
                     .map(|a| Value::try_from(a.clone()))
                     .collect::<std::result::Result<Vec<_>, _>>()
                 {
-                    Residual::Concrete {
-                        value: Value {
-                            value: ValueKind::Set(Set::new(vals)),
-                            loc: None,
-                        },
-                        ty,
-                    }
-                } else if rs.iter().any(|r| matches!(r, Residual::Error(_))) {
-                    Residual::Error(ty)
+                    mk_concrete(Value {
+                        value: ValueKind::Set(Set::new(vals)),
+                        loc: None,
+                    })
+                } else if es.iter().any(|r| matches!(r, Residual::Error(_))) {
+                    mk_error()
                 } else {
-                    Residual::Partial {
-                        kind: ResidualKind::Set(Arc::new(rs)),
-                        ty,
-                    }
+                    mk_residual(ResidualKind::Set(Arc::new(es)))
                 }
             }
             ResidualKind::Record(m) => {
@@ -701,29 +583,45 @@ impl Evaluator<'_> {
                     .map(|(a, r)| Ok((a, Value::try_from(r)?)))
                     .collect::<std::result::Result<BTreeMap<_, _>, ()>>()
                 {
-                    Residual::Concrete {
-                        value: Value {
-                            value: ValueKind::Record(Arc::new(m)),
-                            loc: None,
-                        },
-                        ty,
-                    }
+                    mk_concrete(Value {
+                        value: ValueKind::Record(Arc::new(m)),
+                        loc: None,
+                    })
                 } else {
                     let mut m = BTreeMap::new();
                     for (a, r) in record {
                         if matches!(r, Residual::Error(_)) {
-                            return Residual::Error(ty);
+                            return mk_error();
                         } else {
                             m.insert(a, r);
                         }
                     }
-                    Residual::Partial {
-                        kind: ResidualKind::Record(Arc::new(m)),
-                        ty,
-                    }
+                    mk_residual(ResidualKind::Record(Arc::new(m)))
                 }
             }
         }
+    }
+}
+
+/// If the value is an extension value whose type provides a [`canonical_repr`],
+/// rebuild the [`RepresentableExtensionValue`] so that the stored `func`/`args`
+/// match the canonical form.  This ensures TPE residuals are deterministic
+/// regardless of which constructor originally created the value.
+fn normalize_ext_value(value: Value) -> Value {
+    match &value.value {
+        ValueKind::ExtensionValue(ev) => {
+            if let Some((func, args)) = ev.value().canonical_repr() {
+                Value {
+                    value: ValueKind::ExtensionValue(Arc::new(
+                        ast::RepresentableExtensionValue::new(ev.value.clone(), func, args),
+                    )),
+                    loc: value.loc,
+                }
+            } else {
+                value
+            }
+        }
+        _ => value,
     }
 }
 
@@ -731,7 +629,8 @@ impl Evaluator<'_> {
 mod tests {
     use std::collections::{BTreeMap, HashSet};
 
-    use crate::ast::UnwrapInfallible;
+    use crate::ast::{Expr, SlotEnv, UnwrapInfallible};
+    use crate::tpe::err::ExprToResidualError;
     use crate::validator::types::Type;
     use crate::{
         ast::{
@@ -761,6 +660,18 @@ mod tests {
     #[track_caller]
     fn dummy_uid() -> EntityUID {
         r#"E::"""#.parse().unwrap()
+    }
+
+    impl Evaluator<'_> {
+        /// Interpret a typed expression by converting to a [`Residual`] with an empty slot environment.
+        ///
+        /// This is a test-only utility because other callers should generally
+        /// be interpreting a residual with slots bounds appropriately by
+        /// `policy_residual_map` or else explicitly bindings slots (with an
+        /// empty environment or otherwise).
+        fn interpret_expr(&self, e: &Expr<Option<Type>>) -> Result<Residual, ExprToResidualError> {
+            Ok(self.interpret(&Residual::try_from_typed_expr(e, &SlotEnv::new())?))
+        }
     }
 
     #[test]
@@ -1988,5 +1899,132 @@ mod tests {
                 });
             }
         );
+    }
+
+    #[test]
+    fn test_datetime_residual_normalization() {
+        // When the TPE evaluator evaluates datetime("6640-02-11") with all
+        // concrete args, the resulting residual should use the canonical
+        // offset(datetime("1970-01-01"), duration("Nms")) form — not the
+        // original datetime("6640-02-11") string.
+        // The Lean side will for now always produce the offset(datetime("1970-01-01"), _) repr,
+        // while the Rust side representation without canonicalization can be either the
+        // direct datetime or the offset from the Unix Epoch, depending on where the term
+        // originated from.
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let residual = eval
+            .interpret_expr(
+                &builder()
+                    .call_extension_fn("datetime".parse().unwrap(), [builder().val("6640-02-11")])
+                    .unwrap_infallible(),
+            )
+            .unwrap();
+        // Convert to Expr and check the top-level function is "offset"
+        let expr: crate::ast::Expr = residual.into();
+        assert_matches!(expr.expr_kind(), crate::ast::ExprKind::ExtensionFunctionApp { fn_name, .. } => {
+            assert_eq!(fn_name.to_string(), "offset");
+        });
+        // String representation
+        assert_eq!(
+            expr.to_string(),
+            r#"(datetime("1970-01-01")).offset(duration("147374467200000ms"))"#
+        );
+    }
+
+    #[test]
+    fn test_decimal_residual_normalization() {
+        // decimal("0.0") should be normalized to decimal("0.0000") (4-digit padded)
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let residual = eval
+            .interpret_expr(
+                &builder()
+                    .call_extension_fn("decimal".parse().unwrap(), [builder().val("0.0")])
+                    .unwrap_infallible(),
+            )
+            .unwrap();
+        let expr: crate::ast::Expr = residual.into();
+        assert_eq!(expr.to_string(), r#"decimal("0.0000")"#);
+    }
+
+    #[test]
+    fn test_ip_residual_normalization() {
+        // ip("::1") should be normalized to include the prefix: ip("::1/128")
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let residual = eval
+            .interpret_expr(
+                &builder()
+                    .call_extension_fn("ip".parse().unwrap(), [builder().val("::1")])
+                    .unwrap_infallible(),
+            )
+            .unwrap();
+        let expr: crate::ast::Expr = residual.into();
+        assert_eq!(expr.to_string(), r#"ip("::1/128")"#);
+    }
+
+    #[test]
+    fn test_duration_residual_normalization() {
+        // duration("1d") should be normalized to duration("86400000ms")
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let residual = eval
+            .interpret_expr(
+                &builder()
+                    .call_extension_fn("duration".parse().unwrap(), [builder().val("1d")])
+                    .unwrap_infallible(),
+            )
+            .unwrap();
+        let expr: crate::ast::Expr = residual.into();
+        assert_eq!(expr.to_string(), r#"duration("86400000ms")"#);
     }
 }

@@ -173,10 +173,10 @@ impl TermType {
     }
 
     fn of_record_type(attrs: &Attributes) -> Result<BTreeMap<SmolStr, TermType>, CompileError> {
-        Ok(attrs
+        attrs
             .iter()
             .map(|(k, v)| Ok((k.clone(), Self::of_qualified_type(v)?)))
-            .collect::<Result<_, CompileError>>()?)
+            .collect::<Result<_, CompileError>>()
     }
 
     fn of_qualified_type(qty: &AttributeType) -> Result<TermType, CompileError> {

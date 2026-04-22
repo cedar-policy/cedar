@@ -226,7 +226,8 @@ pub struct LocatedNamespace {
 ///
 /// In this representation, all common types are fully expanded, and all entity
 /// type names are fully disambiguated (fully qualified).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct ValidatorSchema {
     /// Map from entity type names to the [`ValidatorEntityType`] object.
     entity_types: HashMap<EntityType, ValidatorEntityType>,
@@ -242,12 +243,14 @@ pub struct ValidatorSchema {
     pub(crate) actions: HashMap<EntityUID, Arc<Entity>>,
 
     #[cfg(feature = "extended-schema")]
+    #[educe(PartialEq(ignore))]
     /// Track where each common type is defined in the schema. Common types are
     /// inlined into types where they are used when constructing the schema, so
     /// this does not contain any information used during typechecking.
     common_types: HashSet<LocatedCommonType>,
 
     #[cfg(feature = "extended-schema")]
+    #[educe(PartialEq(ignore))]
     /// Track where each namespace is defined in the schema. Namespaces are used
     /// to qualify type definitions when constructing the schema, so this does
     /// not contain any information used during typechecking.

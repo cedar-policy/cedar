@@ -17,6 +17,7 @@
 #![allow(clippy::expect_used, reason = "tests")]
 #![allow(clippy::unwrap_used, reason = "tests")]
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use cedar_policy::EvalResult;
@@ -1204,6 +1205,42 @@ fn test_authorize_json_policy() {
 }
 
 #[test]
+fn test_authorize_allow_with_errors() {
+    let dir = tempfile::tempdir().expect("failed to create tempdir");
+    let policies = dir.path().join("policies.cedar");
+    std::fs::write(
+        &policies,
+        "permit(principal, action, resource);\nforbid(principal, action, resource) when { resource.isPublic };",
+    )
+    .unwrap();
+    let entities = dir.path().join("entities.json");
+    std::fs::write(&entities, r#"[]"#).unwrap();
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("authorize")
+        .arg("--principal")
+        .arg(r#"User::"alice""#)
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource")
+        .arg(r#"Photo::"pic""#)
+        .arg("--policies")
+        .arg(&policies)
+        .arg("--entities")
+        .arg(&entities)
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    insta::assert_snapshot!(stdout, @r###"
+
+    ALLOW
+
+    error while evaluating policy `policy1`: entity `Photo::"pic"` does not exist
+    "###);
+    assert!(output.status.success());
+}
+
+#[test]
 fn test_translate_policy() {
     let cedar_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar";
     let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar.json";
@@ -1611,6 +1648,14 @@ fn test_tpe() {
     let request_json_file: &str = "sample-data/tpe_rfc/request.json";
     let context_file: &str = "sample-data/tpe_rfc/context.json";
 
+    let contains_residuals = || {
+        use predicate::str::contains;
+        contains("UNKNOWN")
+            .and(contains("permit(principal, action, resource) when { resource.isPublic };"))
+            .and(contains("permit(principal, action, resource) when { false };"))
+            .and(contains(r#"permit(principal, action, resource) when { (context.hasMFA) && ((resource.owner) == User::"Alice") };"#))
+    };
+
     cargo::cargo_bin_cmd!("cedar")
         .arg("tpe")
         .arg("--principal-type")
@@ -1628,6 +1673,7 @@ fn test_tpe() {
         .arg("-s")
         .arg(schema)
         .assert()
+        .stdout(contains_residuals())
         .code(0);
 
     cargo::cargo_bin_cmd!("cedar")
@@ -1649,6 +1695,7 @@ fn test_tpe() {
         .arg("--context")
         .arg(context_file)
         .assert()
+        .stdout(predicate::str::contains("DENY"))
         .code(2);
 
     cargo::cargo_bin_cmd!("cedar")
@@ -1662,6 +1709,160 @@ fn test_tpe() {
         .arg("-s")
         .arg(schema)
         .assert()
+        .stdout(contains_residuals())
+        .code(0);
+}
+
+#[test]
+#[cfg(feature = "tpe")]
+fn test_tpe_link() {
+    let entities: &str = "sample-data/tpe_rfc/entities.json";
+    let schema: &str = "sample-data/tpe_rfc/schema.cedarschema";
+
+    let mut template_file = tempfile::NamedTempFile::new().expect("Failed to create template file");
+    writeln!(
+        template_file,
+        r#"@id("ViewTemplate")
+permit (
+  principal == ?principal,
+  action == Action::"View",
+  resource
+)
+when {{ resource.isPublic }};"#
+    )
+    .expect("Failed to write template file");
+
+    let links_file = tempfile::NamedTempFile::new().expect("Failed to create links file");
+    let template_path = template_file.path().to_str().unwrap();
+    let links_path = links_file.path().to_str().unwrap();
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("link")
+        .arg("-p")
+        .arg(&template_path)
+        .arg("--template-linked")
+        .arg(&links_path)
+        .arg("--template-id")
+        .arg("ViewTemplate")
+        .arg("--new-id")
+        .arg("AliceView")
+        .arg("-a")
+        .arg(r#"{"?principal": "User::\"Alice\""}"#)
+        .assert()
+        .code(0);
+
+    // Template link value has been substituted in residual
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(
+            predicate::str::contains("UNKNOWN").and(predicate::str::contains(
+                r#"permit(principal, action, resource) when { (principal == User::"Alice") && (resource.isPublic) };"#
+            )),
+        )
+        .code(0);
+
+    // Now providing principal eid, equality between slot and principal
+    // evaluates, but we still have a residual
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(
+            predicate::str::contains("UNKNOWN").and(predicate::str::contains(
+                "permit(principal, action, resource) when { resource.isPublic };",
+            )),
+        )
+        .code(0);
+
+    // Still no resource eid, but slot/principal equality is false for Bob, so deny
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Bob")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(predicate::str::contains("DENY"))
+        .code(2);
+
+    // Fully concrete request for Alice and a public doc, so allow
+    let entities = serde_json::json!(
+    [{
+        "uid": { "type": "Document", "id": "public" },
+        "attrs": {
+            "isPublic": true,
+            "owner": { "__entity": { "type": "User", "id": "Alice" } }
+        },
+        "parents": []
+    }]);
+    let mut entities_file = tempfile::NamedTempFile::new().expect("Failed to create entities file");
+    serde_json::to_writer(&mut entities_file, &entities).unwrap();
+    let entities_path = entities_file.path().to_str().unwrap();
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("--resource-eid")
+        .arg("public")
+        .arg("-p")
+        .arg(template_path)
+        .arg("--template-linked")
+        .arg(links_path)
+        .arg("--entities")
+        .arg(entities_path)
+        .arg("-s")
+        .arg(schema)
+        .assert()
+        .stdout(predicate::str::contains("ALLOW"))
         .code(0);
 }
 
@@ -1687,4 +1888,129 @@ fn check_parse_expr_err(#[case] expr: &str) {
         .arg(expr)
         .assert()
         .code(1);
+}
+
+#[test]
+fn test_cedar_policy_from_stdin_success() {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .write_stdin("permit(principal, action, resource);")
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_json_policy_from_stdin_success() {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .write_stdin(r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[]}"#)
+        .assert()
+        .code(0);
+}
+
+#[test]
+fn test_cedar_policy_from_stdin_parse_error() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .write_stdin("not a valid policy")
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r"
+     × failed to parse policy set
+     ╰─▶ unexpected token `a`
+      ╭────
+    1 │ not a valid policy
+      ·     ┬
+      ·     ╰── expected `(`
+      ╰────
+    ");
+}
+
+#[test]
+fn test_json_policy_from_stdin_parse_error() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--policy-format")
+        .arg("json")
+        .write_stdin(r#"{"effect":"forbid","principal":{"op":"bogus"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[]}"#)
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r"
+    × failed to parse JSON policy
+    ├─▶ error deserializing a policy/template from JSON
+    ╰─▶ unknown variant `bogus`, expected one of `All`, `all`, `==`, `in`, `is`
+    ");
+}
+
+#[test]
+fn test_check_parse_invalid_entities() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--entities")
+        .arg("sample-data/sandbox_a/policies_1.cedar") // not valid entities JSON
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r"
+    × failed to parse entities from file sample-data/sandbox_a/policies_1.cedar
+    ├─▶ error during entity deserialization
+    ╰─▶ expected value at line 1 column 1
+    ");
+}
+
+#[test]
+fn test_check_parse_invalid_schema() {
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--schema")
+        .arg("sample-data/sandbox_a/policies_1.cedar") // not a valid schema
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(stdout, @r#"
+     × failed to parse schema from file sample-data/sandbox_a/policies_1.cedar
+     ╰─▶ error parsing schema: unexpected token `permit`
+      ╭─[3:1]
+    2 │ @id("jane's friends view-permission policy")
+    3 │ permit (
+      · ───┬──
+      ·    ╰── expected `@`, `action`, `entity`, `namespace`, or `type`
+    4 │   principal in UserGroup::"jane_friends",
+      ╰────
+    "#);
+}
+
+#[test]
+fn test_check_parse_warning_schema() {
+    let mut schema = tempfile::NamedTempFile::new().expect("Failed to create linked file");
+    schema.write(b"entity Long;").unwrap();
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("check-parse")
+        .arg("--schema")
+        .arg(schema.path())
+        .output()
+        .expect("failed to run cedar");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success());
+    insta::assert_snapshot!(stderr, @r###"
+     ⚠ The name `Long` shadows a builtin Cedar name. You'll have to refer to the
+     │ builtin as `__cedar::Long`.
+      ╭────
+    1 │ entity Long;
+      ·        ────
+      ╰────
+    "###);
 }

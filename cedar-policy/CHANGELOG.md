@@ -14,8 +14,15 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ### Added
 
-- Public syntax tree representation for `Policy`, `Template` and `PolicySet` allowing programmatic manipulation of Cedar syntax (#816, #366).
-- Explicit failure when using experimental features `tolerant-ast` and `protobuf` together: serialization of policies with error in action constraint fails.
+- Public syntax tree (`pst`) module for programmatic construction, inspection, and manipulation of Cedar policies. Accessible via `to_pst()` / `try_into_pst()` / `from_pst()` on `Policy`, `Template`, and `PolicySet`. `try_into_pst()` consumes the value to avoid cloning. TPE residual policies can be converted to PST for structured inspection of residual expressions. Third-party types used in PST fields (`SmolStr`, `LinkedHashMap`, `NonEmpty`) are re-exported from the `pst` module. (#816, #366)
+- The Type-aware partial evaluation (TPE) experimental feature now supports template-linked policies. This would previously return a `SlotNotSupportedError` error.
+  This error variant is removed and replaced with `UnlinkedSlotError`, occurring only when slot in a linked policy is not bound. (#2314).
+
+### Fixed
+
+- Improved Cedar schema parse help for two common syntax mistakes: forgetting `appliesTo` before an action block, and adding `;` after a namespace declaration. (#1043, #1044)
+- `FunctionArgumentValidation` errors now include a help message describing the expected format for extension function arguments: `decimal`, `ip`, `datetime`, and `duration`. (#834)
+- Serialization of residual policies with `error()` nodes does not fail, instead results in JSON with `{"error": []}`. (#2202)
 
 ## [4.10.0] - Coming soon
 
@@ -23,7 +30,16 @@ Cedar Language Version: 4.5
 
 ### Added
 
-- Extended `has` operator in JSON policies, maintaining backwards-compatible desugaring of extended `has` in Cedar policies to json (#1889)
+- Extended `has` operator in JSON policies, maintaining backwards-compatible desugaring of extended `has` in Cedar policies to json (#1889).
+
+### Changed
+
+- Explicit failure when using experimental features `tolerant-ast` and `protobuf` together: serialization of policies with error in action constraint fails (#2248, #2247).
+
+### Fixed
+
+- Decoding entities with parents and indirect ancestors in `protobuf` (#2240).
+
 
 ## [4.9.1] - 2026-02-27
 

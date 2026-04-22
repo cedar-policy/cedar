@@ -155,10 +155,7 @@ impl PartialRequest {
                         ..
                     } = principal_ty
                     {
-                        is_valid_enumerated_entity(
-                            &Vec::from(choices.clone().map(Eid::new)),
-                            &uid,
-                        )?;
+                        is_valid_enumerated_entity(choices, &uid)?;
                     }
                 }
             } else {
@@ -174,10 +171,7 @@ impl PartialRequest {
                         ..
                     } = resource_ty
                     {
-                        is_valid_enumerated_entity(
-                            &Vec::from(choices.clone().map(Eid::new)),
-                            &uid,
-                        )?;
+                        is_valid_enumerated_entity(choices, &uid)?;
                     }
                 }
             } else {
@@ -407,11 +401,8 @@ impl<'s> RequestBuilder<'s> {
                     ..
                 } = principal_ty
                 {
-                    is_valid_enumerated_entity(
-                        &Vec::from(choices.clone().map(Eid::new)),
-                        candidate,
-                    )
-                    .map_err(RequestBuilderError::InvalidPrincipalCandidate)?;
+                    is_valid_enumerated_entity(choices, candidate)
+                        .map_err(RequestBuilderError::InvalidPrincipalCandidate)?;
                 }
                 self.partial_request.principal = PartialEntityUID {
                     ty: candidate.entity_type().clone(),
@@ -457,11 +448,8 @@ impl<'s> RequestBuilder<'s> {
                     ..
                 } = resource_ty
                 {
-                    is_valid_enumerated_entity(
-                        &Vec::from(choices.clone().map(Eid::new)),
-                        candidate,
-                    )
-                    .map_err(RequestBuilderError::InvalidResourceCandidate)?;
+                    is_valid_enumerated_entity(choices, candidate)
+                        .map_err(RequestBuilderError::InvalidResourceCandidate)?;
                 }
                 self.partial_request.resource = PartialEntityUID {
                     ty: candidate.entity_type().clone(),

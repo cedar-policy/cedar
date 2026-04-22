@@ -35,7 +35,12 @@ mod demo_tests {
     use smol_str::ToSmolStr;
 
     use crate::validator::{
-        cedar_schema::{self, err::NO_PR_HELP_MSG},
+        cedar_schema::{
+            self,
+            err::{
+                MISSING_APPLIES_TO_HELP_MSG, NO_PR_HELP_MSG, TRAILING_NAMESPACE_SEMICOLON_HELP_MSG,
+            },
+        },
         json_schema::{self, EntityType, EntityTypeKind},
         schema::test::utils::collect_warnings,
         CedarSchemaError, RawName,
@@ -112,6 +117,48 @@ mod demo_tests {
                 &ExpectedErrorMessageBuilder::error("error parsing schema: missing `principal` declaration for `Foo`")
                     .exactly_one_underline("\"Foo\"")
                     .help(NO_PR_HELP_MSG)
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn missing_applies_to_help() {
+        let src = r#"
+        namespace NS1 {
+            entity User, Resource;
+            action Read { principal: [User], resource: [Resource], context: { foo: String }};
+        }
+        "#;
+
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error parsing schema: unexpected token `{`")
+                    .exactly_one_underline_with_label("{", "expected `,`, `;`, APPLIESTO, ATTRIBUTES, or `in`")
+                    .help(MISSING_APPLIES_TO_HELP_MSG)
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn namespace_trailing_semicolon_help() {
+        let src = r#"
+        namespace NS1 {
+            entity User, Resource;
+            action Read appliesTo { principal: [User], resource: [Resource], context: { foo: String }};
+        };
+        "#;
+
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error parsing schema: unexpected token `;`")
+                    .exactly_one_underline_with_label(";", "expected `@`, `action`, `entity`, `namespace`, or `type`")
+                    .help(TRAILING_NAMESPACE_SEMICOLON_HELP_MSG)
                     .build(),
             );
         });
@@ -953,9 +1000,12 @@ namespace Baz {action "Foo" appliesTo {
 }
 
 mod parser_tests {
-    use crate::validator::cedar_schema::{
-        ast::{Annotated, Declaration, EntityDecl, EnumEntityDecl, Namespace},
-        parser::parse_schema,
+    use crate::{
+        ast::Eid,
+        validator::cedar_schema::{
+            ast::{Annotated, Declaration, EntityDecl, EnumEntityDecl, Namespace},
+            parser::parse_schema,
+        },
     };
     use cool_asserts::assert_matches;
 
@@ -1192,7 +1242,7 @@ mod parser_tests {
             assert_matches!(&ns, [Annotated {data: Namespace { decls, ..}, ..}, ..] => {
                 assert_matches!(decls, [Annotated { data, .. }] => {
                     assert_matches!(&data.node, Declaration::Entity(EntityDecl::Enum(EnumEntityDecl { choices, ..})) => {
-                        assert_eq!(choices.clone().map(|n| n.node), nonempty::NonEmpty::singleton("TinyTodo".into()));
+                        assert_eq!(choices.clone().map(|n| n.node), nonempty::NonEmpty::singleton(Eid::new("TinyTodo")));
                     });
                 });
             });
@@ -1207,7 +1257,7 @@ mod parser_tests {
             assert_matches!(&ns, [Annotated {data: Namespace { decls, ..}, ..}, ..] => {
                 assert_matches!(decls, [Annotated { data, .. }] => {
                     assert_matches!(&data.node, Declaration::Entity(EntityDecl::Enum(EnumEntityDecl { choices, ..})) => {
-                        assert_eq!(choices.clone().map(|n| n.node), nonempty::nonempty!["TinyTodo".into(), "GitHub".into(), "DocumentCloud".into()]);
+                        assert_eq!(choices.clone().map(|n| n.node), nonempty::nonempty![Eid::new("TinyTodo"), Eid::new("GitHub"), Eid::new("DocumentCloud")]);
                     });
                 });
             });
@@ -1221,7 +1271,7 @@ mod parser_tests {
             assert_matches!(&ns, [Annotated {data: Namespace { decls, ..}, ..}] => {
                 assert_matches!(decls, [Annotated { data, .. }] => {
                     assert_matches!(&data.node, Declaration::Entity(EntityDecl::Enum(EnumEntityDecl { choices, ..})) => {
-                        assert_eq!(choices.clone().map(|n| n.node), nonempty::NonEmpty::singleton("enum".into()));
+                        assert_eq!(choices.clone().map(|n| n.node), nonempty::NonEmpty::singleton(Eid::new("enum")));
                     });
                 });
             });
@@ -1241,12 +1291,13 @@ mod parser_tests {
 }
 
 mod translator_tests {
-    use crate::ast as cedar_ast;
+    use crate::ast::{self as cedar_ast, Eid};
     use crate::extensions::Extensions;
     use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use crate::validator::types::BoolType;
     use crate::FromNormalizedStr;
     use cool_asserts::assert_matches;
+    use nonempty::nonempty;
 
     use crate::validator::json_schema::{EntityType, EntityTypeKind};
     use crate::validator::{
@@ -2363,7 +2414,7 @@ mod translator_tests {
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         assert_matches!(ns.entity_types.get(&"Fruits".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Enum { choices }, ..} => {
-            assert_eq!(Vec::from(choices.clone()), ["🍍", "🥭", "🥝"]);
+            assert_eq!(choices, &nonempty![Eid::new("🍍"), Eid::new("🥭"), Eid::new("🥝")]);
         });
 
         let src = r#"
@@ -2374,7 +2425,7 @@ mod translator_tests {
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         assert_matches!(ns.entity_types.get(&"enum".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Enum { choices }, ..} => {
-            assert_eq!(Vec::from(choices.clone()), ["enum"]);
+            assert_eq!(choices, &nonempty![Eid::new("enum")]);
         });
     }
 }

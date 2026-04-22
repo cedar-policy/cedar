@@ -35,11 +35,11 @@ use super::{
         IPNet, LOOP_BACK_CIDR_V4, LOOP_BACK_CIDR_V6, MULTICAST_CIDR_V4, MULTICAST_CIDR_V6,
     },
     factory::{
-        and, bvadd, bvlshr, bvmul, bvsaddo, bvsdiv, bvshl, bvsle, bvslt, bvsmulo, bvsrem, bvssubo,
-        bvsub, bvule, eq, ext_datetime_of_bitvec, ext_datetime_val, ext_decimal_val,
+        and, bvadd, bvlshr, bvsaddo, bvsdiv, bvshl, bvsle, bvslt, bvsmod, bvsrem, bvssubo, bvsub,
+        bvule, eq, ext_datetime_of_bitvec, ext_datetime_val, ext_decimal_val,
         ext_duration_of_bitvec, ext_duration_val, ext_ipaddr_addr_v4, ext_ipaddr_addr_v6,
         ext_ipaddr_is_v4, ext_ipaddr_prefix_v4, ext_ipaddr_prefix_v6, if_false, is_none, ite, not,
-        option_get, or, some_of, zero_extend,
+        option_get, or, zero_extend,
     },
     term::{Term, TermPrim},
     type_abbrevs::*,
@@ -203,30 +203,14 @@ pub fn duration_since(dt1: Term, dt2: Term) -> Term {
 }
 
 pub fn to_date(dt: Term) -> Term {
-    let zero = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(SIXTY_FOUR, 0)));
-    let one = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(SIXTY_FOUR, 1)));
     let ms_per_day = Term::Prim(TermPrim::Bitvec(BitVec::of_u128(SIXTY_FOUR, 86400000)));
-    let dt_val = ext_datetime_val(dt.clone());
-    ite(
-        bvsle(zero.clone(), dt_val.clone()),
-        some_of(ext_datetime_of_bitvec(bvmul(
-            ms_per_day.clone(),
-            bvsdiv(dt_val.clone(), ms_per_day.clone()),
-        ))),
-        ite(
-            eq(bvsrem(dt_val.clone(), ms_per_day.clone()), zero),
-            some_of(dt),
-            if_false(
-                bvsmulo(
-                    bvsub(bvsdiv(dt_val.clone(), ms_per_day.clone()), one.clone()),
-                    ms_per_day.clone(),
-                ),
-                ext_datetime_of_bitvec(bvmul(
-                    bvsub(bvsdiv(dt_val, ms_per_day.clone()), one),
-                    ms_per_day,
-                )),
-            ),
-        ),
+    let dt_val = ext_datetime_val(dt);
+    // we want dt - (dt % MS_PER_DAY), with the right version of `%`
+    // using bvsmod does the right thing: we have \forall x, 0 <= (bvsmod x MS_PER_DAY) < MS_PER_DAY
+    let rem = bvsmod(dt_val.clone(), ms_per_day);
+    if_false(
+        bvssubo(dt_val.clone(), rem.clone()),
+        ext_datetime_of_bitvec(bvsub(dt_val, rem)),
     )
 }
 

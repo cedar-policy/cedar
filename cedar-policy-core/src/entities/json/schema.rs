@@ -142,7 +142,7 @@ pub trait EntityTypeDescription {
 
     /// Return valid EID choices if the entity type is enumerated otherwise
     /// return `None`
-    fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>>;
+    fn enum_entity_eids(&self) -> Option<&NonEmpty<Eid>>;
 }
 
 /// Simple type that implements `EntityTypeDescription` by expecting no
@@ -171,7 +171,7 @@ impl EntityTypeDescription for NullEntityTypeDescription {
     fn open_attributes(&self) -> bool {
         false
     }
-    fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+    fn enum_entity_eids(&self) -> Option<&NonEmpty<Eid>> {
         None
     }
 }

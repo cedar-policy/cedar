@@ -123,12 +123,7 @@ impl CompiledPolicy {
                 }
             },
             symenv: self.symenv,
-            #[expect(
-                clippy::expect_used,
-                reason = "Constructing a singleton policyset should not fail. For more future-proof (in case somehow in the future it becomes possible for constructing a singleton policyset to fail), we should add a `PolicySet::singleton()` function to cedar-policy-core and use that here."
-            )]
-            policies: PolicySet::try_from_iter([self.policy])
-                .expect("constructing a singleton policyset should not fail"),
+            policies: PolicySet::singleton(self.policy),
             footprint: self.footprint, // the footprint of a singleton policyset is the same as the footprint of the policy
             acyclicity: self.acyclicity, // the acyclicity constraints for a singleton policyset are the same as the acyclicity constraints for the policy
         }
@@ -262,5 +257,65 @@ impl<'a> CompiledPolicies<'a> {
             CompiledPolicies::Policy(cp) => &cp.symenv,
             CompiledPolicies::PolicySet(cpset) => &cpset.symenv,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use cedar_policy::{RequestEnv, Schema};
+    use cedar_policy_core::{
+        ast::{Policy, PolicySet},
+        parser::parse_policy,
+    };
+
+    use super::{CompiledPolicy, CompiledPolicySet};
+
+    #[track_caller]
+    fn assert_compile_into_policies_eq_compile_policies(
+        p: &str,
+        schema: &Schema,
+        env: &RequestEnv,
+    ) {
+        let p: Policy = parse_policy(None, p).unwrap().into();
+        assert_eq!(
+            CompiledPolicy::compile(&p, &env, &schema)
+                .unwrap()
+                .into_compiled_policyset(),
+            CompiledPolicySet::compile(&PolicySet::singleton(p), &env, &schema).unwrap()
+        );
+    }
+
+    #[test]
+    fn compile_into_policies_eq_compile_policies() {
+        let schema = Schema::from_cedarschema_str(
+            "entity E; action A appliesTo { principal: E, resource: E};",
+        )
+        .unwrap()
+        .0;
+        let env = RequestEnv::new(
+            "E".parse().unwrap(),
+            r#"Action::"A""#.parse().unwrap(),
+            "E".parse().unwrap(),
+        );
+        assert_compile_into_policies_eq_compile_policies(
+            "permit(principal, action, resource);",
+            &schema,
+            &env,
+        );
+        assert_compile_into_policies_eq_compile_policies(
+            r#"permit(principal == E::"e", action, resource);"#,
+            &schema,
+            &env,
+        );
+        assert_compile_into_policies_eq_compile_policies(
+            "forbid(principal, action, resource);",
+            &schema,
+            &env,
+        );
+        assert_compile_into_policies_eq_compile_policies(
+            r#"forbid(principal == E::"e", action, resource);"#,
+            &schema,
+            &env,
+        );
     }
 }

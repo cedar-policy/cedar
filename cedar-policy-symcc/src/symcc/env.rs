@@ -459,7 +459,9 @@ impl EntitySchemaEntry {
     ) -> Self {
         if let Some(entry) = schema.get_entity_type(ety.as_ref()) {
             if let ValidatorEntityTypeKind::Enum(eids) = &entry.kind {
-                return EntitySchemaEntry::Enum(eids.iter().cloned().collect());
+                return EntitySchemaEntry::Enum(
+                    eids.into_iter().map(|e| e.as_ref().into()).collect(),
+                );
             }
         }
 

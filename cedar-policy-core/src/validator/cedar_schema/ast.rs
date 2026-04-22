@@ -17,7 +17,7 @@
 use std::{collections::BTreeMap, iter::once};
 
 use crate::{
-    ast::{Annotation, Annotations, AnyId, Id, InternalName},
+    ast::{Annotation, Annotations, AnyId, Eid, Id, InternalName},
     parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
@@ -293,7 +293,7 @@ pub struct StandardEntityDecl {
 #[derive(Debug, Clone)]
 pub struct EnumEntityDecl {
     pub names: NonEmpty<Node<Id>>,
-    pub choices: NonEmpty<Node<SmolStr>>,
+    pub choices: NonEmpty<Node<Eid>>,
 }
 
 /// Type definitions

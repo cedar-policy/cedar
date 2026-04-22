@@ -260,10 +260,10 @@ impl Solver for LocalSolver {
         self.solver_stdin.flush().await?;
         let mut output = String::new();
         self.read_line(&mut output).await?;
-        match output.as_str() {
-            "sat\n" => Ok(Decision::Sat),
-            "unsat\n" => Ok(Decision::Unsat),
-            "unknown\n" => Ok(Decision::Unknown),
+        match output.as_str().trim() {
+            "sat" => Ok(Decision::Sat),
+            "unsat" => Ok(Decision::Unsat),
+            "unknown" => Ok(Decision::Unknown),
             s => Err(self.process_error_output(s).await),
         }
     }
@@ -278,8 +278,8 @@ impl Solver for LocalSolver {
                 self.solver_stdin.flush().await?;
                 let mut output = String::new();
                 self.read_line(&mut output).await?;
-                match output.as_str() {
-                    "(\n" => {
+                match output.as_str().trim() {
+                    "(" => {
                         // Read until a line ")\n"
                         loop {
                             let len: usize = self.read_line(&mut output).await?;
@@ -287,7 +287,7 @@ impl Solver for LocalSolver {
                                 clippy::string_slice,
                                 reason = "`output.len() - len` gives the end index of `output` before the `read_line`"
                             )]
-                            if &output[output.len() - len..] == ")\n" {
+                            if output[output.len() - len..].trim() == ")" {
                                 break;
                             }
                         }
@@ -331,7 +331,7 @@ impl LocalSolver {
     async fn process_error_output(&mut self, s: &str) -> SolverError {
         match s
             .strip_prefix("(error \"")
-            .and_then(|s| s.strip_suffix("\")\n"))
+            .and_then(|s| s.strip_suffix("\")"))
         {
             Some(e) => {
                 if e.starts_with("Parse Error: ") {
@@ -479,5 +479,41 @@ mod test {
         my_solver.clean_up().await.unwrap();
         let status = my_solver.child.try_wait().unwrap();
         assert!(status.is_some());
+    }
+
+    #[tokio::test]
+    async fn check_sat_crlf_test() {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "read line && printf 'sat\r\n'"]);
+        let mut solver = LocalSolver::from_command(&mut cmd).unwrap();
+        let decision = solver.check_sat().await.unwrap();
+        assert_eq!(decision, Decision::Sat);
+    }
+
+    #[tokio::test]
+    async fn check_sat_with_model_crlf_test() {
+        let mut cmd = Command::new("sh");
+        cmd.args([
+            "-c",
+            "read line && printf 'sat\\r\\n' && read line && printf '(\\r\\n  define-fun x () Int 0\\r\\n)\\r\\n'",
+        ]);
+        let mut solver = LocalSolver::from_command(&mut cmd).unwrap();
+
+        let decision = solver.check_sat_with_model().await.unwrap();
+
+        assert_matches!(decision, DecisionWithModel::Sat { model } => {
+            assert_eq!(model, "(\r\n  define-fun x () Int 0\r\n)\r\n");
+        });
+    }
+
+    #[tokio::test]
+    async fn process_error_output_parse_error_no_line_ending_test() {
+        let mut solver = LocalSolver::cvc5().unwrap();
+        let res = solver
+            .process_error_output("(error \"Parse Error: mock windows error\")")
+            .await;
+        assert_matches!(res, SolverError::Solver(msg) => {
+            assert_eq!(msg, "Parse Error: mock windows error");
+        });
     }
 }

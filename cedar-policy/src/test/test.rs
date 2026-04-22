@@ -5980,6 +5980,62 @@ permit(principal, action, resource) when { {"\n": 0} };"#,
         round_trip(r#"permit(principal, action, resource) when { Foo::"\n\r\\" };"#);
     }
 }
+
+mod function_argument_validation_help_tests {
+    use crate::{Policy, PolicySet, ValidationMode, Validator};
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use miette::Report;
+    use serde_json::json;
+
+    use super::Schema;
+
+    #[test]
+    fn validator_surfaces_help_for_invalid_extension_constructor_arguments() {
+        let schema = Schema::from_json_value(json!({
+            "": {
+                "entityTypes": {
+                    "User": {},
+                    "Document": {},
+                },
+                "actions": {
+                    "view": {
+                        "appliesTo": {
+                            "principalTypes": ["User"],
+                            "resourceTypes": ["Document"],
+                        }
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(
+            principal == User::"alice",
+            action == Action::"view",
+            resource == Document::"doc"
+        ) when { decimal("foo").lessThan(decimal("1.0")) };"#;
+        let policy = Policy::parse(None, src).unwrap();
+        set.add(policy).unwrap();
+
+        let result = validator.validate(&set, ValidationMode::Strict);
+        let errors: Vec<_> = result.validation_errors().cloned().collect();
+        assert_eq!(errors.len(), 1, "unexpected validation errors: {errors:?}");
+
+        expect_err(
+            src,
+            &Report::new(errors[0].clone()),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, error during extension function argument validation: failed to parse as a decimal value: `\"foo\"`",
+            )
+            .help("valid decimal strings look like `12.34`: digits are required on both sides of `.`, up to 4 fractional digits are allowed, and the value must be in range -922337203685477.5808 to 922337203685477.5807")
+            .exactly_one_underline(r#"decimal("foo").lessThan(decimal("1.0"))"#)
+            .build(),
+        );
+    }
+}
+
 mod issue_604 {
     use crate::Policy;
     use cedar_policy_core::parser::parse_policy_or_template_to_est;
@@ -6226,6 +6282,273 @@ mod issue_596 {
         let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
         let v: serde_json::Value = serde_json::from_str(src).unwrap();
         Policy::from_json(None, v).unwrap_err();
+    }
+}
+
+mod issue_611 {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    fn entity_json_with_int(value_str: &str) -> String {
+        format!(
+            r#"[{{"uid":{{"type":"E","id":"test"}},"attrs":{{"n":{value_str}}},"parents":[]}}]"#
+        )
+    }
+
+    // Context A: integer as an attribute value in entities JSON
+
+    #[test]
+    fn entity_attr_i64_min() {
+        let src = entity_json_with_int("-9223372036854775808");
+        let entities = Entities::from_json_str(&src, None).unwrap();
+        let euid: EntityUid = r#"E::"test""#.parse().unwrap();
+        let n = entities.get(&euid).unwrap().attr("n").unwrap().unwrap();
+        insta::assert_snapshot!(n, @"-9223372036854775808");
+    }
+
+    #[test]
+    fn entity_attr_i64_max() {
+        let src = entity_json_with_int("9223372036854775807");
+        let entities = Entities::from_json_str(&src, None).unwrap();
+        let euid: EntityUid = r#"E::"test""#.parse().unwrap();
+        let n = entities.get(&euid).unwrap().attr("n").unwrap().unwrap();
+        insta::assert_snapshot!(n, @"9223372036854775807");
+    }
+
+    #[test]
+    fn entity_attr_above_i64_max() {
+        // i64::MAX + 1 is representable as u64 but exceeds Cedar's integer range
+        let src = entity_json_with_int("9223372036854775808");
+        assert_matches!(Entities::from_json_str(&src, None), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                    .source("data did not match any variant of untagged enum RawCedarValueJson")
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn entity_attr_u64_max() {
+        // u64::MAX exceeds Cedar's integer range (i64::MAX)
+        let src = entity_json_with_int("18446744073709551615");
+        assert_matches!(Entities::from_json_str(&src, None), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                    .source("data did not match any variant of untagged enum RawCedarValueJson")
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn entity_attr_below_i64_min() {
+        // i64::MIN - 1 overflows i64; serde_json represents it as f64, which Cedar rejects
+        let src = entity_json_with_int("-9223372036854775809");
+        assert_matches!(Entities::from_json_str(&src, None), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                    .source("data did not match any variant of untagged enum RawCedarValueJson")
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn entity_attr_above_u64_max() {
+        // u64::MAX + 1 overflows u64; serde_json represents it as f64, which Cedar rejects
+        let src = entity_json_with_int("18446744073709551616");
+        assert_matches!(Entities::from_json_str(&src, None), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                    .source("data did not match any variant of untagged enum RawCedarValueJson")
+                    .build(),
+            );
+        });
+    }
+
+    // Context B: integer as a literal in policy JSON
+
+    #[test]
+    fn policy_json_i64_min() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        insta::assert_snapshot!(p, @"permit(principal, action, resource) when { (principal.x) == (-9223372036854775808) };");
+    }
+
+    #[test]
+    fn policy_json_i64_max() {
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775807}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let p = Policy::from_json(None, v).unwrap();
+        insta::assert_snapshot!(p, @"permit(principal, action, resource) when { (principal.x) == 9223372036854775807 };");
+    }
+
+    #[test]
+    fn policy_json_above_i64_max() {
+        // i64::MAX + 1 is representable as u64 in JSON but exceeds Cedar's integer range
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775808}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let err = Policy::from_json(None, v).unwrap_err();
+        expect_err(
+            src,
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
+                .source("data did not match any variant of untagged enum RawCedarValueJson")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn policy_json_u64_max() {
+        // u64::MAX exceeds Cedar's integer range (i64::MAX)
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":18446744073709551615}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let err = Policy::from_json(None, v).unwrap_err();
+        expect_err(
+            src,
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
+                .source("data did not match any variant of untagged enum RawCedarValueJson")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn policy_json_below_i64_min() {
+        // i64::MIN - 1 overflows i64; serde_json represents it as f64, which Cedar rejects
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775809}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let err = Policy::from_json(None, v).unwrap_err();
+        expect_err(
+            src,
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
+                .source("data did not match any variant of untagged enum RawCedarValueJson")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn policy_json_above_u64_max() {
+        // u64::MAX + 1 overflows u64; serde_json represents it as f64, which Cedar rejects
+        let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":18446744073709551616}}}}]}"#;
+        let v: serde_json::Value = serde_json::from_str(src).unwrap();
+        let err = Policy::from_json(None, v).unwrap_err();
+        expect_err(
+            src,
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error("error deserializing a policy/template from JSON")
+                .source("data did not match any variant of untagged enum RawCedarValueJson")
+                .build(),
+        );
+    }
+
+    // Context C: integer literals in human-syntax policies converted to JSON
+
+    #[test]
+    fn human_syntax_i64_max_to_json() {
+        let src =
+            "permit(principal, action, resource) when { principal.n == 9223372036854775807 };";
+        let json = Policy::parse(None, src).unwrap().to_json().unwrap();
+        assert_eq!(
+            json["conditions"][0]["body"]["=="]["right"]["Value"],
+            serde_json::json!(i64::MAX)
+        );
+    }
+
+    #[test]
+    fn human_syntax_i64_min_to_json() {
+        // Cedar special-cases i64::MIN in its negation handler so that
+        // `-9223372036854775808` is accepted as a literal even though the
+        // absolute value 9223372036854775808 would overflow i64.
+        let src =
+            "permit(principal, action, resource) when { principal.n == -9223372036854775808 };";
+        let json = Policy::parse(None, src).unwrap().to_json().unwrap();
+        assert_eq!(
+            json["conditions"][0]["body"]["=="]["right"]["Value"],
+            serde_json::json!(i64::MIN)
+        );
+    }
+
+    #[test]
+    fn human_syntax_above_i64_max() {
+        // 9223372036854775808 as a positive literal exceeds i64::MAX
+        let src = "permit(principal, action, resource) when { 9223372036854775808 };";
+        assert_matches!(PolicySet::from_str(src), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "integer literal `9223372036854775808` is too large",
+                )
+                .help("maximum allowed integer literal is `9223372036854775807`")
+                .exactly_one_underline("9223372036854775808")
+                .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn human_syntax_u64_max() {
+        // u64::MAX fits in the u64 token but exceeds i64::MAX
+        let src = "permit(principal, action, resource) when { 18446744073709551615 };";
+        assert_matches!(PolicySet::from_str(src), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "integer literal `18446744073709551615` is too large",
+                )
+                .help("maximum allowed integer literal is `9223372036854775807`")
+                .exactly_one_underline("18446744073709551615")
+                .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn human_syntax_below_i64_min() {
+        // The absolute value 9223372036854775809 exceeds i64::MAX, so negation cannot recover it
+        let src = "permit(principal, action, resource) when { -9223372036854775809 };";
+        assert_matches!(PolicySet::from_str(src), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "integer literal `9223372036854775809` is too large",
+                )
+                .help("maximum allowed integer literal is `9223372036854775807`")
+                .exactly_one_underline("-9223372036854775809")
+                .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn human_syntax_above_u64_max() {
+        // u64::MAX + 1 overflows u64 in the lexer, producing a parse error
+        let src = "permit(principal, action, resource) when { 18446744073709551616 };";
+        assert_matches!(PolicySet::from_str(src), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "integer parse error: number too large to fit in target type",
+                )
+                .exactly_one_underline("18446744073709551616")
+                .build(),
+            );
+        });
     }
 }
 
@@ -7660,6 +7983,7 @@ mod context_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error while evaluating `ipaddr` extension function: invalid IP address: not_an_ip_address")
+                .help("valid IP strings are IPv4/IPv6 addresses or CIDR ranges like `127.0.0.1`, `127.0.0.1/24`, or `ffee::/64`")
                 .build(),
         );
 
@@ -9048,1956 +9372,6 @@ mod test_entities_api {
     }
 }
 
-#[cfg(feature = "tpe")]
-mod tpe_tests {
-    use std::{
-        collections::{BTreeMap, HashSet},
-        str::FromStr,
-    };
-
-    use cedar_policy_core::tpe::err::EntitiesError;
-    use cool_asserts::assert_matches;
-
-    use crate::{PartialEntity, PartialEntityError, RestrictedExpression, Schema};
-
-    #[test]
-    fn entity_construction() {
-        let schema = Schema::from_str(
-            r"
-            entity A in B tags Long;
-            entity B;
-        ",
-        )
-        .unwrap();
-        PartialEntity::new(
-            r#"A::"foo""#.parse().unwrap(),
-            None,
-            Some(HashSet::from_iter([r#"B::"b""#.parse().unwrap()])),
-            Some(BTreeMap::from_iter([(
-                "".into(),
-                RestrictedExpression::new_long(1),
-            )])),
-            &schema,
-        )
-        .unwrap();
-        assert_matches!(
-            PartialEntity::new(
-                r#"A::"foo""#.parse().unwrap(),
-                None,
-                Some(HashSet::from_iter([r#"C::"c""#.parse().unwrap()])),
-                Some(BTreeMap::from_iter([(
-                    "".into(),
-                    RestrictedExpression::new_long(1)
-                )])),
-                &schema
-            ),
-            Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
-        );
-
-        assert_matches!(
-            PartialEntity::new(
-                r#"A::"foo""#.parse().unwrap(),
-                None,
-                Some(HashSet::from_iter([r#"B::"b""#.parse().unwrap()])),
-                Some(BTreeMap::from_iter([(
-                    "".into(),
-                    RestrictedExpression::new_bool(true)
-                )])),
-                &schema
-            ),
-            Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
-        );
-    }
-
-    mod streaming_service {
-        use std::{collections::BTreeMap, str::FromStr};
-
-        use cedar_policy_core::{authorizer::Decision, tpe::err::EntitiesError};
-        use cool_asserts::assert_matches;
-        use itertools::Itertools;
-        use similar_asserts::assert_eq;
-
-        use crate::{
-            ActionConstraint, ActionQueryRequest, Context, Entities, EntityId, EntityUid,
-            PartialEntities, PartialEntity, PartialEntityError, PartialEntityUid, PartialRequest,
-            PolicySet, PrincipalConstraint, PrincipalQueryRequest, Request, ResourceConstraint,
-            ResourceQueryRequest, RestrictedExpression, Schema,
-        };
-
-        #[test]
-        fn entities_construction() {
-            let schema = schema();
-            PartialEntity::new(
-                r#"Movie::"foo""#.parse().unwrap(),
-                None,
-                None,
-                None,
-                &schema,
-            )
-            .unwrap();
-            PartialEntity::new(
-                r#"Show::"foo""#.parse().unwrap(),
-                Some(BTreeMap::from_iter([
-                    ("isFree".into(), RestrictedExpression::new_bool(true)),
-                    (
-                        "releaseDate".into(),
-                        RestrictedExpression::new_datetime("2025-01-01"),
-                    ),
-                    (
-                        "isEarlyAccess".into(),
-                        RestrictedExpression::new_bool(false),
-                    ),
-                ])),
-                None,
-                None,
-                &schema,
-            )
-            .unwrap();
-
-            assert_matches!(
-                PartialEntity::new(
-                    r#"Show::"foo""#.parse().unwrap(),
-                    Some(BTreeMap::from_iter([
-                        ("isFree".into(), RestrictedExpression::new_bool(true)),
-                        (
-                            "isEarlyAccess".into(),
-                            RestrictedExpression::new_bool(false)
-                        ),
-                    ])),
-                    None,
-                    None,
-                    &schema
-                ),
-                Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
-            );
-
-            let e1 = PartialEntity::new(
-                r#"Show::"foo""#.parse().unwrap(),
-                Some(BTreeMap::from_iter([
-                    ("isFree".into(), RestrictedExpression::new_bool(true)),
-                    (
-                        "releaseDate".into(),
-                        RestrictedExpression::new_datetime("2025-01-01"),
-                    ),
-                    (
-                        "isEarlyAccess".into(),
-                        RestrictedExpression::new_bool(false),
-                    ),
-                ])),
-                None,
-                None,
-                &schema,
-            )
-            .unwrap();
-            let e2 = PartialEntity::new(
-                r#"Subscriber::"a""#.parse().unwrap(),
-                None,
-                None,
-                None,
-                &schema,
-            )
-            .unwrap();
-            PartialEntities::from_partial_entities([e1.clone(), e2.clone()], &schema).unwrap();
-            let e3 = PartialEntity::new(
-                r#"Show::"foo""#.parse().unwrap(),
-                Some(BTreeMap::from_iter([
-                    ("isFree".into(), RestrictedExpression::new_bool(true)),
-                    (
-                        "releaseDate".into(),
-                        RestrictedExpression::new_datetime("2025-01-01"),
-                    ),
-                    ("isEarlyAccess".into(), RestrictedExpression::new_bool(true)),
-                ])),
-                None,
-                None,
-                &schema,
-            )
-            .unwrap();
-            assert_matches!(
-                PartialEntities::from_partial_entities([e1, e2, e3], &schema),
-                Err(EntitiesError::Duplicate(_)),
-            );
-        }
-
-        #[track_caller]
-        fn schema() -> Schema {
-            Schema::from_cedarschema_str(
-                r"
-            // Types
-type Subscription = {
-  tier: String
-};
-type Profile = {
-  isKid: Bool
-};
-
-// Entities
-entity FreeMember;
-entity Subscriber = {
-  subscription: Subscription,
-  profile: Profile
-};
-entity Movie = {
-  isFree: Bool,
-  needsRentOrBuy: Bool,
-  isOscarNominated: Bool
-};
-entity Show = {
-  isFree: Bool,
-  releaseDate: datetime,
-  isEarlyAccess: Bool
-};
-
-// Actions for content in general
-action watch
-  appliesTo {
-    principal: [FreeMember, Subscriber],
-    resource: [Movie, Show],
-    context: {
-      now: {
-        datetime: datetime,
-        localTimeOffset: duration
-      }
-    }
-  };
-
-// Actions for movies only
-action rent, buy
-  appliesTo {
-    principal: [FreeMember, Subscriber],
-    resource: Movie,
-    context: {
-      now: {
-        datetime: datetime
-      }
-    }
-  };
-            ",
-            )
-            .unwrap()
-            .0
-        }
-
-        #[track_caller]
-        fn policy_set() -> PolicySet {
-            PolicySet::from_str(
-                r#"
-            // Subscriber Content Access (Shows)
-@id("subscriber-content-access/show")
-permit (
-  principal is Subscriber,
-  action == Action::"watch",
-  resource is Show
-)
-unless
-{ resource.isEarlyAccess && context.now.datetime < resource.releaseDate };
-
-// Subscriber Content Access (Movies)
-@id("subscriber-content-access/movie")
-permit (
-  principal is Subscriber,
-  action == Action::"watch",
-  resource is Movie
-)
-unless { resource.needsRentOrBuy };
-
-// Free Content Access
-@id("free-content-access")
-permit (
-  principal is FreeMember,
-  action == Action::"watch",
-  resource
-)
-when { resource.isFree };
-
-// Promo: Rent/Buy Oscar-Nominated Movies Until the Oscars
-@id("rent-buy-oscar-movie")
-permit (
-  principal is Subscriber,
-  action in [Action::"rent", Action::"buy"],
-  resource is Movie
-)
-when
-{
-  resource.isOscarNominated &&
-  context.now.datetime >= datetime("2025-02-02T19:00:00-0500") &&
-  context.now.datetime < datetime(
-      "2025-03-02T19:00:00-0500"
-    ) // Oscars Night
-};
-
-// Early Access (24h) to Shows for Premium Subscribers
-@id("early-access-show")
-permit (
-  principal is Subscriber,
-  action == Action::"watch",
-  resource is Show
-)
-when
-{
-  resource.isEarlyAccess &&
-  principal.subscription.tier == "premium" &&
-  context.now.datetime >= resource.releaseDate.offset(duration("-24h"))
-};
-
-// Forbid Bedtime Access to Kid Profile
-@id("forbid-bedtime-watch-kid-profile")
-forbid (
-  principal is Subscriber,
-  action == Action::"watch",
-  resource
-)
-when { principal.profile.isKid }
-unless
-{
-  // `toTime()` returns the duration modulo one day (i.e., it ignores the "date"
-  // component). Here, we use it to calculate the subscriber's local time and
-  // compare the result against durations that represent 6:00AM and 9:00PM.
-  duration("6h") <= context.now
-    .datetime
-    .offset
-    (
-      context.now.localTimeOffset
-    )
-    .toTime
-    (
-    ) &&
-  context.now.datetime.offset(context.now.localTimeOffset).toTime() <= duration(
-      "21h"
-    )
-};
-            "#,
-            )
-            .unwrap()
-        }
-
-        #[track_caller]
-        fn entities() -> Entities {
-            Entities::from_json_value(
-                serde_json::json!(
-                                [
-                    {
-                        "uid": {
-                            "type": "Subscriber",
-                            "id": "Alice"
-                        },
-                        "attrs": {
-                            "subscription" : {
-                                "tier": "standard"
-                            },
-                            "profile" : {
-                                "isKid": false
-                            }
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "FreeMember",
-                            "id": "Bob"
-                        },
-                        "attrs": {},
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Subscriber",
-                            "id": "Charlie"
-                        },
-                        "attrs": {
-                            "subscription" : {
-                                "tier": "premium"
-                            },
-                            "profile" : {
-                                "isKid": false
-                            }
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Subscriber",
-                            "id": "Dave"
-                        },
-                        "attrs": {
-                            "subscription" : {
-                                "tier": "standard"
-                            },
-                            "profile" : {
-                                "isKid": true
-                            }
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Movie",
-                            "id": "The Godparent"
-                        },
-                        "attrs": {
-                            "isFree" : true,
-                            "needsRentOrBuy" : false,
-                            "isOscarNominated": true
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Movie",
-                            "id": "The Gleaming"
-                        },
-                        "attrs": {
-                            "isFree" : false,
-                            "needsRentOrBuy" : false,
-                            "isOscarNominated": false
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Movie",
-                            "id": "Devilish"
-                        },
-                        "attrs": {
-                            "isFree" : false,
-                            "needsRentOrBuy" : true,
-                            "isOscarNominated": true
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Show",
-                            "id": "Buddies"
-                        },
-                        "attrs": {
-                            "isFree" : false,
-                            "releaseDate": "2024-10-10",
-                            "isEarlyAccess": false
-                        },
-                        "parents": []
-                    },
-                    {
-                        "uid": {
-                            "type": "Show",
-                            "id": "Breach"
-                        },
-                        "attrs": {
-                            "isFree" : false,
-                            "releaseDate": "2025-02-21",
-                            "isEarlyAccess": true
-                        },
-                        "parents": []
-                    }
-                ]
-                            ),
-                Some(&schema()),
-            )
-            .unwrap()
-        }
-
-        #[test]
-        fn run_tpe() {
-            let schema = schema();
-            let request = PartialRequest::new(
-                PartialEntityUid::from_concrete(r#"Subscriber::"Alice""#.parse().unwrap()),
-                r#"Action::"watch""#.parse().unwrap(),
-                PartialEntityUid::new("Movie".parse().unwrap(), None),
-                Some(
-                    Context::from_pairs([(
-                        "now".into(),
-                        RestrictedExpression::new_record([
-                            (
-                                "datetime".into(),
-                                RestrictedExpression::from_str(r#"datetime("2025-07-22")"#)
-                                    .unwrap(),
-                            ),
-                            (
-                                "localTimeOffset".into(),
-                                RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                            ),
-                        ])
-                        .unwrap(),
-                    )])
-                    .unwrap(),
-                ),
-                &schema,
-            )
-            .unwrap();
-            let policies = policy_set();
-            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
-
-            let response = policies
-                .tpe(&request, &partial_entities, &schema)
-                .expect("tpe should succeed");
-
-            assert_eq!(
-                response.residual_policies().count(),
-                policies.num_of_policies()
-            );
-            for p in response.residual_policies() {
-                assert_matches!(p.action_constraint(), ActionConstraint::Any);
-                assert_matches!(p.principal_constraint(), PrincipalConstraint::Any);
-                assert_matches!(p.resource_constraint(), ResourceConstraint::Any);
-            }
-            assert_eq!(
-                response
-                    .nontrivial_residual_policies()
-                    .next()
-                    .unwrap()
-                    .annotation("id")
-                    .unwrap(),
-                "subscriber-content-access/movie"
-            );
-
-            assert_eq!(response.decision(), None);
-
-            let request = Request::new(
-                EntityUid::from_type_name_and_id(
-                    "Subscriber".parse().unwrap(),
-                    EntityId::new("Alice"),
-                ),
-                r#"Action::"watch""#.parse().unwrap(),
-                EntityUid::from_type_name_and_id(
-                    "Movie".parse().unwrap(),
-                    EntityId::new("The Godparent"),
-                ),
-                Context::from_pairs([(
-                    "now".into(),
-                    RestrictedExpression::new_record([
-                        (
-                            "datetime".into(),
-                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
-                        ),
-                        (
-                            "localTimeOffset".into(),
-                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                        ),
-                    ])
-                    .unwrap(),
-                )])
-                .unwrap(),
-                Some(&schema),
-            )
-            .unwrap();
-            assert_matches!(response.reauthorize(&request, &entities()), Ok(res) => {
-                assert_eq!(res.decision(), Decision::Allow);
-            });
-
-            let request = Request::new(
-                EntityUid::from_type_name_and_id(
-                    "Subscriber".parse().unwrap(),
-                    EntityId::new("Alice"),
-                ),
-                r#"Action::"watch""#.parse().unwrap(),
-                EntityUid::from_type_name_and_id(
-                    "Movie".parse().unwrap(),
-                    EntityId::new("Devilish"),
-                ),
-                Context::from_pairs([(
-                    "now".into(),
-                    RestrictedExpression::new_record([
-                        (
-                            "datetime".into(),
-                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
-                        ),
-                        (
-                            "localTimeOffset".into(),
-                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                        ),
-                    ])
-                    .unwrap(),
-                )])
-                .unwrap(),
-                Some(&schema),
-            )
-            .unwrap();
-            assert_matches!(response.reauthorize(&request, &entities()), Ok(res) => {
-                assert_eq!(res.decision(), Decision::Deny);
-            });
-        }
-
-        #[test]
-        fn query_resource() {
-            let schema = schema();
-            let policies = policy_set();
-            let request = ResourceQueryRequest::new(
-                r#"Subscriber::"Alice""#.parse().unwrap(),
-                r#"Action::"watch""#.parse().unwrap(),
-                "Movie".parse().unwrap(),
-                Context::from_pairs([(
-                    "now".into(),
-                    RestrictedExpression::new_record([
-                        (
-                            "datetime".into(),
-                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
-                        ),
-                        (
-                            "localTimeOffset".into(),
-                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                        ),
-                    ])
-                    .unwrap(),
-                )])
-                .unwrap(),
-                &schema,
-            )
-            .unwrap();
-
-            // The two movies do not need rent or buy and hence satisfy the
-            // residual policy
-            let movies = policies
-                .query_resource(&request, &entities(), &schema)
-                .unwrap()
-                .sorted()
-                .collect_vec();
-            assert_eq!(
-                movies,
-                &[
-                    EntityUid::from_str(r#"Movie::"The Gleaming""#).unwrap(),
-                    EntityUid::from_str(r#"Movie::"The Godparent""#).unwrap(),
-                ]
-            );
-        }
-
-        #[test]
-        fn query_principal() {
-            let schema = schema();
-            let policies = policy_set();
-
-            let request = PrincipalQueryRequest::new(
-                "Subscriber".parse().unwrap(),
-                r#"Action::"watch""#.parse().unwrap(),
-                r#"Movie::"The Godparent""#.parse().unwrap(),
-                Context::from_pairs([(
-                    "now".into(),
-                    RestrictedExpression::new_record([
-                        (
-                            "datetime".into(),
-                            RestrictedExpression::from_str(r#"datetime("2025-07-22")"#).unwrap(),
-                        ),
-                        (
-                            "localTimeOffset".into(),
-                            RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
-                        ),
-                    ])
-                    .unwrap(),
-                )])
-                .unwrap(),
-                &schema,
-            )
-            .unwrap();
-
-            let subscribers = policies
-                .query_principal(&request, &entities(), &schema)
-                .unwrap()
-                .sorted()
-                .collect_vec();
-            assert_eq!(
-                subscribers,
-                &[
-                    EntityUid::from_str(r#"Subscriber::"Alice""#).unwrap(),
-                    EntityUid::from_str(r#"Subscriber::"Charlie""#).unwrap(),
-                ]
-            );
-        }
-
-        #[test]
-        fn query_action_alice() {
-            let schema = schema();
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"Subscriber::"Alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Movie::"The Godparent""#.parse().unwrap()),
-                None,
-                schema.clone(),
-            )
-            .unwrap();
-
-            let policies = policy_set();
-            let mut actions: Vec<_> = policies
-                .query_action(
-                    &request,
-                    &PartialEntities::from_concrete(entities(), &schema).unwrap(),
-                )
-                .unwrap()
-                .collect();
-            actions.sort_by_key(|(a, _)| *a);
-            assert_eq!(
-                actions,
-                vec![
-                    (&r#"Action::"buy""#.parse().unwrap(), None),
-                    (&r#"Action::"rent""#.parse().unwrap(), None),
-                    (
-                        &r#"Action::"watch""#.parse().unwrap(),
-                        Some(Decision::Allow)
-                    ),
-                ]
-            );
-        }
-
-        #[test]
-        fn query_action_bob_free() {
-            let schema = schema();
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"FreeMember::"Bob""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Movie::"The Godparent""#.parse().unwrap()),
-                None,
-                schema.clone(),
-            )
-            .unwrap();
-
-            let policies = policy_set();
-            let actions: Vec<_> = policies
-                .query_action(
-                    &request,
-                    &PartialEntities::from_concrete(entities(), &schema).unwrap(),
-                )
-                .unwrap()
-                .collect();
-            assert_eq!(
-                actions,
-                vec![(
-                    &r#"Action::"watch""#.parse().unwrap(),
-                    Some(Decision::Allow)
-                ),]
-            );
-        }
-
-        #[test]
-        fn query_action_bob_not_free() {
-            let schema = schema();
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"FreeMember::"Bob""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Movie::"The Gleaming""#.parse().unwrap()),
-                None,
-                schema.clone(),
-            )
-            .unwrap();
-
-            let policies = policy_set();
-            let actions: Vec<_> = policies
-                .query_action(
-                    &request,
-                    &PartialEntities::from_concrete(entities(), &schema).unwrap(),
-                )
-                .unwrap()
-                .collect();
-            assert_eq!(actions, vec![]);
-        }
-    }
-
-    mod github {
-        use std::{
-            collections::{HashMap, HashSet},
-            str::FromStr,
-        };
-
-        use cedar_policy_core::tpe::err::TpeError;
-        use cedar_policy_core::{authorizer::Decision, batched_evaluator::err::BatchedEvalError};
-        use cool_asserts::assert_matches;
-        use itertools::Itertools;
-        use similar_asserts::assert_eq;
-
-        use crate::{
-            ActionQueryRequest, Context, Entities, EntityUid, PartialEntities, PartialEntityUid,
-            PolicySet, PrincipalQueryRequest, Request, ResourceQueryRequest, RestrictedExpression,
-            Schema, TestEntityLoader,
-        };
-
-        #[track_caller]
-        fn schema() -> Schema {
-            Schema::from_str(
-                r#"
-            entity Team, UserGroup in [UserGroup];
-entity Issue  = {
-  "repo": Repository,
-  "reporter": User,
-};
-entity Org  = {
-  "members": UserGroup,
-  "owners": UserGroup,
-};
-entity Repository  = {
-  "admins": UserGroup,
-  "maintainers": UserGroup,
-  "readers": UserGroup,
-  "triagers": UserGroup,
-  "writers": UserGroup,
-};
-entity User in [UserGroup, Team];
-
-action push, pull, fork appliesTo {
-  principal: [User],
-  resource: [Repository]
-};
-action assign_issue, delete_issue, edit_issue appliesTo {
-  principal: [User],
-  resource: [Issue]
-};
-action add_reader, add_writer, add_maintainer, add_admin, add_triager appliesTo {
-  principal: [User],
-  resource: [Repository]
-};
-            "#,
-            )
-            .unwrap()
-        }
-
-        fn policy_set() -> PolicySet {
-            PolicySet::from_str(
-                r#"
-                //Actions for readers
-permit (
-  principal,
-  action == Action::"pull",
-  resource
-)
-when { principal in resource.readers };
-
-permit (
-  principal,
-  action == Action::"fork",
-  resource
-)
-when { principal in resource.readers };
-
-permit (
-  principal,
-  action == Action::"delete_issue",
-  resource
-)
-when { principal in resource.repo.readers && principal == resource.reporter };
-
-permit (
-  principal,
-  action == Action::"edit_issue",
-  resource
-)
-when { principal in resource.repo.readers && principal == resource.reporter };
-
-//Actions for triagers
-permit (
-  principal,
-  action == Action::"assign_issue",
-  resource
-)
-when { principal in resource.repo.triagers };
-
-//Actions for writers
-permit (
-  principal,
-  action == Action::"push",
-  resource
-)
-when { principal in resource.writers };
-
-permit (
-  principal,
-  action == Action::"edit_issue",
-  resource
-)
-when { principal in resource.repo.writers };
-
-//Actions for maintainers
-permit (
-  principal,
-  action == Action::"delete_issue",
-  resource
-)
-when { principal in resource.repo.maintainers };
-
-//Actions for admins
-permit (
-  principal,
-  action in
-    [Action::"add_reader",
-     Action::"add_triager",
-     Action::"add_writer",
-     Action::"add_maintainer",
-     Action::"add_admin"],
-  resource
-)
-when { principal in resource.admins };
-//We use the same permissions for org owners, and rely on placing them in the admins group for every repository in the org
-//The other option is to duplicate all policies for the org base permissions (with a separate heirarchy for each org)
-"#,
-            )
-            .unwrap()
-        }
-
-        #[track_caller]
-        fn entities() -> Entities {
-            Entities::from_json_value(serde_json::json!(
-
-                [
-    {
-      "uid": { "__entity": { "type": "User", "id": "alice"} },
-      "attrs": {},
-      "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} }, { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} } ]
-    },
-    {
-      "uid": { "__entity": { "type": "User", "id": "jane"} },
-      "attrs": {},
-      "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },  { "__entity": { "type": "Team", "id": "team_that_can_read_everything"} }]
-    },
-    {
-        "uid": { "__entity": { "type": "User", "id": "bob"} },
-        "attrs": {},
-        "parents": []
-    },
-    {
-        "uid": { "__entity": { "type": "Repository", "id": "common_knowledge"} },
-        "attrs": {
-            "readers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} },
-            "triagers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"} },
-            "writers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} },
-            "maintainers" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },
-            "admins" : { "__entity": { "type": "UserGroup", "id": "common_knowledge_admins"} }
-        },
-        "parents": []
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} },
-        "attrs": {
-        },
-        "parents": [  ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"} },
-        "attrs": {
-        },
-        "parents": [ { "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} } ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_writers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_triagers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_writers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "common_knowledge_admins"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "common_knowledge_maintainers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "Repository", "id": "secret"} },
-        "attrs": {
-            "readers" : { "__entity": { "type": "UserGroup", "id": "secret_readers"} },
-            "triagers" : { "__entity": { "type": "UserGroup", "id": "secret_triagers"} },
-            "writers" : { "__entity": { "type": "UserGroup", "id": "secret_writers"} },
-            "maintainers" : { "__entity": { "type": "UserGroup", "id": "secret_maintainers"} },
-            "admins" : { "__entity": { "type": "UserGroup", "id": "secret_admins"} }
-        },
-        "parents": []
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "secret_readers"} },
-        "attrs": {
-        },
-        "parents": [  ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "secret_triagers"} },
-        "attrs": {
-        },
-        "parents": [ { "__entity": { "type": "UserGroup", "id": "secret_readers"} } ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "secret_writers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_triagers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "secret_maintainers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_writers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "secret_admins"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "secret_maintainers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "Repository", "id": "uncommon_knowledge"} },
-        "attrs": {
-            "readers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} },
-            "triagers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"} },
-            "writers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} },
-            "maintainers" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"} },
-            "admins" : { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_admins"} }
-        },
-        "parents": []
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} },
-        "attrs": {
-        },
-        "parents": [  ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"} },
-        "attrs": {
-        },
-        "parents": [ { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} } ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_triagers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_writers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_admins"} },
-        "attrs": {
-        },
-        "parents": [ {"__entity": { "type": "UserGroup", "id": "uncommon_knowledge_maintainers"}} ]
-    },
-    {
-        "uid": { "__entity": { "type": "Team", "id": "team_that_can_read_everything"} },
-        "attrs": {},
-        "parents": [{ "__entity": { "type": "UserGroup", "id": "common_knowledge_readers"} }, { "__entity": { "type": "UserGroup", "id": "secret_readers"} }, { "__entity": { "type": "UserGroup", "id": "uncommon_knowledge_readers"} }]
-    },
-]
-            ), Some(&schema())).unwrap()
-        }
-
-        #[test]
-        fn query_resource() {
-            let schema = schema();
-            let request = ResourceQueryRequest::new(
-                r#"User::"jane""#.parse().unwrap(),
-                r#"Action::"push""#.parse().unwrap(),
-                "Repository".parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-            let policies = policy_set();
-            assert_matches!(&policies.query_resource(&request, &entities(), &schema).unwrap().collect_vec(), [uid] => {
-                assert_eq!(uid, &r#"Repository::"common_knowledge""#.parse().unwrap());
-            });
-        }
-
-        #[test]
-        fn query_principal() {
-            let schema = schema();
-            let request = PrincipalQueryRequest::new(
-                r"User".parse().unwrap(),
-                r#"Action::"pull""#.parse().unwrap(),
-                r#"Repository::"secret""#.parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-            let policies = policy_set();
-            assert_matches!(&policies.query_principal(&request, &entities(), &schema).unwrap().collect_vec(), [uid] => {
-                assert_eq!(uid, &r#"User::"jane""#.parse().unwrap());
-            });
-        }
-
-        #[test]
-        fn query_action() {
-            let schema = schema();
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"jane""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Repository::"secret""#.parse().unwrap()),
-                None,
-                schema.clone(),
-            )
-            .unwrap();
-
-            let policies = policy_set();
-            let mut actions: Vec<_> = policies
-                .query_action(
-                    &request,
-                    &PartialEntities::from_concrete(entities(), &schema).unwrap(),
-                )
-                .unwrap()
-                .collect();
-            actions.sort_by_key(|(a, _)| *a);
-            assert_eq!(
-                actions,
-                vec![
-                    (&r#"Action::"fork""#.parse().unwrap(), Some(Decision::Allow)),
-                    (&r#"Action::"pull""#.parse().unwrap(), Some(Decision::Allow)),
-                ]
-            );
-        }
-
-        #[test]
-        fn test_is_authorized_vs_is_authorized_batched() {
-            use crate::{Authorizer, Request};
-
-            let schema = schema();
-            let policies = policy_set();
-            let entities = entities();
-            let authorizer = Authorizer::new();
-
-            // Create a set of test requests
-            let test_requests = vec![
-                // Request 1: alice can push to common_knowledge (should be allowed)
-                Request::new(
-                    r#"User::"alice""#.parse().unwrap(),
-                    r#"Action::"push""#.parse().unwrap(),
-                    r#"Repository::"common_knowledge""#.parse().unwrap(),
-                    Context::empty(),
-                    Some(&schema),
-                )
-                .unwrap(),
-                // Request 2: jane can pull from secret (should be allowed)
-                Request::new(
-                    r#"User::"jane""#.parse().unwrap(),
-                    r#"Action::"pull""#.parse().unwrap(),
-                    r#"Repository::"secret""#.parse().unwrap(),
-                    Context::empty(),
-                    Some(&schema),
-                )
-                .unwrap(),
-                // Request 3: bob cannot push to common_knowledge (should be denied)
-                Request::new(
-                    r#"User::"bob""#.parse().unwrap(),
-                    r#"Action::"push""#.parse().unwrap(),
-                    r#"Repository::"common_knowledge""#.parse().unwrap(),
-                    Context::empty(),
-                    Some(&schema),
-                )
-                .unwrap(),
-                // Request 4: alice can fork common_knowledge (should be allowed)
-                Request::new(
-                    r#"User::"alice""#.parse().unwrap(),
-                    r#"Action::"fork""#.parse().unwrap(),
-                    r#"Repository::"common_knowledge""#.parse().unwrap(),
-                    Context::empty(),
-                    Some(&schema),
-                )
-                .unwrap(),
-            ];
-
-            // Test each request with both methods and compare results
-            for (i, request) in test_requests.iter().enumerate() {
-                // Get result from is_authorized
-                let standard_response = authorizer.is_authorized(request, &policies, &entities);
-
-                // Get result from is_authorized_batched (if TPE feature is enabled)
-                let mut loader = TestEntityLoader::new(&entities);
-                let batched_decision = policies
-                    .is_authorized_batched(request, &schema, &mut loader, u32::MAX)
-                    .unwrap();
-
-                // Compare decisions - they should be the same
-                let standard_decision = standard_response.decision();
-
-                assert_eq!(
-                        standard_decision,
-                        batched_decision,
-                        "Request {}: is_authorized returned {:?} but is_authorized_batched returned {:?}",
-                        i + 1,
-                        standard_decision,
-                        batched_decision
-                    );
-            }
-        }
-
-        #[test]
-        fn test_batched_evaluation_error_validation() {
-            let schema = schema();
-            let policies = PolicySet::from_str(
-                    r#"permit(principal, action, resource) when { principal.nonexistent_attr == "value" };"#
-                ).unwrap();
-
-            let request = Request::new(
-                EntityUid::from_str("User::\"alice\"").unwrap(),
-                EntityUid::from_str("Action::\"push\"").unwrap(),
-                EntityUid::from_str("Repository::\"repo\"").unwrap(),
-                Context::empty(),
-                Some(&schema),
-            )
-            .unwrap();
-
-            let entities = entities();
-            let mut loader = TestEntityLoader::new(&entities);
-            let result = policies.is_authorized_batched(&request, &schema, &mut loader, 10);
-
-            assert!(matches!(
-                result,
-                Err(BatchedEvalError::TPE(TpeError::Validation(_)))
-            ));
-        }
-
-        #[test]
-        #[cfg(feature = "partial-eval")]
-        fn test_batched_evaluation_error_partial_request() {
-            let context_with_unknown = Context::from_pairs([(
-                "key".to_string(),
-                RestrictedExpression::new_unknown("test_unknown"),
-            )])
-            .unwrap();
-
-            let request = Request::new(
-                EntityUid::from_str("User::\"alice\"").unwrap(),
-                EntityUid::from_str("Action::\"view\"").unwrap(),
-                EntityUid::from_str("Resource::\"doc\"").unwrap(),
-                context_with_unknown,
-                None,
-            )
-            .unwrap();
-            let schema = schema();
-
-            let pset = PolicySet::from_str("permit(principal, action, resource);").unwrap();
-            let entities = Entities::empty();
-            let mut loader = TestEntityLoader::new(&entities);
-            let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
-
-            assert!(matches!(result, Err(BatchedEvalError::PartialRequest(_))));
-        }
-
-        #[test]
-        fn test_batched_evaluation_error_invalid_entity() {
-            // Create an entity loader that returns an invalid entity (wrong attribute type)
-            struct InvalidEntityLoader;
-            impl crate::EntityLoader for InvalidEntityLoader {
-                fn load_entities(
-                    &mut self,
-                    _uids: &HashSet<EntityUid>,
-                ) -> HashMap<EntityUid, Option<crate::Entity>> {
-                    let mut result = HashMap::new();
-                    let uid = EntityUid::from_strs("Org", "myorg");
-                    let entity = crate::Entity::new(
-                        uid.clone(),
-                        [
-                            (
-                                "members".to_string(),
-                                RestrictedExpression::new_string("not_a_usergroup".to_string()),
-                            ),
-                            (
-                                "owners".to_string(),
-                                RestrictedExpression::new_entity_uid(EntityUid::from_strs(
-                                    "UserGroup",
-                                    "2",
-                                )),
-                            ),
-                        ]
-                        .into(),
-                        HashSet::new(),
-                    )
-                    .unwrap();
-                    result.insert(uid, Some(entity));
-                    result
-                }
-            }
-
-            let schema = schema();
-            let pset = PolicySet::from_str(
-                "permit(principal, action, resource) when { Org::\"myorg\".members == UserGroup::\"1\"};",
-            )
-            .unwrap();
-
-            let request = Request::new(
-                r#"User::"alice""#.parse().unwrap(),
-                r#"Action::"push""#.parse().unwrap(),
-                r#"Repository::"common_knowledge""#.parse().unwrap(),
-                Context::empty(),
-                Some(&schema),
-            )
-            .unwrap();
-
-            let mut loader = InvalidEntityLoader;
-            let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
-
-            assert!(matches!(result, Err(BatchedEvalError::Entities(_))));
-        }
-
-        #[test]
-        #[cfg(feature = "partial-eval")]
-        fn test_batched_evaluation_error_partial_entity() {
-            // Create an entity loader that returns a partial entity (contains unknowns)
-            struct PartialEntityLoader;
-            impl crate::EntityLoader for PartialEntityLoader {
-                fn load_entities(
-                    &mut self,
-                    _uids: &HashSet<EntityUid>,
-                ) -> HashMap<EntityUid, Option<crate::Entity>> {
-                    let mut result = HashMap::new();
-                    let uid = EntityUid::from_strs("Org", "myorg");
-                    let entity = crate::Entity::new(
-                        uid.clone(),
-                        [
-                            (
-                                "members".to_string(),
-                                RestrictedExpression::new_unknown("partial_members"),
-                            ),
-                            (
-                                "owners".to_string(),
-                                RestrictedExpression::new_entity_uid(EntityUid::from_strs(
-                                    "UserGroup",
-                                    "2",
-                                )),
-                            ),
-                        ]
-                        .into(),
-                        HashSet::new(),
-                    )
-                    .unwrap();
-                    result.insert(uid, Some(entity));
-                    result
-                }
-            }
-
-            let schema = schema();
-            let pset = PolicySet::from_str(
-                "permit(principal, action, resource) when { Org::\"myorg\".members == UserGroup::\"1\"};",
-            )
-            .unwrap();
-
-            let request = Request::new(
-                r#"User::"alice""#.parse().unwrap(),
-                r#"Action::"push""#.parse().unwrap(),
-                r#"Repository::"common_knowledge""#.parse().unwrap(),
-                Context::empty(),
-                Some(&schema),
-            )
-            .unwrap();
-
-            let mut loader = PartialEntityLoader;
-            let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
-
-            assert_matches!(result, Err(BatchedEvalError::PartialValueToValue(_)));
-        }
-
-        #[test]
-        fn test_batched_evaluation_error_insufficient_iters() {
-            let schema = schema();
-            let policies = policy_set();
-            let entities = entities();
-
-            let request = Request::new(
-                r#"User::"alice""#.parse().unwrap(),
-                r#"Action::"push""#.parse().unwrap(),
-                r#"Repository::"common_knowledge""#.parse().unwrap(),
-                Context::empty(),
-                Some(&schema),
-            )
-            .unwrap();
-
-            let mut loader = TestEntityLoader::new(&entities);
-            let result = policies.is_authorized_batched(&request, &schema, &mut loader, 0);
-
-            assert_matches!(result, Err(BatchedEvalError::InsufficientIterations(_)));
-        }
-    }
-
-    mod trivial {
-        use cedar_policy_core::authorizer::Decision;
-        use itertools::Itertools;
-
-        use crate::{
-            Context, Entities, PartialEntities, PartialEntityUid, PartialRequest, PolicySet,
-            PrincipalQueryRequest, ResourceQueryRequest, Schema,
-        };
-        use std::{i64, str::FromStr};
-
-        fn schema() -> Schema {
-            Schema::from_str("entity P, R; action A appliesTo { principal: P, resource: R };")
-                .unwrap()
-        }
-
-        fn entities() -> Entities {
-            Entities::from_json_value(
-                serde_json::json!([
-                    { "uid": { "__entity": { "type": "P", "id": ""} }, "attrs": {}, "parents": [] },
-                    { "uid": { "__entity": { "type": "R", "id": ""} }, "attrs": {}, "parents": [] },
-                ]),
-                None,
-            )
-            .unwrap()
-        }
-
-        #[test]
-        fn trivial_permit_tpe() {
-            let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
-            let req = PartialRequest::new(
-                PartialEntityUid::new("P".parse().unwrap(), None),
-                r#"Action::"A""#.parse().unwrap(),
-                PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
-                &schema,
-            )
-            .unwrap();
-            let response = PolicySet::from_str(r"permit(principal, action, resource);")
-                .unwrap()
-                .tpe(&req, &partial_entities, &schema)
-                .unwrap();
-            assert_eq!(response.decision(), Some(Decision::Allow));
-        }
-
-        #[test]
-        fn trivial_permit_query_principal() {
-            let schema = schema();
-            let entities = entities();
-            let req = PrincipalQueryRequest::new(
-                "P".parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                r#"R::"""#.parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let principals = PolicySet::from_str(r#"permit(principal, action, resource);"#)
-                .unwrap()
-                .query_principal(&req, &entities, &schema)
-                .unwrap()
-                .collect_vec();
-            assert_eq!(&principals, &[r#"P::"""#.parse().unwrap()]);
-        }
-
-        #[test]
-        fn trivial_permit_query_resource() {
-            let schema = schema();
-            let entities = entities();
-            let req = ResourceQueryRequest::new(
-                r#"P::"""#.parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                "R".parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let resources = PolicySet::from_str(r#"permit(principal, action, resource);"#)
-                .unwrap()
-                .query_resource(&req, &entities, &schema)
-                .unwrap()
-                .collect_vec();
-            assert_eq!(&resources, &[r#"R::"""#.parse().unwrap()]);
-        }
-
-        #[test]
-        fn trivial_forbid_tpe() {
-            let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
-            let req = PartialRequest::new(
-                PartialEntityUid::new("P".parse().unwrap(), None),
-                r#"Action::"A""#.parse().unwrap(),
-                PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
-                &schema,
-            )
-            .unwrap();
-            let response = PolicySet::from_str(r#"forbid(principal, action, resource);"#)
-                .unwrap()
-                .tpe(&req, &partial_entities, &schema)
-                .unwrap();
-            assert_eq!(response.decision(), Some(Decision::Deny));
-        }
-
-        #[test]
-        fn trivial_forbid_query_principal() {
-            let schema = schema();
-            let entities = entities();
-            let req = PrincipalQueryRequest::new(
-                "P".parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                r#"R::"""#.parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let principals = PolicySet::from_str(r#"forbid(principal, action, resource);"#)
-                .unwrap()
-                .query_principal(&req, &entities, &schema)
-                .unwrap()
-                .collect_vec();
-            assert_eq!(&principals, &[]);
-        }
-
-        #[test]
-        fn trivial_forbid_query_resource() {
-            let schema = schema();
-            let entities = entities();
-            let req = ResourceQueryRequest::new(
-                r#"P::"""#.parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                "R".parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let resources = PolicySet::from_str(r#"forbid(principal, action, resource);"#)
-                .unwrap()
-                .query_resource(&req, &entities, &schema)
-                .unwrap()
-                .collect_vec();
-            assert_eq!(&resources, &[]);
-        }
-
-        #[test]
-        fn error_tpe() {
-            let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
-            let req = PartialRequest::new(
-                PartialEntityUid::new("P".parse().unwrap(), None),
-                r#"Action::"A""#.parse().unwrap(),
-                PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
-                &schema,
-            )
-            .unwrap();
-            let response = PolicySet::from_str(&format!(
-                r#"permit(principal, action, resource) when {{ ({} + 1) == 0 || true }};"#,
-                i64::MAX
-            ))
-            .unwrap()
-            .tpe(&req, &partial_entities, &schema)
-            .unwrap();
-            assert_eq!(response.decision(), Some(Decision::Deny));
-        }
-
-        #[test]
-        fn error_query_principal() {
-            let schema = schema();
-            let entities = entities();
-            let req = PrincipalQueryRequest::new(
-                "P".parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                r#"R::"""#.parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let principals = PolicySet::from_str(&format!(
-                r#"permit(principal, action, resource) when {{ ({} + 1) == 0 || true }};"#,
-                i64::MAX
-            ))
-            .unwrap()
-            .query_principal(&req, &entities, &schema)
-            .unwrap()
-            .collect_vec();
-            assert_eq!(&principals, &[]);
-        }
-
-        #[test]
-        fn error_query_resource() {
-            let schema = schema();
-            let entities = entities();
-            let req = ResourceQueryRequest::new(
-                r#"P::"""#.parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                "R".parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let resources = PolicySet::from_str(&format!(
-                r#"permit(principal, action, resource) when {{ ({} + 1) == 0 || true }};"#,
-                i64::MAX
-            ))
-            .unwrap()
-            .query_resource(&req, &entities, &schema)
-            .unwrap()
-            .collect_vec();
-            assert_eq!(&resources, &[]);
-        }
-
-        #[test]
-        fn empty_tpe() {
-            let schema = schema();
-            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
-            let req = PartialRequest::new(
-                PartialEntityUid::new("P".parse().unwrap(), None),
-                r#"Action::"A""#.parse().unwrap(),
-                PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
-                &schema,
-            )
-            .unwrap();
-            let response = PolicySet::from_str(r#""#)
-                .unwrap()
-                .tpe(&req, &partial_entities, &schema)
-                .unwrap();
-            assert_eq!(response.decision(), Some(Decision::Deny));
-        }
-
-        #[test]
-        fn empty_query_principal() {
-            let schema = schema();
-            let entities = entities();
-            let req = PrincipalQueryRequest::new(
-                "P".parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                r#"R::"""#.parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let principals = PolicySet::from_str(r#""#)
-                .unwrap()
-                .query_principal(&req, &entities, &schema)
-                .unwrap()
-                .collect_vec();
-            assert_eq!(&principals, &[]);
-        }
-
-        #[test]
-        fn empty_query_resource() {
-            let schema = schema();
-            let entities = entities();
-            let req = ResourceQueryRequest::new(
-                r#"P::"""#.parse().unwrap(),
-                r#"Action::"A""#.parse().unwrap(),
-                "R".parse().unwrap(),
-                Context::empty(),
-                &schema,
-            )
-            .unwrap();
-
-            let resources = PolicySet::from_str(r#""#)
-                .unwrap()
-                .query_resource(&req, &entities, &schema)
-                .unwrap()
-                .collect_vec();
-            assert_eq!(&resources, &[]);
-        }
-    }
-
-    mod query_action {
-        use cedar_policy_core::authorizer::Decision;
-
-        use crate::{
-            ActionQueryRequest, Context, PartialEntities, PartialEntityUid, PolicySet, Schema,
-        };
-        use similar_asserts::assert_eq;
-        use std::str::FromStr;
-
-        #[test]
-        fn test() {
-            let policies = PolicySet::from_str(
-                r#"
-            // Edit might be alowed, depending on context
-            permit(principal, action == Action::"edit", resource)
-            when {
-                context.ip.isInRange(resource.allowed_edit_range)
-            };
-
-            // We pass a concrete resource, so we know this will be allowed
-            permit(principal, action == Action::"view", resource)
-            when {
-                resource.public
-            };
-
-            // never allowed for any request
-            forbid(principal, action == Action::"delete", resource);
-
-            // allowed for this action, but it doesn't apply to the request types
-            permit(principal, action == Action::"not_on_photo", resource);
-        "#,
-            )
-            .unwrap();
-            let schema = Schema::from_str(
-                "
-            entity User, Other;
-            entity Photo {
-              public: Bool,
-              allowed_edit_range: ipaddr,
-            };
-            action view, edit, delete appliesTo {
-              principal: User,
-              resource: Photo,
-              context: {
-                ip: ipaddr,
-              }
-            };
-            action not_on_photo appliesTo {
-                principal: User,
-                resource: Other
-            };
-        ",
-            )
-            .unwrap();
-            let entities = PartialEntities::from_json_value(
-                serde_json::json!([
-                    {
-                        "uid": { "__entity": { "type": "Photo", "id": "vacation.jpg"} },
-                        "attrs": {
-                            "public": true,
-                            "allowed_edit_range": "192.0.2.0/24"
-                        },
-                        "parents": []
-                    },
-                ]),
-                &schema,
-            )
-            .unwrap();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
-
-            let mut actions: Vec<_> = policies
-                .query_action(&request, &entities)
-                .unwrap()
-                .collect();
-            actions.sort_by_key(|(a, _)| *a);
-            assert_eq!(
-                actions,
-                vec![
-                    (&r#"Action::"edit""#.parse().unwrap(), None),
-                    (&r#"Action::"view""#.parse().unwrap(), Some(Decision::Allow)),
-                ]
-            )
-        }
-
-        #[test]
-        fn permitted_action() {
-            let policies = PolicySet::from_str("permit(principal, action, resource);").unwrap();
-            let schema = Schema::from_str(
-                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
-            )
-            .unwrap();
-            let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
-
-            let actions: Vec<_> = policies
-                .query_action(&request, &entities)
-                .unwrap()
-                .collect();
-            assert_eq!(
-                actions,
-                vec![(&r#"Action::"view""#.parse().unwrap(), Some(Decision::Allow))]
-            );
-        }
-
-        #[test]
-        fn maybe_permitted_action() {
-            let policies = PolicySet::from_str(
-                "permit(principal, action, resource) when { context.should_allow };",
-            )
-            .unwrap();
-            let schema = Schema::from_str(
-                "entity User, Photo; action view appliesTo { principal: User, resource: Photo, context: {should_allow: Bool}};",
-            )
-            .unwrap();
-            let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
-
-            let actions: Vec<_> = policies
-                .query_action(&request, &entities)
-                .unwrap()
-                .collect();
-            assert_eq!(actions, vec![(&r#"Action::"view""#.parse().unwrap(), None)]);
-        }
-
-        #[test]
-        fn forbidden_action() {
-            let policies = PolicySet::from_str("forbid(principal, action, resource);").unwrap();
-            let schema = Schema::from_str(
-                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
-            )
-            .unwrap();
-            let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
-
-            let actions: Vec<_> = policies
-                .query_action(&request, &entities)
-                .unwrap()
-                .collect();
-            assert_eq!(actions, Vec::new(),);
-        }
-
-        #[test]
-        fn invalid_permitted_action() {
-            let policies = PolicySet::from_str("permit(principal, action, resource);").unwrap();
-            let schema = Schema::from_str("entity User, Photo, Other; action view appliesTo { principal: User, resource: Other};").unwrap();
-            let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
-
-            let actions: Vec<_> = policies
-                .query_action(&request, &entities)
-                .unwrap()
-                .collect();
-            assert_eq!(actions, Vec::new());
-        }
-
-        #[test]
-        fn invalid_context_permitted_action() {
-            let policies = PolicySet::from_str("permit(principal, action, resource);").unwrap();
-            let schema = Schema::from_str("entity User, Photo; action view appliesTo { principal: User, resource: Photo, context: {a: Long}};").unwrap();
-            let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                Some(Context::empty()),
-                schema,
-            )
-            .unwrap();
-
-            let actions: Vec<_> = policies
-                .query_action(&request, &entities)
-                .unwrap()
-                .collect();
-            assert_eq!(actions, Vec::new());
-        }
-
-        #[test]
-        fn no_actions_in_schema() {
-            let policies = PolicySet::from_str("permit(principal, action, resource);").unwrap();
-            let schema = Schema::from_str("entity User, Photo;").unwrap();
-            let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
-
-            let actions: Vec<_> = policies
-                .query_action(&request, &entities)
-                .unwrap()
-                .collect();
-            assert_eq!(actions, Vec::new());
-        }
-
-        #[test]
-        fn permitted_action_error_permit() {
-            let policies = PolicySet::from_str(&format!("permit(principal, action, resource);permit(principal, action, resource) when {{ {} + 1 == 0 || true }};", i64::MAX)).unwrap();
-            let schema = Schema::from_str(
-                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
-            )
-            .unwrap();
-            let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
-
-            let actions: Vec<_> = policies
-                .query_action(&request, &entities)
-                .unwrap()
-                .collect();
-            assert_eq!(
-                actions,
-                vec![(&r#"Action::"view""#.parse().unwrap(), Some(Decision::Allow))]
-            );
-        }
-
-        #[test]
-        fn permitted_action_error_forbid() {
-            let policies = PolicySet::from_str(&format!("permit(principal, action, resource);forbid(principal, action, resource) when {{ {} + 1 == 0 || true }};", i64::MAX)).unwrap();
-            let schema = Schema::from_str(
-                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
-            )
-            .unwrap();
-            let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
-
-            let actions: Vec<_> = policies
-                .query_action(&request, &entities)
-                .unwrap()
-                .collect();
-            assert_eq!(
-                actions,
-                vec![(&r#"Action::"view""#.parse().unwrap(), Some(Decision::Allow))]
-            );
-        }
-
-        #[test]
-        fn forbidden_action_error_permit() {
-            let policies = PolicySet::from_str(&format!(
-                "permit(principal, action, resource) when {{ {} + 1 == 0 || true }};",
-                i64::MAX
-            ))
-            .unwrap();
-            let schema = Schema::from_str(
-                "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
-            )
-            .unwrap();
-            let entities = PartialEntities::empty();
-
-            let request = ActionQueryRequest::new(
-                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
-                PartialEntityUid::from_concrete(r#"Photo::"vacation.jpg""#.parse().unwrap()),
-                None,
-                schema,
-            )
-            .unwrap();
-
-            let actions: Vec<_> = policies
-                .query_action(&request, &entities)
-                .unwrap()
-                .collect();
-            assert_eq!(actions, Vec::new(),);
-        }
-    }
-}
-
 mod deep_eq {
     use std::{
         collections::{HashMap, HashSet},
@@ -11277,6 +9651,7 @@ mod has_non_scope_constraint {
 
 mod pst_api {
     use super::super::super::*;
+    use cool_asserts::assert_matches;
     use std::collections::{BTreeMap, HashMap};
     use std::str::FromStr;
     use std::sync::Arc;
@@ -11332,6 +9707,53 @@ mod pst_api {
         assert!(err.to_string().contains("static policy"));
     }
 
+    #[test]
+    fn from_pst_rejects_non_action_entity_type() {
+        // Template with non-Action entity in action constraint
+        let t = pst::Template::new(
+            "t1",
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Principal)),
+            pst::ActionConstraint::Eq(pst::EntityUID::from(
+                cedar_policy_core::ast::EntityUID::from_components(
+                    // `User::"alice"` won't work here!
+                    cedar_policy_core::ast::EntityType::from_normalized_str("User").unwrap(),
+                    cedar_policy_core::ast::Eid::new("alice"),
+                    None,
+                ),
+            )),
+            pst::ResourceConstraint::Any,
+        );
+        let err = Template::from_pst(t).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid entity type: `expected an entity uid with type `Action` but got `User::\"alice\"``",
+            "expected Action type error, got: {err}"
+        );
+
+        // Static policy with non-Action entity in action constraint, just like building from JSON
+        let sp = pst::StaticPolicy::try_from(pst::Template::new(
+            "p1",
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::In(vec![pst::EntityUID::from(
+                cedar_policy_core::ast::EntityUID::from_components(
+                    cedar_policy_core::ast::EntityType::from_normalized_str("Folder").unwrap(),
+                    cedar_policy_core::ast::Eid::new("docs"),
+                    None,
+                ),
+            )]),
+            pst::ResourceConstraint::Any,
+        ))
+        .unwrap();
+        let err = Policy::from_pst(sp.into()).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid entity type: `expected an entity uid with type `Action` but got `Folder::\"docs\"``",
+            "expected Action type error, got: {err}"
+        );
+    }
+
     // --- Template::to_pst / try_into_pst ---
 
     #[test]
@@ -11351,13 +9773,34 @@ mod pst_api {
     }
 
     #[test]
+    fn template_to_pst_preserves_id_from_text() {
+        let src = "permit(principal == ?principal, action, resource);";
+        let t = Template::parse(Some(PolicyId::new("my_template")), src).unwrap();
+        let pst = t.to_pst().expect("should succeed");
+        assert_eq!(pst.id, pst::PolicyID("my_template".into()));
+    }
+
+    #[test]
+    fn policy_to_pst_preserves_id_from_text() {
+        let src = "permit(principal, action, resource);";
+        // When text is parsed and parse given a policy id, we should preserve that id in the PST
+        let p = Policy::parse(Some(PolicyId::new("my_policy")), src).unwrap();
+        let pst = p.to_pst().expect("should succeed");
+        if let pst::Policy::Static(sp) = &pst {
+            assert_eq!(sp.body().id, pst::PolicyID("my_policy".into()));
+        } else {
+            panic!("expected static policy");
+        }
+    }
+
+    #[test]
     fn template_parsed_to_pst() {
         let src = "permit(principal == ?principal, action, resource) when { context.x > 5 };";
         let t = Template::parse(None, src).unwrap();
         let pst = t.to_pst().expect("to_pst should succeed");
         assert!(pst.principal.has_slot());
         assert_eq!(pst.clauses().len(), 1);
-        assert!(matches!(pst.clauses()[0], pst::Clause::When(_)));
+        assert_matches!(pst.clauses()[0], pst::Clause::When(_));
         // also test try_into_pst
         let t2 = Template::parse(None, src).unwrap();
         let pst2 = t2.try_into_pst().expect("try_into_pst should succeed");
@@ -11385,7 +9828,7 @@ mod pst_api {
     fn policy_from_pst_linked() {
         let template = Arc::new(pst_template_with_slot());
         let uid = pst::EntityUID {
-            ty: pst::EntityType::from_name(pst::Name::unqualified("User")),
+            ty: pst::EntityType::from_name(pst::Name::unqualified("User").unwrap()),
             eid: "alice".into(),
         };
         let linked = pst::LinkedPolicy::new(
@@ -11408,7 +9851,7 @@ mod pst_api {
         let sp = pst::StaticPolicy::try_from(pst_static_template()).unwrap();
         let p = Policy::from_pst(sp.into()).unwrap();
         let recovered = p.to_pst().expect("should succeed");
-        assert!(matches!(recovered, pst::Policy::Static(_)));
+        assert_matches!(recovered, pst::Policy::Static(_));
     }
 
     #[test]
@@ -11416,7 +9859,7 @@ mod pst_api {
         let sp = pst::StaticPolicy::try_from(pst_static_template()).unwrap();
         let p = Policy::from_pst(sp.into()).unwrap();
         let recovered = p.try_into_pst().expect("should succeed");
-        assert!(matches!(recovered, pst::Policy::Static(_)));
+        assert_matches!(recovered, pst::Policy::Static(_));
     }
 
     #[test]
@@ -11430,9 +9873,15 @@ mod pst_api {
             p.clone().to_pst().unwrap().to_string(),
             pst_template_with_slot().to_string()
         );
-        assert_eq!(
-            p.try_into_pst().unwrap_err(),
-            pst::PstConstructionError::EmptyPolicy
+        assert_matches!(
+            p.try_into_pst(),
+            Ok(pst::Template {
+                effect: pst::Effect::Permit,
+                principal: pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(
+                    pst::SlotId::Principal
+                )),
+                ..
+            })
         )
     }
 
@@ -11441,16 +9890,16 @@ mod pst_api {
         let src = r#"permit(principal, action, resource) when { context.x > 5 } unless { resource == User::"bob" };"#;
         let p: Policy = src.parse().unwrap();
         let pst = p.to_pst().expect("to_pst should succeed");
-        assert!(matches!(&pst, pst::Policy::Static(_)));
+        assert_matches!(&pst, pst::Policy::Static(_));
         if let pst::Policy::Static(sp) = &pst {
-            assert_eq!(sp.body.clauses().len(), 2);
-            assert!(matches!(sp.body.clauses()[0], pst::Clause::When(_)));
-            assert!(matches!(sp.body.clauses()[1], pst::Clause::Unless(_)));
+            assert_eq!(sp.body().clauses().len(), 2);
+            assert_matches!(sp.body().clauses()[0], pst::Clause::When(_));
+            assert_matches!(sp.body().clauses()[1], pst::Clause::Unless(_));
         }
         // also test try_into_pst
         let p2: Policy = src.parse().unwrap();
         let pst2 = p2.try_into_pst().expect("try_into_pst should succeed");
-        assert!(matches!(pst2, pst::Policy::Static(_)));
+        assert_matches!(pst2, pst::Policy::Static(_));
     }
 
     // --- Text → Template → PST → other representations ---
@@ -11483,9 +9932,9 @@ mod pst_api {
         // text → PST (to_pst)
         let pst = p.to_pst().expect("to_pst should succeed");
         if let pst::Policy::Static(sp) = &pst {
-            assert_eq!(sp.body.effect, pst::Effect::Forbid);
-            assert!(matches!(sp.body.action, pst::ActionConstraint::Eq(_)));
-            assert_eq!(sp.body.clauses().len(), 1);
+            assert_eq!(sp.body().effect, pst::Effect::Forbid);
+            assert_matches!(sp.body().action, pst::ActionConstraint::Eq(_));
+            assert_eq!(sp.body().clauses().len(), 1);
         } else {
             panic!("expected static policy");
         }
@@ -11498,7 +9947,7 @@ mod pst_api {
         // text → PST (try_into_pst)
         let p3: Policy = src.parse().unwrap();
         let pst2 = p3.try_into_pst().expect("try_into_pst should succeed");
-        assert!(matches!(pst2, pst::Policy::Static(_)));
+        assert_matches!(pst2, pst::Policy::Static(_));
     }
 
     // --- EST → PST ---
@@ -11515,15 +9964,15 @@ mod pst_api {
         let p = Policy::from_json(None, json.clone()).unwrap();
         let pst = p.to_pst().expect("to_pst should succeed");
         if let pst::Policy::Static(sp) = &pst {
-            assert_eq!(sp.body.effect, pst::Effect::Forbid);
-            assert_eq!(sp.body.clauses().len(), 1);
+            assert_eq!(sp.body().effect, pst::Effect::Forbid);
+            assert_eq!(sp.body().clauses().len(), 1);
         } else {
             panic!("expected static");
         }
         // also test try_into_pst
         let p2 = Policy::from_json(None, json).unwrap();
         let pst2 = p2.try_into_pst().expect("try_into_pst should succeed");
-        assert!(matches!(pst2, pst::Policy::Static(_)));
+        assert_matches!(pst2, pst::Policy::Static(_));
     }
 
     #[test]
@@ -11539,7 +9988,7 @@ mod pst_api {
         let pst = t.to_pst().expect("to_pst should succeed");
         assert!(pst.principal.has_slot());
         assert_eq!(pst.clauses().len(), 1);
-        assert!(matches!(pst.clauses()[0], pst::Clause::Unless(_)));
+        assert_matches!(pst.clauses()[0], pst::Clause::Unless(_));
         // also test try_into_pst
         let t2 = Template::from_json(None, json).unwrap();
         let pst2 = t2.try_into_pst().expect("try_into_pst should succeed");
@@ -11572,27 +10021,27 @@ mod pst_api {
         .unwrap();
         let linked = pset.policy(&PolicyId::new("link1")).unwrap();
         let pst = linked.to_pst().expect("to_pst should succeed");
-        assert!(matches!(pst, pst::Policy::Linked(_)));
+        assert_matches!(pst, pst::Policy::Linked(_));
         // also test try_into_pst
         let pst2 = linked
             .clone()
             .try_into_pst()
             .expect("try_into_pst should succeed");
-        assert!(matches!(pst2, pst::Policy::Linked(_)));
+        assert_matches!(pst2, pst::Policy::Linked(_));
     }
 
     // ===== PolicySet PST tests =====
 
     fn uid(ty: &str, eid: &str) -> pst::EntityUID {
         pst::EntityUID {
-            ty: pst::EntityType::from_name(pst::Name::unqualified(ty)),
+            ty: pst::EntityType::from_name(pst::Name::unqualified(ty).unwrap()),
             eid: eid.into(),
         }
     }
 
     fn action_uid(eid: &str) -> pst::EntityUID {
         pst::EntityUID {
-            ty: pst::EntityType::from_name(pst::Name::unqualified("Action")),
+            ty: pst::EntityType::from_name(pst::Name::unqualified("Action").unwrap()),
             eid: eid.into(),
         }
     }
@@ -11649,7 +10098,7 @@ mod pst_api {
         assert_eq!(a_pkeys, b_pkeys, "{label}: policy keys differ");
         for (k, ap) in &a.policies {
             let bp = &b.policies[k];
-            assert_eq!(ap.body, bp.body, "{label}: policy '{k}' body differs");
+            assert_eq!(ap.body(), bp.body(), "{label}: policy '{k}' body differs");
         }
         // Template links
         assert_eq!(
@@ -11715,7 +10164,7 @@ mod pst_api {
             ),
             (
                 "is_principal",
-                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("User"))),
+                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("User").unwrap())),
                 ActionConstraint::Any,
                 ResourceConstraint::Eq(EntityOrSlot::Entity(uid("Photo", "pic.jpg"))),
                 vec![],
@@ -11725,7 +10174,7 @@ mod pst_api {
                 PrincipalConstraint::Eq(EntityOrSlot::Entity(uid("User", "bob"))),
                 ActionConstraint::Any,
                 ResourceConstraint::IsIn(
-                    EntityType::from_name(Name::unqualified("Photo")),
+                    EntityType::from_name(Name::unqualified("Photo").unwrap()),
                     EntityOrSlot::Entity(uid("Album", "shared")),
                 ),
                 vec![when_true()],
@@ -11821,7 +10270,7 @@ mod pst_api {
             let t = slotted_template(
                 "tmpl_resource",
                 Effect::Forbid,
-                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("User"))),
+                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("User").unwrap())),
                 ActionConstraint::Any,
                 ResourceConstraint::In(EntityOrSlot::Slot(SlotId::Resource)),
                 vec![unless_false()],
@@ -11932,7 +10381,7 @@ mod pst_api {
             let sp = StaticPolicy::try_from(static_template(
                 "admin_bypass",
                 Effect::Permit,
-                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("Admin"))),
+                PrincipalConstraint::Is(EntityType::from_name(Name::unqualified("Admin").unwrap())),
                 ActionConstraint::Any,
                 ResourceConstraint::Any,
                 vec![],
@@ -12263,7 +10712,11 @@ mod pst_api {
         assert_eq!(pst_set.template_links.len(), 0);
 
         // Verify one permit and one forbid
-        let effects: Vec<_> = pst_set.policies.values().map(|sp| sp.body.effect).collect();
+        let effects: Vec<_> = pst_set
+            .policies
+            .values()
+            .map(|sp| sp.body().effect)
+            .collect();
         assert!(effects.contains(&pst::Effect::Permit));
         assert!(effects.contains(&pst::Effect::Forbid));
     }
@@ -12280,10 +10733,10 @@ mod pst_api {
 
         assert_eq!(pst_set.policies.len(), 1);
         let sp = pst_set.policies.values().next().unwrap();
-        assert!(matches!(sp.body.principal, pst::PrincipalConstraint::Is(_)));
-        assert!(matches!(sp.body.action, pst::ActionConstraint::In(_)));
+        assert_matches!(sp.body().principal, pst::PrincipalConstraint::Is(_));
+        assert_matches!(sp.body().action, pst::ActionConstraint::In(_));
         assert!(matches!(
-            sp.body.resource,
+            sp.body().resource,
             pst::ResourceConstraint::In(pst::EntityOrSlot::Entity(_))
         ));
     }
@@ -12343,8 +10796,8 @@ mod pst_api {
 
         assert_eq!(pst_set.policies.len(), 1);
         let sp = pst_set.policies.values().next().unwrap();
-        assert_eq!(sp.body.effect, pst::Effect::Permit);
-        assert!(matches!(sp.body.action, pst::ActionConstraint::Eq(_)));
+        assert_eq!(sp.body().effect, pst::Effect::Permit);
+        assert_matches!(sp.body().action, pst::ActionConstraint::Eq(_));
     }
 
     // --- Mixed: PST + text policies in same PolicySet → to_pst ---
@@ -12420,6 +10873,1332 @@ mod pst_api {
         // Roundtrip
         let recovered = api_set.to_pst().unwrap();
         assert_pst_sets_eq(&pst_set, &recovered, "both_slots_linked roundtrip");
+    }
+
+    #[test]
+    fn try_with_clauses_rejects_unknown() {
+        let template = pst::Template::new(
+            "p1",
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        );
+        let err = template
+            .try_with_clauses(vec![pst::Clause::When(Arc::new(pst::Expr::Unknown {
+                name: smol_str::SmolStr::from("x"),
+            }))])
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("Unknown"),
+            "expected unknown error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn try_add_clause_rejects_unknown() {
+        let mut template = pst::Template::new(
+            "p1",
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        );
+        let err = template
+            .try_add_clause(pst::Clause::When(Arc::new(pst::Expr::Unknown {
+                name: smol_str::SmolStr::from("x"),
+            })))
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("Unknown"),
+            "expected unknown error, got: {err}"
+        )
+    }
+
+    #[test]
+    fn from_pst_rejects_invalid_annotation_key() {
+        let mut annotations = BTreeMap::new();
+        annotations.insert(
+            "invalid key with spaces!".to_string(),
+            smol_str::SmolStr::from("value"),
+        );
+
+        let sp = Policy::from_pst({
+            use pst::*;
+            StaticPolicy::try_from(
+                Template::new(
+                    "p1",
+                    Effect::Permit,
+                    PrincipalConstraint::Any,
+                    ActionConstraint::Any,
+                    ResourceConstraint::Any,
+                )
+                .with_annotations(annotations),
+            )
+            .unwrap()
+            .into()
+        });
+
+        assert_matches!(sp, Err(pst::PstConstructionError::InvalidAnnotation(e)) => {
+            let msg = e.to_string();
+            assert!(msg.contains("invalid key"), "expected 'invalid key' in error, got: {msg}");
+        });
+    }
+
+    #[test]
+    fn from_pst_valid_annotation_key_roundtrips_to_json() {
+        let mut annotations = BTreeMap::new();
+        annotations.insert("reason".to_string(), smol_str::SmolStr::from("testing"));
+        let p = Policy::from_pst({
+            use pst::*;
+            StaticPolicy::try_from(
+                Template::new(
+                    "p1",
+                    Effect::Permit,
+                    PrincipalConstraint::Any,
+                    ActionConstraint::Any,
+                    ResourceConstraint::Any,
+                )
+                .with_annotations(annotations),
+            )
+            .unwrap()
+            .into()
+        })
+        .unwrap();
+
+        // Valid annotation key should roundtrip through to_json
+        let json = p
+            .to_json()
+            .expect("to_json should succeed for valid annotation keys");
+        let annotations = json.get("annotations").expect("missing annotations key");
+        assert_eq!(
+            annotations.get("reason").and_then(|v| v.as_str()),
+            Some("testing")
+        );
+    }
+}
+
+/// Tests in this module mirror `policy_set_tests` but construct policies via PST.
+///
+/// The helpers and merge tests use `PolicySet::from_pst` and `Template::from_pst`
+/// / `Policy::from_pst` to construct everything from PST types rather than parsing
+/// from Cedar text.
+mod policy_set_pst_tests {
+    use super::*;
+    use cool_asserts::assert_matches;
+    use linked_hash_map::LinkedHashMap;
+    use similar_asserts::assert_eq;
+    use std::collections::HashMap;
+
+    fn permit_all(id: impl Into<pst::PolicyID>) -> pst::StaticPolicy {
+        pst::StaticPolicy::try_from(pst::Template::new(
+            id,
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        ))
+        .unwrap()
+    }
+
+    fn principal_slot_template(id: impl Into<pst::PolicyID>) -> pst::Template {
+        pst::Template::new(
+            id,
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Principal)),
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        )
+    }
+
+    fn resource_slot_template(id: impl Into<pst::PolicyID>) -> pst::Template {
+        pst::Template::new(
+            id,
+            pst::Effect::Forbid,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Resource)),
+        )
+    }
+
+    fn pst_set_with_static(id: &str) -> pst::PolicySet {
+        let mut policies = LinkedHashMap::new();
+        policies.insert(pst::PolicyID(id.into()), permit_all(id));
+        pst::PolicySet {
+            templates: LinkedHashMap::new(),
+            policies,
+            template_links: vec![],
+        }
+    }
+
+    fn entities_for_test() -> Entities {
+        let e = r#"[
+            {"uid": {"type":"Test","id":"test"}, "attrs": {}, "parents": []},
+            {"uid": {"type":"Action","id":"a"}, "attrs": {}, "parents": []},
+            {"uid": {"type":"Resource","id":"b"}, "attrs": {}, "parents": []}
+        ]"#;
+        Entities::from_json_str(e, None).unwrap()
+    }
+
+    fn test_request() -> Request {
+        Request::new(
+            EntityUid::from_strs("Test", "test"),
+            EntityUid::from_strs("Action", "a"),
+            EntityUid::from_strs("Resource", "b"),
+            Context::empty(),
+            None,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn new_is_empty() {
+        let ps = PolicySet::from_pst(pst::PolicySet {
+            templates: LinkedHashMap::new(),
+            policies: LinkedHashMap::new(),
+            template_links: vec![],
+        })
+        .unwrap();
+        assert!(ps.is_empty());
+        assert_eq!(ps.num_of_policies(), 0);
+        assert_eq!(ps.num_of_templates(), 0);
+    }
+
+    #[test]
+    fn template_link_lookup() {
+        let mut pset = PolicySet::from_pst(pst_set_with_static("p")).unwrap();
+        let t = Template::from_pst(principal_slot_template("t")).unwrap();
+        pset.add_template(t).unwrap();
+
+        let env: HashMap<SlotId, EntityUid> =
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("t"), PolicyId::new("id"), env.clone())
+            .unwrap();
+
+        assert_eq!(
+            pset.policy(&PolicyId::new("p")).unwrap().template_links(),
+            None
+        );
+        assert_eq!(
+            pset.policy(&PolicyId::new("id")).unwrap().template_links(),
+            Some(env)
+        );
+    }
+
+    #[test]
+    fn link_conflicts() {
+        let mut pset = PolicySet::from_pst(pst_set_with_static("id")).unwrap();
+        let t = Template::from_pst(principal_slot_template("t")).unwrap();
+        pset.add_template(t).unwrap();
+
+        let env: HashMap<SlotId, EntityUid> =
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        let before_link = pset.clone();
+        let r = pset.link(PolicyId::new("t"), PolicyId::new("id"), env);
+        assert_matches!(r, Err(PolicySetError::Linking(_)));
+        assert_eq!(pset, before_link);
+    }
+
+    #[test]
+    fn policyset_add() {
+        let mut pset = PolicySet::from_pst(pst_set_with_static("id")).unwrap();
+        assert!(!pset.is_empty());
+        assert_eq!(pset.num_of_policies(), 1);
+
+        let t = Template::from_pst(principal_slot_template("t")).unwrap();
+        pset.add_template(t).unwrap();
+        assert_eq!(pset.num_of_templates(), 1);
+
+        let env1 = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test1"))]);
+        pset.link(PolicyId::new("t"), PolicyId::new("link"), env1)
+            .unwrap();
+
+        let env2 = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test2"))]);
+        assert_matches!(
+            pset.link(PolicyId::new("t"), PolicyId::new("link"), env2.clone()),
+            Err(PolicySetError::Linking(_))
+        );
+        pset.link(PolicyId::new("t"), PolicyId::new("link2"), env2)
+            .unwrap();
+
+        // Duplicate template id
+        let t2 = Template::from_pst(resource_slot_template("t")).unwrap();
+        pset.add_template(t2)
+            .expect_err("should conflict on template id");
+
+        let t2 = Template::from_pst(resource_slot_template("t2")).unwrap();
+        pset.add_template(t2).unwrap();
+
+        let env3 = HashMap::from([(SlotId::resource(), EntityUid::from_strs("Test", "test3"))]);
+        pset.link(PolicyId::new("t"), PolicyId::new("unique3"), env3.clone())
+            .expect_err("wrong slots for template t");
+        pset.link(PolicyId::new("t2"), PolicyId::new("unique3"), env3)
+            .unwrap();
+    }
+
+    #[test]
+    fn policyset_remove() {
+        let authorizer = Authorizer::new();
+        let request = test_request();
+        let entities = entities_for_test();
+
+        let mut pset = PolicySet::from_pst(pst_set_with_static("id")).unwrap();
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Allow);
+
+        pset.remove_static(PolicyId::new("id")).unwrap();
+        assert!(pset.is_empty());
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Deny);
+
+        let t = Template::from_pst(principal_slot_template("t")).unwrap();
+        pset.add_template(t).unwrap();
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("t"), PolicyId::new("linked"), env)
+            .unwrap();
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Allow);
+
+        assert_matches!(
+            pset.remove_static(PolicyId::new("t")),
+            Err(PolicySetError::PolicyNonexistent(_))
+        );
+
+        pset.unlink(PolicyId::new("linked")).unwrap();
+        assert_matches!(
+            pset.remove_static(PolicyId::new("t")),
+            Err(PolicySetError::PolicyNonexistent(_))
+        );
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Deny);
+
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("t"), PolicyId::new("linked"), env)
+            .unwrap();
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Allow);
+
+        assert_matches!(
+            pset.remove_template(PolicyId::new("t")),
+            Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
+        );
+
+        pset.unlink(PolicyId::new("linked")).unwrap();
+        pset.remove_template(PolicyId::new("t")).unwrap();
+        assert!(pset.is_empty());
+
+        let response = authorizer.is_authorized(&request, &pset, &entities);
+        assert_eq!(response.decision(), Decision::Deny);
+    }
+
+    #[test]
+    fn pset_removal_prop_test_1() {
+        let t = Template::from_pst(principal_slot_template("policy0")).unwrap();
+        let mut pset = PolicySet::new();
+        pset.add_template(t).unwrap();
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("policy0"), PolicyId::new("policy3"), env)
+            .unwrap();
+
+        let t2 = Template::from_pst(principal_slot_template("policy3")).unwrap();
+        assert_matches!(
+            pset.add_template(t2),
+            Err(PolicySetError::AlreadyDefined(_))
+        );
+        assert_matches!(
+            pset.remove_static(PolicyId::new("policy3")),
+            Err(PolicySetError::PolicyNonexistent(_))
+        );
+        assert_matches!(
+            pset.remove_template(PolicyId::new("policy3")),
+            Err(PolicySetError::TemplateNonexistent(_))
+        );
+    }
+
+    #[test]
+    fn pset_requests() {
+        let t = Template::from_pst(principal_slot_template("template")).unwrap();
+        let sp = Policy::from_pst(permit_all("static").into()).unwrap();
+        let pid_static = PolicyId::new("static");
+        let pid_linked = PolicyId::new("linked");
+        let pid_linked2 = PolicyId::new("linked2");
+        let id_template = PolicyId::new("template");
+        // Policy set: 1 template, 1 static policy, two links
+        let mut pset = PolicySet::new();
+        pset.add_template(t).unwrap();
+        pset.add(sp).unwrap();
+        pset.link(
+            id_template.clone(),
+            pid_linked.clone(),
+            HashMap::from([(
+                SlotId::principal(),
+                EntityUid::from_strs("Concierge", "test"),
+            )]),
+        )
+        .unwrap();
+        pset.link(
+            id_template.clone(),
+            pid_linked2.clone(),
+            HashMap::from([(
+                SlotId::principal(),
+                EntityUid::from_strs("Concierge", "test2"),
+            )]),
+        )
+        .unwrap();
+
+        assert_eq!(pset.num_of_templates(), 1);
+        assert_eq!(pset.num_of_policies(), 3);
+        assert_eq!(pset.policies().filter(|p| p.is_static()).count(), 1);
+        assert_eq!(
+            pset.template(&id_template).unwrap().id(),
+            &"template".parse().unwrap()
+        );
+        for id in [&pid_static, &pid_linked, &pid_linked2] {
+            assert_eq!(pset.policy(id).unwrap().id(), id);
+        }
+    }
+
+    #[test]
+    fn link_static_policy_errors_expected_template() {
+        let mut pset = PolicySet::new();
+        pset.add(Policy::from_pst(permit_all("static").into()).unwrap())
+            .unwrap();
+
+        let before_link = pset.clone();
+        let result = pset.link(
+            PolicyId::new("static"),
+            PolicyId::new("linked"),
+            HashMap::new(),
+        );
+        assert_matches!(result, Err(PolicySetError::ExpectedTemplate(_)));
+        assert_eq!(pset, before_link);
+    }
+
+    #[test]
+    fn link_linked_policy_errors_expected_template() {
+        let t = Template::from_pst(principal_slot_template("template")).unwrap();
+        let mut pset = PolicySet::new();
+        let id_linked = PolicyId::new("linked");
+        let id_linked2 = PolicyId::new("linked2");
+        let id_template = PolicyId::new("template");
+        pset.add_template(t).unwrap();
+        pset.link(
+            id_template,
+            id_linked.clone(),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
+        )
+        .unwrap();
+
+        let before_link = pset.clone();
+        let result = pset.link(id_linked, id_linked2, HashMap::new());
+        assert_matches!(result, Err(PolicySetError::ExpectedTemplate(_)));
+        assert_eq!(pset, before_link);
+    }
+
+    #[test]
+    fn unlink_linked_policy() {
+        let t = Template::from_pst(principal_slot_template("template")).unwrap();
+        let mut pset = PolicySet::new();
+        pset.add_template(t).unwrap();
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("linked"),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
+        )
+        .unwrap();
+
+        let authorizer = Authorizer::new();
+        let request = test_request();
+        let entities = entities_for_test();
+
+        assert_eq!(
+            authorizer
+                .is_authorized(&request, &pset, &entities)
+                .decision(),
+            Decision::Allow
+        );
+
+        pset.unlink(PolicyId::new("linked")).unwrap();
+        assert_eq!(
+            authorizer
+                .is_authorized(&request, &pset, &entities)
+                .decision(),
+            Decision::Deny
+        );
+
+        assert_matches!(
+            pset.unlink(PolicyId::new("linked")),
+            Err(PolicySetError::LinkNonexistent(_))
+        );
+    }
+
+    #[test]
+    fn get_linked_policy() {
+        let t = Template::from_pst(principal_slot_template("template")).unwrap();
+        let mut pset = PolicySet::new();
+        pset.add_template(t).unwrap();
+
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("linked"),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
+        )
+        .unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            1
+        );
+
+        pset.unlink(PolicyId::new("linked")).unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            0
+        );
+        assert_matches!(
+            pset.unlink(PolicyId::new("linked")),
+            Err(PolicySetError::LinkNonexistent(_))
+        );
+
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("linked"),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
+        )
+        .unwrap();
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("linked2"),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
+        )
+        .unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            2
+        );
+
+        // Can't re-add template
+        let t2 = Template::from_pst(principal_slot_template("template")).unwrap();
+        assert_matches!(
+            pset.add_template(t2),
+            Err(PolicySetError::AlreadyDefined(_))
+        );
+
+        // Add another template
+        let t3 = Template::from_pst(principal_slot_template("template2")).unwrap();
+        pset.add_template(t3).unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template2"))
+                .unwrap()
+                .count(),
+            0
+        );
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            2
+        );
+
+        // Can't remove template with active links
+        assert_matches!(
+            pset.remove_template(PolicyId::new("template")),
+            Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
+        );
+
+        // Can't add policy named "template" or "linked"
+        let p = Policy::from_pst(permit_all("template").into()).unwrap();
+        assert_matches!(pset.add(p), Err(PolicySetError::AlreadyDefined(_)));
+        let p = Policy::from_pst(permit_all("linked").into()).unwrap();
+        assert_matches!(pset.add(p), Err(PolicySetError::AlreadyDefined(_)));
+
+        // Can add and remove "policy"
+        let p = Policy::from_pst(permit_all("policy").into()).unwrap();
+        pset.add(p).unwrap();
+        pset.remove_static(PolicyId::new("policy")).unwrap();
+
+        // Cannot remove linked or template as static
+        assert_matches!(
+            pset.remove_static(PolicyId::new("linked")),
+            Err(PolicySetError::PolicyNonexistent(_))
+        );
+        assert_matches!(
+            pset.remove_static(PolicyId::new("template")),
+            Err(PolicySetError::PolicyNonexistent(_))
+        );
+
+        // Unlink, remove
+        pset.unlink(PolicyId::new("linked")).unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            1
+        );
+        pset.remove_template(PolicyId::new("template2")).unwrap();
+        assert_matches!(
+            pset.remove_template(PolicyId::new("template")),
+            Err(PolicySetError::RemoveTemplateWithActiveLinks(_))
+        );
+        pset.unlink(PolicyId::new("linked2")).unwrap();
+        assert_eq!(
+            pset.get_linked_policies(PolicyId::new("template"))
+                .unwrap()
+                .count(),
+            0
+        );
+        pset.remove_template(PolicyId::new("template")).unwrap();
+        assert!(pset.get_linked_policies(PolicyId::new("template")).is_err());
+    }
+
+    #[test]
+    fn pset_add_conflict() {
+        let mut pset = PolicySet::new();
+        let t = Template::from_pst(principal_slot_template("policy0")).unwrap();
+        pset.add_template(t).unwrap();
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("policy0"), PolicyId::new("policy1"), env)
+            .unwrap();
+
+        // template id; static
+        let p = Policy::from_pst(permit_all("policy0").into()).unwrap();
+        assert_matches!(pset.add(p), Err(PolicySetError::AlreadyDefined(_)));
+        // link id; static
+        let p = Policy::from_pst(permit_all("policy1").into()).unwrap();
+        assert_matches!(pset.add(p), Err(PolicySetError::AlreadyDefined(_)));
+        // static; static
+        let p = Policy::from_pst(permit_all("policy2").into()).unwrap();
+        pset.add(p.clone()).unwrap();
+        assert_matches!(pset.add(p), Err(PolicySetError::AlreadyDefined(_)));
+    }
+
+    #[test]
+    fn pset_add_template_conflict() {
+        let mut pset = PolicySet::new();
+        let t = Template::from_pst(principal_slot_template("policy0")).unwrap();
+        pset.add_template(t).unwrap();
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("policy0"), PolicyId::new("policy3"), env)
+            .unwrap();
+
+        // link; template
+        let t = Template::from_pst(principal_slot_template("policy3")).unwrap();
+        assert_matches!(pset.add_template(t), Err(PolicySetError::AlreadyDefined(_)));
+        // template; template
+        let t = Template::from_pst(principal_slot_template("policy0")).unwrap();
+        assert_matches!(pset.add_template(t), Err(PolicySetError::AlreadyDefined(_)));
+        // static; template
+        let p = Policy::from_pst(permit_all("policy1").into()).unwrap();
+        pset.add(p).unwrap();
+        let t = Template::from_pst(principal_slot_template("policy1")).unwrap();
+        assert_matches!(pset.add_template(t), Err(PolicySetError::AlreadyDefined(_)));
+    }
+
+    #[test]
+    fn pset_link_conflict() {
+        let mut pset = PolicySet::new();
+        let t = Template::from_pst(principal_slot_template("policy0")).unwrap();
+        pset.add_template(t).unwrap();
+        let env = HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+
+        // link; link
+        pset.link(
+            PolicyId::new("policy0"),
+            PolicyId::new("policy3"),
+            env.clone(),
+        )
+        .unwrap();
+        assert_matches!(
+            pset.link(
+                PolicyId::new("policy0"),
+                PolicyId::new("policy3"),
+                env.clone()
+            ),
+            Err(PolicySetError::Linking(_))
+        );
+        // template; link
+        assert_matches!(
+            pset.link(
+                PolicyId::new("policy0"),
+                PolicyId::new("policy0"),
+                env.clone()
+            ),
+            Err(PolicySetError::Linking(_))
+        );
+        // static; link
+        let p = Policy::from_pst(permit_all("policy1").into()).unwrap();
+        pset.add(p).unwrap();
+        assert_matches!(
+            pset.link(PolicyId::new("policy0"), PolicyId::new("policy1"), env),
+            Err(PolicySetError::Linking(_))
+        );
+    }
+
+    // --- Merge tests ---
+
+    #[test]
+    fn merge_empty_into_empty() {
+        let empty = || pst::PolicySet {
+            templates: LinkedHashMap::new(),
+            policies: LinkedHashMap::new(),
+            template_links: vec![],
+        };
+        let mut ps0 = PolicySet::from_pst(empty()).unwrap();
+        let ps1 = PolicySet::from_pst(empty()).unwrap();
+        let names = ps0.merge(&ps1, false).unwrap();
+        assert_eq!(names, HashMap::new());
+        assert!(ps0.is_empty());
+    }
+
+    #[test]
+    fn merge_policy_into_empty() {
+        let empty = pst::PolicySet {
+            templates: LinkedHashMap::new(),
+            policies: LinkedHashMap::new(),
+            template_links: vec![],
+        };
+        let mut ps0 = PolicySet::from_pst(empty).unwrap();
+        let p = Policy::from_pst(permit_all("policy0").into()).unwrap();
+        let ps1 = PolicySet::from_policies([p.clone()]).unwrap();
+        let names = ps0.merge(&ps1, false).unwrap();
+        assert_eq!(names, HashMap::new());
+        assert!(!ps0.is_empty());
+        assert_eq!(ps0, ps1);
+    }
+
+    #[test]
+    fn merge_empty_into_policy() {
+        let p = Policy::from_pst(permit_all("policy0").into()).unwrap();
+        let mut ps0 = PolicySet::from_policies([p]).unwrap();
+        let ps0_copy = ps0.clone();
+        let ps1 = PolicySet::new();
+        let names = ps0.merge(&ps1, false).unwrap();
+        assert_eq!(names, HashMap::new());
+        assert_eq!(ps0, ps0_copy);
+    }
+
+    #[test]
+    fn merge_policies_disjoint() {
+        let pid0 = PolicyId::new("0");
+        let pid1 = PolicyId::new("1");
+        let p0 = Policy::from_pst(permit_all(pid0).into()).unwrap();
+        let forbid_tmpl = pst::Template::new(
+            pid1,
+            pst::Effect::Forbid,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        );
+        let p1 =
+            Policy::from_pst(pst::StaticPolicy::try_from(forbid_tmpl).unwrap().into()).unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p0.clone()]).unwrap();
+        let ps1 = PolicySet::from_policies([p1.clone()]).unwrap();
+        let names = ps0.merge(&ps1, false).unwrap();
+        assert_eq!(names, HashMap::new());
+        let expected = PolicySet::from_policies([p0, p1]).unwrap();
+        assert_eq!(ps0, expected);
+    }
+
+    #[test]
+    fn merge_policies_collision_error() {
+        let colliding_pid = PolicyId::new("0");
+        let p0 = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let p1 = Policy::from_pst(
+            pst::StaticPolicy::try_from(pst::Template::new(
+                colliding_pid.clone(),
+                pst::Effect::Forbid,
+                pst::PrincipalConstraint::Any,
+                pst::ActionConstraint::Any,
+                pst::ResourceConstraint::Any,
+            ))
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p0]).unwrap();
+        let ps1 = PolicySet::from_policies([p1]).unwrap();
+        assert_matches!(
+            ps0.merge(&ps1, false),
+            Err(PolicySetError::AlreadyDefined(e)) => {
+                assert_eq!(e.duplicate_id(), &colliding_pid)
+            }
+        );
+    }
+
+    #[test]
+    fn merge_policies_collision_rename() {
+        let colliding_pid = PolicyId::new("0");
+        let name_after_merge = PolicyId::new("policy0");
+        let p0 = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let p1 = Policy::from_pst(
+            pst::StaticPolicy::try_from(pst::Template::new(
+                colliding_pid.clone(),
+                pst::Effect::Forbid,
+                pst::PrincipalConstraint::Any,
+                pst::ActionConstraint::Any,
+                pst::ResourceConstraint::Any,
+            ))
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p0.clone()]).unwrap();
+        let ps1 = PolicySet::from_policies([p1.clone()]).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid.clone(), name_after_merge.clone())])
+        );
+        assert_eq!(ps0.policy(&colliding_pid), Some(&p0));
+        let p1_rename = p1.new_id(name_after_merge.clone());
+        assert_eq!(ps0.policy(&name_after_merge), Some(&p1_rename));
+    }
+
+    #[test]
+    fn merge_policies_collision_eq_policies() {
+        let colliding_pid = PolicyId::new("0");
+        let p0 = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let mut ps0 = PolicySet::from_policies([p0.clone()]).unwrap();
+        let ps1 = PolicySet::from_policies([p0.clone()]).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(names, HashMap::new());
+        let expected = PolicySet::from_policies([p0]).unwrap();
+        assert_eq!(ps0, expected);
+    }
+
+    #[test]
+    fn merge_policies_templates_no_collision() {
+        let template0_pid = PolicyId::new("0");
+        let template1_pid = PolicyId::new("2");
+        let link_pid = PolicyId::new("1");
+        let t0 = Template::from_pst(principal_slot_template(template0_pid.clone())).unwrap();
+        let t1 = Template::from_pst(resource_slot_template(template1_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            template1_pid,
+            link_pid.clone(),
+            HashMap::from([(SlotId::resource(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(names, HashMap::new());
+
+        let original_linked = ps1.policy(&link_pid).unwrap();
+        let merged_linked = ps0.policy(&link_pid).unwrap();
+        assert_eq!(original_linked, merged_linked);
+    }
+
+    #[test]
+    fn merge_policies_templates_collision() {
+        let colliding_pid = PolicyId::new("0");
+        let link_pid = PolicyId::new("1");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+        let t1 = Template::from_pst(resource_slot_template(colliding_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            colliding_pid.clone(),
+            link_pid.clone(),
+            HashMap::from([(SlotId::resource(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid, name_after_merge.clone())])
+        );
+
+        let merged_link = ps0.policy(&link_pid).unwrap();
+        assert_eq!(merged_link.template_id(), Some(&name_after_merge));
+    }
+
+    #[test]
+    fn merge_policies_policy_template_collision() {
+        let colliding_pid = PolicyId::new("0");
+        let name_after_merge = PolicyId::new("policy0");
+        let p0 = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let t1 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p0.clone()]).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid.clone(), name_after_merge.clone())])
+        );
+        assert_eq!(ps0.policy(&colliding_pid), Some(&p0));
+        assert!(ps0.template(&name_after_merge).is_some());
+    }
+
+    #[test]
+    fn merge_policies_link_collision() {
+        let template0_pid = PolicyId::new("0");
+        let template1_pid = PolicyId::new("1");
+        let colliding_link_pid = PolicyId::new("2");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(template0_pid.clone())).unwrap();
+        let t1 = Template::from_pst(resource_slot_template(template1_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            template0_pid,
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            template1_pid.clone(),
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::resource(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_link_pid, name_after_merge.clone())])
+        );
+
+        let merged_linked = ps0.policy(&name_after_merge).unwrap();
+        assert_eq!(merged_linked.template_id(), Some(&template1_pid));
+    }
+
+    #[test]
+    fn merge_policies_template_and_link_collision() {
+        let colliding_template_pid = PolicyId::new("0");
+        let colliding_link_pid = PolicyId::new("2");
+        let template_name_after_merge = PolicyId::new("policy0");
+        let link_name_after_merge = PolicyId::new("policy1");
+        let t0 =
+            Template::from_pst(principal_slot_template(colliding_template_pid.clone())).unwrap();
+        let t1 = Template::from_pst(pst::Template::new(
+            colliding_template_pid.clone(),
+            pst::Effect::Forbid,
+            pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Principal)),
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        ))
+        .unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            colliding_template_pid.clone(),
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            colliding_template_pid.clone(),
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([
+                (colliding_template_pid, template_name_after_merge.clone()),
+                (colliding_link_pid, link_name_after_merge.clone()),
+            ])
+        );
+
+        let merged_linked = ps0.policy(&link_name_after_merge).unwrap();
+        assert_eq!(
+            merged_linked.template_id(),
+            Some(&template_name_after_merge)
+        );
+    }
+
+    #[test]
+    fn merge_policies_eq_templates_different_links() {
+        let shared_template_pid = PolicyId::new("0");
+        let link0_pid = PolicyId::new("1");
+        let link1_pid = PolicyId::new("2");
+        let t0 = Template::from_pst(principal_slot_template(shared_template_pid.clone())).unwrap();
+        let t0_dup =
+            Template::from_pst(principal_slot_template(shared_template_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            shared_template_pid.clone(),
+            link0_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t0_dup).unwrap();
+        ps1.link(
+            shared_template_pid,
+            link1_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(names, HashMap::new());
+        assert!(ps0.policy(&link0_pid).is_some());
+        assert!(ps0.policy(&link1_pid).is_some());
+    }
+
+    #[test]
+    fn merge_policies_eq_templates_link_collision() {
+        let shared_template_pid = PolicyId::new("0");
+        let colliding_link_pid = PolicyId::new("1");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(shared_template_pid.clone())).unwrap();
+        let t0_dup =
+            Template::from_pst(principal_slot_template(shared_template_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            shared_template_pid.clone(),
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t0_dup).unwrap();
+        ps1.link(
+            shared_template_pid,
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_link_pid, name_after_merge)])
+        );
+    }
+
+    #[test]
+    fn merge_policies_template_collides_with_link() {
+        let template0_pid = PolicyId::new("0");
+        let colliding_pid = PolicyId::new("1");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(template0_pid.clone())).unwrap();
+        let t1 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            template0_pid,
+            colliding_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid, name_after_merge.clone())])
+        );
+        assert!(ps0.template(&name_after_merge).is_some());
+    }
+
+    #[test]
+    fn merge_policies_link_collides_with_template() {
+        let original_pid = PolicyId::new("0");
+        let colliding_pid = PolicyId::new("1");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+        let t1 = Template::from_pst(principal_slot_template(original_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            original_pid.clone(),
+            colliding_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid.clone(), name_after_merge.clone())])
+        );
+        assert!(ps0.policy(&name_after_merge).is_some());
+    }
+
+    /// The generated fresh name "policy0" is already taken by an existing
+    /// policy in ps0, so the renaming must skip to "policy1".
+    #[test]
+    fn merge_policies_fresh_id_skips_existing() {
+        let colliding_pid = PolicyId::new("0");
+        let blocker_pid = PolicyId::new("policy0");
+        let expected_fresh_pid = PolicyId::new("policy1");
+        let p_colliding = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let p_blocker = Policy::from_pst(
+            pst::StaticPolicy::try_from(pst::Template::new(
+                blocker_pid.clone(),
+                pst::Effect::Forbid,
+                pst::PrincipalConstraint::Any,
+                pst::ActionConstraint::Any,
+                pst::ResourceConstraint::Any,
+            ))
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+        let p_other = Policy::from_pst(
+            pst::StaticPolicy::try_from(pst::Template::new(
+                colliding_pid.clone(),
+                pst::Effect::Forbid,
+                pst::PrincipalConstraint::Any,
+                pst::ActionConstraint::Any,
+                pst::ResourceConstraint::Any,
+            ))
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p_colliding.clone(), p_blocker.clone()]).unwrap();
+        let ps1 = PolicySet::from_policies([p_other]).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid, expected_fresh_pid.clone())])
+        );
+        assert!(ps0.policy(&expected_fresh_pid).is_some());
+        assert!(ps0.policy(&blocker_pid).is_some());
+    }
+
+    /// Both sets have the same template and the same link (same slot values).
+    /// Everything should be deduped with no renames.
+    #[test]
+    fn merge_policies_eq_templates_eq_links() {
+        let template_pid = PolicyId::new("0");
+        let link_pid = PolicyId::new("1");
+        let t0 = Template::from_pst(principal_slot_template(template_pid.clone())).unwrap();
+        let t0_dup = Template::from_pst(principal_slot_template(template_pid.clone())).unwrap();
+        let env = HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]);
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(template_pid.clone(), link_pid.clone(), env.clone())
+            .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t0_dup).unwrap();
+        ps1.link(template_pid, link_pid.clone(), env).unwrap();
+
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(names, HashMap::new());
+        assert!(ps0.policy(&link_pid).is_some());
+    }
+
+    /// Three collisions at once force the fresh-ID generator to produce
+    /// policy0, policy1, and policy2.
+    #[test]
+    fn merge_policies_triple_collision() {
+        let pid_a = PolicyId::new("a");
+        let pid_b = PolicyId::new("b");
+        let pid_c = PolicyId::new("c");
+        let p0a = Policy::from_pst(permit_all(pid_a.clone()).into()).unwrap();
+        let p0b = Policy::from_pst(permit_all(pid_b.clone()).into()).unwrap();
+        let p0c = Policy::from_pst(permit_all(pid_c.clone()).into()).unwrap();
+        // Build ps1 with the same IDs but different effects so they collide
+        let make_forbid = |id: PolicyId| {
+            Policy::from_pst(
+                pst::StaticPolicy::try_from(pst::Template::new(
+                    id,
+                    pst::Effect::Forbid,
+                    pst::PrincipalConstraint::Any,
+                    pst::ActionConstraint::Any,
+                    pst::ResourceConstraint::Any,
+                ))
+                .unwrap()
+                .into(),
+            )
+            .unwrap()
+        };
+        let p1a = make_forbid(pid_a.clone());
+        let p1b = make_forbid(pid_b.clone());
+        let p1c = make_forbid(pid_c.clone());
+
+        let mut ps0 = PolicySet::from_policies([p0a, p0b, p0c]).unwrap();
+        let ps1 = PolicySet::from_policies([p1a, p1b, p1c]).unwrap();
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(names.len(), 3);
+        // All three original IDs were renamed
+        assert!(names.contains_key(&pid_a));
+        assert!(names.contains_key(&pid_b));
+        assert!(names.contains_key(&pid_c));
+        // The fresh names are all distinct
+        let fresh: HashSet<_> = names.values().collect();
+        assert_eq!(fresh.len(), 3);
+    }
+
+    /// After merging a renamed template, we can still link against it
+    /// using its new name.
+    #[test]
+    fn merge_policies_link_against_renamed_template() {
+        let colliding_pid = PolicyId::new("0");
+        let name_after_merge = PolicyId::new("policy0");
+        // ps0 has a principal-slot template "0"
+        let t0 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+        // ps1 has a different resource-slot template also named "0"
+        let t1 = Template::from_pst(resource_slot_template(colliding_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+
+        let names = ps0.merge(&ps1, true).unwrap();
+        assert_eq!(
+            names,
+            HashMap::from([(colliding_pid, name_after_merge.clone())])
+        );
+
+        // The renamed template should be linkable
+        let link_pid = PolicyId::new("new_link");
+        ps0.link(
+            name_after_merge,
+            link_pid.clone(),
+            HashMap::from([(SlotId::resource(), r#"User::"alice""#.parse().unwrap())]),
+        )
+        .unwrap();
+        assert!(ps0.policy(&link_pid).is_some());
+    }
+
+    /// After merging with a rename, `to_pst()` should produce a PST where
+    /// the renamed static policy carries its new ID, not the old one.
+    /// This is a PST-specific concern because the lossless representation
+    /// is cloned from `other` (which still has the old ID).
+    #[test]
+    fn merge_pst_roundtrip_renamed_static_policy() {
+        let colliding_pid = PolicyId::new("0");
+        let name_after_merge = PolicyId::new("policy0");
+        let p0 = Policy::from_pst(permit_all(colliding_pid.clone()).into()).unwrap();
+        let p1 = Policy::from_pst(
+            pst::StaticPolicy::try_from(pst::Template::new(
+                colliding_pid.clone(),
+                pst::Effect::Forbid,
+                pst::PrincipalConstraint::Any,
+                pst::ActionConstraint::Any,
+                pst::ResourceConstraint::Any,
+            ))
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+
+        let mut ps0 = PolicySet::from_policies([p0]).unwrap();
+        let ps1 = PolicySet::from_policies([p1]).unwrap();
+        ps0.merge(&ps1, true).unwrap();
+
+        let pst_set = ps0.to_pst().unwrap();
+        // The renamed policy should appear under its new ID in the PST
+        assert!(pst_set
+            .policies
+            .contains_key(&name_after_merge.clone().into()));
+        // And the PST's internal ID should also be the new one
+        let renamed_pst = &pst_set.policies[&name_after_merge.clone().into()];
+        assert_eq!(PolicyId::from(renamed_pst.id().clone()), name_after_merge);
+    }
+
+    /// After merging with a rename, `to_pst()` should produce a PST where
+    /// the renamed template carries its new ID. Verify the full round-trip:
+    /// `from_pst(to_pst())` should yield an equivalent PolicySet.
+    #[test]
+    fn merge_pst_roundtrip_renamed_template() {
+        let colliding_pid = PolicyId::new("0");
+        let name_after_merge = PolicyId::new("policy0");
+        let t0 = Template::from_pst(principal_slot_template(colliding_pid.clone())).unwrap();
+        let t1 = Template::from_pst(resource_slot_template(colliding_pid.clone())).unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps0.merge(&ps1, true).unwrap();
+
+        let pst_set = ps0.to_pst().unwrap();
+        // The renamed template should appear under its new ID
+        assert!(pst_set
+            .templates
+            .contains_key(&name_after_merge.clone().into()));
+        // And its internal ID should match
+        let renamed_tmpl = &pst_set.templates[&name_after_merge.clone().into()];
+        assert_eq!(PolicyId::from(renamed_tmpl.id.clone()), name_after_merge);
+
+        // Full round-trip: from_pst(to_pst()) should be equivalent
+        let roundtripped = PolicySet::from_pst(pst_set).unwrap();
+        assert_eq!(ps0, roundtripped);
+    }
+
+    /// After merging a template with a link that both get renamed,
+    /// the PST round-trip should preserve the link's reference to
+    /// the renamed template.
+    #[test]
+    fn merge_pst_roundtrip_renamed_template_and_link() {
+        let colliding_template_pid = PolicyId::new("0");
+        let colliding_link_pid = PolicyId::new("2");
+        let t0 =
+            Template::from_pst(principal_slot_template(colliding_template_pid.clone())).unwrap();
+        let t1 = Template::from_pst(pst::Template::new(
+            colliding_template_pid.clone(),
+            pst::Effect::Forbid,
+            pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Principal)),
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+        ))
+        .unwrap();
+
+        let mut ps0 = PolicySet::new();
+        ps0.add_template(t0).unwrap();
+        ps0.link(
+            colliding_template_pid.clone(),
+            colliding_link_pid.clone(),
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut ps1 = PolicySet::new();
+        ps1.add_template(t1).unwrap();
+        ps1.link(
+            colliding_template_pid,
+            colliding_link_pid,
+            HashMap::from([(SlotId::principal(), r#"User::"bob""#.parse().unwrap())]),
+        )
+        .unwrap();
+        ps0.merge(&ps1, true).unwrap();
+
+        let pst_set = ps0.to_pst().unwrap();
+        // Round-trip should produce an equivalent PolicySet
+        let roundtripped = PolicySet::from_pst(pst_set).unwrap();
+        assert_eq!(ps0, roundtripped);
     }
 }
 
