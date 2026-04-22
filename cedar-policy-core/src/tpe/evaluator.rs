@@ -97,23 +97,11 @@ impl Evaluator<'_> {
             ResidualKind::And { left, right } => {
                 let left = self.interpret(left);
                 match &left {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::Bool(false)),
-                                ..
-                            },
-                        ..
-                    } => mk_concrete(false.into()),
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::Bool(true)),
-                                ..
-                            },
-                        ..
-                    } => self.interpret(right),
-                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Concrete { value, .. } => match value.get_as_bool() {
+                        Ok(false) => mk_concrete(false.into()), // false && <right> => false
+                        Ok(true) => self.interpret(right),      // true && <right> => <right>
+                        Err(_) => mk_error(),                   // <error> && <right> => <error>
+                    },
                     Residual::Partial { .. } => {
                         let right = self.interpret(right);
                         match &right {
@@ -124,7 +112,7 @@ impl Evaluator<'_> {
                                         ..
                                     },
                                 ..
-                            } => left,
+                            } => left, // <left-residual> && true => <left-residual>
                             Residual::Concrete {
                                 value:
                                     Value {
@@ -156,23 +144,11 @@ impl Evaluator<'_> {
             ResidualKind::Or { left, right } => {
                 let left = self.interpret(left);
                 match &left {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::Bool(true)),
-                                ..
-                            },
-                        ..
-                    } => mk_concrete(true.into()),
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::Bool(false)),
-                                ..
-                            },
-                        ..
-                    } => self.interpret(right),
-                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Concrete { value, .. } => match value.get_as_bool() {
+                        Ok(true) => mk_concrete(true.into()), // true || <right> => true
+                        Ok(false) => self.interpret(right),   // false || <right> => <right>
+                        Err(_) => mk_error(),                 // <error> || <right> => <error>
+                    },
                     Residual::Partial { .. } => {
                         let right = self.interpret(right);
                         match &right {
@@ -183,7 +159,7 @@ impl Evaluator<'_> {
                                         ..
                                     },
                                 ..
-                            } => left,
+                            } => left, // <left-residual> || false == <left-residual>
                             Residual::Concrete {
                                 value:
                                     Value {
@@ -219,21 +195,11 @@ impl Evaluator<'_> {
             } => {
                 let test_expr = self.interpret(test_expr);
                 match &test_expr {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::Bool(b)),
-                                ..
-                            },
-                        ..
-                    } => {
-                        if *b {
-                            self.interpret(then_expr)
-                        } else {
-                            self.interpret(else_expr)
-                        }
-                    }
-                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Concrete { value, .. } => match value.get_as_bool() {
+                        Ok(true) => self.interpret(then_expr), // (if true then <then> else <else>) => <then>
+                        Ok(false) => self.interpret(else_expr), // (if false then <then> else <else>) => <else>
+                        Err(_) => mk_error(), // (if <error> then <then> else <else>) => <error>
+                    },
                     Residual::Partial { .. } => mk_residual(ResidualKind::If {
                         test_expr: Arc::new(test_expr),
                         then_expr: Arc::new(self.interpret(then_expr)),
@@ -245,15 +211,10 @@ impl Evaluator<'_> {
             ResidualKind::Is { expr, entity_type } => {
                 let expr = self.interpret(expr);
                 match &expr {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::EntityUID(uid)),
-                                ..
-                            },
-                        ..
-                    } => mk_concrete((uid.entity_type() == entity_type).into()),
-                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Concrete { value, .. } => match value.get_as_entity() {
+                        Ok(uid) => mk_concrete((uid.entity_type() == entity_type).into()),
+                        Err(_) => mk_error(), // <error> is <entity_type> => <error>
+                    },
                     Residual::Partial {
                         kind: ResidualKind::Var(Var::Principal),
                         ..
@@ -272,15 +233,10 @@ impl Evaluator<'_> {
             ResidualKind::Like { expr, pattern } => {
                 let expr = self.interpret(expr);
                 match &expr {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::String(s)),
-                                ..
-                            },
-                        ..
-                    } => mk_concrete(pattern.wildcard_match(s).into()),
-                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Concrete { value, .. } => match value.get_as_string() {
+                        Ok(s) => mk_concrete(pattern.wildcard_match(s).into()),
+                        Err(_) => mk_error(), // <error> like <pattern> => <error>
+                    },
                     Residual::Partial { .. } => mk_residual(ResidualKind::Like {
                         expr: Arc::new(expr),
                         pattern: pattern.clone(),
