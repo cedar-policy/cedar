@@ -135,7 +135,7 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
         ExprKind::ExtensionFunctionApp { args: exprs, .. } | ExprKind::Set(exprs) => {
             Box::new(exprs.iter().flat_map(|x| footprint(x, env)))
         }
-        ExprKind::Record(axs) => Box::new(axs.iter().flat_map(|(_, x)| footprint(x, env))),
+        ExprKind::Record(axs) => Box::new(axs.values().flat_map(|x| footprint(x, env))),
         ExprKind::Slot(_) => unimplemented!("analyzing templates is not currently supported"),
         ExprKind::Unknown(_) => {
             unimplemented!("analyzing partial expressions is not currently supported")

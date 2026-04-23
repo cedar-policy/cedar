@@ -307,14 +307,9 @@ impl SymEntityData {
             }))
         };
         let acts = sch
-            .iter()
-            .filter_map(|(uid, _)| {
-                if uid.type_name() == act_ty {
-                    Some(<EntityID as AsRef<str>>::as_ref(uid.id()).into())
-                } else {
-                    None
-                }
-            })
+            .keys()
+            .filter(|uid| uid.type_name() == act_ty)
+            .map(|uid| SmolStr::new(uid.id()))
             .collect();
         SymEntityData {
             attrs: attrs_udf,

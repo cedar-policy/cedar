@@ -186,11 +186,7 @@ impl From<&Arc<ast::Entity>> for models::Entity {
 }
 
 impl From<models::Expr> for ast::Expr {
-    #[expect(
-        clippy::expect_used,
-        clippy::too_many_lines,
-        reason = "experimental feature"
-    )]
+    #[expect(clippy::expect_used, reason = "experimental feature")]
     fn from(v: models::Expr) -> Self {
         let kind = v.expr_kind.expect("expr_kind field should exist");
 

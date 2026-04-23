@@ -299,17 +299,12 @@ impl Template {
             .collect::<Vec<_>>();
 
         let extra = values
-            .iter()
-            .filter_map(|(slot, _)| {
-                if !template
+            .keys()
+            .filter(|slot| {
+                !template
                     .slots
                     .iter()
-                    .any(|template_slot| template_slot.id == *slot)
-                {
-                    Some(slot)
-                } else {
-                    None
-                }
+                    .any(|template_slot| template_slot.id == **slot)
             })
             .collect::<Vec<_>>();
 

@@ -469,7 +469,7 @@ impl SymEntities {
 
         // As the internal cedar_policy_core::entities::Entities
         let internal_entities = cedar_policy_core::entities::Entities::from_entities(
-            entities.into_iter(),
+            entities,
             None::<&NoEntitiesSchema>,
             #[cfg(debug_assertions)]
             TCComputation::EnforceAlreadyComputed,

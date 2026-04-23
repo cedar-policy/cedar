@@ -145,49 +145,38 @@ impl From<RawCedarValueJson> for CedarValueJson {
                 let values = &r.values;
                 if values.len() == 1 {
                     match values.iter().map(|(k, v)| (k.as_str(), v)).collect_vec()[..] {
-                        [("__extn", RawCedarValueJson::Record(r))] => {
-                            if r.values.len() >= 2 {
-                                if let Some(RawCedarValueJson::String(fn_name)) = r.values.get("fn")
-                                {
-                                    if let Some(arg) = r.values.get("arg") {
-                                        return Self::ExtnEscape {
-                                            __extn: FnAndArgs::Single {
-                                                ext_fn: fn_name.clone(),
-                                                arg: Box::new(arg.clone().into()),
-                                            },
-                                        };
-                                    }
-                                    if let Some(RawCedarValueJson::Set(args)) = r.values.get("args")
-                                    {
-                                        return Self::ExtnEscape {
-                                            __extn: FnAndArgs::Multi {
-                                                ext_fn: fn_name.clone(),
-                                                args: args
-                                                    .iter()
-                                                    .cloned()
-                                                    .map(Into::into)
-                                                    .collect(),
-                                            },
-                                        };
-                                    }
+                        [("__extn", RawCedarValueJson::Record(r))] if r.values.len() >= 2 => {
+                            if let Some(RawCedarValueJson::String(fn_name)) = r.values.get("fn") {
+                                if let Some(arg) = r.values.get("arg") {
+                                    return Self::ExtnEscape {
+                                        __extn: FnAndArgs::Single {
+                                            ext_fn: fn_name.clone(),
+                                            arg: Box::new(arg.clone().into()),
+                                        },
+                                    };
+                                }
+                                if let Some(RawCedarValueJson::Set(args)) = r.values.get("args") {
+                                    return Self::ExtnEscape {
+                                        __extn: FnAndArgs::Multi {
+                                            ext_fn: fn_name.clone(),
+                                            args: args.iter().cloned().map(Into::into).collect(),
+                                        },
+                                    };
                                 }
                             }
                         }
                         [("__expr", RawCedarValueJson::String(s))] => {
                             return Self::ExprEscape { __expr: s.clone() };
                         }
-                        [("__entity", RawCedarValueJson::Record(r))] => {
-                            if r.values.len() >= 2 {
-                                if let Some(RawCedarValueJson::String(ty)) = r.values.get("type") {
-                                    if let Some(RawCedarValueJson::String(id)) = r.values.get("id")
-                                    {
-                                        return Self::EntityEscape {
-                                            __entity: TypeAndId {
-                                                entity_type: ty.clone(),
-                                                id: id.clone(),
-                                            },
-                                        };
-                                    }
+                        [("__entity", RawCedarValueJson::Record(r))] if r.values.len() >= 2 => {
+                            if let Some(RawCedarValueJson::String(ty)) = r.values.get("type") {
+                                if let Some(RawCedarValueJson::String(id)) = r.values.get("id") {
+                                    return Self::EntityEscape {
+                                        __entity: TypeAndId {
+                                            entity_type: ty.clone(),
+                                            id: id.clone(),
+                                        },
+                                    };
                                 }
                             }
                         }
