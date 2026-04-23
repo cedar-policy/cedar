@@ -24,7 +24,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 - `FunctionArgumentValidation` errors now include a help message describing the expected format for extension function arguments: `decimal`, `ip`, `datetime`, and `duration`. (#834)
 - Serialization of residual policies with `error()` nodes does not fail, instead results in JSON with `{"error": []}`. (#2202)
 
-## [4.10.0] - Coming soon
+## [4.10.0] - 2026-04-23
 
 Cedar Language Version: 4.5
 
@@ -1189,7 +1189,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.9.1...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.10.0...main
+[4.10.0]: https://github.com/cedar-policy/cedar/compare/v4.9.1...v4.10.0
 [4.9.1]: https://github.com/cedar-policy/cedar/compare/v4.9.0...v4.9.1
 [4.9.0]: https://github.com/cedar-policy/cedar/compare/v4.8.2...v4.9.0
 [4.8.2]: https://github.com/cedar-policy/cedar/compare/v4.8.1...v4.8.2
