@@ -48,7 +48,7 @@ use crate::{
         conformance::{err::UnexpectedEntityTypeError, validate_euid},
         EntityTypeDescription,
     },
-    transitive_closure::{compute_tc, TCNode},
+    transitive_closure::{compute_tc, repair_tc, TCNode},
 };
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -556,15 +556,24 @@ impl PartialEntities {
     }
 
     /// Construct `PartialEntities` from `Entities`, ensuring that the entities are valid.
+    /// TC is already computed in the source `Entities`, so we skip recomputation.
     pub fn from_concrete(
         entities: Entities,
         schema: &ValidatorSchema,
     ) -> std::result::Result<Self, EntitiesError> {
-        let entities_map = entities
+        let entities_map: HashMap<EntityUID, PartialEntity> = entities
             .into_iter()
             .map(|e| e.try_into().map(|e: PartialEntity| (e.uid.clone(), e)))
             .try_collect()?;
-        Self::from_entities_map(entities_map, schema)
+        entities_map.values().try_for_each(|e| e.validate(schema))?;
+        validate_ancestors(&entities_map)?;
+        // TC is already computed in the source Entities — the conversion to
+        // PartialEntity preserves all ancestors (direct + indirect).
+        let mut entities = Self {
+            entities: entities_map,
+        };
+        entities.insert_actions(schema);
+        Ok(entities)
     }
 
     /// Construct `PartialEntities` from an iterator
@@ -621,8 +630,10 @@ impl PartialEntities {
         schema: &ValidatorSchema,
         tc_computation: TCComputation,
     ) -> std::result::Result<(), EntitiesError> {
+        let mut entities_touched: HashSet<EntityUID> = HashSet::new();
         for (id, entity) in entity_mappings {
             entity.validate(schema)?;
+            entities_touched.insert(id.clone());
             self.add_entity_trusted(id, entity)?;
         }
 
@@ -634,7 +645,14 @@ impl PartialEntities {
                 self.enforce_tc_and_dag()?;
             }
             TCComputation::ComputeNow => {
-                self.compute_tc()?;
+                for entity in self.entities.values() {
+                    if let Some(ancestors) = entity.ancestors.as_ref() {
+                        if !entities_touched.is_disjoint(ancestors) {
+                            entities_touched.insert(entity.uid.clone());
+                        }
+                    }
+                }
+                repair_tc(entities_touched, &mut self.entities, true)?;
             }
         }
         Ok(())
