@@ -479,10 +479,6 @@ impl Residual {
 }
 
 /// Conversion from `Residual` to `Expr` so that we can use the concrete evaluator for re-authorization
-#[expect(
-    clippy::fallible_impl_from,
-    reason = "Residual to Expr conversion should always succeed"
-)]
 impl From<Residual> for Expr {
     fn from(value: Residual) -> Expr {
         match value {

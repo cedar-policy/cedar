@@ -219,11 +219,10 @@ impl PolicySet {
     pub fn singleton(p: Policy) -> Self {
         let t = p.template_arc();
 
-        let templates = [(t.id().clone(), t.clone())].into_iter().collect();
-        let template_to_links_map = [(t.id().clone(), [p.id().clone()].into_iter().collect())]
-            .into_iter()
-            .collect();
-        let links = [(p.id().clone(), p)].into_iter().collect();
+        let templates = std::iter::once((t.id().clone(), t.clone())).collect();
+        let template_to_links_map =
+            std::iter::once((t.id().clone(), std::iter::once(p.id().clone()).collect())).collect();
+        let links = std::iter::once((p.id().clone(), p)).collect();
 
         Self {
             templates,
@@ -264,8 +263,10 @@ impl PolicySet {
         // if we get here, there will be no errors.  So actually do the
         // insertions.
         if let Some(ventry) = template_ventry {
-            self.template_to_links_map
-                .insert(t.id().clone(), [policy.id().clone()].into_iter().collect());
+            self.template_to_links_map.insert(
+                t.id().clone(),
+                std::iter::once(policy.id().clone()).collect(),
+            );
             ventry.insert(t);
         } else {
             //`template_ventry` is None, so `templates` has `t` and we never use the `HashSet::new()`

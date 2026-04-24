@@ -266,7 +266,7 @@ impl ToDocumentationString for CedarTypeKind {
 
                 let mut code = String::from("{\n");
                 let mut sorted_fields: Vec<_> = fields.attrs.iter().collect();
-                sorted_fields.sort_by(|(a, _), (b, _)| a.cmp(b));
+                sorted_fields.sort_by_key(|(a, _)| *a);
 
                 for (name, typ) in sorted_fields {
                     let _ = write!(code, "    {name}: ");

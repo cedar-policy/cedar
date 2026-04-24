@@ -276,7 +276,7 @@ pub fn validate_euid(schema: &impl Schema, euid: &EntityUID) -> Result<(), Valid
     let entity_type = euid.entity_type();
     if let Some(desc) = schema.entity_type(entity_type) {
         if let Some(choices) = desc.enum_entity_eids() {
-            is_valid_enumerated_entity(&choices, euid)?;
+            is_valid_enumerated_entity(choices, euid)?;
         }
     }
     if entity_type.is_action() && schema.action(euid).is_none() {

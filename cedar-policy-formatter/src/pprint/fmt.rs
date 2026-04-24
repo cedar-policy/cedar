@@ -60,7 +60,7 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
             formatted_policies.len()
         ));
     }
-    for ((f_p_id, f_p), (p_id, p)) in formatted_policies.into_iter().zip(policies.into_iter()) {
+    for ((f_p_id, f_p), (p_id, p)) in formatted_policies.into_iter().zip(policies) {
         if f_p_id != p_id {
             return Err(miette!(
                 "formatter changed the policy id from {p_id} to {f_p_id}"
