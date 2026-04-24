@@ -327,14 +327,18 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     pub async fn define_set<'s>(
         &mut self,
         ty_enc: &str,
-        t_encs: impl IntoIterator<Item = &'s str>,
+        t_encs: impl ExactSizeIterator<Item = &'s str>,
     ) -> Result<SmolStr> {
-        let members = t_encs
-            .into_iter()
-            .fold(format_smolstr!("(as set.empty {ty_enc})"), |acc, t| {
-                format_smolstr!("(set.insert {t} {acc})")
-            });
-        self.define_term(ty_enc, &members).await
+        let set_term = if t_encs.len() == 0 {
+            format!("(as set.empty {ty_enc})")
+        } else {
+            format!(
+                "(set.insert {} (as set.empty {}))",
+                t_encs.format(" "),
+                ty_enc
+            )
+        };
+        self.define_term(ty_enc, &set_term).await
     }
 
     pub async fn define_record<'s>(
