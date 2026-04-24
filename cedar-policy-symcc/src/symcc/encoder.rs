@@ -329,7 +329,6 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         ty_enc: &str,
         t_encs: impl ExactSizeIterator<Item = &'s str>,
     ) -> Result<SmolStr> {
-        // Currently sets must be non-empty, but we'll still handle the empty case
         let set_term = if t_encs.len() == 0 {
             format!("(as set.empty {ty_enc})")
         } else {
