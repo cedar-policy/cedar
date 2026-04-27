@@ -1431,3 +1431,140 @@ mod test_sexpr_parse {
         assert_matches!(parse_sexpr(b"; comment\n"), Err(DecodeError::UnexpectedEnd));
     }
 }
+
+#[cfg(test)]
+mod test_decode {
+    use std::{collections::BTreeMap, num::NonZeroU32, sync::LazyLock};
+
+    use cedar_policy::{RequestEnv, Schema};
+    use smol_str::SmolStr;
+
+    use crate::{
+        bitvec::BitVec,
+        err::Term,
+        symcc::decoder::{parse_sexpr, IdMaps},
+        term::TermVar,
+        term_type::TermType,
+        SymEnv,
+    };
+
+    static TEST_ENV: LazyLock<SymEnv> = LazyLock::new(|| {
+        SymEnv::new(
+            &Schema::from_cedarschema_str(
+                "entity E; action A appliesTo { principal: [E], resource: [E] };",
+            )
+            .unwrap()
+            .0,
+            &RequestEnv::new(
+                "E".parse().unwrap(),
+                "Action::\"A\"".parse().unwrap(),
+                "E".parse().unwrap(),
+            ),
+        )
+        .expect("Malformed sym env.")
+    });
+
+    #[track_caller]
+    fn assert_decode_var(model: &str, var: SmolStr, ty: TermType, expected: impl Into<Term>) {
+        let sexpr = parse_sexpr(model.as_bytes()).expect("failed to parse model sexpr");
+        let var = TermVar { id: var, ty };
+        let actual = sexpr
+            .decode_model(
+                &TEST_ENV,
+                &IdMaps {
+                    types: BTreeMap::new(),
+                    vars: BTreeMap::from([(&var.id, &var)]),
+                    uufs: BTreeMap::new(),
+                    enums: BTreeMap::new(),
+                },
+            )
+            .expect("failed to decode model")
+            .vars
+            .get(&var)
+            .expect("could not find expected var in model")
+            .clone();
+        assert_eq!(actual, expected.into());
+    }
+
+    #[test]
+    fn decode_literals() {
+        assert_decode_var(
+            "((define-fun x () Bool true))",
+            "x".into(),
+            TermType::Bool,
+            true,
+        );
+        assert_decode_var(
+            "((define-fun x () Bool false))",
+            "x".into(),
+            TermType::Bool,
+            false,
+        );
+        assert_decode_var(
+            "((define-fun x () (_ BitVec 2) #b11))",
+            "x".into(),
+            TermType::Bitvec {
+                n: NonZeroU32::new(2).unwrap(),
+            },
+            BitVec::of_i128(NonZeroU32::new(2).unwrap(), 3),
+        );
+        assert_decode_var(
+            r#"((define-fun x () String "foo"))"#,
+            "x".into(),
+            TermType::String,
+            SmolStr::new_static("foo"),
+        );
+    }
+
+    #[test]
+    fn decode_application() {
+        assert_decode_var(
+            "((define-fun x () Bool (not true)))",
+            "x".into(),
+            TermType::Bool,
+            false,
+        );
+        assert_decode_var(
+            "((define-fun x () Bool (not (not true)))",
+            "x".into(),
+            TermType::Bool,
+            true,
+        );
+        assert_decode_var(
+            "((define-fun x () Bool (or false true)))",
+            "x".into(),
+            TermType::Bool,
+            true,
+        );
+        assert_decode_var(
+            "((define-fun x () Bool (= true false)))",
+            "x".into(),
+            TermType::Bool,
+            false,
+        );
+        assert_decode_var(
+            r#"((define-fun x () String (ite false "foo" "bar")))"#,
+            "x".into(),
+            TermType::String,
+            SmolStr::new_static("bar"),
+        );
+        assert_decode_var(
+            "((define-fun x () Bool (bvnego #b10)))",
+            "x".into(),
+            TermType::Bool,
+            true,
+        );
+        assert_decode_var(
+            "((define-fun x () Bool (bvsaddo #b01 #b01)))",
+            "x".into(),
+            TermType::Bool,
+            true,
+        );
+        assert_decode_var(
+            "((define-fun x () Bool (bvsmulo #b010 #b010)))",
+            "x".into(),
+            TermType::Bool,
+            true,
+        );
+    }
+}
