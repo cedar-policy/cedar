@@ -1525,7 +1525,7 @@ mod test_decode {
             false,
         );
         assert_decode_var(
-            "((define-fun x () Bool (not (not true)))",
+            "((define-fun x () Bool (not (not true))))",
             "x".into(),
             TermType::Bool,
             true,
