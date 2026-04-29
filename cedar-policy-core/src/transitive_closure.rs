@@ -95,13 +95,8 @@ where
 {
     let seen: HashSet<K> = nodes
         .keys()
-        .filter_map(|node_id| {
-            if nodes_to_fix.contains(node_id) {
-                None
-            } else {
-                Some(node_id.clone())
-            }
-        })
+        .filter(|x| nodes_to_fix.contains(x))
+        .cloned()
         .collect();
 
     // If the caller does not want to check that the graph is a DAG,
@@ -248,7 +243,7 @@ fn cyclic_tc_internal<K, V>(
             // The edge from node_id to parent_id is a forward edge iff
             // node_id is visited before parent_id and we do not visit
             // parent_id from node_id (i.e., we do not recursively call
-            // cyclic_tc_interanl on parent_id from this call).
+            // cyclic_tc_internal on parent_id from this call).
             let mut maybe_forward_edge = true;
             if !order_visited.contains_key(parent_id) {
                 maybe_forward_edge = false;
@@ -1081,16 +1076,6 @@ mod tests {
         assert!(enforce_tc(&entities).is_err());
         // compute TC
         cyclic_tc(&mut entities);
-        // compute_tc_internal(
-        //     entities
-        //         .keys()
-        //         .map(EntityUID::clone)
-        //         .collect::<Vec<EntityUID>>()
-        //         .into_iter(),
-        //     &mut entities,
-        //     HashSet::new(),
-        //     true,
-        // );
         assert!(enforce_tc(&entities).is_ok());
         // the graph may or may not pass the TC check but it will always fail cycle check
         match enforce_dag_from_tc(&entities) {
