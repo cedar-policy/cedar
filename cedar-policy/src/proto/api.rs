@@ -152,3 +152,224 @@ impl traits::Protobuf for api::PolicySet {
             .expect("protobuf-encoded policy set should be a valid policy set"))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::{collections::HashMap, str::FromStr};
+
+    use prost::Message as _;
+
+    /// Performs a series of conversions: API -> Protobuf model -> Protobuf bytes -> Protobuf model -> API.
+    /// Checks that the input API policy set is equal to the converted policy set.
+    fn roundtrip_policies(policies: crate::PolicySet) {
+        // API -> Protobuf model
+        let policies_proto = crate::proto::models::PolicySet::from(&policies);
+        // Protobuf model -> Protobuf bytes
+        let buf = policies_proto.encode_to_vec();
+        // Protobuf bytes -> Protobuf model
+        let roundtripped_proto = crate::proto::models::PolicySet::decode(&buf[..])
+            .expect("Failed to deserialize PolicySet from protobuf");
+        // -> Protobuf model -> API
+        let roundtripped = crate::PolicySet::try_from(roundtripped_proto)
+            .expect("Failed to convert from protobuf to PolicySet");
+        similar_asserts::assert_eq!(policies, roundtripped);
+    }
+
+    fn roundtrip_policies_text(text: &str) {
+        let pset = crate::PolicySet::from_str(text).expect("Failed to parse policy set");
+        roundtrip_policies(pset);
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_template_link() {
+        let mut pset = crate::PolicySet::from_str(
+            r#"
+            @id("template0")
+            permit(principal == ?principal, action, resource);
+            "#,
+        )
+        .expect("Failed to parse policy set");
+        pset.link(
+            crate::PolicyId::new("template0"),
+            crate::PolicyId::new("link0"),
+            HashMap::from([(
+                crate::SlotId::principal(),
+                crate::EntityUid::from_strs("User", "alice"),
+            )]),
+        )
+        .expect("Failed to link template");
+        roundtrip_policies(pset);
+    }
+
+    #[test]
+    fn roundtrip_policyset_empty() {
+        roundtrip_policies_text("");
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_static_policy() {
+        roundtrip_policies_text(
+            r#"
+            @id("policy0")
+            permit(principal, action, resource);
+            "#,
+        );
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_multiple_static_policies() {
+        roundtrip_policies_text(
+            r#"
+            @id("policy0")
+            permit(principal, action, resource);
+
+            @id("policy1")
+            forbid(principal, action, resource) when { context.is_restricted };
+
+            @id("policy2")
+            permit(principal == User::"alice", action == Action::"read", resource in Folder::"shared");
+            "#,
+        );
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_when_and_unless() {
+        roundtrip_policies_text(
+            r#"
+            @id("policy0")
+            permit(principal, action, resource)
+                when { resource.owner == principal }
+                unless { principal.suspended };
+            "#,
+        );
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_annotations() {
+        roundtrip_policies_text(
+            r#"
+            @id("policy0")
+            @advice("allow owner access")
+            permit(principal, action == Action::"write", resource)
+            when { resource.owner == principal };
+            "#,
+        );
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_multiple_template_links() {
+        let mut pset = crate::PolicySet::from_str(
+            r#"
+            @id("template0")
+            permit(principal == ?principal, action, resource in ?resource);
+            "#,
+        )
+        .expect("Failed to parse policy set");
+        pset.link(
+            crate::PolicyId::new("template0"),
+            crate::PolicyId::new("link0"),
+            HashMap::from([
+                (
+                    crate::SlotId::principal(),
+                    crate::EntityUid::from_strs("User", "alice"),
+                ),
+                (
+                    crate::SlotId::resource(),
+                    crate::EntityUid::from_strs("Folder", "shared"),
+                ),
+            ]),
+        )
+        .expect("Failed to link template");
+        pset.link(
+            crate::PolicyId::new("template0"),
+            crate::PolicyId::new("link1"),
+            HashMap::from([
+                (
+                    crate::SlotId::principal(),
+                    crate::EntityUid::from_strs("User", "bob"),
+                ),
+                (
+                    crate::SlotId::resource(),
+                    crate::EntityUid::from_strs("Folder", "private"),
+                ),
+            ]),
+        )
+        .expect("Failed to link template");
+        roundtrip_policies(pset);
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_static_and_templates() {
+        let mut pset = crate::PolicySet::from_str(
+            r#"
+            @id("static0")
+            forbid(principal, action, resource) unless { context.authenticated };
+
+            @id("template0")
+            permit(principal == ?principal, action, resource);
+            "#,
+        )
+        .expect("Failed to parse policy set");
+        pset.link(
+            crate::PolicyId::new("template0"),
+            crate::PolicyId::new("link0"),
+            HashMap::from([(
+                crate::SlotId::principal(),
+                crate::EntityUid::from_strs("User", "admin"),
+            )]),
+        )
+        .expect("Failed to link template");
+        roundtrip_policies(pset);
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_is_constraint() {
+        roundtrip_policies_text(
+            r#"
+            @id("policy0")
+            permit(principal is User, action, resource is Folder);
+            "#,
+        );
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_is_in_constraint() {
+        roundtrip_policies_text(
+            r#"
+            @id("policy0")
+            permit(principal is User in Group::"admins", action, resource);
+            "#,
+        );
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_action_in_set() {
+        roundtrip_policies_text(
+            r#"
+            @id("policy0")
+            permit(principal, action in [Action::"read", Action::"list"], resource);
+            "#,
+        );
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_extension_functions() {
+        roundtrip_policies_text(
+            r#"
+            @id("policy0")
+            forbid(principal, action, resource)
+                when { !context.src_ip.isInRange(ip("10.0.0.0/8")) };
+            "#,
+        );
+    }
+
+    #[test]
+    fn roundtrip_policyset_with_unlinked_template() {
+        roundtrip_policies_text(
+            r#"
+            @id("template0")
+            permit(principal == ?principal, action, resource);
+            "#,
+        );
+    }
+}

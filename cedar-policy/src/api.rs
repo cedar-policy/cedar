@@ -2627,7 +2627,21 @@ impl PolicySet {
 
     /// Build the [`PolicySet`] from just the AST information
     pub(crate) fn from_ast(ast: ast::PolicySet) -> Result<Self, PolicySetError> {
-        Self::from_policies(ast.into_policies().map(Policy::from_ast))
+        let templates = ast
+            .templates()
+            .cloned()
+            .map(|t| (PolicyId::new(t.id().clone()), t.into()))
+            .collect();
+        let policies = ast
+            .policies()
+            .cloned()
+            .map(|p| (PolicyId::new(p.id().clone()), p.into()))
+            .collect();
+        Ok(Self {
+            ast,
+            policies,
+            templates,
+        })
     }
 
     /// Construct a [`PolicySet`] from a PST [`pst::PolicySet`].
