@@ -184,13 +184,12 @@ mod test {
     fn roundtrip_policyset_with_template_link() {
         let mut pset = crate::PolicySet::from_str(
             r#"
-            @id("template0")
             permit(principal == ?principal, action, resource);
             "#,
         )
         .expect("Failed to parse policy set");
         pset.link(
-            crate::PolicyId::new("template0"),
+            crate::PolicyId::new("policy0"),
             crate::PolicyId::new("link0"),
             HashMap::from([(
                 crate::SlotId::principal(),
@@ -210,7 +209,6 @@ mod test {
     fn roundtrip_policyset_with_static_policy() {
         roundtrip_policies_text(
             r#"
-            @id("policy0")
             permit(principal, action, resource);
             "#,
         );
@@ -220,13 +218,10 @@ mod test {
     fn roundtrip_policyset_with_multiple_static_policies() {
         roundtrip_policies_text(
             r#"
-            @id("policy0")
             permit(principal, action, resource);
 
-            @id("policy1")
             forbid(principal, action, resource) when { context.is_restricted };
 
-            @id("policy2")
             permit(principal == User::"alice", action == Action::"read", resource in Folder::"shared");
             "#,
         );
@@ -236,7 +231,6 @@ mod test {
     fn roundtrip_policyset_with_when_and_unless() {
         roundtrip_policies_text(
             r#"
-            @id("policy0")
             permit(principal, action, resource)
                 when { resource.owner == principal }
                 unless { principal.suspended };
@@ -248,7 +242,6 @@ mod test {
     fn roundtrip_policyset_with_annotations() {
         roundtrip_policies_text(
             r#"
-            @id("policy0")
             @advice("allow owner access")
             permit(principal, action == Action::"write", resource)
             when { resource.owner == principal };
@@ -260,13 +253,12 @@ mod test {
     fn roundtrip_policyset_with_multiple_template_links() {
         let mut pset = crate::PolicySet::from_str(
             r#"
-            @id("template0")
             permit(principal == ?principal, action, resource in ?resource);
             "#,
         )
         .expect("Failed to parse policy set");
         pset.link(
-            crate::PolicyId::new("template0"),
+            crate::PolicyId::new("policy0"),
             crate::PolicyId::new("link0"),
             HashMap::from([
                 (
@@ -281,7 +273,7 @@ mod test {
         )
         .expect("Failed to link template");
         pset.link(
-            crate::PolicyId::new("template0"),
+            crate::PolicyId::new("policy0"),
             crate::PolicyId::new("link1"),
             HashMap::from([
                 (
@@ -302,16 +294,15 @@ mod test {
     fn roundtrip_policyset_with_static_and_templates() {
         let mut pset = crate::PolicySet::from_str(
             r#"
-            @id("static0")
             forbid(principal, action, resource) unless { context.authenticated };
 
-            @id("template0")
             permit(principal == ?principal, action, resource);
             "#,
         )
         .expect("Failed to parse policy set");
+        println!("{:?}", pset);
         pset.link(
-            crate::PolicyId::new("template0"),
+            crate::PolicyId::new("policy1"),
             crate::PolicyId::new("link0"),
             HashMap::from([(
                 crate::SlotId::principal(),
@@ -326,7 +317,6 @@ mod test {
     fn roundtrip_policyset_with_is_constraint() {
         roundtrip_policies_text(
             r#"
-            @id("policy0")
             permit(principal is User, action, resource is Folder);
             "#,
         );
@@ -336,7 +326,6 @@ mod test {
     fn roundtrip_policyset_with_is_in_constraint() {
         roundtrip_policies_text(
             r#"
-            @id("policy0")
             permit(principal is User in Group::"admins", action, resource);
             "#,
         );
@@ -346,7 +335,6 @@ mod test {
     fn roundtrip_policyset_with_action_in_set() {
         roundtrip_policies_text(
             r#"
-            @id("policy0")
             permit(principal, action in [Action::"read", Action::"list"], resource);
             "#,
         );
@@ -356,7 +344,6 @@ mod test {
     fn roundtrip_policyset_with_extension_functions() {
         roundtrip_policies_text(
             r#"
-            @id("policy0")
             forbid(principal, action, resource)
                 when { !context.src_ip.isInRange(ip("10.0.0.0/8")) };
             "#,
@@ -367,7 +354,6 @@ mod test {
     fn roundtrip_policyset_with_unlinked_template() {
         roundtrip_policies_text(
             r#"
-            @id("template0")
             permit(principal == ?principal, action, resource);
             "#,
         );
