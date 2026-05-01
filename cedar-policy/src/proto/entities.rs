@@ -16,13 +16,19 @@
 
 #![allow(clippy::use_self, reason = "readability")]
 
+use super::ast::ProtoToAstError;
 use super::models;
 use cedar_policy_core::{ast, entities, extensions};
 
-impl From<models::Entities> for entities::Entities {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: models::Entities) -> Self {
-        let entities: Vec<ast::Entity> = v.entities.into_iter().map(ast::Entity::from).collect();
+impl TryFrom<models::Entities> for entities::Entities {
+    type Error = ProtoToAstError;
+
+    fn try_from(v: models::Entities) -> Result<Self, Self::Error> {
+        let entities: Vec<ast::Entity> = v
+            .entities
+            .into_iter()
+            .map(ast::Entity::try_from)
+            .collect::<Result<_, _>>()?;
 
         // REVIEW (before stabilization): does `AssumeAlreadyComputed` make
         // sense here? It will be the case for protobufs produced from our
@@ -34,7 +40,7 @@ impl From<models::Entities> for entities::Entities {
             entities::TCComputation::AssumeAlreadyComputed,
             extensions::Extensions::all_available(),
         )
-        .expect("protobuf entities should be valid")
+        .map_err(|e| ProtoToAstError(format!("invalid entities: {e}")))
     }
 }
 
@@ -65,7 +71,7 @@ mod test {
         let entities1 = entities::Entities::new();
         assert_deep_eq!(
             entities1,
-            entities::Entities::from(models::Entities::from(&entities1))
+            entities::Entities::try_from(models::Entities::from(&entities1)).unwrap()
         );
 
         // Single Element Test
@@ -94,7 +100,7 @@ mod test {
             .unwrap();
         assert_deep_eq!(
             entities2,
-            entities::Entities::from(models::Entities::from(&entities2))
+            entities::Entities::try_from(models::Entities::from(&entities2)).unwrap()
         );
 
         // Two Element Test
@@ -120,7 +126,7 @@ mod test {
             .unwrap();
         assert_deep_eq!(
             entities3,
-            entities::Entities::from(models::Entities::from(&entities3))
+            entities::Entities::try_from(models::Entities::from(&entities3)).unwrap()
         );
     }
 }

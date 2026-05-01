@@ -14,6 +14,24 @@
  * limitations under the License.
  */
 
+/// Error type for protobuf decoding failures
+#[derive(Debug, thiserror::Error)]
+pub enum DecodeError {
+    /// The input buffer does not contain a valid protobuf message
+    #[error(transparent)]
+    Proto(prost::DecodeError),
+    /// The protobuf message was well-formed but its contents could not be
+    /// converted into the target Cedar type
+    #[error("invalid protobuf message contents: {0}")]
+    Conversion(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl From<prost::DecodeError> for DecodeError {
+    fn from(e: prost::DecodeError) -> Self {
+        Self::Proto(e)
+    }
+}
+
 /// Trait allowing serializing and deserializing in protobuf format
 pub trait Protobuf: Sized {
     /// Encode into protobuf format. Returns a freshly-allocated buffer containing binary data.
@@ -22,9 +40,10 @@ pub trait Protobuf: Sized {
     ///
     /// # Errors
     ///
-    /// Will return a `prost::DecodeError` when the input buffer does not contain a
-    /// valid Protobuf message.
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError>;
+    /// Will return [`DecodeError::Proto`] when the input buffer does not
+    /// contain a valid protobuf message, or [`DecodeError::Conversion`] when
+    /// the message is well-formed but cannot be converted into the target type.
+    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, DecodeError>;
 }
 
 /// Encode `thing` into `buf` using the protobuf format `M`
@@ -49,15 +68,23 @@ pub(crate) fn encode_to_vec<M: prost::Message>(thing: impl Into<M>) -> Vec<u8> {
 use std::default::Default;
 
 /// Decode something of type `T` from `buf` using the protobuf format `M`
+#[expect(dead_code, reason = "available for types with infallible From conversions")]
 pub(crate) fn decode<M: prost::Message + Default, T: From<M>>(
     buf: impl prost::bytes::Buf,
-) -> Result<T, prost::DecodeError> {
-    M::decode(buf).map(T::from)
+) -> Result<T, DecodeError> {
+    Ok(M::decode(buf)?.into())
 }
 
-/// Decode something of type `T` from `buf` using the protobuf format `M`
-pub(crate) fn try_decode<M: prost::Message + Default, E, T: TryFrom<M, Error = E>>(
+/// Decode something of type `T` from `buf` using the protobuf format `M`,
+/// where the conversion from `M` to `T` is fallible
+pub(crate) fn try_decode<
+    M: prost::Message + Default,
+    E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    T: TryFrom<M, Error = E>,
+>(
     buf: impl prost::bytes::Buf,
-) -> Result<Result<T, E>, prost::DecodeError> {
-    M::decode(buf).map(T::try_from)
+) -> Result<T, DecodeError> {
+    M::decode(buf)?
+        .try_into()
+        .map_err(|e: E| DecodeError::Conversion(e.into()))
 }

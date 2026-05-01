@@ -16,6 +16,7 @@
 
 #![allow(clippy::use_self, reason = "readability")]
 
+use super::ast::ProtoToAstError;
 use super::models;
 use cedar_policy_core::ast::{self, Eid};
 use cedar_policy_core::validator::types;
@@ -33,16 +34,19 @@ impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
     }
 }
 
-impl From<models::Schema> for cedar_policy_core::validator::ValidatorSchema {
-    fn from(v: models::Schema) -> Self {
-        Self::new(
+impl TryFrom<models::Schema> for cedar_policy_core::validator::ValidatorSchema {
+    type Error = ProtoToAstError;
+    fn try_from(v: models::Schema) -> Result<Self, Self::Error> {
+        Ok(Self::new(
             v.entity_decls
                 .into_iter()
-                .map(cedar_policy_core::validator::ValidatorEntityType::from),
+                .map(cedar_policy_core::validator::ValidatorEntityType::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
             v.action_decls
                 .into_iter()
-                .map(cedar_policy_core::validator::ValidatorActionId::from),
-        )
+                .map(cedar_policy_core::validator::ValidatorActionId::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+        ))
     }
 }
 
@@ -61,20 +65,21 @@ impl From<&cedar_policy_core::validator::ValidationMode> for models::ValidationM
     }
 }
 
-impl From<models::ValidationMode> for cedar_policy_core::validator::ValidationMode {
-    fn from(v: models::ValidationMode) -> Self {
+impl TryFrom<models::ValidationMode> for cedar_policy_core::validator::ValidationMode {
+    type Error = ProtoToAstError;
+    fn try_from(v: models::ValidationMode) -> Result<Self, Self::Error> {
         match v {
-            models::ValidationMode::Strict => cedar_policy_core::validator::ValidationMode::Strict,
+            models::ValidationMode::Strict => Ok(cedar_policy_core::validator::ValidationMode::Strict),
             models::ValidationMode::Permissive => {
-                cedar_policy_core::validator::ValidationMode::Permissive
+                Ok(cedar_policy_core::validator::ValidationMode::Permissive)
             }
             #[cfg(feature = "partial-validate")]
             models::ValidationMode::Partial => {
-                cedar_policy_core::validator::ValidationMode::Partial
+                Ok(cedar_policy_core::validator::ValidationMode::Partial)
             }
             #[cfg(not(feature = "partial-validate"))]
             models::ValidationMode::Partial => {
-                panic!("Protobuf specifies partial validation, but `partial-validate` feature not enabled in this build")
+                Err(ProtoToAstError::missing("partial-validate feature (required for partial validation mode)"))
             }
         }
     }
@@ -101,20 +106,20 @@ impl From<&cedar_policy_core::validator::ValidatorActionId> for models::ActionDe
     }
 }
 
-impl From<models::ActionDecl> for cedar_policy_core::validator::ValidatorActionId {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: models::ActionDecl) -> Self {
-        Self::new(
-            ast::EntityUID::from(v.name.expect("name field should exist")),
-            v.principal_types.into_iter().map(ast::EntityType::from),
-            v.resource_types.into_iter().map(ast::EntityType::from),
-            v.descendants.into_iter().map(ast::EntityUID::from),
+impl TryFrom<models::ActionDecl> for cedar_policy_core::validator::ValidatorActionId {
+    type Error = ProtoToAstError;
+    fn try_from(v: models::ActionDecl) -> Result<Self, Self::Error> {
+        Ok(Self::new(
+            ast::EntityUID::try_from(v.name.ok_or_else(|| ProtoToAstError::missing("name"))?)?,
+            v.principal_types.into_iter().map(ast::EntityType::try_from).collect::<Result<Vec<_>, _>>()?,
+            v.resource_types.into_iter().map(ast::EntityType::try_from).collect::<Result<Vec<_>, _>>()?,
+            v.descendants.into_iter().map(ast::EntityUID::try_from).collect::<Result<Vec<_>, _>>()?,
             types::Type::Record {
-                attrs: model_to_attributes(v.context),
+                attrs: model_to_attributes(v.context)?,
                 open_attributes: types::OpenTag::default(),
             },
             None,
-        )
+        ))
     }
 }
 
@@ -146,56 +151,56 @@ impl From<&cedar_policy_core::validator::ValidatorEntityType> for models::Entity
     }
 }
 
-impl From<models::EntityDecl> for cedar_policy_core::validator::ValidatorEntityType {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: models::EntityDecl) -> Self {
-        let name = ast::EntityType::from(v.name.expect("name field should exist"));
-        let descendants = v.descendants.into_iter().map(ast::EntityType::from);
+impl TryFrom<models::EntityDecl> for cedar_policy_core::validator::ValidatorEntityType {
+    type Error = ProtoToAstError;
+    fn try_from(v: models::EntityDecl) -> Result<Self, Self::Error> {
+        let name = ast::EntityType::try_from(v.name.ok_or_else(|| ProtoToAstError::missing("name"))?)?;
+        let descendants = v.descendants.into_iter().map(ast::EntityType::try_from).collect::<Result<Vec<_>, _>>()?;
         match NonEmpty::collect(v.enum_choices.into_iter().map(SmolStr::from)) {
             // `enum_choices` is empty, so `v` represents a standard entity type
-            None => Self::new_standard(
+            None => Ok(Self::new_standard(
                 name,
                 descendants,
-                model_to_attributes(v.attributes),
+                model_to_attributes(v.attributes)?,
                 types::OpenTag::default(),
-                v.tags.map(types::Type::from),
+                v.tags.map(types::Type::try_from).transpose()?,
                 None,
-            ),
+            )),
             Some(enum_choices) => {
                 // `enum_choices` is not empty, so `v` represents an enumerated entity type.
                 // enumerated entity types must have no attributes or tags.
                 assert_eq!(v.attributes, HashMap::new());
                 assert_eq!(v.tags, None);
-                Self::new_enum(name, descendants, enum_choices.map(Eid::new), None)
+                Ok(Self::new_enum(name, descendants, enum_choices.map(Eid::new), None))
             }
         }
     }
 }
 
-impl From<models::Type> for types::Type {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: models::Type) -> Self {
-        match v.data.expect("data field should exist") {
+impl TryFrom<models::Type> for types::Type {
+    type Error = ProtoToAstError;
+    fn try_from(v: models::Type) -> Result<Self, Self::Error> {
+        match v.data.ok_or_else(|| ProtoToAstError::missing("data"))? {
             models::r#type::Data::Prim(vt) => {
-                match models::r#type::Prim::try_from(vt).expect("decode should succeed") {
-                    models::r#type::Prim::Bool => types::Type::primitive_boolean(),
-                    models::r#type::Prim::String => types::Type::primitive_string(),
-                    models::r#type::Prim::Long => types::Type::primitive_long(),
+                match models::r#type::Prim::try_from(vt).map_err(|e| ProtoToAstError::missing(&format!("valid prim variant: {e}")))? {
+                    models::r#type::Prim::Bool => Ok(types::Type::primitive_boolean()),
+                    models::r#type::Prim::String => Ok(types::Type::primitive_string()),
+                    models::r#type::Prim::Long => Ok(types::Type::primitive_long()),
                 }
             }
-            models::r#type::Data::SetElem(elty) => types::Type::Set {
-                element_type: Some(Arc::new(types::Type::from(*elty))),
-            },
-            models::r#type::Data::Entity(e) => types::Type::Entity(types::EntityKind::Entity(
-                types::EntityLUB::single_entity(ast::EntityType::from(e)),
-            )),
-            models::r#type::Data::Record(r) => types::Type::Record {
-                attrs: model_to_attributes(r.attrs),
+            models::r#type::Data::SetElem(elty) => Ok(types::Type::Set {
+                element_type: Some(Arc::new(types::Type::try_from(*elty)?)),
+            }),
+            models::r#type::Data::Entity(e) => Ok(types::Type::Entity(types::EntityKind::Entity(
+                types::EntityLUB::single_entity(ast::EntityType::try_from(e)?),
+            ))),
+            models::r#type::Data::Record(r) => Ok(types::Type::Record {
+                attrs: model_to_attributes(r.attrs)?,
                 open_attributes: types::OpenTag::default(),
-            },
-            models::r#type::Data::Ext(name) => types::Type::ExtensionType {
-                name: ast::Name::from(name),
-            },
+            }),
+            models::r#type::Data::Ext(name) => Ok(types::Type::ExtensionType {
+                name: ast::Name::try_from(name)?,
+            }),
         }
     }
 }
@@ -241,8 +246,12 @@ impl From<&types::Type> for models::Type {
     }
 }
 
-fn model_to_attributes(v: HashMap<String, models::AttributeType>) -> types::Attributes {
-    types::Attributes::with_attributes(v.into_iter().map(|(k, v)| (k.into(), v.into())))
+fn model_to_attributes(v: HashMap<String, models::AttributeType>) -> Result<types::Attributes, ProtoToAstError> {
+    Ok(types::Attributes::with_attributes(
+        v.into_iter()
+            .map(|(k, v)| Ok((k.into(), types::AttributeType::try_from(v)?)))
+            .collect::<Result<Vec<_>, ProtoToAstError>>()?,
+    ))
 }
 
 fn attributes_to_model(v: &types::Attributes) -> HashMap<String, models::AttributeType> {
@@ -251,15 +260,15 @@ fn attributes_to_model(v: &types::Attributes) -> HashMap<String, models::Attribu
         .collect()
 }
 
-impl From<models::AttributeType> for types::AttributeType {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: models::AttributeType) -> Self {
-        Self {
-            attr_type: types::Type::from(v.attr_type.expect("attr_type field should exist")).into(),
+impl TryFrom<models::AttributeType> for types::AttributeType {
+    type Error = ProtoToAstError;
+    fn try_from(v: models::AttributeType) -> Result<Self, Self::Error> {
+        Ok(Self {
+            attr_type: types::Type::try_from(v.attr_type.ok_or_else(|| ProtoToAstError::missing("attr_type"))?)?.into(),
             is_required: v.is_required,
             #[cfg(feature = "extended-schema")]
             loc: None,
-        }
+        })
     }
 }
 
@@ -287,7 +296,7 @@ mod test {
     fn type_roundtrip() {
         #[track_caller]
         fn assert_type_roundtrip(ty: Type) {
-            assert_eq!(ty, models::Type::from(&ty).into());
+            assert_eq!(ty, Type::try_from(models::Type::from(&ty)).unwrap());
         }
 
         assert_type_roundtrip(Type::Bool(BoolType::AnyBool));
@@ -348,7 +357,10 @@ mod test {
     #[track_caller]
     fn assert_schema_roundtrip(src: &str) {
         let schema: ValidatorSchema = src.parse().expect("failed to parse cedar schema");
-        assert_eq!(schema, models::Schema::from(&schema).into());
+        assert_eq!(
+            schema,
+            ValidatorSchema::try_from(models::Schema::from(&schema)).unwrap()
+        );
     }
 
     #[test]

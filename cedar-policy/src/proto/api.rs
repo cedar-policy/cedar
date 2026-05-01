@@ -15,12 +15,13 @@
  */
 
 use super::super::api;
-use super::{models, traits};
+use super::{ast::ProtoToAstError, models, traits};
 
-/// Macro that implements From<> both ways for cases where the `A` type is a
-/// simple wrapper around a different type `C` which already has From<>
-/// conversions both ways with `B`
-macro_rules! standard_conversions {
+/// Macro that implements `From<A>` and `TryFrom<B>` for types where
+/// one conversion direction is infallible, the other is not. This is typically the case where
+/// the API type converts to  protobuf models without failing, but converting the protobuf model
+/// to the API type requires additional checks.
+macro_rules! fallible_conversions {
     ( $A:ty, $A_expr:expr, $B:ty ) => {
         impl From<&$A> for $B {
             fn from(v: &$A) -> $B {
@@ -28,24 +29,25 @@ macro_rules! standard_conversions {
             }
         }
 
-        impl From<$B> for $A {
-            fn from(v: $B) -> $A {
-                $A_expr(v.into())
+        impl TryFrom<$B> for $A {
+            type Error = ProtoToAstError;
+            fn try_from(v: $B) -> Result<$A, Self::Error> {
+                Ok($A_expr(v.try_into()?))
             }
         }
     };
 }
 
-// standard conversions
+// fallible conversions (encode infallible, decode fallible)
 
-standard_conversions!(api::Entity, api::Entity, models::Entity);
-standard_conversions!(api::EntityUid, api::EntityUid, models::EntityUid);
-standard_conversions!(api::Entities, api::Entities, models::Entities);
-standard_conversions!(api::Schema, api::Schema, models::Schema);
-standard_conversions!(api::EntityTypeName, api::EntityTypeName, models::Name);
-standard_conversions!(api::EntityNamespace, api::EntityNamespace, models::Name);
-standard_conversions!(api::Expression, api::Expression, models::Expr);
-standard_conversions!(api::Request, api::Request, models::Request);
+fallible_conversions!(api::Entity, api::Entity, models::Entity);
+fallible_conversions!(api::EntityUid, api::EntityUid, models::EntityUid);
+fallible_conversions!(api::Entities, api::Entities, models::Entities);
+fallible_conversions!(api::Schema, api::Schema, models::Schema);
+fallible_conversions!(api::EntityTypeName, api::EntityTypeName, models::Name);
+fallible_conversions!(api::EntityNamespace, api::EntityNamespace, models::Name);
+fallible_conversions!(api::Expression, api::Expression, models::Expr);
+fallible_conversions!(api::Request, api::Request, models::Request);
 
 // nonstandard conversions
 
@@ -55,9 +57,10 @@ impl From<&api::Template> for models::TemplateBody {
     }
 }
 
-impl From<models::TemplateBody> for api::Template {
-    fn from(v: models::TemplateBody) -> Self {
-        Self::from_ast(v.into())
+impl TryFrom<models::TemplateBody> for api::Template {
+    type Error = ProtoToAstError;
+    fn try_from(v: models::TemplateBody) -> Result<Self, Self::Error> {
+        Ok(Self::from_ast(v.try_into()?))
     }
 }
 
@@ -74,13 +77,10 @@ impl From<&api::PolicySet> for models::PolicySet {
 }
 
 impl TryFrom<models::PolicySet> for api::PolicySet {
-    type Error = api::PolicySetError;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
     fn try_from(v: models::PolicySet) -> Result<Self, Self::Error> {
-        #[expect(clippy::expect_used, reason = "experimental feature")]
-        Self::from_ast(
-            v.try_into()
-                .expect("proto-encoded policy set should be a valid policy set"),
-        )
+        let ast: cedar_policy_core::ast::PolicySet = v.try_into()?;
+        Ok(Self::from_ast(ast)?)
     }
 }
 
@@ -97,33 +97,40 @@ impl From<&api::ValidationMode> for models::ValidationMode {
     }
 }
 
+/// Error when a protobuf message specifies a [`ValidationMode`](api::ValidationMode)
+/// that requires a feature not enabled in this build
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct ValidationModeError(String);
+
 #[expect(clippy::use_self, reason = "readability")]
-impl From<&models::ValidationMode> for api::ValidationMode {
-    fn from(v: &models::ValidationMode) -> Self {
+impl TryFrom<&models::ValidationMode> for api::ValidationMode {
+    type Error = ValidationModeError;
+    fn try_from(v: &models::ValidationMode) -> Result<Self, Self::Error> {
         match v {
-            models::ValidationMode::Strict => api::ValidationMode::Strict,
+            models::ValidationMode::Strict => Ok(api::ValidationMode::Strict),
             #[cfg(feature = "permissive-validate")]
-            models::ValidationMode::Permissive => api::ValidationMode::Permissive,
+            models::ValidationMode::Permissive => Ok(api::ValidationMode::Permissive),
             #[cfg(not(feature = "permissive-validate"))]
-            models::ValidationMode::Permissive => panic!("Protobuf specifies permissive validation, but `permissive-validate` feature not enabled in this build"),
+            models::ValidationMode::Permissive => Err(ValidationModeError("protobuf specifies permissive validation, but `permissive-validate` feature not enabled in this build".to_string())),
             #[cfg(feature = "partial-validate")]
-            models::ValidationMode::Partial => api::ValidationMode::Partial,
+            models::ValidationMode::Partial => Ok(api::ValidationMode::Partial),
             #[cfg(not(feature = "partial-validate"))]
-            models::ValidationMode::Partial => panic!("Protobuf specifies partial validation, but `partial-validate` feature not enabled in this build"),
+            models::ValidationMode::Partial => Err(ValidationModeError("protobuf specifies partial validation, but `partial-validate` feature not enabled in this build".to_string())),
         }
     }
 }
 
-/// Macro that implements `traits::Protobuf` for cases where From<> conversions
-/// exist both ways between the api type `$api` and the protobuf model type `$model`
+/// Macro that implements `traits::Protobuf` for cases where From<> and TryFrom<>
+/// conversions exist between the api type `$api` and the protobuf model type `$model`
 macro_rules! standard_protobuf_impl {
     ( $api:ty, $model:ty ) => {
         impl traits::Protobuf for $api {
             fn encode(&self) -> Vec<u8> {
                 traits::encode_to_vec::<$model>(self)
             }
-            fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-                traits::decode::<$model, _>(buf)
+            fn decode(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
+                traits::try_decode::<$model, _, _>(buf)
             }
         }
     };
@@ -146,10 +153,8 @@ impl traits::Protobuf for api::PolicySet {
     fn encode(&self) -> Vec<u8> {
         traits::encode_to_vec::<models::PolicySet>(self)
     }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        #[expect(clippy::expect_used, reason = "experimental feature")]
-        Ok(traits::try_decode::<models::PolicySet, _, Self>(buf)?
-            .expect("protobuf-encoded policy set should be a valid policy set"))
+    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
+        traits::try_decode::<models::PolicySet, _, Self>(buf)
     }
 }
 
@@ -357,5 +362,38 @@ mod test {
             permit(principal == ?principal, action, resource);
             "#,
         );
+    }
+
+    /// Decoding arbitrary bytes must never panic — it should return `Err`.
+    #[test]
+    fn decode_random_bytes_does_not_panic() {
+        use crate::proto::traits::Protobuf;
+
+        let inputs: &[&[u8]] = &[
+            b"",
+            b"\x00",
+            b"\xff\xff\xff\xff",
+            b"not a protobuf",
+            &[0u8; 1024],
+            &{
+                let mut v = Vec::new();
+                for i in 0u8..=255 {
+                    v.push(i);
+                }
+                v
+            },
+        ];
+
+        for input in inputs {
+            let _ = crate::Entity::decode(*input);
+            let _ = crate::Entities::decode(*input);
+            let _ = crate::Schema::decode(*input);
+            let _ = crate::EntityTypeName::decode(*input);
+            let _ = crate::EntityNamespace::decode(*input);
+            let _ = crate::Template::decode(*input);
+            let _ = crate::Expression::decode(*input);
+            let _ = crate::Request::decode(*input);
+            let _ = crate::PolicySet::decode(*input);
+        }
     }
 }
