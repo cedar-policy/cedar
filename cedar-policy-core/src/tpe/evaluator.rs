@@ -27,7 +27,8 @@ use crate::{
 use crate::{
     tpe::entities::PartialEntities,
     tpe::request::PartialRequest,
-    tpe::residual::{Residual, ResidualKind},
+    tpe::residual::{Residual, ResidualAttribute, ResidualKind},
+    tpe::value::PartialAttribute,
 };
 
 /// The partial evaluator
@@ -90,7 +91,12 @@ impl Evaluator<'_> {
             }
             ResidualKind::Var(Var::Context) => {
                 if let Some(context) = &self.request.context {
-                    mk_concrete(Value::record_arc(context.clone(), None))
+                    let schema_ty = crate::entities::SchemaType::try_from(r.ty().clone()).ok();
+                    if let Some(concrete) = context.try_into_concrete_map(schema_ty.as_ref()) {
+                        return mk_concrete(Value::record(concrete, None));
+                    }
+                    let context_var = mk_residual(ResidualKind::Var(Var::Context));
+                    context.to_partial_residual(r.ty(), &context_var)
                 } else {
                     mk_residual(ResidualKind::Var(Var::Context))
                 }
@@ -324,10 +330,19 @@ impl Evaluator<'_> {
                                 if let Ok(tag) = v2.get_as_string() {
                                     if let Some(entity) = self.entities.get(uid) {
                                         if let Some(tags) = &entity.tags {
-                                            if let Some(v) = tags.get(tag) {
-                                                mk_concrete(v.clone())
-                                            } else {
-                                                mk_error()
+                                            match tags.get(tag) {
+                                                Some(PartialAttribute::Present(pv)) => pv
+                                                    .to_residual_with_expr(
+                                                        r.ty(),
+                                                        &binapp_residual(
+                                                            arg1.clone(),
+                                                            arg2.clone(),
+                                                        ),
+                                                    ),
+                                                Some(PartialAttribute::Unknown) | None => {
+                                                    binapp_residual(arg1, arg2)
+                                                }
+                                                Some(PartialAttribute::Absent) => mk_error(),
                                             }
                                         } else {
                                             binapp_residual(arg1, arg2)
@@ -347,7 +362,16 @@ impl Evaluator<'_> {
                                 if let Ok(tag) = v2.get_as_string() {
                                     if let Some(entity) = self.entities.get(uid) {
                                         if let Some(tags) = &entity.tags {
-                                            mk_concrete(tags.contains_key(tag).into())
+                                            match tags.get(tag) {
+                                                Some(PartialAttribute::Present(_))
+                                                | Some(PartialAttribute::Unknown) => {
+                                                    mk_concrete(true.into())
+                                                }
+                                                Some(PartialAttribute::Absent) => {
+                                                    mk_concrete(false.into())
+                                                }
+                                                None => binapp_residual(arg1, arg2),
+                                            }
                                         } else {
                                             binapp_residual(arg1, arg2)
                                         }
@@ -437,11 +461,19 @@ impl Evaluator<'_> {
                     } => {
                         if let Some(entity) = self.entities.get(uid.as_ref()) {
                             if let Some(attrs) = &entity.attrs {
-                                if let Some(val) = attrs.get(attr) {
-                                    return mk_concrete(val.clone());
-                                } else {
-                                    return mk_error();
-                                }
+                                let getattr_residual = || {
+                                    mk_residual(ResidualKind::GetAttr {
+                                        expr: Arc::new(expr.clone()),
+                                        attr: attr.clone(),
+                                    })
+                                };
+                                return match attrs.get(attr) {
+                                    Some(PartialAttribute::Present(pv)) => {
+                                        pv.to_residual_with_expr(r.ty(), &getattr_residual())
+                                    }
+                                    Some(PartialAttribute::Unknown) | None => getattr_residual(),
+                                    Some(PartialAttribute::Absent) => mk_error(),
+                                };
                             }
                         }
                         mk_residual(ResidualKind::GetAttr {
@@ -450,6 +482,20 @@ impl Evaluator<'_> {
                         })
                     }
                     Residual::Concrete { .. } => mk_error(),
+                    Residual::Partial {
+                        kind: ResidualKind::Record { fields, .. },
+                        ..
+                    } => match fields.get(attr) {
+                        Some(ResidualAttribute::Value(r)) => r.clone(),
+                        Some(ResidualAttribute::Unknown(parent))
+                        | Some(ResidualAttribute::UnknownExistence(parent)) => {
+                            mk_residual(ResidualKind::GetAttr {
+                                expr: Arc::new(parent.clone()),
+                                attr: attr.clone(),
+                            })
+                        }
+                        Some(ResidualAttribute::Absent) | None => mk_error(),
+                    },
                     Residual::Partial { .. } => mk_residual(ResidualKind::GetAttr {
                         expr: Arc::new(expr),
                         attr: attr.clone(),
@@ -478,7 +524,15 @@ impl Evaluator<'_> {
                     } => {
                         if let Some(entity) = self.entities.get(uid.as_ref()) {
                             if let Some(attrs) = &entity.attrs {
-                                return mk_concrete(attrs.contains_key(attr).into());
+                                return match attrs.get(attr) {
+                                    Some(PartialAttribute::Present(_))
+                                    | Some(PartialAttribute::Unknown) => mk_concrete(true.into()),
+                                    Some(PartialAttribute::Absent) => mk_concrete(false.into()),
+                                    None => mk_residual(ResidualKind::HasAttr {
+                                        expr: Arc::new(expr),
+                                        attr: attr.clone(),
+                                    }),
+                                };
                             }
                         }
                         mk_residual(ResidualKind::HasAttr {
@@ -487,6 +541,21 @@ impl Evaluator<'_> {
                         })
                     }
                     Residual::Concrete { .. } => mk_error(),
+                    Residual::Partial {
+                        kind: ResidualKind::Record { fields, .. },
+                        ..
+                    } => match fields.get(attr) {
+                        Some(ResidualAttribute::Value(_)) | Some(ResidualAttribute::Unknown(_)) => {
+                            mk_concrete(true.into())
+                        }
+                        Some(ResidualAttribute::Absent) | None => mk_concrete(false.into()),
+                        Some(ResidualAttribute::UnknownExistence(parent)) => {
+                            mk_residual(ResidualKind::HasAttr {
+                                expr: Arc::new(parent.clone()),
+                                attr: attr.clone(),
+                            })
+                        }
+                    },
                     Residual::Partial { .. } => mk_residual(ResidualKind::HasAttr {
                         expr: Arc::new(expr),
                         attr: attr.clone(),
@@ -528,31 +597,53 @@ impl Evaluator<'_> {
                     mk_residual(ResidualKind::Set(Arc::new(es)))
                 }
             }
-            ResidualKind::Record(m) => {
-                let record = m
+            ResidualKind::Record { fields: m, .. } => {
+                let record: Vec<_> = m
                     .as_ref()
                     .iter()
-                    .map(|(a, e)| (a.clone(), self.interpret(e)));
-                if let Ok(m) = record
-                    .clone()
-                    .map(|(a, r)| Ok((a, Value::try_from(r)?)))
-                    .collect::<std::result::Result<BTreeMap<_, _>, ()>>()
-                {
-                    mk_concrete(Value {
-                        value: ValueKind::Record(Arc::new(m)),
-                        loc: None,
+                    .map(|(a, e)| {
+                        (
+                            a.clone(),
+                            match e {
+                                ResidualAttribute::Value(r) => {
+                                    ResidualAttribute::Value(self.interpret(r))
+                                }
+                                other => other.clone(),
+                            },
+                        )
                     })
-                } else {
-                    let mut m = BTreeMap::new();
-                    for (a, r) in record {
-                        if matches!(r, Residual::Error(_)) {
-                            return mk_error();
-                        } else {
-                            m.insert(a, r);
-                        }
+                    .collect();
+                let all_concrete = record
+                    .iter()
+                    .all(|(_, e)| matches!(e, ResidualAttribute::Value(Residual::Concrete { .. })));
+                if all_concrete {
+                    if let Ok(m) = record
+                        .iter()
+                        .filter_map(|(a, e)| match e {
+                            ResidualAttribute::Value(r) => {
+                                Some((a.clone(), Value::try_from(r.clone())))
+                            }
+                            _ => None,
+                        })
+                        .map(|(a, r)| Ok((a, r?)))
+                        .collect::<std::result::Result<BTreeMap<_, _>, ()>>()
+                    {
+                        return mk_concrete(Value {
+                            value: ValueKind::Record(Arc::new(m)),
+                            loc: None,
+                        });
                     }
-                    mk_residual(ResidualKind::Record(Arc::new(m)))
                 }
+                let mut new_m = BTreeMap::new();
+                for (a, r) in record {
+                    if let ResidualAttribute::Value(Residual::Error(_)) = &r {
+                        return mk_error();
+                    }
+                    new_m.insert(a, r);
+                }
+                mk_residual(ResidualKind::Record {
+                    fields: Arc::new(new_m),
+                })
             }
         }
     }
@@ -562,7 +653,7 @@ impl Evaluator<'_> {
 /// rebuild the [`RepresentableExtensionValue`] so that the stored `func`/`args`
 /// match the canonical form.  This ensures TPE residuals are deterministic
 /// regardless of which constructor originally created the value.
-fn normalize_ext_value(value: Value) -> Value {
+pub(crate) fn normalize_ext_value(value: Value) -> Value {
     normalize_ext_value_inner(&value).unwrap_or(value)
 }
 
@@ -643,16 +734,14 @@ fn normalize_ext_value_inner(value: &Value) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-    use std::sync::Arc;
-
-    use crate::ast::{Expr, SlotEnv};
+    use crate::ast::{EntityUID, Expr, SlotEnv};
     use crate::tpe::err::ExprToResidualError;
     use crate::tpe::test_utils::{parse_partial_euid, parse_typed_expr};
+    use crate::tpe::value::PartialRecord;
     use crate::validator::types::Type;
     use crate::validator::ValidatorSchema;
     use crate::{
-        ast::{Context, ExprBuilder, Value, Var},
+        ast::{Context, ExprBuilder, Var},
         expr_builder::ExprBuilder as _,
         extensions::Extensions,
     };
@@ -755,15 +844,17 @@ mod tests {
         let schema = parse_schema(
             r#"entity E; action a appliesTo {principal: E, resource: E, context: {l: Long}};"#,
         );
+        let Ok(Context::Value(context)) = Context::from_json_value(serde_json::json!({ "l": 0 }))
+        else {
+            panic!("expected concrete context")
+        };
+        let action: EntityUID = r#"Action::"a""#.parse().unwrap();
         let eval = Evaluator {
             request: &PartialRequest::new(
                 parse_partial_euid(r#"E"#),
-                r#"Action::"a""#.parse().unwrap(),
+                action.clone(),
                 parse_partial_euid("E"),
-                Some(Arc::new(BTreeMap::from([(
-                    "l".parse().unwrap(),
-                    Value::from(0),
-                )]))),
+                PartialRecord::concrete_context_for_action(context.as_ref(), &action, &schema),
                 &schema,
             )
             .unwrap(),
@@ -1131,11 +1222,12 @@ mod tests {
         else {
             panic!("expected concrete context")
         };
+        let action: EntityUID = r#"Action::"a""#.parse().unwrap();
         let req = PartialRequest::new(
             parse_partial_euid(r#"E::"foo""#),
-            r#"Action::"a""#.parse().unwrap(),
+            action.clone(),
             parse_partial_euid("E"),
-            Some(context),
+            PartialRecord::concrete_context_for_action(context.as_ref(), &action, &schema),
             &schema,
         )
         .unwrap();
@@ -1442,12 +1534,13 @@ mod tests {
         else {
             panic!("expected concrete context")
         };
+        let action: EntityUID = r#"Action::"get""#.parse().unwrap();
 
         let req = PartialRequest::new(
             parse_partial_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
+            action.clone(),
             parse_partial_euid(r#"E::"""#),
-            Some(context),
+            PartialRecord::concrete_context_for_action(context.as_ref(), &action, &schema),
             &schema,
         )
         .unwrap();

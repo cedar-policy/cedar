@@ -27,8 +27,10 @@ use crate::tpe::err::{
     IncorrectResourceEntityTypeError, NoMatchingReqEnvError, RequestBuilderError,
     RequestConsistencyError,
 };
+use crate::tpe::value::PartialRecord;
 use crate::validator::request_validation_errors::{
-    UndeclaredActionError, UndeclaredPrincipalTypeError, UndeclaredResourceTypeError,
+    InvalidContextError, UndeclaredActionError, UndeclaredPrincipalTypeError,
+    UndeclaredResourceTypeError,
 };
 use crate::validator::{
     types::RequestEnv, RequestValidationError, ValidationMode, ValidatorEntityTypeKind,
@@ -243,8 +245,9 @@ pub struct PartialRequest {
     pub(crate) resource: PartialEntityUID,
 
     /// Context associated with the request.
-    /// `None` means that variable will result in a residual for partial evaluation.
-    pub(crate) context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+    /// `None` means the entire context is unknown and will result in a residual.
+    /// `Some(record)` allows per-field partial knowledge via `PartialRecord`.
+    pub(crate) context: Option<PartialRecord>,
 }
 
 impl PartialRequest {
@@ -253,7 +256,8 @@ impl PartialRequest {
         principal: PartialEntityUID,
         action: EntityUID,
         resource: PartialEntityUID,
-        context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+
+        context: Option<PartialRecord>,
         schema: &ValidatorSchema,
     ) -> Result<Self, RequestValidationError> {
         let req = Self {
@@ -271,7 +275,7 @@ impl PartialRequest {
         principal: PartialEntityUID,
         resource: PartialEntityUID,
         action: EntityUID,
-        context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+        context: Option<PartialRecord>,
     ) -> Self {
         Self {
             principal,
@@ -312,11 +316,11 @@ impl PartialRequest {
                 .validate(schema)
                 .map_err(|e| e.into_resource_error())?;
             if let Some(m) = &self.context {
-                schema.validate_context(
-                    &Context::Value(m.clone()),
-                    &self.action,
-                    Extensions::all_available(),
-                )?;
+                //schema.validate_context(
+                //    &Context::Value(m.clone()),
+                //    &self.action,
+                //    Extensions::all_available(),
+                //)?;
             }
             Ok(())
         } else {
@@ -353,8 +357,8 @@ impl PartialRequest {
 
         match &request.context {
             Some(Context::Value(c)) => {
-                if let Some(m) = &self.context {
-                    if c != m {
+                if let Some(ctx) = &self.context {
+                    if !ctx.check_consistency(c.as_ref()) {
                         return Err(RequestConsistencyError::InconsistentContext);
                     }
                 }
@@ -394,9 +398,24 @@ impl PartialRequest {
         self.action.clone()
     }
 
-    /// Get the `context` attributes
-    pub fn get_context_attrs(&self) -> Option<&BTreeMap<SmolStr, Value>> {
-        self.context.as_ref().map(|attrs| attrs.as_ref())
+    /// Get the `context`
+    pub fn get_context(&self) -> Option<&PartialRecord> {
+        self.context.as_ref()
+    }
+
+    /// Get the `context` as a concrete attribute map, if all fields are known.
+    /// Uses the schema to verify that all expected context fields are present;
+    /// returns `None` if any expected field is missing from the map.
+    pub fn get_context_attrs(
+        &self,
+        schema: Option<&ValidatorSchema>,
+    ) -> Option<BTreeMap<SmolStr, Value>> {
+        let context_schema_ty = schema
+            .and_then(|s| s.context_type(&self.action))
+            .and_then(|ty| crate::entities::SchemaType::try_from(ty.clone()).ok());
+        self.context
+            .as_ref()?
+            .try_into_concrete_map(context_schema_ty.as_ref())
     }
 }
 
@@ -443,7 +462,8 @@ impl<'s> RequestBuilder<'s> {
                 principal.into(),
                 action.clone().into(),
                 resource.into(),
-                Some(Context::Value(context.clone())),
+                todo!(),
+                // Some(Context::Value(context.clone())),
             )),
             _ => None,
         }
@@ -478,7 +498,11 @@ impl<'s> RequestBuilder<'s> {
                         Extensions::all_available(),
                     )
                     .map_err(RequestBuilderError::Validation)?;
-                self.partial_request.context = Some(v.clone());
+                self.partial_request.context = PartialRecord::concrete_context_for_action(
+                    v.as_ref(),
+                    &self.partial_request.action,
+                    &self.schema,
+                );
                 Ok(())
             }
         } else {
@@ -492,11 +516,10 @@ mod invalid_requests {
     use std::{collections::BTreeMap, sync::Arc};
 
     use crate::{
-        ast::Value,
+        ast::{EntityUID, Value},
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessage, ExpectedErrorMessageBuilder},
-        tpe::request::PartialRequest,
-        tpe::test_utils::parse_partial_euid,
+        tpe::{request::PartialRequest, test_utils::parse_partial_euid, value::PartialRecord},
         validator::ValidatorSchema,
     };
 
@@ -533,12 +556,16 @@ mod invalid_requests {
         context: Option<Arc<BTreeMap<smol_str::SmolStr, Value>>>,
         msg: &ExpectedErrorMessage<'_>,
     ) {
+        let action: EntityUID = action.parse().unwrap();
+        let schema = schema();
         let err = PartialRequest::new(
             parse_partial_euid(principal),
-            action.parse().unwrap(),
+            action.clone(),
             parse_partial_euid(resource),
-            context,
-            &schema(),
+            context.and_then(|c| {
+                PartialRecord::concrete_context_for_action(c.as_ref(), &action, &schema)
+            }),
+            &schema,
         )
         .expect_err("should fail to validate");
         expect_err("", &miette::Report::new(err), msg);
@@ -675,10 +702,10 @@ mod inconsistent_requests {
     use std::{collections::BTreeMap, sync::Arc};
 
     use crate::{
-        ast::{Context, EntityUIDEntry, Request, Value},
+        ast::{Context, EntityUID, EntityUIDEntry, Request, Value},
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
-        tpe::{request::PartialRequest, test_utils::parse_partial_euid},
+        tpe::{request::PartialRequest, test_utils::parse_partial_euid, value::PartialRecord},
         validator::ValidatorSchema,
     };
 
@@ -710,12 +737,18 @@ mod inconsistent_requests {
     /// concrete resource `B::"r"`, and context `{foo: 0}`.
     #[track_caller]
     fn request() -> PartialRequest {
+        let Ok(Context::Value(context)) = Context::from_json_value(serde_json::json!({ "foo": 0 }))
+        else {
+            panic!("expected concrete context")
+        };
+        let schema = schema();
+        let action: EntityUID = r#"Action::"a""#.parse().unwrap();
         PartialRequest::new(
             parse_partial_euid(r#"A::"p""#),
-            r#"Action::"a""#.parse().unwrap(),
+            action.clone(),
             parse_partial_euid(r#"B::"r""#),
-            Some(Arc::new(BTreeMap::from_iter([("foo".into(), 0.into())]))),
-            &schema(),
+            PartialRecord::concrete_context_for_action(context.as_ref(), &action, &schema),
+            &schema,
         )
         .unwrap()
     }

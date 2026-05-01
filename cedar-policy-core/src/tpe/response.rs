@@ -54,8 +54,8 @@ impl ResidualPolicy {
     }
 
     /// Get the [`Residual`]
-    pub fn get_residual(&self) -> Arc<Residual> {
-        self.residual.clone()
+    pub fn get_residual(&self) -> &Arc<Residual> {
+        &self.residual
     }
 
     /// Get the [`PolicyID`]
