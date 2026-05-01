@@ -16,13 +16,13 @@
 
 #![allow(clippy::use_self, reason = "readability")]
 
-use super::ast::ProtoToAstError;
+use super::ast::ProtobufConversionError;
 use super::models;
 use cedar_policy_core::{ast, FromNormalizedStr};
 use std::collections::HashMap;
 
 impl TryFrom<models::Policy> for ast::LiteralPolicy {
-    type Error = ProtoToAstError;
+    type Error = ProtobufConversionError;
     fn try_from(v: models::Policy) -> Result<Self, Self::Error> {
         let mut values: ast::SlotEnv = HashMap::new();
         if let Some(principal_euid) = v.principal_euid {
@@ -46,7 +46,7 @@ impl TryFrom<models::Policy> for ast::LiteralPolicy {
                 ast::PolicyID::from_string(
                     v.link_id
                         .as_ref()
-                        .ok_or_else(|| ProtoToAstError::missing("link_id"))?,
+                        .ok_or_else(|| ProtobufConversionError::missing("link_id"))?,
                 ),
                 values,
             ))
@@ -99,17 +99,17 @@ impl From<&ast::Policy> for models::Policy {
 }
 
 impl TryFrom<models::TemplateBody> for ast::Template {
-    type Error = ProtoToAstError;
+    type Error = ProtobufConversionError;
     fn try_from(v: models::TemplateBody) -> Result<Self, Self::Error> {
         Ok(ast::Template::from(ast::TemplateBody::try_from(v)?))
     }
 }
 
 impl TryFrom<models::TemplateBody> for ast::TemplateBody {
-    type Error = ProtoToAstError;
+    type Error = ProtobufConversionError;
     fn try_from(v: models::TemplateBody) -> Result<Self, Self::Error> {
         let effect = models::Effect::try_from(v.effect)
-            .map_err(|e| ProtoToAstError(format!("invalid effect: {e}")))?;
+            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid effect: {e}")))?;
         Ok(ast::TemplateBody::new(
             ast::PolicyID::from_string(v.id),
             None,
@@ -127,22 +127,24 @@ impl TryFrom<models::TemplateBody> for ast::TemplateBody {
                             )
                         })
                         .map_err(|e| {
-                            ProtoToAstError(format!("invalid annotation key `{key}`: {e}"))
+                            ProtobufConversionError::InvalidValue(format!(
+                                "invalid annotation key `{key}`: {e}"
+                            ))
                         })
                 })
                 .collect::<Result<_, _>>()?,
             ast::Effect::from(effect),
             ast::PrincipalConstraint::try_from(
                 v.principal_constraint
-                    .ok_or_else(|| ProtoToAstError::missing("principal_constraint"))?,
+                    .ok_or_else(|| ProtobufConversionError::missing("principal_constraint"))?,
             )?,
             ast::ActionConstraint::try_from(
                 v.action_constraint
-                    .ok_or_else(|| ProtoToAstError::missing("action_constraint"))?,
+                    .ok_or_else(|| ProtobufConversionError::missing("action_constraint"))?,
             )?,
             ast::ResourceConstraint::try_from(
                 v.resource_constraint
-                    .ok_or_else(|| ProtoToAstError::missing("resource_constraint"))?,
+                    .ok_or_else(|| ProtobufConversionError::missing("resource_constraint"))?,
             )?,
             v.non_scope_constraints
                 .map(ast::Expr::try_from)
@@ -181,7 +183,7 @@ impl From<&ast::Template> for models::TemplateBody {
 }
 
 impl TryFrom<models::PrincipalOrResourceConstraint> for ast::PrincipalConstraint {
-    type Error = ProtoToAstError;
+    type Error = ProtobufConversionError;
     fn try_from(v: models::PrincipalOrResourceConstraint) -> Result<Self, Self::Error> {
         Ok(Self::new(ast::PrincipalOrResourceConstraint::try_from(v)?))
     }
@@ -194,7 +196,7 @@ impl From<&ast::PrincipalConstraint> for models::PrincipalOrResourceConstraint {
 }
 
 impl TryFrom<models::PrincipalOrResourceConstraint> for ast::ResourceConstraint {
-    type Error = ProtoToAstError;
+    type Error = ProtobufConversionError;
     fn try_from(v: models::PrincipalOrResourceConstraint) -> Result<Self, Self::Error> {
         Ok(Self::new(ast::PrincipalOrResourceConstraint::try_from(v)?))
     }
@@ -207,13 +209,18 @@ impl From<&ast::ResourceConstraint> for models::PrincipalOrResourceConstraint {
 }
 
 impl TryFrom<models::EntityReference> for ast::EntityReference {
-    type Error = ProtoToAstError;
+    type Error = ProtobufConversionError;
     fn try_from(v: models::EntityReference) -> Result<Self, Self::Error> {
-        match v.data.ok_or_else(|| ProtoToAstError::missing("data"))? {
+        match v
+            .data
+            .ok_or_else(|| ProtobufConversionError::missing("data"))?
+        {
             models::entity_reference::Data::Slot(slot) => {
-                match models::entity_reference::Slot::try_from(slot)
-                    .map_err(|e| ProtoToAstError(format!("invalid entity reference slot: {e}")))?
-                {
+                match models::entity_reference::Slot::try_from(slot).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!(
+                        "invalid entity reference slot: {e}"
+                    ))
+                })? {
                     models::entity_reference::Slot::Unit => Ok(ast::EntityReference::Slot(None)),
                 }
             }
@@ -242,12 +249,19 @@ impl From<&ast::EntityReference> for models::EntityReference {
 }
 
 impl TryFrom<models::PrincipalOrResourceConstraint> for ast::PrincipalOrResourceConstraint {
-    type Error = ProtoToAstError;
+    type Error = ProtobufConversionError;
     fn try_from(v: models::PrincipalOrResourceConstraint) -> Result<Self, Self::Error> {
-        match v.data.ok_or_else(|| ProtoToAstError::missing("data"))? {
+        match v
+            .data
+            .ok_or_else(|| ProtobufConversionError::missing("data"))?
+        {
             models::principal_or_resource_constraint::Data::Any(unit) => {
                 match models::principal_or_resource_constraint::Any::try_from(unit).map_err(
-                    |e| ProtoToAstError(format!("invalid principal/resource constraint: {e}")),
+                    |e| {
+                        ProtobufConversionError::InvalidValue(format!(
+                            "invalid principal/resource constraint: {e}"
+                        ))
+                    },
                 )? {
                     models::principal_or_resource_constraint::Any::Unit => {
                         Ok(ast::PrincipalOrResourceConstraint::Any)
@@ -256,19 +270,21 @@ impl TryFrom<models::PrincipalOrResourceConstraint> for ast::PrincipalOrResource
             }
             models::principal_or_resource_constraint::Data::In(msg) => Ok(
                 ast::PrincipalOrResourceConstraint::In(ast::EntityReference::try_from(
-                    msg.er.ok_or_else(|| ProtoToAstError::missing("er"))?,
+                    msg.er
+                        .ok_or_else(|| ProtobufConversionError::missing("er"))?,
                 )?),
             ),
             models::principal_or_resource_constraint::Data::Eq(msg) => Ok(
                 ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::try_from(
-                    msg.er.ok_or_else(|| ProtoToAstError::missing("er"))?,
+                    msg.er
+                        .ok_or_else(|| ProtobufConversionError::missing("er"))?,
                 )?),
             ),
             models::principal_or_resource_constraint::Data::Is(msg) => {
                 Ok(ast::PrincipalOrResourceConstraint::Is(
                     ast::EntityType::try_from(
                         msg.entity_type
-                            .ok_or_else(|| ProtoToAstError::missing("entity_type"))?,
+                            .ok_or_else(|| ProtobufConversionError::missing("entity_type"))?,
                     )?
                     .into(),
                 ))
@@ -277,11 +293,12 @@ impl TryFrom<models::PrincipalOrResourceConstraint> for ast::PrincipalOrResource
                 Ok(ast::PrincipalOrResourceConstraint::IsIn(
                     ast::EntityType::try_from(
                         msg.entity_type
-                            .ok_or_else(|| ProtoToAstError::missing("entity_type"))?,
+                            .ok_or_else(|| ProtobufConversionError::missing("entity_type"))?,
                     )?
                     .into(),
                     ast::EntityReference::try_from(
-                        msg.er.ok_or_else(|| ProtoToAstError::missing("er"))?,
+                        msg.er
+                            .ok_or_else(|| ProtobufConversionError::missing("er"))?,
                     )?,
                 ))
             }
@@ -331,13 +348,16 @@ impl From<&ast::PrincipalOrResourceConstraint> for models::PrincipalOrResourceCo
 }
 
 impl TryFrom<models::ActionConstraint> for ast::ActionConstraint {
-    type Error = ProtoToAstError;
+    type Error = ProtobufConversionError;
     fn try_from(v: models::ActionConstraint) -> Result<Self, Self::Error> {
-        match v.data.ok_or_else(|| ProtoToAstError::missing("data"))? {
+        match v
+            .data
+            .ok_or_else(|| ProtobufConversionError::missing("data"))?
+        {
             models::action_constraint::Data::Any(unit) => {
-                match models::action_constraint::Any::try_from(unit)
-                    .map_err(|e| ProtoToAstError(format!("invalid action constraint: {e}")))?
-                {
+                match models::action_constraint::Any::try_from(unit).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("invalid action constraint: {e}"))
+                })? {
                     models::action_constraint::Any::Unit => Ok(ast::ActionConstraint::Any),
                 }
             }
@@ -345,11 +365,12 @@ impl TryFrom<models::ActionConstraint> for ast::ActionConstraint {
                 msg.euids
                     .into_iter()
                     .map(|value| Ok(ast::EntityUID::try_from(value)?.into()))
-                    .collect::<Result<_, ProtoToAstError>>()?,
+                    .collect::<Result<_, ProtobufConversionError>>()?,
             )),
             models::action_constraint::Data::Eq(msg) => Ok(ast::ActionConstraint::Eq(
                 ast::EntityUID::try_from(
-                    msg.euid.ok_or_else(|| ProtoToAstError::missing("euid"))?,
+                    msg.euid
+                        .ok_or_else(|| ProtobufConversionError::missing("euid"))?,
                 )?
                 .into(),
             )),
@@ -411,7 +432,7 @@ impl From<&ast::Effect> for models::Effect {
 }
 
 impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
-    type Error = ProtoToAstError;
+    type Error = ProtobufConversionError;
     fn try_from(v: models::PolicySet) -> Result<Self, Self::Error> {
         let templates = v
             .templates
@@ -420,7 +441,7 @@ impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
                 let id = ast::PolicyID::from_string(&tb.id);
                 Ok((id, ast::Template::from(ast::TemplateBody::try_from(tb)?)))
             })
-            .collect::<Result<Vec<_>, ProtoToAstError>>()?;
+            .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
 
         let links = v
             .links
@@ -431,14 +452,14 @@ impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
                 let id = if p.is_template_link {
                     p.link_id
                         .as_ref()
-                        .ok_or_else(|| ProtoToAstError::missing("link_id"))?
+                        .ok_or_else(|| ProtobufConversionError::missing("link_id"))?
                 } else {
                     &p.template_id
                 };
                 let id = ast::PolicyID::from_string(id);
                 Ok((id, ast::LiteralPolicy::try_from(p)?))
             })
-            .collect::<Result<Vec<_>, ProtoToAstError>>()?;
+            .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
 
         Ok(Self::new(templates.into_iter(), links.into_iter()))
     }
@@ -461,11 +482,11 @@ impl From<&ast::PolicySet> for models::PolicySet {
 }
 
 impl TryFrom<models::PolicySet> for ast::PolicySet {
-    type Error = Box<dyn std::error::Error + Send + Sync>;
+    type Error = ProtobufConversionError;
     fn try_from(pset: models::PolicySet) -> Result<Self, Self::Error> {
-        Ok(ast::PolicySet::try_from(ast::LiteralPolicySet::try_from(
-            pset,
-        )?)?)
+        let literal = ast::LiteralPolicySet::try_from(pset)?;
+        ast::PolicySet::try_from(literal)
+            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid policy set: {e}")))
     }
 }
 

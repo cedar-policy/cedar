@@ -16,12 +16,12 @@
 
 #![allow(clippy::use_self, reason = "readability")]
 
-use super::ast::ProtoToAstError;
+use super::ast::ProtobufConversionError;
 use super::models;
 use cedar_policy_core::{ast, entities, extensions};
 
 impl TryFrom<models::Entities> for entities::Entities {
-    type Error = ProtoToAstError;
+    type Error = ProtobufConversionError;
 
     fn try_from(v: models::Entities) -> Result<Self, Self::Error> {
         let entities: Vec<ast::Entity> = v
@@ -40,7 +40,7 @@ impl TryFrom<models::Entities> for entities::Entities {
             entities::TCComputation::AssumeAlreadyComputed,
             extensions::Extensions::all_available(),
         )
-        .map_err(|e| ProtoToAstError(format!("invalid entities: {e}")))
+        .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid entities: {e}")))
     }
 }
 

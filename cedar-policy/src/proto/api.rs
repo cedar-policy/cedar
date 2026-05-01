@@ -15,11 +15,11 @@
  */
 
 use super::super::api;
-use super::{ast::ProtoToAstError, models, traits};
+use super::{ast::ProtobufConversionError, models, traits};
 
 /// Macro that implements `From<A>` and `TryFrom<B>` for types where
 /// one conversion direction is infallible, the other is not. This is typically the case where
-/// the API type converts to  protobuf models without failing, but converting the protobuf model
+/// the API type converts to protobuf models without failing, but converting the protobuf model
 /// to the API type requires additional checks.
 macro_rules! fallible_conversions {
     ( $A:ty, $A_expr:expr, $B:ty ) => {
@@ -30,7 +30,7 @@ macro_rules! fallible_conversions {
         }
 
         impl TryFrom<$B> for $A {
-            type Error = ProtoToAstError;
+            type Error = ProtobufConversionError;
             fn try_from(v: $B) -> Result<$A, Self::Error> {
                 Ok($A_expr(v.try_into()?))
             }
@@ -58,7 +58,7 @@ impl From<&api::Template> for models::TemplateBody {
 }
 
 impl TryFrom<models::TemplateBody> for api::Template {
-    type Error = ProtoToAstError;
+    type Error = ProtobufConversionError;
     fn try_from(v: models::TemplateBody) -> Result<Self, Self::Error> {
         Ok(Self::from_ast(v.try_into()?))
     }
@@ -77,10 +77,11 @@ impl From<&api::PolicySet> for models::PolicySet {
 }
 
 impl TryFrom<models::PolicySet> for api::PolicySet {
-    type Error = Box<dyn std::error::Error + Send + Sync>;
+    type Error = ProtobufConversionError;
     fn try_from(v: models::PolicySet) -> Result<Self, Self::Error> {
         let ast: cedar_policy_core::ast::PolicySet = v.try_into()?;
-        Ok(Self::from_ast(ast)?)
+        Self::from_ast(ast)
+            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid policy set: {e}")))
     }
 }
 
@@ -112,11 +113,13 @@ impl TryFrom<&models::ValidationMode> for api::ValidationMode {
             #[cfg(feature = "permissive-validate")]
             models::ValidationMode::Permissive => Ok(api::ValidationMode::Permissive),
             #[cfg(not(feature = "permissive-validate"))]
-            models::ValidationMode::Permissive => Err(ValidationModeError("protobuf specifies permissive validation, but `permissive-validate` feature not enabled in this build".to_string())),
+            models::ValidationMode::Permissive => Err(
+                ValidationModeError("protobuf specifies permissive validation, but `permissive-validate` feature not enabled in this build".to_string())),
             #[cfg(feature = "partial-validate")]
             models::ValidationMode::Partial => Ok(api::ValidationMode::Partial),
             #[cfg(not(feature = "partial-validate"))]
-            models::ValidationMode::Partial => Err(ValidationModeError("protobuf specifies partial validation, but `partial-validate` feature not enabled in this build".to_string())),
+            models::ValidationMode::Partial => Err(
+                ValidationModeError("protobuf specifies partial validation, but `partial-validate` feature not enabled in this build".to_string())),
         }
     }
 }

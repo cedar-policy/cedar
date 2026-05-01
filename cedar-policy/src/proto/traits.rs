@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use super::ast::ProtobufConversionError;
+
 /// Error type for protobuf decoding failures
 #[derive(Debug, thiserror::Error)]
 pub enum DecodeError {
@@ -22,13 +24,19 @@ pub enum DecodeError {
     Proto(prost::DecodeError),
     /// The protobuf message was well-formed but its contents could not be
     /// converted into the target Cedar type
-    #[error("invalid protobuf message contents: {0}")]
-    Conversion(Box<dyn std::error::Error + Send + Sync>),
+    #[error(transparent)]
+    Conversion(ProtobufConversionError),
 }
 
 impl From<prost::DecodeError> for DecodeError {
     fn from(e: prost::DecodeError) -> Self {
         Self::Proto(e)
+    }
+}
+
+impl From<ProtobufConversionError> for DecodeError {
+    fn from(e: ProtobufConversionError) -> Self {
+        Self::Conversion(e)
     }
 }
 
@@ -79,7 +87,7 @@ pub(crate) fn decode<M: prost::Message + Default, T: From<M>>(
 /// where the conversion from `M` to `T` is fallible
 pub(crate) fn try_decode<
     M: prost::Message + Default,
-    E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    E: Into<ProtobufConversionError>,
     T: TryFrom<M, Error = E>,
 >(
     buf: impl prost::bytes::Buf,
