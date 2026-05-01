@@ -22,6 +22,7 @@ pub mod evaluator;
 pub mod request;
 pub mod residual;
 pub mod response;
+pub mod value;
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -108,20 +109,19 @@ mod tests {
 
     use crate::ast::{Annotation, AnyId, BinaryOp, Literal, Value, ValueKind, Var};
     use crate::tpe::residual::{Residual, ResidualKind};
+    use crate::tpe::value::{PartialAttribute, PartialValue};
     use crate::validator::ValidatorSchema;
     use crate::{
         ast::{Eid, EntityUID, PolicySet},
         extensions::Extensions,
         parser::parse_policyset,
     };
-    use std::{
-        collections::{BTreeMap, HashSet},
-        sync::Arc,
-    };
+    use std::collections::HashSet;
 
     use crate::tpe::{
         entities::{PartialEntities, PartialEntity},
         request::{PartialEntityUID, PartialRequest},
+        value::PartialRecord,
     };
 
     use super::is_authorized;
@@ -211,10 +211,10 @@ action Delete appliesTo {
                 ty: "Document".parse().unwrap(),
                 eid: None,
             },
-            context: Some(Arc::new(BTreeMap::from_iter(std::iter::once((
+            context: Some(PartialRecord::from_attrs(std::iter::once((
                 "hasMFA".into(),
-                true.into(),
-            ))))),
+                PartialAttribute::Present(PartialValue::Lit(true.into())),
+            )))),
         }
     }
 
@@ -225,7 +225,7 @@ action Delete appliesTo {
                 uid.clone(),
                 PartialEntity {
                     uid,
-                    attrs: Some(BTreeMap::new()),
+                    attrs: Some(PartialRecord::new()),
                     ancestors: Some(HashSet::new()),
                     tags: None,
                 },
@@ -285,7 +285,6 @@ action Delete appliesTo {
 #[cfg(test)]
 mod tinytodo {
     use std::collections::HashSet;
-    use std::{collections::BTreeMap, sync::Arc};
 
     use crate::ast::{
         Annotation, AnyId, BinaryOp, EntityUID, Literal, PolicyID, Value, ValueKind, Var,
@@ -303,6 +302,7 @@ mod tinytodo {
     use crate::tpe::{
         entities::PartialEntities,
         request::{PartialEntityUID, PartialRequest},
+        value::PartialRecord,
     };
 
     use super::is_authorized;
@@ -412,7 +412,7 @@ when { principal in resource.editors };
                 ty: "List".parse().unwrap(),
                 eid: None,
             },
-            context: Some(Arc::new(BTreeMap::new())),
+            context: Some(PartialRecord::new()),
         }
     }
 
@@ -525,3 +525,6 @@ when { principal in resource.editors };
                 });
     }
 }
+
+#[cfg(test)]
+mod partial_eval_tests;

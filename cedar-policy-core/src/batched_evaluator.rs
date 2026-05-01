@@ -25,9 +25,10 @@ use std::sync::Arc;
 use crate::ast::{Entity, EntityUID, EntityUIDEntry, Request};
 use crate::authorizer::Decision;
 use crate::batched_evaluator::err::{BatchedEvalError, InsufficientIterationsError};
+use crate::entities::conformance::err::{EntitySchemaConformanceError, UnexpectedEntityTypeError};
 use crate::entities::TCComputation;
 use crate::tpe::entities::PartialEntity;
-use crate::tpe::err::PartialRequestError;
+use crate::tpe::err::{EntitiesError, EntityValidationError, PartialRequestError};
 use crate::tpe::policy_residual_map;
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
 use crate::tpe::residual::Residual;
@@ -70,7 +71,12 @@ fn concrete_request_to_partial(
 
     // Convert context
     let context = match &request.context {
-        Some(crate::ast::Context::Value(attrs)) => Some(attrs.clone()),
+        Some(crate::ast::Context::Value(attrs)) => {
+            Some(crate::tpe::value::PartialRecord::from_concrete_map(
+                attrs.as_ref(),
+                schema.get_action_id(&action).unwrap().context_type(),
+            ))
+        }
         Some(crate::ast::Context::RestrictedResidual(_)) => {
             return Err(PartialRequestError {}.into())
         }
@@ -127,17 +133,37 @@ pub fn is_authorized_batched(
         for (id, e_option) in loaded_entities {
             match e_option {
                 Some(e) => {
+                    let entity_type =
+                        schema.get_entity_type(id.entity_type()).ok_or_else(|| {
+                            EntitiesError::from(EntityValidationError::from(
+                                EntitySchemaConformanceError::UnexpectedEntityType(
+                                    UnexpectedEntityTypeError {
+                                        uid: id.clone(),
+                                        suggested_types: Vec::new(),
+                                    },
+                                ),
+                            ))
+                        })?;
                     entities.add_entities(
-                        iter::once((id, PartialEntity::try_from(e)?)),
+                        iter::once((id, PartialEntity::from_entity(e, entity_type)?)),
                         schema,
                         TCComputation::AssumeAlreadyComputed,
                     )?;
                 }
                 None => {
-                    entities.add_entity_trusted(
-                        id.clone(),
-                        PartialEntity::try_from(Entity::with_uid(id))?,
-                    )?;
+                    let entity_type =
+                        schema.get_entity_type(id.entity_type()).ok_or_else(|| {
+                            EntitiesError::from(EntityValidationError::from(
+                                EntitySchemaConformanceError::UnexpectedEntityType(
+                                    UnexpectedEntityTypeError {
+                                        uid: id.clone(),
+                                        suggested_types: Vec::new(),
+                                    },
+                                ),
+                            ))
+                        })?;
+                    let pe = PartialEntity::from_entity(Entity::with_uid(id.clone()), entity_type)?;
+                    entities.add_entity_trusted(id, pe)?;
                 }
             }
         }

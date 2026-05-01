@@ -27,7 +27,8 @@ use crate::{
 use crate::{
     tpe::entities::PartialEntities,
     tpe::request::PartialRequest,
-    tpe::residual::{Residual, ResidualKind},
+    tpe::residual::{Residual, ResidualAttribute, ResidualKind},
+    tpe::value::PartialAttribute,
 };
 
 /// The partial evaluator
@@ -90,7 +91,12 @@ impl Evaluator<'_> {
             }
             ResidualKind::Var(Var::Context) => {
                 if let Some(context) = &self.request.context {
-                    mk_concrete(Value::record_arc(context.clone(), None))
+                    let schema_ty = crate::entities::SchemaType::try_from(r.ty().clone()).ok();
+                    if let Some(concrete) = context.try_into_concrete_map(schema_ty.as_ref()) {
+                        return mk_concrete(Value::record(concrete, None));
+                    }
+                    let context_var = mk_residual(ResidualKind::Var(Var::Context));
+                    context.to_partial_residual(r.ty(), &context_var)
                 } else {
                     mk_residual(ResidualKind::Var(Var::Context))
                 }
@@ -324,10 +330,19 @@ impl Evaluator<'_> {
                                 if let Ok(tag) = v2.get_as_string() {
                                     if let Some(entity) = self.entities.get(uid) {
                                         if let Some(tags) = &entity.tags {
-                                            if let Some(v) = tags.get(tag) {
-                                                mk_concrete(v.clone())
-                                            } else {
-                                                mk_error()
+                                            match tags.get(tag) {
+                                                Some(PartialAttribute::Present(pv)) => pv
+                                                    .to_residual_with_expr(
+                                                        r.ty(),
+                                                        &binapp_residual(
+                                                            arg1.clone(),
+                                                            arg2.clone(),
+                                                        ),
+                                                    ),
+                                                Some(PartialAttribute::Unknown) | None => {
+                                                    binapp_residual(arg1, arg2)
+                                                }
+                                                Some(PartialAttribute::Absent) => mk_error(),
                                             }
                                         } else {
                                             binapp_residual(arg1, arg2)
@@ -347,7 +362,16 @@ impl Evaluator<'_> {
                                 if let Ok(tag) = v2.get_as_string() {
                                     if let Some(entity) = self.entities.get(uid) {
                                         if let Some(tags) = &entity.tags {
-                                            mk_concrete(tags.contains_key(tag).into())
+                                            match tags.get(tag) {
+                                                Some(PartialAttribute::Present(_))
+                                                | Some(PartialAttribute::Unknown) => {
+                                                    mk_concrete(true.into())
+                                                }
+                                                Some(PartialAttribute::Absent) => {
+                                                    mk_concrete(false.into())
+                                                }
+                                                None => binapp_residual(arg1, arg2),
+                                            }
                                         } else {
                                             binapp_residual(arg1, arg2)
                                         }
@@ -437,11 +461,19 @@ impl Evaluator<'_> {
                     } => {
                         if let Some(entity) = self.entities.get(uid.as_ref()) {
                             if let Some(attrs) = &entity.attrs {
-                                if let Some(val) = attrs.get(attr) {
-                                    return mk_concrete(val.clone());
-                                } else {
-                                    return mk_error();
-                                }
+                                let getattr_residual = || {
+                                    mk_residual(ResidualKind::GetAttr {
+                                        expr: Arc::new(expr.clone()),
+                                        attr: attr.clone(),
+                                    })
+                                };
+                                return match attrs.get(attr) {
+                                    Some(PartialAttribute::Present(pv)) => {
+                                        pv.to_residual_with_expr(r.ty(), &getattr_residual())
+                                    }
+                                    Some(PartialAttribute::Unknown) | None => getattr_residual(),
+                                    Some(PartialAttribute::Absent) => mk_error(),
+                                };
                             }
                         }
                         mk_residual(ResidualKind::GetAttr {
@@ -450,6 +482,20 @@ impl Evaluator<'_> {
                         })
                     }
                     Residual::Concrete { .. } => mk_error(),
+                    Residual::Partial {
+                        kind: ResidualKind::Record { fields, .. },
+                        ..
+                    } => match fields.get(attr) {
+                        Some(ResidualAttribute::Value(r)) => r.clone(),
+                        Some(ResidualAttribute::Unknown(parent))
+                        | Some(ResidualAttribute::UnknownExistence(parent)) => {
+                            mk_residual(ResidualKind::GetAttr {
+                                expr: Arc::new(parent.clone()),
+                                attr: attr.clone(),
+                            })
+                        }
+                        Some(ResidualAttribute::Absent) | None => mk_error(),
+                    },
                     Residual::Partial { .. } => mk_residual(ResidualKind::GetAttr {
                         expr: Arc::new(expr),
                         attr: attr.clone(),
@@ -478,7 +524,15 @@ impl Evaluator<'_> {
                     } => {
                         if let Some(entity) = self.entities.get(uid.as_ref()) {
                             if let Some(attrs) = &entity.attrs {
-                                return mk_concrete(attrs.contains_key(attr).into());
+                                return match attrs.get(attr) {
+                                    Some(PartialAttribute::Present(_))
+                                    | Some(PartialAttribute::Unknown) => mk_concrete(true.into()),
+                                    Some(PartialAttribute::Absent) => mk_concrete(false.into()),
+                                    None => mk_residual(ResidualKind::HasAttr {
+                                        expr: Arc::new(expr),
+                                        attr: attr.clone(),
+                                    }),
+                                };
                             }
                         }
                         mk_residual(ResidualKind::HasAttr {
@@ -487,6 +541,21 @@ impl Evaluator<'_> {
                         })
                     }
                     Residual::Concrete { .. } => mk_error(),
+                    Residual::Partial {
+                        kind: ResidualKind::Record { fields, .. },
+                        ..
+                    } => match fields.get(attr) {
+                        Some(ResidualAttribute::Value(_)) | Some(ResidualAttribute::Unknown(_)) => {
+                            mk_concrete(true.into())
+                        }
+                        Some(ResidualAttribute::Absent) | None => mk_concrete(false.into()),
+                        Some(ResidualAttribute::UnknownExistence(parent)) => {
+                            mk_residual(ResidualKind::HasAttr {
+                                expr: Arc::new(parent.clone()),
+                                attr: attr.clone(),
+                            })
+                        }
+                    },
                     Residual::Partial { .. } => mk_residual(ResidualKind::HasAttr {
                         expr: Arc::new(expr),
                         attr: attr.clone(),
@@ -528,31 +597,53 @@ impl Evaluator<'_> {
                     mk_residual(ResidualKind::Set(Arc::new(es)))
                 }
             }
-            ResidualKind::Record(m) => {
-                let record = m
+            ResidualKind::Record { fields: m, .. } => {
+                let record: Vec<_> = m
                     .as_ref()
                     .iter()
-                    .map(|(a, e)| (a.clone(), self.interpret(e)));
-                if let Ok(m) = record
-                    .clone()
-                    .map(|(a, r)| Ok((a, Value::try_from(r)?)))
-                    .collect::<std::result::Result<BTreeMap<_, _>, ()>>()
-                {
-                    mk_concrete(Value {
-                        value: ValueKind::Record(Arc::new(m)),
-                        loc: None,
+                    .map(|(a, e)| {
+                        (
+                            a.clone(),
+                            match e {
+                                ResidualAttribute::Value(r) => {
+                                    ResidualAttribute::Value(self.interpret(r))
+                                }
+                                other => other.clone(),
+                            },
+                        )
                     })
-                } else {
-                    let mut m = BTreeMap::new();
-                    for (a, r) in record {
-                        if matches!(r, Residual::Error(_)) {
-                            return mk_error();
-                        } else {
-                            m.insert(a, r);
-                        }
+                    .collect();
+                let all_concrete = record
+                    .iter()
+                    .all(|(_, e)| matches!(e, ResidualAttribute::Value(Residual::Concrete { .. })));
+                if all_concrete {
+                    if let Ok(m) = record
+                        .iter()
+                        .filter_map(|(a, e)| match e {
+                            ResidualAttribute::Value(r) => {
+                                Some((a.clone(), Value::try_from(r.clone())))
+                            }
+                            _ => None,
+                        })
+                        .map(|(a, r)| Ok((a, r?)))
+                        .collect::<std::result::Result<BTreeMap<_, _>, ()>>()
+                    {
+                        return mk_concrete(Value {
+                            value: ValueKind::Record(Arc::new(m)),
+                            loc: None,
+                        });
                     }
-                    mk_residual(ResidualKind::Record(Arc::new(m)))
                 }
+                let mut new_m = BTreeMap::new();
+                for (a, r) in record {
+                    if let ResidualAttribute::Value(Residual::Error(_)) = &r {
+                        return mk_error();
+                    }
+                    new_m.insert(a, r);
+                }
+                mk_residual(ResidualKind::Record {
+                    fields: Arc::new(new_m),
+                })
             }
         }
     }
@@ -643,9 +734,9 @@ fn normalize_ext_value_inner(value: &Value) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashSet};
+    use std::collections::HashSet;
 
-    use crate::ast::{Expr, SlotEnv, UnwrapInfallible};
+    use crate::ast::{Expr, Set, SlotEnv, UnwrapInfallible};
     use crate::tpe::err::ExprToResidualError;
     use crate::validator::types::Type;
     use crate::{
@@ -665,7 +756,8 @@ mod tests {
         ast,
         tpe::entities::{PartialEntities, PartialEntity},
         tpe::request::{PartialEntityUID, PartialRequest},
-        tpe::residual::{Residual, ResidualKind},
+        tpe::residual::{Residual, ResidualAttribute, ResidualKind},
+        tpe::value::{PartialAttribute, PartialRecord, PartialValue},
     };
 
     use super::Evaluator;
@@ -1157,9 +1249,9 @@ mod tests {
                     dummy_uid(),
                     PartialEntity {
                         uid: dummy_uid(),
-                        attrs: Some(BTreeMap::from_iter([(
+                        attrs: Some(PartialRecord::from_attrs([(
                             "s".parse().unwrap(),
-                            Value::from("bar"),
+                            PartialAttribute::Present(PartialValue::Lit(Literal::from("bar"))),
                         )])),
                         ancestors: None,
                         tags: None,
@@ -1226,12 +1318,16 @@ mod tests {
                 assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
             }
         );
+        // When attr is not in the map, its existence is unknown → residual
         assert_matches!(
             eval.interpret_expr(
                 &builder().get_attr(builder().var(Var::Resource), "baz".parse().unwrap())
             )
             .unwrap(),
-            Residual::Error(_),
+            Residual::Partial {
+                kind: ResidualKind::GetAttr { .. },
+                ..
+            },
         );
     }
 
@@ -1252,9 +1348,9 @@ mod tests {
                     dummy_uid(),
                     PartialEntity {
                         uid: dummy_uid(),
-                        attrs: Some(BTreeMap::from_iter([(
+                        attrs: Some(PartialRecord::from_attrs([(
                             "s".parse().unwrap(),
-                            Value::from("bar"),
+                            PartialAttribute::Present(PartialValue::Lit(Literal::from("bar"))),
                         )])),
                         ancestors: None,
                         tags: None,
@@ -1446,10 +1542,10 @@ mod tests {
                 )]
             ).unwrap()).unwrap(),
             Residual::Partial {
-                kind: ResidualKind::Record(m),
+                kind: ResidualKind::Record { fields: m, .. },
                 ..
             } => {
-                assert_matches!(m.as_ref().get("s"), Some(Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. }));
+                assert_matches!(m.as_ref().get("s"), Some(ResidualAttribute::Value(Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. })));
             }
         );
 
@@ -1549,9 +1645,9 @@ mod tests {
                         uid: dummy_uid(),
                         attrs: None,
                         ancestors: Some(HashSet::from_iter([r#"E::"e""#.parse().unwrap()])),
-                        tags: Some(BTreeMap::from_iter([(
+                        tags: Some(PartialRecord::from_attrs([(
                             "s".parse().unwrap(),
-                            Value::from("bar"),
+                            PartialAttribute::Present(PartialValue::Lit(Literal::from("bar"))),
                         )])),
                     },
                 ),
@@ -1994,7 +2090,10 @@ mod tests {
         let extensions = Extensions::all_available();
         let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
         let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
-            crate::ast::PartialValue::Value(v) => v,
+            crate::ast::PartialValue::Value(Value {
+                value: ValueKind::ExtensionValue(ev),
+                ..
+            }) => ev,
             _ => panic!("expected concrete value"),
         };
 
@@ -2005,7 +2104,10 @@ mod tests {
                 entity_uid.clone(),
                 PartialEntity {
                     uid: entity_uid.clone(),
-                    attrs: Some(BTreeMap::from_iter([("dt".parse().unwrap(), datetime_val)])),
+                    attrs: Some(PartialRecord::from_attrs([(
+                        "dt".parse().unwrap(),
+                        PartialAttribute::Present(PartialValue::ExtensionValue(datetime_val)),
+                    )])),
                     ancestors: None,
                     tags: None,
                 },
@@ -2069,23 +2171,31 @@ mod tests {
 
     #[test]
     fn test_datetime_in_record_attr_from_entity_is_normalized() {
-        use smol_str::ToSmolStr;
         let extensions = Extensions::all_available();
         let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
         let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
-            crate::ast::PartialValue::Value(v) => v,
+            crate::ast::PartialValue::Value(Value {
+                value: ValueKind::ExtensionValue(ev),
+                ..
+            }) => ev,
             _ => panic!("expected concrete value"),
         };
 
         // Entity attribute "rec" is a record containing the non-canonical datetime.
         let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
-        let rec_val = Value::record([("dt".to_smolstr(), datetime_val)], None);
+        let rec_val = PartialValue::Record(PartialRecord::from_attrs([(
+            "dt".parse().unwrap(),
+            PartialAttribute::Present(PartialValue::ExtensionValue(datetime_val)),
+        )]));
         let entities = PartialEntities::from_entities_unchecked(
             [(
                 entity_uid.clone(),
                 PartialEntity {
                     uid: entity_uid.clone(),
-                    attrs: Some(BTreeMap::from_iter([("rec".parse().unwrap(), rec_val)])),
+                    attrs: Some(PartialRecord::from_attrs([(
+                        "rec".parse().unwrap(),
+                        PartialAttribute::Present(rec_val),
+                    )])),
                     ancestors: None,
                     tags: None,
                 },
@@ -2165,13 +2275,16 @@ mod tests {
         // Entity attribute "s" is a set containing a plain value followed by the
         // non-canonical datetime, so the loop skips the first element before normalizing.
         let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
-        let set_val = Value::set([Value::from(1), datetime_val], None);
+        let set_val = PartialValue::Set(Set::new([Value::from(1), datetime_val]));
         let entities = PartialEntities::from_entities_unchecked(
             [(
                 entity_uid.clone(),
                 PartialEntity {
                     uid: entity_uid.clone(),
-                    attrs: Some(BTreeMap::from_iter([("s".parse().unwrap(), set_val)])),
+                    attrs: Some(PartialRecord::from_attrs([(
+                        "s".parse().unwrap(),
+                        PartialAttribute::Present(set_val),
+                    )])),
                     ancestors: None,
                     tags: None,
                 },
@@ -2227,26 +2340,38 @@ mod tests {
         let extensions = Extensions::all_available();
         let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
         let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
-            crate::ast::PartialValue::Value(v) => v,
+            crate::ast::PartialValue::Value(Value {
+                value: ValueKind::ExtensionValue(ev),
+                ..
+            }) => ev,
             _ => panic!("expected concrete value"),
         };
 
         // Record with "a" before "dt" and "z" after, so the skip(idx+1) path is exercised.
         let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
-        let rec_val = Value::record(
-            [
-                ("a".to_smolstr(), Value::from(1)),
-                ("dt".to_smolstr(), datetime_val),
-                ("z".to_smolstr(), Value::from(2)),
-            ],
-            None,
-        );
+        let rec_val = PartialValue::Record(PartialRecord::from_attrs([
+            (
+                "a".to_smolstr(),
+                PartialAttribute::Present(PartialValue::Lit(1.into())),
+            ),
+            (
+                "dt".to_smolstr(),
+                PartialAttribute::Present(PartialValue::ExtensionValue(datetime_val)),
+            ),
+            (
+                "z".to_smolstr(),
+                PartialAttribute::Present(PartialValue::Lit(2.into())),
+            ),
+        ]));
         let entities = PartialEntities::from_entities_unchecked(
             [(
                 entity_uid.clone(),
                 PartialEntity {
                     uid: entity_uid.clone(),
-                    attrs: Some(BTreeMap::from_iter([("rec".parse().unwrap(), rec_val)])),
+                    attrs: Some(PartialRecord::from_attrs([(
+                        "rec".parse().unwrap(),
+                        PartialAttribute::Present(rec_val),
+                    )])),
                     ancestors: None,
                     tags: None,
                 },
@@ -2299,5 +2424,272 @@ mod tests {
                 _ => assertion_failure!("toplevel should be a record"),
             }
         }
+    }
+
+    /// Tests demonstrating TPE evaluation with specific unknown/absent attributes and tags.
+    ///
+    /// Entity setup:
+    ///   E::"full"  — attrs: {s: Present("bar"), missing: Absent, mystery: Unknown}
+    ///                tags:  {t1: Present("tv"), gone: Absent, secret: Unknown}
+    ///   E::"empty" — attrs: Some(empty), tags: Some(empty)  (not-in-map for everything)
+    #[test]
+    fn test_four_state_attrs() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            r#"E::"full""#.parse::<EntityUID>().unwrap().into(),
+            action(),
+            None,
+        );
+        let full_uid: EntityUID = r#"E::"full""#.parse().unwrap();
+        let empty_uid: EntityUID = r#"E::"empty""#.parse().unwrap();
+        let entities = PartialEntities::from_entities_unchecked(
+            [
+                (
+                    full_uid.clone(),
+                    PartialEntity {
+                        uid: full_uid.clone(),
+                        attrs: Some(PartialRecord::from_attrs([
+                            (
+                                "s".into(),
+                                PartialAttribute::Present(PartialValue::Lit(Literal::from("bar"))),
+                            ),
+                            ("missing".into(), PartialAttribute::Absent),
+                            ("mystery".into(), PartialAttribute::Unknown),
+                        ])),
+                        ancestors: Some(HashSet::new()),
+                        tags: Some(PartialRecord::from_attrs([
+                            (
+                                "t1".into(),
+                                PartialAttribute::Present(PartialValue::Lit(Literal::from("tv"))),
+                            ),
+                            ("gone".into(), PartialAttribute::Absent),
+                            ("secret".into(), PartialAttribute::Unknown),
+                        ])),
+                    },
+                ),
+                (
+                    empty_uid.clone(),
+                    PartialEntity {
+                        uid: empty_uid.clone(),
+                        attrs: Some(PartialRecord::new()),
+                        ancestors: Some(HashSet::new()),
+                        tags: Some(PartialRecord::new()),
+                    },
+                ),
+            ]
+            .into_iter(),
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+
+        let full = || builder().var(Var::Resource);
+        let empty = || builder().val(empty_uid.clone());
+
+        // === has attr ===
+
+        // Present attr → true
+        assert_matches!(
+            eval.interpret_expr(&builder().has_attr(full(), "s".into()))
+                .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+        // Absent attr → false
+        assert_matches!(
+            eval.interpret_expr(&builder().has_attr(full(), "missing".into()))
+                .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(false)),
+                    ..
+                },
+                ..
+            }
+        );
+        // Unknown attr → true (it exists, value unknown)
+        assert_matches!(
+            eval.interpret_expr(&builder().has_attr(full(), "mystery".into()))
+                .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+        // Not-in-map attr → residual (unknown existence)
+        assert_matches!(
+            eval.interpret_expr(&builder().has_attr(empty(), "anything".into()))
+                .unwrap(),
+            Residual::Partial {
+                kind: ResidualKind::HasAttr { .. },
+                ..
+            }
+        );
+
+        // === get attr ===
+
+        // Present attr → concrete value
+        assert_matches!(
+            eval.interpret_expr(&builder().get_attr(full(), "s".parse().unwrap())).unwrap(),
+            Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::String(s)), .. }, .. } => {
+                assert_eq!(s, "bar");
+            }
+        );
+        // Absent attr → error (definitively missing)
+        assert_matches!(
+            eval.interpret_expr(&builder().get_attr(full(), "missing".parse().unwrap()))
+                .unwrap(),
+            Residual::Error(_)
+        );
+        // Unknown attr → residual
+        assert_matches!(
+            eval.interpret_expr(&builder().get_attr(full(), "mystery".parse().unwrap()))
+                .unwrap(),
+            Residual::Partial {
+                kind: ResidualKind::GetAttr { .. },
+                ..
+            }
+        );
+        // Not-in-map attr → residual (unknown existence)
+        assert_matches!(
+            eval.interpret_expr(&builder().get_attr(empty(), "anything".parse().unwrap()))
+                .unwrap(),
+            Residual::Partial {
+                kind: ResidualKind::GetAttr { .. },
+                ..
+            }
+        );
+
+        // === has tag ===
+
+        // Present tag → true
+        assert_matches!(
+            eval.interpret_expr(&builder().binary_app(
+                BinaryOp::HasTag,
+                full(),
+                builder().val("t1")
+            ))
+            .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+        // Absent tag → false
+        assert_matches!(
+            eval.interpret_expr(&builder().binary_app(
+                BinaryOp::HasTag,
+                full(),
+                builder().val("gone")
+            ))
+            .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(false)),
+                    ..
+                },
+                ..
+            }
+        );
+        // Unknown tag → true
+        assert_matches!(
+            eval.interpret_expr(&builder().binary_app(
+                BinaryOp::HasTag,
+                full(),
+                builder().val("secret")
+            ))
+            .unwrap(),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+        // Not-in-map tag → residual
+        assert_matches!(
+            eval.interpret_expr(&builder().binary_app(
+                BinaryOp::HasTag,
+                empty(),
+                builder().val("anything")
+            ))
+            .unwrap(),
+            Residual::Partial {
+                kind: ResidualKind::BinaryApp {
+                    op: BinaryOp::HasTag,
+                    ..
+                },
+                ..
+            }
+        );
+
+        // === get tag ===
+
+        // Present tag → concrete value
+        assert_matches!(
+            eval.interpret_expr(&builder().binary_app(BinaryOp::GetTag, full(), builder().val("t1"))).unwrap(),
+            Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::String(s)), .. }, .. } => {
+                assert_eq!(s, "tv");
+            }
+        );
+        // Absent tag → error
+        assert_matches!(
+            eval.interpret_expr(&builder().binary_app(
+                BinaryOp::GetTag,
+                full(),
+                builder().val("gone")
+            ))
+            .unwrap(),
+            Residual::Error(_)
+        );
+        // Unknown tag → residual
+        assert_matches!(
+            eval.interpret_expr(&builder().binary_app(
+                BinaryOp::GetTag,
+                full(),
+                builder().val("secret")
+            ))
+            .unwrap(),
+            Residual::Partial {
+                kind: ResidualKind::BinaryApp {
+                    op: BinaryOp::GetTag,
+                    ..
+                },
+                ..
+            }
+        );
+        // Not-in-map tag → residual
+        assert_matches!(
+            eval.interpret_expr(&builder().binary_app(
+                BinaryOp::GetTag,
+                empty(),
+                builder().val("anything")
+            ))
+            .unwrap(),
+            Residual::Partial {
+                kind: ResidualKind::BinaryApp {
+                    op: BinaryOp::GetTag,
+                    ..
+                },
+                ..
+            }
+        );
     }
 }

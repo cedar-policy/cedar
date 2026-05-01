@@ -26,8 +26,10 @@ use crate::tpe::err::{
     IncorrectResourceEntityTypeError, NoMatchingReqEnvError, RequestBuilderError,
     RequestConsistencyError,
 };
+use crate::tpe::value::PartialRecord;
 use crate::validator::request_validation_errors::{
-    UndeclaredActionError, UndeclaredPrincipalTypeError, UndeclaredResourceTypeError,
+    InvalidContextError, UndeclaredActionError, UndeclaredPrincipalTypeError,
+    UndeclaredResourceTypeError,
 };
 use crate::validator::{
     types::RequestEnv, RequestValidationError, ValidationMode, ValidatorEntityType,
@@ -82,8 +84,9 @@ pub struct PartialRequest {
     pub(crate) resource: PartialEntityUID,
 
     /// Context associated with the request.
-    /// `None` means that variable will result in a residual for partial evaluation.
-    pub(crate) context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+    /// `None` means the entire context is unknown and will result in a residual.
+    /// `Some(record)` allows per-field partial knowledge via `PartialRecord`.
+    pub(crate) context: Option<PartialRecord>,
 }
 
 impl PartialRequest {
@@ -93,7 +96,7 @@ impl PartialRequest {
         action: EntityUID,
         resource: PartialEntityUID,
 
-        context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+        context: Option<PartialRecord>,
         schema: &ValidatorSchema,
     ) -> std::result::Result<Self, RequestValidationError> {
         let req = Self {
@@ -111,7 +114,7 @@ impl PartialRequest {
         principal: PartialEntityUID,
         resource: PartialEntityUID,
         action: EntityUID,
-        context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+        context: Option<PartialRecord>,
     ) -> Self {
         Self {
             principal,
@@ -180,12 +183,65 @@ impl PartialRequest {
                 }
                 .into());
             }
-            if let Some(m) = &self.context {
-                schema.validate_context(
-                    &Context::Value(m.clone()),
-                    &self.action,
-                    Extensions::all_available(),
-                )?;
+            if let Some(ctx) = &self.context {
+                let context_schema_ty = schema
+                    .context_type(&self.action)
+                    .and_then(|ty| crate::entities::SchemaType::try_from(ty.clone()).ok());
+                if let Some(concrete) = ctx.try_into_concrete_map(context_schema_ty.as_ref()) {
+                    schema.validate_context(
+                        &Context::Value(std::sync::Arc::new(concrete)),
+                        &self.action,
+                        Extensions::all_available(),
+                    )?;
+                } else if let Some(schema_ty) = &context_schema_ty {
+                    let ctx_value = crate::tpe::value::PartialValue::Record(ctx.clone());
+                    crate::tpe::entities::typecheck_partial_value(
+                        &ctx_value,
+                        schema_ty,
+                        Extensions::all_available(),
+                    )
+                    .map_err(|e| match e {
+                        crate::entities::conformance::TypecheckError::TypeMismatch(_) => {
+                            InvalidContextError {
+                                context: Context::empty(),
+                                action: std::sync::Arc::new(self.action.clone()),
+                            }
+                            .into()
+                        }
+                        crate::entities::conformance::TypecheckError::ExtensionFunctionLookup(
+                            e,
+                        ) => RequestValidationError::TypeOfContext(e),
+                    })?;
+                    // Validate EUIDs in concrete parts of the partial context
+                    use crate::tpe::value::PartialAttribute;
+                    let core_schema = crate::validator::CoreSchema::new(schema);
+                    let ctx_attrs = match schema_ty {
+                        crate::entities::SchemaType::Record { attrs, .. } => Some(attrs),
+                        _ => None,
+                    };
+                    for (k, attr) in ctx.iter() {
+                        if let PartialAttribute::Present(val) = attr {
+                            let field_ty = ctx_attrs.and_then(|a| a.get(k)).map(|a| &a.attr_type);
+                            if let Some(concrete) = val.try_into_value(field_ty) {
+                                let ast_pv: crate::ast::PartialValue = concrete.into();
+                                crate::entities::conformance::validate_euids_in_partial_value(
+                                    &core_schema,
+                                    &ast_pv,
+                                )
+                                .map_err(|e| match e {
+                                    crate::entities::conformance::ValidateEuidError::InvalidEnumEntity(e) => {
+                                        RequestValidationError::InvalidEnumEntity(e)
+                                    }
+                                    crate::entities::conformance::ValidateEuidError::UndeclaredAction(e) => {
+                                        crate::validator::request_validation_errors::UndeclaredActionError {
+                                            action: std::sync::Arc::new(e.uid),
+                                        }.into()
+                                    }
+                                })?;
+                            }
+                        }
+                    }
+                }
             }
             Ok(())
         } else {
@@ -266,8 +322,8 @@ impl PartialRequest {
 
         match &request.context {
             Some(Context::Value(c)) => {
-                if let Some(m) = &self.context {
-                    if c != m {
+                if let Some(ctx) = &self.context {
+                    if !ctx.check_consistency(c.as_ref()) {
                         return Err(RequestConsistencyError::InconsistentContext);
                     }
                 }
@@ -307,9 +363,24 @@ impl PartialRequest {
         self.action.clone()
     }
 
-    /// Get the `context` attributes
-    pub fn get_context_attrs(&self) -> Option<&BTreeMap<SmolStr, Value>> {
-        self.context.as_ref().map(|attrs| attrs.as_ref())
+    /// Get the `context`
+    pub fn get_context(&self) -> Option<&PartialRecord> {
+        self.context.as_ref()
+    }
+
+    /// Get the `context` as a concrete attribute map, if all fields are known.
+    /// Uses the schema to verify that all expected context fields are present;
+    /// returns `None` if any expected field is missing from the map.
+    pub fn get_context_attrs(
+        &self,
+        schema: Option<&ValidatorSchema>,
+    ) -> Option<BTreeMap<SmolStr, Value>> {
+        let context_schema_ty = schema
+            .and_then(|s| s.context_type(&self.action))
+            .and_then(|ty| crate::entities::SchemaType::try_from(ty.clone()).ok());
+        self.context
+            .as_ref()?
+            .try_into_concrete_map(context_schema_ty.as_ref())
     }
 }
 
@@ -356,12 +427,19 @@ impl<'s> RequestBuilder<'s> {
                 std::result::Result::Ok(principal),
                 std::result::Result::Ok(resource),
                 Some(context),
-            ) => Some(Request::new_unchecked(
-                principal.into(),
-                action.clone().into(),
-                resource.into(),
-                Some(Context::Value(context.clone())),
-            )),
+            ) => {
+                let context_schema_ty = self
+                    .schema
+                    .context_type(action)
+                    .and_then(|ty| crate::entities::SchemaType::try_from(ty.clone()).ok());
+                let concrete_ctx = context.try_into_concrete_map(context_schema_ty.as_ref())?;
+                Some(Request::new_unchecked(
+                    principal.into(),
+                    action.clone().into(),
+                    resource.into(),
+                    Some(Context::Value(Arc::new(concrete_ctx))),
+                ))
+            }
             _ => None,
         }
     }
@@ -476,7 +554,14 @@ impl<'s> RequestBuilder<'s> {
                         Extensions::all_available(),
                     )
                     .map_err(RequestBuilderError::IllTypedContextCandidate)?;
-                self.partial_request.context = Some(v.clone());
+                self.partial_request.context = Some(PartialRecord::from_concrete_map(
+                    v.as_ref(),
+                    &self
+                        .schema
+                        .get_action_id(&self.partial_request.action)
+                        .unwrap()
+                        .context,
+                ));
                 Ok(())
             }
         } else {
