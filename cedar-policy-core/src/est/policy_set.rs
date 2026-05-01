@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use super::Clause;
 use super::Policy;
 use super::PolicySetFromJsonError;
 use crate::ast::{self, EntityUID, PolicyID, SlotId};
@@ -76,6 +77,20 @@ impl PolicySet {
     /// (e.g., after successful conversion to an `ast::PolicySet`)
     pub fn get_template(&self, id: &PolicyID) -> Option<Policy> {
         self.templates.get(id).cloned()
+    }
+
+    /// Return the largest `Expr::height` across every condition body in
+    /// every static policy and template in this policy set.
+    /// Returns `None` when there are no conditions.
+    pub fn max_expr_height(&self) -> Option<usize> {
+        self.static_policies
+            .values()
+            .chain(self.templates.values())
+            .flat_map(|p| &p.conditions)
+            .map(|clause| match clause {
+                Clause::When(e) | Clause::Unless(e) => e.height(),
+            })
+            .max()
     }
 }
 
@@ -375,5 +390,364 @@ mod test {
         let src = r#"principal(p, action, resource);"#;
         let node = crate::parser::text_to_cst::parse_policies(src).expect("policies should parse");
         PolicySet::try_from(node).expect_err("Expected parse error to result in err");
+    }
+
+    #[test]
+    fn max_expr_height_empty_policy_set() {
+        let json = json!({
+            "staticPolicies": {},
+            "templates": {},
+            "templateLinks": []
+        });
+        let policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        assert_eq!(policy_set.max_expr_height(), None);
+    }
+
+    #[test]
+    fn max_expr_height_no_conditions() {
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": []
+                }
+            },
+            "templates": {},
+            "templateLinks": []
+        });
+        let policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        assert_eq!(policy_set.max_expr_height(), None);
+    }
+
+    #[test]
+    fn max_expr_height_single_literal_condition() {
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": { "Value": true }
+                        }
+                    ]
+                }
+            },
+            "templates": {},
+            "templateLinks": []
+        });
+        let policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        assert_eq!(policy_set.max_expr_height(), Some(0));
+    }
+
+    #[test]
+    fn max_expr_height_nested_expression() {
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": { "Value": 1 },
+                                    "right": { "Value": 2 }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "templates": {},
+            "templateLinks": []
+        });
+        let policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        assert_eq!(policy_set.max_expr_height(), Some(1));
+    }
+
+    #[test]
+    fn max_expr_height_multiple_policies_takes_max() {
+        // policy1 condition: `true` => height 0
+        // policy2 condition: `!(1 == 2)` => height 2
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": { "Value": true }
+                        }
+                    ]
+                },
+                "policy2": {
+                    "effect": "forbid",
+                    "principal": { "op": "All" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "!": {
+                                    "arg": {
+                                        "==": {
+                                            "left": { "Value": 1 },
+                                            "right": { "Value": 2 }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "templates": {},
+            "templateLinks": []
+        });
+        let policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        assert_eq!(policy_set.max_expr_height(), Some(2));
+    }
+
+    #[test]
+    fn max_expr_height_unless_clause() {
+        // `unless { 1 == 2 }` => height 1
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": [
+                        {
+                            "kind": "unless",
+                            "body": {
+                                "==": {
+                                    "left": { "Value": 1 },
+                                    "right": { "Value": 2 }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "templates": {},
+            "templateLinks": []
+        });
+        let policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        assert_eq!(policy_set.max_expr_height(), Some(1));
+    }
+
+    #[test]
+    fn max_expr_height_templates_included() {
+        // static policy condition: `true` => height 0
+        // template condition: `!(1 == 2)` => height 2
+        // max should be 2 (from template)
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": { "Value": true }
+                        }
+                    ]
+                }
+            },
+            "templates": {
+                "template1": {
+                    "effect": "permit",
+                    "principal": { "op": "==", "slot": "?principal" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "!": {
+                                    "arg": {
+                                        "==": {
+                                            "left": { "Value": 1 },
+                                            "right": { "Value": 2 }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "templateLinks": []
+        });
+        let policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        assert_eq!(policy_set.max_expr_height(), Some(2));
+    }
+
+    #[test]
+    fn max_expr_height_multiple_conditions_per_policy() {
+        // Two conditions on one policy:
+        //   when { true } => height 0
+        //   when { 1 == 2 } => height 1
+        // Max should be 1
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": { "Value": true }
+                        },
+                        {
+                            "kind": "when",
+                            "body": {
+                                "==": {
+                                    "left": { "Value": 1 },
+                                    "right": { "Value": 2 }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "templates": {},
+            "templateLinks": []
+        });
+        let policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        assert_eq!(policy_set.max_expr_height(), Some(1));
+    }
+
+    #[test]
+    fn max_expr_height_literal_nested_set_matches_non_literal() {
+        // A literal set-of-set-of-set expressed as a Value node:
+        // Value(Set([Set([Set([Long(1)])])])) has CedarValueJson height 3,
+        // which is added to the Value node's depth (0), giving height 3.
+        let json_literal = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "Value": [[[1]]]
+                            }
+                        }
+                    ]
+                }
+            },
+            "templates": {},
+            "templateLinks": []
+        });
+        let policy_set_literal: PolicySet =
+            serde_json::from_value(json_literal).expect("failed to parse from JSON");
+        assert_eq!(policy_set_literal.max_expr_height(), Some(3));
+        // The same nesting expressed as non-literal Expr Set nodes:
+        // Set([Set([Set([Value(1)])])])
+        // 3 edges on the longest root-to-leaf path => height 3
+        let json_non_literal = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "Set": [
+                                    { "Set": [
+                                        { "Set": [
+                                            { "Value": 1 }
+                                        ]}
+                                    ]}
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+            "templates": {},
+            "templateLinks": []
+        });
+        let policy_set_non_literal: PolicySet =
+            serde_json::from_value(json_non_literal).expect("failed to parse from JSON");
+        assert_eq!(policy_set_non_literal.max_expr_height(), Some(3));
+        // Both representations have the same height
+        assert_eq!(
+            policy_set_literal.max_expr_height(),
+            policy_set_non_literal.max_expr_height()
+        );
+    }
+
+    #[test]
+    fn max_expr_height_deeply_nested() {
+        // !(!(!(true))): 3 edges on the longest root-to-leaf path => height 3
+        let json = json!({
+            "staticPolicies": {
+                "policy1": {
+                    "effect": "permit",
+                    "principal": { "op": "All" },
+                    "action": { "op": "All" },
+                    "resource": { "op": "All" },
+                    "conditions": [
+                        {
+                            "kind": "when",
+                            "body": {
+                                "!": {
+                                    "arg": {
+                                        "!": {
+                                            "arg": {
+                                                "!": {
+                                                    "arg": { "Value": true }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            "templates": {},
+            "templateLinks": []
+        });
+        let policy_set: PolicySet =
+            serde_json::from_value(json).expect("failed to parse from JSON");
+        assert_eq!(policy_set.max_expr_height(), Some(3));
     }
 }
