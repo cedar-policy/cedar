@@ -76,7 +76,10 @@ pub(crate) fn encode_to_vec<M: prost::Message>(thing: impl Into<M>) -> Vec<u8> {
 use std::default::Default;
 
 /// Decode something of type `T` from `buf` using the protobuf format `M`
-#[expect(dead_code, reason = "available for types with infallible From conversions")]
+#[expect(
+    dead_code,
+    reason = "available for types with infallible From conversions"
+)]
 pub(crate) fn decode<M: prost::Message + Default, T: From<M>>(
     buf: impl prost::bytes::Buf,
 ) -> Result<T, DecodeError> {

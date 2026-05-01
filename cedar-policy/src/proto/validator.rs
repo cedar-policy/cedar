@@ -69,7 +69,9 @@ impl TryFrom<models::ValidationMode> for cedar_policy_core::validator::Validatio
     type Error = ProtobufConversionError;
     fn try_from(v: models::ValidationMode) -> Result<Self, Self::Error> {
         match v {
-            models::ValidationMode::Strict => Ok(cedar_policy_core::validator::ValidationMode::Strict),
+            models::ValidationMode::Strict => {
+                Ok(cedar_policy_core::validator::ValidationMode::Strict)
+            }
             models::ValidationMode::Permissive => {
                 Ok(cedar_policy_core::validator::ValidationMode::Permissive)
             }
@@ -78,9 +80,9 @@ impl TryFrom<models::ValidationMode> for cedar_policy_core::validator::Validatio
                 Ok(cedar_policy_core::validator::ValidationMode::Partial)
             }
             #[cfg(not(feature = "partial-validate"))]
-            models::ValidationMode::Partial => {
-                Err(ProtobufConversionError::missing("partial-validate feature (required for partial validation mode)"))
-            }
+            models::ValidationMode::Partial => Err(ProtobufConversionError::missing(
+                "partial-validate feature (required for partial validation mode)",
+            )),
         }
     }
 }
@@ -110,10 +112,22 @@ impl TryFrom<models::ActionDecl> for cedar_policy_core::validator::ValidatorActi
     type Error = ProtobufConversionError;
     fn try_from(v: models::ActionDecl) -> Result<Self, Self::Error> {
         Ok(Self::new(
-            ast::EntityUID::try_from(v.name.ok_or_else(|| ProtobufConversionError::missing("name"))?)?,
-            v.principal_types.into_iter().map(ast::EntityType::try_from).collect::<Result<Vec<_>, _>>()?,
-            v.resource_types.into_iter().map(ast::EntityType::try_from).collect::<Result<Vec<_>, _>>()?,
-            v.descendants.into_iter().map(ast::EntityUID::try_from).collect::<Result<Vec<_>, _>>()?,
+            ast::EntityUID::try_from(
+                v.name
+                    .ok_or_else(|| ProtobufConversionError::missing("name"))?,
+            )?,
+            v.principal_types
+                .into_iter()
+                .map(ast::EntityType::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+            v.resource_types
+                .into_iter()
+                .map(ast::EntityType::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+            v.descendants
+                .into_iter()
+                .map(ast::EntityUID::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
             types::Type::Record {
                 attrs: model_to_attributes(v.context)?,
                 open_attributes: types::OpenTag::default(),
@@ -154,8 +168,15 @@ impl From<&cedar_policy_core::validator::ValidatorEntityType> for models::Entity
 impl TryFrom<models::EntityDecl> for cedar_policy_core::validator::ValidatorEntityType {
     type Error = ProtobufConversionError;
     fn try_from(v: models::EntityDecl) -> Result<Self, Self::Error> {
-        let name = ast::EntityType::try_from(v.name.ok_or_else(|| ProtobufConversionError::missing("name"))?)?;
-        let descendants = v.descendants.into_iter().map(ast::EntityType::try_from).collect::<Result<Vec<_>, _>>()?;
+        let name = ast::EntityType::try_from(
+            v.name
+                .ok_or_else(|| ProtobufConversionError::missing("name"))?,
+        )?;
+        let descendants = v
+            .descendants
+            .into_iter()
+            .map(ast::EntityType::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
         match NonEmpty::collect(v.enum_choices.into_iter().map(SmolStr::from)) {
             // `enum_choices` is empty, so `v` represents a standard entity type
             None => Ok(Self::new_standard(
@@ -171,7 +192,12 @@ impl TryFrom<models::EntityDecl> for cedar_policy_core::validator::ValidatorEnti
                 // enumerated entity types must have no attributes or tags.
                 assert_eq!(v.attributes, HashMap::new());
                 assert_eq!(v.tags, None);
-                Ok(Self::new_enum(name, descendants, enum_choices.map(Eid::new), None))
+                Ok(Self::new_enum(
+                    name,
+                    descendants,
+                    enum_choices.map(Eid::new),
+                    None,
+                ))
             }
         }
     }
@@ -180,9 +206,14 @@ impl TryFrom<models::EntityDecl> for cedar_policy_core::validator::ValidatorEnti
 impl TryFrom<models::Type> for types::Type {
     type Error = ProtobufConversionError;
     fn try_from(v: models::Type) -> Result<Self, Self::Error> {
-        match v.data.ok_or_else(|| ProtobufConversionError::missing("data"))? {
+        match v
+            .data
+            .ok_or_else(|| ProtobufConversionError::missing("data"))?
+        {
             models::r#type::Data::Prim(vt) => {
-                match models::r#type::Prim::try_from(vt).map_err(|e| ProtobufConversionError::missing(&format!("valid prim variant: {e}")))? {
+                match models::r#type::Prim::try_from(vt).map_err(|e| {
+                    ProtobufConversionError::missing(&format!("valid prim variant: {e}"))
+                })? {
                     models::r#type::Prim::Bool => Ok(types::Type::primitive_boolean()),
                     models::r#type::Prim::String => Ok(types::Type::primitive_string()),
                     models::r#type::Prim::Long => Ok(types::Type::primitive_long()),
@@ -246,7 +277,9 @@ impl From<&types::Type> for models::Type {
     }
 }
 
-fn model_to_attributes(v: HashMap<String, models::AttributeType>) -> Result<types::Attributes, ProtobufConversionError> {
+fn model_to_attributes(
+    v: HashMap<String, models::AttributeType>,
+) -> Result<types::Attributes, ProtobufConversionError> {
     Ok(types::Attributes::with_attributes(
         v.into_iter()
             .map(|(k, v)| Ok((k.into(), types::AttributeType::try_from(v)?)))
@@ -264,7 +297,11 @@ impl TryFrom<models::AttributeType> for types::AttributeType {
     type Error = ProtobufConversionError;
     fn try_from(v: models::AttributeType) -> Result<Self, Self::Error> {
         Ok(Self {
-            attr_type: types::Type::try_from(v.attr_type.ok_or_else(|| ProtobufConversionError::missing("attr_type"))?)?.into(),
+            attr_type: types::Type::try_from(
+                v.attr_type
+                    .ok_or_else(|| ProtobufConversionError::missing("attr_type"))?,
+            )?
+            .into(),
             is_required: v.is_required,
             #[cfg(feature = "extended-schema")]
             loc: None,
