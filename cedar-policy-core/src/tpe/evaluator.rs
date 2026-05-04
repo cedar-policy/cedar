@@ -2256,4 +2256,152 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_datetime_in_set_attr_from_entity_is_normalized() {
+        let extensions = Extensions::all_available();
+        let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
+        let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
+            crate::ast::PartialValue::Value(v) => v,
+            _ => panic!("expected concrete value"),
+        };
+
+        // Entity attribute "s" is a set containing a plain value followed by the
+        // non-canonical datetime, so the loop skips the first element before normalizing.
+        let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
+        let set_val = Value::set([Value::from(1), datetime_val], None);
+        let entities = PartialEntities::from_entities_unchecked(
+            [(
+                entity_uid.clone(),
+                PartialEntity {
+                    uid: entity_uid.clone(),
+                    attrs: Some(BTreeMap::from_iter([("s".parse().unwrap(), set_val)])),
+                    ancestors: None,
+                    tags: None,
+                },
+            )]
+            .into_iter(),
+        );
+
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            entity_uid.into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+
+        let residual = eval
+            .interpret_expr(&builder().get_attr(builder().var(Var::Resource), "s".parse().unwrap()))
+            .unwrap();
+
+        let expr: Expr = residual.into();
+        {
+            use crate::pst::{BinaryOp, Expr};
+            match Expr::try_from(expr).unwrap() {
+                Expr::Set(elems) => {
+                    assert_eq!(elems.len(), 2);
+                    // At least one element should be the normalized datetime.
+                    let has_normalized = elems.iter().any(|e| {
+                        matches!(
+                            e.as_ref(),
+                            Expr::BinaryOp {
+                                op: BinaryOp::Offset,
+                                ..
+                            }
+                        )
+                    });
+                    assert!(has_normalized, "set should contain a normalized datetime");
+                }
+                _ => assertion_failure!("toplevel should be a set"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_datetime_in_multi_field_record_is_normalized() {
+        use smol_str::ToSmolStr;
+        let extensions = Extensions::all_available();
+        let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
+        let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
+            crate::ast::PartialValue::Value(v) => v,
+            _ => panic!("expected concrete value"),
+        };
+
+        // Record with "a" before "dt" and "z" after, so the skip(idx+1) path is exercised.
+        let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
+        let rec_val = Value::record(
+            [
+                ("a".to_smolstr(), Value::from(1)),
+                ("dt".to_smolstr(), datetime_val),
+                ("z".to_smolstr(), Value::from(2)),
+            ],
+            None,
+        );
+        let entities = PartialEntities::from_entities_unchecked(
+            [(
+                entity_uid.clone(),
+                PartialEntity {
+                    uid: entity_uid.clone(),
+                    attrs: Some(BTreeMap::from_iter([("rec".parse().unwrap(), rec_val)])),
+                    ancestors: None,
+                    tags: None,
+                },
+            )]
+            .into_iter(),
+        );
+
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            entity_uid.into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+
+        let residual = eval
+            .interpret_expr(
+                &builder().get_attr(builder().var(Var::Resource), "rec".parse().unwrap()),
+            )
+            .unwrap();
+
+        let expr: Expr = residual.into();
+        {
+            use crate::pst::{BinaryOp, Expr, UnaryOp};
+            match Expr::try_from(expr).unwrap() {
+                Expr::Record(fields) => {
+                    assert_eq!(fields.len(), 3);
+                    assert_matches!(fields.get("a").unwrap().as_ref(), Expr::Literal(_));
+                    assert_matches!(fields.get("z").unwrap().as_ref(), Expr::Literal(_));
+                    let dt_expr = fields.get("dt").expect("record should have 'dt' field");
+                    assert_matches!(
+                        dt_expr.as_ref(),
+                        Expr::BinaryOp {
+                            op: BinaryOp::Offset,
+                            left,
+                            right,
+                        } => {
+                            assert_matches!(left.as_ref(), Expr::UnaryOp { op: UnaryOp::Datetime, .. });
+                            assert_matches!(right.as_ref(), Expr::UnaryOp { op: UnaryOp::Duration, .. });
+                        }
+                    );
+                }
+                _ => assertion_failure!("toplevel should be a record"),
+            }
+        }
+    }
 }
