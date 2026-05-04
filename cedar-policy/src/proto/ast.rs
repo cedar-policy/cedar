@@ -23,30 +23,60 @@ use cedar_policy_core::{
 use smol_str::ToSmolStr;
 use std::{collections::HashSet, sync::Arc};
 
-#[expect(clippy::fallible_impl_from, reason = "experimental feature")]
-impl From<models::Name> for ast::InternalName {
-    #[expect(clippy::unwrap_used, reason = "experimental feature")]
-    fn from(v: models::Name) -> Self {
-        let basename = ast::Id::from_normalized_str(&v.id).unwrap();
+/// Error converting a protobuf model type into a Cedar type.
+///
+/// This indicates the protobuf message was well-formed at the wire level but
+/// contained semantically invalid data (e.g. missing required fields, invalid
+/// identifiers, unsupported features).
+#[derive(Debug, thiserror::Error)]
+pub enum ProtobufConversionError {
+    /// A required protobuf field was absent
+    #[error("missing required field `{0}`")]
+    MissingField(String),
+    /// A field was present but its value was semantically invalid
+    #[error("{0}")]
+    InvalidValue(String),
+}
+
+impl ProtobufConversionError {
+    pub(crate) fn missing(field: &str) -> Self {
+        Self::MissingField(field.to_string())
+    }
+}
+
+impl TryFrom<models::Name> for ast::InternalName {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::Name) -> Result<Self, Self::Error> {
+        let basename = ast::Id::from_normalized_str(&v.id).map_err(|e| {
+            ProtobufConversionError::InvalidValue(format!("invalid basename `{}`: {e}", v.id))
+        })?;
         let path = v
             .path
             .into_iter()
-            .map(|id| ast::Id::from_normalized_str(&id).unwrap());
-        ast::InternalName::new(basename, path, None)
+            .map(|id| {
+                ast::Id::from_normalized_str(&id).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!(
+                        "invalid path component `{id}`: {e}"
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ast::InternalName::new(basename, path, None))
     }
 }
 
-#[expect(clippy::fallible_impl_from, reason = "experimental feature")]
-impl From<models::Name> for ast::Name {
-    #[expect(clippy::unwrap_used, reason = "experimental feature")]
-    fn from(v: models::Name) -> Self {
-        ast::Name::try_from(ast::InternalName::from(v)).unwrap()
+impl TryFrom<models::Name> for ast::Name {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::Name) -> Result<Self, Self::Error> {
+        ast::Name::try_from(ast::InternalName::try_from(v)?)
+            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid name: {e}")))
     }
 }
 
-impl From<models::Name> for ast::EntityType {
-    fn from(v: models::Name) -> Self {
-        ast::EntityType::from(ast::Name::from(v))
+impl TryFrom<models::Name> for ast::EntityType {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::Name) -> Result<Self, Self::Error> {
+        Ok(ast::EntityType::from(ast::Name::try_from(v)?))
     }
 }
 
@@ -74,14 +104,14 @@ impl From<&ast::EntityType> for models::Name {
     }
 }
 
-impl From<models::EntityUid> for ast::EntityUID {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: models::EntityUid) -> Self {
-        Self::from_components(
-            ast::EntityType::from(v.ty.expect("ty field should exist")),
+impl TryFrom<models::EntityUid> for ast::EntityUID {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::EntityUid) -> Result<Self, ProtobufConversionError> {
+        Ok(Self::from_components(
+            ast::EntityType::try_from(v.ty.ok_or_else(|| ProtobufConversionError::missing("ty"))?)?,
             ast::Eid::new(v.eid),
             None,
-        )
+        ))
     }
 }
 
@@ -94,9 +124,13 @@ impl From<&ast::EntityUID> for models::EntityUid {
     }
 }
 
-impl From<models::EntityUid> for ast::EntityUIDEntry {
-    fn from(v: models::EntityUid) -> Self {
-        ast::EntityUIDEntry::known(ast::EntityUID::from(v), None)
+impl TryFrom<models::EntityUid> for ast::EntityUIDEntry {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::EntityUid) -> Result<Self, Self::Error> {
+        Ok(ast::EntityUIDEntry::known(
+            ast::EntityUID::try_from(v)?,
+            None,
+        ))
     }
 }
 
@@ -114,41 +148,65 @@ impl From<&ast::EntityUIDEntry> for models::EntityUid {
     }
 }
 
-impl From<models::Entity> for ast::Entity {
-    #[expect(
-        clippy::expect_used,
-        clippy::unwrap_used,
-        reason = "experimental feature"
-    )]
-    fn from(v: models::Entity) -> Self {
+impl TryFrom<models::Entity> for ast::Entity {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::Entity) -> Result<Self, Self::Error> {
         let eval = RestrictedEvaluator::new(Extensions::none());
 
-        let attrs = v.attrs.into_iter().map(|(key, value)| {
-            let expr = ast::Expr::from(value);
-            let pval = eval
-                .partial_interpret(ast::BorrowedRestrictedExpr::new(&expr).unwrap())
-                .expect("interpret on RestrictedExpr");
-            (key.into(), pval)
-        });
+        let attrs = v
+            .attrs
+            .into_iter()
+            .map(|(key, value)| {
+                let expr = ast::Expr::try_from(value)?;
+                let restricted = ast::BorrowedRestrictedExpr::new(&expr).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!(
+                        "invalid restricted expr in attr `{key}`: {e}"
+                    ))
+                })?;
+                let pval = eval.partial_interpret(restricted).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!(
+                        "error interpreting attr `{key}`: {e}"
+                    ))
+                })?;
+                Ok((key.into(), pval))
+            })
+            .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
 
-        let ancestors: HashSet<ast::EntityUID> =
-            v.ancestors.into_iter().map(ast::EntityUID::from).collect();
+        let ancestors = v
+            .ancestors
+            .into_iter()
+            .map(ast::EntityUID::try_from)
+            .collect::<Result<HashSet<_>, _>>()?;
 
-        let tags = v.tags.into_iter().map(|(key, value)| {
-            let expr = ast::Expr::from(value);
-            let pval = eval
-                .partial_interpret(ast::BorrowedRestrictedExpr::new(&expr).expect("RestrictedExpr"))
-                .expect("interpret on RestrictedExpr");
-            (key.into(), pval)
-        });
+        let tags = v
+            .tags
+            .into_iter()
+            .map(|(key, value)| {
+                let expr = ast::Expr::try_from(value)?;
+                let restricted = ast::BorrowedRestrictedExpr::new(&expr).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!(
+                        "invalid restricted expr in tag `{key}`: {e}"
+                    ))
+                })?;
+                let pval = eval.partial_interpret(restricted).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!(
+                        "error interpreting tag `{key}`: {e}"
+                    ))
+                })?;
+                Ok((key.into(), pval))
+            })
+            .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
 
-        Self::new_with_attr_partial_value(
-            ast::EntityUID::from(v.uid.expect("uid field should exist")),
+        Ok(Self::new_with_attr_partial_value(
+            ast::EntityUID::try_from(
+                v.uid
+                    .ok_or_else(|| ProtobufConversionError::missing("uid"))?,
+            )?,
             attrs,
             HashSet::new(),
             ancestors,
             tags,
-        )
+        ))
     }
 }
 
@@ -185,110 +243,178 @@ impl From<&Arc<ast::Entity>> for models::Entity {
     }
 }
 
-impl From<models::Expr> for ast::Expr {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: models::Expr) -> Self {
-        let kind = v.expr_kind.expect("expr_kind field should exist");
+#[expect(clippy::too_many_lines, reason = "models::ExprKind has many variants")]
+impl TryFrom<models::Expr> for ast::Expr {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::Expr) -> Result<Self, Self::Error> {
+        let kind = v
+            .expr_kind
+            .ok_or_else(|| ProtobufConversionError::missing("expr_kind"))?;
 
         match kind {
-            models::expr::ExprKind::Lit(lit) => ast::Expr::val(ast::Literal::from(lit)),
+            models::expr::ExprKind::Lit(lit) => Ok(ast::Expr::val(ast::Literal::try_from(lit)?)),
 
             models::expr::ExprKind::Var(var) => {
-                let pvar = models::expr::Var::try_from(var).expect("decode should succeed");
-                ast::Expr::var(ast::Var::from(pvar))
+                let pvar = models::expr::Var::try_from(var).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("invalid var: {e}"))
+                })?;
+                Ok(ast::Expr::var(ast::Var::from(pvar)))
             }
 
             models::expr::ExprKind::Slot(slot) => {
-                let pslot = models::SlotId::try_from(slot).expect("decode should succeed");
-                ast::Expr::slot(ast::SlotId::from(pslot))
+                let pslot = models::SlotId::try_from(slot).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("invalid slot: {e}"))
+                })?;
+                Ok(ast::Expr::slot(ast::SlotId::from(pslot)))
             }
 
             models::expr::ExprKind::If(msg) => {
-                let test_expr = *msg.test_expr.expect("test_expr field should exist");
-                let then_expr = *msg.then_expr.expect("then_expr field should exist");
-                let else_expr = *msg.else_expr.expect("else_expr field should exist");
-                ast::Expr::ite(
-                    ast::Expr::from(test_expr),
-                    ast::Expr::from(then_expr),
-                    ast::Expr::from(else_expr),
-                )
+                let test_expr = *msg
+                    .test_expr
+                    .ok_or_else(|| ProtobufConversionError::missing("test_expr"))?;
+                let then_expr = *msg
+                    .then_expr
+                    .ok_or_else(|| ProtobufConversionError::missing("then_expr"))?;
+                let else_expr = *msg
+                    .else_expr
+                    .ok_or_else(|| ProtobufConversionError::missing("else_expr"))?;
+                Ok(ast::Expr::ite(
+                    ast::Expr::try_from(test_expr)?,
+                    ast::Expr::try_from(then_expr)?,
+                    ast::Expr::try_from(else_expr)?,
+                ))
             }
 
             models::expr::ExprKind::And(msg) => {
-                let left = *msg.left.expect("left field should exist");
-                let right = *msg.right.expect("right field should exist");
-                ast::Expr::and(ast::Expr::from(left), ast::Expr::from(right))
+                let left = *msg
+                    .left
+                    .ok_or_else(|| ProtobufConversionError::missing("left"))?;
+                let right = *msg
+                    .right
+                    .ok_or_else(|| ProtobufConversionError::missing("right"))?;
+                Ok(ast::Expr::and(
+                    ast::Expr::try_from(left)?,
+                    ast::Expr::try_from(right)?,
+                ))
             }
 
             models::expr::ExprKind::Or(msg) => {
-                let left = *msg.left.expect("left field should exist");
-                let right = *msg.right.expect("right field should exist");
-                ast::Expr::or(ast::Expr::from(left), ast::Expr::from(right))
+                let left = *msg
+                    .left
+                    .ok_or_else(|| ProtobufConversionError::missing("left"))?;
+                let right = *msg
+                    .right
+                    .ok_or_else(|| ProtobufConversionError::missing("right"))?;
+                Ok(ast::Expr::or(
+                    ast::Expr::try_from(left)?,
+                    ast::Expr::try_from(right)?,
+                ))
             }
 
             models::expr::ExprKind::UApp(msg) => {
-                let arg = *msg.expr.expect("expr field should exist");
-                let puop =
-                    models::expr::unary_app::Op::try_from(msg.op).expect("decode should succeed");
-                ast::Expr::unary_app(ast::UnaryOp::from(puop), ast::Expr::from(arg))
+                let arg = *msg
+                    .expr
+                    .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
+                let puop = models::expr::unary_app::Op::try_from(msg.op).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("invalid unary op: {e}"))
+                })?;
+                Ok(ast::Expr::unary_app(
+                    ast::UnaryOp::from(puop),
+                    ast::Expr::try_from(arg)?,
+                ))
             }
 
             models::expr::ExprKind::BApp(msg) => {
-                let pbop =
-                    models::expr::binary_app::Op::try_from(msg.op).expect("decode should succeed");
-                let left = *msg.left.expect("left field should exist");
-                let right = *msg.right.expect("right field should exist");
-                ast::Expr::binary_app(
+                let pbop = models::expr::binary_app::Op::try_from(msg.op).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("invalid binary op: {e}"))
+                })?;
+                let left = *msg
+                    .left
+                    .ok_or_else(|| ProtobufConversionError::missing("left"))?;
+                let right = *msg
+                    .right
+                    .ok_or_else(|| ProtobufConversionError::missing("right"))?;
+                Ok(ast::Expr::binary_app(
                     ast::BinaryOp::from(pbop),
-                    ast::Expr::from(left),
-                    ast::Expr::from(right),
-                )
+                    ast::Expr::try_from(left)?,
+                    ast::Expr::try_from(right)?,
+                ))
             }
 
-            models::expr::ExprKind::ExtApp(msg) => ast::Expr::call_extension_fn(
-                ast::Name::from(msg.fn_name.expect("fn_name field should exist")),
-                msg.args.into_iter().map(ast::Expr::from).collect(),
-            ),
+            models::expr::ExprKind::ExtApp(msg) => Ok(ast::Expr::call_extension_fn(
+                ast::Name::try_from(
+                    msg.fn_name
+                        .ok_or_else(|| ProtobufConversionError::missing("fn_name"))?,
+                )?,
+                msg.args
+                    .into_iter()
+                    .map(ast::Expr::try_from)
+                    .collect::<Result<_, _>>()?,
+            )),
 
             models::expr::ExprKind::GetAttr(msg) => {
-                let arg = *msg.expr.expect("expr field should exist");
-                ast::Expr::get_attr(ast::Expr::from(arg), msg.attr.into())
+                let arg = *msg
+                    .expr
+                    .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
+                Ok(ast::Expr::get_attr(
+                    ast::Expr::try_from(arg)?,
+                    msg.attr.into(),
+                ))
             }
 
             models::expr::ExprKind::HasAttr(msg) => {
-                let arg = *msg.expr.expect("expr field should exist");
-                ast::Expr::has_attr(ast::Expr::from(arg), msg.attr.into())
+                let arg = *msg
+                    .expr
+                    .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
+                Ok(ast::Expr::has_attr(
+                    ast::Expr::try_from(arg)?,
+                    msg.attr.into(),
+                ))
             }
 
             models::expr::ExprKind::Like(msg) => {
-                let arg = *msg.expr.expect("expr field should exist");
-                ast::Expr::like(
-                    ast::Expr::from(arg),
+                let arg = *msg
+                    .expr
+                    .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
+                Ok(ast::Expr::like(
+                    ast::Expr::try_from(arg)?,
                     msg.pattern
                         .into_iter()
-                        .map(ast::PatternElem::from)
-                        .collect(),
-                )
+                        .map(ast::PatternElem::try_from)
+                        .collect::<Result<_, _>>()?,
+                ))
             }
 
             models::expr::ExprKind::Is(msg) => {
-                let arg = *msg.expr.expect("expr field should exist");
-                ast::Expr::is_entity_type(
-                    ast::Expr::from(arg),
-                    ast::EntityType::from(msg.entity_type.expect("entity_type field should exist")),
-                )
+                let arg = *msg
+                    .expr
+                    .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
+                Ok(ast::Expr::is_entity_type(
+                    ast::Expr::try_from(arg)?,
+                    ast::EntityType::try_from(
+                        msg.entity_type
+                            .ok_or_else(|| ProtobufConversionError::missing("entity_type"))?,
+                    )?,
+                ))
             }
 
-            models::expr::ExprKind::Set(msg) => {
-                ast::Expr::set(msg.elements.into_iter().map(ast::Expr::from))
-            }
-
-            models::expr::ExprKind::Record(msg) => ast::Expr::record(
-                msg.items
+            models::expr::ExprKind::Set(msg) => Ok(ast::Expr::set(
+                msg.elements
                     .into_iter()
-                    .map(|(key, value)| (key.into(), ast::Expr::from(value))),
-            )
-            .expect("Expr should be valid"),
+                    .map(ast::Expr::try_from)
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
+
+            models::expr::ExprKind::Record(msg) => {
+                let items = msg
+                    .items
+                    .into_iter()
+                    .map(|(key, value)| Ok((key.into(), ast::Expr::try_from(value)?)))
+                    .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
+                ast::Expr::record(items).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("invalid record: {e}"))
+                })
+            }
         }
     }
 }
@@ -436,15 +562,18 @@ impl From<&ast::Var> for models::expr::Var {
     }
 }
 
-impl From<models::expr::Literal> for ast::Literal {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: models::expr::Literal) -> Self {
-        match v.lit.expect("lit field should exist") {
-            models::expr::literal::Lit::B(b) => ast::Literal::Bool(b),
-            models::expr::literal::Lit::I(l) => ast::Literal::Long(l),
-            models::expr::literal::Lit::S(s) => ast::Literal::String(s.into()),
+impl TryFrom<models::expr::Literal> for ast::Literal {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::expr::Literal) -> Result<Self, Self::Error> {
+        match v
+            .lit
+            .ok_or_else(|| ProtobufConversionError::missing("lit"))?
+        {
+            models::expr::literal::Lit::B(b) => Ok(ast::Literal::Bool(b)),
+            models::expr::literal::Lit::I(l) => Ok(ast::Literal::Long(l)),
+            models::expr::literal::Lit::S(s) => Ok(ast::Literal::String(s.into())),
             models::expr::literal::Lit::Euid(e) => {
-                ast::Literal::EntityUID(ast::EntityUID::from(e).into())
+                Ok(ast::Literal::EntityUID(ast::EntityUID::try_from(e)?.into()))
             }
         }
     }
@@ -552,19 +681,27 @@ impl From<&ast::BinaryOp> for models::expr::binary_app::Op {
     }
 }
 
-impl From<models::expr::like::PatternElem> for ast::PatternElem {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: models::expr::like::PatternElem) -> Self {
-        match v.data.expect("data field should exist") {
-            models::expr::like::pattern_elem::Data::C(c) => {
-                ast::PatternElem::Char(c.chars().next().expect("c is non-empty"))
-            }
-
+impl TryFrom<models::expr::like::PatternElem> for ast::PatternElem {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::expr::like::PatternElem) -> Result<Self, Self::Error> {
+        match v
+            .data
+            .ok_or_else(|| ProtobufConversionError::missing("data"))?
+        {
+            models::expr::like::pattern_elem::Data::C(c) => Ok(ast::PatternElem::Char(
+                c.chars().next().ok_or_else(|| {
+                    ProtobufConversionError::InvalidValue(
+                        "empty char in pattern element".to_string(),
+                    )
+                })?,
+            )),
             models::expr::like::pattern_elem::Data::Wildcard(unit) => {
-                match models::expr::like::pattern_elem::Wildcard::try_from(unit)
-                    .expect("decode should succeed")
-                {
-                    models::expr::like::pattern_elem::Wildcard::Unit => ast::PatternElem::Wildcard,
+                match models::expr::like::pattern_elem::Wildcard::try_from(unit).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("invalid wildcard: {e}"))
+                })? {
+                    models::expr::like::pattern_elem::Wildcard::Unit => {
+                        Ok(ast::PatternElem::Wildcard)
+                    }
                 }
             }
         }
@@ -586,27 +723,43 @@ impl From<&ast::PatternElem> for models::expr::like::PatternElem {
     }
 }
 
-impl From<models::Request> for ast::Request {
-    #[expect(clippy::expect_used, reason = "experimental feature")]
-    fn from(v: models::Request) -> Self {
-        ast::Request::new_unchecked(
-            ast::EntityUIDEntry::from(v.principal.expect("principal.as_ref()")),
-            ast::EntityUIDEntry::from(v.action.expect("action.as_ref()")),
-            ast::EntityUIDEntry::from(v.resource.expect("resource.as_ref()")),
+impl TryFrom<models::Request> for ast::Request {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::Request) -> Result<Self, Self::Error> {
+        Ok(ast::Request::new_unchecked(
+            ast::EntityUIDEntry::try_from(
+                v.principal
+                    .ok_or_else(|| ProtobufConversionError::missing("principal"))?,
+            )?,
+            ast::EntityUIDEntry::try_from(
+                v.action
+                    .ok_or_else(|| ProtobufConversionError::missing("action"))?,
+            )?,
+            ast::EntityUIDEntry::try_from(
+                v.resource
+                    .ok_or_else(|| ProtobufConversionError::missing("resource"))?,
+            )?,
             Some(
                 ast::Context::from_pairs(
-                    v.context.into_iter().map(|(k, v)| {
-                        (
-                            k.to_smolstr(),
-                            ast::RestrictedExpr::new(ast::Expr::from(v))
-                                .expect("encoded context should be a valid RestrictedExpr"),
-                        )
-                    }),
+                    v.context
+                        .into_iter()
+                        .map(|(k, v)| {
+                            let expr = ast::Expr::try_from(v)?;
+                            let restricted = ast::RestrictedExpr::new(expr).map_err(|e| {
+                                ProtobufConversionError::InvalidValue(format!(
+                                    "invalid restricted expr in context key `{k}`: {e}"
+                                ))
+                            })?;
+                            Ok((k.to_smolstr(), restricted))
+                        })
+                        .collect::<Result<Vec<_>, ProtobufConversionError>>()?,
                     Extensions::all_available(),
                 )
-                .expect("encoded context should be valid"),
+                .map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("invalid context: {e}"))
+                })?,
             ),
-        )
+        ))
     }
 }
 
@@ -636,15 +789,17 @@ impl From<&ast::Request> for models::Request {
     }
 }
 
-impl From<models::Expr> for ast::Context {
-    fn from(v: models::Expr) -> Self {
-        #[expect(clippy::expect_used, reason = "experimental feature")]
-        ast::Context::from_expr(
-            ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v))
-                .expect("encoded context should be valid restricted expr"),
-            Extensions::none(),
-        )
-        .expect("encoded context should be valid")
+impl TryFrom<models::Expr> for ast::Context {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::Expr) -> Result<Self, Self::Error> {
+        let expr = ast::Expr::try_from(v)?;
+        let restricted = ast::BorrowedRestrictedExpr::new(&expr).map_err(|e| {
+            ProtobufConversionError::InvalidValue(format!(
+                "invalid restricted expr in context: {e}"
+            ))
+        })?;
+        ast::Context::from_expr(restricted, Extensions::none())
+            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid context: {e}")))
     }
 }
 
@@ -657,11 +812,15 @@ impl From<&ast::Context> for models::Expr {
 #[cfg(test)]
 mod test {
     use super::*;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn name_and_slot_roundtrip() {
         let orig_name = ast::Name::from_normalized_str("B::C::D").unwrap();
-        assert_eq!(orig_name, ast::Name::from(models::Name::from(&orig_name)));
+        assert_eq!(
+            orig_name,
+            ast::Name::try_from(models::Name::from(&orig_name)).unwrap()
+        );
 
         let orig_slot1 = ast::SlotId::principal();
         assert_eq!(
@@ -682,21 +841,30 @@ mod test {
         let ety_specified = ast::EntityType::from(name);
         assert_eq!(
             ety_specified,
-            ast::EntityType::from(models::Name::from(&ety_specified))
+            ast::EntityType::try_from(models::Name::from(&ety_specified)).unwrap()
         );
 
         let euid1 = ast::EntityUID::with_eid_and_type("A", "foo").unwrap();
-        assert_eq!(euid1, ast::EntityUID::from(models::EntityUid::from(&euid1)));
+        assert_eq!(
+            euid1,
+            ast::EntityUID::try_from(models::EntityUid::from(&euid1)).unwrap()
+        );
 
         let euid2 = ast::EntityUID::from_normalized_str("Foo::Action::\"view\"").unwrap();
-        assert_eq!(euid2, ast::EntityUID::from(models::EntityUid::from(&euid2)));
+        assert_eq!(
+            euid2,
+            ast::EntityUID::try_from(models::EntityUid::from(&euid2)).unwrap()
+        );
 
         let euid3 = ast::EntityUID::from_components(
             ast::EntityType::from_normalized_str("A").unwrap(),
             ast::Eid::new("\0\n \' \"+-$^!"),
             None,
         );
-        assert_eq!(euid3, ast::EntityUID::from(models::EntityUid::from(&euid3)));
+        assert_eq!(
+            euid3,
+            ast::EntityUID::try_from(models::EntityUid::from(&euid3)).unwrap()
+        );
 
         let attrs = (1..=7).map(|id| (format!("{id}").into(), ast::RestrictedExpr::val(true)));
         let parent = ast::EntityUID::with_eid_and_type("Folder", "shared").unwrap();
@@ -709,8 +877,13 @@ mod test {
             Extensions::none(),
         )
         .unwrap();
-        assert_eq!(entity, ast::Entity::from(models::Entity::from(&entity)));
-        assert!(ast::Entity::from(models::Entity::from(&entity)).is_child_of(&parent));
+        assert_eq!(
+            entity,
+            ast::Entity::try_from(models::Entity::from(&entity)).unwrap()
+        );
+        assert!(ast::Entity::try_from(models::Entity::from(&entity))
+            .unwrap()
+            .is_child_of(&parent));
     }
 
     #[test]
@@ -728,54 +901,57 @@ mod test {
             Extensions::none(),
         )
         .unwrap();
-        assert_eq!(entity, ast::Entity::from(models::Entity::from(&entity)));
+        assert_eq!(
+            entity,
+            ast::Entity::try_from(models::Entity::from(&entity)).unwrap()
+        );
     }
 
     #[test]
     fn expr_roundtrip() {
         let e1 = ast::Expr::val(33);
-        assert_eq!(e1, ast::Expr::from(models::Expr::from(&e1)));
+        assert_eq!(e1, ast::Expr::try_from(models::Expr::from(&e1)).unwrap());
         let e2 = ast::Expr::val("hello");
-        assert_eq!(e2, ast::Expr::from(models::Expr::from(&e2)));
+        assert_eq!(e2, ast::Expr::try_from(models::Expr::from(&e2)).unwrap());
         let e3 = ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "foo").unwrap());
-        assert_eq!(e3, ast::Expr::from(models::Expr::from(&e3)));
+        assert_eq!(e3, ast::Expr::try_from(models::Expr::from(&e3)).unwrap());
         let e4 = ast::Expr::var(ast::Var::Principal);
-        assert_eq!(e4, ast::Expr::from(models::Expr::from(&e4)));
+        assert_eq!(e4, ast::Expr::try_from(models::Expr::from(&e4)).unwrap());
         let e4 = ast::Expr::var(ast::Var::Action);
-        assert_eq!(e4, ast::Expr::from(models::Expr::from(&e4)));
+        assert_eq!(e4, ast::Expr::try_from(models::Expr::from(&e4)).unwrap());
         let e4 = ast::Expr::var(ast::Var::Resource);
-        assert_eq!(e4, ast::Expr::from(models::Expr::from(&e4)));
+        assert_eq!(e4, ast::Expr::try_from(models::Expr::from(&e4)).unwrap());
         let e4 = ast::Expr::var(ast::Var::Context);
-        assert_eq!(e4, ast::Expr::from(models::Expr::from(&e4)));
+        assert_eq!(e4, ast::Expr::try_from(models::Expr::from(&e4)).unwrap());
         let e5 = ast::Expr::ite(
             ast::Expr::val(true),
             ast::Expr::val(88),
             ast::Expr::val(-100),
         );
-        assert_eq!(e5, ast::Expr::from(models::Expr::from(&e5)));
+        assert_eq!(e5, ast::Expr::try_from(models::Expr::from(&e5)).unwrap());
         let e6 = ast::Expr::not(ast::Expr::val(false));
-        assert_eq!(e6, ast::Expr::from(models::Expr::from(&e6)));
+        assert_eq!(e6, ast::Expr::try_from(models::Expr::from(&e6)).unwrap());
         let e7 = ast::Expr::get_attr(
             ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "foo").unwrap()),
             "some_attr".into(),
         );
-        assert_eq!(e7, ast::Expr::from(models::Expr::from(&e7)));
+        assert_eq!(e7, ast::Expr::try_from(models::Expr::from(&e7)).unwrap());
         let e8 = ast::Expr::has_attr(
             ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "foo").unwrap()),
             "some_attr".into(),
         );
-        assert_eq!(e8, ast::Expr::from(models::Expr::from(&e8)));
+        assert_eq!(e8, ast::Expr::try_from(models::Expr::from(&e8)).unwrap());
         let e9 = ast::Expr::is_entity_type(
             ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "foo").unwrap()),
             "Type".parse().unwrap(),
         );
-        assert_eq!(e9, ast::Expr::from(models::Expr::from(&e9)));
+        assert_eq!(e9, ast::Expr::try_from(models::Expr::from(&e9)).unwrap());
         let e10 = ast::Expr::slot(ast::SlotId::principal());
-        assert_eq!(e10, ast::Expr::from(models::Expr::from(&e10)));
+        assert_eq!(e10, ast::Expr::try_from(models::Expr::from(&e10)).unwrap());
         let e11 = ast::Expr::slot(ast::SlotId::resource());
-        assert_eq!(e11, ast::Expr::from(models::Expr::from(&e11)));
+        assert_eq!(e11, ast::Expr::try_from(models::Expr::from(&e11)).unwrap());
         let e12 = ast::Expr::and(ast::Expr::val(false), ast::Expr::not(ast::Expr::val(true)));
-        assert_eq!(e12, ast::Expr::from(models::Expr::from(&e12)));
+        assert_eq!(e12, ast::Expr::try_from(models::Expr::from(&e12)).unwrap());
         let e13 = ast::Expr::or(
             ast::Expr::ite(
                 ast::Expr::get_attr(ast::Expr::var(ast::Var::Context), "a".into()),
@@ -784,20 +960,20 @@ mod test {
             ),
             ast::Expr::greater(ast::Expr::val(33), ast::Expr::val(-33)),
         );
-        assert_eq!(e13, ast::Expr::from(models::Expr::from(&e13)));
+        assert_eq!(e13, ast::Expr::try_from(models::Expr::from(&e13)).unwrap());
         let e14 = ast::Expr::contains(
             ast::Expr::set([ast::Expr::val("beans"), ast::Expr::val("carrots")]),
             ast::Expr::val("peas"),
         );
-        assert_eq!(e14, ast::Expr::from(models::Expr::from(&e14)));
+        assert_eq!(e14, ast::Expr::try_from(models::Expr::from(&e14)).unwrap());
         let e: ast::Expr = r#"ip("0.0.0.0").isInRange(ip("0.0.0.0"))"#.parse().unwrap();
-        assert_eq!(e, ast::Expr::from(models::Expr::from(&e)));
+        assert_eq!(e, ast::Expr::try_from(models::Expr::from(&e)).unwrap());
         let e: ast::Expr = r#"principal.foo like "bar*""#.parse().unwrap();
-        assert_eq!(e, ast::Expr::from(models::Expr::from(&e)));
+        assert_eq!(e, ast::Expr::try_from(models::Expr::from(&e)).unwrap());
         let e: ast::Expr = r#"principal.foo.isEmpty()"#.parse().unwrap();
-        assert_eq!(e, ast::Expr::from(models::Expr::from(&e)));
+        assert_eq!(e, ast::Expr::try_from(models::Expr::from(&e)).unwrap());
         let e: ast::Expr = r#"- principal.foo"#.parse().unwrap();
-        assert_eq!(e, ast::Expr::from(models::Expr::from(&e)));
+        assert_eq!(e, ast::Expr::try_from(models::Expr::from(&e)).unwrap());
     }
 
     #[test]
@@ -805,44 +981,44 @@ mod test {
         let bool_literal_f = ast::Literal::from(false);
         assert_eq!(
             bool_literal_f,
-            ast::Literal::from(models::expr::Literal::from(&bool_literal_f))
+            ast::Literal::try_from(models::expr::Literal::from(&bool_literal_f)).unwrap()
         );
 
         let bool_literal_t = ast::Literal::from(true);
         assert_eq!(
             bool_literal_t,
-            ast::Literal::from(models::expr::Literal::from(&bool_literal_t))
+            ast::Literal::try_from(models::expr::Literal::from(&bool_literal_t)).unwrap()
         );
 
         let long_literal0 = ast::Literal::from(0);
         assert_eq!(
             long_literal0,
-            ast::Literal::from(models::expr::Literal::from(&long_literal0))
+            ast::Literal::try_from(models::expr::Literal::from(&long_literal0)).unwrap()
         );
 
         let long_literal1 = ast::Literal::from(1);
         assert_eq!(
             long_literal1,
-            ast::Literal::from(models::expr::Literal::from(&long_literal1))
+            ast::Literal::try_from(models::expr::Literal::from(&long_literal1)).unwrap()
         );
 
         let str_literal0 = ast::Literal::from("");
         assert_eq!(
             str_literal0,
-            ast::Literal::from(models::expr::Literal::from(&str_literal0))
+            ast::Literal::try_from(models::expr::Literal::from(&str_literal0)).unwrap()
         );
 
         let str_literal1 = ast::Literal::from("foo");
         assert_eq!(
             str_literal1,
-            ast::Literal::from(models::expr::Literal::from(&str_literal1))
+            ast::Literal::try_from(models::expr::Literal::from(&str_literal1)).unwrap()
         );
 
         let euid_literal =
             ast::Literal::from(ast::EntityUID::with_eid_and_type("A", "foo").unwrap());
         assert_eq!(
             euid_literal,
-            ast::Literal::from(models::expr::Literal::from(&euid_literal))
+            ast::Literal::try_from(models::expr::Literal::from(&euid_literal)).unwrap()
         );
     }
 
@@ -872,10 +1048,325 @@ mod test {
             },
             Some(context.clone()),
         );
-        let request_rt = ast::Request::from(models::Request::from(&request));
-        assert_eq!(context, ast::Context::from(models::Expr::from(&context)));
+        let request_rt = ast::Request::try_from(models::Request::from(&request)).unwrap();
+        assert_eq!(
+            context,
+            ast::Context::try_from(models::Expr::from(&context)).unwrap()
+        );
         assert_eq!(request.principal().uid(), request_rt.principal().uid());
         assert_eq!(request.action().uid(), request_rt.action().uid());
         assert_eq!(request.resource().uid(), request_rt.resource().uid());
+    }
+
+    #[test]
+    fn name_try_from_invalid_basename() {
+        let bad = models::Name {
+            id: "".to_string(),
+            path: vec![],
+        };
+        assert_matches!(
+            ast::InternalName::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("invalid basename")
+        );
+    }
+
+    #[test]
+    fn name_try_from_invalid_path_component() {
+        let bad = models::Name {
+            id: "A".to_string(),
+            path: vec!["".to_string()],
+        };
+        assert_matches!(
+            ast::InternalName::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("invalid path component")
+        );
+    }
+
+    #[test]
+    fn test_when_missing_ty() {
+        // models missing type field don't convert
+        let bad = models::EntityUid {
+            ty: None,
+            eid: "foo".to_string(),
+        };
+        assert_matches!(
+            ast::EntityUID::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "ty"
+        );
+        let bad = models::EntityUid {
+            ty: None,
+            eid: "foo".to_string(),
+        };
+        assert_matches!(
+            ast::EntityUIDEntry::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "ty"
+        );
+    }
+
+    #[test]
+    fn entity_try_from_missing_uid() {
+        let bad = models::Entity {
+            uid: None,
+            attrs: Default::default(),
+            ancestors: vec![],
+            tags: Default::default(),
+        };
+        assert_matches!(
+            ast::Entity::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "uid"
+        );
+    }
+
+    #[test]
+    fn test_when_missing_expr_kind() {
+        // Entity with invalid attr expr
+        let bad = models::Entity {
+            uid: Some(models::EntityUid {
+                ty: Some(models::Name {
+                    id: "A".to_string(),
+                    path: vec![],
+                }),
+                eid: "x".to_string(),
+            }),
+            attrs: [("k".to_string(), models::Expr { expr_kind: None })]
+                .into_iter()
+                .collect(),
+            ancestors: vec![],
+            tags: Default::default(),
+        };
+        assert_matches!(
+            ast::Entity::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "expr_kind"
+        );
+
+        // Entity with invalid tag expr
+        let bad = models::Entity {
+            uid: Some(models::EntityUid {
+                ty: Some(models::Name {
+                    id: "A".to_string(),
+                    path: vec![],
+                }),
+                eid: "x".to_string(),
+            }),
+            attrs: Default::default(),
+            ancestors: vec![],
+            tags: [("t".to_string(), models::Expr { expr_kind: None })]
+                .into_iter()
+                .collect(),
+        };
+        assert_matches!(
+            ast::Entity::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "expr_kind"
+        );
+
+        // Bare Expr missing expr_kind
+        assert_matches!(
+            ast::Expr::try_from(models::Expr { expr_kind: None }),
+            Err(ProtobufConversionError::MissingField(f)) if f == "expr_kind"
+        );
+    }
+
+    #[test]
+    fn expr_try_from_missing_required_fields() {
+        // The models in each test case are missing a field, the field name is the string in the test case
+        let cases: Vec<(models::Expr, &str)> = vec![
+            (models::Expr { expr_kind: None }, "expr_kind"),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::If(Box::new(models::expr::If {
+                        test_expr: None,
+                        then_expr: None,
+                        else_expr: None,
+                    }))),
+                },
+                "test_expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::And(Box::new(models::expr::And {
+                        left: None,
+                        right: None,
+                    }))),
+                },
+                "left",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::Or(Box::new(models::expr::Or {
+                        left: None,
+                        right: None,
+                    }))),
+                },
+                "left",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::UApp(Box::new(
+                        models::expr::UnaryApp {
+                            op: models::expr::unary_app::Op::Not.into(),
+                            expr: None,
+                        },
+                    ))),
+                },
+                "expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::BApp(Box::new(
+                        models::expr::BinaryApp {
+                            op: models::expr::binary_app::Op::Eq.into(),
+                            left: None,
+                            right: None,
+                        },
+                    ))),
+                },
+                "left",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::ExtApp(
+                        models::expr::ExtensionFunctionApp {
+                            fn_name: None,
+                            args: vec![],
+                        },
+                    )),
+                },
+                "fn_name",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::GetAttr(Box::new(
+                        models::expr::GetAttr {
+                            expr: None,
+                            attr: "a".to_string(),
+                        },
+                    ))),
+                },
+                "expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::HasAttr(Box::new(
+                        models::expr::HasAttr {
+                            expr: None,
+                            attr: "a".to_string(),
+                        },
+                    ))),
+                },
+                "expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::Like(Box::new(models::expr::Like {
+                        expr: None,
+                        pattern: vec![],
+                    }))),
+                },
+                "expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::Is(Box::new(models::expr::Is {
+                        expr: None,
+                        entity_type: None,
+                    }))),
+                },
+                "expr",
+            ),
+        ];
+
+        for (bad, expected_field) in cases {
+            assert_matches!(
+                ast::Expr::try_from(bad),
+                Err(ProtobufConversionError::MissingField(f)) if f == expected_field
+            );
+        }
+    }
+
+    #[test]
+    fn expr_try_from_invalid_enum_values() {
+        let cases: Vec<(models::Expr, &str)> = vec![
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::Var(999)),
+                },
+                "invalid var",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::Slot(999)),
+                },
+                "invalid slot",
+            ),
+        ];
+
+        for (bad, expected_msg) in cases {
+            assert_matches!(
+                ast::Expr::try_from(bad),
+                Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains(expected_msg)
+            );
+        }
+    }
+
+    #[test]
+    fn literal_try_from_missing_lit() {
+        assert_matches!(
+            ast::Literal::try_from(models::expr::Literal { lit: None }),
+            Err(ProtobufConversionError::MissingField(f)) if f == "lit"
+        );
+    }
+
+    #[test]
+    fn pattern_elem_try_from_missing_data() {
+        assert_matches!(
+            ast::PatternElem::try_from(models::expr::like::PatternElem { data: None }),
+            Err(ProtobufConversionError::MissingField(f)) if f == "data"
+        );
+    }
+
+    #[test]
+    fn pattern_elem_try_from_empty_char() {
+        let bad = models::expr::like::PatternElem {
+            data: Some(models::expr::like::pattern_elem::Data::C(String::new())),
+        };
+        assert_matches!(
+            ast::PatternElem::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("empty char")
+        );
+    }
+
+    #[test]
+    fn request_try_from_missing_principal() {
+        let bad = models::Request {
+            principal: None,
+            action: Some(models::EntityUid {
+                ty: Some(models::Name {
+                    id: "Action".to_string(),
+                    path: vec![],
+                }),
+                eid: "a".to_string(),
+            }),
+            resource: Some(models::EntityUid {
+                ty: Some(models::Name {
+                    id: "R".to_string(),
+                    path: vec![],
+                }),
+                eid: "r".to_string(),
+            }),
+            context: Default::default(),
+        };
+        assert_matches!(
+            ast::Request::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "principal"
+        );
+    }
+
+    #[test]
+    fn context_try_from_missing_expr_kind() {
+        let bad = models::Expr { expr_kind: None };
+        assert_matches!(
+            ast::Context::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "expr_kind"
+        );
     }
 }
