@@ -85,45 +85,6 @@ impl TryFrom<models::PolicySet> for api::PolicySet {
     }
 }
 
-#[expect(clippy::use_self, reason = "readability")]
-impl From<&api::ValidationMode> for models::ValidationMode {
-    fn from(v: &api::ValidationMode) -> Self {
-        match v {
-            api::ValidationMode::Strict => models::ValidationMode::Strict,
-            #[cfg(feature = "permissive-validate")]
-            api::ValidationMode::Permissive => models::ValidationMode::Permissive,
-            #[cfg(feature = "partial-validate")]
-            api::ValidationMode::Partial => models::ValidationMode::Partial,
-        }
-    }
-}
-
-/// Error when a protobuf message specifies a [`ValidationMode`](api::ValidationMode)
-/// that requires a feature not enabled in this build
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub struct ValidationModeError(String);
-
-#[expect(clippy::use_self, reason = "readability")]
-impl TryFrom<&models::ValidationMode> for api::ValidationMode {
-    type Error = ValidationModeError;
-    fn try_from(v: &models::ValidationMode) -> Result<Self, Self::Error> {
-        match v {
-            models::ValidationMode::Strict => Ok(api::ValidationMode::Strict),
-            #[cfg(feature = "permissive-validate")]
-            models::ValidationMode::Permissive => Ok(api::ValidationMode::Permissive),
-            #[cfg(not(feature = "permissive-validate"))]
-            models::ValidationMode::Permissive => Err(
-                ValidationModeError("protobuf specifies permissive validation, but `permissive-validate` feature not enabled in this build".to_string())),
-            #[cfg(feature = "partial-validate")]
-            models::ValidationMode::Partial => Ok(api::ValidationMode::Partial),
-            #[cfg(not(feature = "partial-validate"))]
-            models::ValidationMode::Partial => Err(
-                ValidationModeError("protobuf specifies partial validation, but `partial-validate` feature not enabled in this build".to_string())),
-        }
-    }
-}
-
 /// Macro that implements `traits::Protobuf` for cases where `From<>` and `TryFrom<>`
 /// conversions exist between the api type `$api` and the protobuf model type `$model`
 macro_rules! standard_protobuf_impl {
@@ -398,16 +359,6 @@ mod test {
             let _ = crate::Request::decode(*input);
             let _ = crate::PolicySet::decode(*input);
         }
-    }
-
-    #[test]
-    fn validation_mode_strict_roundtrip() {
-        use crate::proto::models;
-        let strict = crate::ValidationMode::Strict;
-        let proto = models::ValidationMode::from(&strict);
-        assert_matches!(proto, models::ValidationMode::Strict);
-        let back = crate::ValidationMode::try_from(&proto).unwrap();
-        assert_matches!(back, crate::ValidationMode::Strict);
     }
 
     #[test]
