@@ -243,6 +243,7 @@ impl From<&Arc<ast::Entity>> for models::Entity {
     }
 }
 
+#[expect(clippy::too_many_lines, reason = "models::ExprKind has many variants")]
 impl TryFrom<models::Expr> for ast::Expr {
     type Error = ProtobufConversionError;
     fn try_from(v: models::Expr) -> Result<Self, Self::Error> {

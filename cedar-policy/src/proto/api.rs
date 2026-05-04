@@ -124,7 +124,7 @@ impl TryFrom<&models::ValidationMode> for api::ValidationMode {
     }
 }
 
-/// Macro that implements `traits::Protobuf` for cases where From<> and TryFrom<>
+/// Macro that implements `traits::Protobuf` for cases where `From<>` and `TryFrom<>`
 /// conversions exist between the api type `$api` and the protobuf model type `$model`
 macro_rules! standard_protobuf_impl {
     ( $api:ty, $model:ty ) => {

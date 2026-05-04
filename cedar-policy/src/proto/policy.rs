@@ -461,7 +461,7 @@ impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
             })
             .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
 
-        Ok(Self::new(templates.into_iter(), links.into_iter()))
+        Ok(Self::new(templates, links))
     }
 }
 
