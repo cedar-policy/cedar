@@ -163,9 +163,9 @@ impl traits::Protobuf for api::PolicySet {
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashMap, str::FromStr};
-
+    use cool_asserts::assert_matches;
     use prost::Message as _;
+    use std::{collections::HashMap, str::FromStr};
 
     /// Performs a series of conversions: API -> Protobuf model -> Protobuf bytes -> Protobuf model -> API.
     /// Checks that the input API policy set is equal to the converted policy set.
@@ -398,5 +398,39 @@ mod test {
             let _ = crate::Request::decode(*input);
             let _ = crate::PolicySet::decode(*input);
         }
+    }
+
+    #[test]
+    fn validation_mode_strict_roundtrip() {
+        use crate::proto::models;
+        let strict = crate::ValidationMode::Strict;
+        let proto = models::ValidationMode::from(&strict);
+        assert_matches!(proto, models::ValidationMode::Strict);
+        let back = crate::ValidationMode::try_from(&proto).unwrap();
+        assert_matches!(back, crate::ValidationMode::Strict);
+    }
+
+    #[test]
+    fn decode_conversion_error_path() {
+        use crate::proto::traits::Protobuf;
+        // An Entity with a uid whose type name is empty string triggers
+        // ProtobufConversionError, exercising the DecodeError::Conversion path.
+        let model = crate::proto::models::Entity {
+            uid: Some(crate::proto::models::EntityUid {
+                ty: Some(crate::proto::models::Name {
+                    id: String::new(), // invalid: empty identifier
+                    path: vec![],
+                }),
+                eid: "x".to_string(),
+            }),
+            attrs: Default::default(),
+            ancestors: vec![],
+            tags: Default::default(),
+        };
+        let buf = prost::Message::encode_to_vec(&model);
+        assert_matches!(
+            crate::Entity::decode(&buf[..]),
+            Err(crate::proto::traits::DecodeError::Conversion(_))
+        );
     }
 }

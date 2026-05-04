@@ -323,10 +323,12 @@ mod test {
     use std::sync::Arc;
 
     use super::models;
+    use super::ProtobufConversionError;
     use cedar_policy_core::validator::types::{
         AttributeType, BoolType, EntityKind, EntityLUB, OpenTag, Type,
     };
     use cedar_policy_core::validator::ValidatorSchema;
+    use cool_asserts::assert_matches;
     use similar_asserts::assert_eq;
 
     #[test]
@@ -454,6 +456,90 @@ mod test {
         namespace Another {
           action Do;
         }"#,
+        );
+    }
+
+    #[test]
+    fn validation_mode_roundtrip() {
+        use cedar_policy_core::validator::ValidationMode;
+        assert_eq!(
+            ValidationMode::Strict,
+            ValidationMode::try_from(models::ValidationMode::from(&ValidationMode::Strict))
+                .unwrap()
+        );
+        assert_eq!(
+            ValidationMode::Permissive,
+            ValidationMode::try_from(models::ValidationMode::from(&ValidationMode::Permissive))
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn action_decl_try_from_missing_name() {
+        let bad = models::ActionDecl {
+            name: None,
+            principal_types: vec![],
+            resource_types: vec![],
+            descendants: vec![],
+            context: Default::default(),
+        };
+        assert_matches!(
+            cedar_policy_core::validator::ValidatorActionId::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "name"
+        );
+    }
+
+    #[test]
+    fn entity_decl_try_from_missing_name() {
+        let bad = models::EntityDecl {
+            name: None,
+            descendants: vec![],
+            attributes: Default::default(),
+            tags: None,
+            enum_choices: vec![],
+        };
+        assert_matches!(
+            cedar_policy_core::validator::ValidatorEntityType::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "name"
+        );
+    }
+
+    #[test]
+    fn type_try_from_missing_data() {
+        let bad = models::Type { data: None };
+        assert_matches!(
+            Type::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "data"
+        );
+    }
+
+    #[test]
+    fn attribute_type_try_from_missing_attr_type() {
+        let bad = models::AttributeType {
+            attr_type: None,
+            is_required: true,
+        };
+        assert_matches!(
+            cedar_policy_core::validator::types::AttributeType::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "attr_type"
+        );
+    }
+
+    #[test]
+    fn schema_try_from_invalid_entity_decl() {
+        let bad = models::Schema {
+            entity_decls: vec![models::EntityDecl {
+                name: None,
+                descendants: vec![],
+                attributes: Default::default(),
+                tags: None,
+                enum_choices: vec![],
+            }],
+            action_decls: vec![],
+        };
+        assert_matches!(
+            ValidatorSchema::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "name"
         );
     }
 }

@@ -495,6 +495,7 @@ mod test {
     use std::sync::Arc;
 
     use super::*;
+    use cool_asserts::assert_matches;
 
     // We add `PartialOrd` and `Ord` implementations for both `models::Policy` and
     // `models::TemplateBody`, so that these can be sorted for testing purposes
@@ -859,5 +860,207 @@ mod test {
         // Can't compare `models::PolicySet` directly, so we compare their fields
         assert_eq!(mps.templates, mps_roundtrip.templates);
         assert_eq!(mps.links, mps_roundtrip.links);
+    }
+
+    #[test]
+    fn template_body_try_from_missing_principal_constraint() {
+        let bad = models::TemplateBody {
+            id: "t".to_string(),
+            annotations: Default::default(),
+            effect: models::Effect::Permit.into(),
+            principal_constraint: None,
+            action_constraint: Some(models::ActionConstraint {
+                data: Some(models::action_constraint::Data::Any(
+                    models::action_constraint::Any::Unit.into(),
+                )),
+            }),
+            resource_constraint: Some(models::PrincipalOrResourceConstraint {
+                data: Some(models::principal_or_resource_constraint::Data::Any(
+                    models::principal_or_resource_constraint::Any::Unit.into(),
+                )),
+            }),
+            non_scope_constraints: None,
+        };
+        assert_matches!(
+            ast::TemplateBody::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "principal_constraint"
+        );
+    }
+
+    #[test]
+    fn template_body_try_from_invalid_annotation_key() {
+        let bad = models::TemplateBody {
+            id: "t".to_string(),
+            annotations: [("".to_string(), "v".to_string())].into_iter().collect(),
+            effect: models::Effect::Permit.into(),
+            principal_constraint: Some(models::PrincipalOrResourceConstraint {
+                data: Some(models::principal_or_resource_constraint::Data::Any(
+                    models::principal_or_resource_constraint::Any::Unit.into(),
+                )),
+            }),
+            action_constraint: Some(models::ActionConstraint {
+                data: Some(models::action_constraint::Data::Any(
+                    models::action_constraint::Any::Unit.into(),
+                )),
+            }),
+            resource_constraint: Some(models::PrincipalOrResourceConstraint {
+                data: Some(models::principal_or_resource_constraint::Data::Any(
+                    models::principal_or_resource_constraint::Any::Unit.into(),
+                )),
+            }),
+            non_scope_constraints: None,
+        };
+        assert_matches!(
+            ast::TemplateBody::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("invalid annotation key")
+        );
+    }
+
+    #[test]
+    fn entity_reference_try_from_missing_data() {
+        let bad = models::EntityReference { data: None };
+        assert_matches!(
+            ast::EntityReference::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "data"
+        );
+    }
+
+    #[test]
+    fn principal_or_resource_constraint_try_from_missing_data() {
+        let bad = models::PrincipalOrResourceConstraint { data: None };
+        assert_matches!(
+            ast::PrincipalOrResourceConstraint::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "data"
+        );
+    }
+
+    #[test]
+    fn principal_or_resource_constraint_try_from_in_missing_er() {
+        let bad = models::PrincipalOrResourceConstraint {
+            data: Some(models::principal_or_resource_constraint::Data::In(
+                models::principal_or_resource_constraint::InMessage { er: None },
+            )),
+        };
+        assert_matches!(
+            ast::PrincipalOrResourceConstraint::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "er"
+        );
+    }
+
+    #[test]
+    fn principal_or_resource_constraint_try_from_eq_missing_er() {
+        let bad = models::PrincipalOrResourceConstraint {
+            data: Some(models::principal_or_resource_constraint::Data::Eq(
+                models::principal_or_resource_constraint::EqMessage { er: None },
+            )),
+        };
+        assert_matches!(
+            ast::PrincipalOrResourceConstraint::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "er"
+        );
+    }
+
+    #[test]
+    fn principal_or_resource_constraint_try_from_is_missing_entity_type() {
+        let bad = models::PrincipalOrResourceConstraint {
+            data: Some(models::principal_or_resource_constraint::Data::Is(
+                models::principal_or_resource_constraint::IsMessage { entity_type: None },
+            )),
+        };
+        assert_matches!(
+            ast::PrincipalOrResourceConstraint::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "entity_type"
+        );
+    }
+
+    #[test]
+    fn principal_or_resource_constraint_try_from_is_in_missing_entity_type() {
+        let bad = models::PrincipalOrResourceConstraint {
+            data: Some(models::principal_or_resource_constraint::Data::IsIn(
+                models::principal_or_resource_constraint::IsInMessage {
+                    entity_type: None,
+                    er: None,
+                },
+            )),
+        };
+        assert_matches!(
+            ast::PrincipalOrResourceConstraint::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "entity_type"
+        );
+    }
+
+    #[test]
+    fn action_constraint_try_from_missing_data() {
+        let bad = models::ActionConstraint { data: None };
+        assert_matches!(
+            ast::ActionConstraint::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "data"
+        );
+    }
+
+    #[test]
+    fn action_constraint_try_from_eq_missing_euid() {
+        let bad = models::ActionConstraint {
+            data: Some(models::action_constraint::Data::Eq(
+                models::action_constraint::EqMessage { euid: None },
+            )),
+        };
+        assert_matches!(
+            ast::ActionConstraint::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "euid"
+        );
+    }
+
+    #[test]
+    fn literal_policy_try_from_template_link_missing_link_id() {
+        let bad = models::Policy {
+            template_id: "t".to_string(),
+            link_id: None,
+            is_template_link: true,
+            principal_euid: None,
+            resource_euid: None,
+        };
+        assert_matches!(
+            ast::LiteralPolicy::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "link_id"
+        );
+    }
+
+    #[test]
+    fn literal_policy_set_try_from_link_missing_link_id() {
+        let bad = models::PolicySet {
+            templates: vec![models::TemplateBody {
+                id: "t".to_string(),
+                annotations: Default::default(),
+                effect: models::Effect::Permit.into(),
+                principal_constraint: Some(models::PrincipalOrResourceConstraint {
+                    data: Some(models::principal_or_resource_constraint::Data::Any(
+                        models::principal_or_resource_constraint::Any::Unit.into(),
+                    )),
+                }),
+                action_constraint: Some(models::ActionConstraint {
+                    data: Some(models::action_constraint::Data::Any(
+                        models::action_constraint::Any::Unit.into(),
+                    )),
+                }),
+                resource_constraint: Some(models::PrincipalOrResourceConstraint {
+                    data: Some(models::principal_or_resource_constraint::Data::Any(
+                        models::principal_or_resource_constraint::Any::Unit.into(),
+                    )),
+                }),
+                non_scope_constraints: None,
+            }],
+            links: vec![models::Policy {
+                template_id: "t".to_string(),
+                link_id: None,
+                is_template_link: true,
+                principal_euid: None,
+                resource_euid: None,
+            }],
+        };
+        assert_matches!(
+            ast::LiteralPolicySet::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "link_id"
+        );
     }
 }

@@ -811,6 +811,7 @@ impl From<&ast::Context> for models::Expr {
 #[cfg(test)]
 mod test {
     use super::*;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn name_and_slot_roundtrip() {
@@ -1054,5 +1055,317 @@ mod test {
         assert_eq!(request.principal().uid(), request_rt.principal().uid());
         assert_eq!(request.action().uid(), request_rt.action().uid());
         assert_eq!(request.resource().uid(), request_rt.resource().uid());
+    }
+
+    #[test]
+    fn name_try_from_invalid_basename() {
+        let bad = models::Name {
+            id: "".to_string(),
+            path: vec![],
+        };
+        assert_matches!(
+            ast::InternalName::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("invalid basename")
+        );
+    }
+
+    #[test]
+    fn name_try_from_invalid_path_component() {
+        let bad = models::Name {
+            id: "A".to_string(),
+            path: vec!["".to_string()],
+        };
+        assert_matches!(
+            ast::InternalName::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("invalid path component")
+        );
+    }
+
+    #[test]
+    fn test_when_missing_ty() {
+        // models missing type field don't convert
+        let bad = models::EntityUid {
+            ty: None,
+            eid: "foo".to_string(),
+        };
+        assert_matches!(
+            ast::EntityUID::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "ty"
+        );
+        let bad = models::EntityUid {
+            ty: None,
+            eid: "foo".to_string(),
+        };
+        assert_matches!(
+            ast::EntityUIDEntry::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "ty"
+        );
+    }
+
+    #[test]
+    fn entity_try_from_missing_uid() {
+        let bad = models::Entity {
+            uid: None,
+            attrs: Default::default(),
+            ancestors: vec![],
+            tags: Default::default(),
+        };
+        assert_matches!(
+            ast::Entity::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "uid"
+        );
+    }
+
+    #[test]
+    fn test_when_missing_expr_kind() {
+        // Entity with invalid attr expr
+        let bad = models::Entity {
+            uid: Some(models::EntityUid {
+                ty: Some(models::Name {
+                    id: "A".to_string(),
+                    path: vec![],
+                }),
+                eid: "x".to_string(),
+            }),
+            attrs: [("k".to_string(), models::Expr { expr_kind: None })]
+                .into_iter()
+                .collect(),
+            ancestors: vec![],
+            tags: Default::default(),
+        };
+        assert_matches!(
+            ast::Entity::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "expr_kind"
+        );
+
+        // Entity with invalid tag expr
+        let bad = models::Entity {
+            uid: Some(models::EntityUid {
+                ty: Some(models::Name {
+                    id: "A".to_string(),
+                    path: vec![],
+                }),
+                eid: "x".to_string(),
+            }),
+            attrs: Default::default(),
+            ancestors: vec![],
+            tags: [("t".to_string(), models::Expr { expr_kind: None })]
+                .into_iter()
+                .collect(),
+        };
+        assert_matches!(
+            ast::Entity::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "expr_kind"
+        );
+
+        // Bare Expr missing expr_kind
+        assert_matches!(
+            ast::Expr::try_from(models::Expr { expr_kind: None }),
+            Err(ProtobufConversionError::MissingField(f)) if f == "expr_kind"
+        );
+    }
+
+    #[test]
+    fn expr_try_from_missing_required_fields() {
+        // The models in each test case are missing a field, the field name is the string in the test case
+        let cases: Vec<(models::Expr, &str)> = vec![
+            (models::Expr { expr_kind: None }, "expr_kind"),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::If(Box::new(models::expr::If {
+                        test_expr: None,
+                        then_expr: None,
+                        else_expr: None,
+                    }))),
+                },
+                "test_expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::And(Box::new(models::expr::And {
+                        left: None,
+                        right: None,
+                    }))),
+                },
+                "left",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::Or(Box::new(models::expr::Or {
+                        left: None,
+                        right: None,
+                    }))),
+                },
+                "left",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::UApp(Box::new(
+                        models::expr::UnaryApp {
+                            op: models::expr::unary_app::Op::Not.into(),
+                            expr: None,
+                        },
+                    ))),
+                },
+                "expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::BApp(Box::new(
+                        models::expr::BinaryApp {
+                            op: models::expr::binary_app::Op::Eq.into(),
+                            left: None,
+                            right: None,
+                        },
+                    ))),
+                },
+                "left",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::ExtApp(
+                        models::expr::ExtensionFunctionApp {
+                            fn_name: None,
+                            args: vec![],
+                        },
+                    )),
+                },
+                "fn_name",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::GetAttr(Box::new(
+                        models::expr::GetAttr {
+                            expr: None,
+                            attr: "a".to_string(),
+                        },
+                    ))),
+                },
+                "expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::HasAttr(Box::new(
+                        models::expr::HasAttr {
+                            expr: None,
+                            attr: "a".to_string(),
+                        },
+                    ))),
+                },
+                "expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::Like(Box::new(models::expr::Like {
+                        expr: None,
+                        pattern: vec![],
+                    }))),
+                },
+                "expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::Is(Box::new(models::expr::Is {
+                        expr: None,
+                        entity_type: None,
+                    }))),
+                },
+                "expr",
+            ),
+        ];
+
+        for (bad, expected_field) in cases {
+            assert_matches!(
+                ast::Expr::try_from(bad),
+                Err(ProtobufConversionError::MissingField(f)) if f == expected_field
+            );
+        }
+    }
+
+    #[test]
+    fn expr_try_from_invalid_enum_values() {
+        let cases: Vec<(models::Expr, &str)> = vec![
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::Var(999)),
+                },
+                "invalid var",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::Slot(999)),
+                },
+                "invalid slot",
+            ),
+        ];
+
+        for (bad, expected_msg) in cases {
+            assert_matches!(
+                ast::Expr::try_from(bad),
+                Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains(expected_msg)
+            );
+        }
+    }
+
+    #[test]
+    fn literal_try_from_missing_lit() {
+        assert_matches!(
+            ast::Literal::try_from(models::expr::Literal { lit: None }),
+            Err(ProtobufConversionError::MissingField(f)) if f == "lit"
+        );
+    }
+
+    #[test]
+    fn pattern_elem_try_from_missing_data() {
+        assert_matches!(
+            ast::PatternElem::try_from(models::expr::like::PatternElem { data: None }),
+            Err(ProtobufConversionError::MissingField(f)) if f == "data"
+        );
+    }
+
+    #[test]
+    fn pattern_elem_try_from_empty_char() {
+        let bad = models::expr::like::PatternElem {
+            data: Some(models::expr::like::pattern_elem::Data::C(String::new())),
+        };
+        assert_matches!(
+            ast::PatternElem::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("empty char")
+        );
+    }
+
+    #[test]
+    fn request_try_from_missing_principal() {
+        let bad = models::Request {
+            principal: None,
+            action: Some(models::EntityUid {
+                ty: Some(models::Name {
+                    id: "Action".to_string(),
+                    path: vec![],
+                }),
+                eid: "a".to_string(),
+            }),
+            resource: Some(models::EntityUid {
+                ty: Some(models::Name {
+                    id: "R".to_string(),
+                    path: vec![],
+                }),
+                eid: "r".to_string(),
+            }),
+            context: Default::default(),
+        };
+        assert_matches!(
+            ast::Request::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "principal"
+        );
+    }
+
+    #[test]
+    fn context_try_from_missing_expr_kind() {
+        let bad = models::Expr { expr_kind: None };
+        assert_matches!(
+            ast::Context::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "expr_kind"
+        );
     }
 }
