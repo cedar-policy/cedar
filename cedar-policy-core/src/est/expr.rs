@@ -1027,6 +1027,13 @@ impl Expr {
                     }
                     ExprNoExt::HasAttr(repr) => match repr {
                         HasAttrRepr::Simple { left, .. } | HasAttrRepr::Extended { left, .. } => {
+                            // For the `Extended` variant, the attr list is
+                            // flat (a list of strings), not nested sub-expressions,
+                            // so only `left` contributes to EST height.
+                            // Note that the AST desugars this into a
+                            // nested tree of `and`/`hasAttr`/`getAttr`
+                            // nodes, which will result in a deeper tree.
+                            // However, the conversion to the AST uses an iterator + fold.
                             stack.push((left, child_depth));
                         }
                     },
