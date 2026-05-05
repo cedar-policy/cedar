@@ -53,19 +53,20 @@ impl Evaluator<'_> {
             }
             Residual::Partial { kind, .. } => kind,
         };
-        // Do not define a ty variable in this scope, to avoid ambiguity, but instead propagate the ty in the return value,
-        // the type does not change during evaluation.
+        // Do not define a ty variable in this scope, to avoid ambiguity, but instead propagate
+        // the ty in the return value, the type does not change during evaluation.
         let mk_error = || Residual::Error(r.ty().clone());
         let mk_residual = |kind: ResidualKind| Residual::Partial {
             kind,
             ty: r.ty().clone(),
         };
         let mk_concrete = |v: Value| Residual::Concrete {
-            value: v,
+            value: normalize_ext_value(v),
             ty: r.ty().clone(),
         };
 
-        // Guard against stack overflows (just like the concrete evaluator), given the recursive nature of interpret
+        // Guard against stack overflows (just like the concrete evaluator), given the recursive
+        // nature of interpret.
         match stack_size_check() {
             Ok(_) => (),
             Err(_) => return mk_error(),
@@ -608,20 +609,81 @@ impl Evaluator<'_> {
 /// match the canonical form.  This ensures TPE residuals are deterministic
 /// regardless of which constructor originally created the value.
 fn normalize_ext_value(value: Value) -> Value {
+    normalize_ext_value_inner(&value).unwrap_or(value)
+}
+
+/// Returns `Some(normalized)` if the value needed normalization, `None` if it was already fine.
+fn normalize_ext_value_inner(value: &Value) -> Option<Value> {
     match &value.value {
+        ValueKind::Lit(_) => None,
         ValueKind::ExtensionValue(ev) => {
-            if let Some((func, args)) = ev.value().canonical_repr() {
-                Value {
-                    value: ValueKind::ExtensionValue(Arc::new(
-                        ast::RepresentableExtensionValue::new(ev.value.clone(), func, args),
-                    )),
-                    loc: value.loc,
-                }
-            } else {
-                value
-            }
+            let (func, args) = ev.value().canonical_repr()?;
+            Some(Value {
+                value: ValueKind::ExtensionValue(Arc::new(ast::RepresentableExtensionValue::new(
+                    ev.value.clone(),
+                    func,
+                    args,
+                ))),
+                loc: value.loc.clone(),
+            })
         }
-        _ => value,
+        ValueKind::Set(s) if s.fast.is_some() => {
+            // due to invariant on set, this means all elements are literals, hence nothing to norm
+            None
+        }
+
+        // The Set and Record normalization attempt to avoid cloning by scanning whether
+        // normalization is needed. Cloning to get the normalization only happens when it is
+        // actually required.
+        ValueKind::Set(s) => {
+            // Find the first element that needs normalization or return None.
+            let (idx, normalized) = s
+                .iter()
+                .enumerate()
+                .find_map(|(i, x)| normalize_ext_value_inner(x).map(|n| (i, n)))?;
+            // Clone elements before `idx` as-is, insert the normalized one,
+            // then normalize the rest.
+            let vals: Vec<Value> = s
+                .iter()
+                .take(idx)
+                .cloned()
+                .chain(std::iter::once(normalized))
+                .chain(
+                    s.iter()
+                        .skip(idx + 1)
+                        .map(|v| normalize_ext_value_inner(v).unwrap_or_else(|| v.clone())),
+                )
+                .collect();
+            Some(Value {
+                value: ValueKind::Set(Set::new(vals)),
+                loc: value.loc.clone(),
+            })
+        }
+        ValueKind::Record(r) => {
+            let mut iter = r.iter().enumerate();
+            let (idx, key, normalized) = loop {
+                let (i, (k, v)) = iter.next()?;
+                if let Some(n) = normalize_ext_value_inner(v) {
+                    break (i, k.clone(), n);
+                }
+            };
+            let map: BTreeMap<_, _> = r
+                .iter()
+                .take(idx)
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .chain(std::iter::once((key, normalized)))
+                .chain(r.iter().skip(idx + 1).map(|(k, v)| {
+                    (
+                        k.clone(),
+                        normalize_ext_value_inner(v).unwrap_or_else(|| v.clone()),
+                    )
+                }))
+                .collect();
+            Some(Value {
+                value: ValueKind::Record(Arc::new(map)),
+                loc: value.loc.clone(),
+            })
+        }
     }
 }
 
@@ -641,7 +703,7 @@ mod tests {
         extensions::Extensions,
         FromNormalizedStr,
     };
-    use cool_asserts::assert_matches;
+    use cool_asserts::{assert_matches, assertion_failure};
     use itertools::Itertools;
 
     use crate::{
@@ -2026,5 +2088,317 @@ mod tests {
             .unwrap();
         let expr: crate::ast::Expr = residual.into();
         assert_eq!(expr.to_string(), r#"duration("86400000ms")"#);
+    }
+
+    #[test]
+    fn test_datetime_attr_from_entity_is_normalized() {
+        let extensions = Extensions::all_available();
+        let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
+        let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
+            crate::ast::PartialValue::Value(v) => v,
+            _ => panic!("expected concrete value"),
+        };
+
+        // Create an entity whose attribute "dt" holds this non-canonical datetime.
+        let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
+        let entities = PartialEntities::from_entities_unchecked(
+            [(
+                entity_uid.clone(),
+                PartialEntity {
+                    uid: entity_uid.clone(),
+                    attrs: Some(BTreeMap::from_iter([("dt".parse().unwrap(), datetime_val)])),
+                    ancestors: None,
+                    tags: None,
+                },
+            )]
+            .into_iter(),
+        );
+
+        // Principal is unknown so that the overall expression stays partial,
+        // making the datetime value appear in the residual.
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            entity_uid.into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+
+        // Retrieve the datetime attribute from the known entity (resource).
+        let residual = eval
+            .interpret_expr(
+                &builder().get_attr(builder().var(Var::Resource), "dt".parse().unwrap()),
+            )
+            .unwrap();
+
+        let expr: Expr = residual.into();
+        {
+            use crate::pst::{BinaryOp, Expr, UnaryOp};
+            // expression matches (datetime(..).offset(duration(...))"#,
+            match Expr::try_from(expr).unwrap() {
+                Expr::BinaryOp {
+                    op: BinaryOp::Offset,
+                    left,
+                    right,
+                } => {
+                    assert_matches!(
+                        left.as_ref(),
+                        Expr::UnaryOp {
+                            op: UnaryOp::Datetime,
+                            ..
+                        }
+                    );
+                    assert_matches!(
+                        right.as_ref(),
+                        Expr::UnaryOp {
+                            op: UnaryOp::Duration,
+                            ..
+                        }
+                    );
+                }
+                _ => assertion_failure!("toplevel op should be offset"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_datetime_in_record_attr_from_entity_is_normalized() {
+        use smol_str::ToSmolStr;
+        let extensions = Extensions::all_available();
+        let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
+        let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
+            crate::ast::PartialValue::Value(v) => v,
+            _ => panic!("expected concrete value"),
+        };
+
+        // Entity attribute "rec" is a record containing the non-canonical datetime.
+        let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
+        let rec_val = Value::record([("dt".to_smolstr(), datetime_val)], None);
+        let entities = PartialEntities::from_entities_unchecked(
+            [(
+                entity_uid.clone(),
+                PartialEntity {
+                    uid: entity_uid.clone(),
+                    attrs: Some(BTreeMap::from_iter([("rec".parse().unwrap(), rec_val)])),
+                    ancestors: None,
+                    tags: None,
+                },
+            )]
+            .into_iter(),
+        );
+
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            entity_uid.into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+
+        // Retrieve resource.rec — a record whose "dt" field holds the datetime.
+        // The record is concrete, so it becomes a Residual::Concrete.
+        // When converted to Expr, the datetime inside must use the canonical form.
+        let residual = eval
+            .interpret_expr(
+                &builder().get_attr(builder().var(Var::Resource), "rec".parse().unwrap()),
+            )
+            .unwrap();
+
+        let expr: Expr = residual.into();
+        {
+            use crate::pst::{BinaryOp, Expr, UnaryOp};
+            // The record should have a single field "dt" whose value is in canonical form.
+            match Expr::try_from(expr).unwrap() {
+                Expr::Record(fields) => {
+                    let dt_expr = fields.get("dt").expect("record should have 'dt' field");
+                    match dt_expr.as_ref() {
+                        Expr::BinaryOp {
+                            op: BinaryOp::Offset,
+                            left,
+                            right,
+                        } => {
+                            assert_matches!(
+                                left.as_ref(),
+                                Expr::UnaryOp {
+                                    op: UnaryOp::Datetime,
+                                    ..
+                                }
+                            );
+                            assert_matches!(
+                                right.as_ref(),
+                                Expr::UnaryOp {
+                                    op: UnaryOp::Duration,
+                                    ..
+                                }
+                            );
+                        }
+                        _ => assertion_failure!("dt field should be offset(datetime, duration)"),
+                    }
+                }
+                _ => assertion_failure!("toplevel should be a record"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_datetime_in_set_attr_from_entity_is_normalized() {
+        let extensions = Extensions::all_available();
+        let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
+        let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
+            crate::ast::PartialValue::Value(v) => v,
+            _ => panic!("expected concrete value"),
+        };
+
+        // Entity attribute "s" is a set containing a plain value followed by the
+        // non-canonical datetime, so the loop skips the first element before normalizing.
+        let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
+        let set_val = Value::set([Value::from(1), datetime_val], None);
+        let entities = PartialEntities::from_entities_unchecked(
+            [(
+                entity_uid.clone(),
+                PartialEntity {
+                    uid: entity_uid.clone(),
+                    attrs: Some(BTreeMap::from_iter([("s".parse().unwrap(), set_val)])),
+                    ancestors: None,
+                    tags: None,
+                },
+            )]
+            .into_iter(),
+        );
+
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            entity_uid.into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+
+        let residual = eval
+            .interpret_expr(&builder().get_attr(builder().var(Var::Resource), "s".parse().unwrap()))
+            .unwrap();
+
+        let expr: Expr = residual.into();
+        {
+            use crate::pst::{BinaryOp, Expr};
+            match Expr::try_from(expr).unwrap() {
+                Expr::Set(elems) => {
+                    assert_eq!(elems.len(), 2);
+                    // At least one element should be the normalized datetime.
+                    let has_normalized = elems.iter().any(|e| {
+                        matches!(
+                            e.as_ref(),
+                            Expr::BinaryOp {
+                                op: BinaryOp::Offset,
+                                ..
+                            }
+                        )
+                    });
+                    assert!(has_normalized, "set should contain a normalized datetime");
+                }
+                _ => assertion_failure!("toplevel should be a set"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_datetime_in_multi_field_record_is_normalized() {
+        use smol_str::ToSmolStr;
+        let extensions = Extensions::all_available();
+        let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
+        let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
+            crate::ast::PartialValue::Value(v) => v,
+            _ => panic!("expected concrete value"),
+        };
+
+        // Record with "a" before "dt" and "z" after, so the skip(idx+1) path is exercised.
+        let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
+        let rec_val = Value::record(
+            [
+                ("a".to_smolstr(), Value::from(1)),
+                ("dt".to_smolstr(), datetime_val),
+                ("z".to_smolstr(), Value::from(2)),
+            ],
+            None,
+        );
+        let entities = PartialEntities::from_entities_unchecked(
+            [(
+                entity_uid.clone(),
+                PartialEntity {
+                    uid: entity_uid.clone(),
+                    attrs: Some(BTreeMap::from_iter([("rec".parse().unwrap(), rec_val)])),
+                    ancestors: None,
+                    tags: None,
+                },
+            )]
+            .into_iter(),
+        );
+
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            entity_uid.into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+
+        let residual = eval
+            .interpret_expr(
+                &builder().get_attr(builder().var(Var::Resource), "rec".parse().unwrap()),
+            )
+            .unwrap();
+
+        let expr: Expr = residual.into();
+        {
+            use crate::pst::{BinaryOp, Expr, UnaryOp};
+            match Expr::try_from(expr).unwrap() {
+                Expr::Record(fields) => {
+                    assert_eq!(fields.len(), 3);
+                    assert_matches!(fields.get("a").unwrap().as_ref(), Expr::Literal(_));
+                    assert_matches!(fields.get("z").unwrap().as_ref(), Expr::Literal(_));
+                    let dt_expr = fields.get("dt").expect("record should have 'dt' field");
+                    assert_matches!(
+                        dt_expr.as_ref(),
+                        Expr::BinaryOp {
+                            op: BinaryOp::Offset,
+                            left,
+                            right,
+                        } => {
+                            assert_matches!(left.as_ref(), Expr::UnaryOp { op: UnaryOp::Datetime, .. });
+                            assert_matches!(right.as_ref(), Expr::UnaryOp { op: UnaryOp::Duration, .. });
+                        }
+                    );
+                }
+                _ => assertion_failure!("toplevel should be a record"),
+            }
+        }
     }
 }
