@@ -636,14 +636,11 @@ fn normalize_ext_value_inner(value: &Value) -> Option<Value> {
         // normalization is needed. Cloning to get the normalization only happens when it is
         // actually required.
         ValueKind::Set(s) => {
-            // Find the first element that needs normalization.
-            let mut iter = s.iter().enumerate();
-            let (idx, normalized) = loop {
-                let (i, v) = iter.next()?; // None = no element needed normalization = no clone
-                if let Some(n) = normalize_ext_value_inner(v) {
-                    break (i, n);
-                }
-            };
+            // Find the first element that needs normalization or return None.
+            let (idx, normalized) = s
+                .iter()
+                .enumerate()
+                .find_map(|(i, x)| normalize_ext_value_inner(x).map(|n| (i, n)))?;
             // Clone elements before `idx` as-is, insert the normalized one,
             // then normalize the rest.
             let vals: Vec<Value> = s
