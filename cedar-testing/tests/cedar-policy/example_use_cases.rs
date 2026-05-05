@@ -81,3 +81,13 @@ fn scenario_4f() {
 fn scenario_5b() {
     perform_integration_test_from_json(folder().join("5b.json"));
 }
+
+#[test]
+fn scenario_2a_json_policy() {
+    perform_integration_test_from_json(folder().join("2a_json_policy.json"));
+}
+
+#[test]
+fn scenario_2a_json_schema() {
+    perform_integration_test_from_json(folder().join("2a_json_schema.json"));
+}

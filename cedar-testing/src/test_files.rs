@@ -19,7 +19,7 @@
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-use crate::integration_testing::resolve_integration_test_path;
+use crate::integration_testing::{resolve_integration_test_path, JsonTest};
 
 /// Path of the folder containing the (handwritten) integration tests
 fn integration_test_folder() -> &'static Path {
@@ -39,11 +39,15 @@ pub fn get_integration_tests() -> impl Iterator<Item = PathBuf> {
     WalkDir::new(&tests_folder)
         .into_iter()
         .map(|e| e.expect("failed to access file in tests").into_path())
-        // ignore non-JSON files (and directories, which don't have an extension)
+        // ignore non-JSON files (and directories, which don't have an extension) and ignore
+        // files that don't parse as a Json Test
         .filter(|p| {
             p.extension()
                 .map(|ext| ext.eq_ignore_ascii_case("json"))
                 .unwrap_or(false)
+                && std::fs::read_to_string(resolve_integration_test_path(p).as_path())
+                    .and_then(|f| Ok(serde_json::from_str::<JsonTest>(&f)?))
+                    .is_ok()
         })
 }
 
