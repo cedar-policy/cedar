@@ -45,10 +45,9 @@ pub fn get_integration_tests() -> impl Iterator<Item = PathBuf> {
             p.extension()
                 .map(|ext| ext.eq_ignore_ascii_case("json"))
                 .unwrap_or(false)
-                && serde_json::from_str::<JsonTest>(
-                    &std::fs::read_to_string(resolve_integration_test_path(p).as_path()).unwrap(),
-                )
-                .is_ok()
+                && std::fs::read_to_string(resolve_integration_test_path(p).as_path())
+                    .and_then(|f| Ok(serde_json::from_str::<JsonTest>(&f)?))
+                    .is_ok()
         })
 }
 
