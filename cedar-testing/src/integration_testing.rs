@@ -42,17 +42,39 @@ use std::{
     str::FromStr,
 };
 
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PolicyFormat {
+    #[default]
+    Cedar,
+    Json,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SchemaFormat {
+    #[default]
+    Cedar,
+    Json,
+}
+
 /// JSON representation of our integration test file format
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonTest {
-    /// Filename of the policy set (in Cedar syntax)
+    /// Filename of the policy set
     pub policies: String,
+    /// Format of the policy set
+    #[serde(default)]
+    pub policy_format: PolicyFormat,
     /// Filename of a JSON file representing the entity hierarchy
     pub entities: String,
-    /// Filename of the schema (in Cedar syntax)
+    /// Filename of the schema
     pub schema: String,
+    /// Format of the schema
+    #[serde(default)]
+    pub schema_format: SchemaFormat,
     /// Whether the given policies are expected to pass the validator with this
     /// schema, or not
     pub should_validate: bool,
@@ -144,8 +166,12 @@ pub fn parse_policies_from_test(test: &JsonTest) -> PolicySet {
     let policy_file = resolve_integration_test_path(&test.policies);
     let policies_text = std::fs::read_to_string(policy_file)
         .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", test.policies));
-    PolicySet::from_str(&policies_text)
-        .unwrap_or_else(|e| panic!("error parsing policy file {}: {e}", &test.policies))
+    match test.policy_format {
+        PolicyFormat::Cedar => PolicySet::from_str(&policies_text)
+            .unwrap_or_else(|e| panic!("error parsing policy file {}: {e}", &test.policies)),
+        PolicyFormat::Json => PolicySet::from_json_str(&policies_text)
+            .unwrap_or_else(|e| panic!("error parsing policy file {}: {e}", &test.policies)),
+    }
 }
 
 /// Given a `JsonTest`, parse the provided schema file.
@@ -155,9 +181,15 @@ pub fn parse_schema_from_test(test: &JsonTest) -> Schema {
     let schema_file = resolve_integration_test_path(&test.schema);
     let schema_text = std::fs::read_to_string(schema_file)
         .unwrap_or_else(|e| panic!("error loading schema file {}: {e}", &test.schema));
-    Schema::from_cedarschema_str(&schema_text)
-        .unwrap_or_else(|e| panic!("error parsing schema in {}: {e}", &test.schema))
-        .0
+    match test.schema_format {
+        SchemaFormat::Cedar => {
+            Schema::from_cedarschema_str(&schema_text)
+                .unwrap_or_else(|e| panic!("error parsing schema in {}: {e}", &test.schema))
+                .0
+        }
+        SchemaFormat::Json => Schema::from_json_str(&schema_text)
+            .unwrap_or_else(|e| panic!("error parsing schema in {}: {e}", &test.schema)),
+    }
 }
 
 /// Given a `JsonTest`, parse (and validate) the provided entities file.
