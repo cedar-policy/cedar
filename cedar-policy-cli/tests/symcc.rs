@@ -1098,3 +1098,111 @@ fn test_equivalent_does_not_hold_no_counterexample() {
         .stdout(predicates::str::contains("DOES NOT HOLD"))
         .stdout(predicates::str::contains("Counterexample found").not());
 }
+
+// ---- Template-linked policy tests ----
+
+#[test]
+fn test_never_errors_with_template_linked_policy() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(r#"permit(principal == ?principal, action, resource);"#);
+    let links = write_temp(
+        r#"[{"template_id": "policy0", "link_id": "link0", "args": {"?principal": "Identity::\"alice\""}}]"#,
+    );
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("never-errors")
+        .arg("--policies")
+        .arg(policy.path())
+        .arg("--template-linked")
+        .arg(links.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("VERIFIED"));
+}
+
+#[test]
+fn test_always_denies_with_template_linked_forbid() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    // A permit-all plus a linked forbid: should NOT always allow
+    let policy = write_temp(
+        r#"
+        permit(principal, action, resource);
+        forbid(principal == ?principal, action, resource);
+        "#,
+    );
+    let links = write_temp(
+        r#"[{"template_id": "policy1", "link_id": "link0", "args": {"?principal": "Identity::\"alice\""}}]"#,
+    );
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-allows")
+        .arg("--policies")
+        .arg(policy.path())
+        .arg("--template-linked")
+        .arg(links.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("DOES NOT HOLD"));
+}
+
+#[test]
+fn test_multiple_template_links() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    // One template linked twice with different principals.
+    // permit-all + two linked forbids: should NOT always allow.
+    let policy = write_temp(
+        r#"
+        permit(principal, action, resource);
+        forbid(principal == ?principal, action, resource);
+        "#,
+    );
+    let links = write_temp(
+        r#"[
+            {"template_id": "policy1", "link_id": "link0", "args": {"?principal": "Identity::\"alice\""}},
+            {"template_id": "policy1", "link_id": "link1", "args": {"?principal": "Identity::\"bob\""}}
+        ]"#,
+    );
+
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-allows")
+        .arg("--policies")
+        .arg(policy.path())
+        .arg("--template-linked")
+        .arg(links.path())
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("DOES NOT HOLD"));
+}

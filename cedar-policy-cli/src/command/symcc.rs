@@ -21,7 +21,7 @@ use miette::{miette, Result};
 use std::path::PathBuf;
 
 use crate::CedarExitCode;
-use crate::{read_cedar_policy_set, read_json_policy_set, PoliciesArgs};
+use crate::{add_template_links_to_set, read_cedar_policy_set, read_json_policy_set, PoliciesArgs};
 use crate::{PolicyFormat, SchemaArgs};
 
 #[derive(Args, Debug)]
@@ -96,15 +96,22 @@ pub struct SymccPoliciesArgs {
     /// Format of policies in the `--policies` file
     #[arg(long = "policy-format", default_value_t, value_enum)]
     pub policy_format: PolicyFormat,
+    /// File containing template-linked policies
+    #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
+    pub template_linked_file: Option<String>,
 }
 
 impl SymccPoliciesArgs {
     /// Turn this `SymccPoliciesArgs` into the appropriate `PolicySet` object
     fn get_policy_set(&self) -> Result<PolicySet> {
-        match self.policy_format {
+        let mut pset = match self.policy_format {
             PolicyFormat::Cedar => read_cedar_policy_set(self.policies_file.as_ref()),
             PolicyFormat::Json => read_json_policy_set(self.policies_file.as_ref()),
+        }?;
+        if let Some(links_filename) = self.template_linked_file.as_ref() {
+            add_template_links_to_set(links_filename, &mut pset)?;
         }
+        Ok(pset)
     }
 }
 
@@ -117,12 +124,18 @@ pub struct TwoPolicyArgs {
     /// Format of the first policy file
     #[arg(long = "policy1-format", default_value_t, value_enum)]
     pub policy1_format: PolicyFormat,
+    /// File containing template-linked policies for the first policy
+    #[arg(long = "template-linked1", value_name = "FILE")]
+    pub template_linked1_file: Option<String>,
     /// File containing the second Cedar policy
     #[arg(long = "policy2", value_name = "FILE")]
     pub policy2_file: Option<String>,
     /// Format of the second policy file
     #[arg(long = "policy2-format", default_value_t, value_enum)]
     pub policy2_format: PolicyFormat,
+    /// File containing template-linked policies for the second policy
+    #[arg(long = "template-linked2", value_name = "FILE")]
+    pub template_linked2_file: Option<String>,
 }
 
 impl TwoPolicyArgs {
@@ -130,7 +143,7 @@ impl TwoPolicyArgs {
         let pargs = PoliciesArgs {
             policies_file: self.policy1_file.clone(),
             policy_format: self.policy1_format,
-            template_linked_file: None,
+            template_linked_file: self.template_linked1_file.clone(),
         };
         pargs.get_policy_set()
     }
@@ -139,13 +152,13 @@ impl TwoPolicyArgs {
         let pargs = PoliciesArgs {
             policies_file: self.policy2_file.clone(),
             policy_format: self.policy2_format,
-            template_linked_file: None,
+            template_linked_file: self.template_linked2_file.clone(),
         };
         pargs.get_policy_set()
     }
 }
 
-/// Two policy-set comparison: policy set inputs without linked policies.
+/// Two policy-set comparison: policy set inputs.
 #[derive(Args, Debug)]
 pub struct SymccTwoPoliciesArgs {
     /// File containing the first policy set
@@ -154,12 +167,18 @@ pub struct SymccTwoPoliciesArgs {
     /// Format of the first policy set file
     #[arg(long = "policies1-format", default_value_t, value_enum)]
     pub policies1_format: PolicyFormat,
+    /// File containing template-linked policies for the first policy set
+    #[arg(long = "template-linked1", value_name = "FILE")]
+    pub template_linked1_file: Option<String>,
     /// File containing the second policy set
     #[arg(long = "policies2", value_name = "FILE")]
     pub policies2_file: Option<String>,
     /// Format of the second policy set file
     #[arg(long = "policies2-format", default_value_t, value_enum)]
     pub policies2_format: PolicyFormat,
+    /// File containing template-linked policies for the second policy set
+    #[arg(long = "template-linked2", value_name = "FILE")]
+    pub template_linked2_file: Option<String>,
 }
 
 impl SymccTwoPoliciesArgs {
@@ -167,6 +186,7 @@ impl SymccTwoPoliciesArgs {
         let pargs = SymccPoliciesArgs {
             policies_file: self.policies1_file.clone(),
             policy_format: self.policies1_format,
+            template_linked_file: self.template_linked1_file.clone(),
         };
         pargs.get_policy_set()
     }
@@ -175,6 +195,7 @@ impl SymccTwoPoliciesArgs {
         let pargs = SymccPoliciesArgs {
             policies_file: self.policies2_file.clone(),
             policy_format: self.policies2_format,
+            template_linked_file: self.template_linked2_file.clone(),
         };
         pargs.get_policy_set()
     }

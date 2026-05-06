@@ -5,6 +5,9 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+### Added
+- `symcc` subcommand support for template-linked policies with the `--template-linked` option.
+
 ## 4.10.0
 
 ### Added
