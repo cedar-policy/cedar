@@ -556,7 +556,7 @@ impl From<Residual> for Expr {
 }
 
 #[cfg(test)]
-mod test {
+pub(super) mod test {
     use super::*;
     use crate::ast::{ActionConstraint, PrincipalConstraint, ResourceConstraint, SlotId, Template};
     use crate::extensions::Extensions;
@@ -569,7 +569,7 @@ mod test {
     use similar_asserts::assert_eq;
 
     #[track_caller]
-    fn parse_typed_expr(expr_str: &str, slot_env: &SlotEnv) -> Expr<Option<Type>> {
+    pub(crate) fn parse_typed_expr(expr_str: &str, slot_env: &SlotEnv) -> Expr<Option<Type>> {
         let expr = parse_expr(expr_str).unwrap();
         let policy_id = crate::ast::PolicyID::from_string("test");
         let t = Template::new_shared(

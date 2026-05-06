@@ -98,57 +98,44 @@ impl Evaluator<'_> {
             ResidualKind::And { left, right } => {
                 let left = self.interpret(left);
                 match &left {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::Bool(false)),
-                                ..
-                            },
-                        ..
-                    } => mk_concrete(false.into()),
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::Bool(true)),
-                                ..
-                            },
-                        ..
-                    } => self.interpret(right),
-                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Concrete { value, .. } => match value.get_as_bool() {
+                        Ok(false) => mk_concrete(false.into()), // false && <right> => false
+                        Ok(true) => self.interpret(right),      // true && <right> => <right>
+                        Err(_) => mk_error(),                   // <error> && <right> => <error>
+                    },
                     Residual::Partial { .. } => {
                         let right = self.interpret(right);
                         match &right {
-                            Residual::Concrete {
-                                value:
-                                    Value {
-                                        value: ValueKind::Lit(ast::Literal::Bool(true)),
-                                        ..
-                                    },
-                                ..
-                            } => left,
-                            Residual::Concrete {
-                                value:
-                                    Value {
-                                        value: ValueKind::Lit(ast::Literal::Bool(false)),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                if !left.can_error_assuming_well_formed() {
-                                    // simplify <error-free> && false == false
-                                    mk_concrete(false.into())
-                                } else {
-                                    // cannot simplify <non-error-free> && false
-                                    mk_residual(ResidualKind::And {
-                                        left: Arc::new(left),
-                                        right: Arc::new(mk_concrete(false.into())),
-                                    })
+                            Residual::Concrete { value, .. } => match value.get_as_bool() {
+                                // <left-residual> && true => <left-residual>
+                                Ok(true) => left,
+                                Ok(false) => {
+                                    if !left.can_error_assuming_well_formed() {
+                                        // simplify <error-free> && false == false
+                                        mk_concrete(false.into())
+                                    } else {
+                                        // cannot simplify <non-error-free> && false
+                                        mk_residual(ResidualKind::And {
+                                            left: Arc::new(left),
+                                            right: Arc::new(mk_concrete(false.into())),
+                                        })
+                                    }
                                 }
+                                // "<left-residual> && <nonbool>" => "<left-residual> && <error>"
+                                // TODO(luxas): Introduce a Residual::PartialError variant that says "the expression definitely errors, but with an unknown error"
+                                Err(_) => mk_residual(ResidualKind::And {
+                                    left: Arc::new(left),
+                                    right: Arc::new(mk_error()),
+                                }),
+                            },
+                            // Cannot simplify "<left-residual> && <right-residual>" or "<left-residual> && <error>"
+                            // The latter expression could become a Residual::PartialError later.
+                            Residual::Partial { .. } | Residual::Error(_) => {
+                                mk_residual(ResidualKind::And {
+                                    left: Arc::new(left),
+                                    right: Arc::new(right),
+                                })
                             }
-                            _ => mk_residual(ResidualKind::And {
-                                left: Arc::new(left),
-                                right: Arc::new(right),
-                            }),
                         }
                     }
                     Residual::Error(_) => mk_error(),
@@ -157,57 +144,44 @@ impl Evaluator<'_> {
             ResidualKind::Or { left, right } => {
                 let left = self.interpret(left);
                 match &left {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::Bool(true)),
-                                ..
-                            },
-                        ..
-                    } => mk_concrete(true.into()),
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::Bool(false)),
-                                ..
-                            },
-                        ..
-                    } => self.interpret(right),
-                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Concrete { value, .. } => match value.get_as_bool() {
+                        Ok(true) => mk_concrete(true.into()), // true || <right> => true
+                        Ok(false) => self.interpret(right),   // false || <right> => <right>
+                        Err(_) => mk_error(),                 // <error> || <right> => <error>
+                    },
                     Residual::Partial { .. } => {
                         let right = self.interpret(right);
                         match &right {
-                            Residual::Concrete {
-                                value:
-                                    Value {
-                                        value: ValueKind::Lit(ast::Literal::Bool(false)),
-                                        ..
-                                    },
-                                ..
-                            } => left,
-                            Residual::Concrete {
-                                value:
-                                    Value {
-                                        value: ValueKind::Lit(ast::Literal::Bool(true)),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                if !left.can_error_assuming_well_formed() {
-                                    // simplify <error-free> || true == true
-                                    mk_concrete(true.into())
-                                } else {
-                                    // cannot simplify <non-error-free> || true
-                                    mk_residual(ResidualKind::Or {
-                                        left: Arc::new(left),
-                                        right: Arc::new(mk_concrete(true.into())),
-                                    })
+                            Residual::Concrete { value, .. } => match value.get_as_bool() {
+                                // <left-residual> || false == <left-residual>
+                                Ok(false) => left,
+                                Ok(true) => {
+                                    if !left.can_error_assuming_well_formed() {
+                                        // simplify <error-free> || true == true
+                                        mk_concrete(true.into())
+                                    } else {
+                                        // cannot simplify <non-error-free> || true
+                                        mk_residual(ResidualKind::Or {
+                                            left: Arc::new(left),
+                                            right: Arc::new(mk_concrete(true.into())),
+                                        })
+                                    }
                                 }
+                                // "<left-residual> || <nonbool>" => "<left-residual> || <error>"
+                                // Note that this is not necessarily a Residual::PartialError, as "<left-residual>" might evaluate to true,
+                                // in which case the whole expression is true, regardless of the RHS error.
+                                Err(_) => mk_residual(ResidualKind::Or {
+                                    left: Arc::new(left),
+                                    right: Arc::new(mk_error()),
+                                }),
+                            },
+                            // Cannot simplify "<left-residual> || <right-residual>" or "<left-residual> || <error>"
+                            Residual::Partial { .. } | Residual::Error(_) => {
+                                mk_residual(ResidualKind::Or {
+                                    left: Arc::new(left),
+                                    right: Arc::new(right),
+                                })
                             }
-                            _ => mk_residual(ResidualKind::Or {
-                                left: Arc::new(left),
-                                right: Arc::new(right),
-                            }),
                         }
                     }
                     Residual::Error(_) => mk_error(),
@@ -220,21 +194,11 @@ impl Evaluator<'_> {
             } => {
                 let test_expr = self.interpret(test_expr);
                 match &test_expr {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::Bool(b)),
-                                ..
-                            },
-                        ..
-                    } => {
-                        if *b {
-                            self.interpret(then_expr)
-                        } else {
-                            self.interpret(else_expr)
-                        }
-                    }
-                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Concrete { value, .. } => match value.get_as_bool() {
+                        Ok(true) => self.interpret(then_expr), // (if true then <then> else <else>) => <then>
+                        Ok(false) => self.interpret(else_expr), // (if false then <then> else <else>) => <else>
+                        Err(_) => mk_error(), // (if <error> then <then> else <else>) => <error>
+                    },
                     Residual::Partial { .. } => mk_residual(ResidualKind::If {
                         test_expr: Arc::new(test_expr),
                         then_expr: Arc::new(self.interpret(then_expr)),
@@ -246,15 +210,10 @@ impl Evaluator<'_> {
             ResidualKind::Is { expr, entity_type } => {
                 let expr = self.interpret(expr);
                 match &expr {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::EntityUID(uid)),
-                                ..
-                            },
-                        ..
-                    } => mk_concrete((uid.entity_type() == entity_type).into()),
-                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Concrete { value, .. } => match value.get_as_entity() {
+                        Ok(uid) => mk_concrete((uid.entity_type() == entity_type).into()),
+                        Err(_) => mk_error(), // <error> is <entity_type> => <error>
+                    },
                     Residual::Partial {
                         kind: ResidualKind::Var(Var::Principal),
                         ..
@@ -273,15 +232,10 @@ impl Evaluator<'_> {
             ResidualKind::Like { expr, pattern } => {
                 let expr = self.interpret(expr);
                 match &expr {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::String(s)),
-                                ..
-                            },
-                        ..
-                    } => mk_concrete(pattern.wildcard_match(s).into()),
-                    Residual::Concrete { .. } => mk_error(),
+                    Residual::Concrete { value, .. } => match value.get_as_string() {
+                        Ok(s) => mk_concrete(pattern.wildcard_match(s).into()),
+                        Err(_) => mk_error(), // <error> like <pattern> => <error>
+                    },
                     Residual::Partial { .. } => mk_residual(ResidualKind::Like {
                         expr: Arc::new(expr),
                         pattern: pattern.clone(),
@@ -696,7 +650,7 @@ mod tests {
     use crate::validator::types::Type;
     use crate::{
         ast::{
-            BinaryOp, EntityUID, ExprBuilder, Literal, Pattern, PatternElem, UnaryOp, Value,
+            BinaryOp, Eid, EntityUID, ExprBuilder, Literal, Pattern, PatternElem, UnaryOp, Value,
             ValueKind, Var,
         },
         expr_builder::ExprBuilder as _,
@@ -704,9 +658,11 @@ mod tests {
         FromNormalizedStr,
     };
     use cool_asserts::{assert_matches, assertion_failure};
+    use insta::assert_snapshot;
     use itertools::Itertools;
 
     use crate::{
+        ast,
         tpe::entities::{PartialEntities, PartialEntity},
         tpe::request::{PartialEntityUID, PartialRequest},
         tpe::residual::{Residual, ResidualKind},
@@ -722,6 +678,34 @@ mod tests {
     #[track_caller]
     fn dummy_uid() -> EntityUID {
         r#"E::"""#.parse().unwrap()
+    }
+
+    fn typed_req() -> PartialRequest {
+        // Request matches schema in parse_typed_expr
+        PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "User".parse().unwrap(),
+                eid: Some(Eid::Eid("foo".into())),
+            },
+            PartialEntityUID {
+                ty: "Document".parse().unwrap(),
+                eid: None,
+            },
+            r#"Action::"get""#.parse().unwrap(),
+            None,
+        )
+    }
+
+    #[track_caller]
+    fn interpret_typed_str_to_str(evaluator: &Evaluator<'_>, expr_str: &str) -> String {
+        let expr = super::super::residual::test::parse_typed_expr(expr_str, &SlotEnv::new());
+        interpret_expr_to_str(evaluator, &expr)
+    }
+
+    #[track_caller]
+    fn interpret_expr_to_str(evaluator: &Evaluator<'_>, expr: &Expr<Option<Type>>) -> String {
+        let evaluated: ast::Expr = evaluator.interpret_expr(&expr).unwrap().try_into().unwrap();
+        evaluated.to_string()
     }
 
     impl Evaluator<'_> {
@@ -803,228 +787,143 @@ mod tests {
 
     #[test]
     fn test_and() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
-        );
         let eval = Evaluator {
-            request: &req,
+            request: &typed_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        assert_matches!(
-            eval.interpret_expr(&builder().and(
-                builder().noteq(builder().var(Var::Resource), builder().var(Var::Resource)),
-                builder().val(42)
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(false)),
-                    ..
-                },
-                ..
-            }
+        // Note: The test expressions are in the same order as the match statements
+
+        // "false && <any>" => "false"
+        assert_snapshot!(
+            // Note: principal is concrete, and thus can the residual be simplified.
+            interpret_typed_str_to_str(&eval, "principal != principal && principal.foo"),
+            @r#"false"#
         );
-        // Note that this expression is not an invalid input
-        // The evaluator does not perform any validation
-        assert_matches!(
-            eval.interpret_expr(&builder().and(builder().var(Var::Principal), builder().val(true)))
-                .unwrap(),
-            Residual::Partial {
-                kind: ResidualKind::Var(Var::Principal),
-                ..
-            }
+        // "true && <any>" => "<any>"
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "principal == principal && principal.foo"),
+            @r#"User::"foo".foo"#
         );
-        assert_matches!(
-            eval.interpret_expr(&builder().and(
-                builder().noteq(
-                    builder().mul(builder().val(i64::MAX), builder().val(2)),
-                    builder().val(0)
-                ),
-                builder().val(42)
-            ))
-            .unwrap(),
-            Residual::Error(_),
+        // "<error> && <residual>" => "<error>"
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "(9223372036854775807 * 2 == 0) && principal.foo"),
+            @r#"error()"#
         );
-        // resource == resource && 42 => 42
-        // Note that this expression is not an invalid input
-        // The evaluator does not perform any validation
-        assert_matches!(
-            eval.interpret_expr(&builder().and(
-                builder().binary_app(
-                    BinaryOp::Eq,
-                    builder().var(Var::Resource),
-                    builder().var(Var::Resource)
-                ),
-                builder().val(42)
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Long(42)),
-                    ..
-                },
-                ..
-            }
+        // "<residual> && true" => "<residual>"
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "principal.foo && true"),
+            @r#"User::"foo".foo"#
         );
-        // <error-free> && false => false
-        // principal in Organization::"foo" && 41 == 42 => false
-        assert_matches!(
-            eval.interpret_expr(&builder().and(
-                builder().is_in(
-                    builder().var(Var::Principal),
-                    builder().val(EntityUID::with_eid_and_type("Organization", "foo").unwrap())
-                ),
-                builder().is_eq(builder().val(41), builder().val(42))
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(false)),
-                    ..
-                },
-                ..
-            },
+        // "<error-free> && false" => "false"
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "resource == resource && 41 == 42"),
+            @r#"false"#
         );
-        // <non-error-free> && false cannot be simplified, e.g.
-        // principal.foo + 1 == 100 && 41 == 42
-        assert_matches!(
-            eval.interpret_expr(&builder().and(
-                builder().is_eq(
-                    builder().add(
-                        builder().get_attr(builder().var(Var::Principal), "foo".parse().unwrap()),
-                        builder().val(1)
-                    ),
-                    builder().val(100)
-                ),
-                builder().is_eq(builder().val(41), builder().val(42))
-            ))
-            .unwrap(),
-            // cannot match against the full residual, because of the Arc in the And enum variant,
-            // and due to Residual not implementing the Eq trait, but this shows that the evaluator
-            // kept the residual partial and with an And clause.
-            Residual::Partial {
-                kind: ResidualKind::And { .. },
-                ..
-            }
+        // note: resource is unknown, and we haven't (yet) implemented a simplifying algorithm for this,
+        // so it yields an error-free residual, hence the previous test makes sense
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "resource == resource"),
+            @r#"resource == resource"#
+        );
+        // "<non-error-free> && false" cannot be fully simplified
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "principal.num + 1 == 100 && 41 == 42"),
+            @r#"(((User::"foo".num) + 1) == 100) && false"#
+        );
+        // "<residual> && <nonbool>" => "<residual> && <error>"
+        assert_snapshot!(
+            interpret_expr_to_str(&eval, &builder().and(
+                builder().get_attr(builder().var(Var::Principal), "foo".into()),
+                builder().val(42),
+            )),
+            @r#"(User::"foo".foo) && (error())"#
+        );
+        // The "<residual> && <residual>" case cannot be simplified
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "principal.foo && principal.num == 100"),
+            @r#"(User::"foo".foo) && ((User::"foo".num) == 100)"#
+        );
+        // "<residual> && <error>" cannot be simplified
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "principal.foo && (9223372036854775807 * 2 == 0)"),
+            @r#"(User::"foo".foo) && (error())"#
+        );
+        // "<error> && <any>" => "<error>"
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "(9223372036854775807 * 2 == 0) && false"),
+            @"error()"
         );
     }
 
     #[test]
     fn test_or() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
-        );
         let eval = Evaluator {
-            request: &req,
+            request: &typed_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        assert_matches!(
-            eval.interpret_expr(&builder().or(
-                builder().binary_app(
-                    BinaryOp::Eq,
-                    builder().var(Var::Resource),
-                    builder().var(Var::Resource)
-                ),
-                builder().val(42)
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
-                },
-                ..
-            }
+        // Note: The test expressions are in the same order as the match statements
+
+        // "true || <any>" => "true"
+        assert_snapshot!(
+            // Note: principal is concrete, and thus can the residual be simplified.
+            interpret_typed_str_to_str(&eval, "principal == principal || principal.foo"),
+            @r#"true"#
         );
-        // Note that this expression is not an invalid input
-        // The evaluator does not perform any validation
-        assert_matches!(
-            eval.interpret_expr(&builder().or(builder().var(Var::Principal), builder().val(false)))
-                .unwrap(),
-            Residual::Partial {
-                kind: ResidualKind::Var(Var::Principal),
-                ..
-            }
+        // "false || <any>" => "<any>"
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "principal != principal || principal.foo"),
+            @r#"User::"foo".foo"#
         );
-        assert_matches!(
-            eval.interpret_expr(&builder().or(
-                builder().noteq(
-                    builder().mul(builder().val(i64::MAX), builder().val(2)),
-                    builder().val(0)
-                ),
-                builder().val(42)
-            ))
-            .unwrap(),
-            Residual::Error(_),
+        // "<error> || <residual>" => "<error>"
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "(9223372036854775807 * 2 == 0) || principal.foo"),
+            @r#"error()"#
         );
-        // resource != resource || 42 => 42
-        // Note that this expression is not an invalid input
-        // The evaluator does not perform any validation
-        assert_matches!(
-            eval.interpret_expr(&builder().or(
-                builder().noteq(builder().var(Var::Resource), builder().var(Var::Resource)),
-                builder().val(42)
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Long(42)),
-                    ..
-                },
-                ..
-            }
+        // "<residual> || false" => "<residual>"
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "principal.foo || false"),
+            @r#"User::"foo".foo"#
         );
-        // <error-free> || true => true
-        // principal || 42 == 42 => true
-        assert_matches!(
-            eval.interpret_expr(&builder().or(
-                builder().has_attr(builder().var(Var::Principal), "foo".into()),
-                builder().is_eq(builder().val(42), builder().val(42))
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
-                },
-                ..
-            },
+        // "<error-free> || true" => "true"
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "resource == resource || 42 == 42"),
+            @r#"true"#
         );
-        // <non-error-free> || true cannot be simplified, e.g.
-        // principal.foo + 1 == 100 || 42 == 42
-        assert_matches!(
-            eval.interpret_expr(&builder().or(
-                builder().is_eq(
-                    builder().add(
-                        builder().get_attr(builder().var(Var::Principal), "foo".parse().unwrap()),
-                        builder().val(1)
-                    ),
-                    builder().val(100)
-                ),
-                builder().is_eq(builder().val(42), builder().val(42))
-            ))
-            .unwrap(),
-            // cannot match against the full residual, because of the Arc in the Or enum variant,
-            // and due to Residual not implementing the Eq trait, but this shows that the evaluator
-            // kept the residual partial and with an Or clause.
-            Residual::Partial {
-                kind: ResidualKind::Or { .. },
-                ..
-            }
+        // note: resource is unknown, and we haven't (yet) implemented a simplifying algorithm for this,
+        // so it yields an error-free residual, hence the previous test makes sense
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "resource == resource"),
+            @r#"resource == resource"#
+        );
+        // "<non-error-free> || true" cannot be fully simplified
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "principal.num + 1 == 100 || 42 == 42"),
+            @r#"(((User::"foo".num) + 1) == 100) || true"#
+        );
+        // "<residual> || <nonbool>" => "<residual> || <error>"
+        assert_snapshot!(
+            interpret_expr_to_str(&eval, &builder().or(
+                builder().get_attr(builder().var(Var::Principal), "foo".into()),
+                builder().val(42),
+            )),
+            @r#"(User::"foo".foo) || (error())"#
+        );
+        // The "<residual> || <residual>" case cannot be simplified
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "principal.foo || principal.num == 100"),
+            @r#"(User::"foo".foo) || ((User::"foo".num) == 100)"#
+        );
+        // "<residual> || <error>" cannot be simplified
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "principal.foo || (9223372036854775807 * 2 == 0)"),
+            @r#"(User::"foo".foo) || (error())"#
+        );
+        // "<error> || <any>" => "<error>"
+        assert_snapshot!(
+            interpret_typed_str_to_str(&eval, "(9223372036854775807 * 2 == 0) || true"),
+            @"error()"
         );
     }
 
