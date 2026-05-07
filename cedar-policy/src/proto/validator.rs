@@ -190,14 +190,24 @@ impl TryFrom<models::EntityDecl> for cedar_policy_core::validator::ValidatorEnti
             Some(enum_choices) => {
                 // `enum_choices` is not empty, so `v` represents an enumerated entity type.
                 // enumerated entity types must have no attributes or tags.
-                assert_eq!(v.attributes, HashMap::new());
-                assert_eq!(v.tags, None);
-                Ok(Self::new_enum(
-                    name,
-                    descendants,
-                    enum_choices.map(Eid::new),
-                    None,
-                ))
+                if !v.attributes.is_empty() {
+                    Err(ProtobufConversionError::InvalidValue(format!(
+                        "enum type {} should not have attributes",
+                        name
+                    )))
+                } else if v.tags.is_some() {
+                    Err(ProtobufConversionError::InvalidValue(format!(
+                        "enum type {} should not have tags",
+                        name
+                    )))
+                } else {
+                    Ok(Self::new_enum(
+                        name,
+                        descendants,
+                        enum_choices.map(Eid::new),
+                        None,
+                    ))
+                }
             }
         }
     }
