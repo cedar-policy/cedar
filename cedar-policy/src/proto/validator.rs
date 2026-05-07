@@ -536,6 +536,53 @@ mod test {
     }
 
     #[test]
+    fn entity_decl_enum_with_attributes() {
+        let name: cedar_policy_core::ast::Name = "Foo".parse().unwrap();
+        let bad = models::EntityDecl {
+            name: Some(models::Name::from(&name)),
+            descendants: vec![],
+            attributes: [(
+                "a".to_string(),
+                models::AttributeType {
+                    attr_type: Some(models::Type {
+                        data: Some(models::r#type::Data::Prim(
+                            models::r#type::Prim::Long.into(),
+                        )),
+                    }),
+                    is_required: true,
+                },
+            )]
+            .into(),
+            tags: None,
+            enum_choices: vec!["x".to_string()],
+        };
+        assert_matches!(
+            cedar_policy_core::validator::ValidatorEntityType::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("should not have attributes")
+        );
+    }
+
+    #[test]
+    fn entity_decl_enum_with_tags() {
+        let name: cedar_policy_core::ast::Name = "Foo".parse().unwrap();
+        let bad = models::EntityDecl {
+            name: Some(models::Name::from(&name)),
+            descendants: vec![],
+            attributes: Default::default(),
+            tags: Some(models::Type {
+                data: Some(models::r#type::Data::Prim(
+                    models::r#type::Prim::String.into(),
+                )),
+            }),
+            enum_choices: vec!["x".to_string()],
+        };
+        assert_matches!(
+            cedar_policy_core::validator::ValidatorEntityType::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("should not have tags")
+        );
+    }
+
+    #[test]
     fn schema_try_from_invalid_entity_decl() {
         let bad = models::Schema {
             entity_decls: vec![models::EntityDecl {
