@@ -425,6 +425,7 @@ mod test {
         assert_schema_roundtrip("entity User tags String;");
         assert_schema_roundtrip(r#"entity User enum ["0"];"#);
         assert_schema_roundtrip(r#"entity User enum ["", "\0", "🐈"];"#);
+        assert_schema_roundtrip(r#"entity E enum ["0"]; entity D in E;"#);
     }
 
     #[test]
@@ -598,5 +599,34 @@ mod test {
             ValidatorSchema::try_from(bad),
             Err(ProtobufConversionError::MissingField(f)) if f == "name"
         );
+    }
+
+    #[test]
+    fn schema_try_from_invalid_entity_hierarchy() {
+        // TODO: This should be changed to resolve #1348 by adding additional validation!
+        // The Cedar schema: entity E enum ["0"] in D;  entity D; sould not decode.
+        // But modelled as "entity E enum ["0"]; entity D has_descendant E; it decodes.
+        let e_name: cedar_policy_core::ast::Name = "E".parse().unwrap();
+        let d_name: cedar_policy_core::ast::Name = "D".parse().unwrap();
+        let bad = models::Schema {
+            entity_decls: vec![
+                models::EntityDecl {
+                    name: Some(models::Name::from(&e_name)),
+                    descendants: vec![],
+                    attributes: Default::default(),
+                    tags: None,
+                    enum_choices: vec!["0".to_string()],
+                },
+                models::EntityDecl {
+                    name: Some(models::Name::from(&d_name)),
+                    descendants: vec![models::Name::from(&e_name)],
+                    attributes: Default::default(),
+                    tags: None,
+                    enum_choices: vec![],
+                },
+            ],
+            action_decls: vec![],
+        };
+        assert!(ValidatorSchema::try_from(bad).is_ok());
     }
 }
