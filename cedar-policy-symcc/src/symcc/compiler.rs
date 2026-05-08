@@ -1431,14 +1431,14 @@ mod datetime_tests {
         // IPv6 address tested against IPv4 range first, then correct IPv6 range
         test_valid_bool_simpl_expr(
             r#"ip("1:2:3:4::").isInRange(ip("192.168.0.0/24"), ip("1:2:3:4::/48"))"#,
-            false,
+            true,
         );
 
-        // Test where first matches but last is IPv4/IPv6 type mismatch (error)
+        // Test where first matches but last is IPv4/IPv6 type mismatch
         // IPv4 address in range, followed by IPv6 range that doesn't apply
         test_valid_bool_simpl_expr(
             r#"ip("192.168.0.1").isInRange(ip("192.168.0.0/24"), ip("1:2:3:4::/48"))"#,
-            false,
+            true,
         );
 
         // Test with three ranges where only the last matches
