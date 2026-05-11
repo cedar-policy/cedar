@@ -91,11 +91,18 @@ impl From<TemplateLinked> for LiteralTemplateLinked {
 
 /// Given a file containing template links, return a `Vec` of those links
 pub(crate) fn load_links_from_file(path: impl AsRef<Path>) -> Result<Vec<TemplateLinked>> {
-    let f = match std::fs::File::open(path) {
+    let f = match std::fs::File::open(&path) {
         Ok(f) => f,
-        Err(_) => {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // If the file doesn't exist, then give back the empty entity set
             return Ok(vec![]);
+        }
+        Err(e) => {
+            return Err(miette::miette!(
+                "failed to open links file '{}': {}",
+                path.as_ref().display(),
+                e
+            ));
         }
     };
     if f.metadata()

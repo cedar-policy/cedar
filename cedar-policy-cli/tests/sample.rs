@@ -18,6 +18,7 @@
 #![allow(clippy::unwrap_used, reason = "tests")]
 use std::collections::HashMap;
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use cedar_policy::EvalResult;
@@ -2013,4 +2014,73 @@ fn test_check_parse_warning_schema() {
       ·        ────
       ╰────
     "###);
+}
+
+#[test]
+fn link_file_does_not_exist() {
+    // linking into a file that does not exist should create it
+    let dir = tempfile::tempdir().expect("failed to create tempdir");
+    let linked = dir.path().join("linked");
+    assert!(
+        !linked.exists(),
+        "trying to test behavior when file doesn't exist"
+    );
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("link")
+        .arg("--template-id")
+        .arg("")
+        .arg("--new-id")
+        .arg("l")
+        .arg("--arguments")
+        .arg(r#"{"?principal": "User::\"alice\""}"#)
+        .arg("--template-linked")
+        .arg(&linked)
+        .write_stdin("@id permit(principal == ?principal, action, resource);")
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    insta::assert_snapshot!(stdout, @r###"
+    Template-linked policy added: @id
+    permit(principal == User::"alice", action, resource);
+    "###);
+    assert!(output.status.success());
+    assert!(linked.exists());
+}
+
+#[test]
+fn link_file_cant_read() {
+    let dir = tempfile::tempdir().expect("failed to create tempdir");
+    let linked = dir.path().join("linked");
+    std::fs::write(
+        &linked,
+        r#"[{"template_id":"foo","link_id":"bar","args":{"?principal":"User::\"alice\""}}]"#,
+    )
+    .unwrap();
+    // Remove read permissions. The file exists, trying to read it will fail.
+    std::fs::set_permissions(&linked, PermissionsExt::from_mode(200)).unwrap();
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("link")
+        .arg("--template-id")
+        .arg("")
+        .arg("--new-id")
+        .arg("l")
+        .arg("--arguments")
+        .arg(r#"{"?principal": "User::\"alice\""}"#)
+        .arg("--template-linked")
+        .arg(&linked)
+        .write_stdin("@id permit(principal == ?principal, action, resource);")
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut settings = insta::Settings::clone_current();
+    settings.add_filter(r"/tmp/[^ ']+/linked", "[TEMPDIR]/linked");
+    settings.bind(|| {
+        insta::assert_snapshot!(stdout, @r###"
+        × failed to open links file '[TEMPDIR]/linked': Permission denied (os
+        │ error 13)
+        "###);
+    });
+    assert!(!output.status.success());
 }
