@@ -151,7 +151,7 @@ impl From<&ast::EntityUIDEntry> for models::EntityUid {
 impl TryFrom<models::Entity> for ast::Entity {
     type Error = ProtobufConversionError;
     fn try_from(v: models::Entity) -> Result<Self, Self::Error> {
-        let eval = RestrictedEvaluator::new(Extensions::none());
+        let eval = RestrictedEvaluator::new(Extensions::all_available());
 
         let attrs = v
             .attrs
@@ -798,7 +798,7 @@ impl TryFrom<models::Expr> for ast::Context {
                 "invalid restricted expr in context: {e}"
             ))
         })?;
-        ast::Context::from_expr(restricted, Extensions::none())
+        ast::Context::from_expr(restricted, Extensions::all_available())
             .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid context: {e}")))
     }
 }
@@ -811,8 +811,12 @@ impl From<&ast::Context> for models::Expr {
 
 #[cfg(test)]
 mod test {
+    use crate::{Context, Entity, Request};
+
     use super::*;
+    use cedar_policy_core::assert_deep_eq;
     use cool_asserts::assert_matches;
+    use serde_json::json;
 
     #[test]
     fn name_and_slot_roundtrip() {
@@ -877,7 +881,7 @@ mod test {
             Extensions::none(),
         )
         .unwrap();
-        assert_eq!(
+        assert_deep_eq!(
             entity,
             ast::Entity::try_from(models::Entity::from(&entity)).unwrap()
         );
@@ -901,10 +905,59 @@ mod test {
             Extensions::none(),
         )
         .unwrap();
-        assert_eq!(
+        assert_deep_eq!(
             entity,
             ast::Entity::try_from(models::Entity::from(&entity)).unwrap()
         );
+    }
+
+    #[test]
+    fn entity_ext_attr_value() {
+        #[track_caller]
+        fn assert_ext_roundtrip(ext: serde_json::Value) {
+            let entity = Entity::from_json_value(
+                json!({
+                    "uid": {"type": "User", "id": "alice"},
+                    "parents": [],
+                    "attrs": { "ext": {"__extn": ext}, },
+                }),
+                None,
+            )
+            .unwrap();
+            assert_deep_eq!(
+                entity,
+                Entity::try_from(models::Entity::from(&entity)).unwrap()
+            );
+        }
+        assert_ext_roundtrip(json!({"fn": "ip", "arg": "127.0.0.1"}));
+        assert_ext_roundtrip(json!({"fn": "decimal", "arg": "1.0"}));
+        assert_ext_roundtrip(json!({"fn": "datetime", "arg": "2024-10-15"}));
+        assert_ext_roundtrip(json!({"fn": "duration", "arg": "1s"}));
+    }
+
+    #[test]
+    fn entity_ext_tag_value() {
+        #[track_caller]
+        fn assert_ext_roundtrip(ext: serde_json::Value) {
+            let entity = Entity::from_json_value(
+                json!({
+                    "uid": {"type": "User", "id": "alice"},
+                    "parents": [],
+                    "attrs": {},
+                    "tags": { "ext": {"__extn": ext}, },
+                }),
+                None,
+            )
+            .unwrap();
+            assert_deep_eq!(
+                entity,
+                Entity::try_from(models::Entity::from(&entity)).unwrap()
+            );
+        }
+        assert_ext_roundtrip(json!({"fn": "ip", "arg": "127.0.0.1"}));
+        assert_ext_roundtrip(json!({"fn": "decimal", "arg": "1.0"}));
+        assert_ext_roundtrip(json!({"fn": "datetime", "arg": "2024-10-15"}));
+        assert_ext_roundtrip(json!({"fn": "duration", "arg": "1s"}));
     }
 
     #[test]
@@ -1056,6 +1109,27 @@ mod test {
         assert_eq!(request.principal().uid(), request_rt.principal().uid());
         assert_eq!(request.action().uid(), request_rt.action().uid());
         assert_eq!(request.resource().uid(), request_rt.resource().uid());
+    }
+
+    #[test]
+    fn context_ext_value() {
+        #[track_caller]
+        fn assert_ext_roundtrip(ext: serde_json::Value) {
+            let ctx = Context::from_json_value(json!({ "ext": {"__extn": ext} }), None).unwrap();
+            let req = Request::new(
+                r#"User::"alice""#.parse().unwrap(),
+                r#"Action::"view""#.parse().unwrap(),
+                r#"Photo::"vacation.jpg""#.parse().unwrap(),
+                ctx,
+                None,
+            )
+            .unwrap();
+            assert_eq!(req, Request::try_from(models::Request::from(&req)).unwrap());
+        }
+        assert_ext_roundtrip(json!({"fn": "ip", "arg": "127.0.0.1"}));
+        assert_ext_roundtrip(json!({"fn": "decimal", "arg": "1.0"}));
+        assert_ext_roundtrip(json!({"fn": "datetime", "arg": "2024-10-15"}));
+        assert_ext_roundtrip(json!({"fn": "duration", "arg": "1s"}));
     }
 
     #[test]

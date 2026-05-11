@@ -24,6 +24,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 - `FunctionArgumentValidation` errors now include a help message describing the expected format for extension function arguments: `decimal`, `ip`, `datetime`, and `duration`. (#834)
 - Serialization of residual policies with `error()` nodes does not fail, instead results in JSON with `{"error": []}`. (#2202)
 - Fixed conversion from `protobuf` policy sets to public type for policy sets containing templates and template-linked policies. (#2330)
+- Fixed deserialization from protobuf of entity and context attributes containing extension values. (#2344)
 
 ## [4.10.0] - 2026-04-23
 
