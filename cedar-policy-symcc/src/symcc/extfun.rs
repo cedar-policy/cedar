@@ -87,7 +87,7 @@ pub fn subnet_width(w: Width, prefix: Term) -> Term {
 }
 
 /// Panics if `2^w` exceeds `u32::MAX`, i.e., if `w` exceeds 32. Currently, callers do not use `w` exceeding 7.
-pub fn range(w: Width, ip_addr: Term, prefix: Term) -> (Term, Term) {
+fn range(w: Width, ip_addr: Term, prefix: Term) -> (Term, Term) {
     #[expect(
         clippy::expect_used,
         reason = "Function is documented to panic if 2^w exceeds u32::MAX"
@@ -126,15 +126,16 @@ pub fn in_range_v(
 ) -> Term {
     // Apply in_range between t and each term in ts, folding with or
     let range_checks = ts.iter().fold(false.into(), |acc, term| {
-        or(acc, in_range(&range, t.clone(), term.clone()))
+        or(
+            acc,
+            and(
+                is_ip(term.clone()),
+                in_range(&range, t.clone(), term.clone()),
+            ),
+        )
     });
 
-    // Apply is_ip to t and all terms in ts, folding with and
-    let is_ip_checks = ts
-        .into_iter()
-        .fold(is_ip(t), |acc, term| and(acc, is_ip(term)));
-
-    and(is_ip_checks, range_checks)
+    and(is_ip(t), range_checks)
 }
 
 pub fn is_in_range(t: Term, ts: Vec<Term>) -> Term {
