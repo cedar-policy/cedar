@@ -312,11 +312,11 @@ impl Duration {
                 let pos = prefix
                     .rfind(|c: char| !c.is_ascii_digit())
                     .map_or(0, |i| i + 1);
-                #[expect(
-                    clippy::unwrap_used,
-                    reason = "by construction pos must be a valid index into prefix"
-                )]
-                let (prefix, digits) = prefix.split_at_checked(pos).unwrap();
+                let (prefix, digits) = prefix
+                    .split_at_checked(pos)
+                    // `pos` might not be aligned with UTF8 boundary, but this can only happen
+                    // if there are non-ascii characters in the duration, which is always an error.
+                    .ok_or(|| DatetimeError::DatetimeParseError(s.to_string()))?;
 
                 let val: i64 = BigInt::from_biguint(
                     if is_neg { Sign::Minus } else { Sign::Plus },
@@ -576,5 +576,7 @@ mod tests {
         test_invalid_duration("1d9223372036854775807ms", "overflow");
         test_invalid_duration("1d92233720368547758071ms", "overflow ms");
         test_invalid_duration("9223372036854776s1ms", "overflow s");
+        test_invalid_duration("\u{1F600}1ms", "multi-byte UTF-8 before digits");
+        test_invalid_duration("1d\u{00E9}2s", "multi-byte UTF-8 within duration");
     }
 }
