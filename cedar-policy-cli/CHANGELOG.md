@@ -5,6 +5,10 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+### Changed
+
+- Commands with a `--template-linked` argument will now error when failing to read a link file due to misconfigured file permissions or other similar errors.
+
 ## 4.10.0
 
 ### Added
