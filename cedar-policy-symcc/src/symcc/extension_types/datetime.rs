@@ -316,7 +316,7 @@ impl Duration {
                     .split_at_checked(pos)
                     // `pos` might not be aligned with UTF8 boundary, but this can only happen
                     // if there are non-ascii characters in the duration, which is always an error.
-                    .ok_or(|| DatetimeError::DatetimeParseError(s.to_string()))?;
+                    .ok_or_else(|| DatetimeError::DatetimeParseError(s.to_string()))?;
 
                 let val: i64 = BigInt::from_biguint(
                     if is_neg { Sign::Minus } else { Sign::Plus },
