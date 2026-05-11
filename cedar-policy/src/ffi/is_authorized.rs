@@ -752,7 +752,7 @@ impl StatefulAuthorizationCall {
                                     "preparsed schema '{}' not found",
                                     schema_name
                                 ));
-                                Ok(None)
+                                Err(())
                             },
                             |schema| Ok(Some(schema)),
                         )
@@ -1943,6 +1943,41 @@ mod test {
         assert_matches!(result, AuthorizationAnswer::Failure { errors, .. } => {
             assert!(!errors.is_empty());
             assert!(errors[0].message.contains("preparsed policy set 'nonexistent_policies' not found"));
+        });
+    }
+
+    #[test]
+    fn test_stateful_is_authorized_missing_schema() {
+        let policies = json!({
+            "staticPolicies": "permit(principal, action, resource);"
+        });
+        let policy_set: PolicySet = serde_json::from_value(policies).unwrap();
+        preparse_policy_set("ps".to_string(), policy_set);
+
+        let call = json!({
+            "principal": {
+                "type": "User",
+                "id": "alice"
+            },
+            "action": {
+                "type": "Action",
+                "id": "view"
+            },
+            "resource": {
+                "type": "User",
+                "id": "bob"
+            },
+            "context": {},
+            "preparsedSchemaName": "not_in_cache",
+            "preparsedPolicySetId": "ps",
+            "entities": []
+        });
+
+        let stateful_call: StatefulAuthorizationCall = serde_json::from_value(call).unwrap();
+        let result = stateful_is_authorized(stateful_call);
+
+        assert_matches!(result, AuthorizationAnswer::Failure { errors, .. } => {
+            assert!(errors[0].message.contains("preparsed schema 'not_in_cache' not found"));
         });
     }
 
