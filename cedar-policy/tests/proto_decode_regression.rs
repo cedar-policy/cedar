@@ -25,6 +25,7 @@
 
 use cedar_policy::proto::traits::Protobuf;
 use cedar_policy::*;
+use cedar_policy_core::assert_deep_eq;
 use similar_asserts::assert_eq;
 
 fn proto_file(name: &str) -> Vec<u8> {
@@ -83,7 +84,7 @@ fn decode_entities() {
         None,
     )
     .unwrap();
-    assert_eq!(decoded, expected);
+    assert_deep_eq!(decoded, expected);
 }
 
 #[test]
