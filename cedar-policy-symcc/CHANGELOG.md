@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Added
+
+- Support for template-linked policies. `CompiledPolicy::compile` and
+`CompiledPolicySet::compile` now resolve linked policies by inlining slot bindings
+before typechecking and symbolic compilation.
+
 ## [0.4.0] - 2026-04-23
 Cedar Language Version: 4.5
 

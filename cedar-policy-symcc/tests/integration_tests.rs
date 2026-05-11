@@ -16,10 +16,7 @@ use std::str::FromStr;
  * limitations under the License.
  */
 use cedar_policy::{EntityUid, Policy, PolicyId, PolicySet, Schema, SlotId, Template, Validator};
-use cedar_policy_symcc::{
-    err::CompileError, solver::LocalSolver, CedarSymCompiler, CompiledPolicySet,
-};
-use cool_asserts::assert_matches;
+use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler, CompiledPolicySet};
 use std::collections::HashMap;
 
 mod utils;
@@ -2493,7 +2490,7 @@ action "" appliesTo {
 }
 
 #[tokio::test]
-async fn template_linked_policy_unsupported() {
+async fn template_linked_policy_supported() {
     let schema = utils::schema_from_cedarstr(
         r#"
         entity Thing;
@@ -2523,11 +2520,75 @@ async fn template_linked_policy_unsupported() {
     )
     .unwrap();
     let envs = Environments::new(validator.schema(), "User", r#"Action::"view""#, "Thing");
+    let compiled = CompiledPolicySet::compile(&pset, &envs.req_env, validator.schema()).unwrap();
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+    let always_allows = compiler.check_always_allows_opt(&compiled).await.unwrap();
+    assert!(!always_allows);
+}
+
+#[tokio::test]
+async fn template_linked_policy_ill_typed() {
+    let validator = Validator::new(utils::schema_from_cedarstr(
+        r#"
+        entity Thing;
+        entity User;
+        action view appliesTo { principal: [User], resource: [Thing], context: {}};
+    "#,
+    ));
+    // Template with a when clause that is ill-typed: principal.foo doesn't exist
+    let mut pset = PolicySet::new();
+    pset.add_template(
+        Template::parse(
+            Some(PolicyId::new("ill_typed_tmpl")),
+            r#"permit(principal == ?principal, action, resource) when { principal.foo > 1 };"#,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    pset.link(
+        PolicyId::new("ill_typed_tmpl"),
+        PolicyId::new("ill_typed_link"),
+        HashMap::from([(
+            SlotId::principal(),
+            EntityUid::from_type_name_and_id("User".parse().unwrap(), "alice".parse().unwrap()),
+        )]),
+    )
+    .unwrap();
+    let envs = Environments::new(validator.schema(), "User", r#"Action::"view""#, "Thing");
     let result = CompiledPolicySet::compile(&pset, &envs.req_env, validator.schema());
-    assert_matches!(
-        result.err(),
-        Some(cedar_policy_symcc::err::Error::CompileError(
-            CompileError::UnsupportedFeature(..)
-        ))
-    );
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn template_linked_single_policy_compile() {
+    use cedar_policy_symcc::CompiledPolicy;
+    let validator = Validator::new(utils::schema_from_cedarstr(
+        r#"
+        entity Thing;
+        entity User;
+        action view appliesTo { principal: [User], resource: [Thing], context: {}};
+    "#,
+    ));
+    let mut pset = PolicySet::new();
+    pset.add_template(
+        Template::parse(
+            Some(PolicyId::new("tmpl")),
+            "permit(principal == ?principal, action, resource);",
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    pset.link(
+        PolicyId::new("tmpl"),
+        PolicyId::new("link"),
+        HashMap::from([(
+            SlotId::principal(),
+            EntityUid::from_type_name_and_id("User".parse().unwrap(), "alice".parse().unwrap()),
+        )]),
+    )
+    .unwrap();
+    let envs = Environments::new(validator.schema(), "User", r#"Action::"view""#, "Thing");
+    let linked_policy = pset.policies().find(|p| !p.is_static()).unwrap();
+    let compiled = CompiledPolicy::compile(linked_policy, &envs.req_env, validator.schema());
+    assert!(compiled.is_ok());
 }

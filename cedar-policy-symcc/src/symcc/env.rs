@@ -587,8 +587,8 @@ pub fn to_validator_request_env<'a>(
             action,
             resource,
             context,
-            principal_slot: None,
-            resource_slot: None,
+            principal_slot: env.principal_slot().map(|s| s.as_ref().clone()),
+            resource_slot: env.resource_slot().map(|s| s.as_ref().clone()),
         },
     )
 }

@@ -46,7 +46,7 @@ pub mod type_abbrevs;
 pub mod verifier;
 
 use cedar_policy::Schema;
-use cedar_policy_core::ast::{Expr, ExprBuilder, Policy, PolicySet};
+use cedar_policy_core::ast::{Expr, ExprBuilder, Policy, PolicySet, Template};
 use cedar_policy_core::validator::{
     typecheck::Typechecker, types::RequestEnv, ValidationMode, Validator,
 };
@@ -645,8 +645,11 @@ pub fn well_typed_policy(
     env: &cedar_policy::RequestEnv,
     schema: &Schema,
 ) -> Result<Policy> {
-    let env = to_validator_request_env(env, schema.as_ref())
+    let mut env = to_validator_request_env(env, schema.as_ref())
         .ok_or_else(|| Error::ActionNotInSchema(env.action().to_string()))?;
+    if !policy.is_static() {
+        env = env.link_slot_env(policy.env());
+    }
     well_typed_policy_inner(policy, &env, schema)
 }
 
@@ -655,16 +658,35 @@ fn well_typed_policy_inner(
     env: &RequestEnv<'_>,
     schema: &Schema,
 ) -> Result<Policy> {
+    // For linked policies, create a static equivalent by resolving slots in the
+    // scope constraints. This ensures the typechecked expression has no slots.
+    let template_for_tc;
+    let template_ref = if policy.is_static() {
+        policy.template()
+    } else {
+        template_for_tc = Template::new_shared(
+            policy.id().clone(),
+            policy.loc().cloned(),
+            policy.template().annotations_arc().clone(),
+            policy.effect(),
+            policy.principal_constraint(),
+            policy.template().action_constraint().clone(),
+            policy.resource_constraint(),
+            policy.non_scope_constraints_arc().cloned(),
+        );
+        &template_for_tc
+    };
+
     let validator_schema = schema.as_ref();
     // We need to perform these three checks like what the validator does here: https://github.com/cedar-policy/cedar/blob/82784864c01b5096cb73885dd2df5643074355ed/cedar-policy-core/src/validator.rs#L178-L185
     // We don't need `validate_template_action_application` because existence of `env` already serves as evidence
     let errs: Vec<_> =
-        Validator::validate_entity_types_and_literals(schema.as_ref(), policy.template()).collect();
+        Validator::validate_entity_types_and_literals(schema.as_ref(), template_ref).collect();
     if !errs.is_empty() {
         return Err(Error::PolicyNotWellTyped { errs });
     }
     let type_checker = Typechecker::new(validator_schema, ValidationMode::Strict);
-    let policy_check = type_checker.typecheck_by_single_request_env(policy.template(), env);
+    let policy_check = type_checker.typecheck_by_single_request_env(template_ref, env);
 
     use cedar_policy_core::validator::typecheck::PolicyCheck::*;
     match policy_check {
@@ -711,17 +733,18 @@ pub fn well_typed_policies(
     env: &cedar_policy::RequestEnv,
     schema: &Schema,
 ) -> Result<PolicySet> {
-    if policies.policies().any(|p| !p.is_static()) {
-        return Err(CompileError::UnsupportedFeature(
-            "template-linked policies are not supported".to_string(),
-        )
-        .into());
-    }
-    let env = to_validator_request_env(env, schema.as_ref())
+    let base_env = to_validator_request_env(env, schema.as_ref())
         .ok_or_else(|| Error::ActionNotInSchema(env.action().to_string()))?;
     let typed_policies: Result<Vec<Policy>> = policies
-        .static_policies()
-        .map(|p| well_typed_policy_inner(p, &env, schema))
+        .policies()
+        .map(|p| {
+            let linked_env = if p.is_static() {
+                base_env.clone()
+            } else {
+                base_env.clone().link_slot_env(p.env())
+            };
+            well_typed_policy_inner(p, &linked_env, schema)
+        })
         .collect();
     match typed_policies {
         Ok(ps) => {
