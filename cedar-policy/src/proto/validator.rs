@@ -190,14 +190,24 @@ impl TryFrom<models::EntityDecl> for cedar_policy_core::validator::ValidatorEnti
             Some(enum_choices) => {
                 // `enum_choices` is not empty, so `v` represents an enumerated entity type.
                 // enumerated entity types must have no attributes or tags.
-                assert_eq!(v.attributes, HashMap::new());
-                assert_eq!(v.tags, None);
-                Ok(Self::new_enum(
-                    name,
-                    descendants,
-                    enum_choices.map(Eid::new),
-                    None,
-                ))
+                if !v.attributes.is_empty() {
+                    Err(ProtobufConversionError::InvalidValue(format!(
+                        "enum type {} should not have attributes",
+                        name
+                    )))
+                } else if v.tags.is_some() {
+                    Err(ProtobufConversionError::InvalidValue(format!(
+                        "enum type {} should not have tags",
+                        name
+                    )))
+                } else {
+                    Ok(Self::new_enum(
+                        name,
+                        descendants,
+                        enum_choices.map(Eid::new),
+                        None,
+                    ))
+                }
             }
         }
     }
@@ -415,6 +425,7 @@ mod test {
         assert_schema_roundtrip("entity User tags String;");
         assert_schema_roundtrip(r#"entity User enum ["0"];"#);
         assert_schema_roundtrip(r#"entity User enum ["", "\0", "🐈"];"#);
+        assert_schema_roundtrip(r#"entity E enum ["0"]; entity D in E;"#);
     }
 
     #[test]
@@ -526,6 +537,53 @@ mod test {
     }
 
     #[test]
+    fn entity_decl_enum_with_attributes() {
+        let name: cedar_policy_core::ast::Name = "Foo".parse().unwrap();
+        let bad = models::EntityDecl {
+            name: Some(models::Name::from(&name)),
+            descendants: vec![],
+            attributes: [(
+                "a".to_string(),
+                models::AttributeType {
+                    attr_type: Some(models::Type {
+                        data: Some(models::r#type::Data::Prim(
+                            models::r#type::Prim::Long.into(),
+                        )),
+                    }),
+                    is_required: true,
+                },
+            )]
+            .into(),
+            tags: None,
+            enum_choices: vec!["x".to_string()],
+        };
+        assert_matches!(
+            cedar_policy_core::validator::ValidatorEntityType::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("should not have attributes")
+        );
+    }
+
+    #[test]
+    fn entity_decl_enum_with_tags() {
+        let name: cedar_policy_core::ast::Name = "Foo".parse().unwrap();
+        let bad = models::EntityDecl {
+            name: Some(models::Name::from(&name)),
+            descendants: vec![],
+            attributes: Default::default(),
+            tags: Some(models::Type {
+                data: Some(models::r#type::Data::Prim(
+                    models::r#type::Prim::String.into(),
+                )),
+            }),
+            enum_choices: vec!["x".to_string()],
+        };
+        assert_matches!(
+            cedar_policy_core::validator::ValidatorEntityType::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("should not have tags")
+        );
+    }
+
+    #[test]
     fn schema_try_from_invalid_entity_decl() {
         let bad = models::Schema {
             entity_decls: vec![models::EntityDecl {
@@ -541,5 +599,34 @@ mod test {
             ValidatorSchema::try_from(bad),
             Err(ProtobufConversionError::MissingField(f)) if f == "name"
         );
+    }
+
+    #[test]
+    fn schema_try_from_invalid_entity_hierarchy() {
+        // TODO: This should be changed to resolve #1348 by adding additional validation!
+        // The Cedar schema: entity E enum ["0"] in D;  entity D; sould not decode.
+        // But modelled as "entity E enum ["0"]; entity D has_descendant E; it decodes.
+        let e_name: cedar_policy_core::ast::Name = "E".parse().unwrap();
+        let d_name: cedar_policy_core::ast::Name = "D".parse().unwrap();
+        let bad = models::Schema {
+            entity_decls: vec![
+                models::EntityDecl {
+                    name: Some(models::Name::from(&e_name)),
+                    descendants: vec![],
+                    attributes: Default::default(),
+                    tags: None,
+                    enum_choices: vec!["0".to_string()],
+                },
+                models::EntityDecl {
+                    name: Some(models::Name::from(&d_name)),
+                    descendants: vec![models::Name::from(&e_name)],
+                    attributes: Default::default(),
+                    tags: None,
+                    enum_choices: vec![],
+                },
+            ],
+            action_decls: vec![],
+        };
+        assert!(ValidatorSchema::try_from(bad).is_ok());
     }
 }
