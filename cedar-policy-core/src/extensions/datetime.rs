@@ -720,7 +720,7 @@ pub fn extension() -> Extension {
                 CallStyle::MethodStyle,
                 Box::new(duration_since),
                 duration_type.clone(),
-                (datetime_type.clone(), duration_type.clone()),
+                (datetime_type.clone(), datetime_type.clone()),
             ),
             ExtensionFunction::unary(
                 constants::TO_DATE_NAME.clone(),
