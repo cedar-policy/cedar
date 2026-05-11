@@ -649,7 +649,7 @@ pub(crate) mod tests {
         complete_extension_methods_datetime,
         r#"permit(principal, action, resource) when { datetime("127").t|caret| };"#,
         vec![
-            "durationSince(${1:duration})",
+            "durationSince(${1:datetime})",
             "offset(${1:duration})",
             "toDate()",
             "toDays()",
