@@ -95,7 +95,7 @@ where
 {
     let seen: HashSet<K> = nodes
         .keys()
-        .filter(|x| nodes_to_fix.contains(x))
+        .filter(|x| !nodes_to_fix.contains(x))
         .cloned()
         .collect();
 
@@ -386,7 +386,7 @@ where
         if explored.insert(ancestor_id.clone()) {
             let ancestor = match nodes.get(&ancestor_id) {
                 Some(ancestor) => ancestor,
-                None => return,
+                None => continue,
             };
             for grand_ancestor_id in ancestor.out_edges() {
                 ancestors.insert(grand_ancestor_id.clone());
@@ -1483,5 +1483,55 @@ mod tests {
                 ])
             }),
         ]
+    }
+
+    #[test]
+    fn add_ancestors_dangling_parent_adds_transitive() {
+        // Setup A -> B -> C and A -> X
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("X"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        compute_tc(&mut entities, false).expect("compute_tc failed");
+
+        // Entity `X` is not in the map. This previously made `add_ancestors`
+        // return early, without adding transitive ancestors, so we lost the
+        // transitive edge A -> C
+        let a = entities.get(&EntityUID::with_eid("A")).unwrap();
+        assert!(a.is_descendant_of(&EntityUID::with_eid("C")),);
+    }
+
+    #[test]
+    fn repair_tc_no_dag_computes_tc() {
+        // Setup A -> B and B -> C
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        compute_tc(&mut entities, false).expect("initial compute_tc failed");
+
+        // Add D -> B and repair TC
+        let mut d = Entity::with_uid(EntityUID::with_eid("D"));
+        d.add_parent(EntityUID::with_eid("B"));
+        entities.insert(d.uid().clone(), d);
+        let nodes_to_fix = HashSet::from([EntityUID::with_eid("D")]);
+        repair_tc(nodes_to_fix, &mut entities, false).expect("repair_tc failed");
+
+        // D should get an edge to C
+        let d = entities.get(&EntityUID::with_eid("D")).unwrap();
+        assert!(d.is_descendant_of(&EntityUID::with_eid("C")));
     }
 }
