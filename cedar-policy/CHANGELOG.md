@@ -25,6 +25,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 - Serialization of residual policies with `error()` nodes does not fail, instead results in JSON with `{"error": []}`. (#2202)
 - Fixed conversion from `protobuf` policy sets to public type for policy sets containing templates and template-linked policies. (#2330)
 - Fixed deserialization from protobuf of entity and context attributes containing extension values. (#2344)
+- Slot identifiers are now checked for JSON policy templates using slots in `is Type in ?slot` scope constraints. Loading a JSON format policy using `principal is Type in ?resource` or `resource is Type in ?principal`. (#2351)
 
 ## [4.10.0] - 2026-04-23
 
