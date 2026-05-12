@@ -2073,6 +2073,35 @@ mod ancestors_tests {
         assert!(ans.contains(&b_euid));
         assert!(ans.contains(&a_euid));
     }
+
+    #[test]
+    fn dangling_parent_transitive_closure_update() {
+        // Setup B -> C
+        let initial_entities = serde_json::json!([
+            {"uid": {"type": "T", "id": "B"}, "attrs": {}, "parents": [{"type": "T", "id": "C"}]},
+            {"uid": {"type": "T", "id": "C"}, "attrs": {}, "parents": []}
+        ]);
+        let entities =
+            Entities::from_json_value(initial_entities, None).expect("initial parse failed");
+
+        // Add A -> B and A -> X
+        let add_json = serde_json::json!([{
+            "uid": {"type": "T", "id": "A"},
+            "attrs": {},
+            "parents": [{"type": "T", "id": "B"}, {"type": "T", "id": "X"}]
+        }]);
+        let entities = entities
+            .add_entities_from_json_value(add_json, None)
+            .expect("add_entities failed");
+
+        // We should have an edge A -> C
+        let a: EntityUid = r#"T::"A""#.parse().unwrap();
+        let c: EntityUid = r#"T::"C""#.parse().unwrap();
+        assert!(
+            entities.is_ancestor_of(&c, &a),
+            "C should be an ancestor of A (transitive via B) despite dangling parent"
+        );
+    }
 }
 
 /// A few tests of validating entities.
