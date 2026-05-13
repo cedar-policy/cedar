@@ -33,6 +33,10 @@ on:
                 required: false
                 type: string
                 description: "The CLI crate version. Must be of the form '<MAJOR>.<MINOR>.<PATCH>'. Required for cli and all."
+            cli_tag:
+                required: false
+                type: string
+                description: "The CLI tag (e.g., cedar-policy-cli-v4.11.0). Required for cli and all targets. Used to identify the CLI release."
 # Declare default permissions as read only.
 permissions: read-all
 jobs:
@@ -53,13 +57,35 @@ jobs:
               run: |
                   CORE_TAG_PATTERN="^v[0-9]+\.[0-9]+\.[0-9]+$"
                   SYMCC_TAG_PATTERN="^cedar-policy-symcc-v0\.[0-9]+\.[0-9]+$"
+                  CLI_TAG_PATTERN="^cedar-policy-cli-v[0-9]+\.[0-9]+\.[0-9]+$"
                   case "$TARGET" in
-                      # For now, cli tag format is the same as core.
-                      # This should change if we want independent cli releases,
-                      # in which case we can match against two possibilities.
-                      core|cli|all)
+                      core)
                           if [[ ! "$TAG" =~ $CORE_TAG_PATTERN ]]; then
                               echo "::error::tag must match $CORE_TAG_PATTERN for target '$TARGET'"
+                              exit 1
+                          fi
+                          ;;
+                      cli)
+                          if [[ -z "$CLI_TAG" ]]; then
+                              echo "::error::cli_tag is required for target 'cli'"
+                              exit 1
+                          fi
+                          if [[ ! "$CLI_TAG" =~ $CLI_TAG_PATTERN ]]; then
+                              echo "::error::cli_tag must match $CLI_TAG_PATTERN for target '$TARGET'"
+                              exit 1
+                          fi
+                          ;;
+                      all)
+                          if [[ ! "$TAG" =~ $CORE_TAG_PATTERN ]]; then
+                              echo "::error::tag must match $CORE_TAG_PATTERN for target '$TARGET'"
+                              exit 1
+                          fi
+                          if [[ -z "$CLI_TAG" ]]; then
+                              echo "::error::cli_tag is required for target 'all'"
+                              exit 1
+                          fi
+                          if [[ ! "$CLI_TAG" =~ $CLI_TAG_PATTERN ]]; then
+                              echo "::error::cli_tag must match $CLI_TAG_PATTERN for target '$TARGET'"
                               exit 1
                           fi
                           ;;
@@ -73,6 +99,7 @@ jobs:
               env:
                   TARGET: ${{ inputs.target }}
                   TAG: ${{ inputs.tag }}
+                  CLI_TAG: ${{ inputs.cli_tag }}
             # Check the combination of inputs given is valid:
             # - core version is always required, and must match semver. We use core to either
             #.  validate the branch is in a good state with the expected core version dependency,
@@ -123,7 +150,20 @@ jobs:
             - name: Checkout tag
               uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
               with:
-                  ref: refs/tags/${{ inputs.tag }}
+                  ref: refs/tags/${{ inputs.target == 'cli' && inputs.cli_tag || inputs.tag }}
+                  fetch-depth: 0
+            - name: Validate cli_tag points to same commit as tag
+              if: inputs.target == 'all'
+              run: |
+                  CORE_COMMIT=$(git rev-list -n 1 "refs/tags/$TAG")
+                  CLI_COMMIT=$(git rev-list -n 1 "refs/tags/$CLI_TAG")
+                  if [[ "$CORE_COMMIT" != "$CLI_COMMIT" ]]; then
+                      echo "::error::cli_tag '$CLI_TAG' ($CLI_COMMIT) does not point to the same commit as tag '$TAG' ($CORE_COMMIT)"
+                      exit 1
+                  fi
+              env:
+                  TAG: ${{ inputs.tag }}
+                  CLI_TAG: ${{ inputs.cli_tag }}
             - name: Configure rust toolchain
               run: rustup update stable && rustup default stable
             - name: Install toml-cli
@@ -227,7 +267,7 @@ jobs:
         if: inputs.target == 'cli'
         needs: [validate]
         # Validate succeeded for cli:
-        # - the given tag matches the core tag format (i.e. tag is v<MAJOR>.<MINOR>.<PATCH>)
+        # - the given cli_tag matches the CLI tag format (i.e. cedar-policy-cli-v<MAJOR>.<MINOR>.<PATCH>)
         # - the workspace version in the root Cargo.toml is the provided core version
         # - the workspace version in the root Cargo.toml is the provided cli version
         runs-on: ubuntu-latest
@@ -238,7 +278,7 @@ jobs:
             - name: Checkout tag
               uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
               with:
-                  ref: refs/tags/${{ inputs.tag }}
+                  ref: refs/tags/${{ inputs.cli_tag }}
             - name: Configure rust toolchain
               run: rustup update stable && rustup default stable
             - name: Authenticate with crates.io
