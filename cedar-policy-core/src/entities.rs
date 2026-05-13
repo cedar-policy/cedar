@@ -2510,6 +2510,303 @@ mod entities_tests {
         // Assert that there is no longer an edge from F to E
         assert!(!f.is_descendant_of(&eid));
     }
+
+    // ---- Vec-of-test-cases for add/remove/upsert with TC repair ----
+    //
+    // NOTE: `test_remove_entities` and `test_upsert_entities` above exercise
+    // the same code paths (`remove_entities` / `upsert_entities` with
+    // `TCComputation::ComputeNow`) as the cases below. They overlap with
+    // `remove_node_with_high_incident_and_outgoing` and `upsert_rewire_fan_out`
+    // respectively. The hand-written tests use explicit `is_descendant_of`
+    // assertions while the cases below use an oracle (full `compute_tc` from
+    // scratch) for verification.
+
+    /// Operation to apply after building the initial entity set.
+    enum TestOp {
+        /// Add new entities: (id, parents)
+        Add(Vec<(&'static str, Vec<&'static str>)>),
+        /// Remove entities by id
+        Remove(Vec<&'static str>),
+        /// Upsert entities: (id, new parents)
+        Upsert(Vec<(&'static str, Vec<&'static str>)>),
+    }
+
+    /// Build an `Entities` from a list of direct parent edges and extra
+    /// isolated nodes (nodes with no edges).
+    fn entities_from_edges_and_nodes(edges: &[(&str, &str)], extra_nodes: &[&str]) -> Entities {
+        let mut ids: HashSet<&str> = HashSet::new();
+        for (s, d) in edges {
+            ids.insert(s);
+            ids.insert(d);
+        }
+        for id in extra_nodes {
+            ids.insert(id);
+        }
+        let mut ents: Vec<Entity> = ids
+            .iter()
+            .map(|id| Entity::with_uid(EntityUID::with_eid(id)))
+            .collect();
+        for (src, dst) in edges {
+            let e = ents
+                .iter_mut()
+                .find(|e| e.uid() == &EntityUID::with_eid(src))
+                .unwrap();
+            e.add_parent(EntityUID::with_eid(dst));
+        }
+        Entities::from_entities(
+            ents,
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("Failed to build entities")
+    }
+
+    /// Build an `Entities` from a list of direct parent edges.
+    fn entities_from_edges(edges: &[(&str, &str)]) -> Entities {
+        entities_from_edges_and_nodes(edges, &[])
+    }
+
+    /// Collect ancestor sets for comparison.
+    fn ancestor_snapshot(entities: &Entities) -> HashMap<EntityUID, HashSet<EntityUID>> {
+        entities
+            .iter()
+            .map(|e| (e.uid().clone(), e.ancestors().cloned().collect()))
+            .collect()
+    }
+
+    /// (name, initial edges, operation,
+    /// expected final direct edges, extra isolated nodes in expected)
+    fn entities_tc_test_cases() -> Vec<(
+        &'static str,
+        Vec<(&'static str, &'static str)>,
+        TestOp,
+        Vec<(&'static str, &'static str)>,
+        Vec<&'static str>,
+    )> {
+        vec![
+            (
+                "add_leaf_to_chain",
+                vec![("A", "B"), ("B", "C")],
+                TestOp::Add(vec![("D", vec!["B"])]),
+                vec![("A", "B"), ("B", "C"), ("D", "B")],
+                vec![],
+            ),
+            (
+                "add_node_bridging_components",
+                vec![("A", "B"), ("C", "D")],
+                TestOp::Add(vec![("E", vec!["B", "D"])]),
+                vec![("A", "B"), ("C", "D"), ("E", "B"), ("E", "D")],
+                vec![],
+            ),
+            (
+                "add_multiple_nodes_deep",
+                vec![("A", "B"), ("B", "C"), ("C", "D")],
+                TestOp::Add(vec![("E", vec!["A"]), ("F", vec!["E"])]),
+                vec![("A", "B"), ("B", "C"), ("C", "D"), ("E", "A"), ("F", "E")],
+                vec![],
+            ),
+            (
+                "remove_leaf",
+                vec![("A", "B"), ("B", "C"), ("A", "C")], // Adds A->C, even though it's already in TC
+                TestOp::Remove(vec!["C"]),
+                vec![("A", "B")],
+                vec![],
+            ),
+            (
+                "remove_leaf_transitive_node",
+                vec![("A", "B"), ("B", "C"), ("A", "C"), ("C", "D")], // Adds A->C, even though it's already in TC
+                TestOp::Remove(vec!["C"]),
+                vec![("A", "B")],
+                vec!["D"],
+            ),
+            (
+                "remove_intermediate_node",
+                vec![("A", "B"), ("B", "C"), ("C", "D")],
+                TestOp::Remove(vec!["B"]),
+                // A loses B and all of B's ancestors; C -> D remains
+                vec![("C", "D")],
+                vec!["A"],
+            ),
+            (
+                "remove_one_of_two_paths",
+                // A -> B -> D, A -> C -> D
+                vec![("A", "B"), ("A", "C"), ("B", "D"), ("C", "D")],
+                TestOp::Remove(vec!["B"]),
+                // A still has parent C; C -> D remains
+                vec![("A", "C"), ("C", "D")],
+                vec![],
+            ),
+            (
+                "upsert_change_parents",
+                // D exists in initial store so it's not dangling
+                vec![("A", "B"), ("B", "C"), ("D", "E")],
+                TestOp::Upsert(vec![("B", vec!["D"])]),
+                // C remains isolated; B now points to D -> E
+                vec![("A", "B"), ("B", "D"), ("D", "E")],
+                vec!["C"],
+            ),
+            (
+                "upsert_add_new_entity",
+                vec![("A", "B"), ("B", "C")],
+                TestOp::Upsert(vec![("D", vec!["A"])]),
+                vec![("A", "B"), ("B", "C"), ("D", "A")],
+                vec![],
+            ),
+            (
+                "upsert_rewire_fan_out",
+                vec![
+                    ("F", "A"),
+                    ("F", "D"),
+                    ("F", "E"),
+                    ("D", "A"),
+                    ("D", "B"),
+                    ("D", "C"),
+                    ("E", "C"),
+                ],
+                TestOp::Upsert(vec![("F", vec!["C"])]),
+                vec![("D", "A"), ("D", "B"), ("D", "C"), ("E", "C"), ("F", "C")],
+                vec!["A", "B"],
+            ),
+            (
+                "upsert_node_gains_second_parent",
+                // Initial: A -> B -> C -> D, E -> D
+                // Upsert B to have parents C and E (gains second parent)
+                // A must also get TC-repaired since it depends on B
+                vec![("A", "B"), ("B", "C"), ("C", "D"), ("E", "D")],
+                TestOp::Upsert(vec![("B", vec!["C", "E"])]),
+                vec![("A", "B"), ("B", "C"), ("B", "E"), ("C", "D"), ("E", "D")],
+                vec![],
+            ),
+            (
+                "remove_node_with_high_incident_and_outgoing",
+                vec![
+                    ("A", "E"),
+                    ("B", "E"),
+                    ("B", "A"),
+                    ("A", "D"),
+                    ("D", "F"),
+                    ("E", "F"),
+                    ("E", "G"),
+                    ("F", "G"),
+                    ("E", "X"),
+                ],
+                TestOp::Remove(vec!["E"]),
+                vec![("B", "A"), ("A", "D"), ("D", "F"), ("F", "G")],
+                vec!["X"],
+            ),
+            (
+                "remove_multiple_nodes",
+                // A -> B -> C -> D -> E; remove B and D simultaneously
+                vec![("A", "B"), ("B", "C"), ("C", "D"), ("D", "E")],
+                TestOp::Remove(vec!["B", "D"]),
+                // A loses B (and B's ancestors); C loses D (and D's ancestors)
+                vec![],
+                vec!["A", "C", "E"],
+            ),
+            (
+                "add_node_with_shared_ancestor",
+                // Initial: A -> B -> D, C -> D. Add E with parent A and parent C
+                // E should reach {A, B, C, D} via both paths
+                vec![("A", "B"), ("B", "D"), ("C", "D")],
+                TestOp::Add(vec![("E", vec!["A", "C"])]),
+                vec![("A", "B"), ("B", "D"), ("C", "D"), ("E", "A"), ("E", "C")],
+                vec![],
+            ),
+            (
+                "upsert_to_root",
+                // Initial: A -> B -> C. Upsert B with no parents (becomes root)
+                vec![("A", "B"), ("B", "C")],
+                TestOp::Upsert(vec![("B", vec![])]),
+                // B is now a root; A still has parent B but no further ancestors
+                vec![("A", "B")],
+                vec!["C"],
+            ),
+            (
+                "add_creates_diamond",
+                // Initial: B -> D, C -> D. Add A with parents B and C
+                vec![("B", "D"), ("C", "D")],
+                TestOp::Add(vec![("A", vec!["B", "C"])]),
+                // A reaches B, C, and D (via both paths)
+                vec![("B", "D"), ("C", "D"), ("A", "B"), ("A", "C")],
+                vec![],
+            ),
+            (
+                "upsert_multiple_entities",
+                // Initial: A -> B -> C, D -> E
+                // Upsert B to point to E, and upsert F -> D (new node)
+                vec![("A", "B"), ("B", "C"), ("D", "E")],
+                TestOp::Upsert(vec![("B", vec!["E"]), ("F", vec!["D"])]),
+                vec![("A", "B"), ("B", "E"), ("D", "E"), ("F", "D")],
+                vec!["C"],
+            ),
+        ]
+    }
+
+    #[test]
+    fn entities_tc_cases() {
+        for (name, initial_edges, op, expected_edges, extra_nodes) in &entities_tc_test_cases() {
+            let entities = entities_from_edges(initial_edges);
+
+            // Apply operation
+            let result = match op {
+                TestOp::Add(new_entities) => {
+                    let to_add: Vec<Arc<Entity>> = new_entities
+                        .iter()
+                        .map(|(id, parents)| {
+                            let mut e = Entity::with_uid(EntityUID::with_eid(id));
+                            for p in parents {
+                                e.add_parent(EntityUID::with_eid(p));
+                            }
+                            Arc::new(e)
+                        })
+                        .collect();
+                    entities
+                        .add_entities(
+                            to_add,
+                            None::<&NoEntitiesSchema>,
+                            TCComputation::ComputeNow,
+                            Extensions::all_available(),
+                        )
+                        .unwrap_or_else(|e| panic!("add_entities failed on '{name}': {e}"))
+                }
+                TestOp::Remove(ids) => {
+                    let to_remove: Vec<EntityUID> =
+                        ids.iter().map(|id| EntityUID::with_eid(id)).collect();
+                    entities
+                        .remove_entities(to_remove, TCComputation::ComputeNow)
+                        .unwrap_or_else(|e| panic!("remove_entities failed on '{name}': {e}"))
+                }
+                TestOp::Upsert(updates) => {
+                    let to_upsert: Vec<Arc<Entity>> = updates
+                        .iter()
+                        .map(|(id, parents)| {
+                            let mut e = Entity::with_uid(EntityUID::with_eid(id));
+                            for p in parents {
+                                e.add_parent(EntityUID::with_eid(p));
+                            }
+                            Arc::new(e)
+                        })
+                        .collect();
+                    entities
+                        .upsert_entities(
+                            to_upsert,
+                            None::<&NoEntitiesSchema>,
+                            TCComputation::ComputeNow,
+                            Extensions::all_available(),
+                        )
+                        .unwrap_or_else(|e| panic!("upsert_entities failed on '{name}': {e}"))
+                }
+            };
+
+            // Build expected from scratch
+            let expected = entities_from_edges_and_nodes(expected_edges, extra_nodes);
+            let result_snap = ancestor_snapshot(&result);
+            let expected_snap = ancestor_snapshot(&expected);
+
+            assert_eq!(result_snap, expected_snap, "ancestor mismatch on '{name}'");
+        }
+    }
 }
 
 #[cfg(test)]

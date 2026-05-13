@@ -1534,4 +1534,181 @@ mod tests {
         let d = entities.get(&EntityUID::with_eid("D")).unwrap();
         assert!(d.is_descendant_of(&EntityUID::with_eid("C")));
     }
+
+    /// Each test case: (name, initial edges, new edges, nodes to fix).
+    /// The test builds the initial graph, computes TC, then resets the
+    /// nodes_to_fix, re-adds all their direct edges (initial + new), calls
+    /// `repair_tc`, and asserts the result matches a full `compute_tc` on
+    /// the combined edge set.
+    fn repair_tc_test_cases() -> Vec<(
+        &'static str,
+        Vec<(&'static str, &'static str)>,
+        Vec<(&'static str, &'static str)>,
+        Vec<&'static str>,
+    )> {
+        vec![
+            (
+                "add_leaf_node",
+                // Initial: A -> B -> C
+                vec![("A", "B"), ("B", "C")],
+                // Add: D -> C
+                vec![("D", "C")],
+                // Fix: D
+                vec!["D"],
+            ),
+            (
+                "add_intermediate_edge",
+                // Initial: A -> B -> C -> D
+                vec![("A", "B"), ("B", "C"), ("C", "D")],
+                // Add: A -> C (shortcut)
+                vec![("A", "C")],
+                // Fix: A
+                vec!["A"],
+            ),
+            (
+                "diamond_new_entry",
+                // Initial: A -> B -> D, A -> C -> D
+                vec![("A", "B"), ("A", "C"), ("B", "D"), ("C", "D")],
+                // Add: E -> B
+                vec![("E", "B")],
+                // Fix: E
+                vec!["E"],
+            ),
+            (
+                "multiple_new_nodes",
+                // Initial: A -> B -> C
+                vec![("A", "B"), ("B", "C")],
+                // Add: D -> A, E -> A
+                vec![("D", "A"), ("E", "A")],
+                // Fix: D, E
+                vec!["D", "E"],
+            ),
+            (
+                "deep_chain_extension",
+                // Initial: A -> B -> C -> D -> E
+                vec![("A", "B"), ("B", "C"), ("C", "D"), ("D", "E")],
+                // Add: F -> A
+                vec![("F", "A")],
+                // Fix: F
+                vec!["F"],
+            ),
+            (
+                "wide_fan_in",
+                // Initial: B -> D, C -> D
+                vec![("B", "D"), ("C", "D")],
+                // Add: A -> B, A -> C
+                vec![("A", "B"), ("A", "C")],
+                // Fix: A
+                vec!["A"],
+            ),
+            (
+                "bridge_disjoint_components",
+                // Initial: A -> B, C -> D
+                vec![("A", "B"), ("C", "D")],
+                // Add: E -> B, E -> D
+                vec![("E", "B"), ("E", "D")],
+                // Fix: E
+                vec!["E"],
+            ),
+            (
+                "node_gains_second_parent",
+                // Initial: A -> B -> C -> D
+                vec![("A", "B"), ("B", "C"), ("C", "D")],
+                // Add: B -> E, E -> D (B gets second path to D)
+                vec![("B", "E"), ("E", "D")],
+                // Fix: A, B, E
+                // Must fix A too since it depends on B.
+                // In entities.rs, this is correctly done: entities_touched is expanded
+                // when any entitity has one of the touched nodes as an ancestor
+                // See the corresponding test with same name in that file.
+                vec!["A", "B", "E"],
+            ),
+        ]
+    }
+
+    /// Runs all `repair_tc` test cases, comparing repair result against a
+    /// full `compute_tc` on the same final graph.
+    #[test]
+    fn repair_tc_cases() {
+        for (name, edges, new_edges, nodes_to_fix) in &repair_tc_test_cases() {
+            // Collect all node ids
+            let mut ids: HashSet<&str> = HashSet::new();
+            for (s, d) in edges.iter().chain(new_edges.iter()) {
+                ids.insert(s);
+                ids.insert(d);
+            }
+
+            // Build initial graph
+            let mut entities: HashMap<EntityUID, Entity> = ids
+                .iter()
+                .map(|id| {
+                    let e = Entity::with_uid(EntityUID::with_eid(id));
+                    (e.uid().clone(), e)
+                })
+                .collect();
+            for (src, dst) in edges {
+                entities
+                    .get_mut(&EntityUID::with_eid(src))
+                    .unwrap()
+                    .add_parent(EntityUID::with_eid(dst));
+            }
+
+            // Compute initial TC
+            compute_tc(&mut entities, false).expect("initial compute_tc failed");
+
+            // Reset nodes_to_fix and re-add their direct edges (initial + new)
+            let fix_ids: HashSet<&str> = nodes_to_fix.iter().copied().collect();
+            for id in &fix_ids {
+                entities
+                    .get_mut(&EntityUID::with_eid(id))
+                    .unwrap()
+                    .reset_edges();
+            }
+            for (src, dst) in edges.iter().chain(new_edges.iter()) {
+                if fix_ids.contains(src) {
+                    entities
+                        .get_mut(&EntityUID::with_eid(src))
+                        .unwrap()
+                        .add_parent(EntityUID::with_eid(dst));
+                }
+            }
+            // Insert any brand-new nodes that weren't in the initial graph
+            for id in &fix_ids {
+                entities
+                    .entry(EntityUID::with_eid(id))
+                    .or_insert_with(|| Entity::with_uid(EntityUID::with_eid(id)));
+            }
+
+            // Repair TC
+            let fix_set: HashSet<EntityUID> = nodes_to_fix
+                .iter()
+                .map(|id| EntityUID::with_eid(id))
+                .collect();
+            repair_tc(fix_set, &mut entities, false)
+                .unwrap_or_else(|_| panic!("repair_tc failed on '{name}'"));
+            let repaired = snapshot(&entities);
+
+            // Build expected: full TC from scratch on the combined edge set
+            let mut expected_entities: HashMap<EntityUID, Entity> = ids
+                .iter()
+                .map(|id| {
+                    let e = Entity::with_uid(EntityUID::with_eid(id));
+                    (e.uid().clone(), e)
+                })
+                .collect();
+            for (src, dst) in edges.iter().chain(new_edges.iter()) {
+                expected_entities
+                    .get_mut(&EntityUID::with_eid(src))
+                    .unwrap()
+                    .add_parent(EntityUID::with_eid(dst));
+            }
+            compute_tc(&mut expected_entities, false).expect("expected compute_tc failed");
+            let expected = snapshot(&expected_entities);
+
+            assert_eq!(
+                repaired, expected,
+                "repair_tc result differs from full compute_tc on '{name}'"
+            );
+        }
+    }
 }
