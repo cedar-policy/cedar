@@ -20,6 +20,7 @@ use super::models;
 use cedar_policy_core::{
     ast, evaluator::RestrictedEvaluator, extensions::Extensions, FromNormalizedStr,
 };
+use itertools::Itertools;
 use smol_str::ToSmolStr;
 use std::{collections::HashSet, sync::Arc};
 
@@ -688,13 +689,11 @@ impl TryFrom<models::expr::like::PatternElem> for ast::PatternElem {
             .data
             .ok_or_else(|| ProtobufConversionError::missing("data"))?
         {
-            models::expr::like::pattern_elem::Data::C(c) => Ok(ast::PatternElem::Char(
-                c.chars().next().ok_or_else(|| {
-                    ProtobufConversionError::InvalidValue(
-                        "empty char in pattern element".to_string(),
-                    )
-                })?,
-            )),
+            models::expr::like::pattern_elem::Data::C(c) => {
+                Ok(ast::PatternElem::Char(c.chars().exactly_one().map_err(
+                    |e| ProtobufConversionError::InvalidValue(format!("{e} in pattern element")),
+                )?))
+            }
             models::expr::like::pattern_elem::Data::Wildcard(unit) => {
                 match models::expr::like::pattern_elem::Wildcard::try_from(unit).map_err(|e| {
                     ProtobufConversionError::InvalidValue(format!("invalid wildcard: {e}"))

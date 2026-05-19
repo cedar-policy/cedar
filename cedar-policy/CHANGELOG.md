@@ -12,6 +12,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## [Unreleased]
 
+
+### Fixed
+
+- Protobuf parsing for expression now error on encountering a `like` pattern element with multiple characters in a single `PatternElem::Char` isntead of dropping the extra characters.
+
 ## [4.11.0] - 2026-05-18
 
 Cedar Language Version: 4.5
