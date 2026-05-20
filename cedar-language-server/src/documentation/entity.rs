@@ -36,7 +36,7 @@ impl ToDocumentationString for EntityType {
 
         if let Some(schema_type) = schema.and_then(|schema| schema.get_entity_type(self)) {
             let attrs = schema_type.attributes();
-            if !attrs.keys().count() > 0 {
+            if attrs.iter().next().is_some() {
                 builder
                     .paragraph("Attributes:")
                     .code_block("cedarschema", &format_attributes(attrs.iter()));
@@ -58,7 +58,7 @@ impl ToDocumentationString for EntityUID {
         if let Some(schema) = schema {
             if let Some(schema_type) = schema.get_entity_type(self.entity_type()) {
                 let attrs = schema_type.attributes();
-                if !attrs.keys().count() > 0 {
+                if attrs.iter().next().is_some() {
                     builder
                         .paragraph("Available Attributes:")
                         .code_block("cedarschema", &format_attributes(attrs.iter()));
@@ -95,7 +95,7 @@ where
             if let Some(schema_type) = schema.and_then(|schema| schema.get_entity_type(entity_type))
             {
                 let attrs = schema_type.attributes();
-                if !attrs.keys().count() > 0 {
+                if attrs.iter().next().is_some() {
                     builder
                         .paragraph("Attributes:")
                         .code_block("cedarschema", &format_attributes(attrs.iter()));

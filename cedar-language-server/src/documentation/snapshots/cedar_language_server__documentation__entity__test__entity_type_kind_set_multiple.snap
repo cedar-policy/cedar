@@ -8,12 +8,6 @@ This entity can be any of the following entity types:
 
 **Type: `Photo`**
 
-Attributes:
-
-```cedarschema
-No attributes defined.
-```
-
 **Type: `User`**
 
 Attributes:
