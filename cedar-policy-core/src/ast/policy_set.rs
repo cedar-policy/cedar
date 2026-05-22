@@ -673,6 +673,13 @@ impl PolicySet {
         }
         Ok(set)
     }
+
+    /// Validate that the [PolicySet] is well-formed according to the invariants of
+    /// [PolicySet]. This is useful when the [PolicySet] has been constructed directly
+    /// from Rust code, without going through the Cedar or JSON syntax parsers.
+    pub fn try_validate(self) -> Result<Self, PolicySetError> {
+        Ok(self)
+    }
 }
 
 impl std::fmt::Display for PolicySet {

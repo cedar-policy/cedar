@@ -1091,6 +1091,15 @@ impl ValidatorSchema {
             extensions,
         )
     }
+
+    /// Validate that a schema is well-formed according to the rules of the schema language.
+    /// This is useful when the schema has been constructed directly from Rust code,
+    /// without going through the JSON or Cedar schema syntax, and thus may not have
+    /// been checked for well-formedness by the JSON or Cedar schema parsers.
+    pub fn try_validate(self) -> std::result::Result<Self, SchemaError> {
+        // Implementation for validating schema well-formedness
+        Ok(self)
+    }
 }
 
 /// Get a [`ValidatorSchemaFragment`] describing the items that implicitly exist

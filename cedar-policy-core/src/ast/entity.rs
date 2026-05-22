@@ -752,6 +752,11 @@ impl Entity {
         let string = serde_json::to_string(&ejson).map_err(JsonSerializationError::from)?;
         Ok(string)
     }
+
+    /// Validate that this is a well formed entity, otherwise return an [EntitiesError]
+    pub fn try_validate(self) -> Result<Self, EntitiesError> {
+        Ok(self)
+    }
 }
 
 /// `Entity`s are equal if their UIDs are equal

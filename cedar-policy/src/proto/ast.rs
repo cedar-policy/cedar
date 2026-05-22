@@ -197,7 +197,7 @@ impl TryFrom<models::Entity> for ast::Entity {
             })
             .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
 
-        Ok(Self::new_with_attr_partial_value(
+        Self::new_with_attr_partial_value(
             ast::EntityUID::try_from(
                 v.uid
                     .ok_or_else(|| ProtobufConversionError::missing("uid"))?,
@@ -206,7 +206,9 @@ impl TryFrom<models::Entity> for ast::Entity {
             HashSet::new(),
             ancestors,
             tags,
-        ))
+        )
+        .try_validate()
+        .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid entity: {e}")))
     }
 }
 
@@ -251,21 +253,21 @@ impl TryFrom<models::Expr> for ast::Expr {
             .expr_kind
             .ok_or_else(|| ProtobufConversionError::missing("expr_kind"))?;
 
-        match kind {
-            models::expr::ExprKind::Lit(lit) => Ok(ast::Expr::val(ast::Literal::try_from(lit)?)),
+        let expr = match kind {
+            models::expr::ExprKind::Lit(lit) => ast::Expr::val(ast::Literal::try_from(lit)?),
 
             models::expr::ExprKind::Var(var) => {
                 let pvar = models::expr::Var::try_from(var).map_err(|e| {
                     ProtobufConversionError::InvalidValue(format!("invalid var: {e}"))
                 })?;
-                Ok(ast::Expr::var(ast::Var::from(pvar)))
+                ast::Expr::var(ast::Var::from(pvar))
             }
 
             models::expr::ExprKind::Slot(slot) => {
                 let pslot = models::SlotId::try_from(slot).map_err(|e| {
                     ProtobufConversionError::InvalidValue(format!("invalid slot: {e}"))
                 })?;
-                Ok(ast::Expr::slot(ast::SlotId::from(pslot)))
+                ast::Expr::slot(ast::SlotId::from(pslot))
             }
 
             models::expr::ExprKind::If(msg) => {
@@ -278,11 +280,11 @@ impl TryFrom<models::Expr> for ast::Expr {
                 let else_expr = *msg
                     .else_expr
                     .ok_or_else(|| ProtobufConversionError::missing("else_expr"))?;
-                Ok(ast::Expr::ite(
+                ast::Expr::ite(
                     ast::Expr::try_from(test_expr)?,
                     ast::Expr::try_from(then_expr)?,
                     ast::Expr::try_from(else_expr)?,
-                ))
+                )
             }
 
             models::expr::ExprKind::And(msg) => {
@@ -292,10 +294,7 @@ impl TryFrom<models::Expr> for ast::Expr {
                 let right = *msg
                     .right
                     .ok_or_else(|| ProtobufConversionError::missing("right"))?;
-                Ok(ast::Expr::and(
-                    ast::Expr::try_from(left)?,
-                    ast::Expr::try_from(right)?,
-                ))
+                ast::Expr::and(ast::Expr::try_from(left)?, ast::Expr::try_from(right)?)
             }
 
             models::expr::ExprKind::Or(msg) => {
@@ -305,10 +304,7 @@ impl TryFrom<models::Expr> for ast::Expr {
                 let right = *msg
                     .right
                     .ok_or_else(|| ProtobufConversionError::missing("right"))?;
-                Ok(ast::Expr::or(
-                    ast::Expr::try_from(left)?,
-                    ast::Expr::try_from(right)?,
-                ))
+                ast::Expr::or(ast::Expr::try_from(left)?, ast::Expr::try_from(right)?)
             }
 
             models::expr::ExprKind::UApp(msg) => {
@@ -318,10 +314,7 @@ impl TryFrom<models::Expr> for ast::Expr {
                 let puop = models::expr::unary_app::Op::try_from(msg.op).map_err(|e| {
                     ProtobufConversionError::InvalidValue(format!("invalid unary op: {e}"))
                 })?;
-                Ok(ast::Expr::unary_app(
-                    ast::UnaryOp::from(puop),
-                    ast::Expr::try_from(arg)?,
-                ))
+                ast::Expr::unary_app(ast::UnaryOp::from(puop), ast::Expr::try_from(arg)?)
             }
 
             models::expr::ExprKind::BApp(msg) => {
@@ -334,14 +327,14 @@ impl TryFrom<models::Expr> for ast::Expr {
                 let right = *msg
                     .right
                     .ok_or_else(|| ProtobufConversionError::missing("right"))?;
-                Ok(ast::Expr::binary_app(
+                ast::Expr::binary_app(
                     ast::BinaryOp::from(pbop),
                     ast::Expr::try_from(left)?,
                     ast::Expr::try_from(right)?,
-                ))
+                )
             }
 
-            models::expr::ExprKind::ExtApp(msg) => Ok(ast::Expr::call_extension_fn(
+            models::expr::ExprKind::ExtApp(msg) => ast::Expr::call_extension_fn(
                 ast::Name::try_from(
                     msg.fn_name
                         .ok_or_else(|| ProtobufConversionError::missing("fn_name"))?,
@@ -350,60 +343,54 @@ impl TryFrom<models::Expr> for ast::Expr {
                     .into_iter()
                     .map(ast::Expr::try_from)
                     .collect::<Result<_, _>>()?,
-            )),
+            ),
 
             models::expr::ExprKind::GetAttr(msg) => {
                 let arg = *msg
                     .expr
                     .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
-                Ok(ast::Expr::get_attr(
-                    ast::Expr::try_from(arg)?,
-                    msg.attr.into(),
-                ))
+                ast::Expr::get_attr(ast::Expr::try_from(arg)?, msg.attr.into())
             }
 
             models::expr::ExprKind::HasAttr(msg) => {
                 let arg = *msg
                     .expr
                     .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
-                Ok(ast::Expr::has_attr(
-                    ast::Expr::try_from(arg)?,
-                    msg.attr.into(),
-                ))
+                ast::Expr::has_attr(ast::Expr::try_from(arg)?, msg.attr.into())
             }
 
             models::expr::ExprKind::Like(msg) => {
                 let arg = *msg
                     .expr
                     .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
-                Ok(ast::Expr::like(
+                ast::Expr::like(
                     ast::Expr::try_from(arg)?,
                     msg.pattern
                         .into_iter()
                         .map(ast::PatternElem::try_from)
                         .collect::<Result<_, _>>()?,
-                ))
+                )
             }
 
             models::expr::ExprKind::Is(msg) => {
                 let arg = *msg
                     .expr
                     .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
-                Ok(ast::Expr::is_entity_type(
+                ast::Expr::is_entity_type(
                     ast::Expr::try_from(arg)?,
                     ast::EntityType::try_from(
                         msg.entity_type
                             .ok_or_else(|| ProtobufConversionError::missing("entity_type"))?,
                     )?,
-                ))
+                )
             }
 
-            models::expr::ExprKind::Set(msg) => Ok(ast::Expr::set(
+            models::expr::ExprKind::Set(msg) => ast::Expr::set(
                 msg.elements
                     .into_iter()
                     .map(ast::Expr::try_from)
                     .collect::<Result<Vec<_>, _>>()?,
-            )),
+            ),
 
             models::expr::ExprKind::Record(msg) => {
                 let items = msg
@@ -413,9 +400,11 @@ impl TryFrom<models::Expr> for ast::Expr {
                     .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
                 ast::Expr::record(items).map_err(|e| {
                     ProtobufConversionError::InvalidValue(format!("invalid record: {e}"))
-                })
+                })?
             }
-        }
+        };
+        expr.try_validate()
+            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid expression {e}")))
     }
 }
 
@@ -726,7 +715,7 @@ impl From<&ast::PatternElem> for models::expr::like::PatternElem {
 impl TryFrom<models::Request> for ast::Request {
     type Error = ProtobufConversionError;
     fn try_from(v: models::Request) -> Result<Self, Self::Error> {
-        Ok(ast::Request::new_unchecked(
+        ast::Request::new_unchecked(
             ast::EntityUIDEntry::try_from(
                 v.principal
                     .ok_or_else(|| ProtobufConversionError::missing("principal"))?,
@@ -759,7 +748,9 @@ impl TryFrom<models::Request> for ast::Request {
                     ProtobufConversionError::InvalidValue(format!("invalid context: {e}"))
                 })?,
             ),
-        ))
+        )
+        .try_validate()
+        .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid request: {e}")))
     }
 }
 

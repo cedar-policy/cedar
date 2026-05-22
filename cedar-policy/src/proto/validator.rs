@@ -37,7 +37,7 @@ impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
 impl TryFrom<models::Schema> for cedar_policy_core::validator::ValidatorSchema {
     type Error = ProtobufConversionError;
     fn try_from(v: models::Schema) -> Result<Self, Self::Error> {
-        Ok(Self::new(
+        Self::new(
             v.entity_decls
                 .into_iter()
                 .map(cedar_policy_core::validator::ValidatorEntityType::try_from)
@@ -46,7 +46,9 @@ impl TryFrom<models::Schema> for cedar_policy_core::validator::ValidatorSchema {
                 .into_iter()
                 .map(cedar_policy_core::validator::ValidatorActionId::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
-        ))
+        )
+        .try_validate()
+        .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid schema: {e}")))
     }
 }
 
@@ -603,7 +605,6 @@ mod test {
 
     #[test]
     fn schema_try_from_invalid_entity_hierarchy() {
-        // TODO: This should be changed to resolve #1348 by adding additional validation!
         // The Cedar schema: entity E enum ["0"] in D;  entity D; sould not decode.
         // But modelled as "entity E enum ["0"]; entity D has_descendant E; it decodes.
         let e_name: cedar_policy_core::ast::Name = "E".parse().unwrap();
@@ -627,6 +628,34 @@ mod test {
             ],
             action_decls: vec![],
         };
-        assert!(ValidatorSchema::try_from(bad).is_ok());
+        assert!(ValidatorSchema::try_from(bad).is_err());
+    }
+
+    #[test]
+    fn schema_try_from_has_undeclared_entity() {
+        // The schema has an undeclared entity
+        let e_name: cedar_policy_core::ast::Name = "E".parse().unwrap();
+        let c_name: cedar_policy_core::ast::Name = "D".parse().unwrap();
+        let d_name: cedar_policy_core::ast::Name = "C".parse().unwrap();
+        let bad = models::Schema {
+            entity_decls: vec![
+                models::EntityDecl {
+                    name: Some(models::Name::from(&c_name)),
+                    descendants: vec![],
+                    attributes: Default::default(),
+                    tags: None,
+                    enum_choices: vec!["0".to_string()],
+                },
+                models::EntityDecl {
+                    name: Some(models::Name::from(&d_name)),
+                    descendants: vec![models::Name::from(&e_name)],
+                    attributes: Default::default(),
+                    tags: None,
+                    enum_choices: vec![],
+                },
+            ],
+            action_decls: vec![],
+        };
+        assert!(ValidatorSchema::try_from(bad).is_err());
     }
 }

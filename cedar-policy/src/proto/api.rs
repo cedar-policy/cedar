@@ -118,7 +118,13 @@ impl traits::Protobuf for api::PolicySet {
         traits::encode_to_vec::<models::PolicySet>(self)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
-        traits::try_decode::<models::PolicySet, _, Self>(buf)
+        traits::try_decode::<models::PolicySet, _, Self>(buf).and_then(|ps| {
+            ps.try_validate().map_err(|e| {
+                traits::DecodeError::Conversion(ProtobufConversionError::InvalidValue(format!(
+                    "invalid policy set: {e}"
+                )))
+            })
+        })
     }
 }
 

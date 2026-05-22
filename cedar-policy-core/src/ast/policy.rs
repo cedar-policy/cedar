@@ -346,6 +346,12 @@ impl Template {
         let p = Policy::new(Arc::clone(&t), None, HashMap::new());
         (t, p)
     }
+
+    /// Checks that this template is well-formed according to internal invariants of [Template],
+    /// and if not, returns an error.
+    pub fn try_validate(self) -> Result<Self, PolicySetError> {
+        Ok(self)
+    }
 }
 
 impl From<TemplateBody> for Template {

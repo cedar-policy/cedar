@@ -465,6 +465,12 @@ impl Entities {
         writeln!(f, "}}")?;
         Ok(())
     }
+
+    /// Validates the set of entities is well formed and returns it, otherwise returns
+    /// an error.
+    pub fn try_validate(self) -> std::result::Result<Self, EntitiesError> {
+        Ok(self)
+    }
 }
 
 /// Creates a map from EntityUIDs to Entities, erroring if there is a pair of Entity

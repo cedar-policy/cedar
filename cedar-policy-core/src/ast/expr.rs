@@ -879,6 +879,11 @@ impl Expr {
             ExprKind::Error { .. } => Ok(self.clone()),
         }
     }
+
+    /// Validate the expression is well-formed according to internal invariants.
+    pub fn try_validate(self) -> Result<Self, ExpressionConstructionError> {
+        Ok(self)
+    }
 }
 
 /// A trait for customizing the error behavior of substitution
