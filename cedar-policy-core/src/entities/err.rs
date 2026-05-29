@@ -44,6 +44,10 @@ pub enum EntitiesError {
     #[error("entity does not conform to the schema")]
     #[diagnostic(transparent)]
     InvalidEntity(#[from] crate::entities::conformance::err::EntitySchemaConformanceError),
+    /// Error because an entity is not well-formed
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEntityStructure(#[from] InvalidEntityStructureError),
 }
 
 impl EntitiesError {
@@ -98,3 +102,30 @@ impl Duplicate {
 
 /// Type alias for convenience
 pub type Result<T> = std::result::Result<T, EntitiesError>;
+
+/// Error type for entities that are not well-formed
+#[derive(Debug, Error, Diagnostic)]
+pub enum InvalidEntityStructureError {
+    /// Entity has itself as an ancestor
+    #[error("entity `{uid}` has itself as an ancestor")]
+    SelfAncestor {
+        /// The entity UID
+        uid: EntityUID,
+    },
+    /// Parents and indirect ancestors overlap
+    #[error("entity `{uid}` has `{ancestor}` in both parents and indirect ancestors")]
+    DuplicateAncestor {
+        /// The entity UID
+        uid: EntityUID,
+        /// The ancestor that appears in both sets
+        ancestor: EntityUID,
+    },
+    /// Action entity has a non-action parent
+    #[error("action `{uid}` has a non-action parent `{parent}`")]
+    ActionParentIsNotAction {
+        /// The action entity UID
+        uid: EntityUID,
+        /// The non-action parent
+        parent: EntityUID,
+    },
+}
