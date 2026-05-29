@@ -1162,21 +1162,29 @@ impl SExpr {
                     if define_fun == "define-fun" =>
                 {
                     match args.as_slice() {
-                        // Decode unary function
+                        // Decode unary function (skip if not a known UUF)
                         [SExpr::App(arg)] if arg.len() == 2 => match arg.as_slice() {
                             [SExpr::Symbol(arg_name), arg_ty] => {
-                                let (uuf, udf) = Self::decode_unary_function(
-                                    id_maps, name, arg_name, arg_ty, ret_ty, body,
-                                )?;
-                                funs.insert(uuf, udf);
+                                if id_maps.uufs.contains_key(name) {
+                                    let (uuf, udf) = Self::decode_unary_function(
+                                        id_maps, name, arg_name, arg_ty, ret_ty, body,
+                                    )?;
+                                    funs.insert(uuf, udf);
+                                }
+                                // else: skip unknown unary functions (e.g., Z3 intermediate terms)
                             }
                             _ => return Err(DecodeError::UnexpectedModel),
                         },
 
                         // Decode SMT constant definition as interpretation to a Cedar variable
+                        // (skip if not a known variable — Z3 includes define-fun entries
+                        // for intermediate terms that aren't declare-const variables)
                         [] => {
-                            let (term_var, term) = Self::decode_var(id_maps, name, ret_ty, body)?;
-                            vars.insert(term_var, term);
+                            if id_maps.vars.contains_key(name) {
+                                let (term_var, term) =
+                                    Self::decode_var(id_maps, name, ret_ty, body)?;
+                                vars.insert(term_var, term);
+                            }
                         }
 
                         _ => return Err(DecodeError::UnexpectedModel),
@@ -1514,6 +1522,72 @@ mod test_decode {
             TermType::String,
             SmolStr::new_static("foo"),
         );
+    }
+
+    /// Z3 includes `define-fun` entries in its model for intermediate terms
+    /// (e.g., terms introduced by `define-fun` in the input), not just
+    /// `declare-const` variables. The decoder should skip these unknown
+    /// symbols rather than failing with `UnknownVariable`.
+    ///
+    /// Reproduces the model format seen when using Z3 4.12.5 as the solver:
+    /// ```text
+    /// (define-fun t0 () E0 (E0 "!0!"))    <-- the actual declare-const var
+    /// (define-fun t3 () Bool (not ...))    <-- intermediate, not in IdMaps
+    /// (define-fun t1 () E0 (E0 "a"))      <-- intermediate
+    /// (define-fun t2 () Bool (= t0 ...))  <-- intermediate
+    /// ```
+    #[test]
+    fn decode_model_skips_unknown_define_funs() {
+        // Z3-style model with extra define-funs for intermediate terms.
+        // The decoder should skip unknown names and still decode known vars.
+        let z3_model = r#"(
+            (define-fun t0 () Bool true)
+            (define-fun t3 () Bool (not true))
+        )"#;
+        let sexpr = parse_sexpr(z3_model.as_bytes()).expect("failed to parse");
+        let var = TermVar {
+            id: "t0".into(),
+            ty: TermType::Bool,
+        };
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::from([(&var.id, &var)]), // only t0 in consts
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        let interp = result.expect("decode_model should skip unknown define-funs");
+        let val = interp.vars.get(&var).expect("t0 should be in the model");
+        assert_eq!(*val, Term::Prim(crate::symcc::term::TermPrim::Bool(true)));
+    }
+
+    #[test]
+    fn decode_model_skips_unknown_unary_funs() {
+        // Z3-style model with an unknown unary function (not in IdMaps.uufs).
+        // The decoder should skip it.
+        let z3_model = r#"(
+            (define-fun t0 () Bool true)
+            (define-fun unknown_fn ((x Bool)) Bool (ite (= true x) false true))
+        )"#;
+        let sexpr = parse_sexpr(z3_model.as_bytes()).expect("failed to parse");
+        let var = TermVar {
+            id: "t0".into(),
+            ty: TermType::Bool,
+        };
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::from([(&var.id, &var)]), // only t0 in consts
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        let interp = result.expect("decode_model should skip unknown unary funs");
+        let val = interp.vars.get(&var).expect("t0 should be in the model");
+        assert_eq!(*val, Term::Prim(crate::symcc::term::TermPrim::Bool(true)));
     }
 
     #[test]
