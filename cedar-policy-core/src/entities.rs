@@ -468,7 +468,16 @@ impl Entities {
 
     /// Validates the set of entities is well formed and returns it, otherwise returns
     /// an error.
-    pub fn try_validate(self) -> std::result::Result<Self, EntitiesError> {
+    ///
+    /// If `skip_entities` is true, only collection-level invariants (TC and DAG) are
+    /// checked, assuming individual entities have already been validated.
+    pub fn try_validate(self, skip_entities: bool) -> std::result::Result<Self, EntitiesError> {
+        enforce_tc_and_dag(&self.entities)?;
+        if !skip_entities {
+            for entity in self.entities.values() {
+                entity.validate()?;
+            }
+        }
         Ok(self)
     }
 }
@@ -2812,6 +2821,67 @@ mod entities_tests {
 
             assert_eq!(result_snap, expected_snap, "ancestor mismatch on '{name}'");
         }
+    }
+}
+
+#[cfg(test)]
+mod entities_validate_test {
+    use super::*;
+    use crate::extensions::Extensions;
+
+    fn make_entities(entities: impl IntoIterator<Item = Entity>) -> Entities {
+        Entities::from_entities(
+            entities,
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("failed to construct entities")
+    }
+
+    #[test]
+    fn valid_entities_accepted() {
+        let parent = Entity::with_uid(EntityUID::with_eid("parent"));
+        let child = Entity::new_with_attr_partial_value(
+            EntityUID::with_eid("child"),
+            std::iter::empty(),
+            HashSet::new(),
+            HashSet::from([EntityUID::with_eid("parent")]),
+            std::iter::empty(),
+        );
+        let es = make_entities([parent, child]);
+        assert!(es.try_validate(false).is_ok());
+    }
+
+    #[test]
+    fn broken_tc_rejected() {
+        // Manually construct entities with a broken TC by bypassing compute_tc
+        let grandparent = Entity::with_uid(EntityUID::with_eid("gp"));
+        let parent = Entity::new_with_attr_partial_value(
+            EntityUID::with_eid("parent"),
+            std::iter::empty(),
+            HashSet::new(),
+            HashSet::from([EntityUID::with_eid("gp")]),
+            std::iter::empty(),
+        );
+        // child -> parent -> gp, but child does NOT have gp as ancestor (broken TC)
+        let child = Entity::new_with_attr_partial_value(
+            EntityUID::with_eid("child"),
+            std::iter::empty(),
+            HashSet::new(),
+            HashSet::from([EntityUID::with_eid("parent")]),
+            std::iter::empty(),
+        );
+        // Build without TC computation to create an invalid state
+        let entities = Entities {
+            entities: HashMap::from([
+                (grandparent.uid().clone(), Arc::new(grandparent)),
+                (parent.uid().clone(), Arc::new(parent)),
+                (child.uid().clone(), Arc::new(child)),
+            ]),
+            mode: Mode::default(),
+        };
+        assert!(entities.try_validate(false).is_err());
     }
 }
 

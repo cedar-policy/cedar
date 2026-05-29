@@ -37,10 +37,10 @@ impl TryFrom<models::Entities> for entities::Entities {
         entities::Entities::from_entities(
             entities,
             None::<&entities::NoEntitiesSchema>,
-            entities::TCComputation::AssumeAlreadyComputed,
+            entities::TCComputation::ComputeNow,
             extensions::Extensions::all_available(),
         )
-        .and_then(|v| v.try_validate())
+        .and_then(|v| v.try_validate(true))
         .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid entities: {e}")))
     }
 }

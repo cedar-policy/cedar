@@ -763,14 +763,23 @@ impl Entity {
     /// - parents and indirect_ancestors should be disjoint
     /// - action entities must only have action parents
     pub fn try_validate(self) -> Result<Self, EntitiesError> {
-        // Invariant: entity should not be its own ancestor (covers both parents and indirect_ancestors)
+        self.validate()?;
+        Ok(self)
+    }
+
+    /// Validate that this is a well formed entity by reference.
+    pub fn validate(&self) -> Result<(), EntitiesError> {
+        // Invariant: entity should not be its own ancestor
         if self.parents.contains(&self.uid) || self.indirect_ancestors.contains(&self.uid) {
-            return Err(InvalidEntityStructureError::SelfAncestor { uid: self.uid }.into());
+            return Err(InvalidEntityStructureError::SelfAncestor {
+                uid: self.uid.clone(),
+            }
+            .into());
         }
         // Invariant: parents and indirect_ancestors should be disjoint
         if let Some(dup) = self.parents.intersection(&self.indirect_ancestors).next() {
             return Err(InvalidEntityStructureError::DuplicateAncestor {
-                uid: self.uid,
+                uid: self.uid.clone(),
                 ancestor: dup.clone(),
             }
             .into());
@@ -784,13 +793,13 @@ impl Entity {
                 .find(|p| !p.is_action())
             {
                 return Err(InvalidEntityStructureError::ActionParentIsNotAction {
-                    uid: self.uid,
+                    uid: self.uid.clone(),
                     parent: parent.clone(),
                 }
                 .into());
             }
         }
-        Ok(self)
+        Ok(())
     }
 }
 
