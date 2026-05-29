@@ -1020,7 +1020,6 @@ mod test {
 
 #[cfg(test)]
 mod validate_test {
-    use std::collections::HashSet;
     use std::str::FromStr;
 
     use super::*;

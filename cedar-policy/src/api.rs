@@ -3261,6 +3261,7 @@ impl PolicySet {
         }
     }
 
+    #[cfg(feature = "protobufs")]
     pub(crate) fn try_validate(self) -> Result<Self, ast::PolicySetValidationError> {
         self.ast.try_validate().map(|ast| Self {
             ast,
