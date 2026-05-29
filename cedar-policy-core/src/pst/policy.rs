@@ -314,6 +314,35 @@ impl std::fmt::Display for Template {
 ///
 /// To build a [`StaticPolicy`] from its body (a [`Template`] without slots), you should use
 /// [`StaticPolicy::try_from`], which will validate that the body does not contain any slot.
+///
+/// For example:
+/// ```cedar
+/// permit (
+///   principal == User::"alice",
+///   action == Action::"view",
+///   resource
+/// );
+/// ```
+/// Is the following [`StaticPolicy`]:
+/// ```
+/// # use cedar_policy_core::pst::*;
+/// # use smol_str::SmolStr;
+/// let template = Template::new(
+///     PolicyID(SmolStr::from("policy0")),
+///     Effect::Permit,
+///     PrincipalConstraint::Eq(EntityOrSlot::Entity(EntityUID {
+///         ty: EntityType::from_name(Name::unqualified("User").unwrap()),
+///         eid: SmolStr::from("alice"),
+///     })),
+///     ActionConstraint::Eq(EntityUID {
+///         ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
+///         eid: SmolStr::from("view"),
+///     }),
+///     ResourceConstraint::Any,
+/// );
+/// // Convert the slot-free Template into a StaticPolicy
+/// let static_policy = StaticPolicy::try_from(template).unwrap();
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct StaticPolicy {
@@ -352,6 +381,45 @@ impl TryFrom<Template> for StaticPolicy {
 ///
 /// To build a [`LinkedPolicy`], you should use [`LinkedPolicy::new`], which will validate that
 /// the linked policy is provided values for all the slots in its body.
+///
+/// For example, given a template with a `?principal` slot:
+/// ```cedar
+/// permit (
+///   principal == ?principal,
+///   action == Action::"view",
+///   resource
+/// );
+/// ```
+/// You can create a [`LinkedPolicy`] that fills the slot:
+/// ```
+/// # use cedar_policy_core::pst::*;
+/// # use smol_str::SmolStr;
+/// # use std::sync::Arc;
+/// # use std::collections::HashMap;
+/// let template = Arc::new(Template::new(
+///     PolicyID(SmolStr::from("template0")),
+///     Effect::Permit,
+///     PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)),
+///     ActionConstraint::Eq(EntityUID {
+///         ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
+///         eid: SmolStr::from("view"),
+///     }),
+///     ResourceConstraint::Any,
+/// ));
+/// // Fill the ?principal slot with a concrete entity
+/// let values = HashMap::from([(
+///     SlotId::Principal,
+///     EntityUID {
+///         ty: EntityType::from_name(Name::unqualified("User").unwrap()),
+///         eid: SmolStr::from("alice"),
+///     },
+/// )]);
+/// let linked = LinkedPolicy::new(
+///     template,
+///     values,
+///     PolicyID(SmolStr::from("link0")),
+/// ).unwrap();
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct LinkedPolicy {
