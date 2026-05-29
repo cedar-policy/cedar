@@ -16,7 +16,7 @@
 
 use super::{
     EntityUID, LinkingError, LiteralPolicy, Policy, PolicyID, ReificationError, SlotId,
-    StaticPolicy, Template,
+    StaticPolicy, Template, TemplateValidationError,
 };
 use itertools::Itertools;
 use linked_hash_map::{Entry, LinkedHashMap};
@@ -677,9 +677,31 @@ impl PolicySet {
     /// Validate that the [PolicySet] is well-formed according to the invariants of
     /// [PolicySet]. This is useful when the [PolicySet] has been constructed directly
     /// from Rust code, without going through the Cedar or JSON syntax parsers.
-    pub fn try_validate(self) -> Result<Self, PolicySetError> {
+    pub fn try_validate(self) -> Result<Self, PolicySetValidationError> {
+        for (id, template) in &self.templates {
+            template.as_ref().clone().try_validate().map_err(|error| {
+                PolicySetValidationError::InvalidTemplate {
+                    id: id.clone(),
+                    error,
+                }
+            })?;
+        }
         Ok(self)
     }
+}
+
+/// Errors returned by [`PolicySet::try_validate`]
+#[derive(Debug, Clone, Diagnostic, Error)]
+pub enum PolicySetValidationError {
+    /// A template in the policy set failed validation
+    #[error("invalid template `{id}`: {error}")]
+    InvalidTemplate {
+        /// [`PolicyID`] of the invalid template
+        id: PolicyID,
+        /// The validation error
+        #[source]
+        error: TemplateValidationError,
+    },
 }
 
 impl std::fmt::Display for PolicySet {
@@ -1258,6 +1280,96 @@ mod test {
                 .map(|p| p.id().clone())
                 .collect::<Vec<PolicyID>>(),
             ids
+        );
+    }
+}
+
+#[cfg(test)]
+mod policy_set_validate_test {
+    use super::*;
+    use crate::ast::{
+        annotation::Annotations, ActionConstraint, Effect, EntityUID, Expr, PrincipalConstraint,
+        ResourceConstraint, SlotId,
+    };
+    use cool_asserts::assert_matches;
+    use std::sync::Arc;
+
+    fn action_euid() -> Arc<EntityUID> {
+        Arc::new(EntityUID::with_eid_and_type("Action", "view").unwrap())
+    }
+
+    fn non_action_euid() -> Arc<EntityUID> {
+        Arc::new(EntityUID::with_eid_and_type("User", "alice").unwrap())
+    }
+
+    fn valid_template(id: &str) -> Template {
+        Template::new(
+            PolicyID::from_string(id),
+            None,
+            Annotations::new(),
+            Effect::Permit,
+            PrincipalConstraint::any(),
+            ActionConstraint::Eq(action_euid()),
+            ResourceConstraint::any(),
+            None,
+        )
+    }
+
+    fn invalid_template(id: &str) -> Template {
+        Template::new(
+            PolicyID::from_string(id),
+            None,
+            Annotations::new(),
+            Effect::Permit,
+            PrincipalConstraint::any(),
+            ActionConstraint::Eq(non_action_euid()),
+            ResourceConstraint::any(),
+            None,
+        )
+    }
+
+    fn make_policy_set(templates: impl IntoIterator<Item = Template>) -> PolicySet {
+        let literal = LiteralPolicySet::new(
+            templates
+                .into_iter()
+                .map(|t| (t.id().clone(), t))
+                .collect::<Vec<_>>(),
+            std::iter::empty(),
+        );
+        PolicySet::try_from(literal).expect("failed to construct policy set")
+    }
+
+    #[test]
+    fn valid_policy_set_accepted() {
+        let pset = make_policy_set([valid_template("p1"), valid_template("p2")]);
+        assert!(pset.try_validate().is_ok());
+    }
+
+    #[test]
+    fn invalid_template_rejected() {
+        let pset = make_policy_set([valid_template("p1"), invalid_template("bad")]);
+        assert_matches!(
+            pset.try_validate(),
+            Err(PolicySetValidationError::InvalidTemplate { id, .. }) if id == PolicyID::from_string("bad")
+        );
+    }
+
+    #[test]
+    fn slot_in_condition_rejected() {
+        let t = Template::new(
+            PolicyID::from_string("slotty"),
+            None,
+            Annotations::new(),
+            Effect::Permit,
+            PrincipalConstraint::any(),
+            ActionConstraint::Eq(action_euid()),
+            ResourceConstraint::any(),
+            Some(Expr::slot(SlotId::principal())),
+        );
+        let pset = make_policy_set([t]);
+        assert_matches!(
+            pset.try_validate(),
+            Err(PolicySetValidationError::InvalidTemplate { id, .. }) if id == PolicyID::from_string("slotty")
         );
     }
 }

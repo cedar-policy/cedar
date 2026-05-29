@@ -490,6 +490,11 @@ impl TryFrom<models::PolicySet> for ast::PolicySet {
         let literal = ast::LiteralPolicySet::try_from(pset)?;
         ast::PolicySet::try_from(literal)
             .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid policy set: {e}")))
+            .and_then(|ps| {
+                ps.try_validate().map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("invalid policy set: {e}"))
+                })
+            })
     }
 }
 
