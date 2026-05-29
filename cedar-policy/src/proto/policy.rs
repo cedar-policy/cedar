@@ -101,9 +101,10 @@ impl From<&ast::Policy> for models::Policy {
 impl TryFrom<models::TemplateBody> for ast::Template {
     type Error = ProtobufConversionError;
     fn try_from(v: models::TemplateBody) -> Result<Self, Self::Error> {
-        ast::Template::from(ast::TemplateBody::try_from(v)?)
+        let template = ast::Template::from(ast::TemplateBody::try_from(v)?)
             .try_validate()
-            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid template: {e}")))
+            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid template: {e}")))?;
+        Ok(template)
     }
 }
 
