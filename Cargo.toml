@@ -33,7 +33,7 @@ targets = [
 include = ["NOTICE", "THIRD_PARTY_LICENSES.txt"]
 pr-run-mode = "plan"
 install-updater = false
-post-announce-jobs = ["./build_experimental"]
+post-announce-jobs = ["./build_experimental", "./set_release_title"]
 
 # Enable global integer overflow detection for the release profile
 [profile.release]

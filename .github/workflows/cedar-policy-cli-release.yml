@@ -303,3 +303,12 @@ jobs:
     with:
       plan: ${{ needs.plan.outputs.val }}
     secrets: inherit
+
+  custom-set_release_title:
+    needs:
+      - plan
+      - announce
+    uses: ./.github/workflows/set_release_title.yml
+    with:
+      plan: ${{ needs.plan.outputs.val }}
+    secrets: inherit

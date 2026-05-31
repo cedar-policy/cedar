@@ -85,6 +85,7 @@ jobs:
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
       - name: Upload to GitHub Release
+        shell: bash
         env:
           TAG: ${{ fromJson(inputs.plan).announcement_tag }}
         run: gh release upload --clobber "$TAG" "$ARCHIVE" "${ARCHIVE}.sha256"

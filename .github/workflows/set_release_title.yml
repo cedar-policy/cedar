@@ -1,0 +1,31 @@
+name: Set CLI release title
+
+# Reusable workflow wired into cargo-dist via `post-announce-jobs` in the
+# workspace Cargo.toml. cargo-dist auto-titles the GitHub Release from the
+# matching CHANGELOG heading (e.g., `4.11.0`), which collides visually with
+# the core `cedar-policy` release of the same version. Override the title so
+# CLI releases are distinguishable in the Releases UI.
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        description: "dist-manifest.json contents passed in by cargo-dist."
+        required: true
+        type: string
+
+# Reusable workflows can't request more than the caller granted; cargo-dist's
+# generated workflow grants `contents: write` only.
+permissions:
+  contents: write
+
+jobs:
+  set-title:
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Override release title
+        env:
+          TAG: ${{ fromJson(inputs.plan).announcement_tag }}
+        run: gh release edit "$TAG" --title "cedar-policy-cli ${TAG#cedar-policy-cli-}" --repo "$GITHUB_REPOSITORY"
