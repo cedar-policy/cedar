@@ -12,6 +12,24 @@ This usage is not standard and annotations have custom use depending on the app.
 
 ## Install
 
+### Pre-built binaries
+
+Pre-built `cedar` binaries are attached to each [GitHub release](https://github.com/cedar-policy/cedar/releases?q=cedar-policy-cli) tagged `cedar-policy-cli-v*` for:
+
+- Linux: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`
+- macOS: `x86_64-apple-darwin`, `aarch64-apple-darwin`
+- Windows: `x86_64-pc-windows-msvc`
+
+Each archive contains the `cedar` binary, the project `LICENSE` and `NOTICE`, and a `THIRD_PARTY_LICENSES.txt` for third-party attributions. A `sha256.sum` file is published alongside the archives. The same release page also provides one-line `curl | sh` (POSIX) and `irm | iex` (PowerShell) installer scripts.
+
+These binaries are built with default features only. The `tpe` subcommand and the `permissive` / `partial` validation modes are available in the experimental flavor below. The `partially-authorize` and `symcc` subcommands are not shipped — build from source if you need them.
+
+### Experimental flavor
+
+A parallel set of archives named `cedar-policy-cli-experimental-<target>.<ext>` is attached to every release. The binary is still called `cedar`, but it is built with `tpe`, `permissive-validate`, and `partial-validate` enabled. Surface area of these features can change between releases; use the regular flavor if stability matters.
+
+### From source
+
 You will need to install Rust, via [rustup](https://rustup.rs).
 
 To install the CLI, run `cargo install cedar-policy-cli`.
@@ -47,4 +65,4 @@ We welcome contributions from the community. Please either file an issue, or see
 
 ## License
 
-This project is licensed under the Apache-2.0 License.
+This project is licensed under the Apache-2.0 License. Pre-built archives bundle `NOTICE` and `THIRD_PARTY_LICENSES.txt`; `cedar license` prints the same attributions.

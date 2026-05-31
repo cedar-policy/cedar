@@ -48,6 +48,8 @@ mod new;
 pub use new::*;
 mod language_version;
 pub use language_version::*;
+mod license;
+pub use license::*;
 
 #[cfg(not(feature = "tpe"))]
 mod tpe {
@@ -130,4 +132,6 @@ pub enum Commands {
     Symcc(SymccArgs),
     /// Print Cedar language version
     LanguageVersion,
+    /// Print license and third-party attributions
+    License,
 }

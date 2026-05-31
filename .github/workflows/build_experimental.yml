@@ -1,0 +1,91 @@
+name: Build experimental cedar binaries
+
+# Reusable workflow wired into cargo-dist via `post-announce-jobs` in the
+# workspace Cargo.toml. Builds `cedar` with experimental authorization
+# features enabled and uploads archives to the GitHub Release created by
+# cargo-dist's `announce` job.
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        description: "dist-manifest.json contents passed in by cargo-dist."
+        required: true
+        type: string
+
+permissions: read-all
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+    runs-on: ${{ matrix.runner }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Configure rust toolchain
+        run: rustup update stable --no-self-update && rustup default stable && rustup target add ${{ matrix.target }}
+
+      - name: Build experimental cedar
+        run: >-
+          cargo build --release --locked
+          --target ${{ matrix.target }}
+          -p cedar-policy-cli
+          --features tpe,permissive-validate,partial-validate
+
+      - name: Stage archive
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          STAGE="cedar-policy-cli-experimental-${TARGET}"
+          mkdir -p "$STAGE"
+          if [[ "$TARGET" == *windows* ]]; then
+            cp "target/${TARGET}/release/cedar.exe" "$STAGE/"
+          else
+            cp "target/${TARGET}/release/cedar" "$STAGE/"
+          fi
+          cp LICENSE NOTICE THIRD_PARTY_LICENSES.txt \
+             cedar-policy-cli/README.md cedar-policy-cli/CHANGELOG.md \
+             "$STAGE/"
+          if [[ "$TARGET" == *windows* ]]; then
+            7z a "${STAGE}.zip" "$STAGE" >/dev/null
+            ARCHIVE="${STAGE}.zip"
+          else
+            tar -cJf "${STAGE}.tar.xz" "$STAGE"
+            ARCHIVE="${STAGE}.tar.xz"
+          fi
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
+          else
+            shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
+          fi
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Upload to GitHub Release
+        env:
+          TAG: ${{ fromJson(inputs.plan).announcement_tag }}
+        run: gh release upload --clobber "$TAG" "$ARCHIVE" "${ARCHIVE}.sha256"

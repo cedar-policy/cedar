@@ -12,9 +12,37 @@ members = [
 
 resolver = "2"
 
+# cargo-dist config. Triggered only by `cedar-policy-cli-v*` tags
+# (see `tag-namespace`). Opt-in: workspace default is `dist = false`;
+# `cedar-policy-cli` opts in via its own `[package.metadata.dist]`.
+# An experimental flavor is built by `.github/workflows/build_experimental.yml`
+# (wired in via `post-announce-jobs`).
+[workspace.metadata.dist]
+cargo-dist-version = "0.32.0"
+ci = "github"
+dist = false
+installers = ["shell", "powershell"]
+tag-namespace = "cedar-policy-cli"
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+include = ["NOTICE", "THIRD_PARTY_LICENSES.txt"]
+pr-run-mode = "plan"
+install-updater = false
+post-announce-jobs = ["./build_experimental"]
+
 # Enable global integer overflow detection for the release profile
 [profile.release]
 overflow-checks = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
 
 [profile.bench]
 overflow-checks = true
