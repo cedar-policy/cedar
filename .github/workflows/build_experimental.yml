@@ -13,7 +13,8 @@ on:
         required: true
         type: string
 
-permissions: read-all
+permissions:
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -21,8 +22,6 @@ env:
 jobs:
   build:
     name: Build (${{ matrix.target }})
-    permissions:
-      contents: write
     strategy:
       fail-fast: false
       matrix:
