@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           # Download coverage data for the run. Exit early if the data is not found.
-          gh run download "${RUN_ID}" --name coverage_data || exit 0
+          gh run download "${RUN_ID}" --name coverage_data --dir coverage_data || exit 0
 
           # Find the number and base SHA of the PR that should be commented on.
           PR_NUMBER=$(gh pr view --repo "${PR_TARGET_REPO}" "${PR_BRANCH}" --json 'number' --jq '.number')
