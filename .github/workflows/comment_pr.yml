@@ -40,8 +40,8 @@ jobs:
           gh run download "${RUN_ID}" --name coverage_data --dir coverage_data || exit 0
 
           # Find the number and base SHA of the PR that should be commented on.
-          PR_NUMBER=$(gh pr view --repo "${PR_TARGET_REPO}" "${PR_BRANCH}" --json 'number' --jq '.number')
-          BASE_SHA=$(gh pr view --repo "${PR_TARGET_REPO}" "${PR_BRANCH}" --json 'baseRefOid' --jq '.baseRefOid')
+          PR_NUMBER=$(gh pr view --repo "${PR_TARGET_REPO}" --json 'number' --jq '.number' -- "${PR_BRANCH}")
+          BASE_SHA=$(gh pr view --repo "${PR_TARGET_REPO}" --json 'baseRefOid' --jq '.baseRefOid' -- "${PR_BRANCH}")
 
           # Find the identifier of the artifact with the name "coverage_report_html" written by the triggering workflow run.
           ARTIFACT_ID=$(gh api "repos/${PR_TARGET_REPO}/actions/runs/${RUN_ID}/artifacts" --jq '.artifacts[] | select(.name=="coverage_report_html") | .id')
