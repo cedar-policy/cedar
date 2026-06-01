@@ -38,7 +38,9 @@
 //!
 //! # Constructing a policy
 //!
-//! Build a PST [`Template`] directly from its constituent types. This example constructs:
+//! Build a PST [`Template`] directly from its constituent types. Then, if that [`Template`]
+//! doesn't have any slots, get a [`StaticPolicy`] by using its [`TryFrom`] trait.
+//! This example constructs:
 //! ```cedar
 //! permit (
 //!   principal == User::"alice",
@@ -83,6 +85,41 @@
 //! // If there are no slots, it can be converted into a static policy
 //! let policy : Policy = Policy::Static(template.try_into().unwrap());
 //! assert_eq!(policy.body().effect, Effect::Permit);
+//! ```
+//!
+//! # Linking a template
+//!
+//! If a [`Template`] contains slots (`?principal` or `?resource`), you can create a
+//! [`LinkedPolicy`] by providing values for those slots:
+//!
+//! ```
+//! # use cedar_policy_core::pst::*;
+//! # use smol_str::SmolStr;
+//! # use std::sync::Arc;
+//! # use std::collections::HashMap;
+//! let template = Arc::new(Template::new(
+//!     PolicyID(SmolStr::from("template0")),
+//!     Effect::Permit,
+//!     PrincipalConstraint::Eq(EntityOrSlot::Slot(SlotId::Principal)),
+//!     ActionConstraint::Eq(EntityUID {
+//!         ty: EntityType::from_name(Name::unqualified("Action").unwrap()),
+//!         eid: SmolStr::from("view"),
+//!     }),
+//!     ResourceConstraint::Any,
+//! ));
+//! let values = HashMap::from([(
+//!     SlotId::Principal,
+//!     EntityUID {
+//!         ty: EntityType::from_name(Name::unqualified("User").unwrap()),
+//!         eid: SmolStr::from("alice"),
+//!     },
+//! )]);
+//! let linked = LinkedPolicy::new(
+//!     template,
+//!     values,
+//!     PolicyID(SmolStr::from("link0")),
+//! ).unwrap();
+//! let policy = Policy::Linked(linked);
 //! ```
 //!
 //! # Matching / inspecting a policy
