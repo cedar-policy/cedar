@@ -46,7 +46,7 @@ jobs:
 
       - name: Build experimental cedar
         run: >-
-          cargo build --release --locked
+          cargo build --profile dist --locked
           --target ${{ matrix.target }}
           -p cedar-policy-cli
           --features tpe,permissive-validate,partial-validate
@@ -60,9 +60,9 @@ jobs:
           STAGE="cedar-policy-cli-experimental-${TARGET}"
           mkdir -p "$STAGE"
           if [[ "$TARGET" == *windows* ]]; then
-            cp "target/${TARGET}/release/cedar.exe" "$STAGE/"
+            cp "target/${TARGET}/dist/cedar.exe" "$STAGE/"
           else
-            cp "target/${TARGET}/release/cedar" "$STAGE/"
+            cp "target/${TARGET}/dist/cedar" "$STAGE/"
           fi
           cp LICENSE NOTICE THIRD_PARTY_LICENSES.txt \
              cedar-policy-cli/README.md cedar-policy-cli/CHANGELOG.md \
