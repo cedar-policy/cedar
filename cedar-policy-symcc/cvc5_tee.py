@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
 Wrapper that tees stdin, stdout, and stderr of cvc5 to the tty.
-Intended to help with debugging tests case by inspecting the exact input and
+Intended to help with debugging test cases by inspecting the exact input and
 output of cvc5.
 
-cvc5's stdout is forwarded directly while the contents if its stderr are printed in red.
-Input lines sent to cvc5 are prefixed with `cvc5>` as if running interactivly.
+cvc5's stdout is forwarded directly to the terminal. The contents of its stderr
+are printed in red.  Input lines sent to cvc5 are prefixed with `cvc5>` as if
+running interactivly.
 
 Usage: cvc5_tee.py <command> [args...]
-  Runs <command> with CVC5 set to this script. When <command> invokes $CVC5,
-  this script launches the real cvc5, teeing all three streams to the tty.
 
 Example:
   $ ./cvc5_tee.py cargo test symcc::solver::test::get_model_sat
