@@ -17,9 +17,11 @@
 use crate::CedarExitCode;
 
 pub fn license() -> CedarExitCode {
-    println!("Cedar is licensed under the Apache License, Version 2.0.");
-    println!("See https://www.apache.org/licenses/LICENSE-2.0 for the full text.\n");
-    println!("Third-party dependency licenses follow:\n");
+    println!(
+        "Cedar is licensed under the Apache License, Version 2.0.\n\
+         See https://www.apache.org/licenses/LICENSE-2.0 for the full text.\n\n\
+         Third-party dependency licenses follow:\n"
+    );
     print!("{}", include_str!("../../../THIRD_PARTY_LICENSES.txt"));
     CedarExitCode::Success
 }

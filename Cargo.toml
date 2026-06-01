@@ -12,11 +12,8 @@ members = [
 
 resolver = "2"
 
-# cargo-dist config. Triggered only by `cedar-policy-cli-v*` tags
-# (see `tag-namespace`). Opt-in: workspace default is `dist = false`;
-# `cedar-policy-cli` opts in via its own `[package.metadata.dist]`.
-# An experimental flavor is built by `.github/workflows/build_experimental.yml`
-# (wired in via `post-announce-jobs`).
+# cargo-dist config. Workspace default `dist = false`; `cedar-policy-cli`
+# opts in via its own `[package.metadata.dist]`.
 [workspace.metadata.dist]
 cargo-dist-version = "0.32.0"
 ci = "github"

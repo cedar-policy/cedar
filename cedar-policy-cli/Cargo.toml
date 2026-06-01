@@ -48,7 +48,6 @@ insta = { version = "1.47.2", features = ["filters"] }
 name = "cedar"
 path = "src/main.rs"
 
-# Opt this crate into cargo-dist (workspace default is `dist = false`).
 [package.metadata.dist]
 dist = true
 

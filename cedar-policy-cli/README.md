@@ -20,13 +20,13 @@ Pre-built `cedar` binaries are attached to each [GitHub release](https://github.
 - macOS: `x86_64-apple-darwin`, `aarch64-apple-darwin`
 - Windows: `x86_64-pc-windows-msvc`
 
-Each archive contains the `cedar` binary, the project `LICENSE` and `NOTICE`, and a `THIRD_PARTY_LICENSES.txt` for third-party attributions. A `sha256.sum` file is published alongside the archives. The same release page also provides one-line `curl | sh` (POSIX) and `irm | iex` (PowerShell) installer scripts.
+Archives bundle the `cedar` binary, `LICENSE`, `NOTICE`, and `THIRD_PARTY_LICENSES.txt` with sha256 sums; the release page also provides one-line `curl | sh` (POSIX) and `irm | iex` (PowerShell) installer scripts.
 
-These binaries are built with default features only. The `tpe` subcommand and the `permissive` / `partial` validation modes are available in the experimental flavor below. The `partially-authorize` and `symcc` subcommands are not shipped — build from source if you need them.
+These are default-feature builds. The `tpe` subcommand and the `permissive`/`partial` validation modes are in the experimental flavor below; `partially-authorize` and `symcc` are not shipped — build from source if you need them.
 
 ### Experimental flavor
 
-A parallel set of archives named `cedar-policy-cli-experimental-<target>.<ext>` is attached to every release. The binary is still called `cedar`, but it is built with `tpe`, `permissive-validate`, and `partial-validate` enabled. Surface area of these features can change between releases; use the regular flavor if stability matters.
+A parallel `cedar-policy-cli-experimental-<target>.<ext>` archive is attached to every release. Same `cedar` binary name, built with `tpe`, `permissive-validate`, and `partial-validate` enabled. Surface area of these features can change between releases; use the regular flavor if stability matters.
 
 ### From source
 
