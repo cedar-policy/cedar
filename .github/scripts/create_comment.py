@@ -156,7 +156,10 @@ def create_comment(coverage_json, output_file, head_sha, base_sha, report_url):
         data = json.load(f)
     required_coverage = float(data["required_coverage"])
     lines = [parse_line(line) for line in data["lines"]]
-    base = [parse_line(line) for line in data.get("base_lines", [])]
+    base_lines = data.get("base_lines")
+    if not base_lines:
+        base_lines = []
+    base = [parse_line(line) for line in base_lines]
     base_coverage = {
         name: compute_coverage(group)
         for name, group in group_lines(base, "package").items()
