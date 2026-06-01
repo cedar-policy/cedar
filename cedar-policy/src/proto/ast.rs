@@ -715,7 +715,7 @@ impl From<&ast::PatternElem> for models::expr::like::PatternElem {
 impl TryFrom<models::Request> for ast::Request {
     type Error = ProtobufConversionError;
     fn try_from(v: models::Request) -> Result<Self, Self::Error> {
-        ast::Request::new_unchecked(
+        Ok(ast::Request::new_unchecked(
             ast::EntityUIDEntry::try_from(
                 v.principal
                     .ok_or_else(|| ProtobufConversionError::missing("principal"))?,
@@ -748,9 +748,7 @@ impl TryFrom<models::Request> for ast::Request {
                     ProtobufConversionError::InvalidValue(format!("invalid context: {e}"))
                 })?,
             ),
-        )
-        .try_validate()
-        .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid request: {e}")))
+        ))
     }
 }
 

@@ -22,7 +22,6 @@ use crate::entities::CedarValueJson;
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
-use crate::validator::RequestValidationError;
 use miette::Diagnostic;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap};
@@ -265,12 +264,6 @@ impl Request {
             action: self.action().uid()?.clone(),
             resource: self.resource().uid()?.entity_type().clone(),
         })
-    }
-
-    /// Validates the request is well-formed; this is not Cedar's validation using a schema, this
-    /// is only a check to be used internally.
-    pub fn try_validate(self) -> Result<Self, RequestValidationError> {
-        Ok(self)
     }
 }
 
