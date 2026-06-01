@@ -74,7 +74,12 @@ jobs:
             tar -cJf "${STAGE}.tar.xz" "$STAGE"
             ARCHIVE="${STAGE}.tar.xz"
           fi
-          shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
+          # sha256sum exists on Linux and Windows Git Bash; macOS only has shasum.
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
+          else
+            shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
+          fi
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
       - name: Upload to GitHub Release
