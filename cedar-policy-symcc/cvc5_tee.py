@@ -6,9 +6,16 @@ output of cvc5.
 
 cvc5's stdout is forwarded directly to the terminal. The contents of its stderr
 are printed in red.  Input lines sent to cvc5 are prefixed with `cvc5>` as if
-running interactivly.
+running interactively.
 
-Usage: cvc5_tee.py <command> [args...]
+Usage: cvc5_tee.py [--strip-args] [--solver-args=ARGS] <command> [args...]
+
+Options:
+  --strip-args          Strip all arguments passed to cvc5 by the caller.
+  --solver-args=ARGS    Additional arguments to pass to the solver
+                        (space-separated). Can be combined with --strip-args
+                        to fully control the solver command line.
+  --z3                  Shorthand for: CVC5=z3 ./cvc5_tee.py --strip-args --solver-args="-in"
 
 Example:
   $ ./cvc5_tee.py cargo test symcc::solver::test::get_model_sat
@@ -140,13 +147,15 @@ def find_tty() -> str:
     return os.ctermid()
 
 
-def run_inner(tty_path: str, cvc5_cmd: str) -> NoReturn:
+def run_inner(tty_path: str, cvc5_cmd: str, strip_args: bool, solver_args: str) -> NoReturn:
     tty_fd: int = os.open(tty_path, os.O_WRONLY)
 
     use_color: bool = tty_supports_color(tty_fd)
 
+    extra = solver_args.split() if solver_args else []
+    cmd = [cvc5_cmd] + extra if strip_args else [cvc5_cmd] + extra + sys.argv[1:]
     proc = subprocess.Popen(
-        [cvc5_cmd] + sys.argv[1:],
+        cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -191,8 +200,27 @@ def run_inner(tty_path: str, cvc5_cmd: str) -> NoReturn:
 
 
 def run_outer() -> NoReturn:
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <command> [args...]", file=sys.stderr)
+    strip_args = False
+    solver_args = ""
+    args = sys.argv[1:]
+
+    while args:
+        if args[0] == "--strip-args":
+            strip_args = True
+            args = args[1:]
+        elif args[0].startswith("--solver-args="):
+            solver_args = args[0][len("--solver-args="):]
+            args = args[1:]
+        elif args[0] == "--z3":
+            strip_args = True
+            solver_args = "-in"
+            os.environ["CVC5"] = "z3"
+            args = args[1:]
+        else:
+            break
+
+    if not args:
+        print(f"Usage: {sys.argv[0]} [--strip-args] [--solver-args=ARGS] <command> [args...]", file=sys.stderr)
         sys.exit(1)
 
     tty_path: str = find_tty()
@@ -204,8 +232,12 @@ def run_outer() -> NoReturn:
     env["__CVC5_TTY"] = tty_path
     env["__CVC5_ORIG"] = cvc5_orig
     env["CVC5"] = script_path
+    if strip_args:
+        env["__CVC5_STRIP_ARGS"] = "1"
+    if solver_args:
+        env["__CVC5_SOLVER_ARGS"] = solver_args
 
-    result: subprocess.CompletedProcess[bytes] = subprocess.run(sys.argv[1:], env=env)
+    result: subprocess.CompletedProcess[bytes] = subprocess.run(args, env=env)
     sys.exit(result.returncode)
 
 
@@ -213,7 +245,9 @@ def main() -> None:
     if os.environ.get("__CVC5_TEE_WRAPPER") == "1":
         tty_path: str = os.environ["__CVC5_TTY"]
         cvc5_cmd: str = os.environ.get("__CVC5_ORIG", "cvc5")
-        run_inner(tty_path, cvc5_cmd)
+        strip_args: bool = os.environ.get("__CVC5_STRIP_ARGS") == "1"
+        solver_args: str = os.environ.get("__CVC5_SOLVER_ARGS", "")
+        run_inner(tty_path, cvc5_cmd, strip_args, solver_args)
     else:
         run_outer()
 
