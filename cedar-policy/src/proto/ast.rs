@@ -404,7 +404,7 @@ impl TryFrom<models::Expr> for ast::Expr {
             }
         };
         expr.try_validate()
-            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid expression {e}")))
+            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid expression: {e}")))
     }
 }
 

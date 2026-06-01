@@ -605,7 +605,7 @@ mod test {
 
     #[test]
     fn schema_try_from_invalid_entity_hierarchy() {
-        // The Cedar schema: entity E enum ["0"] in D;  entity D; sould not decode.
+        // The Cedar schema: entity E enum ["0"] in D;  entity D; should not decode.
         // But modelled as "entity E enum ["0"]; entity D has_descendant E; it decodes.
         let e_name: cedar_policy_core::ast::Name = "E".parse().unwrap();
         let d_name: cedar_policy_core::ast::Name = "D".parse().unwrap();
@@ -628,8 +628,12 @@ mod test {
             ],
             action_decls: vec![],
         };
-        // TODO: this should error once validation is implemented
-        assert!(ValidatorSchema::try_from(bad).is_ok());
+        // TODO: this currently succeeds because `ValidatorSchema::try_validate()` is a no-op.
+        // Change this to `is_err()` once schema validation is implemented.
+        assert!(
+            ValidatorSchema::try_from(bad).is_ok(),
+            "known limitation: schema validation not implemented yet"
+        );
     }
 
     #[test]
@@ -657,7 +661,11 @@ mod test {
             ],
             action_decls: vec![],
         };
-        // TODO: this should error once validation is implemented
-        assert!(ValidatorSchema::try_from(bad).is_ok());
+        // TODO: this currently succeeds because `ValidatorSchema::try_validate()` is a no-op.
+        // Change this to `is_err()` once schema validation is implemented.
+        assert!(
+            ValidatorSchema::try_from(bad).is_ok(),
+            "known limitation: schema validation not implemented yet"
+        );
     }
 }

@@ -347,7 +347,7 @@ impl Template {
         (t, p)
     }
 
-    /// Checks that this template is well-formed according to internal invariants of [Template],
+    /// Checks that this template is well-formed according to internal invariants of [`Template`],
     /// and if not, returns an error.
     ///
     /// This will check the following invariants:
