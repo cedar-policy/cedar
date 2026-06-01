@@ -881,7 +881,30 @@ impl Expr {
     }
 
     /// Validate the expression is well-formed according to internal invariants.
-    pub fn try_validate(self) -> Result<Self, ExpressionConstructionError> {
+    /// This is useful if you obtained an AST without parsing from Cedar text, but want to ensure
+    /// the invariant obtained from parsing hold.
+    ///
+    /// The invariants being checked are:
+    /// - The name of the function in a function call is a known extension.
+    /// - If the function call must be a "method style" call, then its arguments are non-empty
+    ///
+    /// This does not check that the arity of the function call is correct in general.
+    pub fn try_validate(self) -> Result<Self, ExprValidationError> {
+        for sub in self.subexpressions() {
+            if let ExprKind::ExtensionFunctionApp { fn_name, args } = sub.expr_kind() {
+                // Invariant: fn_name must be a known extension function
+                let ext_fn = Extensions::all_available().func(fn_name).map_err(|_| {
+                    ExprValidationError(format!("unknown extension function `{fn_name}`"))
+                })?;
+                // Invariant: if fn_name is MethodStyle then args must be non-empty
+                if ext_fn.style() == CallStyle::MethodStyle && args.is_empty() {
+                    return Err(ExprValidationError(format!(
+                        "method-style extension function `{fn_name}` requires a receiver argument"
+                    )));
+                }
+                // **NOT** an invariant of parsed ASTs: arity is correct.
+            }
+        }
         Ok(self)
     }
 }
@@ -1378,6 +1401,18 @@ impl<T: Clone + Default> ExprBuilder<T> {
         self.with_maybe_source_loc(expr.source_loc.as_ref())
     }
 }
+
+/// Error returned by [`Expr::try_validate`] for internal invariant violations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExprValidationError(String);
+
+impl std::fmt::Display for ExprValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for ExprValidationError {}
 
 /// Errors when constructing an expression
 //
@@ -2415,5 +2450,47 @@ mod test {
         };
         let r = TypedSubstitution::substitute(&u, None).unwrap();
         assert_eq!(r, Expr::unknown(u));
+    }
+}
+
+#[cfg(test)]
+mod validate_test {
+    use super::*;
+
+    fn ext_call(name: &str, args: Vec<Expr>) -> Expr {
+        Expr::call_extension_fn(Name::parse_unqualified_name(name).unwrap(), args)
+    }
+
+    #[test]
+    fn valid_function_style_accepted() {
+        assert!(ext_call("ip", vec![Expr::val("127.0.0.1")])
+            .try_validate()
+            .is_ok());
+    }
+
+    #[test]
+    fn valid_method_style_accepted() {
+        let receiver = ext_call("ip", vec![Expr::val("127.0.0.1")]);
+        assert!(ext_call("isIpv4", vec![receiver]).try_validate().is_ok());
+    }
+
+    #[test]
+    fn unknown_extension_fn_rejected() {
+        let err = ext_call("notReal", vec![Expr::val("x")])
+            .try_validate()
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("unknown extension function"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn method_style_empty_args_rejected() {
+        let err = ext_call("isIpv4", vec![]).try_validate().unwrap_err();
+        assert!(
+            err.to_string().contains("requires a receiver argument"),
+            "got: {err}"
+        );
     }
 }
