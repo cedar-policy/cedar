@@ -1403,16 +1403,9 @@ impl<T: Clone + Default> ExprBuilder<T> {
 }
 
 /// Error returned by [`Expr::try_validate`] for internal invariant violations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[error("invalid expression: {0}")]
 pub struct ExprValidationError(String);
-
-impl std::fmt::Display for ExprValidationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::error::Error for ExprValidationError {}
 
 /// Errors when constructing an expression
 //
