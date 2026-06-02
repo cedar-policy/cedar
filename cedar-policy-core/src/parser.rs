@@ -31,6 +31,8 @@ pub use loc::Loc;
 /// Metadata wrapper for CST Nodes
 mod node;
 pub use node::Node;
+/// Depth computation for CST expressions
+pub mod depth;
 /// Step one: Convert text to CST
 pub mod text_to_cst;
 /// Utility functions to unescape string literals
@@ -44,6 +46,9 @@ use std::collections::HashMap;
 use crate::ast;
 use crate::ast::RestrictedExpressionParseError;
 use crate::est;
+use crate::parser::depth::{
+    check_policies_depth, check_policy_depth, cst_effective_depth, CstNode,
+};
 
 /// simple main function for parsing policies
 /// generates numbered ids
@@ -287,6 +292,74 @@ fn validate_template_has_slots(
     } else {
         Ok(template)
     }
+}
+
+/// Like [`parse_policyset`], but rejects any policy whose expression depth
+/// exceeds `depth_limit`.
+pub fn parse_policyset_with_depth_limit(
+    text: &str,
+    depth_limit: usize,
+) -> Result<ast::PolicySet, err::ParseErrors> {
+    let cst = text_to_cst::parse_policies(text)?;
+    check_policies_depth(&cst, depth_limit)?;
+    cst.to_policyset()
+}
+
+/// Like [`parse_policy`], but rejects if expression depth exceeds `depth_limit`.
+pub fn parse_policy_with_depth_limit(
+    id: Option<ast::PolicyID>,
+    text: &str,
+    depth_limit: usize,
+) -> Result<ast::StaticPolicy, err::ParseErrors> {
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
+    let cst = text_to_cst::parse_policy(text)?;
+    check_policy_depth(&cst, depth_limit)?;
+    cst.to_policy(id)
+}
+
+/// Like [`parse_policy_or_template`], but rejects if expression depth exceeds `depth_limit`.
+pub fn parse_policy_or_template_with_depth_limit(
+    id: Option<ast::PolicyID>,
+    text: &str,
+    depth_limit: usize,
+) -> Result<ast::Template, err::ParseErrors> {
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
+    let cst = text_to_cst::parse_policy(text)?;
+    check_policy_depth(&cst, depth_limit)?;
+    cst.to_template(id)
+}
+
+/// Like [`parse_template`], but rejects if expression depth exceeds `depth_limit`.
+pub fn parse_template_with_depth_limit(
+    id: Option<ast::PolicyID>,
+    text: &str,
+    depth_limit: usize,
+) -> Result<ast::Template, err::ParseErrors> {
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
+    let cst = text_to_cst::parse_policy(text)?;
+    check_policy_depth(&cst, depth_limit)?;
+    let template = cst.to_template(id)?;
+    validate_template_has_slots(template, cst)
+}
+
+/// Like [`parse_expr`], but rejects if expression depth exceeds `depth_limit`.
+pub fn parse_expr_with_depth_limit(
+    text: &str,
+    depth_limit: usize,
+) -> Result<ast::Expr, err::ParseErrors> {
+    let cst = text_to_cst::parse_expr(text)?;
+    let depth = cst_effective_depth(CstNode::Expr(&cst));
+    if depth > depth_limit {
+        return Err(err::ToASTError::new(
+            err::ToASTErrorKind::ExpressionTooDeep {
+                depth,
+                limit: depth_limit,
+            },
+            cst.loc().cloned(),
+        )
+        .into());
+    }
+    cst.to_expr::<ast::ExprBuilder<()>>()
 }
 
 /// Utilities used in tests in this file (and maybe other files in this crate)

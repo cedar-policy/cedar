@@ -2710,6 +2710,17 @@ impl PolicySet {
         Self::from_est(&est)
     }
 
+    /// Parse a [`PolicySet`] from text, rejecting any policy whose expression
+    /// depth exceeds `depth_limit`. This bounds resource usage during parsing,
+    /// validation, and evaluation.
+    pub fn from_str_with_depth_limit(
+        policies: &str,
+        depth_limit: usize,
+    ) -> Result<Self, PolicySetError> {
+        let ast = parser::parse_policyset_with_depth_limit(policies, depth_limit)?;
+        Self::from_ast(ast)
+    }
+
     /// Serialize the [`PolicySet`] as a JSON value
     pub fn to_json(self) -> Result<serde_json::Value, PolicySetError> {
         let est = self.est()?;
@@ -3528,6 +3539,24 @@ impl Template {
         })
     }
 
+    /// Like [`Template::parse`], but rejects the template if its expression
+    /// depth exceeds `depth_limit`.
+    pub fn parse_with_depth_limit(
+        id: Option<PolicyId>,
+        src: impl AsRef<str>,
+        depth_limit: usize,
+    ) -> Result<Self, ParseErrors> {
+        let ast = parser::parse_template_with_depth_limit(
+            id.map(Into::into),
+            src.as_ref(),
+            depth_limit,
+        )?;
+        Ok(Self {
+            ast,
+            lossless: LosslessTemplate::from_text(Some(src.as_ref())),
+        })
+    }
+
     /// Get the `PolicyId` of this `Template`
     pub fn id(&self) -> &PolicyId {
         PolicyId::ref_cast(self.ast.id())
@@ -4058,6 +4087,25 @@ impl Policy {
     /// policies
     pub fn parse(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
         let inline_ast = parser::parse_policy(id.map(Into::into), policy_src.as_ref())?;
+        let (_, ast) = ast::Template::link_static_policy(inline_ast);
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(Some(policy_src.as_ref())),
+        })
+    }
+
+    /// Like [`Policy::parse`], but rejects the policy if its expression depth
+    /// exceeds `depth_limit`.
+    pub fn parse_with_depth_limit(
+        id: Option<PolicyId>,
+        policy_src: impl AsRef<str>,
+        depth_limit: usize,
+    ) -> Result<Self, ParseErrors> {
+        let inline_ast = parser::parse_policy_with_depth_limit(
+            id.map(Into::into),
+            policy_src.as_ref(),
+            depth_limit,
+        )?;
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
         Ok(Self {
             ast,
@@ -4708,6 +4756,16 @@ impl Expression {
     /// This function is only intended to be used internally.
     pub(crate) fn into_inner(self) -> ast::Expr {
         self.0
+    }
+}
+
+impl Expression {
+    /// Parse an [`Expression`] from Cedar syntax, rejecting if its depth
+    /// exceeds `depth_limit`.
+    pub fn parse_with_depth_limit(src: &str, depth_limit: usize) -> Result<Self, ParseErrors> {
+        parser::parse_expr_with_depth_limit(src, depth_limit)
+            .map(Expression)
+            .map_err(Into::into)
     }
 }
 

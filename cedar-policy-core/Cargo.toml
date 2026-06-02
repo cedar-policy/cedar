@@ -83,6 +83,7 @@ similar-asserts = "2.0.0"
 cool_asserts = "2.0"
 miette = { version = "7.6.0", features = ["fancy"] }
 insta = "1.47.2"
+rstest = "0.25"
 
 [lints]
 workspace = true
