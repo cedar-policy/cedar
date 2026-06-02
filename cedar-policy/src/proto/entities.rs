@@ -30,7 +30,7 @@ impl TryFrom<models::Entities> for entities::Entities {
             .map(ast::Entity::try_from)
             .collect::<Result<_, _>>()?;
 
-        // This API does not assume that the transitive closure has already been coputed.
+        // This API does not assume that the transitive closure has already been computed.
         // A different API that does not perform validation could skip tc computation.
         entities::Entities::from_entities(
             entities,

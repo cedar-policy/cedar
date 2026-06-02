@@ -1098,7 +1098,7 @@ impl ValidatorSchema {
     /// been checked for well-formedness by the JSON or Cedar schema parsers.
     pub fn try_validate(self) -> std::result::Result<Self, SchemaError> {
         // Implementation for validating schema well-formedness
-        // TODO: implement schema validataion
+        // TODO: implement schema validation
         Ok(self)
     }
 }

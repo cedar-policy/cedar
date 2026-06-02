@@ -15,7 +15,10 @@
  */
 
 use crate::ast::*;
-use crate::parser::Loc;
+use crate::parser::{
+    err::parse_errors::{InvalidActionType, SlotsInConditionClause},
+    Loc,
+};
 use annotation::{Annotation, Annotations};
 use educe::Educe;
 use itertools::Itertools;
@@ -47,9 +50,7 @@ cfg_tolerant_ast! {
     use super::expr_allows_errors::AstExprErrorKind;
     use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
     use crate::expr_builder::ExprBuilder;
-    use crate::parser::err::ParseErrors;
-    use crate::parser::err::ToASTError;
-    use crate::parser::err::ToASTErrorKind;
+    use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 
     static DEFAULT_ANNOTATIONS: std::sync::LazyLock<Arc<Annotations>> =
         std::sync::LazyLock::new(|| Arc::new(Annotations::default()));
@@ -362,7 +363,7 @@ impl Template {
         if let Some(expr) = self.body.non_scope_constraints() {
             if let Some(slot) = expr.slots().next() {
                 return Err(TemplateValidationError::SlotsInConditionClause(
-                    crate::parser::err::parse_errors::SlotsInConditionClause {
+                    SlotsInConditionClause {
                         slot,
                         clause_type: "when/unless", // cannot distinguish when/unless here
                     },
@@ -374,7 +375,7 @@ impl Template {
             ActionConstraint::Eq(euid) => {
                 if !euid.is_action() {
                     return Err(TemplateValidationError::InvalidActionType(
-                        crate::parser::err::parse_errors::InvalidActionType {
+                        InvalidActionType {
                             euids: nonempty![euid.clone()],
                         },
                     ));
@@ -384,7 +385,7 @@ impl Template {
                 let invalid: Vec<_> = euids.iter().filter(|e| !e.is_action()).cloned().collect();
                 if let Some(non_empty) = NonEmpty::from_vec(invalid) {
                     return Err(TemplateValidationError::InvalidActionType(
-                        crate::parser::err::parse_errors::InvalidActionType { euids: non_empty },
+                        InvalidActionType { euids: non_empty },
                     ));
                 }
             }

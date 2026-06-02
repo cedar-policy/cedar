@@ -103,7 +103,7 @@ impl Duplicate {
 /// Type alias for convenience
 pub type Result<T> = std::result::Result<T, EntitiesError>;
 
-/// Error type for entities that are not well-formed
+/// Error type when an entity is not well formed used in entity validation.
 #[derive(Debug, Error, Diagnostic)]
 pub enum InvalidEntityStructureError {
     /// Entity has itself as an ancestor

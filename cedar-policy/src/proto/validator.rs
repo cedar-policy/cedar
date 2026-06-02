@@ -628,7 +628,8 @@ mod test {
             ],
             action_decls: vec![],
         };
-        // TODO: this currently succeeds because `ValidatorSchema::try_validate()` is a no-op.
+        // TODO(#1348): this currently succeeds because `ValidatorSchema::try_validate()` is
+        // a no-op.
         // Change this to `is_err()` once schema validation is implemented.
         assert!(
             ValidatorSchema::try_from(bad).is_ok(),
@@ -661,7 +662,8 @@ mod test {
             ],
             action_decls: vec![],
         };
-        // TODO: this currently succeeds because `ValidatorSchema::try_validate()` is a no-op.
+        // TODO(#1348): this currently succeeds because `ValidatorSchema::try_validate()` is a
+        // no-op.
         // Change this to `is_err()` once schema validation is implemented.
         assert!(
             ValidatorSchema::try_from(bad).is_ok(),
