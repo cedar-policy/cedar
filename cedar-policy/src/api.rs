@@ -2716,9 +2716,11 @@ impl PolicySet {
     pub fn from_str_with_depth_limit(
         policies: &str,
         depth_limit: usize,
-    ) -> Result<Self, PolicySetError> {
+    ) -> Result<Self, ParseErrors> {
         let ast = parser::parse_policyset_with_depth_limit(policies, depth_limit)?;
-        Self::from_ast(ast)
+        // PANIC SAFETY: a freshly-parsed policy set cannot have duplicate IDs
+        #[expect(clippy::expect_used)]
+        Ok(Self::from_ast(ast).expect("freshly-parsed policy set has no duplicate IDs"))
     }
 
     /// Serialize the [`PolicySet`] as a JSON value
@@ -6433,4 +6435,114 @@ pub fn compute_entity_manifest(
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
     entity_manifest::compute_entity_manifest(&validator.0, &pset.ast).map_err(Into::into)
+}
+
+#[cfg(test)]
+mod test_depth_limit {
+    use super::*;
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use cool_asserts::assert_matches;
+    use miette::Report;
+
+    #[test]
+    fn expression_parse_with_depth_limit() {
+        let src = "1 + 2";
+        assert!(Expression::parse_with_depth_limit(src, 1).is_ok());
+        assert_matches!(Expression::parse_with_depth_limit(src, 0), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "expression depth 1 exceeds the configured limit of 0",
+                )
+                .exactly_one_underline("1 + 2")
+                .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn policy_parse_with_depth_limit() {
+        let src = "permit(principal, action, resource) when { 1 + 2 };";
+        assert!(Policy::parse_with_depth_limit(None, src, 1).is_ok());
+        assert_matches!(Policy::parse_with_depth_limit(None, src, 0), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "expression depth 1 exceeds the configured limit of 0",
+                )
+                .exactly_one_underline(src)
+                .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn template_parse_with_depth_limit() {
+        let src = "permit(principal == ?principal, action, resource) when { 1 + 2 };";
+        assert!(Template::parse_with_depth_limit(None, src, 1).is_ok());
+        assert_matches!(Template::parse_with_depth_limit(None, src, 0), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "expression depth 1 exceeds the configured limit of 0",
+                )
+                .exactly_one_underline(src)
+                .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn policyset_from_str_with_depth_limit() {
+        let src = "permit(principal, action, resource) when { 1 + 2 }; forbid(principal, action, resource);";
+        assert!(PolicySet::from_str_with_depth_limit(src, 1).is_ok());
+        assert_matches!(PolicySet::from_str_with_depth_limit(src, 0), Err(e) => {
+            expect_err(
+                src,
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    "expression depth 1 exceeds the configured limit of 0",
+                )
+                .exactly_one_underline("permit(principal, action, resource) when { 1 + 2 };")
+                .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn very_deep_cst_no_stack_overflow() {
+        let depth = 10000;
+        let src = "(".repeat(depth) + "1" + &")".repeat(depth);
+        assert_matches!(Expression::parse_with_depth_limit(&src, depth - 1), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    &format!("expression depth {depth} exceeds the configured limit of {}", depth - 1),
+                )
+                .exactly_one_underline(&src)
+                .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn very_deep_ast_no_stack_overflow() {
+        let depth = 10000;
+        let src = (0..=depth).map(|i| i.to_string()).collect::<Vec<_>>().join(" + ");
+        assert_matches!(Expression::parse_with_depth_limit(&src, depth - 1), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    &format!("expression depth {depth} exceeds the configured limit of {}", depth - 1),
+                )
+                .exactly_one_underline(&src)
+                .build(),
+            );
+        });
+    }
 }

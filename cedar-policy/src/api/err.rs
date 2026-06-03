@@ -929,6 +929,10 @@ impl ParseErrors {
     pub fn iter(&self) -> impl Iterator<Item = &ParseError> {
         self.0.iter().map(ParseError::ref_cast)
     }
+
+    pub(crate) fn as_inner(&self) -> &cedar_policy_core::parser::err::ParseErrors {
+        &self.0
+    }
 }
 
 /// Errors that can occur when parsing policies or expressions.
