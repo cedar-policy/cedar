@@ -49,7 +49,7 @@ jobs:
           cargo build --profile dist --locked
           --target ${{ matrix.target }}
           -p cedar-policy-cli
-          --features tpe,permissive-validate,partial-validate
+          --features analyze,tpe
 
       - name: Stage archive
         shell: bash

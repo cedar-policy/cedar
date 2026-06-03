@@ -22,11 +22,11 @@ Pre-built `cedar` binaries are attached to each [GitHub release](https://github.
 
 Archives bundle the `cedar` binary, `LICENSE`, `NOTICE`, and `THIRD_PARTY_LICENSES.txt` with sha256 sums; the release page also provides one-line `curl | sh` (POSIX) and `irm | iex` (PowerShell) installer scripts.
 
-These are default-feature builds. The `tpe` subcommand and the `permissive`/`partial` validation modes are in the experimental flavor below; `partially-authorize` and `symcc` are not shipped — build from source if you need them.
+These are default-feature builds. The `tpe` and `symcc` subcommands are in the experimental flavor below; `partially-authorize` and the `--validation-mode permissive`/`partial` flags are not shipped — build from source if you need them.
 
 ### Experimental flavor
 
-A parallel `cedar-policy-cli-experimental-<target>.<ext>` archive is attached to every release. Same `cedar` binary name, built with `tpe`, `permissive-validate`, and `partial-validate` enabled. Surface area of these features can change between releases; use the regular flavor if stability matters.
+A parallel `cedar-policy-cli-experimental-<target>.<ext>` archive is attached to every release. Same `cedar` binary name, built with `tpe` and `analyze` enabled. The `analyze` feature exposes `cedar symcc ...` subcommands for symbolic verification of policies; using them additionally requires the external [cvc5](https://github.com/cvc5/cvc5) SMT solver installed at runtime. Surface area of these features can change between releases; use the regular flavor if stability matters.
 
 ### From source
 
