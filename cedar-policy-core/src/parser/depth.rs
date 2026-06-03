@@ -263,7 +263,6 @@ pub(crate) fn cst_effective_depth(root: CstNode<'_>) -> usize {
                         entity_type,
                         in_entity,
                     } => {
-                        // is_in_entity_type produces and(is(target, type), in(target, in_entity))
                         let child_depth = depth + 2;
                         stack.push(WorkItem {
                             node: CstNode::Add(target),
@@ -315,7 +314,7 @@ pub(crate) fn cst_effective_depth(root: CstNode<'_>) -> usize {
                 };
                 let neg_depth = match unary.op {
                     Some(cst::NegOp::Bang(n)) | Some(cst::NegOp::Dash(n)) => n as usize,
-                    Some(cst::NegOp::OverBang) | Some(cst::NegOp::OverDash) => 5,
+                    Some(cst::NegOp::OverBang) | Some(cst::NegOp::OverDash) => 0,
                     None => 0,
                 };
                 stack.push(WorkItem {
@@ -334,24 +333,26 @@ pub(crate) fn cst_effective_depth(root: CstNode<'_>) -> usize {
                     node: CstNode::Primary(&mem.item),
                     depth: item_depth,
                 });
-                for acc_node in &mem.access {
+                for (i, acc_node) in mem.access.iter().enumerate() {
                     let Some(acc) = acc_node.node.as_ref() else {
                         continue;
                     };
+                    // Accounting for left-association of MemAccess elements
+                    let arg_depth = depth + access_depth - i;
                     match acc {
                         cst::MemAccess::Field(_) => {}
                         cst::MemAccess::Call(args) => {
                             for arg in args {
                                 stack.push(WorkItem {
                                     node: CstNode::Expr(arg),
-                                    depth: depth + 1,
+                                    depth: arg_depth,
                                 });
                             }
                         }
                         cst::MemAccess::Index(idx) => {
                             stack.push(WorkItem {
                                 node: CstNode::Expr(idx),
-                                depth: depth + 1,
+                                depth: arg_depth,
                             });
                         }
                     }
