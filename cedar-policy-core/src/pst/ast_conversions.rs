@@ -501,6 +501,18 @@ impl Expr {
                 name,
                 type_annotation: None,
             }),
+            #[cfg(feature = "variadic-is-in-range")]
+            Expr::VariadicIsInRange { left, rights } => {
+                use crate::extensions::ipaddr::names::IS_IN_RANGE;
+                let mut ast_args = Vec::with_capacity(1 + rights.len());
+                ast_args.push(Arc::unwrap_or_clone(left).into_expr::<B>());
+                for right in rights {
+                    ast_args.push(Arc::unwrap_or_clone(right).into_expr::<B>());
+                }
+                builder
+                    .call_extension_fn(IS_IN_RANGE.clone(), ast_args)
+                    .unwrap_infallible()
+            }
             #[cfg(feature = "tpe")]
             Expr::ResidualError => builder
                 .call_extension_fn(crate::tpe::residual::ERROR_NAME.clone(), std::iter::empty())
@@ -1336,6 +1348,238 @@ mod tests {
         assert_matches!(result, Err(PstConstructionError::InvalidAnnotation(e)) => {
             assert!(e.to_string().contains("invalid key"), "got: {e}");
         });
+    }
+
+    /// Test that 2-arg isInRange still produces BinaryOp::IsInRange
+    #[test]
+    fn test_is_in_range_2_arg_uses_binary_op() {
+        let ast_expr = parse_expr(r#"ip("10.0.0.1").isInRange(ip("10.0.0.0/24"))"#);
+        let pst_expr: Expr = ast_expr.clone().try_into().unwrap();
+        assert_matches!(
+            pst_expr,
+            Expr::BinaryOp {
+                op: super::BinaryOp::IsInRange,
+                ..
+            }
+        );
+        assert_expr_roundtrip(ast_expr);
+    }
+
+    /// Test that 3-arg isInRange produces VariadicIsInRange and roundtrips.
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn variadic_is_in_range_3_arg_pst_round_trip() {
+        use crate::expr_builder::ExprBuilder;
+
+        let builder = ast::ExprBuilder::<()>::new();
+        let make_ip = |s| {
+            builder
+                .clone()
+                .call_extension_fn(
+                    ast::Name::parse_unqualified_name("ip").unwrap(),
+                    vec![builder.clone().val(s)],
+                )
+                .unwrap()
+        };
+
+        let ast_expr = builder
+            .clone()
+            .call_extension_fn(
+                ast::Name::parse_unqualified_name("isInRange").unwrap(),
+                vec![
+                    make_ip("10.0.0.1"),
+                    make_ip("10.0.0.0/24"),
+                    make_ip("192.168.0.0/16"),
+                ],
+            )
+            .unwrap();
+
+        let pst_expr: Expr = ast_expr.clone().try_into().unwrap();
+        assert_matches!(&pst_expr, Expr::VariadicIsInRange { left: _, rights } => {
+            assert_eq!(rights.len(), 2); // 2 CIDR ranges
+        });
+
+        let ast_expr2: ast::Expr = pst_expr.into();
+        assert_eq!(ast_expr, ast_expr2, "3-arg isInRange roundtrip failed");
+    }
+
+    /// Test that 4-arg isInRange also works.
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn variadic_is_in_range_4_arg_pst_round_trip() {
+        use crate::expr_builder::ExprBuilder;
+
+        let builder = ast::ExprBuilder::<()>::new();
+        let make_ip = |s| {
+            builder
+                .clone()
+                .call_extension_fn(
+                    ast::Name::parse_unqualified_name("ip").unwrap(),
+                    vec![builder.clone().val(s)],
+                )
+                .unwrap()
+        };
+
+        let ast_expr = builder
+            .clone()
+            .call_extension_fn(
+                ast::Name::parse_unqualified_name("isInRange").unwrap(),
+                vec![
+                    make_ip("10.0.0.1"),
+                    make_ip("10.0.0.0/24"),
+                    make_ip("192.168.0.0/16"),
+                    make_ip("172.16.0.0/12"),
+                ],
+            )
+            .unwrap();
+
+        let pst_expr: Expr = ast_expr.clone().try_into().unwrap();
+        assert_matches!(&pst_expr, Expr::VariadicIsInRange { left: _, rights } => {
+            assert_eq!(rights.len(), 3); // 3 CIDR ranges
+        });
+
+        let ast_expr2: ast::Expr = pst_expr.into();
+        assert_eq!(ast_expr, ast_expr2, "4-arg isInRange roundtrip failed");
+    }
+
+    /// Test reduce detects slots in `rights` of VariadicIsInRange
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn variadic_is_in_range_reduce_detects_slots_in_rights() {
+        let slot = Arc::new(Expr::Slot(SlotId::Principal));
+        let lit = Arc::new(Expr::Literal(Literal::Long(1)));
+        let expr = Expr::VariadicIsInRange {
+            left: lit.clone(),
+            rights: nonempty::nonempty![slot, lit],
+        };
+        assert!(expr.has_slots());
+        assert!(!expr.has_unknowns());
+    }
+
+    /// Test reduce detects slots in `left` of VariadicIsInRange
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn variadic_is_in_range_reduce_detects_slots_in_left() {
+        let slot = Arc::new(Expr::Slot(SlotId::Principal));
+        let lit = Arc::new(Expr::Literal(Literal::Long(1)));
+        let expr = Expr::VariadicIsInRange {
+            left: slot,
+            rights: nonempty::nonempty![lit.clone(), lit.clone()],
+        };
+        assert!(expr.has_slots());
+        assert!(!expr.has_unknowns());
+    }
+
+    /// Test reduce detects unknowns in `rights` of VariadicIsInRange
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn variadic_is_in_range_reduce_detects_unknowns_in_rights() {
+        let unknown = Arc::new(Expr::Unknown {
+            name: "test_unknown".into(),
+        });
+        let lit = Arc::new(Expr::Literal(Literal::Long(1)));
+        let expr = Expr::VariadicIsInRange {
+            left: lit,
+            rights: nonempty::nonempty![unknown],
+        };
+        assert!(!expr.has_slots());
+        assert!(expr.has_unknowns());
+    }
+
+    /// Test reduce detects unknowns in `left` of VariadicIsInRange
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn variadic_is_in_range_reduce_detects_unknowns_in_left() {
+        let unknown = Arc::new(Expr::Unknown {
+            name: "test_unknown".into(),
+        });
+        let lit = Arc::new(Expr::Literal(Literal::Long(1)));
+        let expr = Expr::VariadicIsInRange {
+            left: unknown,
+            rights: nonempty::nonempty![lit],
+        };
+        assert!(!expr.has_slots());
+        assert!(expr.has_unknowns());
+    }
+
+    /// Test that variadic isInRange with too few args produces WrongArityError
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn variadic_is_in_range_too_few_args_errors() {
+        use crate::expr_builder::ExprBuilder;
+
+        let builder = ast::ExprBuilder::<()>::new();
+        let ip1 = builder
+            .clone()
+            .call_extension_fn(
+                ast::Name::parse_unqualified_name("ip").unwrap(),
+                vec![builder.clone().val("10.0.0.1")],
+            )
+            .unwrap();
+
+        let ast_expr = builder
+            .call_extension_fn(
+                ast::Name::parse_unqualified_name("isInRange").unwrap(),
+                vec![ip1],
+            )
+            .unwrap();
+
+        let result: Result<Expr, _> = ast_expr.try_into();
+        assert_matches!(result, Err(PstConstructionError::WrongArity(_)));
+    }
+
+    /// Test that isInRange with 0 args produces an error
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn variadic_is_in_range_zero_args_errors() {
+        use crate::expr_builder::ExprBuilder;
+
+        let builder = ast::ExprBuilder::<()>::new();
+        let ast_expr = builder
+            .call_extension_fn(
+                ast::Name::parse_unqualified_name("isInRange").unwrap(),
+                vec![],
+            )
+            .unwrap();
+
+        let result: Result<Expr, _> = ast_expr.try_into();
+        assert_matches!(result, Err(PstConstructionError::WrongArity(_)));
+    }
+
+    /// Test that Display works for VariadicIsInRange
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn variadic_is_in_range_display() {
+        use crate::expr_builder::ExprBuilder;
+
+        let builder = ast::ExprBuilder::<()>::new();
+        let make_ip = |s| {
+            builder
+                .clone()
+                .call_extension_fn(
+                    ast::Name::parse_unqualified_name("ip").unwrap(),
+                    vec![builder.clone().val(s)],
+                )
+                .unwrap()
+        };
+
+        let ast_expr = builder
+            .clone()
+            .call_extension_fn(
+                ast::Name::parse_unqualified_name("isInRange").unwrap(),
+                vec![
+                    make_ip("10.0.0.1"),
+                    make_ip("10.0.0.0/24"),
+                    make_ip("192.168.0.0/16"),
+                ],
+            )
+            .unwrap();
+
+        // Exercises the PST -> EST -> fmt path
+        let pst_expr: Expr = ast_expr.try_into().unwrap();
+        let display_str = format!("{pst_expr}");
+        assert!(!display_str.is_empty());
+        assert!(display_str.contains("isInRange"), "got: {display_str}");
     }
 }
 

@@ -738,6 +738,18 @@ pub enum Expr {
         /// Name of the unknown
         name: SmolStr,
     },
+    /// Variadic `isInRange` call: `left.isInRange(right1, right2, ...)`.
+    ///
+    /// Represents a call to `isInRange` with more than two arguments (the
+    /// subject IP and two or more CIDR ranges). The standard 2-arg form
+    /// continues to use [`BinaryOp::IsInRange`].
+    #[cfg(feature = "variadic-is-in-range")]
+    VariadicIsInRange {
+        /// The subject expression (the IP being checked)
+        left: Arc<Expr>,
+        /// One or more range expressions (CIDRs to check against)
+        rights: nonempty::NonEmpty<Arc<Expr>>,
+    },
     /// A TPE residual error node: indicates that this subexpression would
     /// produce an evaluation error if reached at runtime.
     ///
@@ -778,9 +790,55 @@ impl Expr {
         let expected = extension.arg_types().len();
         let got = args.len();
 
+        // When variadic-is-in-range is enabled, variadic functions accept
+        // >= expected args. Otherwise, strict arity check applies.
+        #[cfg(feature = "variadic-is-in-range")]
+        if extension.is_variadic() {
+            if got < expected {
+                return Err(error_body::WrongArityError::new(name.into(), expected, got).into());
+            }
+            // 3+ arg variadic call: currently only isInRange is variadic.
+            // Assert the function identity so a future variadic function
+            // doesn't silently produce a VariadicIsInRange node.
+            if got > expected {
+                assert_eq!(
+                    *ast_name,
+                    *crate::extensions::ipaddr::names::IS_IN_RANGE,
+                    "VariadicIsInRange only supports isInRange; \
+                     got variadic function `{ast_name}` with {got} args"
+                );
+                let mut iter = args.into_iter();
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "isInRange has expected=2 and got > 2, so >= 3 args"
+                )]
+                let left = iter.next().unwrap();
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "isInRange has expected=2 and got > 2, so >= 2 remaining"
+                )]
+                let first_right = iter.next().unwrap();
+                let rest_rights: Vec<_> = iter.collect();
+                return Ok(Expr::VariadicIsInRange {
+                    left,
+                    rights: nonempty::NonEmpty {
+                        head: first_right,
+                        tail: rest_rights,
+                    },
+                });
+            }
+            // got == expected: fall through to the BinaryOp path below
+        }
+
+        #[cfg(not(feature = "variadic-is-in-range"))]
         if expected != got {
             return Err(error_body::WrongArityError::new(name.into(), expected, got).into());
         }
+        #[cfg(feature = "variadic-is-in-range")]
+        if !extension.is_variadic() && expected != got {
+            return Err(error_body::WrongArityError::new(name.into(), expected, got).into());
+        }
+
         Ok(match args.len() {
             1 => {
                 #[expect(clippy::unwrap_used, reason = "length = 1 checked in arm")]
@@ -838,6 +896,10 @@ impl Expr {
             | Expr::HasAttr { expr, .. }
             | Expr::Like { expr, .. } => recurse(expr),
             Expr::BinaryOp { left, right, .. } => op(recurse(left), recurse(right)),
+            #[cfg(feature = "variadic-is-in-range")]
+            Expr::VariadicIsInRange { left, rights } => rights
+                .iter()
+                .fold(recurse(left), |acc, e| op(acc, recurse(e))),
             Expr::Is { expr, in_expr, .. } => match in_expr {
                 Some(e) => op(recurse(expr), recurse(e)),
                 None => recurse(expr),

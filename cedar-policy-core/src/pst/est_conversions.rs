@@ -1479,4 +1479,40 @@ mod tests {
             PstConstructionError::ExpectedTemplateWithSlots(..)
         ));
     }
+
+    /// Test EST → PST → EST roundtrip for a 3-arg isInRange call
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn test_est_variadic_is_in_range_3_arg() {
+        let json = r#"{"isInRange": [
+            {"ip": [{"Value": "10.0.0.1"}]},
+            {"ip": [{"Value": "10.0.0.0/24"}]},
+            {"ip": [{"Value": "192.168.0.0/16"}]}
+        ]}"#;
+        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
+        let pst_expr: Expr = est_expr.try_into().unwrap();
+        assert_matches!(&pst_expr, Expr::VariadicIsInRange { left: _, rights } => {
+            assert_eq!(rights.len(), 2);
+        });
+        roundtrips(pst_expr);
+    }
+
+    /// Test EST → PST for 2-arg isInRange still uses BinaryOp
+    #[test]
+    fn test_est_is_in_range_2_arg_uses_binary_op() {
+        let json = r#"{"isInRange": [
+            {"ip": [{"Value": "10.0.0.1"}]},
+            {"ip": [{"Value": "10.0.0.0/24"}]}
+        ]}"#;
+        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
+        let pst_expr: Expr = est_expr.try_into().unwrap();
+        assert_matches!(
+            &pst_expr,
+            Expr::BinaryOp {
+                op: BinaryOp::IsInRange,
+                ..
+            }
+        );
+        roundtrips(pst_expr);
+    }
 }

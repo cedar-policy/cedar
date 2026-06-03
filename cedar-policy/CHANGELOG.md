@@ -19,6 +19,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ### Fixed
 
 - Protobuf parsing for expression now error on encountering a `like` pattern element with multiple characters in a single `PatternElem::Char` isntead of dropping the extra characters.
+- PST conversion (`try_into_pst()`) no longer fails with `WrongArityError` on variadic `isInRange` calls with 3+ arguments when the `variadic-is-in-range` feature is enabled. A new feature-gated `Expr::VariadicIsInRange` variant represents these calls, while the standard 2-arg form continues to use `BinaryOp::IsInRange`.
 
 ## [4.11.0] - 2026-05-18
 
