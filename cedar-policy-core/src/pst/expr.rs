@@ -582,6 +582,7 @@ impl Display for BinaryOp {
 /// )  // variadic IsInRange
 #[cfg(feature = "variadic-is-in-range")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum VariadicOp {
     /// `ip.isInRange(ip1, ip2, ...)`
     IsInRange,
