@@ -12,6 +12,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## [Unreleased]
 
+### Added
+
+- Depth limited parsing functions for `PolicySet`, `Template`, `Policy`, and `Expression`. These allow configuring a depth limit
+  for policies, avoiding the possibility of stack overflows. (#2383)
+
 ### Changed
 
 - The experimental protobuf decoding API now validates its inputs, checking structural invariants on entities, expressions, templates, policy sets, and schemas. Additionally, `Entities::decode` now computes the transitive closure instead of assuming it is already computed. These changes may result in lower performance for protobuf decoding.
