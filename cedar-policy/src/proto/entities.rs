@@ -30,16 +30,15 @@ impl TryFrom<models::Entities> for entities::Entities {
             .map(ast::Entity::try_from)
             .collect::<Result<_, _>>()?;
 
-        // REVIEW (before stabilization): does `AssumeAlreadyComputed` make
-        // sense here? It will be the case for protobufs produced from our
-        // own serialization code, but others could produce protobufs in other
-        // ways that may not be TC
+        // This API does not assume that the transitive closure has already been computed.
+        // A different API that does not perform validation could skip tc computation.
         entities::Entities::from_entities(
             entities,
             None::<&entities::NoEntitiesSchema>,
-            entities::TCComputation::AssumeAlreadyComputed,
+            entities::TCComputation::ComputeNow,
             extensions::Extensions::all_available(),
         )
+        .and_then(|v| v.try_validate(true))
         .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid entities: {e}")))
     }
 }
