@@ -3548,11 +3548,8 @@ impl Template {
         src: impl AsRef<str>,
         depth_limit: usize,
     ) -> Result<Self, ParseErrors> {
-        let ast = parser::parse_template_with_depth_limit(
-            id.map(Into::into),
-            src.as_ref(),
-            depth_limit,
-        )?;
+        let ast =
+            parser::parse_template_with_depth_limit(id.map(Into::into), src.as_ref(), depth_limit)?;
         Ok(Self {
             ast,
             lossless: LosslessTemplate::from_text(Some(src.as_ref())),
@@ -6532,7 +6529,10 @@ mod test_depth_limit {
     #[test]
     fn very_deep_ast_no_stack_overflow() {
         let depth = 10000;
-        let src = (0..=depth).map(|i| i.to_string()).collect::<Vec<_>>().join(" + ");
+        let src = (0..=depth)
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(" + ");
         assert_matches!(Expression::parse_with_depth_limit(&src, depth - 1), Err(e) => {
             expect_err(
                 src.as_str(),

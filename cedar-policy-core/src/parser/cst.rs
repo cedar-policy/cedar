@@ -444,7 +444,9 @@ fn collect_child_exprs(expr: &mut Expr, out: &mut Vec<Node<Expr>>) {
 }
 
 fn collect_child_exprs_from_and(and_node: &mut Node<And>, out: &mut Vec<Node<Expr>>) {
-    let Some(and) = and_node.node.as_mut() else { return };
+    let Some(and) = and_node.node.as_mut() else {
+        return;
+    };
     collect_child_exprs_from_relation(&mut and.initial, out);
     for ext in &mut and.extended {
         collect_child_exprs_from_relation(ext, out);
@@ -452,7 +454,9 @@ fn collect_child_exprs_from_and(and_node: &mut Node<And>, out: &mut Vec<Node<Exp
 }
 
 fn collect_child_exprs_from_relation(rel_node: &mut Node<Relation>, out: &mut Vec<Node<Expr>>) {
-    let Some(rel) = rel_node.node.as_mut() else { return };
+    let Some(rel) = rel_node.node.as_mut() else {
+        return;
+    };
     match rel {
         Relation::Common { initial, extended } => {
             collect_child_exprs_from_add(initial, out);
@@ -468,7 +472,11 @@ fn collect_child_exprs_from_relation(rel_node: &mut Node<Relation>, out: &mut Ve
             collect_child_exprs_from_add(target, out);
             collect_child_exprs_from_add(pattern, out);
         }
-        Relation::IsIn { target, entity_type, in_entity } => {
+        Relation::IsIn {
+            target,
+            entity_type,
+            in_entity,
+        } => {
             collect_child_exprs_from_add(target, out);
             collect_child_exprs_from_add(entity_type, out);
             if let Some(e) = in_entity {
@@ -479,7 +487,9 @@ fn collect_child_exprs_from_relation(rel_node: &mut Node<Relation>, out: &mut Ve
 }
 
 fn collect_child_exprs_from_add(add_node: &mut Node<Add>, out: &mut Vec<Node<Expr>>) {
-    let Some(add) = add_node.node.as_mut() else { return };
+    let Some(add) = add_node.node.as_mut() else {
+        return;
+    };
     collect_child_exprs_from_mult(&mut add.initial, out);
     for (_, ext) in &mut add.extended {
         collect_child_exprs_from_mult(ext, out);
@@ -487,7 +497,9 @@ fn collect_child_exprs_from_add(add_node: &mut Node<Add>, out: &mut Vec<Node<Exp
 }
 
 fn collect_child_exprs_from_mult(mult_node: &mut Node<Mult>, out: &mut Vec<Node<Expr>>) {
-    let Some(mult) = mult_node.node.as_mut() else { return };
+    let Some(mult) = mult_node.node.as_mut() else {
+        return;
+    };
     collect_child_exprs_from_unary(&mut mult.initial, out);
     for (_, ext) in &mut mult.extended {
         collect_child_exprs_from_unary(ext, out);
@@ -495,15 +507,21 @@ fn collect_child_exprs_from_mult(mult_node: &mut Node<Mult>, out: &mut Vec<Node<
 }
 
 fn collect_child_exprs_from_unary(unary_node: &mut Node<Unary>, out: &mut Vec<Node<Expr>>) {
-    let Some(unary) = unary_node.node.as_mut() else { return };
+    let Some(unary) = unary_node.node.as_mut() else {
+        return;
+    };
     collect_child_exprs_from_member(&mut unary.item, out);
 }
 
 fn collect_child_exprs_from_member(mem_node: &mut Node<Member>, out: &mut Vec<Node<Expr>>) {
-    let Some(mem) = mem_node.node.as_mut() else { return };
+    let Some(mem) = mem_node.node.as_mut() else {
+        return;
+    };
     collect_child_exprs_from_primary(&mut mem.item, out);
     for acc_node in &mut mem.access {
-        let Some(acc) = acc_node.node.as_mut() else { continue };
+        let Some(acc) = acc_node.node.as_mut() else {
+            continue;
+        };
         match acc {
             MemAccess::Field(_) => {}
             MemAccess::Call(args) => out.append(args),
@@ -513,7 +531,9 @@ fn collect_child_exprs_from_member(mem_node: &mut Node<Member>, out: &mut Vec<No
 }
 
 fn collect_child_exprs_from_primary(prim_node: &mut Node<Primary>, out: &mut Vec<Node<Expr>>) {
-    let Some(prim) = prim_node.node.as_mut() else { return };
+    let Some(prim) = prim_node.node.as_mut() else {
+        return;
+    };
     match prim {
         Primary::Expr(e) => out.push(std::mem::replace(e, Node::new(None))),
         Primary::EList(elts) => out.append(elts),
