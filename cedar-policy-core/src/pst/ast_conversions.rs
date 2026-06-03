@@ -505,6 +505,18 @@ impl Expr {
             Expr::ResidualError => builder
                 .call_extension_fn(crate::tpe::residual::ERROR_NAME.clone(), std::iter::empty())
                 .unwrap_infallible(),
+            #[cfg(feature = "variadic-is-in-range")]
+            Expr::VariadicOp { op, left, rights } => {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "VariadicOp::to_name() always returns Some for known ops"
+                )]
+                let fn_name = op.to_name().unwrap().clone();
+                let args = std::iter::once(left)
+                    .chain(rights)
+                    .map(|e| Arc::unwrap_or_clone(e).into_expr::<B>());
+                builder.call_extension_fn(fn_name, args).unwrap_infallible()
+            }
         }
     }
 }
@@ -1029,6 +1041,62 @@ mod tests {
             let expr = parse_expr(expr_str);
             assert_expr_roundtrip(expr);
         }
+    }
+
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn test_variadic_is_in_range_3_args_roundtrip() {
+        let expr =
+            parse_expr(r#"ip("10.0.0.1").isInRange(ip("192.168.0.0/16"), ip("10.0.0.0/8"))"#);
+        assert_expr_roundtrip(expr);
+    }
+
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn test_variadic_is_in_range_4_args_roundtrip() {
+        let expr = parse_expr(
+            r#"ip("10.0.0.1").isInRange(ip("192.168.0.0/16"), ip("10.0.0.0/8"), ip("172.16.0.0/12"))"#,
+        );
+        let pst_expr: Expr = expr.clone().try_into().expect("AST->PST failed");
+        assert_matches!(&pst_expr, Expr::VariadicOp { rights, .. } => {
+            assert_eq!(rights.len(), 3);
+        });
+        assert_expr_roundtrip(expr);
+    }
+
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn test_variadic_is_in_range_3_args_produces_variadic_op() {
+        let expr =
+            parse_expr(r#"ip("10.0.0.1").isInRange(ip("192.168.0.0/16"), ip("10.0.0.0/8"))"#);
+        let pst_expr: Expr = expr.try_into().expect("AST->PST failed");
+        assert_matches!(&pst_expr, Expr::VariadicOp { op, left: _, rights } => {
+            assert_eq!(*op, super::super::VariadicOp::IsInRange);
+            assert_eq!(rights.len(), 2);
+        });
+    }
+
+    #[cfg(feature = "variadic-is-in-range")]
+    #[test]
+    fn test_variadic_is_in_range_2_args_stays_binary() {
+        let expr = parse_expr(r#"ip("10.0.0.1").isInRange(ip("192.168.0.0/16"))"#);
+        let pst_expr: Expr = expr.clone().try_into().expect("AST->PST failed");
+        assert_matches!(&pst_expr, Expr::BinaryOp { op, .. } => {
+            assert_eq!(*op, BinaryOp::IsInRange);
+        });
+        assert_expr_roundtrip(expr);
+    }
+
+    #[cfg(not(feature = "variadic-is-in-range"))]
+    #[test]
+    fn test_is_in_range_3_args_fails_without_feature() {
+        let expr =
+            parse_expr(r#"ip("10.0.0.1").isInRange(ip("192.168.0.0/16"), ip("10.0.0.0/8"))"#);
+        let result: Result<Expr, _> = expr.try_into();
+        assert!(
+            result.is_err(),
+            "should fail with 3 args when feature disabled"
+        );
     }
 
     /// Test that extension methods that normalize to operators convert correctly
