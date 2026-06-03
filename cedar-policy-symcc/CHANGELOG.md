@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
+## [0.5.1] - 2026-06-01
+Cedar Language Version: 4.5
+
+### Fixed
+
+- Model decoder now skips unknown `define-fun` entries in solver output, improving compatibility with Z3 and other solvers that include intermediate terms in `(get-model)` responses.
+
 ## [0.5.0] - 2026-05-18
 Cedar Language Version: 4.5
 

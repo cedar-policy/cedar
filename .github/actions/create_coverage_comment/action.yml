@@ -14,10 +14,10 @@ inputs:
     description: "Prefix of the name of the artifact to be downloaded"
     required: false
     default: "coverage_report"
-  comment-artifact-name:
+  artifact-name:
     description: "Name of the artifact to be uploaded"
     required: false
-    default: "coverage_comment"
+    default: "coverage_data"
 
 runs:
   using: "composite"
@@ -62,29 +62,23 @@ runs:
     - name: Create result files
       shell: bash
       run: |
-        mkdir -p target/coverage/results
-        echo $ISSUE_NUMBER > target/coverage/results/issue_number.txt
-        echo $CHANGED_LINES > target/coverage/results/changed_lines.json
+        mkdir -p "${RESULTS_DIR}"
+        echo "${CHANGED_LINES}" > "${RESULTS_DIR}/changed_lines.json"
         python .github/scripts/process_coverage.py \
-          cobertura.xml \
-          target/coverage/results/changed_lines.json \
-          $THRESHOLD \
-          $HEAD_SHA \
-          $BASE_SHA \
-          $(cat report_location.txt) \
-          base_coverage/cobertura.xml \
-          target/coverage/results
-        echo "STATUS=$(cat target/coverage/results/status.txt)" >> $GITHUB_ENV
+          --cobertura-file cobertura.xml \
+          --base-cobertura-file base_coverage/cobertura.xml \
+          --changed-lines-file "${RESULTS_DIR}/changed_lines.json" \
+          --required-coverage "${THRESHOLD}" \
+          --output-dir "${RESULTS_DIR}"
+        echo "STATUS=$(cat ${RESULTS_DIR}/status.txt)" >> $GITHUB_ENV
       env:
         CHANGED_LINES: ${{ steps.changed_lines.outputs.changed_lines }}
+        RESULTS_DIR: target/coverage/results
         THRESHOLD: ${{ inputs.threshold }}
-        ISSUE_NUMBER: ${{ github.event.number }}
-        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        BASE_SHA: ${{ github.event.pull_request.base.sha }}
     - name: Upload results
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
-        name: ${{ inputs.comment-artifact-name }}
+        name: ${{ inputs.artifact-name }}
         path: target/coverage/results/
         retention-days: 1
     - name: Check status

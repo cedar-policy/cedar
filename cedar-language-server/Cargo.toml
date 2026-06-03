@@ -21,7 +21,7 @@ ropey = "1.6.1"
 smol_str = "0.3"
 tracing = "0.1.44"
 serde = "1"
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 regex = "1.12.2"
 tower-lsp-server = "0.23.0"
 
@@ -30,7 +30,7 @@ tokio = { version = "1.52.3", features = ["full"], optional = true }
 tracing-appender = { version = "0.2.5", optional = true }
 tracing-subscriber = { version = "0.3.23", features = ["json"], optional = true}
 tower-service = { version = "0.3.3", optional = true}
-dashmap = { version = "6.1.0", optional = true}
+dashmap = { version = "6.2.1", optional = true}
 
 # Dependencies needed only for WASM integration
 serde-wasm-bindgen = { version = "0.6", optional = true }

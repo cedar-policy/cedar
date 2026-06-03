@@ -16,19 +16,42 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Download artifacts
-        shell: bash
-        run: |
-          STATUS=$(gh run download $RUN_ID --name coverage_comment && echo "SUCCESS" || echo "FAILURE")
-          echo "STATUS=$STATUS" >> $GITHUB_ENV
+      - name: Set up python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: 3.14
+      - name: Create and post the comment
         env:
           RUN_ID: ${{github.event.workflow_run.id }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Add comment to PR
-        if: ${{ env.STATUS == 'SUCCESS' }}
+          GH_TOKEN: ${{ github.token }}
+          PR_TARGET_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha}}
+          # If the PR is from a fork, prefix the branch with `<owner-login>:`, otherwise only the PR branch name should be used:
+          PR_BRANCH: |-
+            ${{
+              (github.event.workflow_run.head_repository.owner.login != github.event.workflow_run.repository.owner.login)
+                && format('{0}:{1}', github.event.workflow_run.head_repository.owner.login, github.event.workflow_run.head_branch)
+                || github.event.workflow_run.head_branch
+            }}
+          COMMENT_FILE: comment.md
         shell: bash
         run: |
-          ISSUE_NUMBER=$(cat issue_number.txt)
-          gh pr comment $ISSUE_NUMBER --body-file markdown.md
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Download coverage data for the run. Exit early if the data is not found.
+          gh run download "${RUN_ID}" --name coverage_data --dir coverage_data || exit 0
+
+          # Find the number and base SHA of the PR that should be commented on.
+          PR_NUMBER=$(gh pr view --repo "${PR_TARGET_REPO}" --json 'number' --jq '.number' -- "${PR_BRANCH}")
+          BASE_SHA=$(gh pr view --repo "${PR_TARGET_REPO}" --json 'baseRefOid' --jq '.baseRefOid' -- "${PR_BRANCH}")
+
+          # Find the identifier of the artifact with the name "coverage_report_html" written by the triggering workflow run.
+          ARTIFACT_ID=$(gh api "repos/${PR_TARGET_REPO}/actions/runs/${RUN_ID}/artifacts" --jq '.artifacts[] | select(.name=="coverage_report_html") | .id')
+          REPORT_URL="https://github.com/${PR_TARGET_REPO}/actions/runs/${RUN_ID}/artifacts/${ARTIFACT_ID}"
+
+          python .github/scripts/create_comment.py \
+            --coverage_json coverage_data/coverage.json \
+            --output-file "${COMMENT_FILE}" \
+            --head-sha "${HEAD_SHA}" \
+            --base-sha "${BASE_SHA}" \
+            --report-url "${REPORT_URL}"
+          gh pr comment "${PR_NUMBER}" --body-file "${COMMENT_FILE}"
+  

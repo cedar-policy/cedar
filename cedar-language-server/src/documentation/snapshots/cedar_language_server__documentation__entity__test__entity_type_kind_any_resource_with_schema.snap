@@ -5,9 +5,3 @@ expression: entity_type_kind.to_documentation_string(Some(&schema))
 **Type**
 
 Entity Type: `Photo`
-
-Attributes:
-
-```cedarschema
-No attributes defined.
-```
