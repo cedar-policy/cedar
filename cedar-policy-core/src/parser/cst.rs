@@ -424,10 +424,14 @@ impl Drop for Expr {
 /// `out`. After this call the `Expr`'s subtree is shallow enough to drop
 /// without recursion.
 fn collect_child_exprs(expr: &mut Expr, out: &mut Vec<Node<Expr>>) {
-    let Expr::Expr(expr_impl) = expr else {
-        return;
+    let expr = match expr {
+        Expr::Expr(expr) => expr,
+        #[cfg(feature = "tolerant-ast")]
+        Expr::ErrorExpr => {
+            return;
+        }
     };
-    match expr_impl.expr.as_mut() {
+    match expr.expr.as_mut() {
         ExprData::If(cond, then_expr, else_expr) => {
             out.push(std::mem::replace(cond, Node::new(None)));
             out.push(std::mem::replace(then_expr, Node::new(None)));
