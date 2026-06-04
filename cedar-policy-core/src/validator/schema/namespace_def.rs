@@ -953,18 +953,13 @@ fn parse_record_attributes(
     let attrs = attrs
         .into_iter()
         .map(|(attr, ty)| -> crate::validator::err::Result<_> {
-            #[cfg(feature = "extended-schema")]
-            let loc = ty.loc;
-            #[cfg(not(feature = "extended-schema"))]
-            let loc = None;
-
             let attr_ty = try_jsonschema_type_into_validator_type(
                 ty.ty.clone(),
                 extensions,
                 common_type_defs,
             )?;
             #[cfg(feature = "extended-schema")]
-            let attr_ty = AttributeType::new_with_loc(attr_ty.ty.into(), ty.required, loc);
+            let attr_ty = AttributeType::new_with_loc(attr_ty.ty.into(), ty.required, ty.loc);
             #[cfg(not(feature = "extended-schema"))]
             let attr_ty = AttributeType::new(attr_ty.ty.into(), ty.required);
             Ok((attr, attr_ty))
