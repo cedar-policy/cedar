@@ -15,11 +15,6 @@
  */
 
 //! Iterative depth computation for CST expressions.
-//!
-//! This module provides [`cst_effective_depth`], which computes the depth of
-//! the AST that would result from converting a CST expression, accounting for
-//! the amplification introduced by nary left-folds (Or, And, Add, Mult) and
-//! member access chains.
 
 use crate::parser::{err, Loc};
 
@@ -72,39 +67,6 @@ pub(crate) fn check_policies_depth(
     Ok(())
 }
 
-/// Compute the maximum effective depth of a list of cst expressions that are
-/// used to build a right associated ast expression. As we progress the list
-/// each is at a progressively deeper depth due to association being explicitly
-/// imposed by nesting AST nodes.
-fn effective_depth_right_assoc<'a>(
-    exprs: impl Iterator<Item = &'a Node<Option<cst::Expr>>>,
-) -> Option<usize> {
-    exprs
-        .enumerate()
-        .map(|(assoc_depth, e)| cst_effective_depth(e.into()) + assoc_depth)
-        .max()
-}
-
-/// Return an error if `depth` exceeds `depth_limit`.
-fn check_depth(
-    depth: usize,
-    depth_limit: usize,
-    loc: Option<&Loc>,
-) -> Result<(), err::ParseErrors> {
-    if depth > depth_limit {
-        Err(err::ToASTError::new(
-            err::ToASTErrorKind::ExpressionTooDeep {
-                depth,
-                limit: depth_limit,
-            },
-            loc.cloned(),
-        )
-        .into())
-    } else {
-        Ok(())
-    }
-}
-
 /// Check depth of all expressions in a CST policy
 pub(crate) fn check_policy_depth(
     cst: &Node<Option<cst::Policy>>,
@@ -144,12 +106,44 @@ pub(crate) fn check_policy_depth(
     Ok(())
 }
 
-/// Iteratively compute a conservative depth bound for this CST expression.
-/// Accounts for both CST nesting (parenthesized sub-expressions, list/record
-/// elements, method args) and AST amplification (nary left-folds, member
-/// access chains, unary operators). A single limit applied against this
-/// value guards against stack overflow in both the CST-to-AST converter
-/// and the evaluator/validator.
+/// Return an error if `depth` exceeds `depth_limit`.
+fn check_depth(
+    depth: usize,
+    depth_limit: usize,
+    loc: Option<&Loc>,
+) -> Result<(), err::ParseErrors> {
+    if depth > depth_limit {
+        Err(err::ToASTError::new(
+            err::ToASTErrorKind::ExpressionTooDeep {
+                depth,
+                limit: depth_limit,
+            },
+            loc.cloned(),
+        )
+        .into())
+    } else {
+        Ok(())
+    }
+}
+
+/// Compute the maximum effective depth of a list of cst expressions that are
+/// used to build a right associated ast expression. As we progress throught the
+/// list, each element is at a progressively deeper depth due to association
+/// being explicitly imposed by nesting AST nodes.
+fn effective_depth_right_assoc<'a>(
+    exprs: impl Iterator<Item = &'a Node<Option<cst::Expr>>>,
+) -> Option<usize> {
+    exprs
+        .enumerate()
+        .map(|(assoc_depth, e)| cst_effective_depth(e.into()) + assoc_depth)
+        .max()
+}
+
+/// Iteratively compute a conservative depth bound for the depth of this CST
+/// expression.  Accounts for depth that exists directly in the  CST
+/// (parenthesized sub-expressions, list/record elements, method args) as well
+/// as nesting introduced in the conversion to an AST (expanding flat
+/// representations of chained binary operators).
 pub(crate) fn cst_effective_depth(root: CstNode<'_>) -> usize {
     let mut stack: Vec<WorkItem<'_>> = vec![WorkItem {
         node: root,
@@ -465,6 +459,8 @@ mod tests {
     // Member access chains
     #[case("principal.a", 1)]
     #[case("principal.a.b.c", 3)]
+    #[case(r#"principal["a"]["b"]["c"]"#, 3)]
+    #[case(r#"principal["a"].b["c"].d"#, 4)]
     // Method calls
     #[case("[1,2,3].contains(1)", 3)]
     #[case("principal.a.contains(1)", 3)]
