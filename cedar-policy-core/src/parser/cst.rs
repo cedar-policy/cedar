@@ -228,7 +228,7 @@ pub enum Relation {
     },
 }
 
-/// The operation involved in a comparision
+/// The operation involved in a comparison
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RelOp {
     /// <
@@ -419,16 +419,22 @@ impl Drop for Expr {
         let mut work: Vec<Node<Expr>> = Vec::new();
         collect_child_exprs(self, &mut work);
         while let Some(mut expr_node) = work.pop() {
-            if let Some(expr) = expr_node.node.as_mut() {
-                collect_child_exprs(expr, &mut work);
-            }
+            let Some(expr) = expr_node.node.as_mut() else {
+                continue;
+            };
+            // Move all children out of `expr` and on to the working stack
+            collect_child_exprs(expr, &mut work);
+            // `expr_node` is now holds no recursive `Node<Expr>`, so it's safe to drop.
         }
     }
 }
 
-/// Extract all owned `Node<Expr>` children from an `Expr`, appending them to
-/// `out`. After this call the `Expr`'s subtree is shallow enough to drop
+/// Extract all `Node<Expr>` children from `expr`, appending them to `out`.
+/// After this call, every nested `Node<Expr>` is `None`, so we can drop `expr`
 /// without recursion.
+/// 
+/// This function calls the helpers below for convenience, but the helpers must
+/// not recursively call back into this function. 
 fn collect_child_exprs(expr: &mut Expr, out: &mut Vec<Node<Expr>>) {
     let expr = match expr {
         Expr::Expr(expr) => expr,
