@@ -21,6 +21,12 @@ use smol_str::SmolStr;
 // still recover other parts
 type Node<N> = super::node::Node<Option<N>>;
 
+impl<N> Default for Node<N> {
+    fn default() -> Self {
+        Node::new(None)
+    }
+}
+
 /// The set of policy statements that forms a policy set
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Policies(pub Vec<Node<Policy>>);
@@ -433,9 +439,9 @@ fn collect_child_exprs(expr: &mut Expr, out: &mut Vec<Node<Expr>>) {
     };
     match expr.expr.as_mut() {
         ExprData::If(cond, then_expr, else_expr) => {
-            out.push(std::mem::replace(cond, Node::new(None)));
-            out.push(std::mem::replace(then_expr, Node::new(None)));
-            out.push(std::mem::replace(else_expr, Node::new(None)));
+            out.push(std::mem::take(cond));
+            out.push(std::mem::take(then_expr));
+            out.push(std::mem::take(else_expr));
         }
         ExprData::Or(or) => {
             let Some(or) = or.node.as_mut() else { return };
@@ -529,7 +535,7 @@ fn collect_child_exprs_from_member(mem_node: &mut Node<Member>, out: &mut Vec<No
         match acc {
             MemAccess::Field(_) => {}
             MemAccess::Call(args) => out.append(args),
-            MemAccess::Index(idx) => out.push(std::mem::replace(idx, Node::new(None))),
+            MemAccess::Index(idx) => out.push(std::mem::take(idx)),
         }
     }
 }
@@ -539,13 +545,13 @@ fn collect_child_exprs_from_primary(prim_node: &mut Node<Primary>, out: &mut Vec
         return;
     };
     match prim {
-        Primary::Expr(e) => out.push(std::mem::replace(e, Node::new(None))),
+        Primary::Expr(e) => out.push(std::mem::take(e)),
         Primary::EList(elts) => out.append(elts),
         Primary::RInits(inits) => {
             for init_node in inits {
                 if let Some(ri) = init_node.node.as_mut() {
-                    out.push(std::mem::replace(&mut ri.0, Node::new(None)));
-                    out.push(std::mem::replace(&mut ri.1, Node::new(None)));
+                    out.push(std::mem::take(&mut ri.0));
+                    out.push(std::mem::take(&mut ri.1));
                 }
             }
         }

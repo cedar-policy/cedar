@@ -6568,4 +6568,21 @@ mod test_depth_limit {
             );
         });
     }
+
+    #[test]
+    fn very_deep_ast_and_cst_no_stack_overflow() {
+        let depth = 10000;
+        let src = "[".repeat(depth) + "1" + &"]".repeat(depth);
+        assert_matches!(Expression::parse_with_depth_limit(&src, depth - 1), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error(
+                    &format!("expression depth {depth} exceeds the configured limit of {}", depth - 1),
+                )
+                .exactly_one_underline(&src)
+                .build(),
+            );
+        });
+    }
 }
