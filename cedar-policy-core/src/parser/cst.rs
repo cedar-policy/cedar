@@ -432,9 +432,9 @@ impl Drop for Expr {
 /// Extract all `Node<Expr>` children from `expr`, appending them to `out`.
 /// After this call, every nested `Node<Expr>` is `None`, so we can drop `expr`
 /// without recursion.
-/// 
+///
 /// This function calls the helpers below for convenience, but the helpers must
-/// not recursively call back into this function. 
+/// not recursively call back into this function.
 fn collect_child_exprs(expr: &mut Expr, out: &mut Vec<Node<Expr>>) {
     let expr = match expr {
         Expr::Expr(expr) => expr,
