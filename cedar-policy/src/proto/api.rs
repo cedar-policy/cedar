@@ -149,6 +149,7 @@ impl traits::Protobuf for api::PolicySet {
 
 #[cfg(test)]
 mod test {
+    use crate::proto::traits::Protobuf;
     use cool_asserts::assert_matches;
     use prost::Message as _;
     use std::{collections::HashMap, str::FromStr};
@@ -172,6 +173,14 @@ mod test {
     fn roundtrip_policies_text(text: &str) {
         let pset = crate::PolicySet::from_str(text).expect("Failed to parse policy set");
         roundtrip_policies(pset);
+    }
+
+    /// [`decode`] and [`decode_unchecked`] should produce the same data when they don't fail.
+    fn decode_eq_decode_unchecked<T: Protobuf + PartialEq>(x: T) {
+        let buf = x.encode();
+        let checked = T::decode(&buf[..]).expect("decode failed");
+        let unchecked = T::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
+        similar_asserts::assert_eq!(checked, unchecked);
     }
 
     #[test]
@@ -410,12 +419,8 @@ mod test {
         );
     }
 
-    /// Roundtrip via `decode_unchecked` — should produce the same result as `decode`
-    /// for well-formed data.
     #[test]
     fn roundtrip_decode_unchecked_entities() {
-        use crate::proto::traits::Protobuf;
-
         let entities = crate::Entities::from_json_str(
             r#"[
                 {"uid": {"type": "User", "id": "alice"}, "attrs": {"age": 25}, "parents": [{"type": "Group", "id": "admins"}]},
@@ -424,17 +429,11 @@ mod test {
             None,
         )
         .expect("Failed to parse entities");
-
-        let buf = entities.encode();
-        let checked = crate::Entities::decode(&buf[..]).expect("decode failed");
-        let unchecked = crate::Entities::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
-        similar_asserts::assert_eq!(checked, unchecked);
+        decode_eq_decode_unchecked::<crate::Entities>(entities);
     }
 
     #[test]
     fn roundtrip_decode_unchecked_policy_set() {
-        use crate::proto::traits::Protobuf;
-
         let pset = crate::PolicySet::from_str(
             r#"
             permit(principal == User::"alice", action, resource);
@@ -442,70 +441,30 @@ mod test {
             "#,
         )
         .expect("Failed to parse policy set");
-
-        let buf = pset.encode();
-        let checked = crate::PolicySet::decode(&buf[..]).expect("decode failed");
-        let unchecked = crate::PolicySet::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
-        similar_asserts::assert_eq!(checked, unchecked);
-    }
-
-    #[test]
-    fn roundtrip_decode_unchecked_schema() {
-        use crate::proto::traits::Protobuf;
-
-        let (schema, _) = crate::Schema::from_cedarschema_str(
-            r#"
-            entity User;
-            entity Document {
-                owner: User,
-            };
-            action Read appliesTo { principal: User, resource: Document };
-            "#,
-        )
-        .expect("Failed to parse schema");
-
-        let buf = schema.encode();
-        let checked = crate::Schema::decode(&buf[..]).expect("decode failed");
-        let unchecked = crate::Schema::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
-        // Schema doesn't impl PartialEq, so compare via re-encoding
-        similar_asserts::assert_eq!(checked.encode(), unchecked.encode());
+        decode_eq_decode_unchecked::<crate::PolicySet>(pset);
     }
 
     #[test]
     fn roundtrip_decode_unchecked_template() {
-        use crate::proto::traits::Protobuf;
+        let template =
+            crate::Template::from_str(r#"permit(principal == ?principal, action, resource);"#)
+                .expect("Failed to parse template");
 
-        let template = crate::Template::from_str(
-            r#"permit(principal == ?principal, action, resource);"#,
-        )
-        .expect("Failed to parse template");
-
-        let buf = template.encode();
-        let checked = crate::Template::decode(&buf[..]).expect("decode failed");
-        let unchecked = crate::Template::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
-        similar_asserts::assert_eq!(checked, unchecked);
+        decode_eq_decode_unchecked::<crate::Template>(template);
     }
 
     #[test]
     fn roundtrip_decode_unchecked_entity() {
-        use crate::proto::traits::Protobuf;
-
         let entity = crate::Entity::from_json_value(
             serde_json::json!({"uid": {"type": "User", "id": "bob"}, "attrs": {"active": true}, "parents": []}),
             None,
         )
         .expect("Failed to parse entity");
-
-        let buf = entity.encode();
-        let checked = crate::Entity::decode(&buf[..]).expect("decode failed");
-        let unchecked = crate::Entity::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
-        similar_asserts::assert_eq!(checked, unchecked);
+        decode_eq_decode_unchecked::<crate::Entity>(entity);
     }
 
     #[test]
     fn roundtrip_decode_unchecked_request() {
-        use crate::proto::traits::Protobuf;
-
         let request = crate::Request::new(
             crate::EntityUid::from_strs("User", "alice"),
             crate::EntityUid::from_strs("Action", "read"),
@@ -514,10 +473,6 @@ mod test {
             None,
         )
         .expect("Failed to create request");
-
-        let buf = request.encode();
-        let checked = crate::Request::decode(&buf[..]).expect("decode failed");
-        let unchecked = crate::Request::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
-        similar_asserts::assert_eq!(checked, unchecked);
+        decode_eq_decode_unchecked::<crate::Request>(request);
     }
 }

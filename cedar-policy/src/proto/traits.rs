@@ -49,7 +49,16 @@ impl From<ProtobufConversionError> for DecodeError {
     }
 }
 
-/// Trait allowing serializing and deserializing in protobuf format
+/// A trait for objects that have a `try_validate` method returning `self` if the object is
+/// valid.
+pub trait TryValidate: Sized {
+    /// The type of errors returned by the validation method.
+    type Err: Display;
+    /// A validation method that returns the object itself, or an error if it is invalid.
+    fn try_validate(self) -> Result<Self, Self::Err>;
+}
+
+/// Trait allowing serializing and deserializing in protobuf format.
 pub trait Protobuf: Sized + TryValidate {
     /// Encode into protobuf format. Returns a freshly-allocated buffer containing binary data.
     fn encode(&self) -> Vec<u8>;
@@ -58,8 +67,9 @@ pub trait Protobuf: Sized + TryValidate {
     /// # Errors
     ///
     /// Will return [`DecodeError::Proto`] when the input buffer does not
-    /// contain a valid protobuf message, or [`DecodeError::Conversion`] when
-    /// the message is well-formed but cannot be converted into the target type.
+    /// contain a valid protobuf message. Returns [`DecodeError::Conversion`] when
+    /// the message is well-formed but cannot be converted into the target type or the
+    /// validation on the target type failed.
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, DecodeError> {
         Self::decode_unchecked(buf)?
             .try_validate()
@@ -67,9 +77,10 @@ pub trait Protobuf: Sized + TryValidate {
     }
 
     /// Decode the binary data in `buf`, producing something of type `Self`,
-    /// but with fewer checks than the [`decode`] function. This is useful for performance
-    /// if you can guarantee the binary data is the result of [`encode`] of the same
-    /// implementation.
+    /// but without the additional validation that the [`decode`] method performs on the resulting
+    /// `Self`.
+    /// This is useful for performance if you can guarantee the binary data is the result of
+    /// [`encode`] of the same implementation.
     ///
     /// # Errors
     ///
@@ -123,12 +134,6 @@ pub(crate) fn try_decode<
     M::decode(buf)?
         .try_into()
         .map_err(|e: E| DecodeError::Conversion(e.into()))
-}
-
-pub(crate) trait TryValidate: Sized {
-    type Err: Display;
-    // Validate the structure according to its internal invariants.
-    fn try_validate(self) -> Result<Self, Self::Err>;
 }
 
 impl TryValidate for api::PolicySet {
