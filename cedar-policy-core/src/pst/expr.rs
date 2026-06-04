@@ -574,12 +574,10 @@ impl Display for BinaryOp {
 }
 
 /// When using the `variadic-is-in-range` feature, the `isInRange` operator
-/// can be interpreted as a variadic operator.
-///
-/// ip("10.0.0.1").isInRange(
-///    ip("198.51.100.0/24"),
-///    ip("203.0.113.0/24"),
-/// )  // variadic IsInRange
+/// can be interpreted as a variadic operator:
+/// ```cedar
+/// ip("10.0.0.1").isInRange(ip("198.51.100.0/24"), ip("203.0.113.0/24"))  // variadic IsInRange
+/// ```
 #[cfg(feature = "variadic-is-in-range")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -591,10 +589,7 @@ pub enum VariadicOp {
 #[cfg(feature = "variadic-is-in-range")]
 impl VariadicOp {
     pub(crate) fn to_name(self) -> Option<&'static ast::Name> {
-        use crate::extensions;
-        match self {
-            VariadicOp::IsInRange => Some(&extensions::ipaddr::names::IS_IN_RANGE),
-        }
+        self.to_binop().to_name()
     }
 
     /// Parse a binary operator from a function name
