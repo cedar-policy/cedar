@@ -15,7 +15,8 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ### Added
 
 - Depth limited parsing functions for `PolicySet`, `Template`, `Policy`, and `Expression`. These allow configuring a depth limit
-  for policies, avoiding the possibility of stack overflows. (#2383)
+  for policies, avoiding stack overflows when parsing policies of unknown depth, assuming that the limit is set low enough to
+  avoid exhausting stack space in your environment. (#2383)
 
 ### Changed
 

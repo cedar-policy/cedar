@@ -107,7 +107,7 @@ pub(crate) fn check_policy_depth(
 }
 
 /// Return an error if `depth` exceeds `depth_limit`.
-fn check_depth(
+pub(crate) fn check_depth(
     depth: usize,
     depth_limit: usize,
     loc: Option<&Loc>,
