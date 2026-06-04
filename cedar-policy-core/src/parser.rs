@@ -32,7 +32,7 @@ pub use loc::Loc;
 mod node;
 pub use node::Node;
 /// Depth computation for CST expressions
-pub mod depth;
+mod depth;
 /// Step one: Convert text to CST
 pub mod text_to_cst;
 /// Utility functions to unescape string literals

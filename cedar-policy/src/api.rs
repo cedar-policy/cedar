@@ -2570,8 +2570,8 @@ impl PolicySet {
     /// map. This preserves lossless representations for each policy/template.
     ///
     /// INVARIANT: Every policy and template id in `pset` must be present as a key into `texts`.
-    /// This is satisifed by `parser::parse_policyset_and_also_return_policy_text` and
-    /// `parser::parse_policyset_with_depth_limit_and_text`.
+    /// This is satisfied by `parser::parse_policyset_and_also_return_policy_text` and
+    /// `parser::parse_policyset_with_depth_limit_and_also_return_policy_text`.
     fn from_parsed_with_text(
         texts: HashMap<ast::PolicyID, Option<&str>>,
         pset: ast::PolicySet,

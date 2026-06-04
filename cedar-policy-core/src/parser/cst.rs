@@ -424,7 +424,7 @@ impl Drop for Expr {
             };
             // Move all children out of `expr` and on to the working stack
             collect_child_exprs(expr, &mut work);
-            // `expr_node` is now holds no recursive `Node<Expr>`, so it's safe to drop.
+            // `expr_node` now holds no recursive `Node<Expr>`, so it's safe to drop.
         }
     }
 }

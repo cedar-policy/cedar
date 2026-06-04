@@ -127,7 +127,7 @@ pub(crate) fn check_depth(
 }
 
 /// Compute the maximum effective depth of a list of cst expressions that are
-/// used to build a right associated ast expression. As we progress throught the
+/// used to build a right associated ast expression. As we progress through the
 /// list, each element is at a progressively deeper depth due to association
 /// being explicitly imposed by nesting AST nodes.
 fn effective_depth_right_assoc<'a>(
