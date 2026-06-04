@@ -46,15 +46,15 @@ pub(crate) enum CstNode<'a> {
     Primary(&'a Node<Option<cst::Primary>>),
 }
 
-impl<'a> Into<CstNode<'a>> for &'a Node<Option<cst::Expr>> {
-    fn into(self) -> CstNode<'a> {
-        CstNode::Expr(self)
+impl<'a> From<&'a Node<Option<cst::Expr>>> for CstNode<'a> {
+    fn from(value: &'a Node<Option<cst::Expr>>) -> Self {
+        CstNode::Expr(value)
     }
 }
 
-impl<'a> Into<CstNode<'a>> for &'a Node<Option<cst::Add>> {
-    fn into(self) -> CstNode<'a> {
-        CstNode::Add(self)
+impl<'a> From<&'a Node<Option<cst::Add>>> for CstNode<'a> {
+    fn from(value: &'a Node<Option<cst::Add>>) -> Self {
+        CstNode::Add(value)
     }
 }
 
@@ -133,12 +133,11 @@ pub(crate) fn check_policy_depth(
             check_depth(cst_effective_depth(ineq.into()), depth_limit, ineq.loc())?;
         }
     }
-    let cond_exprs: Vec<_> = policy_impl
+    let cond_exprs = policy_impl
         .conds
         .iter()
-        .filter_map(|cond_node| cond_node.node.as_ref()?.expr.as_ref())
-        .collect();
-    if let Some(depth) = effective_depth_right_assoc(cond_exprs.into_iter()) {
+        .filter_map(|cond_node| cond_node.node.as_ref()?.expr.as_ref());
+    if let Some(depth) = effective_depth_right_assoc(cond_exprs) {
         check_depth(depth, depth_limit, cst.loc())?;
     }
 
@@ -204,7 +203,7 @@ pub(crate) fn cst_effective_depth(root: CstNode<'_>) -> usize {
                     &mut stack,
                     depth,
                     CstNode::And(&or.initial),
-                    or.extended.iter().map(|ext| CstNode::And(ext)),
+                    or.extended.iter().map(CstNode::And),
                     or.extended.len(),
                 );
             }
@@ -217,7 +216,7 @@ pub(crate) fn cst_effective_depth(root: CstNode<'_>) -> usize {
                     &mut stack,
                     depth,
                     CstNode::Relation(&and.initial),
-                    and.extended.iter().map(|ext| CstNode::Relation(ext)),
+                    and.extended.iter().map(CstNode::Relation),
                     and.extended.len(),
                 );
             }

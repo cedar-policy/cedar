@@ -305,6 +305,37 @@ pub fn parse_policyset_with_depth_limit(
     cst.to_policyset()
 }
 
+/// Like [`parse_policyset_and_also_return_policy_text`], but rejects any
+/// policy whose expression depth exceeds `depth_limit`.
+pub fn parse_policyset_with_depth_limit_and_text(
+    text: &str,
+    depth_limit: usize,
+) -> Result<(HashMap<ast::PolicyID, Option<&str>>, ast::PolicySet), err::ParseErrors> {
+    let cst = text_to_cst::parse_policies(text)?;
+    check_policies_depth(&cst, depth_limit)?;
+    let pset = cst.to_policyset()?;
+    #[expect(
+        clippy::expect_used,
+        reason = "Shouldn't be `None` since `parse_policies()` and `to_policyset()` didn't return `Err`"
+    )]
+    #[expect(
+        clippy::string_slice,
+        reason = "Slicing is safe because of how the `SourceSpan` is constructed"
+    )]
+    let texts = cst
+        .with_generated_policyids()
+        .expect("shouldn't be `None` since `parse_policies` and `to_policyset` didn't return `Err`")
+        .map(|(id, policy)| {
+            if let Some(loc) = &policy.loc {
+                (id, Some(&text[loc.start()..loc.end()]))
+            } else {
+                (id, None)
+            }
+        })
+        .collect::<HashMap<ast::PolicyID, Option<&str>>>();
+    Ok((texts, pset))
+}
+
 /// Like [`parse_policy`], but rejects if expression depth exceeds `depth_limit`.
 pub fn parse_policy_with_depth_limit(
     id: Option<ast::PolicyID>,

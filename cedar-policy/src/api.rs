@@ -2545,40 +2545,76 @@ impl FromStr for PolicySet {
     /// See [`Policy`] for more.
     fn from_str(policies: &str) -> Result<Self, Self::Err> {
         let (texts, pset) = parser::parse_policyset_and_also_return_policy_text(policies)?;
-        #[expect(clippy::expect_used, reason = "By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.policies()` occurs as a key in `text`.")]
-        let policies = pset.policies().map(|p|
-            (
-                PolicyId::new(p.id().clone()),
-                Policy { lossless: LosslessPolicy::policy_or_template_text(*texts.get(p.id()).expect("internal invariant violation: policy id exists in asts but not texts")), ast: p.clone() }
-            )
-        ).collect();
-        #[expect(
-            clippy::expect_used,
-            reason = "By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.templates()` also occurs as a key in `text`."
-        )]
+        Ok(PolicySet::from_parsed_with_text(texts, pset))
+    }
+}
+
+impl PolicySet {
+    /// Create a policy set as in [`PolicySet::from_str`], but rejecting any
+    /// policy whose expression depth exceeds `depth_limit`.
+    ///
+    /// This function can be used to limit the maximum recursion depth, avoiding
+    /// the stackoverflows when parsing policies with unknown depth.
+    pub fn from_str_with_depth_limit(
+        policies: &str,
+        depth_limit: usize,
+    ) -> Result<Self, ParseErrors> {
+        let (texts, pset) =
+            parser::parse_policyset_with_depth_limit_and_text(policies, depth_limit)?;
+        Ok(Self::from_parsed_with_text(texts, pset))
+    }
+
+    /// Build a [`PolicySet`] from a parsed AST and the per-policy source text
+    /// map. This preserves lossless representations for each policy/template.
+    ///
+    /// INVARIANT: Every policy and template id in `pset` must be present as a key into `texts`.
+    /// This is satisifed by `parser::parse_policyset_and_also_return_policy_text` and
+    /// `parser::parse_policyset_with_depth_limit_and_text`.
+    fn from_parsed_with_text(
+        texts: HashMap<ast::PolicyID, Option<&str>>,
+        pset: ast::PolicySet,
+    ) -> Self {
+        let policies = pset
+            .policies()
+            .map(|p| {
+                (
+                    PolicyId::new(p.id().clone()),
+                    Policy {
+                        lossless: LosslessPolicy::policy_or_template_text(
+                            #[expect(clippy::expect_used, reason = "By policy id invariant")]
+                            *texts.get(p.id()).expect(
+                                "internal invariant violation: policy id exists in asts but not texts",
+                            ),
+                        ),
+                        ast: p.clone(),
+                    },
+                )
+            })
+            .collect();
         let templates = pset
             .templates()
             .map(|t| {
                 (
                     PolicyId::new(t.id().clone()),
                     Template {
-                        lossless: LosslessTemplate::from_text(*texts.get(t.id()).expect(
-                            "internal invariant violation: template id exists in asts but not ests",
-                        )),
+                        lossless: LosslessTemplate::from_text(
+                            #[expect(clippy::expect_used, reason = "By template id invariant")]
+                            *texts.get(t.id()).expect(
+                                "internal invariant violation: template id exists in asts but not texts",
+                            ),
+                        ),
                         ast: t.clone(),
                     },
                 )
             })
             .collect();
-        Ok(Self {
+        Self {
             ast: pset,
             policies,
             templates,
-        })
+        }
     }
-}
 
-impl PolicySet {
     /// Build the policy set AST from the EST
     fn from_est(est: &est::PolicySet) -> Result<Self, PolicySetError> {
         let ast: ast::PolicySet = est.clone().try_into()?;
@@ -2708,19 +2744,6 @@ impl PolicySet {
         let est: est::PolicySet = serde_json::from_reader(r)
             .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
         Self::from_est(&est)
-    }
-
-    /// Parse a [`PolicySet`] from text, rejecting any policy whose expression
-    /// depth exceeds `depth_limit`. This bounds resource usage during parsing,
-    /// validation, and evaluation.
-    pub fn from_str_with_depth_limit(
-        policies: &str,
-        depth_limit: usize,
-    ) -> Result<Self, ParseErrors> {
-        let ast = parser::parse_policyset_with_depth_limit(policies, depth_limit)?;
-        // PANIC SAFETY: a freshly-parsed policy set cannot have duplicate IDs
-        #[expect(clippy::expect_used)]
-        Ok(Self::from_ast(ast).expect("freshly-parsed policy set has no duplicate IDs"))
     }
 
     /// Serialize the [`PolicySet`] as a JSON value
