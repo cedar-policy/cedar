@@ -2559,8 +2559,10 @@ impl PolicySet {
         policies: &str,
         depth_limit: usize,
     ) -> Result<Self, ParseErrors> {
-        let (texts, pset) =
-            parser::parse_policyset_with_depth_limit_and_also_return_policy_text(policies, depth_limit)?;
+        let (texts, pset) = parser::parse_policyset_with_depth_limit_and_also_return_policy_text(
+            policies,
+            depth_limit,
+        )?;
         Ok(Self::from_parsed_with_text(texts, pset))
     }
 
