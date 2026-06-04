@@ -37,7 +37,7 @@ impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
 impl TryFrom<models::Schema> for cedar_policy_core::validator::ValidatorSchema {
     type Error = ProtobufConversionError;
     fn try_from(v: models::Schema) -> Result<Self, Self::Error> {
-        Self::new(
+        Ok(Self::new(
             v.entity_decls
                 .into_iter()
                 .map(cedar_policy_core::validator::ValidatorEntityType::try_from)
@@ -46,9 +46,7 @@ impl TryFrom<models::Schema> for cedar_policy_core::validator::ValidatorSchema {
                 .into_iter()
                 .map(cedar_policy_core::validator::ValidatorActionId::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
-        )
-        .try_validate()
-        .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid schema: {e}")))
+        ))
     }
 }
 

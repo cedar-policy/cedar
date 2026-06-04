@@ -14,6 +14,15 @@
  * limitations under the License.
  */
 
+use cedar_policy_core::{
+    ast::{ExprValidationError, Infallible, PolicySetValidationError, TemplateValidationError},
+    entities::err::EntitiesError,
+    validator::SchemaError,
+};
+use itertools::Either;
+
+use crate::{api, PolicySetError};
+
 use super::ast::ProtobufConversionError;
 
 /// Error type for protobuf decoding failures
@@ -41,7 +50,7 @@ impl From<ProtobufConversionError> for DecodeError {
 }
 
 /// Trait allowing serializing and deserializing in protobuf format
-pub trait Protobuf: Sized {
+pub trait Protobuf: Sized + TryValidate {
     /// Encode into protobuf format. Returns a freshly-allocated buffer containing binary data.
     fn encode(&self) -> Vec<u8>;
     /// Decode the binary data in `buf`, producing something of type `Self`
@@ -51,7 +60,23 @@ pub trait Protobuf: Sized {
     /// Will return [`DecodeError::Proto`] when the input buffer does not
     /// contain a valid protobuf message, or [`DecodeError::Conversion`] when
     /// the message is well-formed but cannot be converted into the target type.
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, DecodeError>;
+    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, DecodeError> {
+        Self::decode_unchecked(buf)?
+            .try_validate()
+            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid: {e}")).into())
+    }
+
+    /// Decode the binary data in `buf`, producing something of type `Self`,
+    /// but with fewer checks than the [`decode`] function. This is useful for performance
+    /// if you can guarantee the binary data is the result of [`encode`] of the same
+    /// implementation.
+    ///
+    /// # Errors
+    ///
+    /// Will return [`DecodeError::Proto`] when the input buffer does not
+    /// contain a valid protobuf message, or [`DecodeError::Conversion`] when
+    /// the message is well-formed but cannot be converted into the target type.
+    fn decode_unchecked(buf: impl prost::bytes::Buf) -> Result<Self, DecodeError>;
 }
 
 /// Encode `thing` into `buf` using the protobuf format `M`
@@ -73,7 +98,7 @@ pub(crate) fn encode_to_vec<M: prost::Message>(thing: impl Into<M>) -> Vec<u8> {
     thing.into().encode_to_vec()
 }
 
-use std::default::Default;
+use std::{default::Default, fmt::Display};
 
 /// Decode something of type `T` from `buf` using the protobuf format `M`
 #[expect(
@@ -98,4 +123,83 @@ pub(crate) fn try_decode<
     M::decode(buf)?
         .try_into()
         .map_err(|e: E| DecodeError::Conversion(e.into()))
+}
+
+pub(crate) trait TryValidate: Sized {
+    type Err: Display;
+    // Validate the structure according to its internal invariants.
+    fn try_validate(self) -> Result<Self, Self::Err>;
+}
+
+impl TryValidate for api::PolicySet {
+    type Err = Either<PolicySetError, PolicySetValidationError>;
+    fn try_validate(self) -> Result<Self, Self::Err> {
+        self.ast
+            .try_validate()
+            .map_err(Either::Right)
+            .and_then(|o| o.try_into().map_err(Either::Left))
+    }
+}
+
+impl TryValidate for api::Entities {
+    type Err = EntitiesError;
+    fn try_validate(self) -> Result<api::Entities, EntitiesError> {
+        Ok(api::Entities(self.0.try_validate(true)?))
+    }
+}
+
+impl TryValidate for api::Entity {
+    type Err = EntitiesError;
+    fn try_validate(self) -> Result<api::Entity, EntitiesError> {
+        Ok(api::Entity(self.0.try_validate()?))
+    }
+}
+
+impl TryValidate for api::Schema {
+    type Err = SchemaError;
+    fn try_validate(self) -> Result<Self, SchemaError> {
+        Ok(api::Schema(self.0.try_validate()?))
+    }
+}
+
+impl TryValidate for api::Template {
+    type Err = TemplateValidationError;
+    fn try_validate(self) -> Result<Self, TemplateValidationError> {
+        Ok(api::Template {
+            ast: self.ast.try_validate()?,
+            ..self
+        })
+    }
+}
+
+impl TryValidate for api::Expression {
+    type Err = ExprValidationError;
+    fn try_validate(self) -> Result<Self, ExprValidationError> {
+        Ok(api::Expression(self.0.try_validate()?))
+    }
+}
+
+impl TryValidate for api::Request {
+    type Err = Infallible;
+    fn try_validate(self) -> Result<Self, Infallible> {
+        // We don't actually do any additional validation on requests, the structural validation enforced
+        // by types and the existing conversion is sufficient.
+        Ok(self)
+    }
+}
+
+impl TryValidate for api::EntityTypeName {
+    type Err = Infallible;
+    fn try_validate(self) -> Result<Self, Infallible> {
+        // EntityTypeName also doesn't need additional validation
+        Ok(self)
+    }
+}
+
+impl TryValidate for api::EntityNamespace {
+    type Err = Infallible;
+    fn try_validate(self) -> Result<Self, Infallible> {
+        // EntityNamespace also doesn't need additional validation
+        Ok(self)
+    }
 }

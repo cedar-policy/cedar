@@ -14,8 +14,12 @@
  * limitations under the License.
  */
 
+use crate::proto::entities::entities_model_to_api;
+
 use super::super::api;
 use super::{ast::ProtobufConversionError, models, traits};
+use prost::Message as _;
+use traits::TryValidate as _;
 
 /// Macro that implements `From<A>` and `TryFrom<B>` for types where
 /// one conversion direction is infallible, the other is not. This is typically the case where
@@ -88,12 +92,12 @@ impl TryFrom<models::PolicySet> for api::PolicySet {
 /// Macro that implements `traits::Protobuf` for cases where `From<>` and `TryFrom<>`
 /// conversions exist between the api type `$api` and the protobuf model type `$model`
 macro_rules! standard_protobuf_impl {
-    ( $api:ty, $model:ty ) => {
+    ( $api:ty, $model:ty) => {
         impl traits::Protobuf for $api {
             fn encode(&self) -> Vec<u8> {
                 traits::encode_to_vec::<$model>(self)
             }
-            fn decode(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
+            fn decode_unchecked(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
                 traits::try_decode::<$model, _, _>(buf)
             }
         }
@@ -103,7 +107,6 @@ macro_rules! standard_protobuf_impl {
 // standard implementations of `traits::Protobuf`
 
 standard_protobuf_impl!(api::Entity, models::Entity);
-standard_protobuf_impl!(api::Entities, models::Entities);
 standard_protobuf_impl!(api::Schema, models::Schema);
 standard_protobuf_impl!(api::EntityTypeName, models::Name);
 standard_protobuf_impl!(api::EntityNamespace, models::Name);
@@ -113,12 +116,34 @@ standard_protobuf_impl!(api::Request, models::Request);
 
 // nonstandard implementations of `traits::Protobuf`
 
+impl traits::Protobuf for api::Entities {
+    fn encode(&self) -> Vec<u8> {
+        traits::encode_to_vec::<models::Entities>(self)
+    }
+    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
+        // Uses the standard TryFrom path which computes TC via ComputeNow
+        let entities: Self = traits::try_decode::<models::Entities, _, _>(buf)?;
+        entities
+            .try_validate()
+            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid: {e}")).into())
+    }
+    fn decode_unchecked(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
+        // Skip TC computation for trusted data
+        let msg = models::Entities::decode(buf)?;
+        let core_entities = entities_model_to_api(
+            msg,
+            cedar_policy_core::entities::TCComputation::AssumeAlreadyComputed,
+        )?;
+        Ok(api::Entities(core_entities))
+    }
+}
+
 impl traits::Protobuf for api::PolicySet {
     fn encode(&self) -> Vec<u8> {
         traits::encode_to_vec::<models::PolicySet>(self)
     }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
-        traits::try_decode::<models::PolicySet, _, Self>(buf)
+    fn decode_unchecked(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
+        traits::try_decode::<models::PolicySet, _, Self>(buf) // TODO
     }
 }
 
@@ -383,5 +408,116 @@ mod test {
             crate::Entity::decode(&buf[..]),
             Err(crate::proto::traits::DecodeError::Conversion(_))
         );
+    }
+
+    /// Roundtrip via `decode_unchecked` — should produce the same result as `decode`
+    /// for well-formed data.
+    #[test]
+    fn roundtrip_decode_unchecked_entities() {
+        use crate::proto::traits::Protobuf;
+
+        let entities = crate::Entities::from_json_str(
+            r#"[
+                {"uid": {"type": "User", "id": "alice"}, "attrs": {"age": 25}, "parents": [{"type": "Group", "id": "admins"}]},
+                {"uid": {"type": "Group", "id": "admins"}, "attrs": {}, "parents": []}
+            ]"#,
+            None,
+        )
+        .expect("Failed to parse entities");
+
+        let buf = entities.encode();
+        let checked = crate::Entities::decode(&buf[..]).expect("decode failed");
+        let unchecked = crate::Entities::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
+        similar_asserts::assert_eq!(checked, unchecked);
+    }
+
+    #[test]
+    fn roundtrip_decode_unchecked_policy_set() {
+        use crate::proto::traits::Protobuf;
+
+        let pset = crate::PolicySet::from_str(
+            r#"
+            permit(principal == User::"alice", action, resource);
+            forbid(principal, action, resource) when { context.restricted };
+            "#,
+        )
+        .expect("Failed to parse policy set");
+
+        let buf = pset.encode();
+        let checked = crate::PolicySet::decode(&buf[..]).expect("decode failed");
+        let unchecked = crate::PolicySet::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
+        similar_asserts::assert_eq!(checked, unchecked);
+    }
+
+    #[test]
+    fn roundtrip_decode_unchecked_schema() {
+        use crate::proto::traits::Protobuf;
+
+        let (schema, _) = crate::Schema::from_cedarschema_str(
+            r#"
+            entity User;
+            entity Document {
+                owner: User,
+            };
+            action Read appliesTo { principal: User, resource: Document };
+            "#,
+        )
+        .expect("Failed to parse schema");
+
+        let buf = schema.encode();
+        let checked = crate::Schema::decode(&buf[..]).expect("decode failed");
+        let unchecked = crate::Schema::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
+        // Schema doesn't impl PartialEq, so compare via re-encoding
+        similar_asserts::assert_eq!(checked.encode(), unchecked.encode());
+    }
+
+    #[test]
+    fn roundtrip_decode_unchecked_template() {
+        use crate::proto::traits::Protobuf;
+
+        let template = crate::Template::from_str(
+            r#"permit(principal == ?principal, action, resource);"#,
+        )
+        .expect("Failed to parse template");
+
+        let buf = template.encode();
+        let checked = crate::Template::decode(&buf[..]).expect("decode failed");
+        let unchecked = crate::Template::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
+        similar_asserts::assert_eq!(checked, unchecked);
+    }
+
+    #[test]
+    fn roundtrip_decode_unchecked_entity() {
+        use crate::proto::traits::Protobuf;
+
+        let entity = crate::Entity::from_json_value(
+            serde_json::json!({"uid": {"type": "User", "id": "bob"}, "attrs": {"active": true}, "parents": []}),
+            None,
+        )
+        .expect("Failed to parse entity");
+
+        let buf = entity.encode();
+        let checked = crate::Entity::decode(&buf[..]).expect("decode failed");
+        let unchecked = crate::Entity::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
+        similar_asserts::assert_eq!(checked, unchecked);
+    }
+
+    #[test]
+    fn roundtrip_decode_unchecked_request() {
+        use crate::proto::traits::Protobuf;
+
+        let request = crate::Request::new(
+            crate::EntityUid::from_strs("User", "alice"),
+            crate::EntityUid::from_strs("Action", "read"),
+            crate::EntityUid::from_strs("Document", "doc1"),
+            crate::Context::empty(),
+            None,
+        )
+        .expect("Failed to create request");
+
+        let buf = request.encode();
+        let checked = crate::Request::decode(&buf[..]).expect("decode failed");
+        let unchecked = crate::Request::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
+        similar_asserts::assert_eq!(checked, unchecked);
     }
 }
