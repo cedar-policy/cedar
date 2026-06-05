@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-### Fixed
+## 4.11.1
+
+## 4.11.0
 
 - `isAuthorizedPartial` will now error when `preparsedSchemaName` is not found in cache, matching behavior for preparsed policy sets. (#2348)
 
