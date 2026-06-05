@@ -148,11 +148,11 @@ impl LocatedType {
 
     /// New located type with source location. If the `extend-schema` feature is
     /// not enabled, the `loc` is not stored.
-    pub fn new_with_loc(ty: Type, _loc: &Option<Loc>) -> Self {
+    pub fn new_with_loc(ty: Type, _loc: Option<&Loc>) -> Self {
         Self {
             ty,
             #[cfg(feature = "extended-schema")]
-            loc: _loc.clone(),
+            loc: _loc.cloned(),
         }
     }
 
@@ -733,16 +733,12 @@ impl ValidatorSchema {
                         tags,
                     } => {
                         let (attributes, open_attributes) = {
-                            let attr_loc = attributes.0.loc().cloned();
-                            let unresolved = try_jsonschema_type_into_validator_type(
+                            let attrs_ty = try_jsonschema_type_into_validator_type(
                                 attributes.0,
                                 extensions,
-                                attr_loc,
+                                &common_types,
                             )?;
-                            Self::record_attributes_or_none(
-                                unresolved.resolve_common_type_refs(&common_types)?,
-                            )
-                            .ok_or_else(|| {
+                            Self::record_attributes_or_none(attrs_ty).ok_or_else(|| {
                                 ContextOrShapeNotRecordError {
                                     ctx_or_shape: ContextOrShape::EntityTypeShape(name.clone()),
                                 }
@@ -750,11 +746,12 @@ impl ValidatorSchema {
                         };
                         let tags = tags
                             .map(|tags| {
-                                let tags_loc = tags.loc().cloned();
-                                try_jsonschema_type_into_validator_type(tags, extensions, tags_loc)
+                                try_jsonschema_type_into_validator_type(
+                                    tags,
+                                    extensions,
+                                    &common_types,
+                                )
                             })
-                            .transpose()?
-                            .map(|unresolved| unresolved.resolve_common_type_refs(&common_types))
                             .transpose()?;
 
                         Ok((
@@ -787,17 +784,15 @@ impl ValidatorSchema {
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
                 let (context, open_context_attributes) = {
-                    let context_loc = action.context.loc().cloned();
-                    let unresolved = try_jsonschema_type_into_validator_type(
+                    let context_ty = try_jsonschema_type_into_validator_type(
                         action.context,
                         extensions,
-                        context_loc,
+                        &common_types,
                     )?;
-                    Self::record_attributes_or_none(
-                        unresolved.resolve_common_type_refs(&common_types)?,
-                    )
-                    .ok_or_else(|| ContextOrShapeNotRecordError {
-                        ctx_or_shape: ContextOrShape::ActionContext(name.clone()),
+                    Self::record_attributes_or_none(context_ty).ok_or_else(|| {
+                        ContextOrShapeNotRecordError {
+                            ctx_or_shape: ContextOrShape::ActionContext(name.clone()),
+                        }
                     })?
                 };
                 Ok((
@@ -1569,13 +1564,11 @@ impl<'a> CommonTypeResolver<'a> {
             let ty = self.defs.get(name).unwrap();
             let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
             resolve_table.insert(name, substituted_ty.clone());
-            let substituted_ty_loc = substituted_ty.loc().cloned();
             let validator_type = try_jsonschema_type_into_validator_type(
                 substituted_ty,
                 extensions,
-                substituted_ty_loc,
+                &HashMap::new(),
             )?;
-            let validator_type = validator_type.resolve_common_type_refs(&HashMap::new())?;
 
             tys.insert(name, validator_type);
         }
@@ -2270,11 +2263,12 @@ pub(crate) mod test {
             InternalName::from_str("Bar").unwrap(),
         ]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: LocatedType =
-            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
-                .expect("Error converting schema type to type.")
-                .resolve_common_type_refs(&HashMap::new())
-                .unwrap();
+        let ty: LocatedType = try_jsonschema_type_into_validator_type(
+            schema_ty,
+            Extensions::all_available(),
+            &HashMap::new(),
+        )
+        .expect("Error converting schema type to type.");
         assert_eq!(ty.ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
@@ -2299,11 +2293,12 @@ pub(crate) mod test {
             InternalName::from_str("Foo").unwrap(),
         ]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: LocatedType =
-            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
-                .expect("Error converting schema type to type.")
-                .resolve_common_type_refs(&HashMap::new())
-                .unwrap();
+        let ty: LocatedType = try_jsonschema_type_into_validator_type(
+            schema_ty,
+            Extensions::all_available(),
+            &HashMap::new(),
+        )
+        .expect("Error converting schema type to type.");
         assert_eq!(ty.ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
@@ -2333,11 +2328,12 @@ pub(crate) mod test {
         let schema_ty = schema_ty.conditionally_qualify_type_references(None);
         let all_defs = AllDefs::from_entity_defs([InternalName::from_str("Foo").unwrap()]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: LocatedType =
-            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
-                .expect("Error converting schema type to type.")
-                .resolve_common_type_refs(&HashMap::new())
-                .unwrap();
+        let ty: LocatedType = try_jsonschema_type_into_validator_type(
+            schema_ty,
+            Extensions::all_available(),
+            &HashMap::new(),
+        )
+        .expect("Error converting schema type to type.");
         assert_eq!(ty.ty, Type::closed_record_with_attributes(None));
     }
 
