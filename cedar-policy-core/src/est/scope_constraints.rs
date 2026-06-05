@@ -794,30 +794,30 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
                 in_entity,
-            }) => {
-                ast::EntityType::from_normalized_str(entity_type.as_str())
-                    .map_err(Self::Error::InvalidEntityType)
-                    .and_then(|entity_type| {
-                        Ok(match in_entity {
-                            None => ast::PrincipalOrResourceConstraint::is_entity_type(Arc::new(
-                                entity_type,
-                            )),
-                            Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                                ast::PrincipalOrResourceConstraint::is_entity_type_in(
-                                    Arc::new(entity_type),
-                                    Arc::new(entity.into_euid(&|| {
-                                        JsonDeserializationErrorContext::EntityUid
-                                    })?),
-                                )
-                            }
-                            Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
-                                ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
-                                    Arc::new(entity_type),
-                                )
-                            }
-                        })
-                    })
-            }
+            }) => ast::EntityType::from_normalized_str(entity_type.as_str())
+                .map_err(Self::Error::InvalidEntityType)
+                .and_then(|entity_type| match in_entity {
+                    None => Ok(ast::PrincipalOrResourceConstraint::is_entity_type(
+                        Arc::new(entity_type),
+                    )),
+                    Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                        Ok(ast::PrincipalOrResourceConstraint::is_entity_type_in(
+                            Arc::new(entity_type),
+                            Arc::new(
+                                entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?,
+                            ),
+                        ))
+                    }
+                    Some(PrincipalOrResourceInConstraint::Slot { slot }) => {
+                        if slot == ast::SlotId::principal() {
+                            Ok(ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
+                                Arc::new(entity_type),
+                            ))
+                        } else {
+                            Err(Self::Error::InvalidSlotName)
+                        }
+                    }
+                }),
         }
     }
 }
@@ -860,30 +860,30 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
                 in_entity,
-            }) => {
-                ast::EntityType::from_normalized_str(entity_type.as_str())
-                    .map_err(Self::Error::InvalidEntityType)
-                    .and_then(|entity_type| {
-                        Ok(match in_entity {
-                            None => ast::PrincipalOrResourceConstraint::is_entity_type(Arc::new(
-                                entity_type,
-                            )),
-                            Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
-                                ast::PrincipalOrResourceConstraint::is_entity_type_in(
-                                    Arc::new(entity_type),
-                                    Arc::new(entity.into_euid(&|| {
-                                        JsonDeserializationErrorContext::EntityUid
-                                    })?),
-                                )
-                            }
-                            Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
-                                ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
-                                    Arc::new(entity_type),
-                                )
-                            }
-                        })
-                    })
-            }
+            }) => ast::EntityType::from_normalized_str(entity_type.as_str())
+                .map_err(Self::Error::InvalidEntityType)
+                .and_then(|entity_type| match in_entity {
+                    None => Ok(ast::PrincipalOrResourceConstraint::is_entity_type(
+                        Arc::new(entity_type),
+                    )),
+                    Some(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                        Ok(ast::PrincipalOrResourceConstraint::is_entity_type_in(
+                            Arc::new(entity_type),
+                            Arc::new(
+                                entity.into_euid(&|| JsonDeserializationErrorContext::EntityUid)?,
+                            ),
+                        ))
+                    }
+                    Some(PrincipalOrResourceInConstraint::Slot { slot }) => {
+                        if slot == ast::SlotId::resource() {
+                            Ok(ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
+                                Arc::new(entity_type),
+                            ))
+                        } else {
+                            Err(Self::Error::InvalidSlotName)
+                        }
+                    }
+                }),
         }
     }
 }
@@ -954,6 +954,12 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
 
 #[cfg(test)]
 mod test {
+    use crate::{
+        ast,
+        est::{FromJsonError, PrincipalConstraint, ResourceConstraint},
+    };
+    use cool_asserts::assert_matches;
+
     fn parse_policy(template: &str) -> crate::est::Policy {
         let cst = crate::parser::text_to_cst::parse_policy(template)
             .unwrap()
@@ -1042,5 +1048,29 @@ mod test {
     #[test]
     fn has_slot_resource_is_slot() {
         assert!(resource_has_slot(r#"resource is Photo in ?resource"#));
+    }
+
+    #[test]
+    fn principal_is_in_wrong_slot_rejected() {
+        let json = serde_json::json!({
+            "op": "is",
+            "entity_type": "User",
+            "in": {"slot": "?resource"}
+        });
+        let constraint: PrincipalConstraint = serde_json::from_value(json).expect("parse failed");
+        let result = ast::PrincipalOrResourceConstraint::try_from(constraint);
+        assert_matches!(result, Err(FromJsonError::InvalidSlotName));
+    }
+
+    #[test]
+    fn resource_is_in_wrong_slot_rejected() {
+        let json = serde_json::json!({
+            "op": "is",
+            "entity_type": "Photo",
+            "in": {"slot": "?principal"}
+        });
+        let constraint: ResourceConstraint = serde_json::from_value(json).expect("parse failed");
+        let result = ast::PrincipalOrResourceConstraint::try_from(constraint);
+        assert_matches!(result, Err(FromJsonError::InvalidSlotName));
     }
 }
