@@ -560,7 +560,6 @@ impl ToJsonSchemaError {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Principal,
             name: name.to_smolstr(),
-            missing_or_empty: MissingOrEmpty::Missing,
             name_loc,
         })
     }
@@ -569,33 +568,6 @@ impl ToJsonSchemaError {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Resource,
             name: name.to_smolstr(),
-            missing_or_empty: MissingOrEmpty::Missing,
-            name_loc,
-        })
-    }
-
-    pub(crate) fn empty_principal(
-        name: &impl ToSmolStr,
-        name_loc: Option<Loc>,
-        loc: Option<Loc>,
-    ) -> Self {
-        Self::NoPrincipalOrResource(NoPrincipalOrResource {
-            kind: PR::Principal,
-            name: name.to_smolstr(),
-            missing_or_empty: MissingOrEmpty::Empty { loc },
-            name_loc,
-        })
-    }
-
-    pub(crate) fn empty_resource(
-        name: &impl ToSmolStr,
-        name_loc: Option<Loc>,
-        loc: Option<Loc>,
-    ) -> Self {
-        Self::NoPrincipalOrResource(NoPrincipalOrResource {
-            kind: PR::Resource,
-            name: name.to_smolstr(),
-            missing_or_empty: MissingOrEmpty::Empty { loc },
             name_loc,
         })
     }
@@ -714,31 +686,16 @@ impl Diagnostic for DuplicateDeclarations {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("{}", match .missing_or_empty {
-    MissingOrEmpty::Missing => format!("missing `{kind}` declaration for `{name}`"),
-    MissingOrEmpty::Empty { .. } => format!("for action `{name}`, `{kind}` is `[]`, which is invalid")
-})]
+#[error("missing `{kind}` declaration for `{name}`")]
 pub struct NoPrincipalOrResource {
     kind: PR,
     name: SmolStr,
-    missing_or_empty: MissingOrEmpty,
     /// Loc of the action name
     name_loc: Option<Loc>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum MissingOrEmpty {
-    /// The declaration was entirely missing
-    Missing,
-    /// The declaration was present but defined as `[]`
-    Empty {
-        /// `Loc` of the declaration
-        loc: Option<Loc>,
-    },
-}
-
 pub const NO_PR_HELP_MSG: &str =
-    "Every action must define both `principal` and `resource` targets, and the `principal` and `resource` lists must not be `[]`.";
+    "Every action must define both `principal` and `resource` targets. To declare that an action applies to no entities of a kind, use an empty list, e.g. `principal: []`.";
 
 impl Diagnostic for NoPrincipalOrResource {
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
@@ -748,27 +705,9 @@ impl Diagnostic for NoPrincipalOrResource {
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        match &self.missing_or_empty {
-            MissingOrEmpty::Missing => self.name_loc.as_ref().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _
-            }),
-            MissingOrEmpty::Empty { loc } => {
-                // also underline the bad declaration
-                let action_name = self.name_loc.as_ref().map(|loc| {
-                    miette::LabeledSpan::new_with_span(Some("for this action".into()), loc.span)
-                });
-                let decl = loc.as_ref().map(|loc| {
-                    miette::LabeledSpan::new_with_span(Some("must not be `[]`".into()), loc.span)
-                });
-                let spans: Vec<_> = [action_name, decl].into_iter().flatten().collect();
-
-                if spans.is_empty() {
-                    None
-                } else {
-                    Some(Box::new(spans.into_iter()))
-                }
-            }
-        }
+        self.name_loc
+            .as_ref()
+            .map(|loc| Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _)
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {

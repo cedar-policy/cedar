@@ -314,22 +314,13 @@ fn convert_app_decls(
                     )
                     .into());
                 }
-                None => match entity_tys {
-                    None => {
-                        return Err(ToJsonSchemaError::empty_principal(
-                            name,
-                            name_loc.cloned(),
-                            loc,
-                        )
-                        .into())
-                    }
-                    Some(entity_tys) => {
-                        principal_types = Some(Node::with_maybe_source_loc(
-                            entity_tys.iter().map(|n| n.clone().into()).collect(),
-                            loc,
-                        ))
-                    }
-                },
+                None => {
+                    let tys: Vec<RawName> = match entity_tys {
+                        None => Vec::new(),
+                        Some(entity_tys) => entity_tys.iter().map(|n| n.clone().into()).collect(),
+                    };
+                    principal_types = Some(Node::with_maybe_source_loc(tys, loc));
+                }
             },
             Node {
                 node:
@@ -347,19 +338,13 @@ fn convert_app_decls(
                         ToJsonSchemaError::duplicate_resource(name, existing_tys.loc, loc).into(),
                     );
                 }
-                None => match entity_tys {
-                    None => {
-                        return Err(
-                            ToJsonSchemaError::empty_resource(name, name_loc.cloned(), loc).into(),
-                        )
-                    }
-                    Some(entity_tys) => {
-                        resource_types = Some(Node::with_maybe_source_loc(
-                            entity_tys.iter().map(|n| n.clone().into()).collect(),
-                            loc,
-                        ))
-                    }
-                },
+                None => {
+                    let tys: Vec<RawName> = match entity_tys {
+                        None => Vec::new(),
+                        Some(entity_tys) => entity_tys.iter().map(|n| n.clone().into()).collect(),
+                    };
+                    resource_types = Some(Node::with_maybe_source_loc(tys, loc));
+                }
             },
         }
     }
