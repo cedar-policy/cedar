@@ -12,6 +12,9 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## [Unreleased]
 
+### Added
+- Public syntax tree (`pst`) support for `variadic-is-in-range` feature: a variadic `isInRange` is modelled by a `pst::Expr::VariadicOp{...}` in the PST (#2380).
+
 ### Changed
 
 - The experimental protobuf decoding API now validates its inputs, checking structural invariants on entities, expressions, templates, policy sets, and schemas. Additionally, `Entities::decode` now computes the transitive closure instead of assuming it is already computed. These changes may result in lower performance for protobuf decoding.
