@@ -689,8 +689,8 @@ impl ValidatorSchema {
             }
         }
 
-        let resolver = CommonTypeResolver::new(&common_types);
-        let common_types: HashMap<&InternalName, LocatedType> = resolver.resolve(extensions)?;
+        let common_types: HashMap<InternalName, LocatedType> =
+            CommonTypeResolver::resolve(common_types, extensions)?;
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -825,7 +825,7 @@ impl ValidatorSchema {
                 let ct_name = ct.0.clone();
                 ct_name.loc().is_some() && !Type::is_primitive(ct_name.basename().as_ref())
             })
-            .map(|ct| LocatedCommonType::new(ct.0, ct.1))
+            .map(|ct| LocatedCommonType::new(&ct.0, ct.1))
             .collect();
 
         // Return with an error if there is an undeclared entity or action
@@ -1347,15 +1347,6 @@ impl AllDefs {
 /// throws [`TypeNotDefinedError`]).
 #[derive(Debug)]
 struct CommonTypeResolver<'a> {
-    /// Definition of each common type.
-    ///
-    /// Definitions (values in the map) may refer to other common-type names,
-    /// but not in a way that causes a cycle.
-    ///
-    /// In this map, names are already fully-qualified, both in common-type
-    /// definitions (keys in the map) and in common-type references appearing in
-    /// [`json_schema::Type`]s (values in the map).
-    defs: &'a HashMap<InternalName, json_schema::Type<InternalName>>,
     /// The dependency graph among common type names.
     /// The graph contains a vertex for each [`InternalName`], and
     /// `graph.get(u)` gives the set of vertices `v` for which `(u,v)` is a
@@ -1380,9 +1371,9 @@ impl<'a> CommonTypeResolver<'a> {
     fn new(defs: &'a HashMap<InternalName, json_schema::Type<InternalName>>) -> Self {
         let mut graph = HashMap::new();
         for (name, ty) in defs {
-            graph.insert(name, HashSet::from_iter(ty.common_type_references()));
+            graph.insert(name, ty.common_type_references().collect());
         }
-        Self { defs, graph }
+        Self { graph }
     }
 
     /// Perform topological sort on the dependency graph
@@ -1458,117 +1449,51 @@ impl<'a> CommonTypeResolver<'a> {
             }
         }
 
-        // The set of nodes that have not been added to the result
-        // i.e., there are still in-coming edges and hence exists a cycle
-        let mut set: HashSet<&InternalName> = HashSet::from_iter(self.graph.keys().copied());
-        for name in res.iter() {
-            set.remove(name);
-        }
-
-        if let Some(cycle) = set.into_iter().next() {
-            Err(cycle.clone())
-        } else {
+        // Check if there any nodes that have not been added to result,
+        // i.e., there are still in-coming edges and hence exists a cycle. This
+        // check assumes that entries in `res` _must_ be keys in `graph`, which
+        // is true because `res` is the topological sort of the keys.
+        if res.len() == self.graph.len() {
             // We need to reverse the result because, e.g.,
             // `res` is now [A,B,C] for A -> B -> C because no one depends on A
             res.reverse();
             Ok(res)
+        } else {
+            assert!(
+                res.len() < self.graph.len(),
+                "`res` cannot contain any keys not in `graph`"
+            );
+            let res_set: HashSet<_> = res.iter().copied().collect();
+            let Some(cycle) = self.graph.keys().find(|k| !res_set.contains(**k)) else {
+                panic!("`res` len is less than `graph`, so there must be some key in graph but not in res");
+            };
+            Err((*cycle).clone())
         }
     }
 
-    // Substitute common type references in `ty` according to `resolve_table`.
-    // Resolved types will still have the source loc of `ty`, unless `ty` is
-    // exactly a common type reference, in which case they will have the source
-    // loc of the definition of that reference.
-    fn resolve_type(
-        resolve_table: &HashMap<&InternalName, json_schema::Type<InternalName>>,
-        ty: json_schema::Type<InternalName>,
-    ) -> Result<json_schema::Type<InternalName>> {
-        match ty {
-            json_schema::Type::CommonTypeRef { type_name, .. } => resolve_table
-                .get(&type_name)
-                .ok_or_else(|| CommonTypeInvariantViolationError { name: type_name }.into())
-                .cloned(),
-            json_schema::Type::Type {
-                ty: json_schema::TypeVariant::EntityOrCommon { type_name },
-                loc,
-            } => match resolve_table.get(&type_name) {
-                Some(def) => Ok(def.clone().with_loc(loc)),
-
-                None => Ok(json_schema::Type::Type {
-                    ty: json_schema::TypeVariant::Entity { name: type_name },
-                    loc,
-                }),
-            },
-            json_schema::Type::Type {
-                ty: json_schema::TypeVariant::Set { element },
-                loc,
-            } => Ok(json_schema::Type::Type {
-                ty: json_schema::TypeVariant::Set {
-                    element: Box::new(Self::resolve_type(resolve_table, *element)?),
-                },
-                loc,
-            }),
-            json_schema::Type::Type {
-                ty:
-                    json_schema::TypeVariant::Record(json_schema::RecordType {
-                        attributes,
-                        additional_attributes,
-                    }),
-                loc,
-            } => Ok(json_schema::Type::Type {
-                ty: json_schema::TypeVariant::Record(json_schema::RecordType {
-                    attributes: BTreeMap::from_iter(
-                        attributes
-                            .into_iter()
-                            .map(|(attr, attr_ty)| -> Result<_> {
-                                Ok((
-                                    attr,
-                                    json_schema::TypeOfAttribute {
-                                        required: attr_ty.required,
-                                        ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
-                                        annotations: attr_ty.annotations,
-                                        #[cfg(feature = "extended-schema")]
-                                        loc: attr_ty.loc,
-                                    },
-                                ))
-                            })
-                            .partition_nonempty::<Vec<_>>()?,
-                    ),
-                    additional_attributes,
-                }),
-                loc,
-            }),
-            _ => Ok(ty),
-        }
-    }
-
-    // Resolve common type references, returning a map from (fully-qualified)
-    // [`InternalName`] of a common type to its [`Type`] definition
+    /// Resolve all common type definitions, returning a map from
+    /// fully-qualified [`InternalName`] to the corresponding validator [`LocatedType`].
     fn resolve(
-        &self,
+        mut defs: HashMap<InternalName, json_schema::Type<InternalName>>,
         extensions: &Extensions<'_>,
-    ) -> Result<HashMap<&'a InternalName, LocatedType>> {
-        let sorted_names = self.topo_sort().map_err(|n| {
-            SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { ty: n })
-        })?;
+    ) -> Result<HashMap<InternalName, LocatedType>> {
+        let sorted_names = {
+            let resolver = CommonTypeResolver::new(&defs);
+            let names = resolver.topo_sort().map_err(|n| {
+                SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { ty: n })
+            })?;
+            names.into_iter().cloned().collect::<Vec<_>>()
+        };
 
-        let mut resolve_table: HashMap<&InternalName, json_schema::Type<InternalName>> =
-            HashMap::new();
-        let mut tys: HashMap<&'a InternalName, LocatedType> = HashMap::new();
+        let mut tys: HashMap<InternalName, LocatedType> = HashMap::new();
 
-        for &name in sorted_names.iter() {
+        for name in sorted_names {
             #[expect(
                 clippy::unwrap_used,
-                reason = "`name.basename()` should be an existing common type id"
+                reason = "`name` is from the top sort of `defs`, so it must be `defs`. We remove it, but the topo sort doesn't have duplicates, so we won't see it again."
             )]
-            let ty = self.defs.get(name).unwrap();
-            let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
-            resolve_table.insert(name, substituted_ty.clone());
-            let validator_type = try_jsonschema_type_into_validator_type(
-                substituted_ty,
-                extensions,
-                &HashMap::new(),
-            )?;
+            let ty = defs.remove(&name).unwrap();
+            let validator_type = try_jsonschema_type_into_validator_type(ty, extensions, &tys)?;
 
             tys.insert(name, validator_type);
         }
@@ -5040,10 +4965,10 @@ mod entity_tags {
 mod test_resolver {
     use std::collections::HashMap;
 
-    use crate::{ast::InternalName, extensions::Extensions};
+    use crate::{ast::InternalName, extensions::Extensions, validator::schema::CommonTypeResolver};
     use cool_asserts::assert_matches;
 
-    use super::{AllDefs, CommonTypeResolver, LocatedType};
+    use super::{AllDefs, LocatedType};
     use crate::validator::{
         err::SchemaError, json_schema, types::Type, ConditionalName, ValidatorSchemaFragment,
     };
@@ -5060,10 +4985,7 @@ mod test_resolver {
         for def in schema.0 {
             defs.extend(def.common_types.defs.into_iter());
         }
-        let resolver = CommonTypeResolver::new(&defs);
-        resolver
-            .resolve(Extensions::all_available())
-            .map(|map| map.into_iter().map(|(k, v)| (k.clone(), v)).collect())
+        CommonTypeResolver::resolve(defs, Extensions::all_available())
     }
 
     #[test]

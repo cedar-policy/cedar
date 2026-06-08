@@ -803,7 +803,7 @@ impl TryInto<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
 pub(crate) fn try_jsonschema_type_into_validator_type(
     schema_ty: json_schema::Type<InternalName>,
     extensions: &Extensions<'_>,
-    common_type_defs: &HashMap<&InternalName, LocatedType>,
+    common_type_defs: &HashMap<InternalName, LocatedType>,
 ) -> crate::validator::err::Result<LocatedType> {
     match schema_ty {
         json_schema::Type::Type {
@@ -921,7 +921,7 @@ pub(crate) fn try_record_type_into_validator_type(
     rty: json_schema::RecordType<InternalName>,
     extensions: &Extensions<'_>,
     loc: Option<&Loc>,
-    common_type_defs: &HashMap<&InternalName, LocatedType>,
+    common_type_defs: &HashMap<InternalName, LocatedType>,
 ) -> crate::validator::err::Result<LocatedType> {
     if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
@@ -948,7 +948,7 @@ pub(crate) fn try_record_type_into_validator_type(
 fn parse_record_attributes(
     attrs: impl IntoIterator<Item = (SmolStr, json_schema::TypeOfAttribute<InternalName>)>,
     extensions: &Extensions<'_>,
-    common_type_defs: &HashMap<&InternalName, LocatedType>,
+    common_type_defs: &HashMap<InternalName, LocatedType>,
 ) -> crate::validator::err::Result<Attributes> {
     let attrs = attrs
         .into_iter()
