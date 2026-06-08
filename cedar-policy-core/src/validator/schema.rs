@@ -21,7 +21,7 @@
 //! computed to obtain a `descendants` relation.
 
 use crate::{
-    ast::{Eid, Entity, EntityType, EntityUID, Id, InternalName, Name, UnreservedId},
+    ast::{Entity, EntityType, EntityUID, InternalName, Name, UnreservedId},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
     parser::Loc,
