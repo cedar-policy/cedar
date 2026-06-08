@@ -33,7 +33,7 @@ use nonempty::NonEmpty;
 #[cfg(feature = "extended-schema")]
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
-use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{hash_map::Entry, BTreeSet, HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -1483,73 +1483,6 @@ impl<'a> CommonTypeResolver<'a> {
         }
     }
 
-    // Substitute common type references in `ty` according to `resolve_table`.
-    // Resolved types will still have the source loc of `ty`, unless `ty` is
-    // exactly a common type reference, in which case they will have the source
-    // loc of the definition of that reference.
-    fn resolve_type(
-        resolve_table: &HashMap<&InternalName, json_schema::Type<InternalName>>,
-        ty: json_schema::Type<InternalName>,
-    ) -> Result<json_schema::Type<InternalName>> {
-        match ty {
-            json_schema::Type::CommonTypeRef { type_name, .. } => resolve_table
-                .get(&type_name)
-                .ok_or_else(|| CommonTypeInvariantViolationError { name: type_name }.into())
-                .cloned(),
-            json_schema::Type::Type {
-                ty: json_schema::TypeVariant::EntityOrCommon { type_name },
-                loc,
-            } => match resolve_table.get(&type_name) {
-                Some(def) => Ok(def.clone().with_loc(loc)),
-
-                None => Ok(json_schema::Type::Type {
-                    ty: json_schema::TypeVariant::Entity { name: type_name },
-                    loc,
-                }),
-            },
-            json_schema::Type::Type {
-                ty: json_schema::TypeVariant::Set { element },
-                loc,
-            } => Ok(json_schema::Type::Type {
-                ty: json_schema::TypeVariant::Set {
-                    element: Box::new(Self::resolve_type(resolve_table, *element)?),
-                },
-                loc,
-            }),
-            json_schema::Type::Type {
-                ty:
-                    json_schema::TypeVariant::Record(json_schema::RecordType {
-                        attributes,
-                        additional_attributes,
-                    }),
-                loc,
-            } => Ok(json_schema::Type::Type {
-                ty: json_schema::TypeVariant::Record(json_schema::RecordType {
-                    attributes: BTreeMap::from_iter(
-                        attributes
-                            .into_iter()
-                            .map(|(attr, attr_ty)| -> Result<_> {
-                                Ok((
-                                    attr,
-                                    json_schema::TypeOfAttribute {
-                                        required: attr_ty.required,
-                                        ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
-                                        annotations: attr_ty.annotations,
-                                        #[cfg(feature = "extended-schema")]
-                                        loc: attr_ty.loc,
-                                    },
-                                ))
-                            })
-                            .partition_nonempty::<Vec<_>>()?,
-                    ),
-                    additional_attributes,
-                }),
-                loc,
-            }),
-            _ => Ok(ty),
-        }
-    }
-
     // Resolve common type references, returning a map from (fully-qualified)
     // [`InternalName`] of a common type to its [`Type`] definition
     fn resolve(
@@ -1560,8 +1493,6 @@ impl<'a> CommonTypeResolver<'a> {
             SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { ty: n })
         })?;
 
-        let mut resolve_table: HashMap<&InternalName, json_schema::Type<InternalName>> =
-            HashMap::new();
         let mut tys: HashMap<&'a InternalName, LocatedType> = HashMap::new();
 
         for &name in sorted_names.iter() {
@@ -1570,13 +1501,8 @@ impl<'a> CommonTypeResolver<'a> {
                 reason = "`name.basename()` should be an existing common type id"
             )]
             let ty = self.defs.get(name).unwrap();
-            let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
-            resolve_table.insert(name, substituted_ty.clone());
-            let validator_type = try_jsonschema_type_into_validator_type(
-                substituted_ty,
-                extensions,
-                &HashMap::new(),
-            )?;
+            let validator_type =
+                try_jsonschema_type_into_validator_type(ty.clone(), extensions, &tys)?;
 
             tys.insert(name, validator_type);
         }
