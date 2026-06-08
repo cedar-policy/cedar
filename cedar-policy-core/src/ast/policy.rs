@@ -15,7 +15,10 @@
  */
 
 use crate::ast::*;
-use crate::parser::Loc;
+use crate::parser::{
+    err::parse_errors::{InvalidActionType, SlotsInConditionClause},
+    Loc,
+};
 use annotation::{Annotation, Annotations};
 use educe::Educe;
 use itertools::Itertools;
@@ -47,9 +50,7 @@ cfg_tolerant_ast! {
     use super::expr_allows_errors::AstExprErrorKind;
     use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
     use crate::expr_builder::ExprBuilder;
-    use crate::parser::err::ParseErrors;
-    use crate::parser::err::ToASTError;
-    use crate::parser::err::ToASTErrorKind;
+    use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 
     static DEFAULT_ANNOTATIONS: std::sync::LazyLock<Arc<Annotations>> =
         std::sync::LazyLock::new(|| Arc::new(Annotations::default()));
@@ -346,6 +347,79 @@ impl Template {
         let p = Policy::new(Arc::clone(&t), None, HashMap::new());
         (t, p)
     }
+
+    /// Checks that this template is well-formed according to internal invariants of [`Template`],
+    /// and if not, returns an error.
+    ///
+    /// This will check the following invariants:
+    /// - slots do not appear in conditions
+    /// - action constraints only references Action entity types
+    /// - the slot cache is correct
+    ///
+    /// This function is meant to cover gaps between parsed templates and other ways to construct
+    /// templates. This is *not* doing any semantic validation beyond the checks mentioned.
+    pub fn try_validate(self) -> Result<Self, TemplateValidationError> {
+        // Invariant: slots must not appear in non-scope constraints (when/unless clauses)
+        if let Some(expr) = self.body.non_scope_constraints() {
+            if let Some(slot) = expr.slots().next() {
+                return Err(TemplateValidationError::SlotsInConditionClause(
+                    SlotsInConditionClause {
+                        slot,
+                        clause_type: "when/unless", // cannot distinguish when/unless here
+                    },
+                ));
+            }
+        }
+        // Invariant: action constraint must only reference Action entity types
+        match self.body.action_constraint() {
+            ActionConstraint::Eq(euid) => {
+                if !euid.is_action() {
+                    return Err(TemplateValidationError::InvalidActionType(
+                        InvalidActionType {
+                            euids: nonempty![euid.clone()],
+                        },
+                    ));
+                }
+            }
+            ActionConstraint::In(euids) => {
+                let invalid: Vec<_> = euids.iter().filter(|e| !e.is_action()).cloned().collect();
+                if let Some(non_empty) = NonEmpty::from_vec(invalid) {
+                    return Err(TemplateValidationError::InvalidActionType(
+                        InvalidActionType { euids: non_empty },
+                    ));
+                }
+            }
+            _ => {}
+        }
+        // Invariant: slot cache correctness
+        for slot in self.body.condition().slots() {
+            if !self.slots.contains(&slot) {
+                return Err(TemplateValidationError::SlotCacheMismatch);
+            }
+        }
+        for slot in &self.slots {
+            if !self.body.condition().slots().contains(slot) {
+                return Err(TemplateValidationError::SlotCacheMismatch);
+            }
+        }
+        Ok(self)
+    }
+}
+
+/// Errors returned by [`Template::try_validate`]
+#[derive(Debug, Clone, Diagnostic, Error)]
+pub enum TemplateValidationError {
+    /// Action constraint contains a non-action entity uid
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidActionType(#[from] crate::parser::err::parse_errors::InvalidActionType),
+    /// Template slot found in a condition clause (when/unless)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    SlotsInConditionClause(#[from] crate::parser::err::parse_errors::SlotsInConditionClause),
+    /// Slot cache does not match the slots in the condition
+    #[error("template slot cache is inconsistent with condition expression")]
+    SlotCacheMismatch,
 }
 
 impl From<TemplateBody> for Template {
@@ -2615,5 +2689,101 @@ mod test {
         let display_str = format!("{error_template}");
         assert!(display_str.contains("TemplateBody::TemplateBodyError"));
         assert!(display_str.contains(&policy_id.to_string()));
+    }
+}
+
+#[cfg(test)]
+mod template_validate_test {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    fn make_template(
+        action_constraint: ActionConstraint,
+        non_scope_constraint: Option<Expr>,
+    ) -> Template {
+        Template::new(
+            PolicyID::from_string("test"),
+            None,
+            Annotations::new(),
+            Effect::Permit,
+            PrincipalConstraint::any(),
+            action_constraint,
+            ResourceConstraint::any(),
+            non_scope_constraint,
+        )
+    }
+
+    fn action_euid() -> Arc<EntityUID> {
+        Arc::new(EntityUID::with_eid_and_type("Action", "view").unwrap())
+    }
+
+    fn non_action_euid() -> Arc<EntityUID> {
+        Arc::new(EntityUID::with_eid_and_type("User", "alice").unwrap())
+    }
+
+    #[test]
+    fn valid_template_accepted() {
+        let t = make_template(ActionConstraint::Eq(action_euid()), None);
+        assert!(t.try_validate().is_ok());
+    }
+
+    #[test]
+    fn invalid_action_eq_rejected() {
+        let t = make_template(ActionConstraint::Eq(non_action_euid()), None);
+        assert_matches!(
+            t.try_validate(),
+            Err(TemplateValidationError::InvalidActionType(_))
+        );
+    }
+
+    #[test]
+    fn invalid_action_in_rejected() {
+        let t = make_template(
+            ActionConstraint::In(vec![action_euid(), non_action_euid()]),
+            None,
+        );
+        assert_matches!(
+            t.try_validate(),
+            Err(TemplateValidationError::InvalidActionType(_))
+        );
+    }
+
+    #[test]
+    fn slot_in_condition_rejected() {
+        let t = make_template(
+            ActionConstraint::Eq(action_euid()),
+            Some(Expr::slot(SlotId::principal())),
+        );
+        assert_matches!(
+            t.try_validate(),
+            Err(TemplateValidationError::SlotsInConditionClause(_))
+        );
+    }
+
+    #[test]
+    fn slot_cache_mismatch_rejected() {
+        // Construct a Template with a manually broken slot cache
+        let body = TemplateBody::new(
+            PolicyID::from_string("test"),
+            None,
+            Annotations::new(),
+            Effect::Permit,
+            PrincipalConstraint::any(),
+            ActionConstraint::Eq(action_euid()),
+            ResourceConstraint::any(),
+            None,
+        );
+        // Inject a fake slot into the cache that doesn't exist in the condition
+        let t = Template {
+            body,
+            slots: vec![Slot {
+                id: SlotId::principal(),
+                loc: None,
+            }],
+        };
+        assert_matches!(
+            t.try_validate(),
+            Err(TemplateValidationError::SlotCacheMismatch)
+        );
     }
 }

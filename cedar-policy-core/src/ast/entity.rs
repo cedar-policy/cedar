@@ -15,7 +15,11 @@
  */
 
 use crate::ast::*;
-use crate::entities::{err::EntitiesError, json::err::JsonSerializationError, EntityJson};
+use crate::entities::{
+    err::{EntitiesError, InvalidEntityStructureError},
+    json::err::JsonSerializationError,
+    EntityJson,
+};
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
@@ -752,6 +756,51 @@ impl Entity {
         let string = serde_json::to_string(&ejson).map_err(JsonSerializationError::from)?;
         Ok(string)
     }
+
+    /// Validate that this is a well formed entity, otherwise return an [EntitiesError].
+    /// The following invariants are checked:
+    /// - entity should not be its own ancestor
+    /// - parents and indirect_ancestors should be disjoint
+    /// - action entities must only have action parents
+    pub fn try_validate(self) -> Result<Self, EntitiesError> {
+        self.validate()?;
+        Ok(self)
+    }
+
+    /// Validate that this is a well formed entity by reference.
+    pub fn validate(&self) -> Result<(), EntitiesError> {
+        // Invariant: entity should not be its own ancestor
+        if self.parents.contains(&self.uid) || self.indirect_ancestors.contains(&self.uid) {
+            return Err(InvalidEntityStructureError::SelfAncestor {
+                uid: self.uid.clone(),
+            }
+            .into());
+        }
+        // Invariant: parents and indirect_ancestors should be disjoint
+        if let Some(dup) = self.parents.intersection(&self.indirect_ancestors).next() {
+            return Err(InvalidEntityStructureError::DuplicateAncestor {
+                uid: self.uid.clone(),
+                ancestor: dup.clone(),
+            }
+            .into());
+        }
+        // Invariant: action entities must only have action parents
+        if self.uid.is_action() {
+            if let Some(parent) = self
+                .parents
+                .iter()
+                .chain(self.indirect_ancestors.iter())
+                .find(|p| !p.is_action())
+            {
+                return Err(InvalidEntityStructureError::ActionParentIsNotAction {
+                    uid: self.uid.clone(),
+                    parent: parent.clone(),
+                }
+                .into());
+            }
+        }
+        Ok(())
+    }
 }
 
 /// `Entity`s are equal if their UIDs are equal
@@ -966,5 +1015,79 @@ mod test {
         let serialized = serde_json::to_string(&entity_type).unwrap();
 
         assert_eq!(serialized, r#""some_entity_type""#);
+    }
+}
+
+#[cfg(test)]
+mod validate_test {
+    use std::str::FromStr;
+
+    use super::*;
+
+    /// Helper to build an entity with the given uid, parents, and indirect ancestors
+    fn entity_with(
+        uid: EntityUID,
+        parents: impl IntoIterator<Item = EntityUID>,
+        indirect_ancestors: impl IntoIterator<Item = EntityUID>,
+    ) -> Entity {
+        Entity::new_with_attr_partial_value(
+            uid,
+            std::iter::empty(),
+            indirect_ancestors.into_iter().collect(),
+            parents.into_iter().collect(),
+            std::iter::empty(),
+        )
+    }
+
+    #[test]
+    fn self_in_parents_rejected() {
+        let uid = EntityUID::with_eid("self");
+        let e = entity_with(uid.clone(), [uid], []);
+        assert!(e.try_validate().is_err());
+    }
+
+    #[test]
+    fn self_in_indirect_ancestors_rejected() {
+        let uid = EntityUID::with_eid("self");
+        let e = entity_with(uid.clone(), [], [uid]);
+        assert!(e.try_validate().is_err());
+    }
+
+    #[test]
+    fn no_self_ancestor_accepted() {
+        let e = entity_with(EntityUID::with_eid("ok"), [], []);
+        assert!(e.try_validate().is_ok());
+    }
+
+    #[test]
+    fn duplicate_ancestor_rejected() {
+        let uid = EntityUID::with_eid("child");
+        let ancestor = EntityUID::with_eid("parent");
+        let e = entity_with(uid, [ancestor.clone()], [ancestor]);
+        assert!(e.try_validate().is_err());
+    }
+
+    #[test]
+    fn action_with_non_action_parent_rejected() {
+        let uid = EntityUID::from_str("Action::\"view\"").unwrap();
+        let parent = EntityUID::from_str("User::\"alice\"").unwrap();
+        let e = entity_with(uid, [parent], []);
+        assert!(e.try_validate().is_err());
+    }
+
+    #[test]
+    fn action_with_action_parent_accepted() {
+        let uid = EntityUID::from_str("Action::\"view\"").unwrap();
+        let parent = EntityUID::from_str("Action::\"read\"").unwrap();
+        let e = entity_with(uid, [parent], []);
+        assert!(e.try_validate().is_ok());
+    }
+
+    #[test]
+    fn non_action_with_action_parent_accepted() {
+        let uid = EntityUID::from_str("User::\"alice\"").unwrap();
+        let parent = EntityUID::from_str("Action::\"read\"").unwrap();
+        let e = entity_with(uid, [parent], []);
+        assert!(e.try_validate().is_ok());
     }
 }

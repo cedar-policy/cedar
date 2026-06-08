@@ -12,6 +12,15 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## [Unreleased]
 
+### Changed
+
+- The experimental protobuf decoding API now validates its inputs, checking structural invariants on entities, expressions, templates, policy sets, and schemas. Additionally, `Entities::decode` now computes the transitive closure instead of assuming it is already computed. These changes may result in lower performance for protobuf decoding.
+
+### Fixed
+
+- Protobuf parsing for expression now error on encountering a `like` pattern element with multiple characters in a single `PatternElem::Char` isntead of dropping the extra characters.
+- Slot identifiers are now checked for JSON policy templates using slots in `is Type in ?slot` scope constraints. Loading a JSON format policy using `principal is Type in ?resource` or `resource is Type in ?principal`. (#2351)
+
 ## [4.11.0] - 2026-05-18
 
 Cedar Language Version: 4.5
