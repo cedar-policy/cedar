@@ -21,7 +21,7 @@
 //! computed to obtain a `descendants` relation.
 
 use crate::{
-    ast::{Entity, EntityType, EntityUID, InternalName, Name, UnreservedId},
+    ast::{Eid, Entity, EntityType, EntityUID, Id, InternalName, Name, UnreservedId},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
     parser::Loc,
@@ -1276,37 +1276,45 @@ impl AllDefs {
     ///
     /// [RFC 70]: https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md
     pub fn rfc_70_shadowing_checks(&self) -> Result<()> {
+        // Definitions which cannot be shadowed according to the RFC 70 rules.
+        // RFC 70 specifies that shadowing an entity typename with a common typename is OK, including in the empty namespace.
+        // do not throw an error if the shadowing name is something like `__cedar::String` "shadowing" an empty-namespace declaration of `String`
+        let illegal_shadowings: HashMap<_, _> = self
+            .entity_and_common_names()
+            .filter(|name| !name.is_unqualified() && !name.is_reserved())
+            .map(|n| (n.basename(), n))
+            .collect();
+
         for unqualified_name in self
             .entity_and_common_names()
             .filter(|name| name.is_unqualified())
         {
-            // `unqualified_name` is a definition in the empty namespace
-            if let Some(name) = self.entity_and_common_names().find(|name| {
-                !name.is_unqualified() // RFC 70 specifies that shadowing an entity typename with a common typename is OK, including in the empty namespace
-                && !name.is_reserved() // do not throw an error if the shadowing name is something like `__cedar::String` "shadowing" an empty-namespace declaration of `String`
-                && name.basename() == unqualified_name.basename()
-            }) {
+            if let Some(&shadowing) = illegal_shadowings.get(unqualified_name.basename()) {
                 return Err(TypeShadowingError {
                     shadowed_def: unqualified_name.clone(),
-                    shadowing_def: name.clone(),
+                    shadowing_def: shadowing.clone(),
                 }
                 .into());
             }
         }
+
+        // Action definitions which cannot be shadowed.
+        let illegal_action_shadowings: HashMap<_, _> = self
+            .action_defs
+            .iter()
+            .filter(|euid| !euid.entity_type().as_ref().is_unqualified())
+            .map(|euid| (euid.eid(), euid))
+            .collect();
+
         for unqualified_action in self
             .action_defs
             .iter()
             .filter(|euid| euid.entity_type().as_ref().is_unqualified())
         {
-            // `unqualified_action` is a definition in the empty namespace
-            if let Some(action) = self.action_defs.iter().find(|euid| {
-                !euid.entity_type().as_ref().is_unqualified() // do not throw an error for an action "shadowing" itself
-                // we do not need to check that the basenames are the same, because we assume they are both `Action`
-                && euid.eid() == unqualified_action.eid()
-            }) {
+            if let Some(&shadowing) = illegal_action_shadowings.get(unqualified_action.eid()) {
                 return Err(ActionShadowingError {
                     shadowed_def: unqualified_action.clone(),
-                    shadowing_def: action.clone(),
+                    shadowing_def: shadowing.clone(),
                 }
                 .into());
             }
