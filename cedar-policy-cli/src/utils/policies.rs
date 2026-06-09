@@ -19,7 +19,9 @@ use clap::{Args, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use std::{path::Path, str::FromStr};
 
-use crate::{add_template_links_to_set, read_from_file_or_stdin};
+use crate::{
+    add_template_links_to_set, add_template_links_to_set_if_exists, read_from_file_or_stdin,
+};
 
 /// This struct contains the arguments that together specify an input policy or policy set.
 #[derive(Args, Debug)]
@@ -38,14 +40,30 @@ pub struct PoliciesArgs {
 impl PoliciesArgs {
     /// Turn this `PoliciesArgs` into the appropriate `PolicySet` object
     pub(crate) fn get_policy_set(&self) -> Result<PolicySet> {
-        let mut pset = match self.policy_format {
-            PolicyFormat::Cedar => read_cedar_policy_set(self.policies_file.as_ref()),
-            PolicyFormat::Json => read_json_policy_set(self.policies_file.as_ref()),
-        }?;
+        let mut pset = self.get_static_policies_and_templates()?;
         if let Some(links_filename) = self.template_linked_file.as_ref() {
             add_template_links_to_set(links_filename, &mut pset)?;
         }
         Ok(pset)
+    }
+
+    /// Like `get_policy_set`, but allows a missing template-linked file. Used
+    /// by the `link` command which creates the file if needed.
+    pub(crate) fn get_policy_set_allow_missing_links(&self) -> Result<PolicySet> {
+        let mut pset = self.get_static_policies_and_templates()?;
+        if let Some(links_filename) = self.template_linked_file.as_ref() {
+            add_template_links_to_set_if_exists(links_filename, &mut pset)?;
+        }
+        Ok(pset)
+    }
+
+    /// Read static policies and templates  from `self.policies_file`.
+    /// Does _not_ load template links.
+    fn get_static_policies_and_templates(&self) -> Result<PolicySet> {
+        match self.policy_format {
+            PolicyFormat::Cedar => read_cedar_policy_set(self.policies_file.as_ref()),
+            PolicyFormat::Json => read_json_policy_set(self.policies_file.as_ref()),
+        }
     }
 }
 

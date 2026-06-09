@@ -5,6 +5,10 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+### Changed
+
+- The `authorize` command will now error if used with the `--template-linked` argument will now error if the link file does not exist.
+
 ## 4.11.1
 
 ## 4.11.0
