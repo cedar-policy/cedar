@@ -156,7 +156,7 @@ impl LocatedType {
         }
     }
 
-    /// Replace `self.loc` with `_loc`. No-op if the `extend-schema` feature is
+    /// Replace `self.loc` with `loc`. No-op if the `extended-schema` feature is
     /// not enabled.
     pub fn with_loc(self, _loc: Option<&Loc>) -> Self {
         Self {
