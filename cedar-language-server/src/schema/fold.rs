@@ -184,6 +184,13 @@ mod test {
         (0, 3)
     );
 
+    assert_schema_folding_ranges!(
+        common_type_chain,
+        "type T0 = T1;\ntype T1 = Long;",
+        (0, 0),
+        (1, 1)
+    );
+
     #[test]
     #[traced_test]
     fn json_schema_returns_none() {
