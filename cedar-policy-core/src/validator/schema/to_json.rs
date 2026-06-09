@@ -84,7 +84,7 @@ fn validator_type_to_json_type(ty: &Type) -> Result<json_schema::Type<RawName>, 
         }
         Type::ExtensionType { name } => Ok(json_schema::Type::Type {
             ty: json_schema::TypeVariant::Extension {
-                name: name.basename().clone(),
+                name: name.basename(),
             },
             loc: None,
         }),
@@ -103,27 +103,29 @@ impl ValidatorSchema {
 
         let mut entity_ancestors = self.entity_ancestors();
         for (entity_type, validator_entity_type) in &self.entity_types {
-            let ancestors = entity_ancestors.remove(&entity_type).unwrap();
-            let namespace = entity_type.as_ref().as_ref().path.clone();
-            let entity_name = entity_type.as_ref().basename().clone();
-            let json_entity_type = validator_entity_type.to_json_entity_type(ancestors)?;
-            let (entity_types, _) = namespaces
-                .entry(namespace)
-                .or_insert_with(|| (BTreeMap::new(), BTreeMap::new()));
-            entity_types.insert(entity_name, json_entity_type);
+            if let Some(ancestors) = entity_ancestors.remove(&entity_type) {
+                let namespace = entity_type.as_ref().as_ref().path.clone();
+                let entity_name = entity_type.as_ref().basename().clone();
+                let json_entity_type = validator_entity_type.to_json_entity_type(ancestors)?;
+                let (entity_types, _) = namespaces
+                    .entry(namespace)
+                    .or_insert_with(|| (BTreeMap::new(), BTreeMap::new()));
+                entity_types.insert(entity_name, json_entity_type);
+            }
         }
 
         for (action_uid, validator_action_id) in &self.action_ids {
-            let action = self.actions.get(&action_uid).unwrap();
-            let namespace = action_uid.entity_type().as_ref().as_ref().path.clone();
-            let action_name = action_uid.eid().as_ref().to_smolstr();
-            let json_action_type =
-                validator_action_id.to_json_action_type(action.ancestors().cloned().collect())?;
+            if let Some(action) = self.actions.get(action_uid) {
+                let namespace = action_uid.entity_type().as_ref().as_ref().path.clone();
+                let action_name = action_uid.eid().as_ref().to_smolstr();
+                let json_action_type = validator_action_id
+                    .to_json_action_type(action.ancestors().cloned().collect())?;
 
-            let (_, action_types) = namespaces
-                .entry(namespace)
-                .or_insert_with(|| (BTreeMap::new(), BTreeMap::new()));
-            action_types.insert(action_name, json_action_type);
+                let (_, action_types) = namespaces
+                    .entry(namespace)
+                    .or_insert_with(|| (BTreeMap::new(), BTreeMap::new()));
+                action_types.insert(action_name, json_action_type);
+            }
         }
 
         let mut namespace_definitions = BTreeMap::new();
@@ -272,7 +274,7 @@ impl ValidatorEntityType {
                     tags: std_type
                         .tags
                         .as_ref()
-                        .map(|tag_type| validator_type_to_json_type(tag_type))
+                        .map(validator_type_to_json_type)
                         .transpose()?,
                 })
             }
