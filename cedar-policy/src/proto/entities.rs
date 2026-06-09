@@ -33,8 +33,8 @@ impl TryFrom<models::Entities> for entities::Entities {
     }
 }
 
-/// [`entities_model_to_api`] converts the [`model::Entities`] to the public API type
-/// [`entities::Entities`], with the given [`TCComputation`] mode.
+/// [`entities_model_to_api`] converts the [`models::Entities`] protobuf model to the core [`entities::Entities`]
+/// type, with the given [`TCComputation`] mode.
 pub(crate) fn entities_model_to_api(
     model: models::Entities,
     tc_mode: TCComputation,
