@@ -19,7 +19,9 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 - The experimental protobuf decoding API now validates its inputs, checking structural invariants on entities, expressions, templates, policy sets, and schemas. Additionally, `Entities::decode` now computes the transitive closure instead of assuming it is already computed. These changes may result in lower performance for protobuf decoding.
 
-## [4.11.1] - Coming soon
+## [4.11.1] - 2026-06-09
+
+Cedar Language Version: 4.5
 
 ### Fixed
 
