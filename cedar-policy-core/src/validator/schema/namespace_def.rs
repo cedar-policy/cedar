@@ -959,9 +959,9 @@ fn parse_record_attributes(
                 common_type_defs,
             )?;
             #[cfg(feature = "extended-schema")]
-            let attr_ty = AttributeType::new_with_loc(attr_ty.ty.into(), ty.required, ty.loc);
+            let attr_ty = AttributeType::new_with_loc(attr_ty.ty, ty.required, ty.loc);
             #[cfg(not(feature = "extended-schema"))]
-            let attr_ty = AttributeType::new(attr_ty.ty.into(), ty.required);
+            let attr_ty = AttributeType::new(attr_ty.ty, ty.required);
             Ok((attr, attr_ty))
         })
         .collect::<crate::validator::err::Result<Vec<_>>>()?;

@@ -131,7 +131,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
 #[derive(Clone, Debug, Educe)]
 #[educe(Eq, PartialEq)]
 pub struct LocatedType {
-    ty: Type,
+    ty: Arc<Type>,
     #[cfg(feature = "extended-schema")]
     loc: Option<Loc>,
 }
@@ -140,7 +140,7 @@ impl LocatedType {
     /// Construct a located type without a location.
     pub fn new(ty: Type) -> Self {
         Self {
-            ty,
+            ty: Arc::new(ty),
             #[cfg(feature = "extended-schema")]
             loc: None,
         }
@@ -150,7 +150,7 @@ impl LocatedType {
     /// not enabled, the `loc` is not stored.
     pub fn new_with_loc(ty: Type, _loc: Option<&Loc>) -> Self {
         Self {
-            ty,
+            ty: Arc::new(ty),
             #[cfg(feature = "extended-schema")]
             loc: _loc.cloned(),
         }
@@ -169,7 +169,7 @@ impl LocatedType {
     /// Deconstruct this `LocatedType` into the type and location where the type
     /// is defined. If `extend-schema` is not enabled, then the location
     /// returned by this function is always `None`.
-    pub fn into_type_and_loc(self) -> (Type, Option<Loc>) {
+    pub fn into_type_and_loc(self) -> (Arc<Type>, Option<Loc>) {
         #[cfg(feature = "extended-schema")]
         let loc = self.loc;
         #[cfg(not(feature = "extended-schema"))]
@@ -771,7 +771,7 @@ impl ValidatorSchema {
                                 descendants,
                                 attributes,
                                 open_attributes,
-                                tags.map(|t| t.ty),
+                                tags.map(|t| Arc::unwrap_or_clone(t.ty)),
                                 name.loc().cloned(),
                             ),
                         ))
@@ -885,15 +885,26 @@ impl ValidatorSchema {
         // `descendants` list were declared because the list is a result of
         // inverting the `memberOf` relationship which mapped declared entity
         // types to their parent entity types.
+        let mut visited = HashSet::new();
         for entity_type in entity_types.values() {
             for (_, attr_typ) in entity_type.attributes().iter() {
-                Self::check_undeclared_in_type(&attr_typ.attr_type, all_defs, &mut undeclared_e);
+                Self::check_undeclared_in_type(
+                    &attr_typ.attr_type,
+                    all_defs,
+                    &mut undeclared_e,
+                    &mut visited,
+                );
             }
         }
 
         // Check for undeclared entity types within common types.
         for common_type in common_types {
-            Self::check_undeclared_in_type(&common_type.ty, all_defs, &mut undeclared_e);
+            Self::check_undeclared_in_type(
+                &common_type.ty,
+                all_defs,
+                &mut undeclared_e,
+                &mut visited,
+            );
         }
 
         // Undeclared actions in a `memberOf` list.
@@ -902,7 +913,8 @@ impl ValidatorSchema {
         // types and `appliesTo` lists. See the `entity_types` loop for why the
         // `descendants` list is not checked.
         for action in action_ids.values() {
-            Self::check_undeclared_in_type(&action.context, all_defs, &mut undeclared_e);
+            let context = Arc::new(action.context.clone());
+            Self::check_undeclared_in_type(&context, all_defs, &mut undeclared_e, &mut visited);
 
             for p_entity in action.applies_to_principals() {
                 if !entity_types.contains_key(p_entity) {
@@ -932,9 +944,9 @@ impl ValidatorSchema {
         if let Type::Record {
             attrs,
             open_attributes,
-        } = ty.ty
+        } = &*ty.ty
         {
-            Some((attrs, open_attributes))
+            Some((attrs.clone(), *open_attributes))
         } else {
             None
         }
@@ -944,11 +956,25 @@ impl ValidatorSchema {
     /// declared entity types, adding any undeclared entity types to the
     /// `undeclared_types` set.
     fn check_undeclared_in_type(
-        ty: &Type,
+        ty: &Arc<Type>,
         all_defs: &AllDefs,
         undeclared_types: &mut BTreeSet<EntityType>,
+        visited: &mut HashSet<*const Type>,
     ) {
-        match ty {
+        // Common types are inlined into types where they are referenced, but
+        // they are still shared using `Arc`s. If we've already visited this
+        // exact `Arc`, then we don't need to look at it again. This lets us
+        // avoid exponential slowdown on parsing, e.g.,
+        //     type t0 = {l: t1, r: t1};
+        //     type t1 = {l: t2, r: r2};
+        //     ...
+        // Although, there can still be exponentialy slow performance when
+        // traversing these types in validation. Callers can avoid this by
+        // impossing a shallow depth limit when schema parsing.
+        if !visited.insert(Arc::as_ptr(ty)) {
+            return;
+        }
+        match ty.as_ref() {
             Type::Entity(EntityKind::Entity(lub)) => {
                 for name in lub.iter() {
                     if !all_defs.is_defined_as_entity(name.as_ref().as_ref()) {
@@ -959,13 +985,18 @@ impl ValidatorSchema {
 
             Type::Record { attrs, .. } => {
                 for (_, attr_ty) in attrs.iter() {
-                    Self::check_undeclared_in_type(&attr_ty.attr_type, all_defs, undeclared_types);
+                    Self::check_undeclared_in_type(
+                        &attr_ty.attr_type,
+                        all_defs,
+                        undeclared_types,
+                        visited,
+                    );
                 }
             }
 
             Type::Set {
                 element_type: Some(element_type),
-            } => Self::check_undeclared_in_type(element_type, all_defs, undeclared_types),
+            } => Self::check_undeclared_in_type(element_type, all_defs, undeclared_types, visited),
 
             _ => (),
         }
@@ -2212,7 +2243,7 @@ pub(crate) mod test {
             &HashMap::new(),
         )
         .expect("Error converting schema type to type.");
-        assert_eq!(ty.ty, Type::named_entity_reference_from_str("NS::Foo"));
+        assert_eq!(*ty.ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
     #[test]
@@ -2242,7 +2273,7 @@ pub(crate) mod test {
             &HashMap::new(),
         )
         .expect("Error converting schema type to type.");
-        assert_eq!(ty.ty, Type::named_entity_reference_from_str("NS::Foo"));
+        assert_eq!(*ty.ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
     #[test]
@@ -2277,7 +2308,7 @@ pub(crate) mod test {
             &HashMap::new(),
         )
         .expect("Error converting schema type to type.");
-        assert_eq!(ty.ty, Type::closed_record_with_attributes(None));
+        assert_eq!(*ty.ty, Type::closed_record_with_attributes(None));
     }
 
     #[test]
