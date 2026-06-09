@@ -156,6 +156,16 @@ impl LocatedType {
         }
     }
 
+    /// Replace `self.loc` with `_loc`. No-op if the `extend-schema` feature is
+    /// not enabled.
+    pub fn with_loc(self, _loc: Option<&Loc>) -> Self {
+        Self {
+            #[cfg(feature = "extended-schema")]
+            loc: _loc.cloned(),
+            ..self
+        }
+    }
+
     /// Deconstruct this `LocatedType` into the type and location where the type
     /// is defined. If `extend-schema` is not enabled, then the location
     /// returned by this function is always `None`.
@@ -817,12 +827,11 @@ impl ValidatorSchema {
         compute_tc(&mut action_ids, true)?;
 
         #[cfg(feature = "extended-schema")]
-        let common_type_validators = common_types
+        let located_common_types = common_types
             .clone()
             .into_iter()
-            .filter(|ct| {
+            .filter(|(ct_name, _)| {
                 // Only collect common types that are not primitives and have location data
-                let ct_name = ct.0.clone();
                 ct_name.loc().is_some() && !Type::is_primitive(ct_name.basename().as_ref())
             })
             .map(|ct| LocatedCommonType::new(ct.0, ct.1))
@@ -846,7 +855,7 @@ impl ValidatorSchema {
             entity_types,
             action_ids,
             #[cfg(feature = "extended-schema")]
-            common_type_validators,
+            located_common_types,
             #[cfg(feature = "extended-schema")]
             validator_namespaces,
         ))
