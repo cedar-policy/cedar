@@ -58,8 +58,22 @@ pub trait TryValidate: Sized {
     fn try_validate(self) -> Result<Self, Self::Err>;
 }
 
+mod private {
+    use crate::api;
+    pub trait Sealed {}
+    impl Sealed for api::PolicySet {}
+    impl Sealed for api::Entities {}
+    impl Sealed for api::Entity {}
+    impl Sealed for api::Schema {}
+    impl Sealed for api::EntityTypeName {}
+    impl Sealed for api::EntityNamespace {}
+    impl Sealed for api::Template {}
+    impl Sealed for api::Expression {}
+    impl Sealed for api::Request {}
+}
+
 /// Trait allowing serializing and deserializing in protobuf format.
-pub trait Protobuf: Sized + TryValidate {
+pub trait Protobuf: Sized + TryValidate + private::Sealed {
     /// Encode into protobuf format. Returns a freshly-allocated buffer containing binary data.
     fn encode(&self) -> Vec<u8>;
     /// Decode the binary data in `buf`, producing something of type `Self`
