@@ -2087,7 +2087,7 @@ fn link_file_cant_read() {
 
 #[test]
 fn auth_link_file_does_not_exist() {
-    // linking into a file that does not exist should create it
+    // authorizing with a link file that does not exist should error
     let dir = tempfile::tempdir().expect("failed to create tempdir");
     let entities = dir.path().join("entities.json");
     std::fs::write(&entities, r#"[]"#).unwrap();
