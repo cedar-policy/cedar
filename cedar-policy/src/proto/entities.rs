@@ -28,10 +28,13 @@ impl TryFrom<models::Entities> for entities::Entities {
     type Error = ProtobufConversionError;
 
     fn try_from(v: models::Entities) -> Result<Self, Self::Error> {
+        // The TryFrom does not assume that the transitive closure has already been computed.
         entities_model_to_api(v, TCComputation::ComputeNow)
     }
 }
 
+/// [`entities_model_to_api`] converts the [`model::Entities`] to the public API type
+/// [`entities::Entities`], with the given [`TCComputation`] mode.
 pub(crate) fn entities_model_to_api(
     model: models::Entities,
     tc_mode: TCComputation,
@@ -42,8 +45,6 @@ pub(crate) fn entities_model_to_api(
         .map(ast::Entity::try_from)
         .collect::<Result<_, _>>()?;
 
-    // This API does not assume that the transitive closure has already been computed.
-    // A different API that does not perform validation could skip tc computation.
     entities::Entities::from_entities(
         entities,
         None::<&entities::NoEntitiesSchema>,

@@ -128,8 +128,8 @@ impl traits::Protobuf for api::Entities {
             .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid: {e}")).into())
     }
     fn decode_unchecked(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
-        // Skip TC computation for trusted data
         let msg = models::Entities::decode(buf)?;
+        // Skip TC computation for trusted data
         let core_entities = entities_model_to_api(
             msg,
             cedar_policy_core::entities::TCComputation::AssumeAlreadyComputed,
