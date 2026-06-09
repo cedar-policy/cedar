@@ -77,10 +77,10 @@ pub trait Protobuf: Sized + TryValidate {
     }
 
     /// Decode the binary data in `buf`, producing something of type `Self`,
-    /// but without the additional validation that the [`decode`] method performs on the resulting
-    /// `Self`.
+    /// but without the additional validation that the [`Self::decode`] method performs on the
+    /// resulting `Self`.
     /// This is useful for performance if you can guarantee the binary data is the result of
-    /// [`encode`] of the same implementation.
+    /// [`Self::encode`] of the same implementation.
     ///
     /// # Errors
     ///
