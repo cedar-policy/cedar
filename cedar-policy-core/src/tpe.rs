@@ -457,36 +457,36 @@ when { principal in resource.editors };
             .static_policies()
             .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "3"))
             .unwrap();
-        let false_permits: HashSet<PolicyID> = residuals
+        let false_permits: HashSet<&PolicyID> = residuals
             .false_permits()
             .map(|p| p.get_policy_id())
             .collect();
         assert!(false_permits.len() == 2);
         assert!(false_permits.contains(policy0.id()));
         assert!(false_permits.contains(policy3.id()));
-        let false_forbids: HashSet<PolicyID> = residuals
+        let false_forbids: HashSet<&PolicyID> = residuals
             .false_forbids()
             .map(|p| p.get_policy_id())
             .collect();
         assert!(false_forbids.is_empty());
-        let true_permits: HashSet<PolicyID> = residuals
+        let true_permits: HashSet<&PolicyID> = residuals
             .satisfied_permits()
             .map(|p| p.get_policy_id())
             .collect();
         assert!(true_permits.is_empty());
-        let true_forbids: HashSet<PolicyID> = residuals
+        let true_forbids: HashSet<&PolicyID> = residuals
             .satisfied_forbids()
             .map(|p| p.get_policy_id())
             .collect();
         assert!(true_forbids.is_empty());
-        let non_trivial_permits: HashSet<PolicyID> = residuals
+        let non_trivial_permits: HashSet<&PolicyID> = residuals
             .residual_permits()
             .map(|p| p.get_policy_id())
             .collect();
         assert!(non_trivial_permits.len() == 2);
         assert!(non_trivial_permits.contains(policy1.id()));
         assert!(non_trivial_permits.contains(policy2.id()));
-        let non_trivial_forbids: HashSet<PolicyID> = residuals
+        let non_trivial_forbids: HashSet<&PolicyID> = residuals
             .residual_forbids()
             .map(|p| p.get_policy_id())
             .collect();

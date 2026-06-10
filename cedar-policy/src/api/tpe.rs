@@ -32,8 +32,9 @@ use smol_str::SmolStr;
 
 use crate::{
     api, tpe_err, Authorizer, Context, Entities, Entity, EntityId, EntityTypeName, EntityUid,
-    PartialEntityError, PartialRequestCreationError, PermissionQueryError, Policy, PolicySet,
-    Request, RequestValidationError, RestrictedExpression, Schema, TpeReauthorizationError,
+    PartialEntityError, PartialRequestCreationError, PermissionQueryError, Policy, PolicyId,
+    PolicySet, Request, RequestValidationError, RestrictedExpression, Schema,
+    TpeReauthorizationError,
 };
 
 /// A partial [`EntityUid`].
@@ -382,6 +383,44 @@ impl TpeResponse<'_> {
     /// Attempt to get the authorization decision
     pub fn decision(&self) -> Option<Decision> {
         self.0.decision()
+    }
+
+    /// Get the determing policies for the partial authorization decision.
+    /// These are a subset of the determining polices for any subsequent
+    /// concrete reauthorization.
+    ///
+    /// When [`TpeResponse::decision`] returns a concrete allow or deny, the
+    /// determining policies are the satisfied permits or forbids respectivly.
+    /// If TPE did not reach a concrete decision, then this will always return
+    /// an empty set.
+    pub fn reason(&self) -> HashSet<&PolicyId> {
+        match self.0.decision() {
+            None => HashSet::new(),
+            Some(Decision::Allow) => self.satisfied_permits().collect(),
+            Some(Decision::Deny) => self.satisfied_forbids().collect(),
+        }
+    }
+
+    /// Get the permit policies that are concretly satisfied by the partial request.
+    ///
+    /// If the eventual concrete authorization decision is allow, then these
+    /// will be a subset of the determining policies. However, they may still be
+    /// overriden by a non-trivial residual forbid policy.
+    pub fn satisfied_permits(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0
+            .satisfied_permits()
+            .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
+    }
+
+    /// Get the forbid policies that are concretly satisfied by the partial request.
+    ///
+    /// Presence of any satisfied forbids guarenteees that they are exactly the
+    /// policies returned by [`TpeResponse::reason`] and that [`TpeResponse::decision`]
+    /// must return `Deny`.
+    pub fn satisfied_forbids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0
+            .satisfied_forbids()
+            .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
     }
 
     /// Perform reauthorization
@@ -818,7 +857,7 @@ mod tpe_tests {
     }
 
     mod streaming_service {
-        use std::{collections::BTreeMap, str::FromStr};
+        use std::{collections::{BTreeMap, HashSet}, str::FromStr};
 
         use cedar_policy_core::{authorizer::Decision, tpe::err::EntitiesError};
         use cool_asserts::assert_matches;
@@ -1259,6 +1298,7 @@ unless
             );
 
             assert_eq!(response.decision(), None);
+            assert_eq!(response.reason(), HashSet::new());
 
             let request = Request::new(
                 EntityUid::from_type_name_and_id(
@@ -2115,10 +2155,9 @@ when { principal in resource.admins };
         use itertools::Itertools;
 
         use crate::{
-            Context, Entities, PartialEntities, PartialEntityUid, PartialRequest, PolicySet,
-            PrincipalQueryRequest, ResourceQueryRequest, Schema,
+            Context, Entities, PartialEntities, PartialEntityUid, PartialRequest, PolicyId, PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema
         };
-        use std::{i64, str::FromStr};
+        use std::{collections::HashSet, i64, str::FromStr};
 
         fn schema() -> Schema {
             Schema::from_str("entity P, R; action A appliesTo { principal: P, resource: R };")
@@ -2153,6 +2192,7 @@ when { principal in resource.admins };
                 .tpe(&req, &partial_entities, &schema)
                 .unwrap();
             assert_eq!(response.decision(), Some(Decision::Allow));
+            assert_eq!(response.reason(), HashSet::from([&PolicyId::new("policy0")]));
         }
 
         #[test]
@@ -2214,6 +2254,7 @@ when { principal in resource.admins };
                 .tpe(&req, &partial_entities, &schema)
                 .unwrap();
             assert_eq!(response.decision(), Some(Decision::Deny));
+            assert_eq!(response.reason(), HashSet::from([&PolicyId::new("policy0")]));
         }
 
         #[test]
@@ -2278,6 +2319,7 @@ when { principal in resource.admins };
             .tpe(&req, &partial_entities, &schema)
             .unwrap();
             assert_eq!(response.decision(), Some(Decision::Deny));
+            assert_eq!(response.reason(), HashSet::new());
         }
 
         #[test]
@@ -2345,6 +2387,7 @@ when { principal in resource.admins };
                 .tpe(&req, &partial_entities, &schema)
                 .unwrap();
             assert_eq!(response.decision(), Some(Decision::Deny));
+            assert_eq!(response.reason(), HashSet::new());
         }
 
         #[test]
@@ -2815,7 +2858,10 @@ when { principal in resource.admins };
     }
 
     mod template_links {
-        use std::{collections::HashMap, str::FromStr};
+        use std::{
+            collections::{HashMap, HashSet},
+            str::FromStr,
+        };
 
         use crate::{
             pst, Decision, EntityUid, PartialEntities, PartialEntityUid, PartialRequest, Policy,
@@ -2877,6 +2923,7 @@ when { principal in resource.admins };
             let response = policies.tpe(&request, &es, &schema).unwrap();
 
             assert_eq!(response.decision(), Some(Decision::Allow));
+            assert_eq!(response.reason(), HashSet::from([&PolicyId::new("l")]));
         }
 
         #[test]
@@ -2889,6 +2936,7 @@ when { principal in resource.admins };
             let response = policies.tpe(&request, &es, &schema).unwrap();
 
             assert_eq!(response.decision(), Some(Decision::Deny));
+            assert_eq!(response.reason(), HashSet::new());
         }
 
         #[test]
@@ -2911,6 +2959,7 @@ when { principal in resource.admins };
             let response = policies.tpe(&request, &es, &schema).unwrap();
 
             assert_eq!(response.decision(), Some(Decision::Deny));
+            assert_eq!(response.reason(), HashSet::new());
         }
 
         #[test]
@@ -2943,6 +2992,7 @@ when { principal in resource.admins };
             let residuals: Vec<_> = response.nontrivial_residual_policies().collect();
             assert_eq!(residuals[0].to_pst().unwrap().body(), expected.body());
             assert_eq!(response.decision(), None);
+            assert_eq!(response.reason(), HashSet::new());
             assert_eq!(residuals.len(), 1);
         }
     }

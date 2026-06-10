@@ -59,8 +59,8 @@ impl ResidualPolicy {
     }
 
     /// Get the [`PolicyID`]
-    pub fn get_policy_id(&self) -> PolicyID {
-        self.policy.id().clone()
+    pub fn get_policy_id(&self) -> &PolicyID {
+        self.policy.id()
     }
 
     /// All literal uids referenced by this residual
@@ -130,20 +130,20 @@ impl<'a> Response<'a> {
             match rp.get_effect() {
                 Effect::Forbid => {
                     if r.is_true() {
-                        satisfied_forbids.insert(id);
+                        satisfied_forbids.insert(id.clone());
                     } else if r.is_false() || r.is_error() {
-                        false_forbids.insert(id);
+                        false_forbids.insert(id.clone());
                     } else {
-                        residual_forbids.insert(id);
+                        residual_forbids.insert(id.clone());
                     }
                 }
                 Effect::Permit => {
                     if r.is_true() {
-                        satisfied_permits.insert(id);
+                        satisfied_permits.insert(id.clone());
                     } else if r.is_false() || r.is_error() {
-                        false_permits.insert(id);
+                        false_permits.insert(id.clone());
                     } else {
-                        residual_permits.insert(id);
+                        residual_permits.insert(id.clone());
                     }
                 }
             }
