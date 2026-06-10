@@ -25,3 +25,13 @@ pub fn license() -> CedarExitCode {
     print!("{}", include_str!("../../../THIRD_PARTY_LICENSES.txt"));
     CedarExitCode::Success
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn license_succeeds() {
+        assert_eq!(license(), CedarExitCode::Success);
+    }
+}
