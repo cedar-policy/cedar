@@ -632,17 +632,7 @@ impl ValidatorSchema {
             }
         }
 
-        // Add entity-type declarations for the `Action` type in each namespace
-        // that contains actions.  This allows schemas to, for instance, have
-        // attributes of type `Action` or `Set<Action>` etc.
-        let action_types: HashSet<InternalName> = all_defs
-            .action_defs
-            .iter()
-            .map(|action_def| action_def.entity_type().as_ref().as_ref().clone())
-            .collect();
-        for action_type in action_types {
-            all_defs.mark_as_defined_as_entity_type(action_type);
-        }
+        all_defs.add_action_entity_types();
 
         // Now use `all_defs` to resolve all [`ConditionalName`] type references
         // into fully-qualified [`InternalName`] references.
@@ -1335,6 +1325,20 @@ impl AllDefs {
     /// in the [`AllDefs`].
     fn entity_and_common_names(&self) -> impl Iterator<Item = &InternalName> {
         self.entity_defs.iter().chain(self.common_defs.iter())
+    }
+
+    /// Add entity-type declarations for the `Action` type in each namespace
+    /// that contains actions.  This allows schemas to, for instance, have
+    /// attributes of type `Action` or `Set<Action>` etc.
+    pub(crate) fn add_action_entity_types(&mut self) {
+        let action_types: HashSet<InternalName> = self
+            .action_defs
+            .iter()
+            .map(|action_def| action_def.entity_type().as_ref().as_ref().clone())
+            .collect();
+        for action_type in action_types {
+            self.mark_as_defined_as_entity_type(action_type);
+        }
     }
 }
 

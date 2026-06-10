@@ -240,6 +240,8 @@ impl Fragment<RawName> {
             }
         }
 
+        all_defs.add_action_entity_types();
+
         // Step 1: Convert Fragment<RawName> to Fragment<ConditionalName>
         let conditional_fragment = Fragment(
             self.0
@@ -2547,6 +2549,7 @@ mod test {
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
     };
     use cool_asserts::assert_matches;
+    use insta::assert_compact_json_snapshot;
 
     use crate::validator::ValidatorSchema;
 
@@ -2970,24 +2973,52 @@ mod test {
 
     #[test]
     fn test_to_internal_name_fragment_with_resolved_types() {
-        let schema_str = r#"
-            entity User = { "name": String };
-            action sendMessage appliesTo {principal: User, resource: User};
-        "#;
+        fn to_json_resolved(src: &str) -> serde_json::Value {
+            let (json_schema_fragment, _warnings) =
+                parse_cedar_schema_fragment(src, &Extensions::all_available()).unwrap();
 
-        let (json_schema_fragment, _warnings) =
-            parse_cedar_schema_fragment(schema_str, &Extensions::all_available()).unwrap();
+            serde_json::to_value(
+                json_schema_fragment
+                    .to_internal_name_fragment_with_resolved_types()
+                    .unwrap(),
+            )
+            .unwrap()[""]["entityTypes"]["User"]["shape"]["attributes"]["a"]
+                .clone()
+        }
 
-        let result = json_schema_fragment.to_internal_name_fragment_with_resolved_types();
-        assert_matches!(result, Ok(resolved_fragment) => {
-            let json_value = serde_json::to_value(&resolved_fragment).unwrap();
-            let json_str = serde_json::to_string(&json_value).unwrap();
-            // Verify that EntityOrCommon types have been resolved
-            assert!(!json_str.contains("EntityOrCommon"));
-            // Verify that the structure is preserved
-            assert!(json_str.contains("User"));
-            assert!(json_str.contains("sendMessage"));
-        });
+        assert_compact_json_snapshot!(
+            to_json_resolved(r#"entity User {a : String };"#),
+            @r###"{"type": "String"}"###
+        );
+        assert_compact_json_snapshot!(
+            to_json_resolved(r#"entity User {a : decimal };"#),
+            @r###"{"type": "decimal"}"###
+        );
+        assert_compact_json_snapshot!(
+            to_json_resolved(r#"entity User {a : User };"#),
+            @r###"{"type": "Entity", "name": "User"}"###
+        );
+        assert_compact_json_snapshot!(
+            to_json_resolved(r#"action A; entity User {a : Action };"#),
+            @r###"{"type": "Entity", "name": "Action"}"###
+        );
+        assert_compact_json_snapshot!(
+            to_json_resolved(r#"type T = Long; entity User {a : T };"#),
+            @r###"{"type": "T"}"###
+        );
+
+        assert_compact_json_snapshot!(
+            to_json_resolved(r#"namespace NS { entity User; } entity User {a : NS::User };"#),
+            @r###"{"type": "Entity", "name": "NS::User"}"###
+        );
+        assert_compact_json_snapshot!(
+            to_json_resolved(r#"namespace NS { action A; } entity User {a : NS::Action };"#),
+            @r###"{"type": "Entity", "name": "NS::Action"}"###
+        );
+        assert_compact_json_snapshot!(
+            to_json_resolved(r#"namespace NS { type T = Long; } entity User {a : NS::T };"#),
+            @r###"{"type": "NS::T"}"###
+        );
     }
 }
 

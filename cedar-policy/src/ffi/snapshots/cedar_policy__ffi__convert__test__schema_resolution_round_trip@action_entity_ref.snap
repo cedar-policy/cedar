@@ -1,0 +1,76 @@
+---
+source: cedar-policy/src/ffi/convert.rs
+expression: resolved_json
+input_file: cedar-policy/src/ffi/test_schemas/action_entity_ref.cedarschema
+---
+{
+  "": {
+    "actions": {
+      "A": {
+        "appliesTo": {
+          "principalTypes": [],
+          "resourceTypes": []
+        }
+      }
+    },
+    "entityTypes": {
+      "User": {
+        "shape": {
+          "attributes": {
+            "a0": {
+              "name": "Action",
+              "type": "Entity"
+            },
+            "a1": {
+              "name": "N::Action",
+              "type": "Entity"
+            },
+            "a2": {
+              "name": "M::Action",
+              "type": "Entity"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  },
+  "M": {
+    "actions": {
+      "C": {
+        "appliesTo": {
+          "principalTypes": [],
+          "resourceTypes": []
+        }
+      }
+    },
+    "entityTypes": {}
+  },
+  "N": {
+    "actions": {
+      "B": {
+        "appliesTo": {
+          "principalTypes": [],
+          "resourceTypes": []
+        }
+      }
+    },
+    "entityTypes": {
+      "Admin": {
+        "shape": {
+          "attributes": {
+            "a0": {
+              "name": "N::Action",
+              "type": "Entity"
+            },
+            "a1": {
+              "name": "M::Action",
+              "type": "Entity"
+            }
+          },
+          "type": "Record"
+        }
+      }
+    }
+  }
+}
