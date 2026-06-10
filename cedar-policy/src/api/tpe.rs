@@ -857,7 +857,10 @@ mod tpe_tests {
     }
 
     mod streaming_service {
-        use std::{collections::{BTreeMap, HashSet}, str::FromStr};
+        use std::{
+            collections::{BTreeMap, HashSet},
+            str::FromStr,
+        };
 
         use cedar_policy_core::{authorizer::Decision, tpe::err::EntitiesError};
         use cool_asserts::assert_matches;
@@ -2155,7 +2158,8 @@ when { principal in resource.admins };
         use itertools::Itertools;
 
         use crate::{
-            Context, Entities, PartialEntities, PartialEntityUid, PartialRequest, PolicyId, PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema
+            Context, Entities, PartialEntities, PartialEntityUid, PartialRequest, PolicyId,
+            PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
         };
         use std::{collections::HashSet, i64, str::FromStr};
 
@@ -2192,7 +2196,10 @@ when { principal in resource.admins };
                 .tpe(&req, &partial_entities, &schema)
                 .unwrap();
             assert_eq!(response.decision(), Some(Decision::Allow));
-            assert_eq!(response.reason(), HashSet::from([&PolicyId::new("policy0")]));
+            assert_eq!(
+                response.reason(),
+                HashSet::from([&PolicyId::new("policy0")])
+            );
         }
 
         #[test]
@@ -2254,7 +2261,10 @@ when { principal in resource.admins };
                 .tpe(&req, &partial_entities, &schema)
                 .unwrap();
             assert_eq!(response.decision(), Some(Decision::Deny));
-            assert_eq!(response.reason(), HashSet::from([&PolicyId::new("policy0")]));
+            assert_eq!(
+                response.reason(),
+                HashSet::from([&PolicyId::new("policy0")])
+            );
         }
 
         #[test]
