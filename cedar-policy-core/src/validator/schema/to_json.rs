@@ -96,8 +96,8 @@ impl ValidatorSchema {
     /// Converts a `ValidatorSchema` into a `json_schema::Fragment`.
     /// Roundtripping through this function gives a semantically equivalent
     /// schema but will lose formatting, annotations, and common type
-    /// definition. It will also result in the inlining the transitive closure
-    /// of the entity hierarchy at for each entity type and action.
+    /// definitions. It will also inline the transitive closure of the entity
+    /// hierarchy for each entity type and action.
     pub fn to_json_schema(&self) -> Result<json_schema::Fragment<RawName>, String> {
         let mut namespaces = HashMap::new();
 
@@ -194,7 +194,9 @@ impl ValidatorActionId {
                     .into_iter()
                     .sorted()
                     .map(|action_uid| json_schema::ActionEntityUID {
-                        ty: None,
+                        ty: Some(RawName::from_name(
+                            action_uid.entity_type().as_ref().as_ref().clone(),
+                        )),
                         id: action_uid.eid().as_ref().to_smolstr(),
                         #[cfg(feature = "extended-schema")]
                         loc: None,
@@ -322,7 +324,7 @@ mod tests {
                     .to_cedar_schema()
                     .expect("Failed to convert schema to Cedar format");
 
-                // Parse again to assert that the roundtripped schema is equivlant.
+                // Parse again to assert that the roundtripped schema is equivalent.
                 let (roundtrip_schema, _) = ValidatorSchema::from_cedarschema_str(
                     &roundtrip_result,
                     &Extensions::all_available(),
@@ -330,7 +332,7 @@ mod tests {
                 .expect("Failed to parse roundtrip Cedar schema");
                 similar_asserts::assert_eq!(roundtrip_schema, original_schema);
 
-                // Snapshot the middle cedar scheam text so we can check that it
+                // Snapshot the middle cedar schema text so we can check that it
                 // looks reasonable to a human.
                 insta::assert_snapshot!(roundtrip_result);
             }

@@ -28,7 +28,7 @@ namespace Documents {
   classification: __cedar::String
 };
 
-  action "approve" in [Action::"review"] appliesTo {
+  action "approve" in [Documents::Action::"review"] appliesTo {
     principal: [Organization::Executive],
     resource: [Documents::Report],
     context: {}
