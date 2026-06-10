@@ -12,6 +12,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `schema_to_json_with_resolved_types` to support converting schemas using the `Action` entity type as an attribute type.
+  This was reported as an error, but will not convert to a correct JSON scheam. (#2400)
+
 ### Added
 - Public syntax tree (`pst`) support for `variadic-is-in-range` feature: a variadic `isInRange` is modelled by a `pst::Expr::VariadicOp{...}` in the PST (#2380).
 
