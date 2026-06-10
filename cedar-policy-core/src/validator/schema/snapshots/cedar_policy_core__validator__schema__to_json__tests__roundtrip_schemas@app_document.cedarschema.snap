@@ -1,0 +1,19 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+input_file: cedar-policy/src/ffi/test_schemas/app_document.cedarschema
+---
+namespace App {
+  entity Document = {
+    editors: Set<App::User>,
+    owner: App::User
+  };
+
+  entity User;
+
+  action "edit" appliesTo {
+    principal: [App::User],
+    resource: [App::Document],
+    context: {}
+  };
+}
