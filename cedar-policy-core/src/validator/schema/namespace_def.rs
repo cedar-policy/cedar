@@ -24,7 +24,6 @@ use crate::parser::Loc;
 use crate::{
     ast::{EntityType, EntityUID, InternalName, Name, UnreservedId},
     extensions::Extensions,
-    fuzzy_match::fuzzy_search,
 };
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
@@ -861,18 +860,8 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
                     loc.as_ref(),
                 ))
             } else {
-                let suggested_replacement = fuzzy_search(
-                    &extension_type_name.to_string(),
-                    &extensions
-                        .ext_types()
-                        .map(|n| n.to_string())
-                        .collect::<Vec<_>>(),
-                );
                 Err(SchemaError::UnknownExtensionType(
-                    UnknownExtensionTypeError {
-                        actual: extension_type_name,
-                        suggested_replacement,
-                    },
+                    UnknownExtensionTypeError::new_with_suggestion(extension_type_name, extensions),
                 ))
             }
         }
