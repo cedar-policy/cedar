@@ -11,6 +11,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 - Pre-built `cedar` binaries on GitHub releases for Linux (x86_64, aarch64), macOS (x86_64, aarch64), and Windows (x86_64), built via cargo-dist on `cedar-policy-cli-v*` tags.
 - Experimental archive `cedar-policy-cli-experimental-<target>` with `tpe` and `analyze` (`cedar symcc`) enabled. The `symcc` subcommands additionally require [cvc5](https://github.com/cvc5/cvc5) installed at runtime.
 
+## 4.11.1
+
 ## 4.11.0
 
 ### Changed

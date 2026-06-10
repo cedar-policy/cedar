@@ -33,7 +33,7 @@ use nonempty::NonEmpty;
 #[cfg(feature = "extended-schema")]
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
-use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{hash_map::Entry, BTreeSet, HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -153,6 +153,16 @@ impl LocatedType {
             ty,
             #[cfg(feature = "extended-schema")]
             loc: _loc.cloned(),
+        }
+    }
+
+    /// Replace `self.loc` with `loc`. No-op if the `extended-schema` feature is
+    /// not enabled.
+    pub fn with_loc(self, _loc: Option<&Loc>) -> Self {
+        Self {
+            #[cfg(feature = "extended-schema")]
+            loc: _loc.cloned(),
+            ..self
         }
     }
 
@@ -817,12 +827,11 @@ impl ValidatorSchema {
         compute_tc(&mut action_ids, true)?;
 
         #[cfg(feature = "extended-schema")]
-        let common_type_validators = common_types
+        let located_common_types = common_types
             .clone()
             .into_iter()
-            .filter(|ct| {
+            .filter(|(ct_name, _)| {
                 // Only collect common types that are not primitives and have location data
-                let ct_name = ct.0.clone();
                 ct_name.loc().is_some() && !Type::is_primitive(ct_name.basename().as_ref())
             })
             .map(|ct| LocatedCommonType::new(ct.0, ct.1))
@@ -846,7 +855,7 @@ impl ValidatorSchema {
             entity_types,
             action_ids,
             #[cfg(feature = "extended-schema")]
-            common_type_validators,
+            located_common_types,
             #[cfg(feature = "extended-schema")]
             validator_namespaces,
         ))
@@ -1276,37 +1285,45 @@ impl AllDefs {
     ///
     /// [RFC 70]: https://github.com/cedar-policy/rfcs/blob/main/text/0070-disallow-empty-namespace-shadowing.md
     pub fn rfc_70_shadowing_checks(&self) -> Result<()> {
+        // Definitions which cannot be shadowed according to the RFC 70 rules.
+        // RFC 70 specifies that shadowing an entity typename with a common typename is OK, including in the empty namespace.
+        // do not throw an error if the shadowing name is something like `__cedar::String` "shadowing" an empty-namespace declaration of `String`
+        let illegal_shadowings: HashMap<_, _> = self
+            .entity_and_common_names()
+            .filter(|name| !name.is_unqualified() && !name.is_reserved())
+            .map(|n| (n.basename(), n))
+            .collect();
+
         for unqualified_name in self
             .entity_and_common_names()
             .filter(|name| name.is_unqualified())
         {
-            // `unqualified_name` is a definition in the empty namespace
-            if let Some(name) = self.entity_and_common_names().find(|name| {
-                !name.is_unqualified() // RFC 70 specifies that shadowing an entity typename with a common typename is OK, including in the empty namespace
-                && !name.is_reserved() // do not throw an error if the shadowing name is something like `__cedar::String` "shadowing" an empty-namespace declaration of `String`
-                && name.basename() == unqualified_name.basename()
-            }) {
+            if let Some(&shadowing) = illegal_shadowings.get(unqualified_name.basename()) {
                 return Err(TypeShadowingError {
                     shadowed_def: unqualified_name.clone(),
-                    shadowing_def: name.clone(),
+                    shadowing_def: shadowing.clone(),
                 }
                 .into());
             }
         }
+
+        // Action definitions which cannot be shadowed.
+        let illegal_action_shadowings: HashMap<_, _> = self
+            .action_defs
+            .iter()
+            .filter(|euid| !euid.entity_type().as_ref().is_unqualified())
+            .map(|euid| (euid.eid(), euid))
+            .collect();
+
         for unqualified_action in self
             .action_defs
             .iter()
             .filter(|euid| euid.entity_type().as_ref().is_unqualified())
         {
-            // `unqualified_action` is a definition in the empty namespace
-            if let Some(action) = self.action_defs.iter().find(|euid| {
-                !euid.entity_type().as_ref().is_unqualified() // do not throw an error for an action "shadowing" itself
-                // we do not need to check that the basenames are the same, because we assume they are both `Action`
-                && euid.eid() == unqualified_action.eid()
-            }) {
+            if let Some(&shadowing) = illegal_action_shadowings.get(unqualified_action.eid()) {
                 return Err(ActionShadowingError {
                     shadowed_def: unqualified_action.clone(),
-                    shadowing_def: action.clone(),
+                    shadowing_def: shadowing.clone(),
                 }
                 .into());
             }
@@ -1475,73 +1492,6 @@ impl<'a> CommonTypeResolver<'a> {
         }
     }
 
-    // Substitute common type references in `ty` according to `resolve_table`.
-    // Resolved types will still have the source loc of `ty`, unless `ty` is
-    // exactly a common type reference, in which case they will have the source
-    // loc of the definition of that reference.
-    fn resolve_type(
-        resolve_table: &HashMap<&InternalName, json_schema::Type<InternalName>>,
-        ty: json_schema::Type<InternalName>,
-    ) -> Result<json_schema::Type<InternalName>> {
-        match ty {
-            json_schema::Type::CommonTypeRef { type_name, .. } => resolve_table
-                .get(&type_name)
-                .ok_or_else(|| CommonTypeInvariantViolationError { name: type_name }.into())
-                .cloned(),
-            json_schema::Type::Type {
-                ty: json_schema::TypeVariant::EntityOrCommon { type_name },
-                loc,
-            } => match resolve_table.get(&type_name) {
-                Some(def) => Ok(def.clone().with_loc(loc)),
-
-                None => Ok(json_schema::Type::Type {
-                    ty: json_schema::TypeVariant::Entity { name: type_name },
-                    loc,
-                }),
-            },
-            json_schema::Type::Type {
-                ty: json_schema::TypeVariant::Set { element },
-                loc,
-            } => Ok(json_schema::Type::Type {
-                ty: json_schema::TypeVariant::Set {
-                    element: Box::new(Self::resolve_type(resolve_table, *element)?),
-                },
-                loc,
-            }),
-            json_schema::Type::Type {
-                ty:
-                    json_schema::TypeVariant::Record(json_schema::RecordType {
-                        attributes,
-                        additional_attributes,
-                    }),
-                loc,
-            } => Ok(json_schema::Type::Type {
-                ty: json_schema::TypeVariant::Record(json_schema::RecordType {
-                    attributes: BTreeMap::from_iter(
-                        attributes
-                            .into_iter()
-                            .map(|(attr, attr_ty)| -> Result<_> {
-                                Ok((
-                                    attr,
-                                    json_schema::TypeOfAttribute {
-                                        required: attr_ty.required,
-                                        ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
-                                        annotations: attr_ty.annotations,
-                                        #[cfg(feature = "extended-schema")]
-                                        loc: attr_ty.loc,
-                                    },
-                                ))
-                            })
-                            .partition_nonempty::<Vec<_>>()?,
-                    ),
-                    additional_attributes,
-                }),
-                loc,
-            }),
-            _ => Ok(ty),
-        }
-    }
-
     // Resolve common type references, returning a map from (fully-qualified)
     // [`InternalName`] of a common type to its [`Type`] definition
     fn resolve(
@@ -1552,8 +1502,6 @@ impl<'a> CommonTypeResolver<'a> {
             SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { ty: n })
         })?;
 
-        let mut resolve_table: HashMap<&InternalName, json_schema::Type<InternalName>> =
-            HashMap::new();
         let mut tys: HashMap<&'a InternalName, LocatedType> = HashMap::new();
 
         for &name in sorted_names.iter() {
@@ -1562,13 +1510,8 @@ impl<'a> CommonTypeResolver<'a> {
                 reason = "`name.basename()` should be an existing common type id"
             )]
             let ty = self.defs.get(name).unwrap();
-            let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
-            resolve_table.insert(name, substituted_ty.clone());
-            let validator_type = try_jsonschema_type_into_validator_type(
-                substituted_ty,
-                extensions,
-                &HashMap::new(),
-            )?;
+            let validator_type =
+                try_jsonschema_type_into_validator_type(ty.clone(), extensions, &tys)?;
 
             tys.insert(name, validator_type);
         }

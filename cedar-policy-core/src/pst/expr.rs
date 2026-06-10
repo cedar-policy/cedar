@@ -573,6 +573,48 @@ impl Display for BinaryOp {
     }
 }
 
+/// When using the `variadic-is-in-range` feature, the `isInRange` operator
+/// can be interpreted as a variadic operator:
+/// ```cedar
+/// ip("10.0.0.1").isInRange(ip("198.51.100.0/24"), ip("203.0.113.0/24"))  // variadic IsInRange
+/// ```
+#[cfg(feature = "variadic-is-in-range")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum VariadicOp {
+    /// `ip.isInRange(ip1, ip2, ...)`
+    IsInRange,
+}
+
+#[cfg(feature = "variadic-is-in-range")]
+impl VariadicOp {
+    pub(crate) fn to_name(self) -> Option<&'static ast::Name> {
+        self.to_binop().to_name()
+    }
+
+    /// Parse a binary operator from a function name
+    pub(crate) fn from_function_name(name: &str) -> Option<Self> {
+        match name {
+            "isInRange" => Some(VariadicOp::IsInRange),
+            _ => None,
+        }
+    }
+
+    /// Every variadic operator has a binary operator equivalent.
+    pub(crate) fn to_binop(self) -> BinaryOp {
+        match self {
+            VariadicOp::IsInRange => BinaryOp::IsInRange,
+        }
+    }
+}
+
+#[cfg(feature = "variadic-is-in-range")]
+impl Display for VariadicOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_binop())
+    }
+}
+
 /// Literal values in Cedar expressions.
 ///
 /// This enum is `#[non_exhaustive]`; match arms must include a wildcard.
@@ -746,6 +788,16 @@ pub enum Expr {
     /// evaluation (e.g., arithmetic overflow).
     #[cfg(feature = "tpe")]
     ResidualError,
+    /// A variadic extension function call (e.g., `ip.isInRange(range1, range2, ...)`).
+    #[cfg(feature = "variadic-is-in-range")]
+    VariadicOp {
+        /// The variadic operator
+        op: VariadicOp,
+        /// The first argument (receiver)
+        left: Arc<Expr>,
+        /// The remaining arguments (one or more)
+        rights: nonempty::NonEmpty<Arc<Expr>>,
+    },
 }
 
 impl Expr {
@@ -778,7 +830,16 @@ impl Expr {
         let expected = extension.arg_types().len();
         let got = args.len();
 
-        if expected != got {
+        #[cfg(feature = "variadic-is-in-range")]
+        let arity_ok = if extension.is_variadic() {
+            got >= expected
+        } else {
+            got == expected
+        };
+        #[cfg(not(feature = "variadic-is-in-range"))]
+        let arity_ok = got == expected;
+
+        if !arity_ok {
             return Err(error_body::WrongArityError::new(name.into(), expected, got).into());
         }
         Ok(match args.len() {
@@ -807,6 +868,22 @@ impl Expr {
                     right: iter.next().unwrap(),
                 }
             }
+            #[cfg(feature = "variadic-is-in-range")]
+            _ => {
+                let op = VariadicOp::from_function_name(&ast_name.to_string())
+                    .ok_or_else(|| error_body::UnknownFunctionError::new(name.clone()))?;
+                let mut iter = args.into_iter();
+                #[expect(clippy::unwrap_used, reason = "length >= 3 checked in match arm")]
+                let left = iter.next().unwrap();
+                #[expect(clippy::unwrap_used, reason = "length >= 3 checked in match arm")]
+                let first_right = iter.next().unwrap();
+                let rights = nonempty::NonEmpty {
+                    head: first_right,
+                    tail: iter.collect(),
+                };
+                Expr::VariadicOp { op, left, rights }
+            }
+            #[cfg(not(feature = "variadic-is-in-range"))]
             _ => return Err(error_body::UnknownFunctionError::new(name).into()),
         })
     }
@@ -861,6 +938,10 @@ impl Expr {
                     Some(first) => iter.fold(recurse(first), |acc, e| op(acc, recurse(e))),
                 }
             }
+            #[cfg(feature = "variadic-is-in-range")]
+            Expr::VariadicOp { left, rights, .. } => rights
+                .iter()
+                .fold(recurse(left), |acc, e| op(acc, recurse(e))),
         }
     }
 
@@ -1379,6 +1460,22 @@ mod tests {
             else_expr: Arc::new(Expr::Slot(SlotId::Principal)),
         };
         assert!(ite.has_slots());
+        // VariadicOp with slot in rights
+        #[cfg(feature = "variadic-is-in-range")]
+        {
+            let variadic_no_slot = Expr::VariadicOp {
+                op: super::VariadicOp::IsInRange,
+                left: lit.clone(),
+                rights: nonempty::nonempty![lit.clone(), lit.clone()],
+            };
+            assert!(!variadic_no_slot.has_slots());
+            let variadic_with_slot = Expr::VariadicOp {
+                op: super::VariadicOp::IsInRange,
+                left: lit.clone(),
+                rights: nonempty::nonempty![Arc::new(Expr::Slot(SlotId::Principal))],
+            };
+            assert!(variadic_with_slot.has_slots());
+        }
     }
 
     #[test]
