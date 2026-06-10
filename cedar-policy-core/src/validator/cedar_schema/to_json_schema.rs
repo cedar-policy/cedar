@@ -97,16 +97,28 @@ fn is_valid_ext_type(ty: &Id, extensions: &Extensions<'_>) -> bool {
 }
 
 /// Convert a `Type` into the JSON representation of the type.
-pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
-    let variant = match ty.node {
+pub fn cedar_type_to_json_type(mut ty: Node<Type>) -> json_schema::Type<RawName> {
+    // Some anoying use of `std::mem::replace` here because we have `Type`
+    // implement `Drop` to avoid stack overflows when dropping deeply nested
+    // types and Rust won't let you move out of a type with `Drop`.
+    let variant = match &mut ty.node {
         Type::Set(t) => json_schema::TypeVariant::Set {
-            element: Box::new(cedar_type_to_json_type(*t)),
+            element: Box::new(cedar_type_to_json_type(std::mem::replace(
+                t.as_mut(),
+                Node::new(Type::Record(Vec::new())),
+            ))),
         },
         Type::Ident(p) => json_schema::TypeVariant::EntityOrCommon {
-            type_name: RawName::from(p),
+            type_name: RawName::from(std::mem::replace(
+                p,
+                Path::new(Id::new_unchecked_const(""), [], None),
+            )),
         },
         Type::Record(fields) => json_schema::TypeVariant::Record(json_schema::RecordType {
-            attributes: fields.into_iter().map(convert_attr_decl).collect(),
+            attributes: std::mem::take(fields)
+                .into_iter()
+                .map(convert_attr_decl)
+                .collect(),
             additional_attributes: false,
         }),
     };

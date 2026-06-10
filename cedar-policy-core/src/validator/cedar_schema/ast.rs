@@ -307,6 +307,35 @@ pub enum Type {
     Record(Vec<Node<Annotated<AttrDecl>>>),
 }
 
+impl Drop for Type {
+    fn drop(&mut self) {
+        let mut work: Vec<Node<Type>> = Vec::new();
+        collect_child_types(self, &mut work);
+        while let Some(mut type_node) = work.pop() {
+            collect_child_types(&mut type_node.node, &mut work);
+        }
+    }
+}
+
+/// Extract all `Node<Type>` from `ty`, moving them out of `ty` and appending
+/// them to `out`.  After this call, `ty` holds no recursive `Node<Type>`, so it
+/// can be dropped without risking stack overflow due to recursion.
+fn collect_child_types(ty: &mut Type, out: &mut Vec<Node<Type>>) {
+    match ty {
+        Type::Ident(_) => {}
+        Type::Set(inner) => {
+            let dummy = Node::with_maybe_source_loc(Type::Record(vec![]), None);
+            out.push(std::mem::replace(inner.as_mut(), dummy));
+        }
+        Type::Record(attrs) => {
+            for attr_node in attrs.iter_mut() {
+                let dummy = Node::with_maybe_source_loc(Type::Record(vec![]), None);
+                out.push(std::mem::replace(&mut attr_node.node.data.ty, dummy));
+            }
+        }
+    }
+}
+
 /// Primitive Type Definitions
 #[derive(Debug, Clone)]
 pub enum PrimitiveType {

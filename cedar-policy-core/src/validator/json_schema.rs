@@ -46,7 +46,10 @@ use thiserror::Error;
 
 use crate::validator::{
     cedar_schema::{
-        self, fmt::ToCedarSchemaSyntaxError, parser::parse_cedar_schema_fragment, SchemaWarning,
+        self,
+        fmt::ToCedarSchemaSyntaxError,
+        parser::{parse_cedar_schema_fragment, parse_cedar_schema_fragment_with_depth_limit},
+        SchemaWarning,
     },
     err::{schema_errors::*, Result},
     AllDefs, CedarSchemaError, CedarSchemaParseError, ConditionalName, RawName, ReferenceType,
@@ -176,6 +179,43 @@ impl Fragment<RawName> {
         serde_json::from_reader(file).map_err(|e| JsonDeserializationError::new(e, None).into())
     }
 
+    /// Like [`Self::from_json_str`], but rejects the schema if any type's
+    /// effective nesting depth exceeds `depth_limit`.
+    pub fn from_json_str_with_depth_limit(json: &str, depth_limit: usize) -> Result<Self> {
+        let fragment = Self::from_json_str(json)?;
+        fragment.check_depth_limit(depth_limit)?;
+        Ok(fragment)
+    }
+
+    /// Like [`Self::from_json_value`], but rejects the schema if any type's
+    /// effective nesting depth exceeds `depth_limit`.
+    pub fn from_json_value_with_depth_limit(
+        json: serde_json::Value,
+        depth_limit: usize,
+    ) -> Result<Self> {
+        let fragment = Self::from_json_value(json)?;
+        fragment.check_depth_limit(depth_limit)?;
+        Ok(fragment)
+    }
+
+    /// Check that the effective type depth does not exceed `depth_limit`.
+    fn check_depth_limit(&self, depth_limit: usize) -> Result<()> {
+        use crate::validator::schema_type_depth::fragment_effective_depth;
+        let resolved = self.to_internal_name_fragment_with_resolved_types()?;
+        if let Some(depth) = fragment_effective_depth(&resolved) {
+            if depth > depth_limit {
+                return Err(SchemaError::TypeTooDeep(
+                    super::err::schema_errors::TypeTooDeepError {
+                        depth,
+                        limit: depth_limit,
+                    },
+                )
+                .into());
+            }
+        }
+        Ok(())
+    }
+
     /// Parse the schema (in the Cedar schema syntax) from a string
     pub fn from_cedarschema_str<'a>(
         src: &str,
@@ -183,6 +223,18 @@ impl Fragment<RawName> {
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
     {
         parse_cedar_schema_fragment(src, extensions)
+            .map_err(|e| CedarSchemaParseError::new(e, src).into())
+    }
+
+    /// Like [`Self::from_cedarschema_str`], but rejects the schema if any
+    /// type's nesting depth exceeds `depth_limit`.
+    pub fn from_cedarschema_str_with_depth_limit<'a>(
+        src: &str,
+        extensions: &Extensions<'a>,
+        depth_limit: usize,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
+    {
+        parse_cedar_schema_fragment_with_depth_limit(src, extensions, depth_limit)
             .map_err(|e| CedarSchemaParseError::new(e, src).into())
     }
 
