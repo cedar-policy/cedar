@@ -385,12 +385,12 @@ impl TpeResponse<'_> {
         self.0.decision()
     }
 
-    /// Get the determing policies for the partial authorization decision.
-    /// These are a subset of the determining polices for any subsequent
+    /// Get the determining policies for the partial authorization decision.
+    /// These are a subset of the determining policies for any subsequent
     /// concrete reauthorization.
     ///
     /// When [`TpeResponse::decision`] returns a concrete allow or deny, the
-    /// determining policies are the satisfied permits or forbids respectivly.
+    /// determining policies are the satisfied permits or forbids respectively.
     /// If TPE did not reach a concrete decision, then this will always return
     /// an empty set.
     pub fn reason(&self) -> HashSet<&PolicyId> {
@@ -401,20 +401,20 @@ impl TpeResponse<'_> {
         }
     }
 
-    /// Get the permit policies that are concretly satisfied by the partial request.
+    /// Get the permit policies that are concretely satisfied by the partial request.
     ///
     /// If the eventual concrete authorization decision is allow, then these
     /// will be a subset of the determining policies. However, they may still be
-    /// overriden by a non-trivial residual forbid policy.
+    /// overridden by a non-trivial residual forbid policy.
     pub fn satisfied_permits(&self) -> impl Iterator<Item = &PolicyId> {
         self.0
             .satisfied_permits()
             .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
     }
 
-    /// Get the forbid policies that are concretly satisfied by the partial request.
+    /// Get the forbid policies that are concretely satisfied by the partial request.
     ///
-    /// Presence of any satisfied forbids guarenteees that they are exactly the
+    /// Presence of any satisfied forbids guarantees that they are exactly the
     /// policies returned by [`TpeResponse::reason`] and that [`TpeResponse::decision`]
     /// must return `Deny`.
     pub fn satisfied_forbids(&self) -> impl Iterator<Item = &PolicyId> {
