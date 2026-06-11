@@ -57,6 +57,7 @@ mod raw_name;
 pub use raw_name::{ConditionalName, RawName, ReferenceType};
 pub(crate) mod err;
 use err::{schema_errors::*, *};
+mod to_json;
 
 /// A `ValidatorSchemaFragment` consists of any number (even 0) of
 /// `ValidatorNamespaceDef`s.
