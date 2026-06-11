@@ -1,0 +1,25 @@
+---
+source: cedar-policy-core/src/validator/schema/to_json.rs
+expression: roundtrip_result
+input_file: cedar-policy/src/ffi/test_schemas/action_entity_ref.cedarschema
+---
+entity User = {
+  a0: Action,
+  a1: N::Action,
+  a2: M::Action
+};
+
+action "A";
+
+namespace M {
+  action "C";
+}
+
+namespace N {
+  entity Admin = {
+    a0: N::Action,
+    a1: M::Action
+  };
+
+  action "B";
+}
