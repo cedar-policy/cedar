@@ -32,8 +32,9 @@ use smol_str::SmolStr;
 
 use crate::{
     api, tpe_err, Authorizer, Context, Entities, Entity, EntityId, EntityTypeName, EntityUid,
-    PartialEntityError, PartialRequestCreationError, PermissionQueryError, Policy, PolicySet,
-    Request, RequestValidationError, RestrictedExpression, Schema, TpeReauthorizationError,
+    PartialEntityError, PartialRequestCreationError, PermissionQueryError, Policy, PolicyId,
+    PolicySet, Request, RequestValidationError, RestrictedExpression, Schema,
+    TpeReauthorizationError,
 };
 
 /// A partial [`EntityUid`].
@@ -382,6 +383,54 @@ impl TpeResponse<'_> {
     /// Attempt to get the authorization decision
     pub fn decision(&self) -> Option<Decision> {
         self.0.decision()
+    }
+
+    /// Get the determining policies for the partial authorization decision.
+    /// These are a subset of the determining policies for any subsequent
+    /// concrete reauthorization.
+    ///
+    /// When [`TpeResponse::decision`] returns a concrete allow or deny, the
+    /// determining policies returned by this function are the satisfied permits
+    /// or forbids respectively.
+    ///
+    /// If partial authorization does not reach a decision, then this function
+    /// returns `None`. It's reasonable to treat this response as "no known
+    /// determining policies", in which case you can call this function as
+    /// `response.reason().into_iter().flatten()`.
+    pub fn reason(&self) -> Option<impl Iterator<Item = &PolicyId>> {
+        Some(self.0.reason()?.map(PolicyId::ref_cast))
+    }
+
+    /// Get the permit policies that are concretely satisfied by the partial request.
+    ///
+    /// To properly interpret the ids returned from this function you need to
+    /// consider them in the context of [`TpeResponse::decision`]:
+    /// * For a concrete `Allow` decision, these are a subset of the concrete
+    ///   determining policies and are exactly the policies returned by
+    ///   [`TpeResponse::reason`].
+    /// * For a concrete `Deny` decision, these are not determining policies. The
+    ///   iterator may be empty if no permits were satisfied, or it may contain
+    ///   satisfied permits which have been overridden by at least one satisfied
+    ///   forbid policy.
+    /// * For an unknown decision, these will be a subset of the determining
+    ///   policies _if_ the eventual concrete authorization decision is `Allow`,
+    ///   but they may still be overridden by any non-trivial residual forbid
+    ///   policy.
+    pub fn true_permits(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0
+            .satisfied_permits()
+            .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
+    }
+
+    /// Get the forbid policies that are concretely satisfied by the partial request.
+    ///
+    /// Presence of any satisfied forbids guarantees that they are exactly the
+    /// policies returned by [`TpeResponse::reason`] and that [`TpeResponse::decision`]
+    /// must return a concrete `Deny`.
+    pub fn true_forbids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0
+            .satisfied_forbids()
+            .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
     }
 
     /// Perform reauthorization
@@ -1259,6 +1308,7 @@ unless
             );
 
             assert_eq!(response.decision(), None);
+            assert!(response.reason().is_none());
 
             let request = Request::new(
                 EntityUid::from_type_name_and_id(
@@ -2115,8 +2165,8 @@ when { principal in resource.admins };
         use itertools::Itertools;
 
         use crate::{
-            Context, Entities, PartialEntities, PartialEntityUid, PartialRequest, PolicySet,
-            PrincipalQueryRequest, ResourceQueryRequest, Schema,
+            Context, Entities, PartialEntities, PartialEntityUid, PartialRequest, PolicyId,
+            PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
         };
         use std::{i64, str::FromStr};
 
@@ -2153,6 +2203,10 @@ when { principal in resource.admins };
                 .tpe(&req, &partial_entities, &schema)
                 .unwrap();
             assert_eq!(response.decision(), Some(Decision::Allow));
+            assert_eq!(
+                response.reason().unwrap().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy0")]
+            );
         }
 
         #[test]
@@ -2214,6 +2268,14 @@ when { principal in resource.admins };
                 .tpe(&req, &partial_entities, &schema)
                 .unwrap();
             assert_eq!(response.decision(), Some(Decision::Deny));
+            assert_eq!(
+                response.reason().unwrap().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy0")]
+            );
+            assert_eq!(
+                response.true_forbids().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy0")]
+            );
         }
 
         #[test]
@@ -2278,6 +2340,10 @@ when { principal in resource.admins };
             .tpe(&req, &partial_entities, &schema)
             .unwrap();
             assert_eq!(response.decision(), Some(Decision::Deny));
+            assert_eq!(
+                response.reason().unwrap().collect::<Vec<_>>(),
+                Vec::<&PolicyId>::new()
+            );
         }
 
         #[test]
@@ -2345,6 +2411,10 @@ when { principal in resource.admins };
                 .tpe(&req, &partial_entities, &schema)
                 .unwrap();
             assert_eq!(response.decision(), Some(Decision::Deny));
+            assert_eq!(
+                response.reason().unwrap().collect::<Vec<_>>(),
+                Vec::<&PolicyId>::new()
+            );
         }
 
         #[test]
@@ -2877,6 +2947,14 @@ when { principal in resource.admins };
             let response = policies.tpe(&request, &es, &schema).unwrap();
 
             assert_eq!(response.decision(), Some(Decision::Allow));
+            assert_eq!(
+                response.reason().unwrap().collect::<Vec<_>>(),
+                vec![&PolicyId::new("l")]
+            );
+            assert_eq!(
+                response.true_permits().collect::<Vec<_>>(),
+                vec![&PolicyId::new("l")]
+            );
         }
 
         #[test]
@@ -2889,6 +2967,10 @@ when { principal in resource.admins };
             let response = policies.tpe(&request, &es, &schema).unwrap();
 
             assert_eq!(response.decision(), Some(Decision::Deny));
+            assert_eq!(
+                response.reason().unwrap().collect::<Vec<_>>(),
+                Vec::<&PolicyId>::new()
+            );
         }
 
         #[test]
@@ -2911,6 +2993,10 @@ when { principal in resource.admins };
             let response = policies.tpe(&request, &es, &schema).unwrap();
 
             assert_eq!(response.decision(), Some(Decision::Deny));
+            assert_eq!(
+                response.reason().unwrap().collect::<Vec<_>>(),
+                Vec::<&PolicyId>::new()
+            );
         }
 
         #[test]
@@ -2943,6 +3029,7 @@ when { principal in resource.admins };
             let residuals: Vec<_> = response.nontrivial_residual_policies().collect();
             assert_eq!(residuals[0].to_pst().unwrap().body(), expected.body());
             assert_eq!(response.decision(), None);
+            assert!(response.reason().is_none());
             assert_eq!(residuals.len(), 1);
         }
     }

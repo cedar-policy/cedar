@@ -59,8 +59,8 @@ impl ResidualPolicy {
     }
 
     /// Get the [`PolicyID`]
-    pub fn get_policy_id(&self) -> PolicyID {
-        self.policy.id().clone()
+    pub fn get_policy_id(&self) -> &PolicyID {
+        self.policy.id()
     }
 
     /// All literal uids referenced by this residual
@@ -88,13 +88,13 @@ pub struct Response<'a> {
     decision: Option<Decision>,
     residuals: HashMap<PolicyID, ResidualPolicy>,
     // All of the [`Effect::Permit`] policies that were satisfied
-    satisfied_permits: HashSet<PolicyID>,
+    true_permits: HashSet<PolicyID>,
     // All of the [`Effect::Permit`] policies that were not satisfied
     false_permits: HashSet<PolicyID>,
     // All of the [`Effect::Permit`] policies that evaluated to a residual
     residual_permits: HashSet<PolicyID>,
     // All of the [`Effect::Forbid`] policies that were satisfied
-    satisfied_forbids: HashSet<PolicyID>,
+    true_forbids: HashSet<PolicyID>,
     // All of the [`Effect::Forbid`] policies that were not satisfied
     false_forbids: HashSet<PolicyID>,
     // All of the [`Effect::Forbid`] policies that evaluated to a residual
@@ -117,10 +117,10 @@ impl<'a> Response<'a> {
         schema: &'a ValidatorSchema,
     ) -> Self {
         let mut residual_map = HashMap::new();
-        let mut satisfied_permits = HashSet::new();
+        let mut true_permits = HashSet::new();
         let mut false_permits = HashSet::new();
         let mut residual_permits = HashSet::new();
-        let mut satisfied_forbids = HashSet::new();
+        let mut true_forbids = HashSet::new();
         let mut false_forbids = HashSet::new();
         let mut residual_forbids = HashSet::new();
         for rp in residuals {
@@ -130,28 +130,28 @@ impl<'a> Response<'a> {
             match rp.get_effect() {
                 Effect::Forbid => {
                     if r.is_true() {
-                        satisfied_forbids.insert(id);
+                        true_forbids.insert(id.clone());
                     } else if r.is_false() || r.is_error() {
-                        false_forbids.insert(id);
+                        false_forbids.insert(id.clone());
                     } else {
-                        residual_forbids.insert(id);
+                        residual_forbids.insert(id.clone());
                     }
                 }
                 Effect::Permit => {
                     if r.is_true() {
-                        satisfied_permits.insert(id);
+                        true_permits.insert(id.clone());
                     } else if r.is_false() || r.is_error() {
-                        false_permits.insert(id);
+                        false_permits.insert(id.clone());
                     } else {
-                        residual_permits.insert(id);
+                        residual_permits.insert(id.clone());
                     }
                 }
             }
         }
 
         let decision = match (
-            !satisfied_forbids.is_empty(),
-            !satisfied_permits.is_empty(),
+            !true_forbids.is_empty(),
+            !true_permits.is_empty(),
             !residual_permits.is_empty(),
             !residual_forbids.is_empty(),
         ) {
@@ -170,10 +170,10 @@ impl<'a> Response<'a> {
         Self {
             decision,
             residuals: residual_map,
-            satisfied_permits,
+            true_permits,
             false_permits,
             residual_permits,
-            satisfied_forbids,
+            true_forbids,
             false_forbids,
             residual_forbids,
             request,
@@ -188,7 +188,7 @@ impl<'a> Response<'a> {
             clippy::unwrap_used,
             reason = "we know that the policy ids are in the residuals map"
         )]
-        self.satisfied_permits
+        self.true_permits
             .iter()
             .map(|id| self.residuals.get(id).unwrap())
     }
@@ -199,7 +199,7 @@ impl<'a> Response<'a> {
             clippy::unwrap_used,
             reason = "we know that the policy ids are in the residuals map"
         )]
-        self.satisfied_forbids
+        self.true_forbids
             .iter()
             .map(|id| self.residuals.get(id).unwrap())
     }
@@ -256,6 +256,14 @@ impl<'a> Response<'a> {
     /// Attempt to get the authorization decision
     pub fn decision(&self) -> Option<Decision> {
         self.decision
+    }
+
+    /// Get the determining policies for the authorization decision
+    pub fn reason(&self) -> Option<impl Iterator<Item = &PolicyID>> {
+        match self.decision? {
+            Decision::Allow => Some(self.true_permits.iter()),
+            Decision::Deny => Some(self.true_forbids.iter()),
+        }
     }
 
     /// Perform reauthorization
