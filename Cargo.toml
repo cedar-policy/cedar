@@ -12,9 +12,40 @@ members = [
 
 resolver = "2"
 
+# cargo-dist config. Workspace default `dist = false`; `cedar-policy-cli`
+# opts in via its own `[package.metadata.dist]`.
+[workspace.metadata.dist]
+cargo-dist-version = "0.32.0"
+ci = "github"
+dist = false
+installers = ["shell", "powershell"]
+tag-namespace = "cedar-policy-cli"
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+include = ["NOTICE", "THIRD_PARTY_LICENSES.txt"]
+pr-run-mode = "plan"
+install-updater = false
+post-announce-jobs = ["./build_experimental", "./set_release_title"]
+
+# SHA-pin the actions cargo-dist injects into the generated workflow.
+[workspace.metadata.dist.github-action-commits]
+"actions/checkout" = "df4cb1c069e1874edd31b4311f1884172cec0e10"            # v6.0.3
+"actions/upload-artifact" = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"     # v7.0.1
+"actions/download-artifact" = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"   # v8
+
 # Enable global integer overflow detection for the release profile
 [profile.release]
 overflow-checks = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
 
 [profile.bench]
 overflow-checks = true

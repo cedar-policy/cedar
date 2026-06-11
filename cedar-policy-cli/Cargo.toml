@@ -48,5 +48,8 @@ insta = { version = "1.47.2", features = ["filters"] }
 name = "cedar"
 path = "src/main.rs"
 
+[package.metadata.dist]
+dist = true
+
 [lints]
 workspace = true

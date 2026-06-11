@@ -1,0 +1,26 @@
+name: Set CLI release title
+
+# Override avoids collision with the core `cedar-policy` release that shares
+# the same version number. See axodotdev/cargo-dist#2256.
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        description: "dist-manifest.json contents passed in by cargo-dist."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  set-title:
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Override release title
+        env:
+          TAG: ${{ fromJson(inputs.plan).announcement_tag }}
+        run: gh release edit "$TAG" --title "cedar-policy-cli ${TAG#cedar-policy-cli-}" --repo "$GITHUB_REPOSITORY"

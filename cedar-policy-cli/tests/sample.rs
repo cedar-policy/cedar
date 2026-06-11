@@ -2084,3 +2084,15 @@ fn link_file_cant_read() {
     });
     assert!(!output.status.success());
 }
+
+#[test]
+fn test_license() {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("license")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Cedar is licensed under the Apache License, Version 2.0.",
+        ))
+        .stdout(predicate::str::contains("Third-party dependency licenses"));
+}
