@@ -22,7 +22,7 @@ use miette::{miette, IntoDiagnostic, Result};
 use serde::Deserialize;
 
 use crate::{
-    create_slot_env, load_links_from_file, parse_slot_id, CedarExitCode, PoliciesArgs,
+    create_slot_env, load_links_from_file_or_empty, parse_slot_id, CedarExitCode, PoliciesArgs,
     TemplateLinked,
 };
 
@@ -80,7 +80,7 @@ pub fn link(args: &LinkArgs) -> CedarExitCode {
 }
 
 fn link_inner(args: &LinkArgs) -> Result<()> {
-    let mut policies = args.policies.get_policy_set()?;
+    let mut policies = args.policies.get_policy_set_allow_missing_links()?;
     let slotenv = create_slot_env(&args.arguments.data)?;
     policies.link(
         PolicyId::new(&args.template_id),
@@ -109,7 +109,7 @@ fn link_inner(args: &LinkArgs) -> Result<()> {
 
 /// Add a single template-linked policy to the linked file
 fn update_template_linked_file(path: impl AsRef<Path>, new_linked: TemplateLinked) -> Result<()> {
-    let mut template_linked = load_links_from_file(path.as_ref())?;
+    let mut template_linked = load_links_from_file_or_empty(path.as_ref())?;
     template_linked.push(new_linked);
     write_template_linked_file(&template_linked, path.as_ref())
 }

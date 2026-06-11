@@ -19,12 +19,26 @@ use miette::{IntoDiagnostic, Result, WrapErr};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path, str::FromStr};
 
-/// Iterate over links in the template-linked file and add them to the set
+/// Iterate over links in the template-linked file and add them to the set.
+/// Returns an error if the file does not exist.
 pub(crate) fn add_template_links_to_set(
     path: impl AsRef<Path>,
     policy_set: &mut PolicySet,
 ) -> Result<()> {
-    for template_linked in load_links_from_file(path)? {
+    add_links_to_set(&load_links_from_file(path)?, policy_set)
+}
+
+/// Like `add_template_links_to_set`, but tolerates a missing file (treats it
+/// as empty). Used by the `link` command which creates the file if needed.
+pub(crate) fn add_template_links_to_set_if_exists(
+    path: impl AsRef<Path>,
+    policy_set: &mut PolicySet,
+) -> Result<()> {
+    add_links_to_set(&load_links_from_file_or_empty(path)?, policy_set)
+}
+
+fn add_links_to_set(links: &[TemplateLinked], policy_set: &mut PolicySet) -> Result<()> {
+    for template_linked in links {
         let slot_env = create_slot_env(&template_linked.args)?;
         policy_set.link(
             PolicyId::new(&template_linked.template_id),
@@ -89,14 +103,11 @@ impl From<TemplateLinked> for LiteralTemplateLinked {
     }
 }
 
-/// Given a file containing template links, return a `Vec` of those links
+/// Given a file containing template links, return a `Vec` of those links.
+/// Returns an error if the file does not exist.
 pub(crate) fn load_links_from_file(path: impl AsRef<Path>) -> Result<Vec<TemplateLinked>> {
     let f = match std::fs::File::open(&path) {
         Ok(f) => f,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // If the file doesn't exist, then give back the empty entity set
-            return Ok(vec![]);
-        }
         Err(e) => {
             return Err(miette::miette!(
                 "failed to open links file '{}': {}",
@@ -119,6 +130,15 @@ pub(crate) fn load_links_from_file(path: impl AsRef<Path>) -> Result<Vec<Templat
             .into_diagnostic()
             .wrap_err("Deserialization error")
     }
+}
+
+/// Like `load_links_from_file`, but returns an empty vec if the file does
+/// not exist. Used by the `link` command which creates the file if needed.
+pub(crate) fn load_links_from_file_or_empty(path: impl AsRef<Path>) -> Result<Vec<TemplateLinked>> {
+    path.as_ref()
+        .exists()
+        .then(|| load_links_from_file(path))
+        .unwrap_or_else(|| Ok(vec![]))
 }
 
 pub(crate) fn parse_slot_id<S: AsRef<str>>(s: S) -> Result<SlotId, String> {

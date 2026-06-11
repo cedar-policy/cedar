@@ -2096,3 +2096,47 @@ fn test_license() {
         ))
         .stdout(predicate::str::contains("Third-party dependency licenses"));
 }
+
+#[test]
+fn auth_link_file_does_not_exist() {
+    // authorizing with a link file that does not exist should error
+    let dir = tempfile::tempdir().expect("failed to create tempdir");
+    let entities = dir.path().join("entities.json");
+    std::fs::write(&entities, r#"[]"#).unwrap();
+    let linked = dir.path().join("linked");
+    assert!(
+        !linked.exists(),
+        "trying to test behavior when file doesn't exist"
+    );
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("authorize")
+        .arg("--template-linked")
+        .arg(&linked)
+        .arg("--entities")
+        .arg(entities)
+        .arg("--principal")
+        .arg(r#"User::"bob""#)
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource")
+        .arg(r#"Photo::"VacationPhoto94.jpg""#)
+        .write_stdin("permit(principal == ?principal, action, resource);")
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut settings = insta::Settings::clone_current();
+    settings.add_filter(r"/tmp/[^ ']+/linked", "[TEMPDIR]/linked");
+    settings.bind(|| {
+        insta::assert_snapshot!(stdout, @r###"
+
+        × failed to open links file '[TEMPDIR]/linked': No such file or
+        │ directory (os error 2)
+        "###);
+    });
+    assert!(!output.status.success());
+    assert!(
+        !linked.exists(),
+        "authorize shouldn't create the missing link file"
+    );
+}
