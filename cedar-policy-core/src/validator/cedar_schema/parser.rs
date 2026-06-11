@@ -151,7 +151,7 @@ pub fn parse_cedar_schema_fragment_with_depth_limit<'a>(
     // after inlining the type definitions.
     let (fragment, warnings) = cedar_schema_to_json_schema(ast, extensions)?;
     // Now check effective depth (after inlining common types) to ensure we
-    // avoid any downstream stackoverflow caused by recursion on the inlined
+    // avoid any downstream stack overflow caused by recursion on the inlined
     // types.  We first need to resolve `RawName` to `InternalName` to know
     // exactly what each common type refers to when computing the depth.
     if let Ok(resolved) = fragment.to_internal_name_fragment_with_resolved_types() {

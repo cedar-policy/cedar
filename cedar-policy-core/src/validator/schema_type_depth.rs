@@ -29,7 +29,7 @@ use super::topo_sort::topo_sort;
 /// references are inlined.
 ///
 /// Requires a `Fragment<InternalName>` where all type references are fully
-/// qualified. Use [`Fragment::to_internal_name_fragment`] to obtain one.
+/// qualified. Use [`Fragment::to_internal_name_fragment_with_resolved_types`] to obtain one.
 ///
 /// Returns `None` if there are cycles (reported separately by the validator).
 pub(crate) fn fragment_effective_depth(fragment: &Fragment<InternalName>) -> Option<usize> {
@@ -126,8 +126,8 @@ fn resolve_all_common_type_depths(
 
 /// Compute the structural depth of a type, substituting resolved depths for
 /// common type references. We can directly recurse on `ty` because we assume we
-/// have already checked it's direct depth and we do not follow common type
-/// referenes, instead looking them up in `resolved`.
+/// have already checked its direct depth and we do not follow common type
+/// references, instead looking them up in `common_type_defs`.
 fn type_depth(ty: &Type<InternalName>, common_type_defs: &HashMap<InternalName, usize>) -> usize {
     match ty {
         Type::Type { ty: variant, .. } => match variant {

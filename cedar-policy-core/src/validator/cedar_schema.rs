@@ -19,7 +19,7 @@
 mod ast;
 pub use ast::Path;
 /// Depth computation for schema types
-pub mod depth;
+pub(crate) mod depth;
 mod err;
 pub mod fmt;
 pub mod parser;

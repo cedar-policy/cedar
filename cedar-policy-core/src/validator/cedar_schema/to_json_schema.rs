@@ -98,7 +98,7 @@ fn is_valid_ext_type(ty: &Id, extensions: &Extensions<'_>) -> bool {
 
 /// Convert a `Type` into the JSON representation of the type.
 pub fn cedar_type_to_json_type(mut ty: Node<Type>) -> json_schema::Type<RawName> {
-    // Some anoying use of `std::mem::replace` here because we have `Type`
+    // Some annoying use of `std::mem::replace` here because we have `Type`
     // implement `Drop` to avoid stack overflows when dropping deeply nested
     // types and Rust won't let you move out of a type with `Drop`.
     let variant = match &mut ty.node {
