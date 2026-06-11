@@ -651,7 +651,7 @@ mod test {
             action_decls: vec![],
         };
         // Schema validation rejects enum entities as descendants of other entities.
-        assert!(ValidatorSchema::try_from(bad).is_err(),);
+        assert!(ValidatorSchema::try_from(bad).is_err());
     }
 
     #[test]
@@ -680,7 +680,7 @@ mod test {
             action_decls: vec![],
         };
         // Schema validation rejects undeclared entity types in descendants.
-        assert!(ValidatorSchema::try_from(bad).is_err(),);
+        assert!(ValidatorSchema::try_from(bad).is_err());
     }
 
     #[test]

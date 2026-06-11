@@ -41,7 +41,7 @@ use crate::validator::{
     cedar_schema::SchemaWarning,
     json_schema,
     partition_nonempty::PartitionNonEmpty,
-    types::{Attributes, EntityKind, OpenTag, RequestEnv, Type},
+    types::{Attributes, EntityKind, OpenTag, RequestEnv, Type, TypeIterator},
     ValidationMode,
 };
 
@@ -1076,13 +1076,10 @@ impl ValidatorSchema {
         })
     }
 
-    /// Iterate over all leaf types reachable from entity attributes, tags, and action contexts,
-    /// calling `visit` on each leaf type. Recursion through sets and records is handled
-    /// automatically.
-    fn for_each_type(
-        &self,
-        mut visit: impl FnMut(&Type) -> std::result::Result<(), SchemaError>,
-    ) -> std::result::Result<(), SchemaError> {
+    /// Returns an iterator over all leaf types reachable from entity attributes, tags, and
+    /// action contexts. Leaf types are all types except `Set` and `Record`, which are
+    /// traversed into automatically.
+    fn leaf_types(&self) -> TypeIterator<'_> {
         let mut stack: Vec<&Type> = Vec::new();
         for ety in self.entity_types.values() {
             for (_, attr) in ety.attributes().iter() {
@@ -1095,20 +1092,7 @@ impl ValidatorSchema {
         for action in self.action_ids.values() {
             stack.push(action.context());
         }
-        while let Some(ty) = stack.pop() {
-            match ty {
-                Type::Set {
-                    element_type: Some(el),
-                } => stack.push(el),
-                Type::Record { attrs, .. } => {
-                    for (_, attr) in attrs.iter() {
-                        stack.push(&attr.attr_type);
-                    }
-                }
-                _ => visit(ty)?,
-            }
-        }
-        Ok(())
+        TypeIterator { stack }
     }
 
     /// Construct an `Entity` object for each action in the schema
@@ -1161,7 +1145,7 @@ impl ValidatorSchema {
             }
             for descendant in action.descendants() {
                 if !self.action_ids.contains_key(descendant) {
-                    return Err(ActionInvariantViolationError {
+                    return Err(UndeclaredActionsError {
                         euids: NonEmpty::singleton(descendant.clone()),
                     }
                     .into());
@@ -1177,7 +1161,7 @@ impl ValidatorSchema {
     /// Check that all entity types referenced in attribute/tag/context types are declared
     fn check_references_wf(&self) -> std::result::Result<(), SchemaError> {
         let mut undeclared = Vec::new();
-        self.for_each_type(|ty| {
+        for ty in self.leaf_types() {
             if let Type::Entity(EntityKind::Entity(lub)) = ty {
                 for e in lub.iter() {
                     if !self.entity_types.contains_key(e) {
@@ -1185,8 +1169,7 @@ impl ValidatorSchema {
                     }
                 }
             }
-            Ok(())
-        })?;
+        }
         if let Some(undeclared) = NonEmpty::from_vec(undeclared) {
             return Err(UndeclaredEntityTypesError { types: undeclared }.into());
         }
@@ -1196,7 +1179,7 @@ impl ValidatorSchema {
     fn check_extension_types_wf(&self) -> std::result::Result<(), SchemaError> {
         let extensions = Extensions::all_available();
         let valid_ext_types: HashSet<_> = extensions.ext_types().collect();
-        self.for_each_type(|ty| {
+        for ty in self.leaf_types() {
             if let Type::ExtensionType { name } = ty {
                 if !valid_ext_types.contains(name) {
                     return Err(SchemaError::UnknownExtensionType(
@@ -1204,8 +1187,8 @@ impl ValidatorSchema {
                     ));
                 }
             }
-            Ok(())
-        })
+        }
+        Ok(())
     }
 
     /// Validate that a schema is well-formed according to the rules of the schema language.

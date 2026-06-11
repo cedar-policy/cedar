@@ -161,6 +161,11 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndeclaredEntityTypes(#[from] schema_errors::UndeclaredEntityTypesError),
+    /// Undeclared action(s) referenced in the `memberOf` (descendants) field
+    /// of an action.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndeclaredActions(#[from] schema_errors::UndeclaredActionsError),
     /// This error occurs when we cannot resolve a typename (because it refers
     /// to an entity type or common type that was not defined).
     #[error(transparent)]
@@ -430,6 +435,41 @@ pub mod schema_errors {
         }
 
         impl_diagnostic_from_method_on_nonempty_field!(types, loc);
+    }
+
+    /// Undeclared actions error: an action's descendants list references
+    /// actions that are not declared in the schema.
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Error)]
+    pub struct UndeclaredActionsError {
+        /// Action(s) which were referenced but not declared
+        pub(crate) euids: NonEmpty<EntityUID>,
+    }
+
+    impl Display for UndeclaredActionsError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            if self.euids.len() == 1 {
+                write!(f, "undeclared action: ")?;
+            } else {
+                write!(f, "undeclared actions: ")?;
+            }
+            join_with_conjunction(f, "and", self.euids.iter().sorted_unstable(), |f, s| {
+                s.fmt(f)
+            })
+        }
+    }
+
+    impl Diagnostic for UndeclaredActionsError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new(
+                "any actions appearing as descendants need to be declared as actions in the schema",
+            ))
+        }
+
+        impl_diagnostic_from_method_on_nonempty_field!(euids, loc);
     }
 
     /// Type resolution error
