@@ -1,4 +1,9 @@
-name: Release
+name: Mirror release tags
+
+# This workflow mirrors the core `v*` tag to the cedar-spec and
+# cedar-integration-tests repositories. Pre-built `cedar` CLI binaries are
+# produced by the separate `cedar-policy-cli-release.yml` workflow (managed
+# by cargo-dist) on `cedar-policy-cli-v*` tags.
 
 on:
   push:
@@ -6,10 +11,8 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
 # Declare default permissions as read only.
-# Since we use the GitHub App token to create the tags/references, 
+# Since we use the GitHub App token to create the tags/references,
 # we do not need additional permissions for the "create_related_repo_tags" job.
-# Apparently, actions/upload-artifact does not need write permissions.
-# See: https://github.com/actions/upload-artifact/issues/197
 permissions: read-all
 
 jobs:
@@ -65,31 +68,3 @@ jobs:
                 branch: releaseBranch
               })).data.commit.sha
             });
-
-  build_release_binaries:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: macos-13
-            target: x86_64-apple-darwin
-          - os: macos-latest
-            target: aarch64-apple-darwin
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - name: Install Rust toolchain
-        run: rustup update stable && rustup default stable
-      - name: Install protobuf (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install protobuf-compiler
-      - name: Install protobuf (macOS)
-        if: startsWith(matrix.os, 'macos')
-        run: brew install protobuf
-      - name: Build release binaries
-        run: cargo build --release --all-features
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: cedar-${{matrix.target}}
-          path: ./target/release/cedar

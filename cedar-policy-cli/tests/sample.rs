@@ -2086,6 +2086,18 @@ fn link_file_cant_read() {
 }
 
 #[test]
+fn test_license() {
+    cargo::cargo_bin_cmd!("cedar")
+        .arg("license")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Cedar is licensed under the Apache License, Version 2.0.",
+        ))
+        .stdout(predicate::str::contains("Third-party dependency licenses"));
+}
+
+#[test]
 fn auth_link_file_does_not_exist() {
     // authorizing with a link file that does not exist should error
     let dir = tempfile::tempdir().expect("failed to create tempdir");
