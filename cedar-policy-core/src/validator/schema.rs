@@ -526,6 +526,32 @@ impl ValidatorSchema {
         )
     }
 
+    /// Like [`Self::from_json_value`], but rejects the schema if any type's
+    /// effective nesting depth exceeds `depth_limit`.
+    pub fn from_json_value_with_depth_limit(
+        json: serde_json::Value,
+        extensions: &Extensions<'_>,
+        depth_limit: usize,
+    ) -> Result<Self> {
+        Self::from_schema_frag(
+            json_schema::Fragment::<RawName>::from_json_value_with_depth_limit(json, depth_limit)?,
+            extensions,
+        )
+    }
+
+    /// Like [`Self::from_json_str`], but rejects the schema if any type's
+    /// effective nesting depth exceeds `depth_limit`.
+    pub fn from_json_str_with_depth_limit(
+        json: &str,
+        extensions: &Extensions<'_>,
+        depth_limit: usize,
+    ) -> Result<Self> {
+        Self::from_schema_frag(
+            json_schema::Fragment::<RawName>::from_json_str_with_depth_limit(json, depth_limit)?,
+            extensions,
+        )
+    }
+
     /// Construct a [`ValidatorSchema`] directly from a file containing the
     /// Cedar schema syntax.
     pub fn from_cedarschema_file<'a>(
@@ -547,6 +573,24 @@ impl ValidatorSchema {
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
     {
         let (fragment, warnings) = json_schema::Fragment::from_cedarschema_str(src, extensions)?;
+        let schema_and_warnings =
+            Self::from_schema_frag(fragment, extensions).map(|schema| (schema, warnings))?;
+        Ok(schema_and_warnings)
+    }
+
+    /// Like [`Self::from_cedarschema_str`], but rejects the schema if any
+    /// type's nesting depth exceeds `depth_limit`.
+    pub fn from_cedarschema_str_with_depth_limit<'a>(
+        src: &str,
+        extensions: &Extensions<'a>,
+        depth_limit: usize,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
+    {
+        let (fragment, warnings) = json_schema::Fragment::from_cedarschema_str_with_depth_limit(
+            src,
+            extensions,
+            depth_limit,
+        )?;
         let schema_and_warnings =
             Self::from_schema_frag(fragment, extensions).map(|schema| (schema, warnings))?;
         Ok(schema_and_warnings)
@@ -1403,104 +1447,16 @@ impl<'a> CommonTypeResolver<'a> {
         Self { defs, graph }
     }
 
-    /// Perform topological sort on the dependency graph
-    ///
-    /// Let A -> B denote the RHS of type `A` refers to type `B` (i.e., `A`
-    /// depends on `B`)
-    ///
-    /// `topo_sort(A -> B -> C)` produces [C, B, A]
-    ///
-    /// If there is a cycle, a type name involving in this cycle is the error
-    ///
-    /// It implements a variant of Kahn's algorithm
-    fn topo_sort(&self) -> std::result::Result<Vec<&'a InternalName>, InternalName> {
-        // The in-degree map
-        // Note that the keys of this map may be a superset of all common type
-        // names
-        let mut indegrees: HashMap<&InternalName, usize> = HashMap::new();
-        for (ty_name, deps) in self.graph.iter() {
-            // Ensure that declared common types have values in `indegrees`
-            indegrees.entry(ty_name).or_insert(0);
-            for dep in deps {
-                match indegrees.entry(dep) {
-                    std::collections::hash_map::Entry::Occupied(mut o) => {
-                        o.insert(o.get() + 1);
-                    }
-                    std::collections::hash_map::Entry::Vacant(v) => {
-                        v.insert(1);
-                    }
-                }
-            }
-        }
-
-        // The set that contains type names with zero incoming edges
-        let mut work_set: HashSet<&'a InternalName> = HashSet::new();
-        let mut res: Vec<&'a InternalName> = Vec::new();
-
-        // Find all type names with zero incoming edges
-        for (name, degree) in indegrees.iter() {
-            let name = *name;
-            if *degree == 0 {
-                work_set.insert(name);
-                // The result only contains *declared* type names
-                if self.graph.contains_key(name) {
-                    res.push(name);
-                }
-            }
-        }
-
-        // Pop a node
-        while let Some(name) = work_set.iter().next().copied() {
-            work_set.remove(name);
-            if let Some(deps) = self.graph.get(name) {
-                for dep in deps {
-                    if let Some(degree) = indegrees.get_mut(dep) {
-                        // There will not be any underflows here because
-                        // in order for the in-degree to underflow, `dep`'s
-                        // in-degree must be 0 at this point
-                        // The only possibility where a node's in-degree
-                        // becomes 0 is through the subtraction below, which
-                        // means it has been visited and hence has 0 in-degrees
-                        // In other words, all its in-coming edges have been
-                        // "removed" and hence contradicts with the fact that
-                        // one of them is being "removed"
-                        *degree -= 1;
-                        if *degree == 0 {
-                            work_set.insert(dep);
-                            if self.graph.contains_key(dep) {
-                                res.push(dep);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // The set of nodes that have not been added to the result
-        // i.e., there are still in-coming edges and hence exists a cycle
-        let mut set: HashSet<&InternalName> = HashSet::from_iter(self.graph.keys().copied());
-        for name in res.iter() {
-            set.remove(name);
-        }
-
-        if let Some(cycle) = set.into_iter().next() {
-            Err(cycle.clone())
-        } else {
-            // We need to reverse the result because, e.g.,
-            // `res` is now [A,B,C] for A -> B -> C because no one depends on A
-            res.reverse();
-            Ok(res)
-        }
-    }
-
     // Resolve common type references, returning a map from (fully-qualified)
     // [`InternalName`] of a common type to its [`Type`] definition
     fn resolve(
         &self,
         extensions: &Extensions<'_>,
     ) -> Result<HashMap<&'a InternalName, LocatedType>> {
-        let sorted_names = self.topo_sort().map_err(|n| {
-            SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { ty: n })
+        let sorted_names = super::topo_sort::topo_sort(&self.graph).map_err(|n| {
+            SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError {
+                ty: n.clone(),
+            })
         })?;
 
         let mut tys: HashMap<&'a InternalName, LocatedType> = HashMap::new();

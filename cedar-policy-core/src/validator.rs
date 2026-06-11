@@ -52,12 +52,14 @@ pub use schema::err::*;
 pub use schema::*;
 mod deprecated_schema_compat;
 pub mod json_schema;
+pub(crate) mod schema_type_depth;
 mod str_checks;
 pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
 mod partition_nonempty;
+mod topo_sort;
 pub mod types;
 
 /// Used to select how a policy will be validated.

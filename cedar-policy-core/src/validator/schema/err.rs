@@ -257,6 +257,10 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ActionInvariantViolation(#[from] schema_errors::ActionInvariantViolationError),
+    /// Schema type nesting depth exceeds the configured limit
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    TypeTooDeep(#[from] schema_errors::TypeTooDeepError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
@@ -891,5 +895,19 @@ pub mod schema_errors {
         }
 
         impl_diagnostic_from_method_on_nonempty_field!(euids, loc);
+    }
+
+    /// Schema type nesting depth exceeds the configured limit
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Diagnostic, Error)]
+    #[error("schema type depth {depth} exceeds the configured limit of {limit}")]
+    pub struct TypeTooDeepError {
+        /// Actual depth of the deepest type
+        pub(crate) depth: usize,
+        /// Configured limit
+        pub(crate) limit: usize,
     }
 }

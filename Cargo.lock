@@ -425,6 +425,7 @@ dependencies = [
  "nonempty",
  "ref-cast",
  "regex",
+ "rstest",
  "rustc-literal-escaper",
  "serde",
  "serde-wasm-bindgen",

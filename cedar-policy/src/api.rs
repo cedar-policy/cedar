@@ -1984,6 +1984,42 @@ impl Schema {
         ))
     }
 
+    /// Like [`Self::from_json_value`], but rejects the schema if any type's
+    /// effective nesting depth exceeds `depth_limit`.
+    ///
+    /// This function can be used to limit the maximum recursion depth, avoiding
+    /// stack overflows when parsing schemas with unknown depth.
+    pub fn from_json_value_with_depth_limit(
+        json: serde_json::Value,
+        depth_limit: usize,
+    ) -> Result<Self, SchemaError> {
+        Ok(Self(
+            cedar_policy_core::validator::ValidatorSchema::from_json_value_with_depth_limit(
+                json,
+                Extensions::all_available(),
+                depth_limit,
+            )?,
+        ))
+    }
+
+    /// Like [`Self::from_json_str`], but rejects the schema if any type's
+    /// effective nesting depth exceeds `depth_limit`.
+    ///
+    /// This function can be used to limit the maximum recursion depth, avoiding
+    /// stack overflows when parsing schemas with unknown depth.
+    pub fn from_json_str_with_depth_limit(
+        json: &str,
+        depth_limit: usize,
+    ) -> Result<Self, SchemaError> {
+        Ok(Self(
+            cedar_policy_core::validator::ValidatorSchema::from_json_str_with_depth_limit(
+                json,
+                Extensions::all_available(),
+                depth_limit,
+            )?,
+        ))
+    }
+
     /// Parse the schema from a reader, in the Cedar schema format.
     pub fn from_cedarschema_file(
         file: impl std::io::Read,
@@ -2004,6 +2040,24 @@ impl Schema {
             cedar_policy_core::validator::ValidatorSchema::from_cedarschema_str(
                 src,
                 Extensions::all_available(),
+            )?;
+        Ok((Self(schema), warnings))
+    }
+
+    /// Like [`Self::from_cedarschema_str`], but rejects the schema if any
+    /// type's nesting depth exceeds `depth_limit`.
+    ///
+    /// This function can be used to limit the maximum recursion depth, avoiding
+    /// stack overflows when parsing schemas with unknown depth.
+    pub fn from_cedarschema_str_with_depth_limit(
+        src: &str,
+        depth_limit: usize,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
+        let (schema, warnings) =
+            cedar_policy_core::validator::ValidatorSchema::from_cedarschema_str_with_depth_limit(
+                src,
+                Extensions::all_available(),
+                depth_limit,
             )?;
         Ok((Self(schema), warnings))
     }

@@ -12272,3 +12272,203 @@ mod tolerant_ast_tests {
         let _ = policy.action_constraint();
     }
 }
+
+#[cfg(test)]
+mod test_schema_depth_limit {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    #[test]
+    fn schema_parse_with_depth_limit() {
+        let src = "entity Foo = { bar: Set<Long> };";
+        assert!(Schema::from_cedarschema_str_with_depth_limit(src, 2)
+            .map(|(s, _)| s)
+            .is_ok());
+        assert_matches!(
+            Schema::from_cedarschema_str_with_depth_limit(src, 1).map(|(s, _)| s),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains("schema type depth 2 exceeds the configured limit of 1"),
+                    "unexpected error message: {e}",
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn schema_nested_record_depth_limit() {
+        let src = "entity Foo = { a: { b: { c: Long } } };";
+        assert!(Schema::from_cedarschema_str_with_depth_limit(src, 3)
+            .map(|(s, _)| s)
+            .is_ok());
+        assert_matches!(
+            Schema::from_cedarschema_str_with_depth_limit(src, 2).map(|(s, _)| s),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains("schema type depth 3 exceeds the configured limit of 2"),
+                    "unexpected error message: {e}",
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn very_deep_schema_type_no_stack_overflow() {
+        let depth = 10000;
+        let src = format!(
+            "entity Foo = {{ x: {} Long {} }};",
+            "Set<".repeat(depth),
+            ">".repeat(depth),
+        );
+        assert_matches!(
+            Schema::from_cedarschema_str_with_depth_limit(&src, depth).map(|(s, _)| s),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains(&format!(
+                        "schema type depth {} exceeds the configured limit of {depth}",
+                        depth + 1
+                    )),
+                    "unexpected error message: {e}",
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn typedef_chain_detected() {
+        let src = r#"
+            type T1 = Set<Long>;
+            type T2 = Set<T1>;
+            type T3 = Set<T2>;
+            entity Foo = { bar: T3 };
+        "#;
+        assert!(Schema::from_cedarschema_str_with_depth_limit(src, 4)
+            .map(|(s, _)| s)
+            .is_ok());
+        assert_matches!(
+            Schema::from_cedarschema_str_with_depth_limit(src, 3).map(|(s, _)| s),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains("schema type depth 4 exceeds the configured limit of 3"),
+                    "unexpected error message: {e}",
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn very_deep_typedef_chain_no_stack_overflow() {
+        let depth = 10000;
+        let mut src = String::from("type T0 = Set<Long>;\n");
+        for i in 1..depth {
+            src.push_str(&format!("type T{i} = Set<T{}>;\n", i - 1));
+        }
+        src.push_str(&format!("entity Foo = {{ x: T{} }};\n", depth - 1));
+        // effective depth = depth + 1 (entity attr adds 1)
+        assert_matches!(
+            Schema::from_cedarschema_str_with_depth_limit(&src, depth).map(|(s, _)| s),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains("exceeds the configured limit of"),
+                    "unexpected error message: {e}",
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn very_deep_typedef_chain_json_no_stack_overflow() {
+        let depth = 10000;
+        let mut common_types = serde_json::Map::new();
+        common_types.insert(
+            "T0".to_string(),
+            serde_json::json!({ "type": "Set", "element": { "type": "Long" } }),
+        );
+        for i in 1..depth {
+            common_types.insert(
+                format!("T{i}"),
+                serde_json::json!({ "type": "Set", "element": { "type": "EntityOrCommon", "name": format!("T{}", i - 1) } }),
+            );
+        }
+        let json = serde_json::json!({
+            "": {
+                "commonTypes": common_types,
+                "entityTypes": {
+                    "Foo": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "x": { "type": "EntityOrCommon", "name": format!("T{}", depth - 1) }
+                            }
+                        }
+                    }
+                },
+                "actions": {}
+            }
+        });
+        assert_matches!(
+            Schema::from_json_value_with_depth_limit(json, depth),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains("exceeds the configured limit of"),
+                    "unexpected error message: {e}",
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn serde_recursion_limit_rejects_deep_json() {
+        let depth = 10000;
+        // Build a structurally deep JSON string: Set<Set<Set<...Long...>>>
+        let mut json = r#"{"": {"commonTypes": {"T": "#.to_string();
+        for _ in 0..depth {
+            json.push_str(r#"{"type": "Set", "element": "#);
+        }
+        json.push_str(r#"{"type": "Long"}"#);
+        for _ in 0..depth {
+            json.push('}');
+        }
+        json.push_str(r#"}, "entityTypes": {}, "actions": {}}}"#);
+
+        let result = Schema::from_json_str(&json);
+        assert!(result.is_err(), "serde should reject deeply nested JSON");
+        assert!(
+            result.unwrap_err().to_string().contains("recursion limit"),
+            "expected serde recursion limit error",
+        );
+    }
+
+    #[test]
+    fn json_schema_with_depth_limit() {
+        let json = serde_json::json!({
+            "": {
+                "commonTypes": {
+                    "T1": { "type": "Set", "element": { "type": "Long" } },
+                    "T2": { "type": "Set", "element": { "type": "EntityOrCommon", "name": "T1" } }
+                },
+                "entityTypes": {
+                    "Foo": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "bar": { "type": "EntityOrCommon", "name": "T2" }
+                            }
+                        }
+                    }
+                },
+                "actions": {}
+            }
+        });
+        assert!(Schema::from_json_value_with_depth_limit(json.clone(), 3).is_ok());
+        assert_matches!(
+            Schema::from_json_value_with_depth_limit(json, 2),
+            Err(e) => {
+                assert!(
+                    e.to_string().contains("schema type depth 3 exceeds the configured limit of 2"),
+                    "unexpected error message: {e}",
+                );
+            }
+        );
+    }
+}
