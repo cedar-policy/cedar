@@ -25,7 +25,7 @@ use cedar_policy_core::batched_evaluator::{
 use cedar_policy_core::evaluator::{EvaluationError, RestrictedEvaluator};
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::tpe;
-use cedar_policy_core::tpe::value::PartialRecord;
+use cedar_policy_core::tpe::value::{PartialAttribute, PartialRecord, PartialValue};
 use cedar_policy_core::validator::types::Type;
 use itertools::Itertools;
 use ref_cast::RefCast;
@@ -266,16 +266,12 @@ impl ActionQueryRequest {
             .get_action_id(action.as_ref())
             .unwrap()
             .context_type();
-        let context = self
-            .context
-            .as_ref()
-            .map(|c| match &c.0 {
-                ast::Context::RestrictedResidual(_) => panic!(),
-                ast::Context::Value(m) => tpe::value::PartialRecord::from_concrete_map(
-                    m.as_ref(),
-                    context_ty,
-                ),
-            });
+        let context = self.context.as_ref().map(|c| match &c.0 {
+            ast::Context::RestrictedResidual(_) => panic!(),
+            ast::Context::Value(m) => {
+                tpe::value::PartialRecord::from_concrete_map(m.as_ref(), context_ty)
+            }
+        });
         tpe::request::PartialRequest::new(
             self.principal.0.clone(),
             action.0,
@@ -303,56 +299,49 @@ impl PartialEntity {
         schema: &Schema,
     ) -> Result<Self, PartialEntityError> {
         let entity_type = schema.0.get_entity_type(uid.0.entity_type()).unwrap();
-        let attrs_type = Type::Record {
-            attrs: entity_type.attributes().clone(),
-            open_attributes: entity_type.open_attributes(),
-        };
-        let tag_type = entity_type.tag_type().cloned();
+        let schema_attrs = entity_type.attributes().clone();
+        let tag_type = entity_type.tag_type().cloned().unwrap_or(Type::Never);
         Ok(Self(tpe::entities::PartialEntity::new(
             uid.0,
             attrs
-                .map(|ps| -> Result<_, EvaluationError> {
-                    let map: BTreeMap<_, _> = ps
-                        .into_iter()
-                        .map(|(k, v)| {
-                            Ok((
-                                k,
-                                RestrictedEvaluator::new(Extensions::all_available())
-                                    .interpret(v.0.as_borrowed())?,
-                            ))
-                        })
-                        .collect::<Result<BTreeMap<_, _>, EvaluationError>>()?;
-                    Ok(PartialRecord::from_concrete_map(&map, &attrs_type))
+                .map(|ps| {
+                    eval_to_partial_record(ps, |k| {
+                        schema_attrs
+                            .get_attr(k)
+                            .map(|a| a.attr_type.as_ref().clone())
+                            .unwrap_or(Type::Never)
+                    })
                 })
                 .transpose()?,
             ancestors.map(|s| s.into_iter().map(|e| e.0).collect()),
-            tags.map(|ps| -> Result<_, EvaluationError> {
-                let map: BTreeMap<_, _> = ps
-                    .into_iter()
-                    .map(|(k, v)| {
-                        Ok((
-                            k,
-                            RestrictedEvaluator::new(Extensions::all_available())
-                                .interpret(v.0.as_borrowed())?,
-                        ))
-                    })
-                    .collect::<Result<BTreeMap<_, _>, EvaluationError>>()?;
-                let ty = tag_type.as_ref().unwrap_or(&Type::Never);
-                Ok(tpe::value::PartialRecord::from_attrs(map.into_iter().map(
-                    |(k, v)| {
-                        (
-                            k,
-                            tpe::value::PartialAttribute::Present(
-                                tpe::value::PartialValue::from_value(v, ty),
-                            ),
-                        )
-                    },
-                )))
-            })
-            .transpose()?,
+            tags.map(|ps| eval_to_partial_record(ps, |_| tag_type.clone()))
+                .transpose()?,
             &schema.0,
         )?))
     }
+}
+
+/// Evaluate restricted expressions and wrap each as [`PartialAttribute::Present`],
+/// using `type_for_key` to look up the type for each field.
+fn eval_to_partial_record(
+    attrs: BTreeMap<SmolStr, RestrictedExpression>,
+    type_for_key: impl Fn(&SmolStr) -> Type,
+) -> Result<PartialRecord, EvaluationError> {
+    let eval = RestrictedEvaluator::new(Extensions::all_available());
+    let attrs = attrs
+        .into_iter()
+        .map(|(k, v)| {
+            let ty = type_for_key(&k);
+            Ok((
+                k,
+                PartialAttribute::Present(PartialValue::from_value(
+                    eval.interpret(v.0.as_borrowed())?,
+                    &ty,
+                )),
+            ))
+        })
+        .collect::<Result<Vec<_>, EvaluationError>>()?;
+    Ok(PartialRecord::from_attrs(attrs))
 }
 
 /// Partial [`Entities`]
@@ -2092,6 +2081,8 @@ when { principal in resource.admins };
         #[test]
         #[cfg(feature = "partial-eval")]
         fn test_batched_evaluation_error_partial_entity() {
+            use cedar_policy_core::{ast::PartialValueToValueError, tpe::err::EntitiesError};
+
             // Create an entity loader that returns a partial entity (contains unknowns)
             struct PartialEntityLoader;
             impl crate::EntityLoader for PartialEntityLoader {
@@ -2143,7 +2134,14 @@ when { principal in resource.admins };
             let mut loader = PartialEntityLoader;
             let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
 
-            assert_matches!(result, Err(BatchedEvalError::PartialValueToValue(_)));
+            assert_matches!(
+                result,
+                Err(BatchedEvalError::Entities(
+                    EntitiesError::PartialValueToValue(PartialValueToValueError::ContainsUnknown(
+                        _
+                    ))
+                ))
+            );
         }
 
         #[test]
