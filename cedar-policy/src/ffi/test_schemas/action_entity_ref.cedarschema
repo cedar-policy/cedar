@@ -1,0 +1,17 @@
+action A;
+
+namespace N {
+    action B;
+    entity Admin {
+        a0: Action,
+        a1: M::Action
+    };
+}
+namespace M {
+    action C;
+}
+entity User {
+    a0: Action,
+    a1: N::Action,
+    a2: M::Action,
+};
