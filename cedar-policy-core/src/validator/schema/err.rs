@@ -437,8 +437,8 @@ pub mod schema_errors {
         impl_diagnostic_from_method_on_nonempty_field!(types, loc);
     }
 
-    /// Undeclared actions error: an action's descendants list references
-    /// actions that are not declared in the schema.
+    /// Undeclared actions error: an action's descendants references actions that are not declared
+    /// in the schema.
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution

@@ -28,6 +28,7 @@ use crate::{
     transitive_closure::compute_tc,
 };
 use educe::Educe;
+use itertools::Itertools;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
 #[cfg(feature = "extended-schema")]
@@ -1079,6 +1080,8 @@ impl ValidatorSchema {
     /// Returns an iterator over all leaf types reachable from entity attributes, tags, and
     /// action contexts. Leaf types are all types except `Set` and `Record`, which are
     /// traversed into automatically.
+    /// Note that a type is traversed multiple times if it is referenced multiple times; consumers
+    /// should use [`Itertools::unique`] when they care about not visiting a type multiple times.
     fn leaf_types(&self) -> TypeIterator<'_> {
         let mut stack: Vec<&Type> = Vec::new();
         for ety in self.entity_types.values() {
@@ -1161,7 +1164,7 @@ impl ValidatorSchema {
     /// Check that all entity types referenced in attribute/tag/context types are declared
     fn check_references_wf(&self) -> std::result::Result<(), SchemaError> {
         let mut undeclared = Vec::new();
-        for ty in self.leaf_types() {
+        for ty in self.leaf_types().unique() {
             if let Type::Entity(EntityKind::Entity(lub)) = ty {
                 for e in lub.iter() {
                     if !self.entity_types.contains_key(e) {
@@ -1179,7 +1182,7 @@ impl ValidatorSchema {
     fn check_extension_types_wf(&self) -> std::result::Result<(), SchemaError> {
         let extensions = Extensions::all_available();
         let valid_ext_types: HashSet<_> = extensions.ext_types().collect();
-        for ty in self.leaf_types() {
+        for ty in self.leaf_types().unique() {
             if let Type::ExtensionType { name } = ty {
                 if !valid_ext_types.contains(name) {
                     return Err(SchemaError::UnknownExtensionType(

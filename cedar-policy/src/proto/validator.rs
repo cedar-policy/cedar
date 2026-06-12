@@ -332,11 +332,14 @@ impl From<&types::AttributeType> for models::AttributeType {
 mod test {
     use std::sync::Arc;
 
+    use crate::Schema;
+
     use super::models;
     use super::ProtobufConversionError;
     use cedar_policy_core::validator::types::{
         AttributeType, BoolType, EntityKind, EntityLUB, OpenTag, Type,
     };
+    use cedar_policy_core::validator::SchemaError;
     use cedar_policy_core::validator::ValidatorSchema;
     use cool_asserts::assert_matches;
     use similar_asserts::assert_eq;
@@ -607,6 +610,12 @@ mod test {
         );
     }
 
+    fn validator_try_from_ok_return_validate(
+        schema: models::Schema,
+    ) -> Result<ValidatorSchema, SchemaError> {
+        ValidatorSchema::try_from(schema).unwrap().try_validate()
+    }
+
     #[test]
     fn schema_try_from_invalid_entity_decl() {
         let bad = models::Schema {
@@ -651,7 +660,10 @@ mod test {
             action_decls: vec![],
         };
         // Schema validation rejects enum entities as descendants of other entities.
-        assert!(ValidatorSchema::try_from(bad).is_err());
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::EnumEntityInHierarchy(_))
+        );
     }
 
     #[test]
@@ -680,7 +692,10 @@ mod test {
             action_decls: vec![],
         };
         // Schema validation rejects undeclared entity types in descendants.
-        assert!(ValidatorSchema::try_from(bad).is_err());
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::UndeclaredEntityTypes(_))
+        );
     }
 
     #[test]
@@ -696,7 +711,10 @@ mod test {
                 context: Default::default(),
             }],
         };
-        assert!(ValidatorSchema::try_from(bad).is_err());
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::UndeclaredEntityTypes(_))
+        );
     }
 
     #[test]
@@ -706,7 +724,10 @@ mod test {
             entity_decls: vec![simple_entity_decl("r"), simple_entity_decl("r::r")],
             action_decls: vec![],
         };
-        assert!(ValidatorSchema::try_from(bad).is_err());
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::TypeShadowing(_))
+        );
     }
 
     #[test]
@@ -731,7 +752,10 @@ mod test {
             }],
             action_decls: vec![],
         };
-        assert!(ValidatorSchema::try_from(bad).is_err());
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::UndeclaredEntityTypes(_))
+        );
     }
 
     #[test]
@@ -749,7 +773,10 @@ mod test {
             }],
             action_decls: vec![],
         };
-        assert!(ValidatorSchema::try_from(bad).is_err());
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::UnknownExtensionType(_))
+        );
     }
 
     #[test]
@@ -765,7 +792,10 @@ mod test {
                 context: Default::default(),
             }],
         };
-        assert!(ValidatorSchema::try_from(bad).is_err());
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::CycleInActionHierarchy(_))
+        );
     }
 
     #[test]
@@ -781,7 +811,10 @@ mod test {
                 context: Default::default(),
             }],
         };
-        assert!(ValidatorSchema::try_from(bad).is_err());
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::UndeclaredActions(_))
+        );
     }
 
     #[test]
@@ -798,6 +831,9 @@ mod test {
                 context: Default::default(),
             }],
         };
-        assert!(ValidatorSchema::try_from(bad).is_err());
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::InvalidActionType(_))
+        );
     }
 }
