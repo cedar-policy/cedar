@@ -198,7 +198,7 @@ impl TryFrom<models::Entity> for ast::Entity {
             })
             .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
 
-        Self::new_with_attr_partial_value(
+        Ok(Self::new_with_attr_partial_value(
             ast::EntityUID::try_from(
                 v.uid
                     .ok_or_else(|| ProtobufConversionError::missing("uid"))?,
@@ -207,9 +207,7 @@ impl TryFrom<models::Entity> for ast::Entity {
             HashSet::new(),
             ancestors,
             tags,
-        )
-        .try_validate()
-        .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid entity: {e}")))
+        ))
     }
 }
 
@@ -404,8 +402,7 @@ impl TryFrom<models::Expr> for ast::Expr {
                 })?
             }
         };
-        expr.try_validate()
-            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid expression: {e}")))
+        Ok(expr)
     }
 }
 

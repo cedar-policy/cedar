@@ -18,29 +18,40 @@
 
 use super::ast::ProtobufConversionError;
 use super::models;
-use cedar_policy_core::{ast, entities, extensions};
+use cedar_policy_core::{
+    ast,
+    entities::{self, TCComputation},
+    extensions,
+};
 
 impl TryFrom<models::Entities> for entities::Entities {
     type Error = ProtobufConversionError;
 
     fn try_from(v: models::Entities) -> Result<Self, Self::Error> {
-        let entities: Vec<ast::Entity> = v
-            .entities
-            .into_iter()
-            .map(ast::Entity::try_from)
-            .collect::<Result<_, _>>()?;
-
-        // This API does not assume that the transitive closure has already been computed.
-        // A different API that does not perform validation could skip tc computation.
-        entities::Entities::from_entities(
-            entities,
-            None::<&entities::NoEntitiesSchema>,
-            entities::TCComputation::ComputeNow,
-            extensions::Extensions::all_available(),
-        )
-        .and_then(|v| v.try_validate(true))
-        .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid entities: {e}")))
+        // The TryFrom does not assume that the transitive closure has already been computed.
+        entities_model_to_api(v, TCComputation::ComputeNow)
     }
+}
+
+/// [`entities_model_to_api`] converts the [`models::Entities`] protobuf model to the core [`entities::Entities`]
+/// type, with the given [`TCComputation`] mode.
+pub(crate) fn entities_model_to_api(
+    model: models::Entities,
+    tc_mode: TCComputation,
+) -> Result<entities::Entities, ProtobufConversionError> {
+    let entities: Vec<ast::Entity> = model
+        .entities
+        .into_iter()
+        .map(ast::Entity::try_from)
+        .collect::<Result<_, _>>()?;
+
+    entities::Entities::from_entities(
+        entities,
+        None::<&entities::NoEntitiesSchema>,
+        tc_mode,
+        extensions::Extensions::all_available(),
+    )
+    .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid entities: {e}")))
 }
 
 impl From<&entities::Entities> for models::Entities {
