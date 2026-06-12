@@ -22,6 +22,7 @@ use smol_str::SmolStr;
 
 use crate::ast::{Literal, RepresentableExtensionValue, Set, Value, ValueKind};
 use crate::entities::SchemaType;
+use crate::tpe::evaluator::normalize_ext_value;
 use crate::validator::types::Type;
 use std::ops::Deref;
 
@@ -72,6 +73,7 @@ impl PartialRecord {
     }
 
     /// Construct from a concrete `BTreeMap<SmolStr, Value>`, wrapping all values as `Present`.
+    #[expect(clippy::panic, reason = "callers always pass a Record type; non-Record is a programming error")]
     pub fn from_concrete_map(map: &BTreeMap<SmolStr, Value>, ty: &Type) -> Self {
         let Type::Record {
             attrs: attrs_tys, ..
@@ -94,10 +96,26 @@ impl PartialRecord {
         }))
     }
 
+    /// Ensure that all required attributes declared in `ty` are present in the
+    /// map. Required fields not already in the map are added as [`PartialAttribute::Unknown`]
+    /// (the schema guarantees they exist, but we don't know their value).
+    pub fn fill_required_attrs(&mut self, ty: &Type) {
+        let Type::Record { attrs, .. } = ty else {
+            return;
+        };
+        let map = Arc::make_mut(&mut self.0);
+        for (k, attr_ty) in attrs.iter() {
+            if attr_ty.is_required && !map.contains_key(k) {
+                map.insert(k.clone(), PartialAttribute::Unknown);
+            }
+        }
+    }
+
     /// Try to convert to a concrete `BTreeMap<SmolStr, Value>`.
-    /// Returns `None` if any field is `Unknown` or `Absent`, or if
-    /// `expected_ty` declares attributes that are not present in the map
-    /// (not-in-map = unknown existence = not concrete).
+    /// Returns `None` if any field is `Unknown`, or if `expected_ty` declares
+    /// attributes that are not present in the map (not-in-map = unknown
+    /// existence = not concrete). `Absent` fields are skipped (they
+    /// definitively don't exist, so the concrete map simply won't have them).
     pub fn try_into_concrete_map(
         &self,
         expected_ty: Option<&SchemaType>,
@@ -120,7 +138,8 @@ impl PartialRecord {
                 PartialAttribute::Present(v) => {
                     map.insert(k.clone(), v.try_into_value(field_ty)?);
                 }
-                PartialAttribute::Unknown | PartialAttribute::Absent => return None,
+                PartialAttribute::Absent => {}
+                PartialAttribute::Unknown => return None,
             }
         }
         Some(map)
@@ -342,13 +361,10 @@ impl PartialValue {
                 }
             }
             _ => Residual::Concrete {
-                value: self
-                    .try_into_value(
-                        crate::entities::SchemaType::try_from(ty.clone())
-                            .ok()
-                            .as_ref(),
-                    )
-                    .expect("non-record PartialValue should always convert to Value"),
+                value: normalize_ext_value(
+                    self.try_into_value(SchemaType::try_from(ty.clone()).ok().as_ref())
+                        .expect("non-record PartialValue should always convert to Value"),
+                ),
                 ty: ty.clone(),
             },
         }

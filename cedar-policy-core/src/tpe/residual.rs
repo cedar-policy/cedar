@@ -161,10 +161,9 @@ impl Residual {
                 },
                 ResidualKind::Set(items) => items.iter().any(Self::can_error_assuming_well_formed),
                 ResidualKind::Record { fields: attrs, .. } => attrs.iter().any(|(_, e)| match e {
-                    ResidualAttribute::Value(r)
-                    | ResidualAttribute::Unknown(r)
-                    | ResidualAttribute::UnknownExistence(r) => r.can_error_assuming_well_formed(),
-                    _ => false,
+                    ResidualAttribute::Value(r) => r.can_error_assuming_well_formed(),
+                    ResidualAttribute::Unknown(_) | ResidualAttribute::UnknownExistence(_) => true,
+                    ResidualAttribute::Absent => false,
                 }),
             },
         }
@@ -562,21 +561,35 @@ impl From<Residual> for Expr {
                     ResidualKind::Or { left, right } => {
                         builder.or(left.as_ref().clone().into(), right.as_ref().clone().into())
                     }
-                    #[expect(clippy::expect_used, reason = "record construction should succeed")]
-                    ResidualKind::Record { fields: map, .. } => builder
-                        .record(map.as_ref().iter().filter_map(|(k, v)| {
-                            match v {
-                                ResidualAttribute::Value(r) => Some((k.clone(), r.clone().into())),
-                                ResidualAttribute::Unknown(parent)
-                                | ResidualAttribute::UnknownExistence(parent) => Some((
-                                    k.clone(),
-                                    ast::ExprBuilder::with_data(())
-                                        .get_attr(parent.clone().into(), k.clone()),
-                                )),
-                                ResidualAttribute::Absent => None,
-                            }
-                        }))
-                        .expect("should succeed"),
+                    ResidualKind::Record { fields: map, .. } => {
+                        // Translating a residual record back to an expression requires some loss of precision to avoid
+                        // exponential scaling on optional attributes with unknown existence. We could express this precisely
+                        // as a conditional: `if x has a0 then {a0: x.a0, ...} else {...}`, but the size of this expression
+                        // doubles for every additional optional attribute. Instead, we represent the whole expression as `x`,
+                        // losing precision when values have already been provided for some attributes.
+                        match map.values().find_map(|v| match v {
+                            ResidualAttribute::UnknownExistence(p) => Some(p),
+                            _ => None,
+                        }) {
+                            Some(parent) => parent.clone().into(),
+                            #[expect(clippy::expect_used, reason = "record construction should succeed")]
+                            None => builder
+                                .record(map.as_ref().iter().filter_map(|(k, v)| match v {
+                                    ResidualAttribute::Value(r) => {
+                                        Some((k.clone(), r.clone().into()))
+                                    }
+                                    ResidualAttribute::Unknown(parent) => Some((
+                                        k.clone(),
+                                        ast::ExprBuilder::with_data(())
+                                            .get_attr(parent.clone().into(), k.clone()),
+                                    )),
+                                    ResidualAttribute::Absent => None,
+                                    #[expect(clippy::unreachable, reason = "`find_map` on values ensures there are no UnknownExistence in map")]
+                                    ResidualAttribute::UnknownExistence(_) => unreachable!(),
+                                }))
+                                .expect("should succeed"),
+                        }
+                    }
                     ResidualKind::Set(set) => builder.set(
                         set.as_ref()
                             .clone()

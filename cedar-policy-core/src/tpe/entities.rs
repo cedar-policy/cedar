@@ -105,36 +105,25 @@ pub struct PartialEntity {
 impl PartialEntity {
     /// Convert an [`Entity`] (without unknowns) into a [`PartialEntity`],
     /// using the [`ValidatorEntityType`] to look up attribute and tag types.
-    pub fn from_entity(
+    fn from_non_action_entity(
         value: Entity,
         entity_type: &ValidatorEntityType,
     ) -> Result<Self, EntitiesError> {
         let uid = value.uid().clone();
-        let attrs = value
+        let attrs_map = value
             .attrs()
-            .map(|(a, v)| {
-                let ty = entity_type.attr(&a).ok_or_else(|| {
-                    EntityValidationError::Concrete(
-                        EntitySchemaConformanceError::unexpected_entity_attr(
-                            uid.clone(),
-                            a.clone(),
-                        ),
-                    )
-                })?;
-                Ok((
-                    a.clone(),
-                    PartialAttribute::Present(PartialValue::from_value(
-                        Value::try_from(v.clone())?,
-                        &ty.attr_type,
-                    )),
-                ))
-            })
+            .map(|(a, v)| Ok((a.clone(), Value::try_from(v.clone())?)))
             .collect::<Result<BTreeMap<_, _>, EntitiesError>>()?;
+        let attrs_type = crate::validator::types::Type::Record {
+            attrs: entity_type.attributes().clone(),
+            open_attributes: entity_type.open_attributes(),
+        };
         let ancestors = value.ancestors().cloned().collect();
+        let tag_type = entity_type.tag_type();
         let tags = value
             .tags()
             .map(|(a, v)| {
-                let ty = entity_type.tag_type().ok_or_else(|| {
+                let ty = tag_type.ok_or_else(|| {
                     EntityValidationError::Concrete(
                         EntitySchemaConformanceError::unexpected_entity_tag(uid.clone(), a.clone()),
                     )
@@ -150,10 +139,42 @@ impl PartialEntity {
             .collect::<Result<BTreeMap<_, _>, EntitiesError>>()?;
         Ok(Self {
             uid,
-            attrs: Some(PartialRecord::from_attrs(attrs)),
+            attrs: Some(PartialRecord::from_concrete_map(&attrs_map, &attrs_type)),
             ancestors: Some(ancestors),
             tags: Some(PartialRecord::from_attrs(tags)),
         })
+    }
+
+    /// Convert an action [`Entity`] into a [`PartialEntity`], using type
+    /// information in `schema` to lookup attribute and tag types.
+    pub fn from_entity(e: Entity, schema: &ValidatorSchema) -> Result<Self, EntitiesError> {
+        if e.uid().is_action() {
+            Ok(Self {
+                uid: e.uid().clone(),
+                attrs: Some(PartialRecord::new()),
+                ancestors: Some(e.ancestors().cloned().collect()),
+                tags: Some(PartialRecord::new()),
+            })
+        } else {
+            let core_schema = CoreSchema::new(schema);
+            let entity_type = schema
+                .get_entity_type(e.uid().entity_type())
+                .ok_or_else(|| {
+                    EntityValidationError::Concrete(
+                        EntitySchemaConformanceError::UnexpectedEntityType(
+                            UnexpectedEntityTypeError {
+                                uid: e.uid().clone(),
+                                suggested_types: core_schema
+                                    .entity_types_with_basename(
+                                        &e.uid().entity_type().name().basename(),
+                                    )
+                                    .collect(),
+                            },
+                        ),
+                    )
+                })?;
+            PartialEntity::from_non_action_entity(e, entity_type)
+        }
     }
 }
 
@@ -161,11 +182,20 @@ impl PartialEntity {
     /// Construct a new [`PartialEntity`]
     pub fn new(
         uid: EntityUID,
-        attrs: Option<PartialRecord>,
+        mut attrs: Option<PartialRecord>,
         ancestors: Option<HashSet<EntityUID>>,
         tags: Option<PartialRecord>,
         schema: &ValidatorSchema,
     ) -> std::result::Result<Self, EntitiesError> {
+        if let Some(ref mut record) = attrs {
+            if let Some(entity_type) = schema.get_entity_type(uid.entity_type()) {
+                let attrs_type = crate::validator::types::Type::Record {
+                    attrs: entity_type.attributes().clone(),
+                    open_attributes: entity_type.open_attributes(),
+                };
+                record.fill_required_attrs(&attrs_type);
+            }
+        }
         let e = Self {
             uid,
             attrs,
@@ -518,29 +548,9 @@ impl PartialEntities {
         entities: Entities,
         schema: &ValidatorSchema,
     ) -> std::result::Result<Self, EntitiesError> {
-        let core_schema = CoreSchema::new(schema);
         let entities_map: HashMap<EntityUID, PartialEntity> = entities
             .into_iter()
-            .map(|e| {
-                let entity_type =
-                    schema
-                        .get_entity_type(e.uid().entity_type())
-                        .ok_or_else(|| {
-                            EntityValidationError::Concrete(
-                                EntitySchemaConformanceError::UnexpectedEntityType(
-                                    UnexpectedEntityTypeError {
-                                        uid: e.uid().clone(),
-                                        suggested_types: core_schema
-                                            .entity_types_with_basename(
-                                                &e.uid().entity_type().name().basename(),
-                                            )
-                                            .collect(),
-                                    },
-                                ),
-                            )
-                        })?;
-                PartialEntity::from_entity(e, entity_type).map(|pe| (pe.uid.clone(), pe))
-            })
+            .map(|e| PartialEntity::from_entity(e, schema).map(|pe| (pe.uid.clone(), pe)))
             .try_collect()?;
         entities_map.values().try_for_each(|e| e.validate(schema))?;
         validate_ancestors(&entities_map)?;

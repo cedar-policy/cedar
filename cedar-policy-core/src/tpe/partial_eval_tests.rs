@@ -979,3 +979,152 @@ mod context_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod required_attr_not_in_map_tests {
+    use super::partial_eval_test_utils::*;
+    use crate::extensions::Extensions;
+    use crate::tpe::value::{PartialAttribute as PA, PartialRecord};
+    use crate::validator::ValidatorSchema;
+    use rstest::rstest;
+
+    fn setup() -> (ValidatorSchema, crate::tpe::request::PartialRequest) {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            r#"
+            entity User { name: String, nickname?: String };
+            entity Document;
+            action Read appliesTo { principal: User, resource: Document, context: {} };
+            "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+        (
+            schema,
+            request("User", Some("alice"), "Read", "Document", Some("doc")),
+        )
+    }
+
+    /// Evaluate with a User entity that has only the specified attrs in its PartialRecord.
+    /// Attrs not listed are simply not in the map initially. Required attrs not in the map
+    /// are filled as `Unknown` (mimicking what `PartialEntity::new` does with schema knowledge).
+    fn eval_with_attrs(
+        attrs: impl IntoIterator<Item = (&'static str, PA)>,
+        policy: &str,
+    ) -> crate::tpe::residual::Residual {
+        let (schema, req) = setup();
+        let entity_type = schema.get_entity_type(&"User".parse().unwrap()).unwrap();
+        let attrs_type = crate::validator::types::Type::Record {
+            attrs: entity_type.attributes().clone(),
+            open_attributes: entity_type.open_attributes(),
+        };
+        let mut user_attrs = rec(attrs);
+        user_attrs.fill_required_attrs(&attrs_type);
+        eval_residual(
+            &schema,
+            &req,
+            [
+                entity(
+                    "User",
+                    "alice",
+                    Some(user_attrs),
+                    Some(PartialRecord::new()),
+                ),
+                entity(
+                    "Document",
+                    "doc",
+                    Some(PartialRecord::new()),
+                    Some(PartialRecord::new()),
+                ),
+            ]
+            .into_iter(),
+            policy,
+        )
+    }
+
+    // --- Required attr "name" not in map ---
+    // Schema guarantees "name" exists, so `has` should be true and `get` should be residual.
+
+    #[test]
+    fn has_required_not_in_map() {
+        check!(
+            eval_with_attrs(
+                [],
+                r#"@id("p") permit(principal,action,resource) when { principal has name };"#
+            ),
+            "true"
+        );
+    }
+
+    #[test]
+    fn get_required_not_in_map() {
+        check!(
+            eval_with_attrs(
+                [],
+                r#"@id("p") permit(principal,action,resource) when { principal.name == "Alice" };"#
+            ),
+            r#"(User::"alice".name) == "Alice""#
+        );
+    }
+
+    // --- Optional attr "nickname" not in map ---
+    // Schema says nickname is optional, so existence is unknown → residual.
+
+    #[test]
+    fn has_optional_not_in_map() {
+        check!(
+            eval_with_attrs(
+                [("name", present("Alice"))],
+                r#"@id("p") permit(principal,action,resource) when { principal has nickname };"#
+            ),
+            r#"User::"alice" has nickname"#
+        );
+    }
+
+    // Unguarded access to an optional attr is invalid Cedar (unsafe optional attribute access),
+    // so we only test guarded access for optional not-in-map (see has_and_get_optional_not_in_map).
+
+    // --- Guarded access: has && get on required not-in-map ---
+    // `has` is true (required), so the guard passes and `get` produces a residual.
+
+    #[test]
+    fn has_and_get_required_not_in_map() {
+        check!(
+            eval_with_attrs(
+                [],
+                r#"@id("p") permit(principal,action,resource) when { principal has name && principal.name == "Alice" };"#
+            ),
+            r#"(User::"alice".name) == "Alice""#
+        );
+    }
+
+    // --- Guarded access: has && get on optional not-in-map ---
+    // `has` is a residual, so the whole expression stays as a residual.
+
+    #[test]
+    fn has_and_get_optional_not_in_map() {
+        check!(
+            eval_with_attrs(
+                [("name", present("Alice"))],
+                r#"@id("p") permit(principal,action,resource) when { principal has nickname && principal.nickname == "Ali" };"#
+            ),
+            r#"(User::"alice" has nickname) && ((User::"alice".nickname) == "Ali")"#
+        );
+    }
+
+    // --- Contrast with Present/Unknown/Absent for required attr ---
+
+    #[rstest]
+    #[case::present(present("Alice"), "true")]
+    #[case::unknown(PA::Unknown, "true")]
+    #[case::absent(PA::Absent, "false")]
+    fn has_required_in_map(#[case] name: PA, #[case] expected: &str) {
+        check!(
+            eval_with_attrs(
+                [("name", name)],
+                r#"@id("p") permit(principal,action,resource) when { principal has name };"#
+            ),
+            expected
+        );
+    }
+}

@@ -459,10 +459,6 @@ impl<'s> RequestBuilder<'s> {
             }
             .into())
         } else {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "partial_request is validated and hence the entity type must exist in the schema"
-            )]
             if candidate.entity_type() != &self.partial_request.principal.ty {
                 Err(IncorrectPrincipalEntityTypeError {
                     ty: candidate.entity_type().clone(),
@@ -470,6 +466,10 @@ impl<'s> RequestBuilder<'s> {
                 }
                 .into())
             } else {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "partial_request is validated and hence the entity type must exist in the schema"
+                )]
                 let principal_ty = self
                     .schema
                     .get_entity_type(&self.partial_request.principal.ty)
@@ -506,10 +506,6 @@ impl<'s> RequestBuilder<'s> {
             }
             .into())
         } else {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "partial_request is validated and hence the entity type must exist in the schema"
-            )]
             if candidate.entity_type() != &self.partial_request.resource.ty {
                 Err(IncorrectResourceEntityTypeError {
                     ty: candidate.entity_type().clone(),
@@ -517,6 +513,10 @@ impl<'s> RequestBuilder<'s> {
                 }
                 .into())
             } else {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "partial_request is validated and hence the entity type must exist in the schema"
+                )]
                 let resource_ty = self
                     .schema
                     .get_entity_type(&self.partial_request.resource.ty)
@@ -554,14 +554,17 @@ impl<'s> RequestBuilder<'s> {
                         Extensions::all_available(),
                     )
                     .map_err(RequestBuilderError::IllTypedContextCandidate)?;
-                self.partial_request.context = Some(PartialRecord::from_concrete_map(
-                    v.as_ref(),
-                    &self
-                        .schema
-                        .get_action_id(&self.partial_request.action)
-                        .unwrap()
-                        .context,
-                ));
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "partial_request is validated and hence the action must exist in the schema"
+                )]
+                let context_type = &self
+                    .schema
+                    .get_action_id(&self.partial_request.action)
+                    .unwrap()
+                    .context;
+                self.partial_request.context =
+                    Some(PartialRecord::from_concrete_map(v.as_ref(), context_type));
                 Ok(())
             }
         } else {

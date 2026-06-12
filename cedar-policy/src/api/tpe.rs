@@ -91,22 +91,24 @@ impl PartialRequest {
         context: Option<Context>,
         schema: &Schema,
     ) -> Result<Self, PartialRequestCreationError> {
-        let context_ty = schema
-            .0
-            .get_action_id(action.as_ref())
-            .unwrap()
-            .context_type();
-        let context = context
-            .map(|c| match c.0 {
-                ast::Context::RestrictedResidual(_) => {
-                    Err(PartialRequestCreationError::ContextContainsUnknowns)
-                }
-                ast::Context::Value(m) => Ok(tpe::value::PartialRecord::from_concrete_map(
-                    m.as_ref(),
-                    context_ty,
-                )),
-            })
-            .transpose()?;
+        let context = if let Some(action_id) = schema.0.get_action_id(action.as_ref()) {
+            let context_ty = action_id.context_type();
+            context
+                .map(|c| match c.0 {
+                    ast::Context::RestrictedResidual(_) => {
+                        Err(PartialRequestCreationError::ContextContainsUnknowns)
+                    }
+                    ast::Context::Value(m) => Ok(tpe::value::PartialRecord::from_concrete_map(
+                        m.as_ref(),
+                        context_ty,
+                    )),
+                })
+                .transpose()?
+        } else {
+            // Action not in schema — pass None and let PartialRequest::new
+            // produce the proper UndeclaredAction validation error.
+            None
+        };
         tpe::request::PartialRequest::new(principal.0, action.0, resource.0, context, &schema.0)
             .map(Self)
             .map_err(|e| PartialRequestCreationError::Validation(e.into()))
@@ -260,18 +262,21 @@ impl ActionQueryRequest {
         &self,
         action: EntityUid,
     ) -> Result<PartialRequest, cedar_policy_core::validator::RequestValidationError> {
-        let context_ty = self
+        // If action is not in the schema, context becomes None and
+        // PartialRequest::new below will produce the proper UndeclaredAction error.
+        let context = self
             .schema
             .0
             .get_action_id(action.as_ref())
-            .unwrap()
-            .context_type();
-        let context = self.context.as_ref().map(|c| match &c.0 {
-            ast::Context::RestrictedResidual(_) => panic!(),
-            ast::Context::Value(m) => {
-                tpe::value::PartialRecord::from_concrete_map(m.as_ref(), context_ty)
-            }
-        });
+            .and_then(|action_id| {
+                let context_ty = action_id.context_type();
+                self.context.as_ref().map(|c| match &c.0 {
+                    ast::Context::RestrictedResidual(_) => panic!(),
+                    ast::Context::Value(m) => {
+                        tpe::value::PartialRecord::from_concrete_map(m.as_ref(), context_ty)
+                    }
+                })
+            });
         tpe::request::PartialRequest::new(
             self.principal.0.clone(),
             action.0,
@@ -298,9 +303,13 @@ impl PartialEntity {
         tags: Option<BTreeMap<SmolStr, RestrictedExpression>>,
         schema: &Schema,
     ) -> Result<Self, PartialEntityError> {
-        let entity_type = schema.0.get_entity_type(uid.0.entity_type()).unwrap();
-        let schema_attrs = entity_type.attributes().clone();
-        let tag_type = entity_type.tag_type().cloned().unwrap_or(Type::Never);
+        let (schema_attrs, tag_type) = match schema.0.get_entity_type(uid.0.entity_type()) {
+            Some(entity_type) => (
+                entity_type.attributes().clone(),
+                entity_type.tag_type().cloned().unwrap_or(Type::Never),
+            ),
+            None => (Default::default(), Type::Never),
+        };
         Ok(Self(tpe::entities::PartialEntity::new(
             uid.0,
             attrs

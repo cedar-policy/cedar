@@ -653,7 +653,7 @@ impl Evaluator<'_> {
 /// rebuild the [`RepresentableExtensionValue`] so that the stored `func`/`args`
 /// match the canonical form.  This ensures TPE residuals are deterministic
 /// regardless of which constructor originally created the value.
-fn normalize_ext_value(value: Value) -> Value {
+pub(crate) fn normalize_ext_value(value: Value) -> Value {
     normalize_ext_value_inner(&value).unwrap_or(value)
 }
 
@@ -748,7 +748,7 @@ mod tests {
         extensions::Extensions,
         FromNormalizedStr,
     };
-    use cool_asserts::{assert_matches, assertion_failure};
+    use cool_asserts::assert_matches;
     use insta::assert_snapshot;
     use itertools::Itertools;
 
@@ -2164,7 +2164,7 @@ mod tests {
                         }
                     );
                 }
-                _ => assertion_failure!("toplevel op should be offset"),
+                e => panic!("toplevel op should be offset: {e}"),
             }
         }
     }
@@ -2255,10 +2255,10 @@ mod tests {
                                 }
                             );
                         }
-                        _ => assertion_failure!("dt field should be offset(datetime, duration)"),
+                        e => panic!("dt field should be offset(datetime, duration): {e}"),
                     }
                 }
-                _ => assertion_failure!("toplevel should be a record"),
+                e => panic!("toplevel op should be a reocrd: {e}"),
             }
         }
     }
@@ -2329,7 +2329,7 @@ mod tests {
                     });
                     assert!(has_normalized, "set should contain a normalized datetime");
                 }
-                _ => assertion_failure!("toplevel should be a set"),
+                e => panic!("toplevel should be a set: {e}"),
             }
         }
     }
@@ -2421,7 +2421,7 @@ mod tests {
                         }
                     );
                 }
-                _ => assertion_failure!("toplevel should be a record"),
+                e => panic!("toplevel should be a record: {e}"),
             }
         }
     }

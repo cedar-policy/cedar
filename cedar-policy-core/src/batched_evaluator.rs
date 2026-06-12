@@ -25,10 +25,9 @@ use std::sync::Arc;
 use crate::ast::{Entity, EntityUID, EntityUIDEntry, Request};
 use crate::authorizer::Decision;
 use crate::batched_evaluator::err::{BatchedEvalError, InsufficientIterationsError};
-use crate::entities::conformance::err::{EntitySchemaConformanceError, UnexpectedEntityTypeError};
 use crate::entities::TCComputation;
 use crate::tpe::entities::PartialEntity;
-use crate::tpe::err::{EntitiesError, EntityValidationError, PartialRequestError};
+use crate::tpe::err::PartialRequestError;
 use crate::tpe::policy_residual_map;
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
 use crate::tpe::residual::Residual;
@@ -69,13 +68,16 @@ fn concrete_request_to_partial(
         EntityUIDEntry::Unknown { .. } => return Err(PartialRequestError {}.into()),
     };
 
-    // Convert context
+    // Convert context. If action is not in the schema, context becomes None and
+    // PartialRequest::new below will produce the proper UndeclaredAction error.
     let context = match &request.context {
         Some(crate::ast::Context::Value(attrs)) => {
-            Some(crate::tpe::value::PartialRecord::from_concrete_map(
-                attrs.as_ref(),
-                schema.get_action_id(&action).unwrap().context_type(),
-            ))
+            schema.get_action_id(&action).map(|action_id| {
+                crate::tpe::value::PartialRecord::from_concrete_map(
+                    attrs.as_ref(),
+                    action_id.context_type(),
+                )
+            })
         }
         Some(crate::ast::Context::RestrictedResidual(_)) => {
             return Err(PartialRequestError {}.into())
@@ -133,36 +135,14 @@ pub fn is_authorized_batched(
         for (id, e_option) in loaded_entities {
             match e_option {
                 Some(e) => {
-                    let entity_type =
-                        schema.get_entity_type(id.entity_type()).ok_or_else(|| {
-                            EntitiesError::from(EntityValidationError::from(
-                                EntitySchemaConformanceError::UnexpectedEntityType(
-                                    UnexpectedEntityTypeError {
-                                        uid: id.clone(),
-                                        suggested_types: Vec::new(),
-                                    },
-                                ),
-                            ))
-                        })?;
                     entities.add_entities(
-                        iter::once((id, PartialEntity::from_entity(e, entity_type)?)),
+                        iter::once((id, PartialEntity::from_entity(e, schema)?)),
                         schema,
                         TCComputation::AssumeAlreadyComputed,
                     )?;
                 }
                 None => {
-                    let entity_type =
-                        schema.get_entity_type(id.entity_type()).ok_or_else(|| {
-                            EntitiesError::from(EntityValidationError::from(
-                                EntitySchemaConformanceError::UnexpectedEntityType(
-                                    UnexpectedEntityTypeError {
-                                        uid: id.clone(),
-                                        suggested_types: Vec::new(),
-                                    },
-                                ),
-                            ))
-                        })?;
-                    let pe = PartialEntity::from_entity(Entity::with_uid(id.clone()), entity_type)?;
+                    let pe = PartialEntity::from_entity(Entity::with_uid(id.clone()), schema)?;
                     entities.add_entity_trusted(id, pe)?;
                 }
             }
