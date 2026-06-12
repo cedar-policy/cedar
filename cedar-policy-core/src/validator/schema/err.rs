@@ -161,6 +161,11 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndeclaredEntityTypes(#[from] schema_errors::UndeclaredEntityTypesError),
+    /// Undeclared action(s) referenced in the `memberOf` (descendants) field
+    /// of an action.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndeclaredActions(#[from] schema_errors::UndeclaredActionsError),
     /// This error occurs when we cannot resolve a typename (because it refers
     /// to an entity type or common type that was not defined).
     #[error(transparent)]
@@ -257,6 +262,15 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ActionInvariantViolation(#[from] schema_errors::ActionInvariantViolationError),
+    /// An action has an entity type whose basename is not `Action`.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidActionType(#[from] schema_errors::InvalidActionTypeError),
+    /// An enum entity type appears as a descendant of another entity type,
+    /// which is not allowed.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EnumEntityInHierarchy(#[from] schema_errors::EnumEntityInHierarchyError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
@@ -348,8 +362,10 @@ pub mod schema_errors {
     use std::fmt::Display;
 
     use crate::ast::{EntityType, EntityUID, InternalName, Name};
+    use crate::fuzzy_match::fuzzy_search;
     use crate::parser::{join_with_conjunction, Loc};
     use crate::transitive_closure;
+    use crate::validator::schema::Extensions;
     use itertools::Itertools;
     use miette::Diagnostic;
     use nonempty::NonEmpty;
@@ -419,6 +435,41 @@ pub mod schema_errors {
         }
 
         impl_diagnostic_from_method_on_nonempty_field!(types, loc);
+    }
+
+    /// Undeclared actions error: an action's descendants references actions that are not declared
+    /// in the schema.
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Error)]
+    pub struct UndeclaredActionsError {
+        /// Action(s) which were referenced but not declared
+        pub(crate) euids: NonEmpty<EntityUID>,
+    }
+
+    impl Display for UndeclaredActionsError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            if self.euids.len() == 1 {
+                write!(f, "undeclared action: ")?;
+            } else {
+                write!(f, "undeclared actions: ")?;
+            }
+            join_with_conjunction(f, "and", self.euids.iter().sorted_unstable(), |f, s| {
+                s.fmt(f)
+            })
+        }
+    }
+
+    impl Diagnostic for UndeclaredActionsError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new(
+                "any actions appearing as descendants need to be declared as actions in the schema",
+            ))
+        }
+
+        impl_diagnostic_from_method_on_nonempty_field!(euids, loc);
     }
 
     /// Type resolution error
@@ -851,6 +902,22 @@ pub mod schema_errors {
         impl_diagnostic_from_method_on_field!(actual, loc);
     }
 
+    impl UnknownExtensionTypeError {
+        pub(crate) fn new_with_suggestion(actual: Name, extensions: &Extensions<'_>) -> Self {
+            let suggested_replacement = fuzzy_search(
+                &actual.to_string(),
+                &extensions
+                    .ext_types()
+                    .map(|n| n.to_string())
+                    .collect::<Vec<_>>(),
+            );
+            UnknownExtensionTypeError {
+                actual,
+                suggested_replacement,
+            }
+        }
+    }
+
     /// Could not find a definition for a common type, at a point in the code
     /// where internal invariants should guarantee that we would find one.
     //
@@ -891,5 +958,45 @@ pub mod schema_errors {
         }
 
         impl_diagnostic_from_method_on_nonempty_field!(euids, loc);
+    }
+
+    /// An enum entity type was found as a descendant of another entity type.
+    /// Enum entity types cannot participate in entity hierarchies.
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Error)]
+    #[error("enum entity type `{enum_type}` cannot be a descendant of `{parent_type}`")]
+    pub struct EnumEntityInHierarchyError {
+        /// The enum entity type that was found in the hierarchy
+        pub(crate) enum_type: EntityType,
+        /// The entity type that declared the enum type as a descendant
+        pub(crate) parent_type: EntityType,
+    }
+
+    impl Diagnostic for EnumEntityInHierarchyError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new(
+                "enum entity types cannot have parents in the entity hierarchy",
+            ))
+        }
+
+        impl_diagnostic_from_method_on_field!(parent_type, loc);
+    }
+
+    /// An action has an entity type whose basename is not `Action`.
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Error)]
+    #[error("action `{uid}` has an entity type whose basename is not `Action`")]
+    pub struct InvalidActionTypeError {
+        pub(crate) uid: EntityUID,
+    }
+
+    impl Diagnostic for InvalidActionTypeError {
+        impl_diagnostic_from_method_on_field!(uid, loc);
     }
 }
