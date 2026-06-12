@@ -115,7 +115,7 @@ impl WellTypedPolicies {
     }
 
     /// Creates a well-typed policy set with respect to the given request environment and schema.
-    /// This ensures that the policies satisfy the `WellTyped` constraints required by the
+    /// This ensures that the policies satisfy the well-typedness constraints required by the
     /// symbolic compiler, by applying Cedar's typechecker transformations.
     pub fn from_policies(
         ps: &PolicySet,
@@ -324,7 +324,7 @@ impl<S: Solver> CedarSymCompiler<S> {
             .await
     }
 
-    /// Returns true iff [`WellTypedPolicy`] does not error on any well-formed
+    /// Returns true iff the [`WellTypedPolicy`] does not error on any well-formed
     /// input in the given symbolic environment.
     ///
     /// Consider using the optimized version `check_never_errors_opt()` instead,
@@ -377,7 +377,7 @@ impl<S: Solver> CedarSymCompiler<S> {
             .await
     }
 
-    /// Returns true iff [`WellTypedPolicy`] matches all well-formed inputs in
+    /// Returns true iff the [`WellTypedPolicy`] matches all well-formed inputs in
     /// the given symbolic environment. That is, if `policy` is a `permit`
     /// policy, it allows all inputs in the `symenv`, or if `policy` is a
     /// `forbid` policy, it denies all inputs in the `symenv`.
@@ -434,7 +434,7 @@ impl<S: Solver> CedarSymCompiler<S> {
             .await
     }
 
-    /// Returns true iff [`WellTypedPolicy`] matches no well-formed inputs in
+    /// Returns true iff the [`WellTypedPolicy`] matches no well-formed inputs in
     /// the given symbolic environment.
     ///
     /// Consider using the optimized version `check_never_matches_opt()` instead,
@@ -528,7 +528,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     /// (as they both always-deny), `check_matches_equivalent_opt` only holds if the two
     /// policies match exactly the same set of inputs. Also, a nonempty `permit` and
     /// nonempty `forbid` policy can be `check_matches_equivalent_opt`, but can never
-    /// be `check_equivalent_opt`. (By "nonempty" we mean, matches as least one request
+    /// be `check_equivalent_opt`. (By "nonempty" we mean, matches at least one request
     /// in the `RequestEnv` they were compiled for.)
     ///
     /// Corresponds to `checkMatchesEquivalentOpt` in the Lean.
@@ -919,7 +919,7 @@ impl<S: Solver> CedarSymCompiler<S> {
     }
 
     /// Similar to [`Self::check_always_denies_opt`], but returns a counterexample
-    /// that is denied by `pset` if it exists.
+    /// that is allowed by `pset` if it exists.
     pub async fn check_always_denies_with_counterexample_opt(
         &mut self,
         pset: &CompiledPolicySet,
@@ -1017,7 +1017,7 @@ impl<S: Solver> CedarSymCompiler<S> {
 
     /// Returns true iff there is no well-formed input in the `RequestEnv` that
     /// is allowed by both `pset1` and `pset2`.
-    /// (Caller guarantees that `policies1` and `policies2` were compiled for
+    /// (Caller guarantees that `pset1` and `pset2` were compiled for
     /// the same `RequestEnv`.)
     pub async fn check_disjoint_opt(
         &mut self,
@@ -1106,7 +1106,7 @@ impl<'a> WellFormedAsserts<'a> {
 ///
 /// Likewise, the result of
 /// ```no_compile
-/// compiler.check_sat(asserts_for_never_errors(policy))
+/// compiler.check_sat(never_errors_asserts(policy))
 /// ```
 /// should be the same as `compiler.check_never_errors_with_counterexample_opt(policy)`.
 ///
