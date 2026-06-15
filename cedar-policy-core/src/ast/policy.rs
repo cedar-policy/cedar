@@ -352,9 +352,10 @@ impl Template {
     /// and if not, returns an error.
     ///
     /// This will check the following invariants:
-    /// - slots do not appear in conditions
-    /// - action constraints only references Action entity types
-    /// - the slot cache is correct
+    /// - slots do not appear in conditions,
+    /// - action constraints only references Action entity types,
+    /// - the slot cache is correct,
+    /// - the condition is a valid expression.
     ///
     /// This function is meant to cover gaps between parsed templates and other ways to construct
     /// templates. This is *not* doing any semantic validation beyond the checks mentioned.
@@ -402,6 +403,10 @@ impl Template {
                 return Err(TemplateValidationError::SlotCacheMismatch);
             }
         }
+        // Invariant: expressions must be valid (e.g., known extension functions)
+        if let Some(expr) = self.body.non_scope_constraints() {
+            expr.clone().try_validate()?;
+        }
         Ok(self)
     }
 }
@@ -420,6 +425,10 @@ pub enum TemplateValidationError {
     /// Slot cache does not match the slots in the condition
     #[error("template slot cache is inconsistent with condition expression")]
     SlotCacheMismatch,
+    /// Invalid expression in conditions (e.g., unknown extension function)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidExpression(#[from] ExprValidationError),
 }
 
 impl From<TemplateBody> for Template {
