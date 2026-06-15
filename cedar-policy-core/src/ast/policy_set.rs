@@ -674,10 +674,30 @@ impl PolicySet {
         Ok(set)
     }
 
-    /// Validate that the [`PolicySet`] is well-formed according to the invariants of
-    /// [`PolicySet`]. This is useful when the [`PolicySet`] has been constructed directly
+    /// Validate that the [`PolicySet`] is well-formed, on top of the invariants guaranteed by the
+    /// public methods. This is useful when the [`PolicySet`] has been constructed directly
     /// from Rust code, without going through the Cedar or JSON syntax parsers.
+    ///
+    /// Checks the following invariants:
+    /// - individual [`Template`] are valid,
+    /// - every non-static link references a template with at least one slot.
+    ///
+    /// This assumes the [`PolicySet`] has been constructed with the public API methods
+    /// (e.g. [`PolicySet::add`]), which ensure the invariants documented for [`self.templates`],
+    /// [`self.links`] and [`self.template_to_links_map`] hold.
     pub fn try_validate(self) -> Result<Self, PolicySetValidationError> {
+        for (link_id, policy) in &self.links {
+            if !policy.is_static() {
+                // Check it's a real template
+                if policy.template().slots().count() == 0 {
+                    return Err(PolicySetValidationError::LinkToSlotlessTemplate {
+                        link_id: link_id.clone(),
+                        template_id: policy.template().id().clone(),
+                    });
+                }
+            }
+        }
+
         for (id, template) in &self.templates {
             template.as_ref().clone().try_validate().map_err(|error| {
                 PolicySetValidationError::InvalidTemplate {
@@ -701,6 +721,14 @@ pub enum PolicySetValidationError {
         /// The validation error
         #[source]
         error: TemplateValidationError,
+    },
+    /// A non-static link references a template with no slots
+    #[error("link `{link_id}` references template `{template_id}` which has no slots")]
+    LinkToSlotlessTemplate {
+        /// [`PolicyID`] of the link
+        link_id: PolicyID,
+        /// [`PolicyID`] of the template that has no slots
+        template_id: PolicyID,
     },
 }
 
