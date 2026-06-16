@@ -386,8 +386,8 @@ impl TpeResponse<'_> {
     }
 
     /// Get the determining policies for the partial authorization decision.
-    /// These are a subset of the determining policies for any subsequent
-    /// concrete reauthorization.
+    /// These are a subset of the determining policies in the response returned
+    /// after calling [`TpeResponse::reauthorize`] with a concrete request and entities.
     ///
     /// When [`TpeResponse::decision`] returns a concrete allow or deny, the
     /// determining policies returned by this function are the satisfied permits
@@ -508,7 +508,13 @@ impl TpeResponse<'_> {
             .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
     }
 
-    /// Perform reauthorization
+    /// Perform reauthorization, taking the residual policies and further
+    /// evaluating them with a concrete request and entities.
+    ///
+    /// If [`TpeResponse::decision`] returns a decision, then reauthorization
+    /// will always reach the same decision. If it does not, then this function
+    /// allows you to provide any data omitted from the partial request in order
+    /// to reach a concrete decision.
     pub fn reauthorize(
         &self,
         request: &Request,
