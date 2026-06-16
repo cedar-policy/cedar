@@ -58,7 +58,7 @@ pub enum DecodeError {
     UnexpectedEnd,
     /// UTF-8 decoding error.
     #[error("Invalid UTF-8 sequence: {0}")]
-    Utf8Error(#[from] std::string::FromUtf8Error),
+    Utf8Error(#[from] std::str::Utf8Error),
     /// Failed to parse an SMT string.
     #[error("Failed to parse string: {0:?}")]
     StringParseError(Vec<u8>),
@@ -428,7 +428,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                         clippy::indexing_slicing,
                         reason = "start <= i <= src.len() ===> slicing should not panic"
                     )]
-                    let num = String::from_utf8(src[start..i].to_vec())?;
+                    let num = str::from_utf8(&src[start..i])?;
                     let num = num.parse::<u128>()?;
 
                     tokens.push(Token::Atom(SExpr::Numeral(num)));
@@ -473,7 +473,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                         clippy::indexing_slicing,
                         reason = "start <= i and i <= src.len ==> slicing should not panic"
                     )]
-                    let symbol = String::from_utf8(src[start..i].to_vec())?;
+                    let symbol = str::from_utf8(&src[start..i])?;
 
                     tokens.push(Token::Atom(SExpr::Symbol(symbol.into())));
                 }
