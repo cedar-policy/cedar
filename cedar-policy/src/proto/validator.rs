@@ -813,7 +813,7 @@ mod test {
         };
         assert_matches!(
             validator_try_from_ok_return_validate(bad),
-            Err(SchemaError::UndeclaredActions(_))
+            Err(SchemaError::UndeclaredActionDescendants(_))
         );
     }
 

@@ -162,10 +162,12 @@ pub enum SchemaError {
     #[diagnostic(transparent)]
     UndeclaredEntityTypes(#[from] schema_errors::UndeclaredEntityTypesError),
     /// Undeclared action(s) referenced in the `memberOf` (descendants) field
-    /// of an action.
+    /// of an action. This can only occur when the schema was built directly, for example through
+    /// the protobuf interface, but never when a name-resolution pass (e.g. after parsing) occurs.
+    /// In the protobuf format, the hierarchy is inverted and descendants are declared, not parents.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UndeclaredActions(#[from] schema_errors::UndeclaredActionsError),
+    UndeclaredActionDescendants(#[from] schema_errors::UndeclaredActionsDescendantError),
     /// This error occurs when we cannot resolve a typename (because it refers
     /// to an entity type or common type that was not defined).
     #[error(transparent)]
@@ -438,18 +440,20 @@ pub mod schema_errors {
     }
 
     /// Undeclared actions error: an action's descendants references actions that are not declared
-    /// in the schema.
+    /// in the schema. This can only occur when the schema was built directly, for example through
+    /// the protobuf interface, but not when a name-resolution pass (when parsing) occurs. In the
+    /// protobuf format, the hierarchy is inverted and descendants are declared, not parents.
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Error)]
-    pub struct UndeclaredActionsError {
+    pub struct UndeclaredActionsDescendantError {
         /// Action(s) which were referenced but not declared
         pub(crate) euids: NonEmpty<EntityUID>,
     }
 
-    impl Display for UndeclaredActionsError {
+    impl Display for UndeclaredActionsDescendantError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             if self.euids.len() == 1 {
                 write!(f, "undeclared action: ")?;
@@ -462,7 +466,7 @@ pub mod schema_errors {
         }
     }
 
-    impl Diagnostic for UndeclaredActionsError {
+    impl Diagnostic for UndeclaredActionsDescendantError {
         fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
             Some(Box::new(
                 "any actions appearing as descendants need to be declared as actions in the schema",

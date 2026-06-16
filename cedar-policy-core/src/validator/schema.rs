@@ -1148,7 +1148,7 @@ impl ValidatorSchema {
             }
             for descendant in action.descendants() {
                 if !self.action_ids.contains_key(descendant) {
-                    return Err(UndeclaredActionsError {
+                    return Err(UndeclaredActionsDescendantError {
                         euids: NonEmpty::singleton(descendant.clone()),
                     }
                     .into());
