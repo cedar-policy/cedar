@@ -996,7 +996,7 @@ impl SExpr {
             [SExpr::Symbol(underscore), SExpr::Symbol(bv_val), SExpr::Numeral(w)]
                 if underscore == "_" && bv_val.starts_with("bv") =>
             {
-                #[expect(clippy::indexing_slicing, reason = "starts_with guarantees len >= 2")]
+                #[expect(clippy::string_slice, reason = "starts_with guarantees len >= 2")]
                 let val_str = &bv_val[2..];
                 let val: u128 = val_str.parse().map_err(DecodeError::ParseIntError)?;
                 let width = u32::try_from(*w).map_err(|_| DecodeError::IntegerOverflow)?;
