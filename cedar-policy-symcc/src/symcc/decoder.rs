@@ -388,7 +388,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                             clippy::indexing_slicing,
                             reason = "start <= i <= src.len() thus slicing should not panic"
                         )]
-                        let num = String::from_utf8(src[start..i].to_vec())?;
+                        let num = str::from_utf8(&src[start..i])?;
                         let num = u128::from_str_radix(&num, radix)?;
 
                         // Do a sign-extension from i<width> to i<128>
@@ -1001,8 +1001,8 @@ impl SExpr {
                 let val: u128 = val_str.parse().map_err(DecodeError::ParseIntError)?;
                 let width = u32::try_from(*w).map_err(|_| DecodeError::IntegerOverflow)?;
                 let width = Width::new(width).ok_or(DecodeError::ZeroWidthBitVec)?;
-                // Check that `val` fits in declared with. If width is larger
-                // than 128, then all 128 bit vals must fit.
+                // Check that `val` fits in declared width. If width is at least 128,
+                // then all 128 bit vals must fit.
                 if width.get() < 128 && val >= (1u128 << width.get()) {
                     return Err(DecodeError::IntegerOverflow);
                 }
