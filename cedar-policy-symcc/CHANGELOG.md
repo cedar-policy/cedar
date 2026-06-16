@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Fixed
+
+- Model decoder now accepts hexadecimal bitvectors in solver output, improving compatibility with Z3 and other solvers that include literals like `#xff` in their `(get-model)` responses.
+
 ## [0.5.2] - 2026-06-09
 Cedar Language Version: 4.5
 

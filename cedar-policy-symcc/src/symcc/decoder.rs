@@ -354,59 +354,59 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, DecodeError> {
                     i += 1;
                 }
 
-                // Bit vector
+                // Bit vector literal (#b or #x)
                 b'#' => {
                     if i + 1 < src.len() {
                         #[expect(
                             clippy::indexing_slicing,
                             reason = "i + 1 < src.len() thus indexing by i + 1 should not panic"
                         )]
-                        match src[i + 1] {
+                        let (radix, bits_per_digit, is_digit): (
+                            u32,
+                            usize,
+                            fn(u8) -> bool,
+                        ) = match src[i + 1] {
                             // Binary representation
-                            b'b' => {
-                                // Read until a non-0 and non-1 character
-                                i += 2;
-                                let start = i;
-                                #[expect(
-                                    clippy::indexing_slicing,
-                                    reason = "i < src.len() thus indexing by i should not panic"
-                                )]
-                                while i < src.len() && (src[i] == b'0' || src[i] == b'1') {
-                                    i += 1;
-                                }
-
-                                let width: usize = i - start;
-                                #[expect(
-                                    clippy::indexing_slicing,
-                                    reason = "start <= i <= src.len() thus slicing should not panic"
-                                )]
-                                let num = String::from_utf8(src[start..i].to_vec())?;
-                                let num = u128::from_str_radix(&num, 2)?;
-
-                                // Do a sign-extension from i<width> to i<128>
-                                let num = if width != 0
-                                    && width < 128
-                                    && (1u128 << (width - 1)) & num != 0
-                                {
-                                    ((u128::MAX << width) | num) as i128
-                                } else {
-                                    num as i128
-                                };
-
-                                let width = u32::try_from(width)
-                                    .map_err(|_| DecodeError::IntegerOverflow)?;
-                                let width =
-                                    Width::new(width).ok_or(DecodeError::ZeroWidthBitVec)?;
-
-                                tokens.push(Token::Atom(SExpr::BitVec(BitVec::of_int(
-                                    width,
-                                    num.into(),
-                                ))));
-                            }
-
-                            // TODO: support #x...
+                            b'b' => (2, 1, |c| c == b'0' || c == b'1'),
+                            // Hex representation
+                            b'x' => (16, 4, |c| c.is_ascii_hexdigit()),
                             _ => return Err(DecodeError::UnexpectedEnd),
+                        };
+
+                        i += 2;
+                        let start = i;
+                        #[expect(
+                            clippy::indexing_slicing,
+                            reason = "i < src.len() thus indexing by i should not panic"
+                        )]
+                        while i < src.len() && is_digit(src[i]) {
+                            i += 1;
                         }
+
+                        let width: usize = (i - start) * bits_per_digit;
+                        #[expect(
+                            clippy::indexing_slicing,
+                            reason = "start <= i <= src.len() thus slicing should not panic"
+                        )]
+                        let num = String::from_utf8(src[start..i].to_vec())?;
+                        let num = u128::from_str_radix(&num, radix)?;
+
+                        // Do a sign-extension from i<width> to i<128>
+                        let num = if width != 0 && width < 128 && (1u128 << (width - 1)) & num != 0
+                        {
+                            ((u128::MAX << width) | num) as i128
+                        } else {
+                            num as i128
+                        };
+
+                        let width =
+                            u32::try_from(width).map_err(|_| DecodeError::IntegerOverflow)?;
+                        let width = Width::new(width).ok_or(DecodeError::ZeroWidthBitVec)?;
+
+                        tokens.push(Token::Atom(SExpr::BitVec(BitVec::of_int(
+                            width,
+                            num.into(),
+                        ))));
                     } else {
                         return Err(DecodeError::UnexpectedEnd);
                     }
@@ -992,6 +992,23 @@ impl SExpr {
                 })))
             }
 
+            // (_ bvN W) bitvector literals.  Emitted by cvc5 if called with `--bv-print-consts-as-indexed-symbols`.
+            [SExpr::Symbol(underscore), SExpr::Symbol(bv_val), SExpr::Numeral(w)]
+                if underscore == "_" && bv_val.starts_with("bv") =>
+            {
+                #[expect(clippy::indexing_slicing, reason = "starts_with guarantees len >= 2")]
+                let val_str = &bv_val[2..];
+                let val: u128 = val_str.parse().map_err(DecodeError::ParseIntError)?;
+                let width = u32::try_from(*w).map_err(|_| DecodeError::IntegerOverflow)?;
+                let width = Width::new(width).ok_or(DecodeError::ZeroWidthBitVec)?;
+                // Check that `val` fits in declared with. If width is larger
+                // than 128, then all 128 bit vals must fit.
+                if width.get() < 128 && val >= (1u128 << width.get()) {
+                    return Err(DecodeError::IntegerOverflow);
+                }
+                Ok(Term::Prim(TermPrim::Bitvec(BitVec::of_u128(width, val))))
+            }
+
             // Entity UID or record
             [SExpr::Symbol(name), rest_args @ ..] => {
                 self.decode_entity_or_record(id_maps, name, rest_args)
@@ -1396,6 +1413,42 @@ mod test_sexpr_parse {
     }
 
     #[test]
+    fn bitvec_hex() {
+        assert_eq!(
+            parse_sexpr(b"#x0").unwrap(),
+            SExpr::BitVec(BitVec::of_u128(Width::new(4).unwrap(), 0))
+        );
+        assert_eq!(
+            parse_sexpr(b"#xF").unwrap(),
+            SExpr::BitVec(BitVec::of_int(Width::new(4).unwrap(), (-1).into()))
+        );
+        assert_eq!(
+            parse_sexpr(b"#xff").unwrap(),
+            SExpr::BitVec(BitVec::of_int(Width::new(8).unwrap(), (-1).into()))
+        );
+        assert_eq!(
+            parse_sexpr(b"#x0A").unwrap(),
+            SExpr::BitVec(BitVec::of_u128(Width::new(8).unwrap(), 10))
+        );
+        assert_eq!(
+            parse_sexpr(b"#xDEAD").unwrap(),
+            SExpr::BitVec(BitVec::of_u128(Width::new(16).unwrap(), 0xDEAD))
+        );
+    }
+
+    #[test]
+    fn bitvec_indexed() {
+        assert_eq!(
+            parse_sexpr(b"(_ bv0 8)").unwrap(),
+            SExpr::App(vec![
+                SExpr::Symbol("_".into()),
+                SExpr::Symbol("bv0".into()),
+                SExpr::Numeral(8),
+            ])
+        );
+    }
+
+    #[test]
     fn whitespace() {
         let expected = SExpr::App(vec![SExpr::Symbol("a".into()), SExpr::Symbol("b".into())]);
         assert_eq!(parse_sexpr(b"(a b)").unwrap(), expected);
@@ -1433,7 +1486,15 @@ mod test_sexpr_parse {
             parse_sexpr(b"#b111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"),
             Err(DecodeError::ParseIntError(e)) if e.kind() == &IntErrorKind::PosOverflow
         );
-        assert_matches!(parse_sexpr(b"#x"), Err(DecodeError::UnexpectedEnd));
+        assert_matches!(
+            parse_sexpr(b"#x"),
+            Err(DecodeError::ParseIntError(e)) if e.kind() == &IntErrorKind::Empty
+        );
+        assert_matches!(
+            parse_sexpr(b"#xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF1"),
+            Err(DecodeError::ParseIntError(e)) if e.kind() == &IntErrorKind::PosOverflow
+        );
+        assert_matches!(parse_sexpr(b"#y"), Err(DecodeError::UnexpectedEnd));
         assert_matches!(parse_sexpr(b""), Err(DecodeError::UnexpectedEnd));
         assert_matches!(parse_sexpr(b"  "), Err(DecodeError::UnexpectedEnd));
         assert_matches!(parse_sexpr(b"; comment\n"), Err(DecodeError::UnexpectedEnd));
@@ -1447,10 +1508,12 @@ mod test_decode {
     use cedar_policy::{RequestEnv, Schema};
     use smol_str::SmolStr;
 
+    use cool_asserts::assert_matches;
+
     use crate::{
         bitvec::BitVec,
         err::Term,
-        symcc::decoder::{parse_sexpr, IdMaps},
+        symcc::decoder::{parse_sexpr, DecodeError, IdMaps},
         term::TermVar,
         term_type::TermType,
         SymEnv,
@@ -1521,6 +1584,44 @@ mod test_decode {
             "x".into(),
             TermType::String,
             SmolStr::new_static("foo"),
+        );
+        // Hex bitvec literal (#xNN)
+        assert_decode_var(
+            "((define-fun x () (_ BitVec 8) #xFF))",
+            "x".into(),
+            TermType::Bitvec {
+                n: NonZeroU32::new(8).unwrap(),
+            },
+            BitVec::of_i128(NonZeroU32::new(8).unwrap(), -1),
+        );
+        // Indexed bitvec literal (_ bvN W)
+        assert_decode_var(
+            "((define-fun x () (_ BitVec 8) (_ bv42 8)))",
+            "x".into(),
+            TermType::Bitvec {
+                n: NonZeroU32::new(8).unwrap(),
+            },
+            BitVec::of_u128(NonZeroU32::new(8).unwrap(), 42),
+        );
+    }
+
+    #[test]
+    fn decode_indexed_bv_err() {
+        let id_maps = IdMaps {
+            types: BTreeMap::new(),
+            vars: BTreeMap::new(),
+            uufs: BTreeMap::new(),
+            enums: BTreeMap::new(),
+        };
+        assert_matches!(
+            parse_sexpr(b"(_ bv0 0)").unwrap().decode_literal(&id_maps),
+            Err(DecodeError::ZeroWidthBitVec)
+        );
+        assert_matches!(
+            parse_sexpr(b"(_ bv256 8)")
+                .unwrap()
+                .decode_literal(&id_maps),
+            Err(DecodeError::IntegerOverflow)
         );
     }
 
