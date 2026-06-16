@@ -1400,4 +1400,27 @@ mod policy_set_validate_test {
             Err(PolicySetValidationError::InvalidTemplate { id, .. }) if id == PolicyID::from_string("slotty")
         );
     }
+
+    #[test]
+    fn link_with_no_slots_rejected() {
+        let t = valid_template("no_slots");
+        let literal = LiteralPolicySet::new(
+            [(t.id().clone(), t)],
+            [(
+                PolicyID::from_string("link1"),
+                LiteralPolicy::template_linked_policy(
+                    PolicyID::from_string("no_slots"),
+                    PolicyID::from_string("link1"),
+                    HashMap::new(),
+                ),
+            )],
+        );
+        let pset = PolicySet::try_from(literal).expect("failed to construct policy set");
+        assert_matches!(
+            pset.try_validate(),
+            Err(PolicySetValidationError::LinkToSlotlessTemplate { link_id, template_id })
+                if link_id == PolicyID::from_string("link1")
+                && template_id == PolicyID::from_string("no_slots")
+        );
+    }
 }
