@@ -87,16 +87,20 @@ impl From<ResidualPolicy> for Policy {
 pub struct Response<'a> {
     decision: Option<Decision>,
     residuals: HashMap<PolicyID, ResidualPolicy>,
-    // All of the [`Effect::Permit`] policies that were satisfied
+    // All of the [`Effect::Permit`] policies that were true
     true_permits: HashSet<PolicyID>,
-    // All of the [`Effect::Permit`] policies that were not satisfied
+    // All of the [`Effect::Permit`] policies that were false
     false_permits: HashSet<PolicyID>,
+    // All of the [`Effect::Permit`] policies that errored
+    error_permits: HashSet<PolicyID>,
     // All of the [`Effect::Permit`] policies that evaluated to a residual
     residual_permits: HashSet<PolicyID>,
-    // All of the [`Effect::Forbid`] policies that were satisfied
+    // All of the [`Effect::Forbid`] policies that were true
     true_forbids: HashSet<PolicyID>,
-    // All of the [`Effect::Forbid`] policies that were not satisfied
+    // All of the [`Effect::Forbid`] policies that were false
     false_forbids: HashSet<PolicyID>,
+    // All of the [`Effect::Forbid`] policies that errored
+    error_forbids: HashSet<PolicyID>,
     // All of the [`Effect::Forbid`] policies that evaluated to a residual
     residual_forbids: HashSet<PolicyID>,
     // request used for this partial evaluation
@@ -119,9 +123,11 @@ impl<'a> Response<'a> {
         let mut residual_map = HashMap::new();
         let mut true_permits = HashSet::new();
         let mut false_permits = HashSet::new();
+        let mut error_permits = HashSet::new();
         let mut residual_permits = HashSet::new();
         let mut true_forbids = HashSet::new();
         let mut false_forbids = HashSet::new();
+        let mut error_forbids = HashSet::new();
         let mut residual_forbids = HashSet::new();
         for rp in residuals {
             let r = rp.get_residual();
@@ -131,8 +137,10 @@ impl<'a> Response<'a> {
                 Effect::Forbid => {
                     if r.is_true() {
                         true_forbids.insert(id.clone());
-                    } else if r.is_false() || r.is_error() {
+                    } else if r.is_false() {
                         false_forbids.insert(id.clone());
+                    } else if r.is_error() {
+                        error_forbids.insert(id.clone());
                     } else {
                         residual_forbids.insert(id.clone());
                     }
@@ -140,8 +148,10 @@ impl<'a> Response<'a> {
                 Effect::Permit => {
                     if r.is_true() {
                         true_permits.insert(id.clone());
-                    } else if r.is_false() || r.is_error() {
+                    } else if r.is_false() {
                         false_permits.insert(id.clone());
+                    } else if r.is_error() {
+                        error_permits.insert(id.clone());
                     } else {
                         residual_permits.insert(id.clone());
                     }
@@ -172,9 +182,11 @@ impl<'a> Response<'a> {
             residuals: residual_map,
             true_permits,
             false_permits,
+            error_permits,
             residual_permits,
             true_forbids,
             false_forbids,
+            error_forbids,
             residual_forbids,
             request,
             entities,
@@ -215,6 +227,17 @@ impl<'a> Response<'a> {
             .map(|id| self.residuals.get(id).unwrap())
     }
 
+    /// Get trivially erroring permit residual policies
+    pub fn error_permits(&self) -> impl Iterator<Item = &ResidualPolicy> {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "we know that the policy ids are in the residuals map"
+        )]
+        self.error_permits
+            .iter()
+            .map(|id| self.residuals.get(id).unwrap())
+    }
+
     /// Get trivially false forbid residual policies
     pub fn false_forbids(&self) -> impl Iterator<Item = &ResidualPolicy> {
         #[expect(
@@ -222,6 +245,17 @@ impl<'a> Response<'a> {
             reason = "we know that the policy ids are in the residuals map"
         )]
         self.false_forbids
+            .iter()
+            .map(|id| self.residuals.get(id).unwrap())
+    }
+
+    /// Get trivially erroring forbid residual policies
+    pub fn error_forbids(&self) -> impl Iterator<Item = &ResidualPolicy> {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "we know that the policy ids are in the residuals map"
+        )]
+        self.error_forbids
             .iter()
             .map(|id| self.residuals.get(id).unwrap())
     }

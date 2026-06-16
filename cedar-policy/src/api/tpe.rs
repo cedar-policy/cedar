@@ -401,6 +401,21 @@ impl TpeResponse<'_> {
         Some(self.0.reason()?.map(PolicyId::ref_cast))
     }
 
+    /// Get the permit policies that did not reach a concrete value or error for the partial request.
+    ///
+    /// This function only returns the `PolicyId`s for residual policies.
+    /// To access the residual policy conditions, use [`TpeResponse::nontrivial_residual_policies`].
+    ///
+    /// These policies could be determining policies _if_ the eventual
+    /// concrete authorization decision is `Allow` _and_ they are satisfied by
+    /// the concrete request. If the [`TpeResponse::decision`] is `Deny`, then
+    /// they cannot be determining.
+    pub fn residual_permits(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0
+            .residual_permits()
+            .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
+    }
+
     /// Get the permit policies that are concretely satisfied by the partial request.
     ///
     /// To properly interpret the ids returned from this function you need to
@@ -422,6 +437,43 @@ impl TpeResponse<'_> {
             .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
     }
 
+    /// Get the permit policies that are concretely not satisfied by the partial request.
+    ///
+    /// These policies evaluate to `false`, so they have no impact on the
+    /// partial authorization decision or on any subsequent concrete decision
+    /// after reauthorization.
+    pub fn false_permits(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0
+            .false_permits()
+            .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
+    }
+
+    /// Get the permit policies that encountered concrete errors for the partial request.
+    ///
+    /// These policies errored, so they have no impact on the partial
+    /// authorization decision. Erroring policies are not generally expected
+    /// since partial evaluation works only on _validated_ policies, but it is still
+    /// possible to encounter errors, e.g., on integer overflow.
+    pub fn error_permits(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0
+            .error_permits()
+            .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
+    }
+
+    /// Get the forbid policies that did not reach a concrete value or error for the partial request.
+    ///
+    /// This function only returns the `PolicyId`s for residual policies.
+    /// To access the residual policy conditions, use [`TpeResponse::nontrivial_residual_policies`].
+    ///
+    /// The presence of any residual forbids means that [`TpeResponse::decision`] _cannot_ return
+    /// a concrete `Allow` decision. We do not have enough information to say that these forbid
+    /// policies do not apply, so they might still override any satisfied permit policies.
+    pub fn residual_forbids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0
+            .residual_forbids()
+            .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
+    }
+
     /// Get the forbid policies that are concretely satisfied by the partial request.
     ///
     /// Presence of any satisfied forbids guarantees that they are exactly the
@@ -430,6 +482,29 @@ impl TpeResponse<'_> {
     pub fn true_forbids(&self) -> impl Iterator<Item = &PolicyId> {
         self.0
             .satisfied_forbids()
+            .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
+    }
+
+    /// Get the forbid policies that are concretely not satisfied by the partial request.
+    ///
+    /// These policies evaluate to `false`, so they have no impact on the
+    /// partial authorization decision or on any subsequent concrete decision
+    /// after reauthorization.
+    pub fn false_forbids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0
+            .false_forbids()
+            .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
+    }
+
+    /// Get the forbid policies that encountered concrete errors for the partial request.
+    ///
+    /// These policies errored, so they have no impact on the partial
+    /// authorization decision. Erroring policies are not generally expected
+    /// since partial evaluation works only on _validated_ policies, but it is still
+    /// possible to encounter errors, e.g., on integer overflow.
+    pub fn error_forbids(&self) -> impl Iterator<Item = &PolicyId> {
+        self.0
+            .error_forbids()
             .map(|rp| PolicyId::ref_cast(rp.get_policy_id()))
     }
 
@@ -2457,6 +2532,62 @@ when { principal in resource.admins };
                 .unwrap()
                 .collect_vec();
             assert_eq!(&resources, &[]);
+        }
+    }
+
+    mod response_iterators {
+        use std::{i64, str::FromStr};
+
+        use cedar_policy_core::authorizer::Decision;
+
+        use crate::{
+            PartialEntities, PartialEntityUid, PartialRequest, PolicyId, PolicySet, Schema,
+        };
+
+        #[test]
+        fn all_policy_categories() {
+            let schema = Schema::from_str(
+                "entity P, R; action A appliesTo { principal: P, resource: R, context: { flag: Bool } };",
+            )
+            .unwrap();
+            let req = PartialRequest::new(
+                PartialEntityUid::new("P".parse().unwrap(), None),
+                r#"Action::"A""#.parse().unwrap(),
+                PartialEntityUid::new("R".parse().unwrap(), None),
+                None,
+                &schema,
+            )
+            .unwrap();
+
+            let policies = PolicySet::from_str(&format!(
+                r#"
+                permit(principal, action, resource);
+                permit(principal, action, resource) when {{ false }};
+                permit(principal, action, resource) when {{ ({} + 1) == 0 || true }};
+                permit(principal, action, resource) when {{ context.flag }};
+                forbid(principal, action, resource);
+                forbid(principal, action, resource) when {{ false }};
+                forbid(principal, action, resource) when {{ ({} + 1) == 0 || true }};
+                forbid(principal, action, resource) when {{ context.flag }};
+                "#,
+                i64::MAX, i64::MAX
+            ))
+            .unwrap();
+
+            let entities = PartialEntities::empty();
+            let response = policies.tpe(&req, &entities, &schema).unwrap();
+
+            assert_eq!(response.decision(), Some(Decision::Deny));
+            assert_eq!(response.reason().unwrap().collect::<Vec<_>>(), vec![&PolicyId::new("policy4")]);
+
+            assert_eq!(response.true_permits().collect::<Vec<_>>(), vec![&PolicyId::new("policy0")]);
+            assert_eq!(response.false_permits().collect::<Vec<_>>(), vec![&PolicyId::new("policy1")]);
+            assert_eq!(response.error_permits().collect::<Vec<_>>(), vec![&PolicyId::new("policy2")]);
+            assert_eq!(response.residual_permits().collect::<Vec<_>>(), vec![&PolicyId::new("policy3")]);
+            assert_eq!(response.true_forbids().collect::<Vec<_>>(), vec![&PolicyId::new("policy4")]);
+            assert_eq!(response.false_forbids().collect::<Vec<_>>(), vec![&PolicyId::new("policy5")]);
+            assert_eq!(response.error_forbids().collect::<Vec<_>>(), vec![&PolicyId::new("policy6")]);
+            assert_eq!(response.residual_forbids().collect::<Vec<_>>(), vec![&PolicyId::new("policy7")]);
         }
     }
 
