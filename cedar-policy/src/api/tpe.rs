@@ -2576,7 +2576,8 @@ when { principal in resource.admins };
                 forbid(principal, action, resource) when {{ ({} + 1) == 0 || true }};
                 forbid(principal, action, resource) when {{ context.flag }};
                 "#,
-                i64::MAX, i64::MAX
+                i64::MAX,
+                i64::MAX
             ))
             .unwrap();
 
@@ -2584,16 +2585,43 @@ when { principal in resource.admins };
             let response = policies.tpe(&req, &entities, &schema).unwrap();
 
             assert_eq!(response.decision(), Some(Decision::Deny));
-            assert_eq!(response.reason().unwrap().collect::<Vec<_>>(), vec![&PolicyId::new("policy4")]);
+            assert_eq!(
+                response.reason().unwrap().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy4")]
+            );
 
-            assert_eq!(response.true_permits().collect::<Vec<_>>(), vec![&PolicyId::new("policy0")]);
-            assert_eq!(response.false_permits().collect::<Vec<_>>(), vec![&PolicyId::new("policy1")]);
-            assert_eq!(response.error_permits().collect::<Vec<_>>(), vec![&PolicyId::new("policy2")]);
-            assert_eq!(response.residual_permits().collect::<Vec<_>>(), vec![&PolicyId::new("policy3")]);
-            assert_eq!(response.true_forbids().collect::<Vec<_>>(), vec![&PolicyId::new("policy4")]);
-            assert_eq!(response.false_forbids().collect::<Vec<_>>(), vec![&PolicyId::new("policy5")]);
-            assert_eq!(response.error_forbids().collect::<Vec<_>>(), vec![&PolicyId::new("policy6")]);
-            assert_eq!(response.residual_forbids().collect::<Vec<_>>(), vec![&PolicyId::new("policy7")]);
+            assert_eq!(
+                response.true_permits().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy0")]
+            );
+            assert_eq!(
+                response.false_permits().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy1")]
+            );
+            assert_eq!(
+                response.error_permits().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy2")]
+            );
+            assert_eq!(
+                response.residual_permits().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy3")]
+            );
+            assert_eq!(
+                response.true_forbids().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy4")]
+            );
+            assert_eq!(
+                response.false_forbids().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy5")]
+            );
+            assert_eq!(
+                response.error_forbids().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy6")]
+            );
+            assert_eq!(
+                response.residual_forbids().collect::<Vec<_>>(),
+                vec![&PolicyId::new("policy7")]
+            );
         }
     }
 
