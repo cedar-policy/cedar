@@ -10,7 +10,10 @@ Cedar Language Version: TBD
 
 ### Fixed
 
-- Model decoder now accepts hexadecimal bitvectors in solver output, improving compatibility with Z3 and other solvers that include literals like `#xff` in their `(get-model)` responses.
+- Fixes errors decoding models from Z3.  The model decoder now accepts hexadecimal bitvectors
+  in solver output, parsing literals like `#xff`. It also handles an option literal `none`
+  without an explict type annotation, as long as it can infer the type. Finaly, it accepts
+  models for uufs with equalities operand in either order.
 
 ## [0.5.2] - 2026-06-09
 Cedar Language Version: 4.5
