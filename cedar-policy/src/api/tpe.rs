@@ -390,8 +390,8 @@ impl TpeResponse<'_> {
     /// after calling [`TpeResponse::reauthorize`] with a concrete request and entities.
     ///
     /// When [`TpeResponse::decision`] returns a concrete allow or deny, the
-    /// determining policies returned by this function are the satisfied permits
-    /// or forbids respectively.
+    /// determining policies returned by this function are exactly the policies from
+    /// [`TpeResponse::true_permits`] or [`TpeResponse::true_forbids`] respectively.
     ///
     /// If partial authorization does not reach a decision, then this function
     /// returns `None`. It's reasonable to treat this response as "no known
