@@ -1148,25 +1148,22 @@ impl SExpr {
                 if exprs.len() == 4 && exprs[0].is_symbol("ite") {
                     if let SExpr::App(args) = &exprs[1] {
                         if args.len() == 3 && args[0].is_symbol("=") {
-                            if args[2].is_symbol(arg_name) {
-                                // cvc5: (= <literal> <arg_name>)
-                                let cond_term = args[1].decode_literal(id_maps)?;
-                                let then_term =
-                                    exprs[2].decode_literal_expecting(id_maps, Some(&ret_ty))?;
-                                table.insert(cond_term, then_term);
-                                cur_body = &exprs[3];
-                                continue;
+                            // Find the literal the `ite` compares the argument against.
+                            // This could be either the first or second `=` oparand,
+                            // depending on the solver.
+                            let cond_lit_term = if args[2].is_symbol(arg_name) {
+                                &args[1]
                             } else if args[1].is_symbol(arg_name) {
-                                // Z3:   (= <arg_name> <literal>)
-                                let cond_term = args[2].decode_literal(id_maps)?;
-                                let then_term =
-                                    exprs[2].decode_literal_expecting(id_maps, Some(&ret_ty))?;
-                                table.insert(cond_term, then_term);
-                                cur_body = &exprs[3];
-                                continue;
+                                &args[2]
                             } else {
                                 return Err(DecodeError::UnexpectedUnaryFunctionForm(body.clone()));
                             }
+                            .decode_literal(id_maps)?;
+                            let then_term =
+                                exprs[2].decode_literal_expecting(id_maps, Some(&ret_ty))?;
+                            table.insert(cond_lit_term, then_term);
+                            cur_body = &exprs[3];
+                            continue;
                         }
                     }
                 }
