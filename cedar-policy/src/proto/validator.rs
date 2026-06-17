@@ -332,14 +332,41 @@ impl From<&types::AttributeType> for models::AttributeType {
 mod test {
     use std::sync::Arc;
 
+    use crate::Schema;
+
     use super::models;
     use super::ProtobufConversionError;
     use cedar_policy_core::validator::types::{
         AttributeType, BoolType, EntityKind, EntityLUB, OpenTag, Type,
     };
+    use cedar_policy_core::validator::SchemaError;
     use cedar_policy_core::validator::ValidatorSchema;
     use cool_asserts::assert_matches;
     use similar_asserts::assert_eq;
+
+    /// Helper: create a simple entity decl with no descendants, attributes, or tags.
+    fn simple_entity_decl(name: &str) -> models::EntityDecl {
+        let n: cedar_policy_core::ast::Name = name.parse().unwrap();
+        models::EntityDecl {
+            name: Some(models::Name::from(&n)),
+            descendants: vec![],
+            attributes: Default::default(),
+            tags: None,
+            enum_choices: vec![],
+        }
+    }
+
+    /// Helper: create a models::Name from a string.
+    fn name(s: &str) -> models::Name {
+        let n: cedar_policy_core::ast::Name = s.parse().unwrap();
+        models::Name::from(&n)
+    }
+
+    /// Helper: create a models::EntityUid for an action.
+    fn action_uid(eid: &str) -> models::EntityUid {
+        let uid = cedar_policy_core::ast::EntityUID::with_eid_and_type("Action", eid).unwrap();
+        models::EntityUid::from(&uid)
+    }
 
     #[test]
     fn type_roundtrip() {
@@ -583,6 +610,12 @@ mod test {
         );
     }
 
+    fn validator_try_from_ok_return_validate(
+        schema: models::Schema,
+    ) -> Result<ValidatorSchema, SchemaError> {
+        ValidatorSchema::try_from(schema).unwrap().try_validate()
+    }
+
     #[test]
     fn schema_try_from_invalid_entity_decl() {
         let bad = models::Schema {
@@ -626,12 +659,10 @@ mod test {
             ],
             action_decls: vec![],
         };
-        // TODO(#1348): this currently succeeds because `ValidatorSchema::try_validate()` is
-        // a no-op.
-        // Change this to `is_err()` once schema validation is implemented.
-        assert!(
-            ValidatorSchema::try_from(bad).is_ok(),
-            "known limitation: schema validation not implemented yet"
+        // Schema validation rejects enum entities as descendants of other entities.
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::EnumEntityInHierarchy(_))
         );
     }
 
@@ -660,12 +691,149 @@ mod test {
             ],
             action_decls: vec![],
         };
-        // TODO(#1348): this currently succeeds because `ValidatorSchema::try_validate()` is a
-        // no-op.
-        // Change this to `is_err()` once schema validation is implemented.
-        assert!(
-            ValidatorSchema::try_from(bad).is_ok(),
-            "known limitation: schema validation not implemented yet"
+        // Schema validation rejects undeclared entity types in descendants.
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::UndeclaredEntityTypes(_))
+        );
+    }
+
+    #[test]
+    fn schema_try_from_undeclared_principal_type() {
+        // Action references an entity type that is not declared
+        let bad = models::Schema {
+            entity_decls: vec![],
+            action_decls: vec![models::ActionDecl {
+                name: Some(action_uid("act")),
+                principal_types: vec![name("A")],
+                resource_types: vec![],
+                descendants: vec![],
+                context: Default::default(),
+            }],
+        };
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::UndeclaredEntityTypes(_))
+        );
+    }
+
+    #[test]
+    fn schema_try_from_shadowing_entity_types() {
+        // Entity type `r::r` shadows unqualified entity type `r` (RFC 70)
+        let bad = models::Schema {
+            entity_decls: vec![simple_entity_decl("r"), simple_entity_decl("r::r")],
+            action_decls: vec![],
+        };
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::TypeShadowing(_))
+        );
+    }
+
+    #[test]
+    fn schema_try_from_undeclared_entity_in_attribute() {
+        // Entity type `A` has an attribute referencing undeclared entity type `B::B::B`
+        let bad = models::Schema {
+            entity_decls: vec![models::EntityDecl {
+                name: Some(name("A")),
+                descendants: vec![],
+                attributes: [(
+                    "attr".to_string(),
+                    models::AttributeType {
+                        attr_type: Some(models::Type {
+                            data: Some(models::r#type::Data::Entity(name("B::B::B"))),
+                        }),
+                        is_required: false,
+                    },
+                )]
+                .into(),
+                tags: None,
+                enum_choices: vec![],
+            }],
+            action_decls: vec![],
+        };
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::UndeclaredEntityTypes(_))
+        );
+    }
+
+    #[test]
+    fn schema_try_from_unknown_extension_type_in_tags() {
+        // Entity type `A` has tags with unknown extension type `q`
+        let bad = models::Schema {
+            entity_decls: vec![models::EntityDecl {
+                name: Some(name("A")),
+                descendants: vec![],
+                attributes: Default::default(),
+                tags: Some(models::Type {
+                    data: Some(models::r#type::Data::Ext(name("q"))),
+                }),
+                enum_choices: vec![],
+            }],
+            action_decls: vec![],
+        };
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::UnknownExtensionType(_))
+        );
+    }
+
+    #[test]
+    fn schema_try_from_action_hierarchy_cycle() {
+        // Action lists itself as a descendant (cycle)
+        let bad = models::Schema {
+            entity_decls: vec![simple_entity_decl("A")],
+            action_decls: vec![models::ActionDecl {
+                name: Some(action_uid("")),
+                principal_types: vec![name("A")],
+                resource_types: vec![name("A")],
+                descendants: vec![action_uid("")],
+                context: Default::default(),
+            }],
+        };
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::CycleInActionHierarchy(_))
+        );
+    }
+
+    #[test]
+    fn schema_try_from_undeclared_action_descendant() {
+        // Action references an undeclared action as a descendant
+        let bad = models::Schema {
+            entity_decls: vec![simple_entity_decl("A")],
+            action_decls: vec![models::ActionDecl {
+                name: Some(action_uid("act")),
+                principal_types: vec![name("A")],
+                resource_types: vec![name("A")],
+                descendants: vec![action_uid("nonexistent")],
+                context: Default::default(),
+            }],
+        };
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::UndeclaredActionDescendants(_))
+        );
+    }
+
+    #[test]
+    fn schema_try_from_invalid_action_entity_type() {
+        // Action with entity type `h` (basename is not `Action`)
+        let bad_uid = cedar_policy_core::ast::EntityUID::with_eid_and_type("h", "act").unwrap();
+        let bad = models::Schema {
+            entity_decls: vec![simple_entity_decl("A")],
+            action_decls: vec![models::ActionDecl {
+                name: Some(models::EntityUid::from(&bad_uid)),
+                principal_types: vec![name("A")],
+                resource_types: vec![name("A")],
+                descendants: vec![],
+                context: Default::default(),
+            }],
+        };
+        assert_matches!(
+            validator_try_from_ok_return_validate(bad),
+            Err(SchemaError::InvalidActionType(_))
         );
     }
 }

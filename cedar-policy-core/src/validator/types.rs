@@ -1298,6 +1298,33 @@ impl AttributeType {
     }
 }
 
+/// Stack-based iterator that traverses [`Type`]s, yielding only leaf types
+/// (i.e., everything except `Set` and `Record`, which are recursed into).
+pub(crate) struct TypeIterator<'a> {
+    pub(crate) stack: Vec<&'a Type>,
+}
+
+impl<'a> Iterator for TypeIterator<'a> {
+    type Item = &'a Type;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let ty = self.stack.pop()?;
+            match ty {
+                Type::Set {
+                    element_type: Some(el),
+                } => self.stack.push(el),
+                Type::Record { attrs, .. } => {
+                    for (_, attr) in attrs.iter() {
+                        self.stack.push(&attr.attr_type);
+                    }
+                }
+                _ => return Some(ty),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[expect(clippy::panic, clippy::indexing_slicing, reason = "unit tests")]
 mod test {

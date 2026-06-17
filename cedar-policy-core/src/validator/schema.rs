@@ -28,6 +28,7 @@ use crate::{
     transitive_closure::compute_tc,
 };
 use educe::Educe;
+use itertools::Itertools;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
 #[cfg(feature = "extended-schema")]
@@ -41,7 +42,7 @@ use crate::validator::{
     cedar_schema::SchemaWarning,
     json_schema,
     partition_nonempty::PartitionNonEmpty,
-    types::{Attributes, EntityKind, OpenTag, RequestEnv, Type},
+    types::{Attributes, EntityKind, OpenTag, RequestEnv, Type, TypeIterator},
     ValidationMode,
 };
 
@@ -1076,6 +1077,27 @@ impl ValidatorSchema {
         })
     }
 
+    /// Returns an iterator over all leaf types reachable from entity attributes, tags, and
+    /// action contexts. Leaf types are all types except `Set` and `Record`, which are
+    /// traversed into automatically.
+    /// Note that a type is traversed multiple times if it is referenced multiple times; consumers
+    /// should use [`Itertools::unique`] when they care about not visiting a type multiple times.
+    fn leaf_types(&self) -> TypeIterator<'_> {
+        let mut stack: Vec<&Type> = Vec::new();
+        for ety in self.entity_types.values() {
+            for (_, attr) in ety.attributes().iter() {
+                stack.push(&attr.attr_type);
+            }
+            if let Some(tag_ty) = ety.tag_type() {
+                stack.push(tag_ty);
+            }
+        }
+        for action in self.action_ids.values() {
+            stack.push(action.context());
+        }
+        TypeIterator { stack }
+    }
+
     /// Construct an `Entity` object for each action in the schema
     pub fn action_entities(&self) -> std::result::Result<Entities, EntitiesError> {
         let extensions = Extensions::all_available();
@@ -1087,13 +1109,127 @@ impl ValidatorSchema {
         )
     }
 
+    /// Check that the types in the hierarchy are declared, and no enum entity types
+    /// appears as a descendant of another type.
+    fn check_hierarchy_wf(&self) -> std::result::Result<(), SchemaError> {
+        let mut undeclared_entities = Vec::new();
+        // Check for entities:
+        // - all descendants are declared entity types,
+        // - no enum entity type appears as a descendant of another type
+        for ety in self.entity_types.values() {
+            for descendant in &ety.descendants {
+                if let Some(desc_ety) = self.entity_types.get(descendant) {
+                    if matches!(desc_ety.kind, ValidatorEntityTypeKind::Enum(_)) {
+                        return Err(EnumEntityInHierarchyError {
+                            enum_type: descendant.clone(),
+                            parent_type: ety.name().clone(),
+                        }
+                        .into());
+                    }
+                } else {
+                    undeclared_entities.push(descendant.clone());
+                }
+            }
+        }
+        // Check actions: appliesTo references declared entity types, and
+        // descendants reference declared actions, and action entity types have
+        // basename `Action`
+        for action in self.action_ids.values() {
+            if !action.name().entity_type().is_action() {
+                return Err(InvalidActionTypeError {
+                    uid: action.name().clone(),
+                }
+                .into());
+            }
+            for ety in action.principals().chain(action.resources()) {
+                if !self.entity_types.contains_key(ety) {
+                    undeclared_entities.push(ety.clone());
+                }
+            }
+            for descendant in action.descendants() {
+                if !self.action_ids.contains_key(descendant) {
+                    return Err(UndeclaredActionsDescendantError {
+                        euids: NonEmpty::singleton(descendant.clone()),
+                    }
+                    .into());
+                }
+            }
+        }
+        if let Some(undeclared) = NonEmpty::from_vec(undeclared_entities) {
+            return Err(UndeclaredEntityTypesError { types: undeclared }.into());
+        }
+        Ok(())
+    }
+
+    /// Check that all entity types referenced in attribute/tag/context types are declared
+    fn check_references_wf(&self) -> std::result::Result<(), SchemaError> {
+        let mut undeclared = Vec::new();
+        for ty in self.leaf_types().unique() {
+            if let Type::Entity(EntityKind::Entity(lub)) = ty {
+                for e in lub.iter() {
+                    if !self.entity_types.contains_key(e) {
+                        undeclared.push(e.clone());
+                    }
+                }
+            }
+        }
+        if let Some(undeclared) = NonEmpty::from_vec(undeclared) {
+            return Err(UndeclaredEntityTypesError { types: undeclared }.into());
+        }
+        Ok(())
+    }
+
+    fn check_extension_types_wf(&self) -> std::result::Result<(), SchemaError> {
+        let extensions = Extensions::all_available();
+        let valid_ext_types: HashSet<_> = extensions.ext_types().collect();
+        for ty in self.leaf_types().unique() {
+            if let Type::ExtensionType { name } = ty {
+                if !valid_ext_types.contains(name) {
+                    return Err(SchemaError::UnknownExtensionType(
+                        UnknownExtensionTypeError::new_with_suggestion(name.clone(), extensions),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Validate that a schema is well-formed according to the rules of the schema language.
     /// This is useful when the schema has been constructed directly from Rust code,
     /// without going through the JSON or Cedar schema syntax, and thus may not have
     /// been checked for well-formedness by the JSON or Cedar schema parsers.
-    pub fn try_validate(self) -> std::result::Result<Self, SchemaError> {
-        // Implementation for validating schema well-formedness
-        // TODO: implement schema validation
+    //
+    // Note: The checks here partially overlap with `check_for_undeclared` and
+    // the TC computation in `from_schema_fragments`. We cannot reuse those
+    // directly because they are designed for the fragment-merging construction
+    // path (they expect `undeclared_parent_entities/actions` from inverting
+    // `memberOf`, unresolved common types, etc.). Here we operate on an
+    // already-constructed schema where types are fully resolved, so we use
+    // simpler checks tailored to that representation (and also cover tags,
+    // which `check_for_undeclared` does not inspect).
+    pub fn try_validate(mut self) -> std::result::Result<Self, SchemaError> {
+        self.check_hierarchy_wf()?;
+        self.check_references_wf()?;
+        self.check_extension_types_wf()?;
+        // Recompute transitive closure for entity types and actions,
+        // which also detects cycles in the action hierarchy.
+        compute_tc(&mut self.entity_types, false)
+            .map_err(|e| EntityTypeTransitiveClosureError::from(Box::new(e)))?;
+        compute_tc(&mut self.action_ids, true)?;
+        self.actions = Self::action_entities_iter(&self.action_ids)
+            .map(|e| (e.uid().clone(), Arc::new(e)))
+            .collect();
+        // RFC 70 shadowing checks
+        let all_defs = AllDefs {
+            entity_defs: self
+                .entity_types
+                .keys()
+                .map(|ety| ety.name().as_ref().clone())
+                .collect(),
+            common_defs: HashSet::new(),
+            action_defs: self.action_ids.keys().cloned().collect(),
+        };
+        all_defs.rfc_70_shadowing_checks()?;
         Ok(self)
     }
 }
