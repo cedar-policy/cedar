@@ -63,15 +63,13 @@ where
     K: Clone + Eq + Hash + Debug + Display,
     V: TCNode<K>,
 {
+    // Always use the SCC-based algorithm which correctly handles cycles.
+    // The single-pass algorithm is only correct for DAGs and produces
+    // incomplete results when the graph contains cycles of length >= 3.
+    cyclic_tc(nodes);
     if enforce_dag {
-        // Single-pass SCC-based algorithm: computes exact TC even for cyclic
-        // graphs, then checks for self-loops to detect cycles.
-        cyclic_tc(nodes);
         return enforce_dag_from_tc(nodes);
     }
-    // DAG assumed — single scan per node is sufficient.
-    let all_node_ids = nodes.keys().map(K::clone).collect::<Vec<K>>();
-    compute_tc_internal(all_node_ids.into_iter(), nodes, HashSet::new(), false);
     Ok(())
 }
 
@@ -1214,6 +1212,28 @@ mod tests {
         }
     }
 
+    /// Verify that `compute_tc(..., false)` produces the same result as
+    /// `cyclic_tc` on cyclic graphs (regression: the old single-pass algorithm
+    /// produced incomplete closures for cycles of length >= 3).
+    #[test]
+    fn compute_tc_no_dag_matches_cyclic_tc_on_cycles() {
+        for (name, base) in &cyclic_test_graphs() {
+            let mut via_compute = fresh_copy(base);
+            compute_tc(&mut via_compute, false)
+                .unwrap_or_else(|_| panic!("compute_tc failed on '{name}'"));
+
+            let mut via_cyclic = fresh_copy(base);
+            cyclic_tc(&mut via_cyclic);
+
+            let snap_compute = snapshot(&via_compute);
+            let snap_cyclic = snapshot(&via_cyclic);
+            assert_eq!(
+                snap_compute, snap_cyclic,
+                "compute_tc(false) differs from cyclic_tc on '{name}'"
+            );
+        }
+    }
+
     #[test]
     fn self_loop_with_grandchild() {
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
@@ -1624,6 +1644,41 @@ mod tests {
                 vec!["A", "B", "E"],
             ),
         ]
+    }
+
+    /// Regression test: `compute_tc` with `enforce_dag=false` on a cycle of
+    /// length >= 3 must produce a complete transitive closure (every node in
+    /// the cycle can reach every other node). Before the fix, the single-pass
+    /// DFS algorithm produced incomplete, non-deterministic results for such
+    /// cycles.
+    #[test]
+    fn cycle_length_3_enforce_dag_false() {
+        // A -> B -> C -> A (cycle of length 3)
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
+        c.add_parent(EntityUID::with_eid("A"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        // With enforce_dag=false, compute_tc must not error (cycles allowed)
+        compute_tc(&mut entities, false).expect("compute_tc should succeed with enforce_dag=false");
+        // Every node in the cycle must be able to reach every other node
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let c = &entities[&EntityUID::with_eid("C")];
+        assert!(a.is_descendant_of(&EntityUID::with_eid("B")));
+        assert!(a.is_descendant_of(&EntityUID::with_eid("C")));
+        assert!(b.is_descendant_of(&EntityUID::with_eid("A")));
+        assert!(b.is_descendant_of(&EntityUID::with_eid("C")));
+        assert!(c.is_descendant_of(&EntityUID::with_eid("A")));
+        assert!(c.is_descendant_of(&EntityUID::with_eid("B")));
+        // enforce_tc must pass (TC is complete)
+        assert!(enforce_tc(&entities).is_ok());
     }
 
     /// Runs all `repair_tc` test cases, comparing repair result against a
