@@ -1514,7 +1514,7 @@ impl Node<Option<cst::Unary>> {
                 // Fold the expression into a series of negation operations.
                 (0..rc)
                     .fold(last, |r, _| {
-                        r.map(|e| (construct_expr_neg(e, self.loc.clone())))
+                        r.map(|e| construct_expr_neg(e, self.loc.clone()))
                     })
                     .map(|expr| ExprOrSpecial::Expr {
                         expr,
