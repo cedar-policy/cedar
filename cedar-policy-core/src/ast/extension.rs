@@ -376,7 +376,7 @@ impl ExtensionValueWithArgs {
     }
 
     /// Get the internal value
-    pub fn value(&self) -> &(dyn InternalExtensionValue) {
+    pub fn value(&self) -> &dyn InternalExtensionValue {
         self.value.as_ref()
     }
 
