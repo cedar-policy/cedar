@@ -24,6 +24,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 - The experimental protobuf decoding API now validates its inputs, checking structural invariants on entities, expressions, templates, policy sets, and schemas. Additionally, `Entities::decode` now computes the transitive closure instead of assuming it is already computed. These changes may result in lower performance for protobuf decoding. The previous, unvalidated behavior is available via the new `decode_unchecked` methods (e.g., `Entities::decode_unchecked`) for trusted encoded data.
 
+## [4.11.2] - Coming Soon
+
+Cedar Language Version: 4.5
+
 ### Fixed
 
 - Fixed transitive closure computation for schemas with cyclic entity type hierarchies of length ≥ 3 (introduced in 4.11.0).
@@ -525,6 +529,13 @@ Cedar Language Version: 4.0
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
 - (*) Schemas can now reference entity and common types defined in the empty namespace,
   even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
+
+## [3.4.3] - Coming Soon
+Cedar Language Version: 3.4
+
+### Fixed
+
+- Slot identifiers are now checked for JSON policy templates using slots in `is Type in ?slot` scope constraints. Loading a JSON format policy using `principal is Type in ?resource` or `resource is Type in ?principal`. (#2351)
 
 ## [3.4.2] - 2025-11-26
 Cedar Language Version: 3.4
@@ -1220,7 +1231,10 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.10.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.11.2...main
+[4.11.2]: https://github.com/cedar-policy/cedar/compare/v4.11.1...v4.11.2
+[4.11.1]: https://github.com/cedar-policy/cedar/compare/v4.11.0...v4.11.1
+[4.11.0]: https://github.com/cedar-policy/cedar/compare/v4.10.0...v4.11.0
 [4.10.0]: https://github.com/cedar-policy/cedar/compare/v4.9.1...v4.10.0
 [4.9.1]: https://github.com/cedar-policy/cedar/compare/v4.9.0...v4.9.1
 [4.9.0]: https://github.com/cedar-policy/cedar/compare/v4.8.2...v4.9.0
@@ -1242,6 +1256,8 @@ Cedar Language Version: 2.0
 [4.2.0]: https://github.com/cedar-policy/cedar/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/cedar-policy/cedar/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v4.0.0
+[3.4.3]: https://github.com/cedar-policy/cedar/compare/v3.4.2...v3.4.3
+[3.4.2]: https://github.com/cedar-policy/cedar/compare/v3.4.1...v3.4.2
 [3.4.1]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v3.4.1
 [3.4.0]: https://github.com/cedar-policy/cedar/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/cedar-policy/cedar/compare/v3.2.4...v3.3.0
