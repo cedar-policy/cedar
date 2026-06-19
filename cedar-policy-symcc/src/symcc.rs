@@ -50,7 +50,7 @@ use cedar_policy_core::ast::{Expr, ExprBuilder, Policy, PolicySet};
 use cedar_policy_core::validator::{
     typecheck::Typechecker, types::RequestEnv, ValidationMode, Validator,
 };
-use decoder::{IdMaps, decode_model};
+use decoder::{decode_model, IdMaps};
 use encoder::Encoder;
 use env::to_validator_request_env;
 use solver::{Decision, Solver};
