@@ -14,9 +14,14 @@
  * limitations under the License.
  */
 
-//! This file generates the test cases for `protobuf` regression.
+//! This file generates the test cases for `protobuf` regressions test. This does not run as part
+//! of regular testing (data-generating test cases are marked #[ignore]). It should only be run
+//! either when new test cases are added, or there is a legitimate reason to update the protobufs.
+//! Recall that protobuf encoding is not deterministic, so observing differences in the generated
+//! .pb files is expected for a fixed Cedar implementation.
 //!
-//! Run with: cargo test -p cedar-policy --features protobufs --test proto_generate_test_files -- --ignored
+//! Run with:
+//! cargo test -p cedar-policy --features protobufs --test proto_generate_test_files -- --ignored
 //!
 //! This writes `.pb` + expectation files into `tests/proto_test_files/`.
 //! The `proto_decode_regression` tests then verify that decoding the `.pb` files
@@ -81,8 +86,9 @@ fn write_request(name: &str, json_text: &str) {
     write_test_files("requests", "json", name, &request, json_text);
 }
 
+/// A macro to write the ignored tests that generate files.
 /// Generates `#[test] #[ignore] fn gen_$name() { $writer("$name", $text); }`
-macro_rules! gen_test {
+macro_rules! gen_protobuf_regression_test_case {
     ($name:ident, $writer:ident, $text:expr) => {
         #[test]
         #[ignore]
@@ -94,7 +100,7 @@ macro_rules! gen_test {
 
 // ─── Policies: Scope Constraints ─────────────────────────────────────────────
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     scope_principal_eq,
     write_policy,
     r#"permit(
@@ -105,18 +111,13 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     scope_principal_in,
     write_policy,
-    r#"permit(
-    principal in Group::"admins",
-    action,
-    resource
-);
-"#
+    r#"permit(principal in Group::"admins",action,resource);"#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     scope_principal_is,
     write_policy,
     r#"permit(
@@ -127,7 +128,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     scope_principal_is_in,
     write_policy,
     r#"permit(
@@ -138,7 +139,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     scope_resource_eq,
     write_policy,
     r#"permit(
@@ -149,7 +150,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     scope_resource_in,
     write_policy,
     r#"permit(
@@ -160,7 +161,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     scope_resource_is,
     write_policy,
     r#"permit(
@@ -171,7 +172,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     scope_resource_is_in,
     write_policy,
     r#"permit(
@@ -182,7 +183,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     scope_action_eq,
     write_policy,
     r#"permit(
@@ -193,7 +194,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     scope_action_in_list,
     write_policy,
     r#"permit(
@@ -204,7 +205,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     scope_all_any,
     write_policy,
     r#"permit(
@@ -217,7 +218,7 @@ gen_test!(
 
 // ─── Policies: Condition Expressions ─────────────────────────────────────────
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     expr_arithmetic,
     write_policy,
     r#"permit(
@@ -230,7 +231,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     expr_comparison,
     write_policy,
     r#"permit(
@@ -243,7 +244,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     expr_logic,
     write_policy,
     r#"permit(
@@ -256,7 +257,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     expr_hierarchy,
     write_policy,
     r#"permit(
@@ -269,7 +270,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     expr_string_like,
     write_policy,
     r#"permit(
@@ -282,7 +283,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     expr_is,
     write_policy,
     r#"permit(
@@ -295,7 +296,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     expr_set_record,
     write_policy,
     r#"permit(
@@ -310,7 +311,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     expr_if_then_else,
     write_policy,
     r#"permit(
@@ -325,7 +326,7 @@ gen_test!(
 
 // ─── Policies: Extension Functions ───────────────────────────────────────────
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     ext_ip,
     write_policy,
     r#"forbid(
@@ -342,7 +343,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     ext_decimal,
     write_policy,
     r#"permit(
@@ -358,7 +359,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     ext_datetime,
     write_policy,
     r#"permit(
@@ -373,7 +374,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     ext_duration,
     write_policy,
     r#"permit(
@@ -392,7 +393,7 @@ gen_test!(
 
 // ─── Policies: Edge Cases ────────────────────────────────────────────────────
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     multiple_clauses,
     write_policy,
     r#"permit(
@@ -411,7 +412,7 @@ gen_test!(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     annotations,
     write_policy,
     r#"@id("annotated-policy")
@@ -425,7 +426,7 @@ permit(
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     forbid_policy,
     write_policy,
     r#"forbid(
@@ -438,13 +439,13 @@ gen_test!(
 "#
 );
 
-gen_test!(empty_policy_set, write_policy, "");
+gen_protobuf_regression_test_case!(empty_policy_set, write_policy, "");
 
 // ─── Entities ────────────────────────────────────────────────────────────────
 
-gen_test!(entities_empty, write_entities, "[]");
+gen_protobuf_regression_test_case!(entities_empty, write_entities, "[]");
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     entities_no_attrs,
     write_entities,
     r#"[
@@ -456,7 +457,7 @@ gen_test!(
 ]"#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     entities_all_literal_types,
     write_entities,
     r#"[
@@ -482,7 +483,7 @@ gen_test!(
 ]"#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     entities_nested_records,
     write_entities,
     r#"[
@@ -504,7 +505,7 @@ gen_test!(
 ]"#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     entities_ext_values,
     write_entities,
     r#"[
@@ -521,7 +522,7 @@ gen_test!(
 ]"#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     entities_multiple_parents,
     write_entities,
     r#"[
@@ -564,7 +565,7 @@ gen_test!(
 ]"#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     entities_special_chars,
     write_entities,
     r#"[
@@ -598,9 +599,9 @@ gen_test!(
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
-gen_test!(schema_empty, write_schema, "");
+gen_protobuf_regression_test_case!(schema_empty, write_schema, "");
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     schema_optional_attrs,
     write_schema,
     r#"entity User {
@@ -616,7 +617,7 @@ action read appliesTo {
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     schema_all_ext_types,
     write_schema,
     r#"entity Server {
@@ -632,7 +633,7 @@ action check appliesTo {
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     schema_action_hierarchy,
     write_schema,
     r#"entity Doc;
@@ -648,7 +649,7 @@ action admin in [read, write, delete] appliesTo {
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     schema_entity_hierarchy,
     write_schema,
     r#"entity Org;
@@ -664,7 +665,7 @@ action view appliesTo {
 "#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     schema_multiple_namespaces,
     write_schema,
     r#"namespace Auth {
@@ -688,7 +689,7 @@ namespace App {
 
 // ─── Requests ────────────────────────────────────────────────────────────────
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     request_minimal,
     write_request,
     r#"{
@@ -699,7 +700,7 @@ gen_test!(
 }"#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     request_ext_context,
     write_request,
     r#"{
@@ -715,7 +716,7 @@ gen_test!(
 }"#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     request_nested_context,
     write_request,
     r#"{
@@ -737,7 +738,7 @@ gen_test!(
 }"#
 );
 
-gen_test!(
+gen_protobuf_regression_test_case!(
     request_special_chars,
     write_request,
     r#"{

@@ -1,5 +1,1 @@
-permit(
-    principal in Group::"admins",
-    action,
-    resource
-);
+permit(principal in Group::"admins",action,resource);

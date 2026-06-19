@@ -1,22 +1,22 @@
 
 t
 
-Server
-uptime
-*
-
-duration
+Server
 cost
 *	
-decimal
-created
-*
-
-datetime
+decimal
 addr
 
 *
-ipaddr'
+ipaddr
+created
+*
+
+datetime
+uptime
+*
+
+duration'
 
 
 Actioncheck*

@@ -16,18 +16,19 @@
 
 //! Tests for protobuf decode backwards compatibility.
 //!
-//! Each test loads a `.pb` file, decodes it, and asserts deep equality against
-//! an expected value loaded from a sibling file (`.json`, `.cedar`, or
-//! `.cedarschema`).
+//! Each test loads a `.pb` file, decodes it, and asserts deep equality against an expected value
+//! loaded from a sibling file (`.json`, `.cedar`, or `.cedarschema`). If we fail to decode a file,
+//! or decode it incorrectly, then we've broken the protobuf parser. Any  such break must be fixed
+//! before releasing another minor or patch version of Cedar.
 //!
-//! To add a new regression test case:
-//! 1. Add a `.pb` file in the appropriate `tests/proto_test_files/<type>/` dir
-//! 2. Add the corresponding expectation file (same stem, appropriate extension)
-//! 3. No code changes needed — `insta::glob!` discovers new files automatically.
+//! To add a new regression test case, either
+//! A) Manually add a `.pb` file in the appropriate `tests/proto_test_files/<type>/` dir ,
+//! then add the corresponding expectation file (same stem, appropriate extension).
+//! b) Use the proto_generate_test_files and the gen_protobuf_regression_test_case macro to
+//! generate a test case.
 //!
-//! If we fail to decode a file, or decode it incorrectly, then we've broken the
-//! protobuf parser. Any such break must be fixed before releasing another minor
-//! or patch version of Cedar.
+//! insta will discover the new test cases you added in `entities`, `policies`, `requests` and
+//! `schemas`.
 
 #![cfg(feature = "protobufs")]
 
@@ -56,7 +57,10 @@ fn decode_policy_set() {
         let decoded = PolicySet::decode(std::fs::read(path).unwrap().as_slice()).unwrap();
 
         let cedar_path = path.with_extension("cedar");
-        let expected: PolicySet = std::fs::read_to_string(&cedar_path).unwrap().parse().unwrap();
+        let expected: PolicySet = std::fs::read_to_string(&cedar_path)
+            .unwrap()
+            .parse()
+            .unwrap();
 
         assert_eq!(decoded, expected);
     });
@@ -68,10 +72,9 @@ fn decode_schema() {
         let decoded = Schema::decode(std::fs::read(path).unwrap().as_slice()).unwrap();
 
         let cedar_path = path.with_extension("cedarschema");
-        let expected =
-            Schema::from_cedarschema_str(&std::fs::read_to_string(&cedar_path).unwrap())
-                .unwrap()
-                .0;
+        let expected = Schema::from_cedarschema_str(&std::fs::read_to_string(&cedar_path).unwrap())
+            .unwrap()
+            .0;
 
         assert_eq!(decoded.as_ref(), expected.as_ref());
     });
