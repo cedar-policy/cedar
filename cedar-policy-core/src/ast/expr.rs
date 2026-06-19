@@ -1403,7 +1403,7 @@ impl<T: Clone + Default> ExprBuilder<T> {
 }
 
 /// Error returned by [`Expr::try_validate`] for internal invariant violations.
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, Diagnostic, PartialEq, Eq)]
 #[error("invalid expression: {0}")]
 pub struct ExprValidationError(String);
 
