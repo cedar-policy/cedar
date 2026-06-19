@@ -50,7 +50,7 @@ use cedar_policy_core::ast::{Expr, ExprBuilder, Policy, PolicySet};
 use cedar_policy_core::validator::{
     typecheck::Typechecker, types::RequestEnv, ValidationMode, Validator,
 };
-use decoder::{parse_sexpr, IdMaps};
+use decoder::{IdMaps, decode_model};
 use encoder::Encoder;
 use env::to_validator_request_env;
 use solver::{Decision, Solver};
@@ -195,8 +195,7 @@ impl<S: Solver> SymCompiler<S> {
             match self.solver.check_sat_with_model().await? {
                 DecisionWithModel::Unsat => Ok(None),
                 DecisionWithModel::Sat { model } => {
-                    let model = parse_sexpr(model.as_bytes())?;
-                    let interp = model.decode_model(symenv, &id_maps)?;
+                    let interp = decode_model(&model, symenv, &id_maps)?;
                     #[cfg(debug_assertions)]
                     {
                         // validate the model
