@@ -254,12 +254,12 @@ action Delete appliesTo {
             .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "2"))
             .unwrap();
         // resource["isPublic"]
-        assert_matches!(residuals.get_residual(policy0.id()), Some(Residual::Partial{kind: ResidualKind::GetAttr { expr, attr }, ..}) => {
+        assert_matches!(residuals.get_residual(policy0.id()).unwrap().get_residual().as_ref(), Residual::Partial{kind: ResidualKind::GetAttr { expr, attr }, ..} => {
             assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Resource), .. });
             assert_eq!(attr, "isPublic");
         });
         // (resource["owner"]) == User::"Alice"
-        assert_matches!(residuals.get_residual(policy1.id()), Some(Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }) => {
+        assert_matches!(residuals.get_residual(policy1.id()).unwrap().get_residual().as_ref(), Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. } => {
             assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::GetAttr { expr, attr }, .. } => {
                 assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Resource), .. });
                 assert_eq!(attr, "owner");
@@ -270,14 +270,18 @@ action Delete appliesTo {
         });
         // false
         assert_matches!(
-            residuals.get_residual(policy2.id()),
-            Some(Residual::Concrete {
+            residuals
+                .get_residual(policy2.id())
+                .unwrap()
+                .get_residual()
+                .as_ref(),
+            Residual::Concrete {
                 value: Value {
                     value: ValueKind::Lit(Literal::Bool(false)),
                     ..
                 },
                 ..
-            })
+            }
         );
     }
 }
@@ -470,12 +474,12 @@ when { principal in resource.editors };
             .collect();
         assert!(false_forbids.is_empty());
         let true_permits: HashSet<&PolicyID> = residuals
-            .satisfied_permits()
+            .true_permits()
             .map(|p| p.get_policy_id())
             .collect();
         assert!(true_permits.is_empty());
         let true_forbids: HashSet<&PolicyID> = residuals
-            .satisfied_forbids()
+            .true_forbids()
             .map(|p| p.get_policy_id())
             .collect();
         assert!(true_forbids.is_empty());
@@ -493,7 +497,7 @@ when { principal in resource.editors };
         assert!(non_trivial_forbids.is_empty());
         assert_matches!(residuals.decision(), None);
         // (resource["owner"]) == User::"aaron"
-        assert_matches!(residuals.get_residual(policy1.id()), Some(Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }) => {
+        assert_matches!(residuals.get_residual(policy1.id()).unwrap().get_residual().as_ref(), Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. } => {
             assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::GetAttr { expr, attr }, .. } => {
                 assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Resource), .. });
                 assert_eq!(attr, "owner");
@@ -503,7 +507,7 @@ when { principal in resource.editors };
             });
         });
         // (User::"aaron" in (resource["readers"])) || (User::"aaron" in (resource["editors"]))
-        assert_matches!(residuals.get_residual(policy2.id()), Some(Residual::Partial { kind: ResidualKind::Or{ left, right }, .. }) => {
+        assert_matches!(residuals.get_residual(policy2.id()).unwrap().get_residual().as_ref(), Residual::Partial { kind: ResidualKind::Or{ left, right }, .. } => {
                     assert_matches!(left.as_ref(), Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::In, arg1, arg2 }, .. } => {
         assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(uid)), ..}, .. } => {
                         assert_eq!(uid.as_ref(), &EntityUID::from_components("User".parse().unwrap(), Eid::new("aaron"), None));

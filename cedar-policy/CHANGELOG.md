@@ -24,6 +24,9 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ### Changed
 
 - The experimental protobuf decoding API now validates its inputs, checking structural invariants on entities, expressions, templates, policy sets, and schemas. Additionally, `Entities::decode` now computes the transitive closure instead of assuming it is already computed. These changes may result in lower performance for protobuf decoding. The previous, unvalidated behavior is available via the new `decode_unchecked` methods (e.g., `Entities::decode_unchecked`) for trusted encoded data.
+- For the experimental `tpe` feature, `TpeResponse::residual_policies` is updated to return only _non-trivial_ residuals and
+  `TpeResponse::nontrivial_residual_policies` is deprecated. The previous behavior (iterating all residuals including trivial ones)
+  is available via `TpeResponse::policies`.
 
 ## [4.11.2] - Coming Soon
 

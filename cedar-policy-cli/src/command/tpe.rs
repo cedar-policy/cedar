@@ -216,7 +216,7 @@ pub fn tpe(args: &TpeArgs) -> CedarExitCode {
                         None => {
                             println!("UNKNOWN");
                             println!("All policy residuals:");
-                            for p in ans.residual_policies() {
+                            for p in ans.policies() {
                                 println!("{p}");
                             }
                             CedarExitCode::Unknown
