@@ -1,0 +1,13 @@
+{
+    "principal": { "type": "App::Org::User", "id": "alice\n\"bob'" },
+    "action": { "type": "App::Org::Action", "id": "read" },
+    "resource": { "type": "App::Org::Folder", "id": "root" },
+    "context": {
+        "src_ip": { "__extn": { "fn": "ip", "arg": "192.168.1.1" } },
+        "authenticated": true,
+        "metadata": {
+            "user_agent": "Mozilla/5.0",
+            "request_id": "abc-123-\ud83d\ude00"
+        }
+    }
+}

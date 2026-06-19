@@ -1,0 +1,45 @@
+[
+    {
+        "uid": { "type": "App::Org::User", "id": "alice\n\"bob'" },
+        "attrs": {
+            "name": "Alice",
+            "age": 30,
+            "active": true,
+            "scores": [95, 87, 100],
+            "profile": {
+                "email": "alice@example.com",
+                "address": { "city": "Seattle", "zip": 98101 }
+            },
+            "manager": { "__entity": { "type": "App::Org::User", "id": "bob" } }
+        },
+        "parents": [
+            { "type": "App::Org::Group", "id": "admins" },
+            { "type": "App::Org::Group", "id": "eng" }
+        ]
+    },
+    {
+        "uid": { "type": "App::Org::User", "id": "bob" },
+        "attrs": {
+            "name": "Bob",
+            "age": 45,
+            "active": false,
+            "scores": [],
+            "profile": {
+                "email": "bob@example.com",
+                "address": { "city": "", "zip": 0 }
+            },
+            "manager": { "__entity": { "type": "App::Org::User", "id": "bob" } }
+        },
+        "parents": [{ "type": "App::Org::Group", "id": "eng" }]
+    },
+    {
+        "uid": { "type": "App::Org::Group", "id": "admins" },
+        "attrs": {},
+        "parents": [{ "type": "App::Org::Group", "id": "eng" }]
+    },
+    {
+        "uid": { "type": "App::Org::Group", "id": "eng" },
+        "attrs": {},
+        "parents": []
+    }
+]
