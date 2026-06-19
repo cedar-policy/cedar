@@ -782,6 +782,11 @@ impl SExpr {
 
     /// Helper function to decode more complex applications as literals.
     /// Corresponds to `SExpr.decodeLit.construct` in Lean.
+    ///
+    /// This function accepts an optional expected type which it uses to assign
+    /// a type to a `none` expression without explict type annotation (as is
+    /// emitted by z3), but it does not use this type to do any additioanl
+    /// typechecking.
     fn decode_literal_app(
         &self,
         id_maps: &IdMaps<'_>,
@@ -872,8 +877,9 @@ impl SExpr {
             // (some <val>) without type annotation (Z3 produces this)
             [SExpr::Symbol(some), val] if some == "some" => {
                 let inner_ty = match expected_ty {
+                    None => None,
                     Some(TermType::Option { ty }) => Some(ty.as_ref()),
-                    _ => None,
+                    Some(_) => return Err(DecodeError::UnknownLiteral(self.clone())),
                 };
                 let val = val.decode_literal_expecting(id_maps, inner_ty)?;
                 Ok(Term::Some(Arc::new(val)))
@@ -897,8 +903,9 @@ impl SExpr {
             // (set.singleton <val>)
             [SExpr::Symbol(set_singleton), val] if set_singleton == "set.singleton" => {
                 let elt_ty = match expected_ty {
+                    None => None,
                     Some(TermType::Set { ty }) => Some(ty.as_ref()),
-                    _ => None,
+                    Some(_) => return Err(DecodeError::UnknownLiteral(self.clone())),
                 };
                 let val = val.decode_literal_expecting(id_maps, elt_ty)?;
                 let val_ty = val.type_of();
@@ -1035,8 +1042,12 @@ impl SExpr {
         self.decode_literal_expecting(id_maps, None)
     }
 
-    /// Decodes a literal term. The `expected_ty` is used to assign a type to a
-    /// bare `none`, which Z3 can produce without a type annotation.
+    /// Decodes a literal term.
+    ///
+    /// This function accepts an optional expected type which it uses to assign
+    /// a type to a `none` expression without explict type annotation (as is
+    /// emitted by z3), but it does not use this type to do any additioanl
+    /// typechecking.
     fn decode_literal_expecting(
         &self,
         id_maps: &IdMaps<'_>,
