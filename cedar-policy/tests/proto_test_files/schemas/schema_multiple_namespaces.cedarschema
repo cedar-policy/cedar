@@ -1,0 +1,16 @@
+namespace Auth {
+    entity User;
+    action login appliesTo {
+        principal: User,
+        resource: User,
+    };
+}
+namespace App {
+    entity Document {
+        owner: Auth::User,
+    };
+    action read appliesTo {
+        principal: Auth::User,
+        resource: Document,
+    };
+}

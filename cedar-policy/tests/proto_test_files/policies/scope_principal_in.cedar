@@ -1,0 +1,5 @@
+permit(
+    principal in Group::"admins",
+    action,
+    resource
+);

@@ -1,0 +1,38 @@
+[
+    {
+        "uid": { "type": "User", "id": "u1" },
+        "attrs": {},
+        "parents": [
+            { "type": "Group", "id": "g1" },
+            { "type": "Group", "id": "g2" },
+            { "type": "Group", "id": "g3" },
+            { "type": "Team", "id": "t1" },
+            { "type": "Org", "id": "o1" }
+        ]
+    },
+    {
+        "uid": { "type": "Group", "id": "g1" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type": "Group", "id": "g2" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type": "Group", "id": "g3" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type": "Team", "id": "t1" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type": "Org", "id": "o1" },
+        "attrs": {},
+        "parents": []
+    }
+]

@@ -1,0 +1,21 @@
+[
+    {
+        "uid": { "type": "Item", "id": "x" },
+        "attrs": {
+            "str_val": "hello",
+            "long_val": 9999999999,
+            "bool_val": true,
+            "entity_ref": { "__entity": { "type": "Item", "id": "y" } },
+            "set_val": [1, 2, 3],
+            "record_val": { "a": 1, "b": "two" },
+            "empty_set": [],
+            "empty_record": {}
+        },
+        "parents": []
+    },
+    {
+        "uid": { "type": "Item", "id": "y" },
+        "attrs": {},
+        "parents": []
+    }
+]

@@ -1,0 +1,6 @@
+{
+    "principal": { "type": "User", "id": "user\nwith\nnewlines" },
+    "action": { "type": "Action", "id": "do \"something\"" },
+    "resource": { "type": "Res", "id": "\ud83d\ude80\ud83c\udf1f" },
+    "context": {}
+}

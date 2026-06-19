@@ -1,0 +1,11 @@
+{
+    "principal": { "type": "User", "id": "bob" },
+    "action": { "type": "Action", "id": "write" },
+    "resource": { "type": "File", "id": "f1" },
+    "context": {
+        "src_ip": { "__extn": { "fn": "ip", "arg": "10.0.0.1" } },
+        "limit": { "__extn": { "fn": "decimal", "arg": "99.99" } },
+        "timestamp": { "__extn": { "fn": "datetime", "arg": "2024-12-25T00:00:00Z" } },
+        "timeout": { "__extn": { "fn": "duration", "arg": "5m30s" } }
+    }
+}

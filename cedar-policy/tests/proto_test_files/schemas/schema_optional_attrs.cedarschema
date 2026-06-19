@@ -1,0 +1,10 @@
+entity User {
+    name: String,
+    email?: String,
+    age?: Long,
+    active: Bool,
+};
+action read appliesTo {
+    principal: User,
+    resource: User,
+};

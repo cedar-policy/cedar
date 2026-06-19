@@ -1,0 +1,6 @@
+{
+    "principal": { "type": "User", "id": "alice" },
+    "action": { "type": "Action", "id": "read" },
+    "resource": { "type": "Doc", "id": "d1" },
+    "context": {}
+}

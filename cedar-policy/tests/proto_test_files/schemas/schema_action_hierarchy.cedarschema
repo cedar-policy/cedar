@@ -1,0 +1,10 @@
+entity Doc;
+entity User;
+action read, write, delete appliesTo {
+    principal: User,
+    resource: Doc,
+};
+action admin in [read, write, delete] appliesTo {
+    principal: User,
+    resource: Doc,
+};

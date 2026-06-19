@@ -1,0 +1,27 @@
+[
+    {
+        "uid": { "type": "User", "id": "" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type": "User", "id": "hello\nworld" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type": "User", "id": "quote\"here" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type": "User", "id": "emoji\ud83d\ude00\ud83c\udf89" },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": { "type": "User", "id": "tab\there" },
+        "attrs": {},
+        "parents": []
+    }
+]
