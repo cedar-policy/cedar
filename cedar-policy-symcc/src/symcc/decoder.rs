@@ -1915,3 +1915,316 @@ mod test_decode {
         );
     }
 }
+
+#[cfg(test)]
+mod test_decode_type_mismatch {
+    use std::{collections::BTreeMap, num::NonZeroU32, sync::LazyLock};
+
+    use cedar_policy::{RequestEnv, Schema};
+    use cool_asserts::assert_matches;
+    use smol_str::SmolStr;
+
+    use crate::{
+        op::Uuf,
+        symcc::decoder::{parse_sexpr, DecodeError, IdMaps},
+        term::TermVar,
+        term_type::TermType,
+        SymEnv,
+    };
+
+    static TEST_ENV: LazyLock<SymEnv> = LazyLock::new(|| {
+        SymEnv::new(
+            &Schema::from_cedarschema_str(
+                "entity E; action A appliesTo { principal: [E], resource: [E] };",
+            )
+            .unwrap()
+            .0,
+            &RequestEnv::new(
+                "E".parse().unwrap(),
+                "Action::\"A\"".parse().unwrap(),
+                "E".parse().unwrap(),
+            ),
+        )
+        .expect("Malformed sym env.")
+    });
+
+    #[test]
+    fn env_var_model_mismatch() {
+        let var = TermVar {
+            id: "x".into(),
+            ty: TermType::Bool,
+        };
+        let sexpr = parse_sexpr(br#"((define-fun x () String "hello"))"#).unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::from([(&var.id, &var)]),
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(
+            result,
+            Err(DecodeError::UnmatchedType(TermType::Bool, TermType::String))
+        );
+    }
+
+    #[test]
+    fn env_arg_model_mismatch() {
+        let uuf = Uuf {
+            id: "f".into(),
+            arg: TermType::Bool,
+            out: TermType::Bool,
+        };
+        let uuf_id: SmolStr = "f0".into();
+        let sexpr =
+            parse_sexpr(br#"((define-fun f0 ((x String)) Bool (ite (= x "a") true false)))"#)
+                .unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::new(),
+                uufs: BTreeMap::from([(&uuf_id, &uuf)]),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(
+            result,
+            Err(DecodeError::UnmatchedType(TermType::String, TermType::Bool))
+        );
+    }
+
+    #[test]
+    fn env_ret_model_mismatch() {
+        let uuf = Uuf {
+            id: "f".into(),
+            arg: TermType::Bool,
+            out: TermType::Bool,
+        };
+        let uuf_id: SmolStr = "f0".into();
+        let sexpr = parse_sexpr(br#"((define-fun f0 ((x Bool)) String (ite (= x true) "a" "b")))"#)
+            .unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::new(),
+                uufs: BTreeMap::from([(&uuf_id, &uuf)]),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(
+            result,
+            Err(DecodeError::UnmatchedType(TermType::String, TermType::Bool))
+        );
+    }
+
+    #[test]
+    fn illtyped_model() {
+        let var = TermVar {
+            id: "x".into(),
+            ty: TermType::Bitvec {
+                n: NonZeroU32::new(8).unwrap(),
+            },
+        };
+        let sexpr = parse_sexpr(b"((define-fun x () (_ BitVec 8) #b01))").unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::from([(&var.id, &var)]),
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(
+            result,
+            Err(DecodeError::UnmatchedType(val_ty, declared_ty))
+                if val_ty == TermType::Bitvec { n: NonZeroU32::new(2).unwrap() }
+                && declared_ty == TermType::Bitvec { n: NonZeroU32::new(8).unwrap() }
+        );
+    }
+
+    /// Record constructor with wrong number of fields.
+    #[test]
+    fn record_field_count_mismatch() {
+        use std::sync::Arc;
+        let rty = TermType::Record {
+            rty: Arc::new(BTreeMap::from([
+                ("a".into(), TermType::Bool),
+                ("b".into(), TermType::Bool),
+            ])),
+        };
+        let rty_id: SmolStr = "R0".into();
+        let var = TermVar {
+            id: "x".into(),
+            ty: rty.clone(),
+        };
+        // Record type has 2 fields but we only provide 1 argument
+        let sexpr = parse_sexpr(b"((define-fun x () R0 (R0 true)))").unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::from([(&rty_id, &rty)]),
+                vars: BTreeMap::from([(&var.id, &var)]),
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(result, Err(DecodeError::UnmatchedRecordType));
+    }
+
+    /// Record field value has wrong type.
+    #[test]
+    fn record_field_type_mismatch() {
+        use std::sync::Arc;
+        let rty = TermType::Record {
+            rty: Arc::new(BTreeMap::from([("name".into(), TermType::String)])),
+        };
+        let rty_id: SmolStr = "R0".into();
+        let var = TermVar {
+            id: "x".into(),
+            ty: rty.clone(),
+        };
+        // Field expects String but gets Bool
+        let sexpr = parse_sexpr(b"((define-fun x () R0 (R0 true)))").unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::from([(&rty_id, &rty)]),
+                vars: BTreeMap::from([(&var.id, &var)]),
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(result, Err(DecodeError::UnmatchedFieldType(..)));
+    }
+
+    #[test]
+    fn entity_non_string_arg() {
+        use cedar_policy::EntityTypeName;
+        use std::str::FromStr;
+        let ety = TermType::Entity {
+            ety: EntityTypeName::from_str("E0").unwrap(),
+        };
+        let ety_id: SmolStr = "E0".into();
+        let var = TermVar {
+            id: "x".into(),
+            ty: ety.clone(),
+        };
+        // Entity expects (E0 "id") but gets (E0 true)
+        let sexpr = parse_sexpr(b"((define-fun x () E0 (E0 true)))").unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::from([(&ety_id, &ety)]),
+                vars: BTreeMap::from([(&var.id, &var)]),
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(result, Err(DecodeError::UnknownLiteral(..)));
+    }
+}
+
+#[cfg(test)]
+mod test_decode_unexpected_model {
+    use std::{collections::BTreeMap, sync::LazyLock};
+
+    use cedar_policy::{RequestEnv, Schema};
+    use cool_asserts::assert_matches;
+    use smol_str::SmolStr;
+
+    use crate::{
+        op::Uuf,
+        symcc::decoder::{parse_sexpr, DecodeError, IdMaps},
+        term_type::TermType,
+        SymEnv,
+    };
+
+    static TEST_ENV: LazyLock<SymEnv> = LazyLock::new(|| {
+        SymEnv::new(
+            &Schema::from_cedarschema_str(
+                "entity E; action A appliesTo { principal: [E], resource: [E] };",
+            )
+            .unwrap()
+            .0,
+            &RequestEnv::new(
+                "E".parse().unwrap(),
+                "Action::\"A\"".parse().unwrap(),
+                "E".parse().unwrap(),
+            ),
+        )
+        .expect("Malformed sym env.")
+    });
+
+    fn empty_id_maps() -> IdMaps<'static> {
+        IdMaps {
+            types: BTreeMap::new(),
+            vars: BTreeMap::new(),
+            uufs: BTreeMap::new(),
+            enums: BTreeMap::new(),
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::top_level_not_app(b"true")]
+    #[case::command_not_app(b"(42)")]
+    #[case::not_define_fun(b"((declare-const x Bool))")]
+    #[case::define_fun_too_few_parts(b"((define-fun x () Bool))")]
+    #[case::define_fun_name_not_symbol(b"((define-fun 123 () Bool true))")]
+    #[case::define_fun_args_not_app(b"((define-fun x foo Bool true))")]
+    #[case::multi_arg_function(b"((define-fun f ((x Bool) (y Bool)) Bool true))")]
+    fn unexpected_model(#[case] input: &[u8]) {
+        let result = parse_sexpr(input)
+            .unwrap()
+            .decode_model(&TEST_ENV, &empty_id_maps());
+        assert_matches!(result, Err(DecodeError::UnexpectedModel));
+    }
+
+    /// Unary function arg has wrong form: the inner pair is not [Symbol, type].
+    #[test]
+    fn unary_fun_arg_not_symbol() {
+        let uuf = Uuf {
+            id: "f".into(),
+            arg: TermType::Bool,
+            out: TermType::Bool,
+        };
+        let uuf_id: SmolStr = "f0".into();
+        let sexpr = parse_sexpr(b"((define-fun f0 ((42 Bool)) Bool true))").unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::new(),
+                uufs: BTreeMap::from([(&uuf_id, &uuf)]),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(result, Err(DecodeError::UnexpectedModel));
+    }
+
+    #[test]
+    fn unknown_variable() {
+        use crate::symcc::decoder::SExpr;
+        let name: SmolStr = "unknown".into();
+        let typ = SExpr::Symbol("Bool".into());
+        let value = SExpr::Symbol("true".into());
+        let result = SExpr::decode_var(&empty_id_maps(), &name, &typ, &value);
+        assert_matches!(result, Err(DecodeError::UnknownVariable(v)) if v == "unknown");
+    }
+
+    #[test]
+    fn unknown_uuf() {
+        use crate::symcc::decoder::SExpr;
+        let name: SmolStr = "unknown_f".into();
+        let arg_typ = SExpr::Symbol("Bool".into());
+        let ret_typ = SExpr::Symbol("Bool".into());
+        let body = SExpr::Symbol("true".into());
+        let result =
+            SExpr::decode_unary_function(&empty_id_maps(), &name, "x", &arg_typ, &ret_typ, &body);
+        assert_matches!(result, Err(DecodeError::UnknownUUF(v)) if v == "unknown_f");
+    }
+}
