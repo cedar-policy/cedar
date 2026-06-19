@@ -753,21 +753,14 @@ impl SExpr {
 
             // Record
             (Some(TermType::Record { rty }), fields) => {
-                // Decode each field
-                let decoded_fields = fields
-                    .iter()
-                    .map(|field| field.decode_literal(id_maps))
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                if decoded_fields.len() != rty.len() {
+                if fields.len() != rty.len() {
                     return Err(DecodeError::UnmatchedRecordType);
                 }
 
                 let mut record = BTreeMap::new();
 
-                // Check the type of each field and collect them into `record`
-                for (decoded_field, (field_name, field_ty)) in decoded_fields.iter().zip(rty.iter())
-                {
+                for (field, (field_name, field_ty)) in fields.iter().zip(rty.iter()) {
+                    let decoded_field = field.decode_literal_expecting(id_maps, Some(field_ty))?;
                     let decoded_field_ty = decoded_field.type_of();
 
                     if &decoded_field_ty != field_ty {
@@ -777,7 +770,7 @@ impl SExpr {
                         ));
                     }
 
-                    record.insert(field_name.clone(), decoded_field.clone());
+                    record.insert(field_name.clone(), decoded_field);
                 }
 
                 Ok(Term::Record(Arc::new(record)))
@@ -789,10 +782,16 @@ impl SExpr {
 
     /// Helper function to decode more complex applications as literals.
     /// Corresponds to `SExpr.decodeLit.construct` in Lean.
+    ///
+    /// This function accepts an optional expected type which it uses to assign
+    /// a type to a `none` expression without explicit type annotation (as is
+    /// emitted by Z3), but it does not use this type to do any additional
+    /// typechecking.
     fn decode_literal_app(
         &self,
         id_maps: &IdMaps<'_>,
         args: &[SExpr],
+        expected_ty: Option<&TermType>,
     ) -> Result<Term, DecodeError> {
         match args {
             // Sometimes cvc5 does not simplify the terms in the model,
@@ -820,8 +819,8 @@ impl SExpr {
             [SExpr::Symbol(ite_tok), cond, true_branch, false_branch] if ite_tok == "ite" => {
                 Ok(factory::ite(
                     cond.decode_literal(id_maps)?,
-                    true_branch.decode_literal(id_maps)?,
-                    false_branch.decode_literal(id_maps)?,
+                    true_branch.decode_literal_expecting(id_maps, expected_ty)?,
+                    false_branch.decode_literal_expecting(id_maps, expected_ty)?,
                 ))
             }
 
@@ -861,7 +860,11 @@ impl SExpr {
                     && as_some_typ[1].is_symbol("some") =>
             {
                 let ty = as_some_typ[2].decode_type(id_maps)?;
-                let val = Term::Some(Arc::new(val.decode_literal(id_maps)?));
+                let inner_ty = match &ty {
+                    TermType::Option { ty } => Some(ty.as_ref()),
+                    _ => None,
+                };
+                let val = Term::Some(Arc::new(val.decode_literal_expecting(id_maps, inner_ty)?));
                 let val_ty = val.type_of();
 
                 if val_ty != ty {
@@ -869,6 +872,17 @@ impl SExpr {
                 }
 
                 Ok(val)
+            }
+
+            // (some <val>) without type annotation (Z3 produces this)
+            [SExpr::Symbol(some), val] if some == "some" => {
+                let inner_ty = match expected_ty {
+                    None => None,
+                    Some(TermType::Option { ty }) => Some(ty.as_ref()),
+                    Some(_) => return Err(DecodeError::UnknownLiteral(self.clone())),
+                };
+                let val = val.decode_literal_expecting(id_maps, inner_ty)?;
+                Ok(Term::Some(Arc::new(val)))
             }
 
             // (as set.empty <set_typ>)
@@ -888,7 +902,12 @@ impl SExpr {
 
             // (set.singleton <val>)
             [SExpr::Symbol(set_singleton), val] if set_singleton == "set.singleton" => {
-                let val = val.decode_literal(id_maps)?;
+                let elt_ty = match expected_ty {
+                    None => None,
+                    Some(TermType::Set { ty }) => Some(ty.as_ref()),
+                    Some(_) => return Err(DecodeError::UnknownLiteral(self.clone())),
+                };
+                let val = val.decode_literal_expecting(id_maps, elt_ty)?;
                 let val_ty = val.type_of();
                 Ok(Term::Set {
                     elts: Arc::new(BTreeSet::from([val])),
@@ -898,8 +917,8 @@ impl SExpr {
 
             // (set.union <set1> <set2>)
             [SExpr::Symbol(set_union), set1, set2] if set_union == "set.union" => {
-                let set1 = set1.decode_literal(id_maps)?;
-                let set2 = set2.decode_literal(id_maps)?;
+                let set1 = set1.decode_literal_expecting(id_maps, expected_ty)?;
+                let set2 = set2.decode_literal_expecting(id_maps, expected_ty)?;
                 let set1_ty = set1.type_of();
                 let set2_ty = set2.type_of();
 
@@ -1018,14 +1037,34 @@ impl SExpr {
         }
     }
 
-    /// Decodse a literal (with only SMT constants and no bound variables).
+    /// Decodes a literal (with only SMT constants and no bound variables).
     pub fn decode_literal(&self, id_maps: &IdMaps<'_>) -> Result<Term, DecodeError> {
+        self.decode_literal_expecting(id_maps, None)
+    }
+
+    /// Decodes a literal term.
+    ///
+    /// This function accepts an optional expected type which it uses to assign
+    /// a type to a `none` expression without explicit type annotation (as is
+    /// emitted by Z3), but it does not use this type to do any additional
+    /// typechecking.
+    fn decode_literal_expecting(
+        &self,
+        id_maps: &IdMaps<'_>,
+        expected_ty: Option<&TermType>,
+    ) -> Result<Term, DecodeError> {
         match self {
             SExpr::BitVec(bv) => Ok(Term::Prim(TermPrim::Bitvec(bv.clone()))),
             SExpr::String(s) => Ok(Term::Prim(TermPrim::String(SmolStr::new(s)))),
 
             SExpr::Symbol(s) if s == "true" => Ok(Term::Prim(TermPrim::Bool(true))),
             SExpr::Symbol(s) if s == "false" => Ok(Term::Prim(TermPrim::Bool(false))),
+
+            // Bare `none` without type annotation (Z3 produces this)
+            SExpr::Symbol(s) if s == "none" => match expected_ty {
+                Some(TermType::Option { ty }) => Ok(Term::None(ty.as_ref().clone())),
+                _ => Err(DecodeError::UnknownLiteral(self.clone())),
+            },
 
             // Empty record type
             SExpr::Symbol(s) if id_maps.types.contains_key(s) => {
@@ -1041,7 +1080,7 @@ impl SExpr {
                 .ok_or_else(|| DecodeError::UnknownLiteral(self.clone())),
 
             // More complex applications
-            SExpr::App(args) => self.decode_literal_app(id_maps, args),
+            SExpr::App(args) => self.decode_literal_app(id_maps, args, expected_ty),
 
             _ => Err(DecodeError::UnknownLiteral(self.clone())),
         }
@@ -1059,7 +1098,7 @@ impl SExpr {
         };
 
         let ty = typ.decode_type(id_maps)?;
-        let val = value.decode_literal(id_maps)?;
+        let val = value.decode_literal_expecting(id_maps, Some(&ty))?;
         let val_ty = val.type_of();
 
         if val_ty != ty {
@@ -1110,6 +1149,8 @@ impl SExpr {
         loop {
             // Check if the body is of the form
             // (ite (= <literal> <arg_name>) <literal> <else>)
+            // or
+            // (ite (= <arg_name> <literal>) <literal> <else>)
             if let SExpr::App(exprs) = cur_body {
                 #[expect(
                     clippy::indexing_slicing,
@@ -1118,20 +1159,22 @@ impl SExpr {
                 if exprs.len() == 4 && exprs[0].is_symbol("ite") {
                     if let SExpr::App(args) = &exprs[1] {
                         if args.len() == 3 && args[0].is_symbol("=") {
-                            if let SExpr::Symbol(arg) = &args[2] {
-                                if arg != arg_name {
-                                    return Err(DecodeError::UnexpectedUnaryFunctionForm(
-                                        body.clone(),
-                                    ));
-                                }
-
-                                let cond_term = args[1].decode_literal(id_maps)?;
-                                let then_term = exprs[2].decode_literal(id_maps)?;
-
-                                table.insert(cond_term, then_term);
-                                cur_body = &exprs[3];
-                                continue;
+                            // Find the literal the `ite` compares the argument against.
+                            // This could be either the first or second `=` operand,
+                            // depending on the solver.
+                            let cond_lit_term = if args[2].is_symbol(arg_name) {
+                                &args[1]
+                            } else if args[1].is_symbol(arg_name) {
+                                &args[2]
+                            } else {
+                                return Err(DecodeError::UnexpectedUnaryFunctionForm(body.clone()));
                             }
+                            .decode_literal(id_maps)?;
+                            let then_term =
+                                exprs[2].decode_literal_expecting(id_maps, Some(&ret_ty))?;
+                            table.insert(cond_lit_term, then_term);
+                            cur_body = &exprs[3];
+                            continue;
                         }
                     }
                 }
@@ -1139,7 +1182,7 @@ impl SExpr {
 
             // otherwise take as the default value
             // assuming it doesn't contain any bound variables
-            let default = cur_body.decode_literal(id_maps)?;
+            let default = cur_body.decode_literal_expecting(id_maps, Some(&ret_ty))?;
 
             return Ok((
                 uuf.clone(),
@@ -1503,9 +1546,14 @@ mod test_sexpr_parse {
 
 #[cfg(test)]
 mod test_decode {
-    use std::{collections::BTreeMap, num::NonZeroU32, sync::LazyLock};
+    use std::{
+        collections::BTreeMap,
+        num::NonZeroU32,
+        str::FromStr,
+        sync::{Arc, LazyLock},
+    };
 
-    use cedar_policy::{RequestEnv, Schema};
+    use cedar_policy::{EntityId, EntityTypeName, EntityUid, RequestEnv, Schema};
     use smol_str::SmolStr;
 
     use cool_asserts::assert_matches;
@@ -1513,8 +1561,9 @@ mod test_decode {
     use crate::{
         bitvec::BitVec,
         err::Term,
+        op::Uuf,
         symcc::decoder::{parse_sexpr, DecodeError, IdMaps},
-        term::TermVar,
+        term::{TermPrim, TermVar},
         term_type::TermType,
         SymEnv,
     };
@@ -1741,5 +1790,441 @@ mod test_decode {
             TermType::Bool,
             true,
         );
+    }
+
+    /// Z3 puts the bound variable on the lhs of `=` in ite-chains (i.e., for a uuf).
+    /// `(ite (= x!0 <literal>) ...)` instead of cvc5's `(ite (= <literal> x) ...)`
+    #[test]
+    fn decode_z3_uuf_arg_on_left() {
+        let entity_ty = TermType::Entity {
+            ety: EntityTypeName::from_str("E0").unwrap().clone(),
+        };
+        let record_ty = TermType::Record {
+            rty: Arc::new(BTreeMap::from([("admin".into(), TermType::Bool)])),
+        };
+        let uuf = Uuf {
+            id: "attrs".into(),
+            arg: entity_ty.clone(),
+            out: record_ty.clone(),
+        };
+        let ety_id: SmolStr = "E0".into();
+        let rty_id: SmolStr = "R0".into();
+        let uuf_id: SmolStr = "f0".into();
+        let id_maps = IdMaps {
+            types: BTreeMap::from([(&ety_id, &entity_ty), (&rty_id, &record_ty)]),
+            vars: BTreeMap::new(),
+            uufs: BTreeMap::from([(&uuf_id, &uuf)]),
+            enums: BTreeMap::new(),
+        };
+
+        // Z3 model for attrs[E] with two entities having different attrs
+        let sexpr = parse_sexpr(
+            br#"((define-fun f0 ((x!0 E0)) R0 (ite (= x!0 (E0 "bob")) (R0 false) (R0 true))))"#,
+        )
+        .unwrap();
+        let udf = sexpr
+            .decode_model(&TEST_ENV, &id_maps)
+            .unwrap()
+            .funs
+            .remove(&uuf)
+            .unwrap();
+        let bob_key = Term::Prim(TermPrim::Entity(EntityUid::from_type_name_and_id(
+            EntityTypeName::from_str("E0").unwrap(),
+            EntityId::new("bob"),
+        )));
+        let rec = |b| Term::Record(Arc::new(BTreeMap::from([("admin".into(), Term::from(b))])));
+        assert_eq!(udf.table.get(&bob_key), Some(&rec(false)));
+        assert_eq!(udf.default, rec(true));
+    }
+
+    /// Z3 produces bare `none` / `(some val)` without type annotations.
+    #[test]
+    fn decode_z3_bare_none_and_some() {
+        let opt_str = TermType::option_of(TermType::String);
+        let rty = TermType::Record {
+            rty: Arc::new(BTreeMap::from([("a".into(), opt_str.clone())])),
+        };
+        let type_id: SmolStr = "R0".into();
+
+        // bare `none` in a record field
+        let var = TermVar {
+            id: "t0".into(),
+            ty: rty.clone(),
+        };
+        let sexpr = parse_sexpr(b"((define-fun t0 () R0 (R0 none)))").unwrap();
+        let interp = sexpr
+            .decode_model(
+                &TEST_ENV,
+                &IdMaps {
+                    types: BTreeMap::from([(&type_id, &rty)]),
+                    vars: BTreeMap::from([(&var.id, &var)]),
+                    uufs: BTreeMap::new(),
+                    enums: BTreeMap::new(),
+                },
+            )
+            .expect("bare none in record");
+        assert_eq!(
+            *interp.vars.get(&var).unwrap(),
+            Term::Record(Arc::new(BTreeMap::from([(
+                "a".into(),
+                Term::None(TermType::String)
+            )])))
+        );
+
+        // bare `(some "x")` in a record field
+        let sexpr = parse_sexpr(br#"((define-fun t0 () R0 (R0 (some "x"))))"#).unwrap();
+        let interp = sexpr
+            .decode_model(
+                &TEST_ENV,
+                &IdMaps {
+                    types: BTreeMap::from([(&type_id, &rty)]),
+                    vars: BTreeMap::from([(&var.id, &var)]),
+                    uufs: BTreeMap::new(),
+                    enums: BTreeMap::new(),
+                },
+            )
+            .expect("bare some in record");
+        assert_eq!(
+            *interp.vars.get(&var).unwrap(),
+            Term::Record(Arc::new(BTreeMap::from([(
+                "a".into(),
+                Term::Some(Arc::new(Term::Prim(TermPrim::String("x".into()))))
+            )])))
+        );
+
+        // bare `none` as a direct constant
+        let var2 = TermVar {
+            id: "t0".into(),
+            ty: opt_str.clone(),
+        };
+        let sexpr = parse_sexpr(b"((define-fun t0 () (Option String) none))").unwrap();
+        let interp = sexpr
+            .decode_model(
+                &TEST_ENV,
+                &IdMaps {
+                    types: BTreeMap::new(),
+                    vars: BTreeMap::from([(&var2.id, &var2)]),
+                    uufs: BTreeMap::new(),
+                    enums: BTreeMap::new(),
+                },
+            )
+            .expect("bare none as constant");
+        assert_eq!(
+            *interp.vars.get(&var2).unwrap(),
+            Term::None(TermType::String)
+        );
+    }
+}
+
+#[cfg(test)]
+mod test_decode_type_mismatch {
+    use std::{collections::BTreeMap, num::NonZeroU32, sync::LazyLock};
+
+    use cedar_policy::{RequestEnv, Schema};
+    use cool_asserts::assert_matches;
+    use smol_str::SmolStr;
+
+    use crate::{
+        op::Uuf,
+        symcc::decoder::{parse_sexpr, DecodeError, IdMaps},
+        term::TermVar,
+        term_type::TermType,
+        SymEnv,
+    };
+
+    static TEST_ENV: LazyLock<SymEnv> = LazyLock::new(|| {
+        SymEnv::new(
+            &Schema::from_cedarschema_str(
+                "entity E; action A appliesTo { principal: [E], resource: [E] };",
+            )
+            .unwrap()
+            .0,
+            &RequestEnv::new(
+                "E".parse().unwrap(),
+                "Action::\"A\"".parse().unwrap(),
+                "E".parse().unwrap(),
+            ),
+        )
+        .expect("Malformed sym env.")
+    });
+
+    #[test]
+    fn env_var_model_mismatch() {
+        let var = TermVar {
+            id: "x".into(),
+            ty: TermType::Bool,
+        };
+        let sexpr = parse_sexpr(br#"((define-fun x () String "hello"))"#).unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::from([(&var.id, &var)]),
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(
+            result,
+            Err(DecodeError::UnmatchedType(TermType::Bool, TermType::String))
+        );
+    }
+
+    #[test]
+    fn env_arg_model_mismatch() {
+        let uuf = Uuf {
+            id: "f".into(),
+            arg: TermType::Bool,
+            out: TermType::Bool,
+        };
+        let uuf_id: SmolStr = "f0".into();
+        let sexpr =
+            parse_sexpr(br#"((define-fun f0 ((x String)) Bool (ite (= x "a") true false)))"#)
+                .unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::new(),
+                uufs: BTreeMap::from([(&uuf_id, &uuf)]),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(
+            result,
+            Err(DecodeError::UnmatchedType(TermType::String, TermType::Bool))
+        );
+    }
+
+    #[test]
+    fn env_ret_model_mismatch() {
+        let uuf = Uuf {
+            id: "f".into(),
+            arg: TermType::Bool,
+            out: TermType::Bool,
+        };
+        let uuf_id: SmolStr = "f0".into();
+        let sexpr = parse_sexpr(br#"((define-fun f0 ((x Bool)) String (ite (= x true) "a" "b")))"#)
+            .unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::new(),
+                uufs: BTreeMap::from([(&uuf_id, &uuf)]),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(
+            result,
+            Err(DecodeError::UnmatchedType(TermType::String, TermType::Bool))
+        );
+    }
+
+    #[test]
+    fn illtyped_model() {
+        let var = TermVar {
+            id: "x".into(),
+            ty: TermType::Bitvec {
+                n: NonZeroU32::new(8).unwrap(),
+            },
+        };
+        let sexpr = parse_sexpr(b"((define-fun x () (_ BitVec 8) #b01))").unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::from([(&var.id, &var)]),
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(
+            result,
+            Err(DecodeError::UnmatchedType(val_ty, declared_ty))
+                if val_ty == TermType::Bitvec { n: NonZeroU32::new(2).unwrap() }
+                && declared_ty == TermType::Bitvec { n: NonZeroU32::new(8).unwrap() }
+        );
+    }
+
+    /// Record constructor with wrong number of fields.
+    #[test]
+    fn record_field_count_mismatch() {
+        use std::sync::Arc;
+        let rty = TermType::Record {
+            rty: Arc::new(BTreeMap::from([
+                ("a".into(), TermType::Bool),
+                ("b".into(), TermType::Bool),
+            ])),
+        };
+        let rty_id: SmolStr = "R0".into();
+        let var = TermVar {
+            id: "x".into(),
+            ty: rty.clone(),
+        };
+        // Record type has 2 fields but we only provide 1 argument
+        let sexpr = parse_sexpr(b"((define-fun x () R0 (R0 true)))").unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::from([(&rty_id, &rty)]),
+                vars: BTreeMap::from([(&var.id, &var)]),
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(result, Err(DecodeError::UnmatchedRecordType));
+    }
+
+    /// Record field value has wrong type.
+    #[test]
+    fn record_field_type_mismatch() {
+        use std::sync::Arc;
+        let rty = TermType::Record {
+            rty: Arc::new(BTreeMap::from([("name".into(), TermType::String)])),
+        };
+        let rty_id: SmolStr = "R0".into();
+        let var = TermVar {
+            id: "x".into(),
+            ty: rty.clone(),
+        };
+        // Field expects String but gets Bool
+        let sexpr = parse_sexpr(b"((define-fun x () R0 (R0 true)))").unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::from([(&rty_id, &rty)]),
+                vars: BTreeMap::from([(&var.id, &var)]),
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(result, Err(DecodeError::UnmatchedFieldType(..)));
+    }
+
+    #[test]
+    fn entity_non_string_arg() {
+        use cedar_policy::EntityTypeName;
+        use std::str::FromStr;
+        let ety = TermType::Entity {
+            ety: EntityTypeName::from_str("E0").unwrap(),
+        };
+        let ety_id: SmolStr = "E0".into();
+        let var = TermVar {
+            id: "x".into(),
+            ty: ety.clone(),
+        };
+        // Entity expects (E0 "id") but gets (E0 true)
+        let sexpr = parse_sexpr(b"((define-fun x () E0 (E0 true)))").unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::from([(&ety_id, &ety)]),
+                vars: BTreeMap::from([(&var.id, &var)]),
+                uufs: BTreeMap::new(),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(result, Err(DecodeError::UnknownLiteral(..)));
+    }
+}
+
+#[cfg(test)]
+mod test_decode_unexpected_model {
+    use std::{collections::BTreeMap, sync::LazyLock};
+
+    use cedar_policy::{RequestEnv, Schema};
+    use cool_asserts::assert_matches;
+    use smol_str::SmolStr;
+
+    use crate::{
+        op::Uuf,
+        symcc::decoder::{parse_sexpr, DecodeError, IdMaps},
+        term_type::TermType,
+        SymEnv,
+    };
+
+    static TEST_ENV: LazyLock<SymEnv> = LazyLock::new(|| {
+        SymEnv::new(
+            &Schema::from_cedarschema_str(
+                "entity E; action A appliesTo { principal: [E], resource: [E] };",
+            )
+            .unwrap()
+            .0,
+            &RequestEnv::new(
+                "E".parse().unwrap(),
+                "Action::\"A\"".parse().unwrap(),
+                "E".parse().unwrap(),
+            ),
+        )
+        .expect("Malformed sym env.")
+    });
+
+    fn empty_id_maps() -> IdMaps<'static> {
+        IdMaps {
+            types: BTreeMap::new(),
+            vars: BTreeMap::new(),
+            uufs: BTreeMap::new(),
+            enums: BTreeMap::new(),
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::top_level_not_app(b"true")]
+    #[case::command_not_app(b"(42)")]
+    #[case::not_define_fun(b"((declare-const x Bool))")]
+    #[case::define_fun_too_few_parts(b"((define-fun x () Bool))")]
+    #[case::define_fun_name_not_symbol(b"((define-fun 123 () Bool true))")]
+    #[case::define_fun_args_not_app(b"((define-fun x foo Bool true))")]
+    #[case::multi_arg_function(b"((define-fun f ((x Bool) (y Bool)) Bool true))")]
+    fn unexpected_model(#[case] input: &[u8]) {
+        let result = parse_sexpr(input)
+            .unwrap()
+            .decode_model(&TEST_ENV, &empty_id_maps());
+        assert_matches!(result, Err(DecodeError::UnexpectedModel));
+    }
+
+    /// Unary function arg has wrong form: the inner pair is not [Symbol, type].
+    #[test]
+    fn unary_fun_arg_not_symbol() {
+        let uuf = Uuf {
+            id: "f".into(),
+            arg: TermType::Bool,
+            out: TermType::Bool,
+        };
+        let uuf_id: SmolStr = "f0".into();
+        let sexpr = parse_sexpr(b"((define-fun f0 ((42 Bool)) Bool true))").unwrap();
+        let result = sexpr.decode_model(
+            &TEST_ENV,
+            &IdMaps {
+                types: BTreeMap::new(),
+                vars: BTreeMap::new(),
+                uufs: BTreeMap::from([(&uuf_id, &uuf)]),
+                enums: BTreeMap::new(),
+            },
+        );
+        assert_matches!(result, Err(DecodeError::UnexpectedModel));
+    }
+
+    #[test]
+    fn unknown_variable() {
+        use crate::symcc::decoder::SExpr;
+        let name: SmolStr = "unknown".into();
+        let typ = SExpr::Symbol("Bool".into());
+        let value = SExpr::Symbol("true".into());
+        let result = SExpr::decode_var(&empty_id_maps(), &name, &typ, &value);
+        assert_matches!(result, Err(DecodeError::UnknownVariable(v)) if v == "unknown");
+    }
+
+    #[test]
+    fn unknown_uuf() {
+        use crate::symcc::decoder::SExpr;
+        let name: SmolStr = "unknown_f".into();
+        let arg_typ = SExpr::Symbol("Bool".into());
+        let ret_typ = SExpr::Symbol("Bool".into());
+        let body = SExpr::Symbol("true".into());
+        let result =
+            SExpr::decode_unary_function(&empty_id_maps(), &name, "x", &arg_typ, &ret_typ, &body);
+        assert_matches!(result, Err(DecodeError::UnknownUUF(v)) if v == "unknown_f");
     }
 }
