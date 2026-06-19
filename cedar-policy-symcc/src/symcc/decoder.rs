@@ -784,8 +784,8 @@ impl SExpr {
     /// Corresponds to `SExpr.decodeLit.construct` in Lean.
     ///
     /// This function accepts an optional expected type which it uses to assign
-    /// a type to a `none` expression without explict type annotation (as is
-    /// emitted by z3), but it does not use this type to do any additioanl
+    /// a type to a `none` expression without explicit type annotation (as is
+    /// emitted by Z3), but it does not use this type to do any additional
     /// typechecking.
     fn decode_literal_app(
         &self,
@@ -1045,8 +1045,8 @@ impl SExpr {
     /// Decodes a literal term.
     ///
     /// This function accepts an optional expected type which it uses to assign
-    /// a type to a `none` expression without explict type annotation (as is
-    /// emitted by z3), but it does not use this type to do any additioanl
+    /// a type to a `none` expression without explicit type annotation (as is
+    /// emitted by Z3), but it does not use this type to do any additional
     /// typechecking.
     fn decode_literal_expecting(
         &self,
@@ -1160,7 +1160,7 @@ impl SExpr {
                     if let SExpr::App(args) = &exprs[1] {
                         if args.len() == 3 && args[0].is_symbol("=") {
                             // Find the literal the `ite` compares the argument against.
-                            // This could be either the first or second `=` oparand,
+                            // This could be either the first or second `=` operand,
                             // depending on the solver.
                             let cond_lit_term = if args[2].is_symbol(arg_name) {
                                 &args[1]
