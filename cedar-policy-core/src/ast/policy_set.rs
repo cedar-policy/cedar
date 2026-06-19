@@ -679,7 +679,7 @@ impl PolicySet {
     /// from Rust code, without going through the Cedar or JSON syntax parsers.
     ///
     /// Checks the following invariants:
-    /// - individual [`Template`] are valid,
+    /// - each individual [`Template`] is valid,
     /// - every non-static link references a template with at least one slot.
     ///
     /// This assumes the [`PolicySet`] has been constructed with the public API methods
