@@ -19,6 +19,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ### Added
 - Public syntax tree (`pst`) support for `variadic-is-in-range` feature: a variadic `isInRange` is modelled by a `pst::Expr::VariadicOp{...}` in the PST (#2380).
+- Functions for inspecting TPE policy evaluation results (`TpeResponse::reason` and iterators for true/false/error/residual permit/forbid policy IDs).
 
 ### Changed
 
