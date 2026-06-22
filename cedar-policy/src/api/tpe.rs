@@ -31,7 +31,7 @@ use ref_cast::RefCast;
 use smol_str::SmolStr;
 
 use crate::{
-    api, tpe_err, Context, Entities, Entity, EntityId, EntityTypeName, EntityUid,
+    api, tpe_err, Authorizer, Context, Entities, Entity, EntityId, EntityTypeName, EntityUid,
     PartialEntityError, PartialRequestCreationError, PermissionQueryError, Policy, PolicyId,
     PolicySet, Request, RequestValidationError, RestrictedExpression, Schema,
     TpeReauthorizationError,
@@ -607,6 +607,13 @@ impl TpeResponse<'_> {
             .map(|p| Policy::from_ast(p.clone().into()))
     }
 
+    /// Return all residuals as a [`PolicySet`], including concretely `true`, `false`, and error residuals.
+    ///
+    /// This returns exactly the same policies as [`TpeResponse::policies`], but collected into a policy set.
+    pub fn policy_set(&self) -> PolicySet {
+        PolicySet::from_ast(self.0.poliy_set())
+    }
+
     /// Deprecated alias for [`TpeResponse::residual_policies`]
     #[deprecated(
         since = "4.12.0",
@@ -740,6 +747,7 @@ impl PolicySet {
     ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
         let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
         let tpe_response = self.tpe(&request.0, &partial_entities, schema)?;
+        let policies = tpe_response.policy_set();
         match tpe_response.decision() {
             Some(Decision::Allow) => Ok(entities
                 .iter()
@@ -753,18 +761,20 @@ impl PolicySet {
                 .filter(|entity| entity.0.uid().entity_type() == &request.0 .0.get_resource_type())
                 .filter(|entity| {
                     #[expect(
-                        clippy::unwrap_used,
-                        reason = "concrete request construction cannot fail because we do not pass a schema. The request will be validated by `reauthorize` (which might return an error)"
+                        clippy::unwrap_used, reason = "`to_request` cannot panic beause we do not pass as schema. However, the correctness of the authorization
+                        decision depends on having valid a request and entities, but we _do not_ do any validation here. Entities were already validated by
+                        `PartialEntities::from_concrete`. The request was _mostly_ validated by its constructor, but the concrete request could still be invalid
+                        if the resource entity is an enum entity and the id is not an instance of that enum. This _cannot_ happen here because we draw candidate
+                        resources from the entities, which we know are valid."
                     )]
                     let req = request.to_request(entity.uid().id().clone(), None).unwrap();
-                    #[expect(
-                        clippy::unwrap_used, reason = "reauthorize validates request and entities. Entities were already
-                        validated by `PartialEntities::from_concrete`. The request was _mostly_ validated by its constructor, but
-                        the concrete request could still be invalid if the resource entity is an enum entity and the id is not
-                        an instance of that enum. This _cannot_ happen here because we draw candidate resources from the entities,
-                        which we know are valid."
-                    )]
-                    let auth_response = tpe_response.reauthorize(&req, entities).unwrap();
+                    let authorizer = Authorizer::new();
+                    let auth_response = authorizer
+                        .is_authorized(
+                            &req,
+                            &policies,
+                            entities,
+                        );
                     auth_response.decision() == Decision::Allow
                 })
                 .map(Entity::uid)
@@ -783,6 +793,7 @@ impl PolicySet {
     ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
         let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
         let tpe_response = self.tpe(&request.0, &partial_entities, schema)?;
+        let policies = tpe_response.policy_set();
         match tpe_response.decision() {
             Some(Decision::Allow) => Ok(entities
                 .iter()
@@ -796,18 +807,20 @@ impl PolicySet {
                 .filter(|entity| entity.0.uid().entity_type() == &request.0.0.get_principal_type())
                 .filter(|entity| {
                     #[expect(
-                        clippy::unwrap_used,
-                        reason = "concrete request construction cannot fail because we do not pass a schema. The request will be validated by `reauthorize` (which might return an error)"
+                        clippy::unwrap_used, reason = "`to_request` cannot panic beause we do not pass as schema. However, the correctness of the authorization
+                        decision depends on having valid a request and entities, but we _do not_ do any validation here. Entities were already validated by
+                        `PartialEntities::from_concrete`. The request was _mostly_ validated by its constructor, but the concrete request could still be invalid
+                        if the principal entity is an enum entity and the id is not an instance of that enum. This _cannot_ happen here because we draw candidate
+                        principals from the entities, which we know are valid."
                     )]
                     let req = request.to_request(entity.uid().id().clone(), None).unwrap();
-                    #[expect(
-                        clippy::unwrap_used, reason = "reauthorize validates request and entities. Entities were already
-                        validated by `PartialEntities::from_concrete`. The request was _mostly_ validated by its constructor, but
-                        the concrete request could still be invalid if the principal entity is an enum entity and the id is not
-                        an instance of that enum. This _cannot_ happen here because we draw candidate principals from the entities,
-                        which we know are valid."
-                    )]
-                    let auth_response = tpe_response.reauthorize(&req, entities).unwrap();
+                    let authorizer = Authorizer::new();
+                    let auth_response = authorizer
+                        .is_authorized(
+                            &req,
+                            &policies,
+                            entities,
+                        );
                     auth_response.decision() == Decision::Allow
                 })
                 .map(Entity::uid)

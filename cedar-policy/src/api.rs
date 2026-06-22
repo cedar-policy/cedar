@@ -2527,9 +2527,8 @@ impl AsRef<ast::PolicySet> for PolicySet {
 }
 
 #[doc(hidden)]
-impl TryFrom<ast::PolicySet> for PolicySet {
-    type Error = PolicySetError;
-    fn try_from(pset: ast::PolicySet) -> Result<Self, Self::Error> {
+impl From<ast::PolicySet> for PolicySet {
+    fn from(pset: ast::PolicySet) -> Self {
         Self::from_ast(pset)
     }
 }
@@ -2626,7 +2625,7 @@ impl PolicySet {
     }
 
     /// Build the [`PolicySet`] from just the AST information
-    pub(crate) fn from_ast(ast: ast::PolicySet) -> Result<Self, PolicySetError> {
+    pub(crate) fn from_ast(ast: ast::PolicySet) -> Self {
         let templates = ast
             .templates()
             .cloned()
@@ -2637,11 +2636,11 @@ impl PolicySet {
             .cloned()
             .map(|p| (PolicyId::new(p.id().clone()), p.into()))
             .collect();
-        Ok(Self {
+        Self {
             ast,
             policies,
             templates,
-        })
+        }
     }
 
     /// Construct a [`PolicySet`] from a PST [`pst::PolicySet`].

@@ -319,15 +319,24 @@ impl<'a> Response<'a> {
 
         let authorizer = Authorizer::new();
         #[expect(clippy::unwrap_used, reason = "policy ids should not clash")]
-        Ok(authorizer.is_authorized(
-            request.clone(),
-            &PolicySet::try_from_iter(self.residuals.values().map(|rp| rp.clone().into())).unwrap(),
-            entities,
-        ))
+        Ok(authorizer.is_authorized(request.clone(), &self.poliy_set(), entities))
     }
 
     /// Get all policies (including concrete true/false/error residuals)
     pub fn policies(&self) -> impl Iterator<Item = &ResidualPolicy> {
         self.residuals.values()
+    }
+
+    /// Get all policies (including concrete true/false/error residuals) as a `PolicySet`
+    pub fn poliy_set(&self) -> PolicySet {
+        let mut ps = PolicySet::new();
+        for p in self.policies() {
+            #[expect(
+                clippy::unwrap_used,
+                reason = "`PolicySet::add` only fails on duplicate ids, but all residual policeis will have unique ids"
+            )]
+            ps.add(p.policy.as_ref().clone()).unwrap()
+        }
+        ps
     }
 }
