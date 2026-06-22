@@ -333,7 +333,7 @@ impl<'a> Response<'a> {
         for p in self.policies() {
             #[expect(
                 clippy::unwrap_used,
-                reason = "`PolicySet::add` only fails on duplicate ids, but all residual policeis will have unique ids"
+                reason = "`PolicySet::add` only fails on duplicate ids, but all residual policies will have unique ids"
             )]
             ps.add(p.policy.as_ref().clone()).unwrap()
         }
