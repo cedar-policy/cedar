@@ -1132,15 +1132,8 @@ impl ValidatorSchema {
             }
         }
         // Check actions: appliesTo references declared entity types, and
-        // descendants reference declared actions, and action entity types have
-        // basename `Action`
+        // descendants reference declared actions.
         for action in self.action_ids.values() {
-            if !action.name().entity_type().is_action() {
-                return Err(InvalidActionTypeError {
-                    uid: action.name().clone(),
-                }
-                .into());
-            }
             for ety in action.principals().chain(action.resources()) {
                 if !self.entity_types.contains_key(ety) {
                     undeclared_entities.push(ety.clone());
@@ -1179,6 +1172,8 @@ impl ValidatorSchema {
         Ok(())
     }
 
+    /// Check that all the extension types appearing in the types of the schema are known extension
+    /// types.
     fn check_extension_types_wf(&self) -> std::result::Result<(), SchemaError> {
         let extensions = Extensions::all_available();
         let valid_ext_types: HashSet<_> = extensions.ext_types().collect();
@@ -1189,6 +1184,31 @@ impl ValidatorSchema {
                         UnknownExtensionTypeError::new_with_suggestion(name.clone(), extensions),
                     ));
                 }
+            }
+        }
+        Ok(())
+    }
+
+    /// Checks that declarations are well-formed:
+    /// - [`self.entity_types`] does not declare actions,
+    /// - [`self.action_ids`] declares only actions.
+    fn check_decls_wf(&self) -> std::result::Result<(), SchemaError> {
+        for (et, _) in self.entity_types.iter() {
+            // An `*::Action` should not be in entity_types, including `Action`.
+            if et.is_action() {
+                return Err(SchemaError::ActionEntityTypeDeclared(
+                    ActionEntityTypeDeclaredError {},
+                ));
+            }
+        }
+        // An action should be an `*::Action`, otherwise it's invalid
+        // Not that the rfc_70 shadowing checks in `try_validate` will check that
+        // the `Action` entity type is not redeclared.
+        for (at, _) in self.action_ids.iter() {
+            if !at.is_action() {
+                return Err(SchemaError::InvalidActionType(InvalidActionTypeError {
+                    uid: at.clone(),
+                }));
             }
         }
         Ok(())
@@ -1211,6 +1231,7 @@ impl ValidatorSchema {
         self.check_hierarchy_wf()?;
         self.check_references_wf()?;
         self.check_extension_types_wf()?;
+        self.check_decls_wf()?;
         // Recompute transitive closure for entity types and actions,
         // which also detects cycles in the action hierarchy.
         compute_tc(&mut self.entity_types, false)
@@ -2271,6 +2292,26 @@ pub(crate) mod test {
             schema,
             Err(SchemaError::ActionEntityTypeDeclared(_))
         ));
+    }
+
+    #[test]
+    fn try_validate_rejects_action_entity_type() {
+        let action_type = EntityType::from_normalized_str("Action").unwrap();
+        let schema = ValidatorSchema::new(
+            [ValidatorEntityType::new_standard(
+                action_type,
+                [],
+                Attributes::with_attributes([]),
+                OpenTag::ClosedAttributes,
+                None,
+                None,
+            )],
+            [],
+        );
+        assert_matches!(
+            schema.try_validate(),
+            Err(SchemaError::ActionEntityTypeDeclared(_))
+        );
     }
 
     #[test]
