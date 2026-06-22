@@ -705,7 +705,7 @@ impl PolicySet {
         Ok(TpeResponse(res))
     }
 
-    /// Like [`Authorizer::is_authorized`] but uses an [`EntityLoader`] to load
+    /// Like [`Authorizer::is_authorized`](crate::Authorizer::is_authorized) but uses an [`EntityLoader`] to load
     /// entities on demand.
     ///
     /// Calls `loader` at most `max_iters` times, returning
