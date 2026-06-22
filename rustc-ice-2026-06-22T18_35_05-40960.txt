@@ -1,0 +1,52 @@
+thread 'rustc' panicked at /rustc-dev/e0e95a71872dfe9e15d22bddea9ac45c85ddda1a/compiler/rustc_middle/src/query/on_disk_cache.rs:663:9:
+cannot decode `AttrId` with `CacheDecoder`
+stack backtrace:
+   0:        0x111d4412c - <std[7de7e8dfb66cf97a]::backtrace::Backtrace>::create
+   1:        0x10fbc409c - std[7de7e8dfb66cf97a]::panicking::update_hook::<alloc[7b1c0b450c0263cc]::boxed::Box<rustc_driver_impl[fd29214ab7e11635]::install_ice_hook::{closure#1}>>::{closure#0}
+   2:        0x111d55bcc - std[7de7e8dfb66cf97a]::panicking::panic_with_hook
+   3:        0x111d39ad8 - std[7de7e8dfb66cf97a]::panicking::panic_handler::{closure#0}
+   4:        0x111d2e494 - std[7de7e8dfb66cf97a]::sys::backtrace::__rust_end_short_backtrace::<std[7de7e8dfb66cf97a]::panicking::panic_handler::{closure#0}, !>
+   5:        0x111d3b07c - __rustc[ef23d2ce7c7066b]::rust_begin_unwind
+   6:        0x114d76db0 - core[3ff162128d5b0ba4]::panicking::panic_fmt
+   7:        0x1109496f4 - <rustc_middle[12a1a29cc239183e]::query::on_disk_cache::OnDiskCache>::load_side_effect
+   8:        0x1114c0774 - <rustc_query_impl[c5703df00d3c421f]::dep_kind_vtables::non_query::SideEffect::{closure#0} as core[3ff162128d5b0ba4]::ops::function::FnOnce<(rustc_middle[12a1a29cc239183e]::ty::context::TyCtxt, rustc_middle[12a1a29cc239183e]::dep_graph::dep_node::DepNode, rustc_middle[12a1a29cc239183e]::dep_graph::serialized::SerializedDepNodeIndex)>>::call_once
+   9:        0x110976c50 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_previous_green
+  10:        0x110976c04 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_previous_green
+  11:        0x110976c04 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_previous_green
+  12:        0x110976c04 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_previous_green
+  13:        0x110976c04 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_previous_green
+  14:        0x110976c04 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_previous_green
+  15:        0x110976c04 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_previous_green
+  16:        0x110976c04 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_previous_green
+  17:        0x110976ac4 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_green
+  18:        0x1111edc8c - rustc_query_impl[c5703df00d3c421f]::execution::try_execute_query::<rustc_middle[12a1a29cc239183e]::query::caches::DefIdCache<rustc_middle[12a1a29cc239183e]::query::erase::ErasedData<[u8; 8usize]>>, true>
+  19:        0x11138a868 - rustc_query_impl[c5703df00d3c421f]::query_impl::type_of::execute_query_incr::__rust_end_short_backtrace
+  20:        0x1110c4788 - <rustc_privacy[ba962a521b01c633]::ReachEverythingInTheInterfaceVisitor>::ty
+  21:        0x1110be9ec - rustc_privacy[ba962a521b01c633]::effective_visibilities
+  22:        0x1111fc368 - rustc_query_impl[c5703df00d3c421f]::execution::try_execute_query::<rustc_middle[12a1a29cc239183e]::query::caches::SingleCache<rustc_middle[12a1a29cc239183e]::query::erase::ErasedData<[u8; 8usize]>>, true>
+  23:        0x11148c3a8 - <rustc_query_impl[c5703df00d3c421f]::dep_kind_vtables::make_dep_kind_vtable_for_query<rustc_query_impl[c5703df00d3c421f]::query_impl::effective_visibilities::VTableGetter>::{closure#0} as core[3ff162128d5b0ba4]::ops::function::FnOnce<(rustc_middle[12a1a29cc239183e]::ty::context::TyCtxt, rustc_middle[12a1a29cc239183e]::dep_graph::dep_node::DepNode, rustc_middle[12a1a29cc239183e]::dep_graph::serialized::SerializedDepNodeIndex)>>::call_once
+  24:        0x110976c50 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_previous_green
+  25:        0x110976c04 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_previous_green
+  26:        0x110976ac4 - <rustc_middle[12a1a29cc239183e]::dep_graph::graph::DepGraphData>::try_mark_green
+  27:        0x111272c04 - rustc_query_impl[c5703df00d3c421f]::execution::ensure_can_skip_execution::<rustc_middle[12a1a29cc239183e]::query::caches::SingleCache<rustc_middle[12a1a29cc239183e]::query::erase::ErasedData<[u8; 0usize]>>>
+  28:        0x111355914 - rustc_query_impl[c5703df00d3c421f]::query_impl::check_type_wf::execute_query_incr::__rust_end_short_backtrace
+  29:        0x10fec3208 - rustc_hir_analysis[c5b6e2b49b96fbef]::check_crate
+  30:        0x1105215f8 - rustc_interface[8a16eb3be3574461]::passes::analysis
+  31:        0x1111f1c0c - rustc_query_impl[c5703df00d3c421f]::execution::try_execute_query::<rustc_middle[12a1a29cc239183e]::query::caches::SingleCache<rustc_middle[12a1a29cc239183e]::query::erase::ErasedData<[u8; 0usize]>>, true>
+  32:        0x11138ab30 - rustc_query_impl[c5703df00d3c421f]::query_impl::analysis::execute_query_incr::__rust_end_short_backtrace
+  33:        0x10fbb7d40 - rustc_interface[8a16eb3be3574461]::passes::create_and_enter_global_ctxt::<core[3ff162128d5b0ba4]::option::Option<rustc_interface[8a16eb3be3574461]::queries::Linker>, rustc_driver_impl[fd29214ab7e11635]::run_compiler::{closure#0}::{closure#2}>
+  34:        0x10fbc7394 - rustc_interface[8a16eb3be3574461]::interface::run_compiler::<(), rustc_driver_impl[fd29214ab7e11635]::run_compiler::{closure#0}>::{closure#1}
+  35:        0x10fbbdabc - std[7de7e8dfb66cf97a]::sys::backtrace::__rust_begin_short_backtrace::<rustc_interface[8a16eb3be3574461]::util::run_in_thread_with_globals<rustc_interface[8a16eb3be3574461]::util::run_in_thread_pool_with_globals<rustc_interface[8a16eb3be3574461]::interface::run_compiler<(), rustc_driver_impl[fd29214ab7e11635]::run_compiler::{closure#0}>::{closure#1}, ()>::{closure#0}, ()>::{closure#0}::{closure#0}, ()>
+  36:        0x10fbcd178 - <std[7de7e8dfb66cf97a]::thread::lifecycle::spawn_unchecked<rustc_interface[8a16eb3be3574461]::util::run_in_thread_with_globals<rustc_interface[8a16eb3be3574461]::util::run_in_thread_pool_with_globals<rustc_interface[8a16eb3be3574461]::interface::run_compiler<(), rustc_driver_impl[fd29214ab7e11635]::run_compiler::{closure#0}>::{closure#1}, ()>::{closure#0}, ()>::{closure#0}::{closure#0}, ()>::{closure#1} as core[3ff162128d5b0ba4]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  37:        0x111d60410 - <std[7de7e8dfb66cf97a]::sys::thread::unix::Thread>::new::thread_start
+  38:        0x18aa79c58 - __pthread_cond_wait
+
+
+rustc version: 1.96.0-nightly (e0e95a718 2026-04-04)
+platform: aarch64-apple-darwin
+
+query stack during panic:
+#0 [type_of] computing type of `<impl at cedar-policy-symcc/src/lib.rs:272:1: 272:36>::check_never_errors::{opaque#0}`
+#1 [effective_visibilities] checking effective visibilities
+#2 [analysis] running analysis passes on crate `cedar_policy_symcc`
+end of query stack

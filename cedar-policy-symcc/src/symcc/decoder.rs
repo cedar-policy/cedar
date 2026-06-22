@@ -15,7 +15,63 @@
  */
 
 //! This module defines the Cedar decoder, which is the inverse of the encoder
-//! that parses a subset of SMT-LIB terms and commands required for (get-model)
+//! that parses a subset of SMT-LIB terms and commands required for `(get-model)`.
+//!
+//! # Z3 set model encodings
+//!
+//! Z3 represents finite sets in models using the same array/function-interpretation
+//! machinery it uses for `Array` sorts. There is no single Z3 document that
+//! enumerates every encoding Z3 may emit; the forms below are those we have
+//! observed in solver output and handle (or intentionally reject) in this
+//! decoder. For background, see the SMT-LIB [`get-model`] command and Z3's
+//! documentation on [models] and [array models].
+//!
+//! [`get-model`]: https://smt-lib.org/productions-v2.6.html#command_get-model
+//! [models]: https://z3prover.github.io/z3guide/docs/concepts/models
+//! [array models]: https://z3prover.github.io/z3guide/docs/concepts/models#array-models
+//!
+//! ## Supported encodings
+//!
+//! **Existing support** (handled in `decode_literal_app`):
+//!
+//! - `(as set.empty <set-ty>)`
+//! - `(set.singleton <val>)`
+//! - `(set.union <set1> <set2>)` when both operands decode to set literals
+//!
+//! **Added for Z3 array/set models** (routed through `decode_set_array` from
+//! `decode_literal_app`):
+//!
+//! - `((as const (Set <ty>)) <bool>)` — constant membership map; `true` means
+//!   "all elements present" and `false` means the empty set
+//! - `(store <set-array> <key> <bool>)` — point update on a membership map
+//! - `(lambda ((x <ty>)) <body>)` — inline membership function
+//! - `(_ as-array k!N)` — reference to a helper `define-fun` (collected as an
+//!   auxiliary function before constants are decoded)
+//!
+//! For the array-based forms, reconstruction works by enumerating candidate
+//! elements, evaluating membership at each candidate, and building a finite
+//! Cedar `Set`. Boolean element types are enumerated as `{false, true}`; keys
+//! introduced by nested `store` applications are also collected as candidates.
+//!
+//! Lambda and `as-array` bodies are interpreted by `eval_body`, which
+//! supports `not`, `=`, `ite`, `and`, `or`, argument references, and literals.
+//!
+//! ## Intentionally unsupported encodings
+//!
+//! - Non-finite sets over non-enumerable element types (for example
+//!   `((as const (Set String)) true)`) → [`DecodeError::NonFiniteSet`]
+//! - Lambda/`as-array` bodies that use other operators (for example `xor`) →
+//!   [`DecodeError::UnsupportedSetModel`]
+//! - Array/set encodings that do not match the patterns above →
+//!   [`DecodeError::UnsupportedSetModel`]
+//! - `(set.union ...)` where either operand is not a set literal →
+//!   [`DecodeError::SetUnionNonLiterals`]
+//!
+//! ## Tests
+//!
+//! Coverage is exercised by `decode_z3_bool_set_models`,
+//! `decode_z3_as_array_set_model`, `decode_z3_nonfinite_set_errors`, and
+//! `decode_z3_unsupported_set_model_errors` in this module's test suite.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -82,9 +138,17 @@ pub enum DecodeError {
     #[error("Invalid set type: {0}")]
     InvalidSetType(SExpr),
     /// Cannot decode this set model as a finite Cedar set.
+    ///
+    /// Returned when Z3 describes membership with `((as const (Set T)) true)` (or
+    /// a `store` chain rooted in such a constant map) and `T` is not enumerable.
+    /// Only `Set Bool` can be reconstructed from a constant-`true` membership map.
     #[error("cannot decode a non-finite set model: {0}")]
     NonFiniteSet(SExpr),
     /// Unsupported Z3 set/array model form.
+    ///
+    /// Returned for array/set encodings that do not match the patterns documented
+    /// on this module, including lambda/`as-array` bodies whose operators are not
+    /// handled by `eval_body`.
     #[error("unsupported set/array model form: {0}")]
     UnsupportedSetModel(SExpr),
     /// Invalid option type.
@@ -636,6 +700,11 @@ impl SExpr {
         Err(DecodeError::UnsupportedSetModel(self.clone()))
     }
 
+    /// Decode Z3 array-based set models into a finite Cedar [`Term::Set`].
+    ///
+    /// Handles `((as const (Set T)) b)`, `(store ...)`, `(lambda ...)`, and
+    /// `(_ as-array k!N)` forms. See the module-level "Z3 set model encodings"
+    /// section for the full list of supported and unsupported shapes.
     fn decode_set_array(
         &self,
         id_maps: &IdMaps<'_>,
