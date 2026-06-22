@@ -81,6 +81,12 @@ pub enum DecodeError {
     /// Invalid set type.
     #[error("Invalid set type: {0}")]
     InvalidSetType(SExpr),
+    /// Cannot decode this set model as a finite Cedar set.
+    #[error("cannot decode a non-finite set model: {0}")]
+    NonFiniteSet(SExpr),
+    /// Unsupported Z3 set/array model form.
+    #[error("unsupported set/array model form: {0}")]
+    UnsupportedSetModel(SExpr),
     /// Invalid option type.
     #[error("Invalid option type: {0}")]
     InvalidOptionType(SExpr),
@@ -116,6 +122,10 @@ pub struct IdMaps<'a> {
     uufs: BTreeMap<&'a SmolStr, &'a Uuf>,
     enums: BTreeMap<SmolStr, EntityUid>,
 }
+
+/// Z3 may emit helper functions such as `k!0` and refer to them from
+/// `(_ as-array k!0)` set models. The tuple is `(arg_name, arg_ty, body)`.
+type AuxFuns<'a> = BTreeMap<SmolStr, (SmolStr, &'a SExpr, &'a SExpr)>;
 
 impl<'a> IdMaps<'a> {
     /// Extracts the reverse mapping from SMT symbols to
@@ -316,6 +326,7 @@ impl SExpr {
     fn decode_entity_or_record(
         &self,
         id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
         name: &SmolStr,
         args: &[SExpr],
     ) -> Result<Term, DecodeError> {
@@ -335,7 +346,8 @@ impl SExpr {
                 let mut record = BTreeMap::new();
 
                 for (field, (field_name, field_ty)) in fields.iter().zip(rty.iter()) {
-                    let decoded_field = field.decode_literal_expecting(id_maps, Some(field_ty))?;
+                    let decoded_field =
+                        field.decode_literal_expecting(id_maps, aux_funs, Some(field_ty))?;
                     let decoded_field_ty = decoded_field.type_of();
 
                     if &decoded_field_ty != field_ty {
@@ -355,6 +367,301 @@ impl SExpr {
         }
     }
 
+    fn expected_set_element_type(expected_ty: Option<&TermType>) -> Option<TermType> {
+        match expected_ty {
+            Some(TermType::Set { ty }) => Some(ty.as_ref().clone()),
+            _ => None,
+        }
+    }
+
+    fn decode_as_const_set_type(
+        as_const: &[SExpr],
+        id_maps: &IdMaps<'_>,
+    ) -> Result<Option<TermType>, DecodeError> {
+        match as_const {
+            [as_tok, const_tok, set_ty]
+                if as_tok.is_symbol("as") && const_tok.is_symbol("const") =>
+            {
+                match set_ty.decode_type(id_maps)? {
+                    TermType::Set { ty } => Ok(Some(Arc::unwrap_or_clone(ty))),
+                    _ => Err(DecodeError::InvalidSetType(set_ty.clone())),
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn lambda_parts(&self) -> Option<(&SmolStr, &SExpr, &SExpr)> {
+        let SExpr::App(args) = self else {
+            return None;
+        };
+        match args.as_slice() {
+            [lambda, SExpr::App(binders), body] if lambda.is_symbol("lambda") => {
+                match binders.as_slice() {
+                    [SExpr::App(binder)] => match binder.as_slice() {
+                        [SExpr::Symbol(arg_name), arg_ty] => Some((arg_name, arg_ty, body)),
+                        _ => None,
+                    },
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn as_array_name(&self) -> Option<&SmolStr> {
+        let SExpr::App(args) = self else {
+            return None;
+        };
+        match args.as_slice() {
+            [underscore, as_array, SExpr::Symbol(name)]
+                if underscore.is_symbol("_") && as_array.is_symbol("as-array") =>
+            {
+                Some(name)
+            }
+            _ => None,
+        }
+    }
+
+    fn store_parts(&self) -> Option<(&SExpr, &SExpr, &SExpr)> {
+        let SExpr::App(args) = self else {
+            return None;
+        };
+        match args.as_slice() {
+            [store, arr, key, val] if store.is_symbol("store") => Some((arr, key, val)),
+            _ => None,
+        }
+    }
+
+    fn decode_array_element_type(
+        &self,
+        id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
+        expected_ty: Option<&TermType>,
+    ) -> Result<TermType, DecodeError> {
+        if let SExpr::App(args) = self {
+            if let [SExpr::App(as_const), _] = args.as_slice() {
+                if let Some(ty) = Self::decode_as_const_set_type(as_const, id_maps)? {
+                    return Ok(ty);
+                }
+            }
+        }
+
+        if let Some((base, _, _)) = self.store_parts() {
+            match base.decode_array_element_type(id_maps, aux_funs, None) {
+                Ok(ty) => return Ok(ty),
+                Err(DecodeError::UnsupportedSetModel(_)) => {}
+                Err(err) => return Err(err),
+            }
+        }
+
+        if let Some((_, arg_ty, _)) = self.lambda_parts() {
+            return arg_ty.decode_type(id_maps);
+        }
+
+        if let Some(name) = self.as_array_name() {
+            let Some((_, arg_ty, _)) = aux_funs.get(name) else {
+                return Err(DecodeError::UnsupportedSetModel(self.clone()));
+            };
+            return arg_ty.decode_type(id_maps);
+        }
+
+        if let Some(ty) = Self::expected_set_element_type(expected_ty) {
+            return Ok(ty);
+        }
+
+        Err(DecodeError::UnsupportedSetModel(self.clone()))
+    }
+
+    fn decode_bool_literal(
+        expr: &SExpr,
+        id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
+    ) -> Result<bool, DecodeError> {
+        match expr.decode_literal_expecting(id_maps, aux_funs, Some(&TermType::Bool))? {
+            Term::Prim(TermPrim::Bool(b)) => Ok(b),
+            _ => Err(DecodeError::UnsupportedSetModel(expr.clone())),
+        }
+    }
+
+    fn decode_literal_with_type(
+        expr: &SExpr,
+        id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
+        expected_ty: &TermType,
+    ) -> Result<Term, DecodeError> {
+        let term = expr.decode_literal_expecting(id_maps, aux_funs, Some(expected_ty))?;
+        let term_ty = term.type_of();
+        if term_ty != *expected_ty {
+            return Err(DecodeError::UnmatchedType(term_ty, expected_ty.clone()));
+        }
+        Ok(term)
+    }
+
+    fn collect_candidates(
+        &self,
+        id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
+        elem_ty: &TermType,
+    ) -> Result<BTreeSet<Term>, DecodeError> {
+        if elem_ty == &TermType::Bool {
+            return Ok(BTreeSet::from([false.into(), true.into()]));
+        }
+
+        if let Some((base, key, _)) = self.store_parts() {
+            let mut candidates = base.collect_candidates(id_maps, aux_funs, elem_ty)?;
+            candidates.insert(Self::decode_literal_with_type(
+                key, id_maps, aux_funs, elem_ty,
+            )?);
+            return Ok(candidates);
+        }
+
+        if let SExpr::App(args) = self {
+            if let [SExpr::App(as_const), val] = args.as_slice() {
+                if Self::decode_as_const_set_type(as_const, id_maps)?.is_some() {
+                    return if Self::decode_bool_literal(val, id_maps, aux_funs)? {
+                        Err(DecodeError::NonFiniteSet(self.clone()))
+                    } else {
+                        Ok(BTreeSet::new())
+                    };
+                }
+            }
+        }
+
+        if self.lambda_parts().is_some() || self.as_array_name().is_some() {
+            return Err(DecodeError::UnsupportedSetModel(self.clone()));
+        }
+
+        Err(DecodeError::UnsupportedSetModel(self.clone()))
+    }
+
+    fn eval_body(
+        expr: &SExpr,
+        id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
+        arg_name: &SmolStr,
+        elem: &Term,
+    ) -> Result<Term, DecodeError> {
+        match expr {
+            SExpr::Symbol(sym) if sym == arg_name => Ok(elem.clone()),
+
+            SExpr::App(args) => match args.as_slice() {
+                [not_tok, val] if not_tok.is_symbol("not") => Ok(factory::not(Self::eval_body(
+                    val, id_maps, aux_funs, arg_name, elem,
+                )?)),
+
+                [eq_tok, left, right] if eq_tok.is_symbol("=") => Ok(factory::eq(
+                    Self::eval_body(left, id_maps, aux_funs, arg_name, elem)?,
+                    Self::eval_body(right, id_maps, aux_funs, arg_name, elem)?,
+                )),
+
+                [ite_tok, cond, true_branch, false_branch] if ite_tok.is_symbol("ite") => {
+                    Ok(factory::ite(
+                        Self::eval_body(cond, id_maps, aux_funs, arg_name, elem)?,
+                        Self::eval_body(true_branch, id_maps, aux_funs, arg_name, elem)?,
+                        Self::eval_body(false_branch, id_maps, aux_funs, arg_name, elem)?,
+                    ))
+                }
+
+                [and_tok, vals @ ..] if and_tok.is_symbol("and") => vals
+                    .iter()
+                    .map(|val| Self::eval_body(val, id_maps, aux_funs, arg_name, elem))
+                    .try_fold(true.into(), |acc, val| Ok(factory::and(acc, val?))),
+
+                [or_tok, vals @ ..] if or_tok.is_symbol("or") => vals
+                    .iter()
+                    .map(|val| Self::eval_body(val, id_maps, aux_funs, arg_name, elem))
+                    .try_fold(false.into(), |acc, val| Ok(factory::or(acc, val?))),
+
+                _ => expr
+                    .decode_literal_expecting(id_maps, aux_funs, None)
+                    .map_err(|_| DecodeError::UnsupportedSetModel(expr.clone())),
+            },
+
+            _ => expr
+                .decode_literal_expecting(id_maps, aux_funs, None)
+                .map_err(|_| DecodeError::UnsupportedSetModel(expr.clone())),
+        }
+    }
+
+    fn eval_array_at(
+        &self,
+        id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
+        elem_ty: &TermType,
+        elem: &Term,
+    ) -> Result<bool, DecodeError> {
+        if let SExpr::App(args) = self {
+            if let [SExpr::App(as_const), val] = args.as_slice() {
+                if Self::decode_as_const_set_type(as_const, id_maps)?.is_some() {
+                    return Self::decode_bool_literal(val, id_maps, aux_funs);
+                }
+            }
+        }
+
+        if let Some((base, key, val)) = self.store_parts() {
+            let key = Self::decode_literal_with_type(key, id_maps, aux_funs, elem_ty)?;
+            return if &key == elem {
+                Self::decode_bool_literal(val, id_maps, aux_funs)
+            } else {
+                base.eval_array_at(id_maps, aux_funs, elem_ty, elem)
+            };
+        }
+
+        if let Some((arg_name, arg_ty, body)) = self.lambda_parts() {
+            let arg_ty = arg_ty.decode_type(id_maps)?;
+            if arg_ty != *elem_ty {
+                return Err(DecodeError::UnmatchedType(arg_ty, elem_ty.clone()));
+            }
+            return match Self::eval_body(body, id_maps, aux_funs, arg_name, elem)? {
+                Term::Prim(TermPrim::Bool(b)) => Ok(b),
+                _ => Err(DecodeError::UnsupportedSetModel(self.clone())),
+            };
+        }
+
+        if let Some(name) = self.as_array_name() {
+            let Some((arg_name, arg_ty, body)) = aux_funs.get(name) else {
+                return Err(DecodeError::UnsupportedSetModel(self.clone()));
+            };
+            let arg_ty = arg_ty.decode_type(id_maps)?;
+            if arg_ty != *elem_ty {
+                return Err(DecodeError::UnmatchedType(arg_ty, elem_ty.clone()));
+            }
+            return match Self::eval_body(body, id_maps, aux_funs, arg_name, elem)? {
+                Term::Prim(TermPrim::Bool(b)) => Ok(b),
+                _ => Err(DecodeError::UnsupportedSetModel(self.clone())),
+            };
+        }
+
+        Err(DecodeError::UnsupportedSetModel(self.clone()))
+    }
+
+    fn decode_set_array(
+        &self,
+        id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
+        expected_ty: Option<&TermType>,
+    ) -> Result<Term, DecodeError> {
+        let elem_ty = self.decode_array_element_type(id_maps, aux_funs, expected_ty)?;
+        if let Some(expected_elem_ty) = Self::expected_set_element_type(expected_ty) {
+            if elem_ty != expected_elem_ty {
+                return Err(DecodeError::UnmatchedType(elem_ty, expected_elem_ty));
+            }
+        }
+
+        let mut elts = BTreeSet::new();
+        for candidate in self.collect_candidates(id_maps, aux_funs, &elem_ty)? {
+            if self.eval_array_at(id_maps, aux_funs, &elem_ty, &candidate)? {
+                elts.insert(candidate);
+            }
+        }
+
+        Ok(Term::Set {
+            elts: Arc::new(elts),
+            elts_ty: elem_ty,
+        })
+    }
+
     /// Helper function to decode more complex applications as literals.
     /// Corresponds to `SExpr.decodeLit.construct` in Lean.
     ///
@@ -365,6 +672,7 @@ impl SExpr {
     fn decode_literal_app(
         &self,
         id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
         args: &[SExpr],
         expected_ty: Option<&TermType>,
     ) -> Result<Term, DecodeError> {
@@ -374,45 +682,51 @@ impl SExpr {
             // (e.g., https://github.com/cvc5/cvc5/issues/11928).
 
             // (not <v>)
-            [SExpr::Symbol(not_tok), v] if not_tok == "not" => {
-                Ok(factory::not(v.decode_literal(id_maps)?))
-            }
+            [SExpr::Symbol(not_tok), v] if not_tok == "not" => Ok(factory::not(
+                v.decode_literal_expecting(id_maps, aux_funs, None)?,
+            )),
 
             // (or <v1> <v2>)
             [SExpr::Symbol(or_tok), v1, v2] if or_tok == "or" => Ok(factory::or(
-                v1.decode_literal(id_maps)?,
-                v2.decode_literal(id_maps)?,
+                v1.decode_literal_expecting(id_maps, aux_funs, None)?,
+                v2.decode_literal_expecting(id_maps, aux_funs, None)?,
             )),
 
             // (= <v1> <v2>)
             [SExpr::Symbol(eq_tok), v1, v2] if eq_tok == "=" => Ok(factory::eq(
-                v1.decode_literal(id_maps)?,
-                v2.decode_literal(id_maps)?,
+                v1.decode_literal_expecting(id_maps, aux_funs, None)?,
+                v2.decode_literal_expecting(id_maps, aux_funs, None)?,
             )),
 
             // (ite <cond> <then> <else>)
             [SExpr::Symbol(ite_tok), cond, true_branch, false_branch] if ite_tok == "ite" => {
                 Ok(factory::ite(
-                    cond.decode_literal(id_maps)?,
-                    true_branch.decode_literal_expecting(id_maps, expected_ty)?,
-                    false_branch.decode_literal_expecting(id_maps, expected_ty)?,
+                    cond.decode_literal_expecting(id_maps, aux_funs, None)?,
+                    true_branch.decode_literal_expecting(id_maps, aux_funs, expected_ty)?,
+                    false_branch.decode_literal_expecting(id_maps, aux_funs, expected_ty)?,
                 ))
             }
 
             // (bvnego <v1>)
-            [SExpr::Symbol(bvnego_tok), v] if bvnego_tok == "bvnego" => {
-                Ok(factory::bvnego(v.decode_literal(id_maps)?))
-            }
+            [SExpr::Symbol(bvnego_tok), v] if bvnego_tok == "bvnego" => Ok(factory::bvnego(
+                v.decode_literal_expecting(id_maps, aux_funs, None)?,
+            )),
 
             // (bvsaddo <v1> <v2>)
-            [SExpr::Symbol(bvsaddo_tok), v1, v2] if bvsaddo_tok == "bvsaddo" => Ok(
-                factory::bvsaddo(v1.decode_literal(id_maps)?, v2.decode_literal(id_maps)?),
-            ),
+            [SExpr::Symbol(bvsaddo_tok), v1, v2] if bvsaddo_tok == "bvsaddo" => {
+                Ok(factory::bvsaddo(
+                    v1.decode_literal_expecting(id_maps, aux_funs, None)?,
+                    v2.decode_literal_expecting(id_maps, aux_funs, None)?,
+                ))
+            }
 
             // (bvsmulo <v1> <v2>)
-            [SExpr::Symbol(bvsmulo_tok), v1, v2] if bvsmulo_tok == "bvsmulo" => Ok(
-                factory::bvsmulo(v1.decode_literal(id_maps)?, v2.decode_literal(id_maps)?),
-            ),
+            [SExpr::Symbol(bvsmulo_tok), v1, v2] if bvsmulo_tok == "bvsmulo" => {
+                Ok(factory::bvsmulo(
+                    v1.decode_literal_expecting(id_maps, aux_funs, None)?,
+                    v2.decode_literal_expecting(id_maps, aux_funs, None)?,
+                ))
+            }
 
             // (as none <typ>)
             [SExpr::Symbol(as_tok), SExpr::Symbol(none), typ]
@@ -439,7 +753,9 @@ impl SExpr {
                     TermType::Option { ty } => Some(ty.as_ref()),
                     _ => None,
                 };
-                let val = Term::Some(Arc::new(val.decode_literal_expecting(id_maps, inner_ty)?));
+                let val = Term::Some(Arc::new(
+                    val.decode_literal_expecting(id_maps, aux_funs, inner_ty)?,
+                ));
                 let val_ty = val.type_of();
 
                 if val_ty != ty {
@@ -456,7 +772,7 @@ impl SExpr {
                     Some(TermType::Option { ty }) => Some(ty.as_ref()),
                     Some(_) => return Err(DecodeError::UnknownLiteral(self.clone())),
                 };
-                let val = val.decode_literal_expecting(id_maps, inner_ty)?;
+                let val = val.decode_literal_expecting(id_maps, aux_funs, inner_ty)?;
                 Ok(Term::Some(Arc::new(val)))
             }
 
@@ -482,7 +798,7 @@ impl SExpr {
                     Some(TermType::Set { ty }) => Some(ty.as_ref()),
                     Some(_) => return Err(DecodeError::UnknownLiteral(self.clone())),
                 };
-                let val = val.decode_literal_expecting(id_maps, elt_ty)?;
+                let val = val.decode_literal_expecting(id_maps, aux_funs, elt_ty)?;
                 let val_ty = val.type_of();
                 Ok(Term::Set {
                     elts: Arc::new(BTreeSet::from([val])),
@@ -492,8 +808,8 @@ impl SExpr {
 
             // (set.union <set1> <set2>)
             [SExpr::Symbol(set_union), set1, set2] if set_union == "set.union" => {
-                let set1 = set1.decode_literal_expecting(id_maps, expected_ty)?;
-                let set2 = set2.decode_literal_expecting(id_maps, expected_ty)?;
+                let set1 = set1.decode_literal_expecting(id_maps, aux_funs, expected_ty)?;
+                let set2 = set2.decode_literal_expecting(id_maps, aux_funs, expected_ty)?;
                 let set1_ty = set1.type_of();
                 let set2_ty = set2.type_of();
 
@@ -516,6 +832,23 @@ impl SExpr {
 
                     (set1, set2) => Err(DecodeError::SetUnionNonLiterals(set1, set2)),
                 }
+            }
+
+            // ((as const (Set <ty>)) <bool>)
+            [SExpr::App(as_const), _]
+                if Self::decode_as_const_set_type(as_const, id_maps)?.is_some() =>
+            {
+                self.decode_set_array(id_maps, aux_funs, expected_ty)
+            }
+
+            // (store <set-array> <key> <bool>)
+            [SExpr::Symbol(store), _, _, _] if store == "store" => {
+                self.decode_set_array(id_maps, aux_funs, expected_ty)
+            }
+
+            // (lambda ((x <ty>)) <body>)
+            [SExpr::Symbol(lambda), SExpr::App(_), _] if lambda == "lambda" => {
+                self.decode_set_array(id_maps, aux_funs, expected_ty)
             }
 
             // Decimal
@@ -555,11 +888,11 @@ impl SExpr {
 
             // IPv4/IPv6
             [SExpr::Symbol(ip), addr, prefix] if (ip == "V4" || ip == "V6") => {
-                let addr = match addr.decode_literal(id_maps)? {
+                let addr = match addr.decode_literal_expecting(id_maps, aux_funs, None)? {
                     Term::Prim(TermPrim::Bitvec(bv)) => bv,
                     _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
                 };
-                let prefix = match prefix.decode_literal(id_maps)? {
+                let prefix = match prefix.decode_literal_expecting(id_maps, aux_funs, None)? {
                     Term::Some(t) => match Arc::unwrap_or_clone(t) {
                         Term::Prim(TermPrim::Bitvec(bv)) => Some(bv),
                         _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
@@ -586,6 +919,13 @@ impl SExpr {
                 })))
             }
 
+            // (_ as-array k!N)
+            [SExpr::Symbol(underscore), SExpr::Symbol(as_array), SExpr::Symbol(_)]
+                if underscore == "_" && as_array == "as-array" =>
+            {
+                self.decode_set_array(id_maps, aux_funs, expected_ty)
+            }
+
             // (_ bvN W) bitvector literals.  Emitted by cvc5 if called with `--bv-print-consts-as-indexed-symbols`.
             [SExpr::Symbol(underscore), SExpr::Symbol(bv_val), SExpr::Numeral(w)]
                 if underscore == "_" && bv_val.starts_with("bv") =>
@@ -605,7 +945,7 @@ impl SExpr {
 
             // Entity UID or record
             [SExpr::Symbol(name), rest_args @ ..] => {
-                self.decode_entity_or_record(id_maps, name, rest_args)
+                self.decode_entity_or_record(id_maps, aux_funs, name, rest_args)
             }
 
             _ => Err(DecodeError::UnknownLiteral(self.clone())),
@@ -614,7 +954,7 @@ impl SExpr {
 
     /// Decodes a literal (with only SMT constants and no bound variables).
     pub fn decode_literal(&self, id_maps: &IdMaps<'_>) -> Result<Term, DecodeError> {
-        self.decode_literal_expecting(id_maps, None)
+        self.decode_literal_expecting(id_maps, &BTreeMap::new(), None)
     }
 
     /// Decodes a literal term.
@@ -626,6 +966,7 @@ impl SExpr {
     fn decode_literal_expecting(
         &self,
         id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
         expected_ty: Option<&TermType>,
     ) -> Result<Term, DecodeError> {
         match self {
@@ -643,7 +984,7 @@ impl SExpr {
 
             // Empty record type
             SExpr::Symbol(s) if id_maps.types.contains_key(s) => {
-                self.decode_entity_or_record(id_maps, s, &[])
+                self.decode_entity_or_record(id_maps, aux_funs, s, &[])
             }
 
             // Entity enum
@@ -655,7 +996,7 @@ impl SExpr {
                 .ok_or_else(|| DecodeError::UnknownLiteral(self.clone())),
 
             // More complex applications
-            SExpr::App(args) => self.decode_literal_app(id_maps, args, expected_ty),
+            SExpr::App(args) => self.decode_literal_app(id_maps, aux_funs, args, expected_ty),
 
             _ => Err(DecodeError::UnknownLiteral(self.clone())),
         }
@@ -664,6 +1005,7 @@ impl SExpr {
     /// Decodes a constant definition in the model.
     pub fn decode_var(
         id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
         name: &SmolStr,
         typ: &SExpr,
         value: &SExpr,
@@ -673,7 +1015,7 @@ impl SExpr {
         };
 
         let ty = typ.decode_type(id_maps)?;
-        let val = value.decode_literal_expecting(id_maps, Some(&ty))?;
+        let val = value.decode_literal_expecting(id_maps, aux_funs, Some(&ty))?;
         let val_ty = val.type_of();
 
         if val_ty != ty {
@@ -693,6 +1035,7 @@ impl SExpr {
     /// TODO: generalize to other forms?
     pub fn decode_unary_function(
         id_maps: &IdMaps<'_>,
+        aux_funs: &AuxFuns<'_>,
         name: &SmolStr,
         arg_name: &str,
         arg_typ: &SExpr,
@@ -744,9 +1087,12 @@ impl SExpr {
                             } else {
                                 return Err(DecodeError::UnexpectedUnaryFunctionForm(body.clone()));
                             }
-                            .decode_literal(id_maps)?;
-                            let then_term =
-                                exprs[2].decode_literal_expecting(id_maps, Some(&ret_ty))?;
+                            .decode_literal_expecting(id_maps, aux_funs, None)?;
+                            let then_term = exprs[2].decode_literal_expecting(
+                                id_maps,
+                                aux_funs,
+                                Some(&ret_ty),
+                            )?;
                             table.insert(cond_lit_term, then_term);
                             cur_body = &exprs[3];
                             continue;
@@ -757,7 +1103,7 @@ impl SExpr {
 
             // otherwise take as the default value
             // assuming it doesn't contain any bound variables
-            let default = cur_body.decode_literal_expecting(id_maps, Some(&ret_ty))?;
+            let default = cur_body.decode_literal_expecting(id_maps, aux_funs, Some(&ret_ty))?;
 
             return Ok((
                 uuf.clone(),
@@ -783,6 +1129,35 @@ impl SExpr {
 
         let mut vars = BTreeMap::new();
         let mut funs = BTreeMap::new();
+        let mut aux_funs = BTreeMap::new();
+
+        // Z3 may emit helper functions (for example `k!0`) that are referenced
+        // by `(_ as-array k!0)` set models. Collect their bodies before decoding
+        // constants that may contain as-array references.
+        for cmd in cmds {
+            let SExpr::App(sub_exprs) = cmd else {
+                return Err(DecodeError::UnexpectedModel);
+            };
+
+            match sub_exprs.as_slice() {
+                [SExpr::Symbol(define_fun), SExpr::Symbol(name), SExpr::App(args), _ret_ty, body]
+                    if define_fun == "define-fun" =>
+                {
+                    match args.as_slice() {
+                        [SExpr::App(arg)] if arg.len() == 2 => match arg.as_slice() {
+                            [SExpr::Symbol(arg_name), arg_ty] => {
+                                aux_funs.insert(name.clone(), (arg_name.clone(), arg_ty, body));
+                            }
+                            _ => return Err(DecodeError::UnexpectedModel),
+                        },
+                        [] => {}
+                        _ => return Err(DecodeError::UnexpectedModel),
+                    }
+                }
+
+                _ => return Err(DecodeError::UnexpectedModel),
+            }
+        }
 
         // TODO: better error handling here
         for cmd in cmds {
@@ -802,7 +1177,7 @@ impl SExpr {
                             [SExpr::Symbol(arg_name), arg_ty] => {
                                 if id_maps.uufs.contains_key(name) {
                                     let (uuf, udf) = Self::decode_unary_function(
-                                        id_maps, name, arg_name, arg_ty, ret_ty, body,
+                                        id_maps, &aux_funs, name, arg_name, arg_ty, ret_ty, body,
                                     )?;
                                     funs.insert(uuf, udf);
                                 }
@@ -817,7 +1192,7 @@ impl SExpr {
                         [] => {
                             if id_maps.vars.contains_key(name) {
                                 let (term_var, term) =
-                                    Self::decode_var(id_maps, name, ret_ty, body)?;
+                                    Self::decode_var(id_maps, &aux_funs, name, ret_ty, body)?;
                                 vars.insert(term_var, term);
                             }
                         }
@@ -847,7 +1222,7 @@ pub fn decode_model<'a>(
 #[cfg(test)]
 mod test_decode {
     use std::{
-        collections::BTreeMap,
+        collections::{BTreeMap, BTreeSet},
         num::NonZeroU32,
         str::FromStr,
         sync::{Arc, LazyLock},
@@ -906,6 +1281,20 @@ mod test_decode {
         assert_eq!(actual, expected.into());
     }
 
+    fn bool_set(elts: impl IntoIterator<Item = bool>) -> Term {
+        Term::Set {
+            elts: Arc::new(elts.into_iter().map(Term::from).collect::<BTreeSet<_>>()),
+            elts_ty: TermType::Bool,
+        }
+    }
+
+    fn string_set_var() -> TermVar {
+        TermVar {
+            id: "x".into(),
+            ty: TermType::set_of(TermType::String),
+        }
+    }
+
     #[test]
     fn decode_literals() {
         assert_decode_var(
@@ -951,6 +1340,112 @@ mod test_decode {
                 n: NonZeroU32::new(8).unwrap(),
             },
             BitVec::of_u128(NonZeroU32::new(8).unwrap(), 42),
+        );
+    }
+
+    #[test]
+    fn decode_z3_bool_set_models() {
+        assert_decode_var(
+            "((define-fun x () (Set Bool) ((as const (Set Bool)) true)))",
+            "x".into(),
+            TermType::set_of(TermType::Bool),
+            bool_set([false, true]),
+        );
+        assert_decode_var(
+            "((define-fun x () (Set Bool) ((as const (Set Bool)) false)))",
+            "x".into(),
+            TermType::set_of(TermType::Bool),
+            bool_set([]),
+        );
+        assert_decode_var(
+            "((define-fun x () (Set Bool) (store ((as const (Set Bool)) true) true false)))",
+            "x".into(),
+            TermType::set_of(TermType::Bool),
+            bool_set([false]),
+        );
+        assert_decode_var(
+            "((define-fun x () (Set Bool) (lambda ((x!1 Bool)) x!1)))",
+            "x".into(),
+            TermType::set_of(TermType::Bool),
+            bool_set([true]),
+        );
+        assert_decode_var(
+            "((define-fun x () (Set Bool) (lambda ((x!0 Bool)) (ite (= x!0 true) false true))))",
+            "x".into(),
+            TermType::set_of(TermType::Bool),
+            bool_set([false]),
+        );
+    }
+
+    #[test]
+    fn decode_z3_as_array_set_model() {
+        assert_decode_var(
+            r#"(
+                (define-fun k!0 ((x Bool)) Bool x)
+                (define-fun x () (Set Bool) (_ as-array k!0))
+            )"#,
+            "x".into(),
+            TermType::set_of(TermType::Bool),
+            bool_set([true]),
+        );
+    }
+
+    #[test]
+    fn decode_z3_nonfinite_set_errors() {
+        let var = string_set_var();
+        let id_maps = IdMaps {
+            types: BTreeMap::new(),
+            vars: BTreeMap::from([(&var.id, &var)]),
+            uufs: BTreeMap::new(),
+            enums: BTreeMap::new(),
+        };
+
+        let const_true =
+            parse_sexpr(b"((define-fun x () (Set String) ((as const (Set String)) true)))")
+                .unwrap();
+        assert_matches!(
+            const_true.decode_model(&TEST_ENV, &id_maps),
+            Err(DecodeError::NonFiniteSet(_))
+        );
+
+        let store_over_const_true = parse_sexpr(
+            br#"((define-fun x () (Set String) (store ((as const (Set String)) true) "a" false)))"#,
+        )
+        .unwrap();
+        assert_matches!(
+            store_over_const_true.decode_model(&TEST_ENV, &id_maps),
+            Err(DecodeError::NonFiniteSet(_))
+        );
+    }
+
+    #[test]
+    fn decode_z3_unsupported_set_model_errors() {
+        let var = TermVar {
+            id: "x".into(),
+            ty: TermType::set_of(TermType::Bool),
+        };
+        let id_maps = IdMaps {
+            types: BTreeMap::new(),
+            vars: BTreeMap::from([(&var.id, &var)]),
+            uufs: BTreeMap::new(),
+            enums: BTreeMap::new(),
+        };
+
+        let unsupported_lambda =
+            parse_sexpr(b"((define-fun x () (Set Bool) (lambda ((x!0 Bool)) (xor x!0 true))))")
+                .unwrap();
+        assert_matches!(
+            unsupported_lambda.decode_model(&TEST_ENV, &id_maps),
+            Err(DecodeError::UnsupportedSetModel(_))
+        );
+
+        let unsupported_as_array = parse_sexpr(
+            b"((define-fun k!0 ((x Bool)) Bool (xor x true)) (define-fun x () (Set Bool) (_ as-array k!0)))",
+        )
+        .unwrap();
+        assert_matches!(
+            unsupported_as_array.decode_model(&TEST_ENV, &id_maps),
+            Err(DecodeError::UnsupportedSetModel(_))
         );
     }
 
@@ -1512,7 +2007,7 @@ mod test_decode_unexpected_model {
         let name: SmolStr = "unknown".into();
         let typ = SExpr::Symbol("Bool".into());
         let value = SExpr::Symbol("true".into());
-        let result = SExpr::decode_var(&empty_id_maps(), &name, &typ, &value);
+        let result = SExpr::decode_var(&empty_id_maps(), &BTreeMap::new(), &name, &typ, &value);
         assert_matches!(result, Err(DecodeError::UnknownVariable(v)) if v == "unknown");
     }
 
@@ -1523,8 +2018,15 @@ mod test_decode_unexpected_model {
         let arg_typ = SExpr::Symbol("Bool".into());
         let ret_typ = SExpr::Symbol("Bool".into());
         let body = SExpr::Symbol("true".into());
-        let result =
-            SExpr::decode_unary_function(&empty_id_maps(), &name, "x", &arg_typ, &ret_typ, &body);
+        let result = SExpr::decode_unary_function(
+            &empty_id_maps(),
+            &BTreeMap::new(),
+            &name,
+            "x",
+            &arg_typ,
+            &ret_typ,
+            &body,
+        );
         assert_matches!(result, Err(DecodeError::UnknownUUF(v)) if v == "unknown_f");
     }
 }
