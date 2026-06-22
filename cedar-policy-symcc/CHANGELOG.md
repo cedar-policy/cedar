@@ -15,6 +15,9 @@ Cedar Language Version: TBD
   without an explicit type annotation, as long as it can infer the type. Finally, it accepts
   models for UUFs with equality operands in either order.
 
+## [0.5.3] - 2026-06-09
+Cedar Language Version: 4.5
+
 ## [0.5.2] - 2026-06-09
 Cedar Language Version: 4.5
 

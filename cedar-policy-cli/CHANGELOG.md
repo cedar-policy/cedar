@@ -15,6 +15,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 - The `authorize` command with the `--template-linked` argument will now error if the link file does not exist.
 
+## 4.11.2
+
 ## 4.11.1
 
 ## 4.11.0
@@ -137,6 +139,8 @@ checked against the schema, tests fail should schema validation fail.
 - CLI arguments `--policy-format` and `--schema-format` now take options
   `cedar` or `json`, as opposed to `human` or `json`. Similarly, `--direction`
   takes `cedar-to-json` or `json-to-cedar`. (#1114)
+
+## 3.4.3
 
 ## 3.4.2
 
