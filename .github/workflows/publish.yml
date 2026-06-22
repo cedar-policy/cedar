@@ -172,7 +172,14 @@ jobs:
             # For all targets, we validate the core version in the code for the given tag
             - name: Validate core version against Cargo.toml for given tag
               run: |
-                  ACTUAL=$(toml get --raw Cargo.toml workspace.package.version)
+                  ACTUAL=$(toml get --raw Cargo.toml workspace.package.version 2>/dev/null || true)
+                  if [[ -z "$ACTUAL" ]]; then
+                      ACTUAL=$(toml get --raw ./cedar-policy-core/Cargo.toml package.version 2>/dev/null || true)
+                  fi
+                  if [[ -z "$ACTUAL" ]]; then
+                      echo "::error::Could not find core version in workspace or crate Cargo.toml"
+                      exit 1
+                  fi
                   if [[ "$ACTUAL" != "$CORE_VERSION" ]]; then
                       echo "::error::core_version mismatch: input '$CORE_VERSION' but Cargo.toml has '$ACTUAL'"
                       exit 1
@@ -199,9 +206,16 @@ jobs:
             - name: Validate cli version against Cargo.toml
               if: inputs.target == 'cli' || inputs.target == 'all'
               run: |
-                  ACTUAL=$(toml get --raw Cargo.toml workspace.package.version)
+                  ACTUAL=$(toml get --raw Cargo.toml workspace.package.version 2>/dev/null || true)
+                  if [[ -z "$ACTUAL" ]]; then
+                      ACTUAL=$(toml get --raw ./cedar-policy-cli/Cargo.toml package.version 2>/dev/null || true)
+                  fi
+                  if [[ -z "$ACTUAL" ]]; then
+                      echo "::error::Could not find cli version in workspace or crate Cargo.toml"
+                      exit 1
+                  fi
                   if [[ "$ACTUAL" != "$CLI_VERSION" ]]; then
-                      echo "::error::cli_version mismatch: input '$CLI_VERSION' but workspace version is '$ACTUAL'"
+                      echo "::error::cli_version mismatch: input '$CLI_VERSION' but Cargo.toml has '$ACTUAL'"
                       exit 1
                   fi
               env:
