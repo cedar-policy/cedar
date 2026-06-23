@@ -152,6 +152,15 @@ jobs:
               with:
                   ref: refs/tags/${{ inputs.target == 'cli' && inputs.cli_tag || inputs.tag }}
                   fetch-depth: 0
+            # Main is checked out into a subdirectory so the latest scripts
+            # are available.  sparse-checkout ensures no Cargo.toml from main is
+            # present, so a bug in the script can't accidentally validate main's
+            # version.
+            - name: Checkout main (for scripts)
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+              with:
+                  sparse-checkout: .github/scripts
+                  path: __main
             - name: Validate cli_tag points to same commit as tag
               if: inputs.target == 'all'
               run: |
@@ -164,60 +173,29 @@ jobs:
               env:
                   TAG: ${{ inputs.tag }}
                   CLI_TAG: ${{ inputs.cli_tag }}
-            - name: Configure rust toolchain
-              run: rustup update stable && rustup default stable
-            - name: Install toml-cli
-              run: cargo install toml-cli --locked
+            - name: Set up Python
+              uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+              with:
+                  python-version: ">=3.11" # needs tomllib, in stdlib from 3.11
 
             # For all targets, we validate the core version in the code for the given tag
             - name: Validate core version against Cargo.toml for given tag
-              run: |
-                  ACTUAL=$(toml get --raw Cargo.toml workspace.package.version 2>/dev/null || true)
-                  if [[ -z "$ACTUAL" ]]; then
-                      ACTUAL=$(toml get --raw ./cedar-policy-core/Cargo.toml package.version 2>/dev/null || true)
-                  fi
-                  if [[ -z "$ACTUAL" ]]; then
-                      echo "::error::Could not find core version in workspace or crate Cargo.toml"
-                      exit 1
-                  fi
-                  if [[ "$ACTUAL" != "$CORE_VERSION" ]]; then
-                      echo "::error::core_version mismatch: input '$CORE_VERSION' but Cargo.toml has '$ACTUAL'"
-                      exit 1
-                  fi
+              run: python3 __main/.github/scripts/check-crate-version.py cedar-policy-core "$CORE_VERSION"
               env:
                   CORE_VERSION: ${{ inputs.core_version }}
 
             # For symcc and all targets, we validate the symcc version for the given tag
             - name: Validate symcc version against Cargo.toml for given tag
               if: inputs.target == 'symcc' || inputs.target == 'all'
-              run: |
-                  ACTUAL=$(toml get --raw ./cedar-policy-symcc/Cargo.toml package.version)
-                  if [[ "$ACTUAL" != "$SYMCC_VERSION" ]]; then
-                      echo "::error::symcc_version mismatch: input '$SYMCC_VERSION' but Cargo.toml has '$ACTUAL'"
-                      exit 1
-                  fi
+              run: python3 __main/.github/scripts/check-crate-version.py cedar-policy-symcc "$SYMCC_VERSION"
               env:
                   SYMCC_VERSION: ${{ inputs.symcc_version }}
 
             # For now, cli_version is the same as core_version (they share the workspace version).
             # We still additionally validate the cli version for the given tag.
-            # Note: cedar-policy-cli inherits its version from the workspace (version.workspace = true),
-            # so we validate against the workspace version in the root Cargo.toml.
             - name: Validate cli version against Cargo.toml
               if: inputs.target == 'cli' || inputs.target == 'all'
-              run: |
-                  ACTUAL=$(toml get --raw Cargo.toml workspace.package.version 2>/dev/null || true)
-                  if [[ -z "$ACTUAL" ]]; then
-                      ACTUAL=$(toml get --raw ./cedar-policy-cli/Cargo.toml package.version 2>/dev/null || true)
-                  fi
-                  if [[ -z "$ACTUAL" ]]; then
-                      echo "::error::Could not find cli version in workspace or crate Cargo.toml"
-                      exit 1
-                  fi
-                  if [[ "$ACTUAL" != "$CLI_VERSION" ]]; then
-                      echo "::error::cli_version mismatch: input '$CLI_VERSION' but Cargo.toml has '$ACTUAL'"
-                      exit 1
-                  fi
+              run: python3 __main/.github/scripts/check-crate-version.py cedar-policy-cli "$CLI_VERSION"
               env:
                   CLI_VERSION: ${{ inputs.cli_version }}
     publish-core:
