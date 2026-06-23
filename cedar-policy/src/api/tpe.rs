@@ -577,7 +577,7 @@ impl TpeResponse<'_> {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # let (policy_set, request, entities, schema) : (&PolicySet, &PartialRequest, &PartialEntities, &Schema) = panic!();
     /// let response = policy_set.tpe(&request, &entities, &schema)?;
-    /// for policy in response.policies() {
+    /// for policy in response.residual_policies() {
     ///     let pst_policy = policy.to_pst()?;
     ///     for clause in pst_policy.body().clauses() {
     ///         // inspect the residual expression via pst::Clause / pst::Expr
