@@ -772,7 +772,7 @@ impl PolicySet {
                 .filter(|entity| entity.0.uid().entity_type() == &request.0 .0.get_resource_type())
                 .filter(|entity| {
                     #[expect(
-                        clippy::unwrap_used, reason = "`to_request` cannot panic beause we do not pass a schema. However, the correctness of the authorization
+                        clippy::unwrap_used, reason = "`to_request` cannot panic because we do not pass a schema. However, the correctness of the authorization
                         decision depends on having valid a request and entities, but we do not do any validation here. Entities were already validated by
                         `PartialEntities::from_concrete`. The request was _mostly_ validated by its constructor, but the concrete request could still be invalid
                         if the resource entity is an enum entity and the id is not an instance of that enum. This cannot happen here because we draw candidate
@@ -818,7 +818,7 @@ impl PolicySet {
                 .filter(|entity| entity.0.uid().entity_type() == &request.0.0.get_principal_type())
                 .filter(|entity| {
                     #[expect(
-                        clippy::unwrap_used, reason = "`to_request` cannot panic beause we do not pass a schema. However, the correctness of the authorization
+                        clippy::unwrap_used, reason = "`to_request` cannot panic because we do not pass a schema. However, the correctness of the authorization
                         decision depends on having valid a request and entities, but we do not do any validation here. Entities were already validated by
                         `PartialEntities::from_concrete`. The request was _mostly_ validated by its constructor, but the concrete request could still be invalid
                         if the principal entity is an enum entity and the id is not an instance of that enum. This cannot happen here because we draw candidate
