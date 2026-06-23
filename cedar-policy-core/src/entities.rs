@@ -469,15 +469,14 @@ impl Entities {
     /// Validates the set of entities is well formed and returns it, otherwise returns
     /// an error.
     ///
-    /// If `skip_entities` is true, only collection-level invariants (TC and DAG) are
-    /// checked, assuming individual entities have already been validated.
-    pub fn try_validate(self, skip_entities: bool) -> std::result::Result<Self, EntitiesError> {
+    /// Checks collection-level invariants (TC and DAG) and entity-level validation.
+    pub fn try_validate(self) -> std::result::Result<Self, EntitiesError> {
         enforce_tc_and_dag(&self.entities)?;
-        if !skip_entities {
-            for entity in self.entities.values() {
-                entity.validate()?;
-            }
+
+        for entity in self.entities.values() {
+            entity.validate()?;
         }
+
         Ok(self)
     }
 }
@@ -2850,7 +2849,7 @@ mod entities_validate_test {
             std::iter::empty(),
         );
         let es = make_entities([parent, child]);
-        assert!(es.try_validate(false).is_ok());
+        assert!(es.try_validate().is_ok());
     }
 
     #[test]
@@ -2881,7 +2880,7 @@ mod entities_validate_test {
             ]),
             mode: Mode::default(),
         };
-        assert!(entities.try_validate(false).is_err());
+        assert!(entities.try_validate().is_err());
     }
 }
 
