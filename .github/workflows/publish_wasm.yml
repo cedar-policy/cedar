@@ -42,12 +42,21 @@ jobs:
               uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
               with:
                   ref: refs/tags/${{ inputs.tag }}
-            - name: Configure rust toolchain
-              run: rustup update stable && rustup default stable
-            - name: Install toml-cli
-              run: cargo install toml-cli --locked
+            # Main is checked out into a subdirectory so the latest scripts
+            # are available.  sparse-checkout ensures no Cargo.toml from main is
+            # present, so a bug in the script can't accidentally validate main's
+            # version.
+            - name: Checkout main (for scripts)
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+              with:
+                  sparse-checkout: .github/scripts
+                  path: __main
+            - name: Set up Python
+              uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+              with:
+                  python-version: ">=3.11" # needs tomllib, in stdlib from 3.11
             - name: Validate workspace version
-              run: test "v$(toml get --raw Cargo.toml workspace.package.version)" = "$TAG_NAME"
+              run: python3 __main/.github/scripts/check-crate-version.py cedar-wasm "${TAG_NAME#v}"
               env:
                   TAG_NAME: ${{ inputs.tag }}
 
