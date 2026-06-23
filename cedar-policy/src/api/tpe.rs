@@ -560,19 +560,39 @@ impl TpeResponse<'_> {
     }
 
     /// Returns an iterator of non-trivial (meaning more than just `true`
-    /// or `false`) residuals as [`Policy`]s.
+    /// or `false`, or an error) residuals as [`Policy`]s.
     ///
     /// To find policies that reached a concrete value, use, e.g., [`TpeResponse::true_permits`].
     ///
-    /// Each returned [`Policy`] inherits its [`PolicyId`](crate::PolicyId) and
+    /// Each returned [`Policy`] inherits its [`PolicyId`] and
     /// annotations from the corresponding input policy. Its scope is
     /// unconstrained and its condition is a single `when` clause containing
     /// the residual expression.
     ///
-    /// Call [`Policy::to_pst()`] on each result to get a [`crate::pst::Policy`]
-    /// for structured inspection. Residual expressions may contain
-    /// [`crate::pst::Expr::ResidualError`] nodes indicating subexpressions that
-    /// would error at runtime; use [`crate::pst::Expr::has_error()`] to check.
+    /// Call [`Policy::to_pst()`] on each result to get a [`pst::Policy`](crate::pst::Policy)
+    /// for structured inspection.
+    ///
+    /// ```no_run
+    /// # use cedar_policy::{PolicySet, PartialRequest, PartialEntities, Schema};
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let (policy_set, request, entities, schema) : (&PolicySet, &PartialRequest, &PartialEntities, &Schema) = panic!();
+    /// let response = policy_set.tpe(&request, &entities, &schema)?;
+    /// for policy in response.policies() {
+    ///     let pst_policy = policy.to_pst()?;
+    ///     for clause in pst_policy.body().clauses() {
+    ///         // inspect the residual expression via pst::Clause / pst::Expr
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// When inspecting these policies, be aware that they may contain
+    /// [`pst::Expr::ResidualError`](crate::pst::Expr::ResidualError) nodes
+    /// which do not normally exist in Cedar expressions. These represent
+    /// subexpressions which are statically known to error; however, the whole
+    /// residual policy might or might not error, regardless of whether it
+    /// contains these nodes.
     pub fn residual_policies(&self) -> impl Iterator<Item = Policy> + '_ {
         self.0
             .residual_permits()
@@ -589,18 +609,7 @@ impl TpeResponse<'_> {
     ///
     /// Use [`TpeResponse::residual_policies`] to skip `true`, `false`, and error residuals.
     ///
-    /// The returned policies can be converted to PST for structured
-    /// inspection of the residual expression tree:
-    ///
-    /// ```text
-    /// let response = policy_set.tpe(&request, &entities, &schema)?;
-    /// for policy in response.policies() {
-    ///     let pst_policy = policy.to_pst()?;
-    ///     for clause in pst_policy.body().clauses() {
-    ///         // inspect the residual expression via pst::Clause / pst::Expr
-    ///     }
-    /// }
-    /// ```
+    /// See [`TpeResponse::residual_policies`] for documentation on how to inspect policies using the PST.
     pub fn policies(&self) -> impl Iterator<Item = Policy> + '_ {
         self.0
             .policies()
@@ -624,6 +633,8 @@ impl TpeResponse<'_> {
     }
 
     /// Get the residual policy for a specific [`PolicyId`], if it exists.
+    ///
+    /// See [`TpeResponse::residual_policies`] for documentation on how to inspect policies using the PST.
     pub fn get_policy(&self, id: &PolicyId) -> Option<Policy> {
         self.0
             .get_residual_policy(id.as_ref())

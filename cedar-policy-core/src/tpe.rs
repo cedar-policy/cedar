@@ -126,7 +126,7 @@ mod tests {
 
     use super::is_authorized;
 
-    fn collect_policy_ids<'a>(
+    pub(super) fn collect_policy_ids<'a>(
         iter: impl Iterator<Item = &'a super::response::ResidualPolicy>,
     ) -> HashSet<&'a PolicyID> {
         iter.map(|p| p.get_policy_id()).collect()
