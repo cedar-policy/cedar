@@ -282,7 +282,7 @@ impl<'a> Response<'a> {
             .map(|id| self.residuals.get(id).unwrap())
     }
 
-    /// Look up the [`Residual`] by [`PolicyID`]
+    /// Look up the [`ResidualPolicy`] by [`PolicyID`]
     pub fn get_residual(&self, id: &PolicyID) -> Option<&ResidualPolicy> {
         self.residuals.get(id)
     }
@@ -328,7 +328,7 @@ impl<'a> Response<'a> {
     }
 
     /// Get all policies (including concrete true/false/error residuals) as a `PolicySet`
-    pub fn poliy_set(&self) -> PolicySet {
+    pub fn policy_set(&self) -> PolicySet {
         let mut ps = PolicySet::new();
         for p in self.policies() {
             #[expect(
