@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Check that a crate's version matches the expected version."""
+"""Usage: check-crate-version.py <crate-dir> <expected-version>
+
+Checks that a crate's version matches the expected version.
+If the crate inherits its version from the workspace (version.workspace = true),
+reads the version from the workspace Cargo.toml instead.
+"""
 import sys
 import tomllib
 from pathlib import Path
@@ -29,7 +34,9 @@ def main():
     if pkg_version is None:
         fail(f"No version field in {crate_toml}")
 
+    # First check for `version.workspace = true` in crate `Cargo.toml`.
     if isinstance(pkg_version, dict) and pkg_version.get("workspace") is True:
+        # Uses workspace version, so get version from workspace `Cargo.toml`
         workspace_toml = crate_dir.parent / "Cargo.toml"
         if not workspace_toml.exists():
             fail(f"{workspace_toml} not found")
@@ -40,6 +47,7 @@ def main():
             fail(f"No workspace.package.version in {workspace_toml}")
         source = str(workspace_toml)
     else:
+        # Does not use workspace version. Get version form caret `Cargo.toml`
         version = pkg_version
         source = str(crate_toml)
 
