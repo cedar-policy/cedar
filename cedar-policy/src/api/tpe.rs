@@ -611,7 +611,7 @@ impl TpeResponse<'_> {
     ///
     /// This returns exactly the same policies as [`TpeResponse::policies`], but collected into a policy set.
     pub fn policy_set(&self) -> PolicySet {
-        PolicySet::from_ast(self.0.poliy_set())
+        PolicySet::from_ast(self.0.policy_set())
     }
 
     /// Deprecated alias for [`TpeResponse::residual_policies`]
@@ -626,7 +626,7 @@ impl TpeResponse<'_> {
     /// Get the residual policy for a specific [`PolicyId`], if it exists.
     pub fn get_policy(&self, id: &PolicyId) -> Option<Policy> {
         self.0
-            .get_residual(id.as_ref())
+            .get_residual_policy(id.as_ref())
             .map(|p| Policy::from_ast(p.clone().into()))
     }
 }
@@ -712,7 +712,7 @@ impl PolicySet {
         Ok(TpeResponse(res))
     }
 
-    /// Like [`Authorizer::is_authorized`](crate::Authorizer::is_authorized) but uses an [`EntityLoader`] to load
+    /// Like [`Authorizer::is_authorized`] but uses an [`EntityLoader`] to load
     /// entities on demand.
     ///
     /// Calls `loader` at most `max_iters` times, returning

@@ -283,7 +283,7 @@ impl<'a> Response<'a> {
     }
 
     /// Look up the [`ResidualPolicy`] by [`PolicyID`]
-    pub fn get_residual(&self, id: &PolicyID) -> Option<&ResidualPolicy> {
+    pub fn get_residual_policy(&self, id: &PolicyID) -> Option<&ResidualPolicy> {
         self.residuals.get(id)
     }
 
@@ -318,8 +318,7 @@ impl<'a> Response<'a> {
         self.request.check_consistency(request)?;
 
         let authorizer = Authorizer::new();
-        #[expect(clippy::unwrap_used, reason = "policy ids should not clash")]
-        Ok(authorizer.is_authorized(request.clone(), &self.poliy_set(), entities))
+        Ok(authorizer.is_authorized(request.clone(), &self.policy_set(), entities))
     }
 
     /// Get all policies (including concrete true/false/error residuals)
