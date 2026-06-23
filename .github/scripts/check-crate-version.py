@@ -47,7 +47,7 @@ def main():
             fail(f"No workspace.package.version in {workspace_toml}")
         source = str(workspace_toml)
     else:
-        # Does not use workspace version. Get version form caret `Cargo.toml`
+        # Does not use workspace version. Get version from crate `Cargo.toml`
         version = pkg_version
         source = str(crate_toml)
 
