@@ -531,7 +531,7 @@ Cedar Language Version: 4.0
 - (*) Schemas can now reference entity and common types defined in the empty namespace,
   even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
 
-## [3.4.3] - Coming Soon
+## [3.4.3] - 2026-06-22
 Cedar Language Version: 3.4
 
 ### Fixed
