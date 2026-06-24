@@ -81,7 +81,7 @@ jobs:
                       const version = tag.replace('v', '');
                       const [major, minor, _] = version.split('.');
                       const releaseBranch = `release/${major}.${minor}.x`;
-                      core.setOutput('branch_name', releaseBranch);
+                      core.setOutput('release_branch', releaseBranch);
 
             # Compute the tag that should be used for the NPM release by comparing the latest NPM release's
             # version against the version to be released by this workflow.
