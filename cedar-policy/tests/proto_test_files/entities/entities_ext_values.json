@@ -1,0 +1,12 @@
+[
+    {
+        "uid": { "type": "Host", "id": "h1" },
+        "attrs": {
+            "addr": { "__extn": { "fn": "ip", "arg": "192.168.1.100/24" } },
+            "price": { "__extn": { "fn": "decimal", "arg": "19.99" } },
+            "created": { "__extn": { "fn": "datetime", "arg": "2024-03-15T10:30:00Z" } },
+            "ttl": { "__extn": { "fn": "duration", "arg": "30m" } }
+        },
+        "parents": []
+    }
+]

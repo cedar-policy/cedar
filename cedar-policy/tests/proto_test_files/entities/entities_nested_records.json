@@ -1,0 +1,17 @@
+[
+    {
+        "uid": { "type": "Doc", "id": "d1" },
+        "attrs": {
+            "meta": {
+                "level1": {
+                    "level2": {
+                        "level3": {
+                            "value": 42
+                        }
+                    }
+                }
+            }
+        },
+        "parents": []
+    }
+]

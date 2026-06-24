@@ -1,0 +1,17 @@
+{
+    "principal": { "type": "User", "id": "carol" },
+    "action": { "type": "Action", "id": "update" },
+    "resource": { "type": "Record", "id": "r1" },
+    "context": {
+        "env": {
+            "region": "us-east-1",
+            "config": {
+                "debug": false,
+                "levels": [1, 2, 3],
+                "nested": {
+                    "deep": true
+                }
+            }
+        }
+    }
+}

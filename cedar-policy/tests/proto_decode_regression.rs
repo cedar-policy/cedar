@@ -16,10 +16,19 @@
 
 //! Tests for protobuf decode backwards compatibility.
 //!
-//! Each test loads a `.pb` file, decodes it, and asserts the result is exactly
-//! equal to the expected structure. If we fail to decode a file, or decode it
-//! incorrectly, then we've broken the protobuf parser. Any such break must be
-//! fixed before releasing another minor or patch version of Cedar.
+//! Each test loads a `.pb` file, decodes it, and asserts deep equality against an expected value
+//! loaded from a sibling file (`.json`, `.cedar`, or `.cedarschema`). If we fail to decode a file,
+//! or decode it incorrectly, then we've broken the protobuf parser. Any  such break must be fixed
+//! before releasing another minor or patch version of Cedar.
+//!
+//! To add a new regression test case, either
+//! A) Manually add a `.pb` file in the appropriate `tests/proto_test_files/<type>/` dir ,
+//! then add the corresponding expectation file (same stem, appropriate extension).
+//! b) Use the proto_generate_test_files and the gen_protobuf_regression_test_case macro to
+//! generate a test case.
+//!
+//! insta will discover the new test cases you added in `entities`, `policies`, `requests` and
+//! `schemas`.
 
 #![cfg(feature = "protobufs")]
 
@@ -28,178 +37,75 @@ use cedar_policy::*;
 use cedar_policy_core::assert_deep_eq;
 use similar_asserts::assert_eq;
 
-fn proto_file(name: &str) -> Vec<u8> {
-    std::fs::read(format!("tests/proto_test_files/{name}.pb")).unwrap()
-}
-
 #[test]
 fn decode_entities() {
-    let decoded = Entities::decode(proto_file("entities").as_slice()).unwrap();
-    let expected = Entities::from_json_value(
-        serde_json::json!([
-            {
-                "uid": { "type": "App::Org::User", "id": "alice\n\"bob'" },
-                "attrs": {
-                    "name": "Alice",
-                    "age": 30,
-                    "active": true,
-                    "scores": [95, 87, 100],
-                    "profile": {
-                        "email": "alice@example.com",
-                        "address": { "city": "Seattle", "zip": 98101 }
-                    },
-                    "manager": { "__entity": { "type": "App::Org::User", "id": "bob" } }
-                },
-                "parents": [
-                    { "type": "App::Org::Group", "id": "admins" },
-                    { "type": "App::Org::Group", "id": "eng" }
-                ]
-            },
-            {
-                "uid": { "type": "App::Org::User", "id": "bob" },
-                "attrs": {
-                    "name": "Bob",
-                    "age": 45,
-                    "active": false,
-                    "scores": [],
-                    "profile": {
-                        "email": "bob@example.com",
-                        "address": { "city": "", "zip": 0 }
-                    },
-                    "manager": { "__entity": { "type": "App::Org::User", "id": "bob" } }
-                },
-                "parents": [{ "type": "App::Org::Group", "id": "eng" }]
-            },
-            {
-                "uid": { "type": "App::Org::Group", "id": "admins" },
-                "attrs": {},
-                "parents": [{ "type": "App::Org::Group", "id": "eng" }]
-            },
-            {
-                "uid": { "type": "App::Org::Group", "id": "eng" },
-                "attrs": {},
-                "parents": []
-            }
-        ]),
-        None,
-    )
-    .unwrap();
-    assert_deep_eq!(decoded, expected);
+    insta::glob!("proto_test_files/entities", "*.pb", |path| {
+        let decoded = Entities::decode(std::fs::read(path).unwrap().as_slice()).unwrap();
+
+        let json_path = path.with_extension("json");
+        let expected_json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&json_path).unwrap()).unwrap();
+        let expected = Entities::from_json_value(expected_json, None).unwrap();
+
+        assert_deep_eq!(decoded, expected);
+    });
 }
 
 #[test]
 fn decode_policy_set() {
-    let decoded = PolicySet::decode(proto_file("policy_set").as_slice()).unwrap();
+    insta::glob!("proto_test_files/policies", "*.pb", |path| {
+        let decoded = PolicySet::decode(std::fs::read(path).unwrap().as_slice()).unwrap();
 
-    let expected: PolicySet = r#"
-        @id("ip-restrict")
-        @advice("check source IP")
-        forbid(
-            principal is App::Org::User,
-            action in [Action::"read", Action::"write"],
-            resource
-        ) when {
-            !context.src_ip.isInRange(ip("10.0.0.0/8"))
-        };
+        let cedar_path = path.with_extension("cedar");
+        let expected: PolicySet = std::fs::read_to_string(&cedar_path)
+            .unwrap()
+            .parse()
+            .unwrap();
 
-        @id("owner-edit")
-        permit(
-            principal,
-            action == Action::"write",
-            resource in App::Org::Folder::"root"
-        ) when {
-            resource.owner == principal && context.authenticated
-        } unless {
-            principal.suspended
-        };
-
-        @id("public-read")
-        permit(
-            principal,
-            action == Action::"read",
-            resource
-        ) when {
-            resource.public
-        };
-    "#
-    .parse()
-    .unwrap();
-
-    assert_eq!(decoded, expected);
+        assert_eq!(decoded, expected);
+    });
 }
 
 #[test]
 fn decode_schema() {
-    let decoded = Schema::decode(proto_file("schema").as_slice()).unwrap();
-    let expected = Schema::from_cedarschema_str(
-        r#"
-        namespace App::Org {
-            entity Role enum ["admin", "viewer"];
-            entity Tag tags String;
-            entity Group;
-            entity User in [Group] {
-                name: String,
-                age: Long,
-                active: Bool,
-                scores: Set<Long>,
-                profile: {
-                    email: String,
-                    address: { city: String, zip: Long },
-                },
-                manager: User,
-                ip: ipaddr,
-                suspended?: Bool,
-            };
-            entity Folder {
-                owner: User,
-                public: Bool,
-            };
-            action read, write appliesTo {
-                principal: User,
-                resource: Folder,
-                context: {
-                    src_ip: ipaddr,
-                    authenticated: Bool,
-                },
-            };
-        }
-        "#,
-    )
-    .unwrap()
-    .0;
-    assert_eq!(decoded.as_ref(), expected.as_ref());
+    insta::glob!("proto_test_files/schemas", "*.pb", |path| {
+        let decoded = Schema::decode(std::fs::read(path).unwrap().as_slice()).unwrap();
+
+        let cedar_path = path.with_extension("cedarschema");
+        let expected = Schema::from_cedarschema_str(&std::fs::read_to_string(&cedar_path).unwrap())
+            .unwrap()
+            .0;
+
+        assert_eq!(decoded.as_ref(), expected.as_ref());
+    });
 }
 
 #[test]
 fn decode_request() {
-    let decoded = Request::decode(proto_file("request").as_slice()).unwrap();
-    let expected = Request::new(
-        EntityUid::from_type_name_and_id(
-            "App::Org::User".parse().unwrap(),
-            EntityId::new("alice\n\"bob'"),
-        ),
-        EntityUid::from_type_name_and_id(
-            "App::Org::Action".parse().unwrap(),
-            EntityId::new("read"),
-        ),
-        EntityUid::from_type_name_and_id(
-            "App::Org::Folder".parse().unwrap(),
-            EntityId::new("root"),
-        ),
-        Context::from_json_value(
-            serde_json::json!({
-                "src_ip": { "__extn": { "fn": "ip", "arg": "192.168.1.1" } },
-                "authenticated": true,
-                "metadata": {
-                    "user_agent": "Mozilla/5.0",
-                    "request_id": "abc-123-\u{1f600}"
-                }
-            }),
+    insta::glob!("proto_test_files/requests", "*.pb", |path| {
+        let decoded = Request::decode(std::fs::read(path).unwrap().as_slice()).unwrap();
+
+        let json_path = path.with_extension("json");
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&json_path).unwrap()).unwrap();
+        let expected = Request::new(
+            EntityUid::from_type_name_and_id(
+                v["principal"]["type"].as_str().unwrap().parse().unwrap(),
+                EntityId::new(v["principal"]["id"].as_str().unwrap()),
+            ),
+            EntityUid::from_type_name_and_id(
+                v["action"]["type"].as_str().unwrap().parse().unwrap(),
+                EntityId::new(v["action"]["id"].as_str().unwrap()),
+            ),
+            EntityUid::from_type_name_and_id(
+                v["resource"]["type"].as_str().unwrap().parse().unwrap(),
+                EntityId::new(v["resource"]["id"].as_str().unwrap()),
+            ),
+            Context::from_json_value(v["context"].clone(), None).unwrap(),
             None,
         )
-        .unwrap(),
-        None,
-    )
-    .unwrap();
-    assert_eq!(decoded, expected);
+        .unwrap();
+
+        assert_eq!(decoded, expected);
+    });
 }

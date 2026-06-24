@@ -1,0 +1,10 @@
+entity Server {
+    addr: ipaddr,
+    cost: decimal,
+    created: datetime,
+    uptime: duration,
+};
+action check appliesTo {
+    principal: Server,
+    resource: Server,
+};

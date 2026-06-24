@@ -1,0 +1,10 @@
+entity Org;
+entity Team in [Org];
+entity User in [Team, Org];
+entity Doc {
+    owner: User,
+};
+action view appliesTo {
+    principal: [User, Team],
+    resource: Doc,
+};

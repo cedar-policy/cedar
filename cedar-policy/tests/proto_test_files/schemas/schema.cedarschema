@@ -1,0 +1,30 @@
+namespace App::Org {
+    entity Role enum ["admin", "viewer"];
+    entity Tag tags String;
+    entity Group;
+    entity User in [Group] {
+        name: String,
+        age: Long,
+        active: Bool,
+        scores: Set<Long>,
+        profile: {
+            email: String,
+            address: { city: String, zip: Long },
+        },
+        manager: User,
+        ip: ipaddr,
+        suspended?: Bool,
+    };
+    entity Folder {
+        owner: User,
+        public: Bool,
+    };
+    action read, write appliesTo {
+        principal: User,
+        resource: Folder,
+        context: {
+            src_ip: ipaddr,
+            authenticated: Bool,
+        },
+    };
+}
