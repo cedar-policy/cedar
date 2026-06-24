@@ -14,3 +14,7 @@ resolver = "2"
 # Enable global integer overflow detection for the release profile
 [profile.release]
 overflow-checks = true
+
+# Keys that packages can inherit
+[workspace.package]
+repository = "https://github.com/cedar-policy/cedar"
