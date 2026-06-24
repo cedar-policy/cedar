@@ -163,7 +163,7 @@ impl TryValidate for api::PolicySet {
 impl TryValidate for api::Entities {
     type Err = EntitiesError;
     fn try_validate(self) -> Result<api::Entities, EntitiesError> {
-        Ok(api::Entities(self.0.try_validate(true)?))
+        Ok(api::Entities(self.0.try_validate()?))
     }
 }
 
