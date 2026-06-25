@@ -195,7 +195,7 @@ impl<'a> Response<'a> {
     }
 
     /// Get satisfied permit residual policies
-    pub fn satisfied_permits(&self) -> impl Iterator<Item = &ResidualPolicy> {
+    pub fn true_permits(&self) -> impl Iterator<Item = &ResidualPolicy> {
         #[expect(
             clippy::unwrap_used,
             reason = "we know that the policy ids are in the residuals map"
@@ -206,7 +206,7 @@ impl<'a> Response<'a> {
     }
 
     /// Get satisfied forbid residual policies
-    pub fn satisfied_forbids(&self) -> impl Iterator<Item = &ResidualPolicy> {
+    pub fn true_forbids(&self) -> impl Iterator<Item = &ResidualPolicy> {
         #[expect(
             clippy::unwrap_used,
             reason = "we know that the policy ids are in the residuals map"
@@ -282,9 +282,9 @@ impl<'a> Response<'a> {
             .map(|id| self.residuals.get(id).unwrap())
     }
 
-    /// Look up the [`Residual`] by [`PolicyID`]
-    pub fn get_residual(&self, id: &PolicyID) -> Option<&Residual> {
-        self.residuals.get(id).map(|rp| rp.residual.as_ref())
+    /// Look up the [`ResidualPolicy`] by [`PolicyID`]
+    pub fn get_residual_policy(&self, id: &PolicyID) -> Option<&ResidualPolicy> {
+        self.residuals.get(id)
     }
 
     /// Attempt to get the authorization decision
@@ -318,16 +318,24 @@ impl<'a> Response<'a> {
         self.request.check_consistency(request)?;
 
         let authorizer = Authorizer::new();
-        #[expect(clippy::unwrap_used, reason = "policy ids should not clash")]
-        Ok(authorizer.is_authorized(
-            request.clone(),
-            &PolicySet::try_from_iter(self.residuals.values().map(|rp| rp.clone().into())).unwrap(),
-            entities,
-        ))
+        Ok(authorizer.is_authorized(request.clone(), &self.policy_set(), entities))
     }
 
-    /// Get residual policies
-    pub fn residual_policies(&self) -> impl Iterator<Item = &ResidualPolicy> {
+    /// Get all policies (including concrete true/false/error residuals)
+    pub fn policies(&self) -> impl Iterator<Item = &ResidualPolicy> {
         self.residuals.values()
+    }
+
+    /// Get all policies (including concrete true/false/error residuals) as a `PolicySet`
+    pub fn policy_set(&self) -> PolicySet {
+        let mut ps = PolicySet::new();
+        for p in self.policies() {
+            #[expect(
+                clippy::unwrap_used,
+                reason = "`PolicySet::add` only fails on duplicate ids, but all residual policies will have unique ids"
+            )]
+            ps.add(p.policy.as_ref().clone()).unwrap()
+        }
+        ps
     }
 }

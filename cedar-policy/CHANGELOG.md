@@ -19,11 +19,16 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ### Added
 - Public syntax tree (`pst`) support for `variadic-is-in-range` feature: a variadic `isInRange` is modelled by a `pst::Expr::VariadicOp{...}` in the PST (#2380).
-- Functions for inspecting TPE policy evaluation results (`TpeResponse::reason` and iterators for true/false/error/residual permit/forbid policy IDs).
+- For the experimental `tpe` feature, added functions for inspecting partial evaluation results. Adds `TpeResponse::reason` to get the ids for policies
+  contributing to the authorization decision, and specific iterators to list true/false/error/residual permit/forbid policy IDs. Also adds `TpeResponse::get_policy`
+  to lookup a partially evaluated policy by id, and `TpeResponse::policy_set` to retrieve all partial evaluated policies as a `PolicySet`.
 
 ### Changed
 
 - The experimental protobuf decoding API now validates its inputs, checking structural invariants on entities, expressions, templates, policy sets, and schemas. Additionally, `Entities::decode` now computes the transitive closure instead of assuming it is already computed. These changes may result in lower performance for protobuf decoding. The previous, unvalidated behavior is available via the new `decode_unchecked` methods (e.g., `Entities::decode_unchecked`) for trusted encoded data.
+- For the experimental `tpe` feature, `TpeResponse::residual_policies` is updated to return only _non-trivial_ residuals and
+  `TpeResponse::nontrivial_residual_policies` is deprecated. The previous behavior (iterating all residuals including trivial ones)
+  is available via `TpeResponse::policies`.
 
 ## [4.11.2] - 2026-06-22
 

@@ -984,7 +984,11 @@ impl Expr {
     /// Does this expression contain any [`Expr::ResidualError`] nodes?
     ///
     /// Returns `true` if any subexpression represents a statically-known
-    /// evaluation error (as determined by TPE).
+    /// evaluation error (as determined by TPE). Note that this says nothing
+    /// about whether the expression will, or even can, evaluate to an error.
+    /// This function should only be used to decide if the expression can be
+    /// represented as valid Cedar policy text, since the error residual variant
+    /// does not exist in the Cedar policy syntax.
     #[cfg(feature = "tpe")]
     pub fn has_error(&self) -> bool {
         self.reduce::<bool>(

@@ -19,9 +19,8 @@ use cedar_policy_core::{
     entities::err::EntitiesError,
     validator::SchemaError,
 };
-use itertools::Either;
 
-use crate::{api, PolicySetError};
+use crate::api;
 
 use super::ast::ProtobufConversionError;
 
@@ -151,12 +150,9 @@ pub(crate) fn try_decode<
 }
 
 impl TryValidate for api::PolicySet {
-    type Err = Either<PolicySetError, PolicySetValidationError>;
+    type Err = PolicySetValidationError;
     fn try_validate(self) -> Result<Self, Self::Err> {
-        self.ast
-            .try_validate()
-            .map_err(Either::Right)
-            .and_then(|o| o.try_into().map_err(Either::Left))
+        self.ast.try_validate().map(|o| o.into())
     }
 }
 

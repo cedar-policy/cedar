@@ -84,8 +84,7 @@ impl TryFrom<models::PolicySet> for api::PolicySet {
     type Error = ProtobufConversionError;
     fn try_from(v: models::PolicySet) -> Result<Self, Self::Error> {
         let ast: cedar_policy_core::ast::PolicySet = v.try_into()?;
-        Self::from_ast(ast)
-            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid policy set: {e}")))
+        Ok(Self::from_ast(ast))
     }
 }
 
