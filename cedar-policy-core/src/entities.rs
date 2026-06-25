@@ -173,7 +173,7 @@ impl Entities {
                         entities_touched.insert(entity.uid().clone());
                     }
                 }
-                repair_tc(entities_touched, &mut self.entities, true)?
+                repair_tc(&entities_touched, &mut self.entities, true)?
             }
         };
         Ok(self)
@@ -212,7 +212,7 @@ impl Entities {
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => (),
             TCComputation::EnforceAlreadyComputed => enforce_tc_and_dag(&self.entities)?,
-            TCComputation::ComputeNow => repair_tc(entities_touched, &mut self.entities, true)?,
+            TCComputation::ComputeNow => repair_tc(&entities_touched, &mut self.entities, true)?,
         }
         Ok(self)
     }
@@ -273,7 +273,7 @@ impl Entities {
                         entities_touched.insert(entity.uid().clone());
                     }
                 }
-                repair_tc(entities_touched, &mut self.entities, true)?
+                repair_tc(&entities_touched, &mut self.entities, true)?
             }
         };
         Ok(self)

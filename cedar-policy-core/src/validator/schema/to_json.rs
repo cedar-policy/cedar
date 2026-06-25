@@ -103,7 +103,7 @@ impl ValidatorSchema {
 
         let mut entity_ancestors = self.entity_ancestors();
         for (entity_type, validator_entity_type) in &self.entity_types {
-            if let Some(ancestors) = entity_ancestors.remove(&entity_type) {
+            if let Some(ancestors) = entity_ancestors.remove(entity_type) {
                 let namespace = entity_type.as_ref().as_ref().path.clone();
                 let entity_name = entity_type.as_ref().basename().clone();
                 let json_entity_type = validator_entity_type.to_json_entity_type(ancestors)?;
@@ -134,7 +134,7 @@ impl ValidatorSchema {
                 let mut namespace = namespace.as_ref().clone();
                 if let Some(id) = namespace.pop() {
                     Some(
-                        Name::try_from(InternalName::new(id, namespace.into_iter(), None))
+                        Name::try_from(InternalName::new(id, namespace, None))
                             .map_err(|e| e.to_string())?,
                     )
                 } else {
