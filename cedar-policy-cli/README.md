@@ -12,6 +12,24 @@ This usage is not standard and annotations have custom use depending on the app.
 
 ## Install
 
+### Pre-built binaries
+
+Pre-built `cedar` binaries are attached to each [GitHub release](https://github.com/cedar-policy/cedar/releases?q=cedar-policy-cli) tagged `cedar-policy-cli-v*` for:
+
+- Linux: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`
+- macOS: `x86_64-apple-darwin`, `aarch64-apple-darwin`
+- Windows: `x86_64-pc-windows-msvc`
+
+Archives bundle the `cedar` binary, `LICENSE`, `NOTICE`, and `THIRD_PARTY_LICENSES.txt` with sha256 sums; the release page also provides one-line `curl | sh` (POSIX) and `irm | iex` (PowerShell) installer scripts.
+
+These are default-feature builds. The `tpe` and `symcc` subcommands are in the experimental flavor below; `partially-authorize` and the `--validation-mode permissive`/`partial` flags are not shipped — build from source if you need them.
+
+### Experimental flavor
+
+A parallel `cedar-policy-cli-experimental-<target>.<ext>` archive is attached to every release. Same `cedar` binary name, built with `tpe` and `analyze` enabled. The `analyze` feature exposes `cedar symcc ...` subcommands for symbolic verification of policies; using them additionally requires the external [cvc5](https://github.com/cvc5/cvc5) SMT solver installed at runtime. Surface area of these features can change between releases; use the regular flavor if stability matters.
+
+### From source
+
 You will need to install Rust, via [rustup](https://rustup.rs).
 
 To install the CLI, run `cargo install cedar-policy-cli`.
@@ -47,4 +65,4 @@ We welcome contributions from the community. Please either file an issue, or see
 
 ## License
 
-This project is licensed under the Apache-2.0 License.
+This project is licensed under the Apache-2.0 License. Pre-built archives bundle `NOTICE` and `THIRD_PARTY_LICENSES.txt`; `cedar license` prints the same attributions.

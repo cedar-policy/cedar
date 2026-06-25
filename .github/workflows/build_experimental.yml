@@ -1,0 +1,89 @@
+name: Build experimental cedar binaries
+
+# Wired into cargo-dist via `post-announce-jobs` in the workspace Cargo.toml.
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        description: "dist-manifest.json contents passed in by cargo-dist."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+    runs-on: ${{ matrix.runner }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Configure rust toolchain
+        run: rustup update stable --no-self-update && rustup default stable && rustup target add ${{ matrix.target }}
+
+      - name: Build experimental cedar
+        run: >-
+          cargo build --profile dist --locked
+          --target ${{ matrix.target }}
+          -p cedar-policy-cli
+          --features analyze,tpe
+
+      - name: Stage archive
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          STAGE="cedar-policy-cli-experimental-${TARGET}"
+          mkdir -p "$STAGE"
+          if [[ "$TARGET" == *windows* ]]; then
+            cp "target/${TARGET}/dist/cedar.exe" "$STAGE/"
+          else
+            cp "target/${TARGET}/dist/cedar" "$STAGE/"
+          fi
+          cp LICENSE NOTICE THIRD_PARTY_LICENSES.txt \
+             cedar-policy-cli/README.md cedar-policy-cli/CHANGELOG.md \
+             "$STAGE/"
+          if [[ "$TARGET" == *windows* ]]; then
+            7z a "${STAGE}.zip" "$STAGE" >/dev/null
+            ARCHIVE="${STAGE}.zip"
+          else
+            tar -cJf "${STAGE}.tar.xz" "$STAGE"
+            ARCHIVE="${STAGE}.tar.xz"
+          fi
+          # sha256sum exists on Linux and Windows Git Bash; macOS only has shasum.
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
+          else
+            shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
+          fi
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Upload to GitHub Release
+        shell: bash
+        env:
+          TAG: ${{ fromJson(inputs.plan).announcement_tag }}
+        run: gh release upload --clobber "$TAG" "$ARCHIVE" "${ARCHIVE}.sha256"
