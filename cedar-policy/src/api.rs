@@ -2545,40 +2545,78 @@ impl FromStr for PolicySet {
     /// See [`Policy`] for more.
     fn from_str(policies: &str) -> Result<Self, Self::Err> {
         let (texts, pset) = parser::parse_policyset_and_also_return_policy_text(policies)?;
-        #[expect(clippy::expect_used, reason = "By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.policies()` occurs as a key in `text`.")]
-        let policies = pset.policies().map(|p|
-            (
-                PolicyId::new(p.id().clone()),
-                Policy { lossless: LosslessPolicy::policy_or_template_text(*texts.get(p.id()).expect("internal invariant violation: policy id exists in asts but not texts")), ast: p.clone() }
-            )
-        ).collect();
-        #[expect(
-            clippy::expect_used,
-            reason = "By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.templates()` also occurs as a key in `text`."
-        )]
+        Ok(PolicySet::from_parsed_with_text(texts, pset))
+    }
+}
+
+impl PolicySet {
+    /// Create a policy set as in [`PolicySet::from_str`], but rejecting any
+    /// policy whose expression depth exceeds `depth_limit`.
+    ///
+    /// This function can be used to limit the maximum recursion depth, avoiding
+    /// the stackoverflows when parsing policies with unknown depth.
+    pub fn from_str_with_depth_limit(
+        policies: &str,
+        depth_limit: usize,
+    ) -> Result<Self, ParseErrors> {
+        let (texts, pset) = parser::parse_policyset_with_depth_limit_and_also_return_policy_text(
+            policies,
+            depth_limit,
+        )?;
+        Ok(Self::from_parsed_with_text(texts, pset))
+    }
+
+    /// Build a [`PolicySet`] from a parsed AST and the per-policy source text
+    /// map. This preserves lossless representations for each policy/template.
+    ///
+    /// INVARIANT: Every policy and template id in `pset` must be present as a key into `texts`.
+    /// This is satisfied by `parser::parse_policyset_and_also_return_policy_text` and
+    /// `parser::parse_policyset_with_depth_limit_and_also_return_policy_text`.
+    fn from_parsed_with_text(
+        texts: HashMap<ast::PolicyID, Option<&str>>,
+        pset: ast::PolicySet,
+    ) -> Self {
+        let policies = pset
+            .policies()
+            .map(|p| {
+                (
+                    PolicyId::new(p.id().clone()),
+                    Policy {
+                        lossless: LosslessPolicy::policy_or_template_text(
+                            #[expect(clippy::expect_used, reason = "By policy id invariant")]
+                            *texts.get(p.id()).expect(
+                                "internal invariant violation: policy id exists in asts but not texts",
+                            ),
+                        ),
+                        ast: p.clone(),
+                    },
+                )
+            })
+            .collect();
         let templates = pset
             .templates()
             .map(|t| {
                 (
                     PolicyId::new(t.id().clone()),
                     Template {
-                        lossless: LosslessTemplate::from_text(*texts.get(t.id()).expect(
-                            "internal invariant violation: template id exists in asts but not ests",
-                        )),
+                        lossless: LosslessTemplate::from_text(
+                            #[expect(clippy::expect_used, reason = "By template id invariant")]
+                            *texts.get(t.id()).expect(
+                                "internal invariant violation: template id exists in asts but not texts",
+                            ),
+                        ),
                         ast: t.clone(),
                     },
                 )
             })
             .collect();
-        Ok(Self {
+        Self {
             ast: pset,
             policies,
             templates,
-        })
+        }
     }
-}
 
-impl PolicySet {
     /// Build the policy set AST from the EST
     fn from_est(est: &est::PolicySet) -> Result<Self, PolicySetError> {
         let ast: ast::PolicySet = est.clone().try_into()?;
@@ -3528,6 +3566,21 @@ impl Template {
         })
     }
 
+    /// Like [`Template::parse`], but rejects the template if its expression
+    /// depth exceeds `depth_limit`.
+    pub fn parse_with_depth_limit(
+        id: Option<PolicyId>,
+        src: impl AsRef<str>,
+        depth_limit: usize,
+    ) -> Result<Self, ParseErrors> {
+        let ast =
+            parser::parse_template_with_depth_limit(id.map(Into::into), src.as_ref(), depth_limit)?;
+        Ok(Self {
+            ast,
+            lossless: LosslessTemplate::from_text(Some(src.as_ref())),
+        })
+    }
+
     /// Get the `PolicyId` of this `Template`
     pub fn id(&self) -> &PolicyId {
         PolicyId::ref_cast(self.ast.id())
@@ -4058,6 +4111,25 @@ impl Policy {
     /// policies
     pub fn parse(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
         let inline_ast = parser::parse_policy(id.map(Into::into), policy_src.as_ref())?;
+        let (_, ast) = ast::Template::link_static_policy(inline_ast);
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(Some(policy_src.as_ref())),
+        })
+    }
+
+    /// Like [`Policy::parse`], but rejects the policy if its expression depth
+    /// exceeds `depth_limit`.
+    pub fn parse_with_depth_limit(
+        id: Option<PolicyId>,
+        policy_src: impl AsRef<str>,
+        depth_limit: usize,
+    ) -> Result<Self, ParseErrors> {
+        let inline_ast = parser::parse_policy_with_depth_limit(
+            id.map(Into::into),
+            policy_src.as_ref(),
+            depth_limit,
+        )?;
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
         Ok(Self {
             ast,
@@ -4708,6 +4780,16 @@ impl Expression {
     /// This function is only intended to be used internally.
     pub(crate) fn into_inner(self) -> ast::Expr {
         self.0
+    }
+}
+
+impl Expression {
+    /// Parse an [`Expression`] from Cedar syntax, rejecting if its depth
+    /// exceeds `depth_limit`.
+    pub fn parse_with_depth_limit(src: &str, depth_limit: usize) -> Result<Self, ParseErrors> {
+        parser::parse_expr_with_depth_limit(src, depth_limit)
+            .map(Expression)
+            .map_err(Into::into)
     }
 }
 
