@@ -325,7 +325,7 @@ fn tokenize(src: &[u8]) -> Result<Vec<Token>, SExprParseError> {
                             reason = "start <= i <= src.len() thus slicing should not panic"
                         )]
                         let num = str::from_utf8(&src[start..i])?;
-                        let num = u128::from_str_radix(&num, radix)?;
+                        let num = u128::from_str_radix(num, radix)?;
 
                         // Do a sign-extension from i<width> to i<128>
                         let num = if width != 0 && width < 128 && (1u128 << (width - 1)) & num != 0

@@ -158,7 +158,7 @@ pub fn is_authorized_batched(
                 )]
                 ResidualPolicy::new(
                     Arc::new(evaluator.interpret(&residual.get_residual())),
-                    Arc::new(ps.get(&residual.get_policy_id()).unwrap().clone()),
+                    Arc::new(ps.get(residual.get_policy_id()).unwrap().clone()),
                 )
             })
             .collect();

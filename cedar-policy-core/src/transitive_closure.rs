@@ -83,7 +83,7 @@ where
 /// the keys (with type `K`) for the nodes in the graph which caused the error.
 /// If `enforce_dag` then also check that the heirarchy is a DAG
 pub fn repair_tc<K, V>(
-    nodes_to_fix: HashSet<K>,
+    nodes_to_fix: &HashSet<K>,
     nodes: &mut HashMap<K, V>,
     enforce_dag: bool,
 ) -> Result<(), K>
@@ -1548,7 +1548,7 @@ mod tests {
         d.add_parent(EntityUID::with_eid("B"));
         entities.insert(d.uid().clone(), d);
         let nodes_to_fix = HashSet::from([EntityUID::with_eid("D")]);
-        repair_tc(nodes_to_fix, &mut entities, false).expect("repair_tc failed");
+        repair_tc(&nodes_to_fix, &mut entities, false).expect("repair_tc failed");
 
         // D should get an edge to C
         let d = entities.get(&EntityUID::with_eid("D")).unwrap();
@@ -1739,7 +1739,7 @@ mod tests {
                 .iter()
                 .map(|id| EntityUID::with_eid(id))
                 .collect();
-            repair_tc(fix_set, &mut entities, false)
+            repair_tc(&fix_set, &mut entities, false)
                 .unwrap_or_else(|_| panic!("repair_tc failed on '{name}'"));
             let repaired = snapshot(&entities);
 

@@ -652,7 +652,7 @@ impl PartialEntities {
                         }
                     }
                 }
-                repair_tc(entities_touched, &mut self.entities, true)?;
+                repair_tc(&entities_touched, &mut self.entities, true)?;
             }
         }
         Ok(())
