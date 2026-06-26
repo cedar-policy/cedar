@@ -399,7 +399,12 @@ impl PartialEntities {
     }
 }
 
-/// A partial version of [`crate::Response`].
+/// A response to a partial authorization request.
+///
+/// Most callers will want to first check if a concrete authorization decision was reached using
+/// [`TpeResponse::decision`] before inspecting the unevaluated policies with
+/// [`TpeResponse::residual_policies`] or resuming evaluation after providing
+/// the missing parts of the request with [`TpeResponse::reauthorize`].
 #[doc = include_str!("../../experimental_warning.md")]
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
@@ -413,7 +418,16 @@ impl<'a> AsRef<tpe::response::Response<'a>> for TpeResponse<'a> {
 }
 
 impl TpeResponse<'_> {
-    /// Attempt to get the authorization decision
+    /// Get the authorization decision, if TPE reached a concrete decision.
+    ///
+    /// This function can return three possible values:
+    /// * `Some(Decision::Allow)`, when there was enough information in the
+    ///    partial request to concretely decide that the request should be allowed.
+    /// * `Some(Decision::Deny)`, when there was enough information to decide
+    ///    that the request should be denied.
+    /// * `None`, when the partial request did _not_ provide enough information to reach an
+    ///    authorization decision. In this case you can use [`TpeResponse::reauthorize`] to provide
+    ///    the missing parts of the request and reach a concrete decision.
     pub fn decision(&self) -> Option<Decision> {
         self.0.decision()
     }
@@ -437,7 +451,7 @@ impl TpeResponse<'_> {
     /// Get the permit policies that did not reach a concrete value or error for the partial request.
     ///
     /// This function only returns the `PolicyId`s for residual policies.
-    /// To access the residual policy conditions, use [`TpeResponse::nontrivial_residual_policies`].
+    /// To access the residual policy conditions, use [`TpeResponse::residual_policies`].
     ///
     /// These policies could be determining policies _if_ the eventual
     /// concrete authorization decision is `Allow` _and_ they are satisfied by
@@ -705,11 +719,11 @@ impl EntityLoader for TestEntityLoader<'_> {
 impl PolicySet {
     /// Perform type-aware partial evaluation on this [`PolicySet`].
     ///
-    /// If successful, the result is a [`TpeResponse`] containing residual
-    /// policies ready for re-authorization. Use [`TpeResponse::residual_policies()`]
-    /// to get the residuals as [`Policy`] objects, then call [`Policy::to_pst()`]
-    /// to convert them to [`crate::pst::Policy`] for structured inspection of the residual
-    /// expression tree.
+    /// If successful, the result is a [`TpeResponse`] containing the authorization decision, if
+    /// one was reached, and residual policies ready for re-authorization. Use [`TpeResponse::decision`]
+    /// to check the decision and [`TpeResponse::residual_policies`] to get the residuals as
+    /// [`Policy`] objects. You can then call [`Policy::to_pst`] to convert them to [`pst::Policy`](crate::pst::Policy)
+    /// for structured inspection of the residual expression tree.
     #[doc = include_str!("../../experimental_warning.md")]
     pub fn tpe<'a>(
         &self,
