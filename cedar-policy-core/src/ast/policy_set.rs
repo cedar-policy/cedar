@@ -115,7 +115,7 @@ impl TryFrom<LiteralPolicySet> for PolicySet {
             let template = link.template().id();
             // Check that template-linked policy IDs do not collide with template IDs.
             // This is enforced when using `ast::policy_set::PolicySet::link` to construct a
-            // policy set incrementally.
+            // policy set incrementally and should also be enforced here.
             if !link.is_static() && templates.contains_key(link_id) {
                 return Err(ReificationError::Linking(LinkingError::PolicyIdConflict {
                     id: link_id.clone(),
