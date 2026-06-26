@@ -75,9 +75,11 @@ jobs:
             - name: Compute release branch.
               id: compute_release_branch
               uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+              env:
+                  TAG: ${{ inputs.tag }}
               with:
                   script: |
-                      const tag = '${{ inputs.tag }}';
+                      const tag = process.env.TAG;
                       const version = tag.replace('v', '');
                       const [major, minor, _] = version.split('.');
                       const releaseBranch = `release/${major}.${minor}.x`;
@@ -93,13 +95,16 @@ jobs:
             - name: Compute NPM tag
               id: compute_npm_tag
               uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+              env:
+                  TAG: ${{ inputs.tag }}
+                  LATEST_NPM_VERSION: ${{ steps.latest_npm_version.outputs.latest_npm_version }}
               with:
                   script: |
                       const compareVersions = require('compare-versions');
-                      const tag = '${{ inputs.tag }}';
+                      const tag = process.env.TAG;
                       const version = tag.replace('v', '');
                       const [major, minor, _] = version.split('.');
-                      const latestRelease = '${{ steps.latest_npm_version.outputs.latest_npm_version }}'
+                      const latestRelease = process.env.LATEST_NPM_VERSION;
                       console.log(`Latest version found on NPM: ${latestRelease}`);
                       let npmTag;
                       if (compareVersions.compare(version, latestRelease, '<=')) {
