@@ -113,6 +113,14 @@ impl TryFrom<LiteralPolicySet> for PolicySet {
         }
         for (link_id, link) in &links {
             let template = link.template().id();
+            // Check that template-linked policy IDs do not collide with template IDs.
+            // This is enforced when using `ast::policy_set::PolicySet::link` to construct a
+            // policy set incrementally.
+            if !link.is_static() && templates.contains_key(link_id) {
+                return Err(ReificationError::Linking(LinkingError::PolicyIdConflict {
+                    id: link_id.clone(),
+                }));
+            }
             match template_to_links_map.entry(template.clone()) {
                 Entry::Occupied(t) => t.into_mut().insert(link_id.clone()),
                 Entry::Vacant(_) => return Err(ReificationError::NoSuchTemplate(template.clone())),
@@ -1421,6 +1429,38 @@ mod policy_set_validate_test {
             Err(PolicySetValidationError::LinkToSlotlessTemplate { link_id, template_id })
                 if link_id == PolicyID::from_string("link1")
                 && template_id == PolicyID::from_string("no_slots")
+        );
+    }
+
+    #[test]
+    fn link_id_conflicts_with_template_id_rejected() {
+        let id = PolicyID::from_string("t");
+        let t = Template::new(
+            id.clone(),
+            None,
+            Annotations::new(),
+            Effect::Permit,
+            PrincipalConstraint::is_eq_slot(),
+            ActionConstraint::Eq(action_euid()),
+            ResourceConstraint::any(),
+            None,
+        );
+        let mut values = HashMap::new();
+        values.insert(
+            SlotId::principal(),
+            EntityUID::with_eid_and_type("User", "alice").unwrap(),
+        );
+        let literal = LiteralPolicySet::new(
+            [(id.clone(), t.clone())],
+            [(
+                id.clone(),
+                LiteralPolicy::template_linked_policy(id.clone(), id, values),
+            )],
+        );
+        assert_matches!(
+            PolicySet::try_from(literal),
+            Err(ReificationError::Linking(LinkingError::PolicyIdConflict { id }))
+                if id == PolicyID::from_string("t")
         );
     }
 }
