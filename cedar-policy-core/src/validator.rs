@@ -117,9 +117,13 @@ impl Validator {
     /// Validate all templates, links, and static policies in a policy set.
     /// Return a `ValidationResult`.
     pub fn validate(&self, policies: &PolicySet, mode: ValidationMode) -> ValidationResult {
+        // Create the Typechecker once and reuse across all policies.
+        // This avoids recomputing the O(actions × principals × resources)
+        // request environments for every policy template.
+        let typechecker = Typechecker::new(&self.schema, mode);
         let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
-            .map(|p| self.validate_policy(p, mode))
+            .map(|p| self.validate_policy_with_typechecker(p, &typechecker))
             .unzip();
         let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
         let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
@@ -144,9 +148,13 @@ impl Validator {
         mode: ValidationMode,
         max_deref_level: u32,
     ) -> ValidationResult {
+        // Create the Typechecker once and reuse across all policies.
+        let typechecker = Typechecker::new(&self.schema, mode);
         let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
-            .map(|p| self.validate_policy_with_level(p, mode, max_deref_level))
+            .map(|p| {
+                self.validate_policy_with_level_and_typechecker(p, max_deref_level, &typechecker)
+            })
             .unzip();
         let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
         let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
@@ -164,6 +172,7 @@ impl Validator {
     /// Run all validations against a single static policy or template (note
     /// that Core `Template` includes static policies as well), gathering all
     /// validation errors and warnings in the returned iterators.
+    #[cfg(test)]
     fn validate_policy<'a>(
         &'a self,
         p: &'a Template,
@@ -172,28 +181,8 @@ impl Validator {
         impl Iterator<Item = ValidationError> + 'a,
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
-        let validation_errors = if mode.is_partial() {
-            // We skip `validate_entity_types`, `validate_action_ids`, and
-            // `validate_action_application` passes for partial schema
-            // validation because there may be arbitrary extra entity types and
-            // actions, so we can never claim that one doesn't exist.
-            None
-        } else {
-            Some(
-                Validator::validate_entity_types(&self.schema, p)
-                    .chain(Validator::validate_enum_entity(&self.schema, p))
-                    .chain(Validator::validate_action_ids(&self.schema, p))
-                    // We could usefully update this pass to apply to partial
-                    // schema if it only failed when there is a known action
-                    // applied to known principal/resource entity types that are
-                    // not in its `appliesTo`.
-                    .chain(self.validate_template_action_application(p)),
-            )
-        }
-        .into_iter()
-        .flatten();
-        let (errors, warnings) = self.typecheck_policy(p, mode);
-        (validation_errors.chain(errors), warnings)
+        let typechecker = Typechecker::new(&self.schema, mode);
+        self.validate_policy_with_typechecker(p, &typechecker)
     }
 
     /// Check that all entity types are defined in the schema, and each entity
@@ -235,11 +224,41 @@ impl Validator {
         )
     }
 
+    /// Like [`validate_policy`] but reuses an existing [`Typechecker`] instead
+    /// of constructing a new one for each policy. This avoids recomputing
+    /// request environments when validating multiple policies against the same
+    /// schema.
+    fn validate_policy_with_typechecker<'a>(
+        &'a self,
+        p: &'a Template,
+        typechecker: &Typechecker<'a>,
+    ) -> (
+        impl Iterator<Item = ValidationError> + 'a,
+        impl Iterator<Item = ValidationWarning> + 'a,
+    ) {
+        let mode = typechecker.mode();
+        let validation_errors = if mode.is_partial() {
+            None
+        } else {
+            Some(
+                Validator::validate_entity_types(&self.schema, p)
+                    .chain(Validator::validate_enum_entity(&self.schema, p))
+                    .chain(Validator::validate_action_ids(&self.schema, p))
+                    .chain(self.validate_template_action_application(p)),
+            )
+        }
+        .into_iter()
+        .flatten();
+        let (errors, warnings) = self.typecheck_policy_with_typechecker(typechecker, p);
+        (validation_errors.chain(errors), warnings)
+    }
+
     /// Construct a Typechecker instance and use it to detect any type errors in
     /// the argument static policy or template (note that Core `Template`
     /// includes static policies as well) in the context of the schema for this
     /// validator. Any detected type errors are wrapped and returned as
     /// `ValidationErrorKind`s.
+    #[cfg(test)]
     fn typecheck_policy<'a>(
         &'a self,
         t: &'a Template,
@@ -249,6 +268,18 @@ impl Validator {
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
         let typecheck = Typechecker::new(&self.schema, mode);
+        self.typecheck_policy_with_typechecker(&typecheck, t)
+    }
+
+    /// Use an existing [`Typechecker`] to detect type errors in a policy.
+    fn typecheck_policy_with_typechecker<'a>(
+        &'a self,
+        typecheck: &Typechecker<'a>,
+        t: &'a Template,
+    ) -> (
+        impl Iterator<Item = ValidationError> + 'a,
+        impl Iterator<Item = ValidationWarning> + 'a,
+    ) {
         let mut errors = HashSet::new();
         let mut warnings = HashSet::new();
         typecheck.typecheck_policy(t, &mut errors, &mut warnings);

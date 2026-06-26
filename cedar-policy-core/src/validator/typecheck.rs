@@ -85,6 +85,11 @@ impl<'a> Typechecker<'a> {
         }
     }
 
+    /// The validation mode this typechecker was constructed with.
+    pub fn mode(&self) -> ValidationMode {
+        self.mode
+    }
+
     /// The main entry point for typechecking policies. Checks that the policy
     /// expression has type boolean. If typechecking succeeds, then the method
     /// will return true, and no items will be added to the output list.

@@ -59,6 +59,7 @@ impl Validator {
     /// validation errors and warnings in the returned iterators.  For
     /// environments where validation passes, we will also perform level
     /// validation (see RFC 76).
+    #[cfg(test)]
     pub(crate) fn validate_policy_with_level<'a>(
         &'a self,
         p: &'a Template,
@@ -68,29 +69,81 @@ impl Validator {
         impl Iterator<Item = ValidationError> + 'a,
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
-        // Validate all policies first without using levels so that we report
-        // all type errors, but also continue to do level validation even if
-        // some policies have an error. This allows us to report more errors.
-        let (errors, warnings) = self.validate_policy(p, mode);
-
         let typechecker = Typechecker::new(&self.schema, mode);
-        let type_annotated_asts = typechecker.typecheck_by_request_env(p);
+        self.validate_policy_with_level_and_typechecker(p, max_deref_level, &typechecker)
+    }
+
+    /// Like [`validate_policy_with_level`] but reuses an existing
+    /// [`Typechecker`] instead of constructing a new one for each policy.
+    pub(super) fn validate_policy_with_level_and_typechecker<'a>(
+        &'a self,
+        p: &'a Template,
+        max_deref_level: u32,
+        typechecker: &Typechecker<'a>,
+    ) -> (
+        impl Iterator<Item = ValidationError> + 'a,
+        impl Iterator<Item = ValidationWarning> + 'a,
+    ) {
+        let mode = typechecker.mode();
+
+        // RBAC checks: entity types, action IDs, etc.
+        // Skipped for partial schema validation.
+        let validation_errors = if mode.is_partial() {
+            None
+        } else {
+            Some(
+                Validator::validate_entity_types(&self.schema, p)
+                    .chain(Validator::validate_enum_entity(&self.schema, p))
+                    .chain(Validator::validate_action_ids(&self.schema, p))
+                    .chain(self.validate_template_action_application(p)),
+            )
+        }
+        .into_iter()
+        .flatten();
+
+        // Typecheck once and reuse the results for both error collection
+        // and level validation, avoiding a redundant second pass through
+        // typecheck_by_request_env.
+        let typecheck_answers = typechecker.typecheck_by_request_env(p);
+
+        let mut type_errors = HashSet::new();
+        let mut warnings = HashSet::new();
+        let mut all_false = true;
         let mut level_checker = LevelChecker {
             policy_id: p.id(),
             max_level: max_deref_level.into(),
             level_checking_errors: HashSet::new(),
         };
-        for (req_env, policy_check) in type_annotated_asts {
-            match policy_check {
-                PolicyCheck::Success(e) | PolicyCheck::Irrelevant(_, e) => {
-                    level_checker.check_expr_level(&e, &req_env);
+
+        for (req_env, check) in &typecheck_answers {
+            match check {
+                PolicyCheck::Success(e) => {
+                    all_false = false;
+                    level_checker.check_expr_level(e, req_env);
                 }
-                // We already have these errors from calling `validate_policy`
-                // and will return them at the end of the function.
-                PolicyCheck::Fail(_) => {}
+                PolicyCheck::Irrelevant(err, e) => {
+                    type_errors.extend(err.iter().cloned());
+                    level_checker.check_expr_level(e, req_env);
+                }
+                PolicyCheck::Fail(err) => {
+                    type_errors.extend(err.iter().cloned());
+                    all_false = false;
+                }
             }
         }
-        (errors.chain(level_checker.level_checking_errors), warnings)
+        if all_false {
+            warnings.insert(ValidationWarning::impossible_policy(
+                p.loc().cloned(),
+                p.id().clone(),
+            ));
+        }
+
+        (
+            validation_errors
+                .chain(type_errors)
+                .chain(level_checker.level_checking_errors),
+            warnings.into_iter(),
+        )
     }
 }
 
