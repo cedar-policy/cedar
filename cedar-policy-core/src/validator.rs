@@ -253,25 +253,7 @@ impl Validator {
         (validation_errors.chain(errors), warnings)
     }
 
-    /// Construct a Typechecker instance and use it to detect any type errors in
-    /// the argument static policy or template (note that Core `Template`
-    /// includes static policies as well) in the context of the schema for this
-    /// validator. Any detected type errors are wrapped and returned as
-    /// `ValidationErrorKind`s.
-    #[cfg(test)]
-    fn typecheck_policy<'a>(
-        &'a self,
-        t: &'a Template,
-        mode: ValidationMode,
-    ) -> (
-        impl Iterator<Item = ValidationError> + 'a,
-        impl Iterator<Item = ValidationWarning> + 'a,
-    ) {
-        let typecheck = Typechecker::new(&self.schema, mode);
-        self.typecheck_policy_with_typechecker(&typecheck, t)
-    }
-
-    /// Use an existing [`Typechecker`] to detect type errors in a policy.
+    /// Use a [`Typechecker`] to detect type errors in a policy.
     fn typecheck_policy_with_typechecker<'a>(
         &'a self,
         typecheck: &Typechecker<'a>,
