@@ -16,7 +16,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 - Fixed `schema_to_json_with_resolved_types` to support converting schemas that use the `Action` entity type as an attribute type.
   Previously this was reported as an error; it now converts to a correct JSON schema. (#2400)
-- Added missing validation check when decoding a protobuf policy set that template-linked policy IDs don't collide with template IDs. (#2441)
+- Added missing validation check when decoding a protobuf policy set that template-linked policy IDs do not collide with template IDs. (#2441)
 
 ### Added
 - Public syntax tree (`pst`) support for `variadic-is-in-range` feature: a variadic `isInRange` is modelled by a `pst::Expr::VariadicOp{...}` in the PST (#2380).
