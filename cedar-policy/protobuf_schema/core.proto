@@ -32,7 +32,7 @@ message PolicySet {
     repeated TemplateBody templates = 1;
     // All static policies and template-linked policies are included here.
     // Static policies must appear exactly once, and the PolicyID of the static
-    // policy must be the same in this list and the above list.
+    // policy must be the same in this list and the templates list.
     repeated Policy links = 2;
 }
 
@@ -55,16 +55,16 @@ message Policy {
     // ID of the template associated with this policy.
     // For static policies, this is the ID of a zero-slot template.
     string template_id = 1;
-    // ID of this policy itself.
+    // ID of the linked policy.
     // For static policies, this is omitted/ignored; the ID of the policy is the
     // `template_id`.
     optional string link_id = 2;
     // Whether this policy is a static (false) or template-linked (true) policy
     bool is_template_link = 3;
-    // Value of the `?principal` slot.
+    // Value of the `?principal` slot for the linked policy.
     // Omitted/ignored for templates without the `?principal` slot.
     EntityUid principal_euid = 4;
-    // Value of the `?resource` slot.
+    // Value of the `?resource` slot for the linked policy.
     // Omitted/ignored for templates without the `?resource` slot.
     EntityUid resource_euid = 5;
 }

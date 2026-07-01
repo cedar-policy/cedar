@@ -437,7 +437,7 @@ impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
         let mut template_ids: HashSet<ast::PolicyID> = HashSet::new();
         let mut link_ids: HashSet<ast::PolicyID> = HashSet::new();
 
-        let templates = v
+        let templates_and_static_policies = v
             .templates
             .into_iter()
             .map(|tb| {
@@ -457,30 +457,44 @@ impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
             .map(|p| {
                 // per docs in core.proto, for static policies, `link_id` is omitted/ignored,
                 // and the ID of the policy is the `template_id`.
-                let id = if p.is_template_link {
-                    p.link_id
+                let template_id = ast::PolicyID::from_string(&p.template_id);
+                if !template_ids.contains(&template_id) {
+                    return Err(ProtobufConversionError::InvalidValue(format!(
+                        "link references non-existent template or policy `{template_id}`"
+                    )));
+                }
+                if p.is_template_link {
+                    let link_id = p
+                        .link_id
                         .as_ref()
-                        .ok_or_else(|| ProtobufConversionError::missing("link_id"))?
+                        .ok_or_else(|| ProtobufConversionError::missing("link_id"))?;
+                    let link_id = ast::PolicyID::from_string(link_id);
+                    if !link_ids.insert(link_id.clone()) {
+                        return Err(ProtobufConversionError::InvalidValue(format!(
+                            "duplicate link id `{link_id}`"
+                        )));
+                    }
+                    // Template ids and link ids must not conflict!
+                    if template_ids.contains(&link_id) {
+                        return Err(ProtobufConversionError::InvalidValue(format!(
+                            "link id `{link_id}` conflicts with a template id"
+                        )));
+                    }
+                    // the linked policy id is the link id
+                    Ok((link_id, ast::LiteralPolicy::try_from(p)?))
                 } else {
-                    &p.template_id
-                };
-                let id = ast::PolicyID::from_string(id);
-                if !link_ids.insert(id.clone()) {
-                    return Err(ProtobufConversionError::InvalidValue(format!(
-                        "duplicate link id `{id}`"
-                    )));
+                    // the policy id is the template id (see protobuf docs)
+                    if !link_ids.insert(template_id.clone()) {
+                        return Err(ProtobufConversionError::InvalidValue(format!(
+                            "duplicate link id `{template_id}`"
+                        )));
+                    }
+                    Ok((template_id, ast::LiteralPolicy::try_from(p)?))
                 }
-                // Template ids and links ids must not conflict!
-                if p.is_template_link && template_ids.contains(&id) {
-                    return Err(ProtobufConversionError::InvalidValue(format!(
-                        "link id `{id}` conflicts with a template id"
-                    )));
-                }
-                Ok((id, ast::LiteralPolicy::try_from(p)?))
             })
             .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
 
-        Ok(Self::new(templates, links))
+        Ok(Self::new(templates_and_static_policies, links))
     }
 }
 
@@ -1101,7 +1115,7 @@ mod test {
     #[test]
     fn literal_policy_set_rejects_duplicate_link_ids() {
         let bad = models::PolicySet {
-            templates: vec![],
+            templates: vec![trivial_template_body("duplicate")],
             links: vec![
                 static_policy_link("duplicate"),
                 static_policy_link("duplicate"),
@@ -1148,5 +1162,17 @@ mod test {
         // This should succeed — static policies legitimately share an ID
         // between their template entry and link entry
         assert_matches!(ast::LiteralPolicySet::try_from(pset), Ok(_));
+    }
+
+    #[test]
+    fn literal_policy_set_rejects_link_referencing_nonexistent_template() {
+        let bad = models::PolicySet {
+            templates: vec![trivial_template_body("real_template")],
+            links: vec![static_policy_link("nonexistent")],
+        };
+        assert_matches!(
+            ast::LiteralPolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("non-existent template")
+        );
     }
 }
