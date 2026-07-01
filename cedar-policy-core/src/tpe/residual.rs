@@ -562,7 +562,7 @@ pub(super) mod test {
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
     use crate::tpe::request::{PartialEntityUID, PartialRequest};
-    use crate::validator::typecheck::{PolicyCheck, Typechecker};
+    use crate::validator::typecheck::Typechecker;
     use crate::validator::types::BoolType;
     use crate::validator::{ValidationMode, Validator, ValidatorSchema};
     use cool_asserts::assert_matches;
@@ -573,14 +573,14 @@ pub(super) mod test {
         let expr = parse_expr(expr_str).unwrap();
         let policy_id = crate::ast::PolicyID::from_string("test");
         let t = Template::new_shared(
-            policy_id,
+            policy_id.clone(),
             None,
             Arc::new(Annotations::default()),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
-            Some(Arc::new(expr)),
+            Some(Arc::new(expr.clone())),
         );
 
         let schema = ValidatorSchema::from_cedarschema_str(r#"
@@ -616,29 +616,25 @@ pub(super) mod test {
 
         let errs: Vec<_> = Validator::validate_entity_types_and_literals(&schema, &t).collect();
         if !errs.is_empty() {
+            println!("got {} type errors", errs.len());
+            for e in errs {
+                println!("{:?}", miette::Report::new(e));
+            }
             panic!("unexpected type error in expression");
         }
-        match typechecker.typecheck_by_single_request_env(&t, &env) {
-            PolicyCheck::Success(expr) => expr,
-            PolicyCheck::Fail(errs) => {
-                println!("got {} type errors", errs.len());
-                for e in errs {
-                    println!("{:?}", miette::Report::new(e));
-                }
-                panic!("unexpected type error in expression")
+
+        let mut type_errors = HashSet::new();
+        let ans =
+            typechecker.typecheck_expr_with_request_env(&env, &expr, &policy_id, &mut type_errors);
+        if !type_errors.is_empty() {
+            println!("got {} type errors", type_errors.len());
+            for e in type_errors {
+                println!("{:?}", miette::Report::new(e));
             }
-            PolicyCheck::Irrelevant(errs, expr) => {
-                if errs.is_empty() {
-                    expr
-                } else {
-                    println!("got {} type errors", errs.len());
-                    for e in errs {
-                        println!("{:?}", miette::Report::new(e));
-                    }
-                    panic!("unexpected type error in expression")
-                }
-            }
+            panic!("unexpected type error in expression")
         }
+        ans.into_typed_expr()
+            .expect("expected typechecking to produce a typed expression")
     }
 
     #[track_caller]
@@ -660,17 +656,12 @@ pub(super) mod test {
         assert_eq!(
             Expr::from(
                 Residual::try_from_typed_expr(
-                    &parse_typed_expr(
-                        "principal == ?principal && resource in ?resource",
-                        &env
-                    ),
+                    &parse_typed_expr("principal == ?principal && resource in ?resource", &env),
                     &env
                 )
                 .unwrap()
             ),
-            // extra `true &&` because `parse_type_expr` constructs a policy for typechecking
-            parse_expr(r#"true && (true && (true && (principal == User::"alice" && resource in Organization::"org")))"#)
-                .unwrap()
+            parse_expr(r#"principal == User::"alice" && resource in Organization::"org""#).unwrap()
         );
     }
 
@@ -875,10 +866,7 @@ pub(super) mod test {
     }
 
     fn assert_eq_expr(expr_str: &str) {
-        // The unconstrained
-        let e: Expr = format!("true && (true && (true && ({})))", expr_str)
-            .parse()
-            .unwrap();
+        let e: Expr = expr_str.parse().unwrap();
         let residual = parse_residual(expr_str);
         let e2 = Expr::from(residual);
         println!("e: {}", e);

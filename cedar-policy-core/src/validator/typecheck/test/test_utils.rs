@@ -108,12 +108,29 @@ impl Typechecker<'_> {
             principal_slot: None,
             resource_slot: None,
         };
+        self.typecheck_expr_with_request_env(&request_env, e, policy_id, unique_type_errors)
+    }
+
+    /// Typecheck an expression outside the context of a policy, using the given
+    /// `request_env` to determine the types of `principal`, `action`,
+    /// `resource`, and `context`. Unlike policy typechecking, the expression is
+    /// not required to have type boolean; its type is inferred instead.
+    ///
+    /// `policy_id`: Policy ID to associate with this `Expr`, for the purposes
+    /// of reporting the policy ID in validation errors
+    pub(crate) fn typecheck_expr_with_request_env<'a>(
+        &self,
+        request_env: &RequestEnv<'_>,
+        e: &'a Expr,
+        policy_id: &'a PolicyID,
+        unique_type_errors: &mut HashSet<ValidationError>,
+    ) -> TypecheckAnswer<'a> {
         let typechecker = SingleEnvTypechecker {
             schema: self.schema,
             extensions: self.extensions,
             mode: self.mode,
             policy_id,
-            request_env: &request_env,
+            request_env,
         };
         let mut type_errors = Vec::new();
         let ans = typechecker.typecheck(&CapabilitySet::new(), e, &mut type_errors);
