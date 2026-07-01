@@ -810,6 +810,29 @@ pub mod policy_set_errors {
         #[from]
         pub(crate) inner: serde_json::Error,
     }
+
+    /// Error when a PST `PolicySet` map key doesn't match the inner
+    /// template/policy id
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(
+        "policy set map key `{map_key}` does not match the inner policy/template id `{inner_id}`"
+    )]
+    pub struct InconsistentPolicyId {
+        pub(crate) map_key: PolicyId,
+        pub(crate) inner_id: PolicyId,
+    }
+
+    impl InconsistentPolicyId {
+        /// Get the map key that was used in the PST `PolicySet`
+        pub fn map_key(&self) -> &PolicyId {
+            &self.map_key
+        }
+
+        /// Get the inner id from the template/policy
+        pub fn inner_id(&self) -> &PolicyId {
+            &self.inner_id
+        }
+    }
 }
 
 /// Potential errors when adding to a `PolicySet`.
@@ -873,6 +896,11 @@ pub enum PolicySetError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     PstConversion(#[from] pst::PstConstructionError),
+    /// Error when a PST `PolicySet` map key doesn't match the inner
+    /// template/policy id
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InconsistentPolicyId(#[from] policy_set_errors::InconsistentPolicyId),
 }
 
 #[doc(hidden)]
