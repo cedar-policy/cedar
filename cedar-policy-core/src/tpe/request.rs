@@ -497,7 +497,7 @@ mod request_builder_tests {
         extensions::Extensions,
         tpe::{
             err::RequestBuilderError,
-            request::{PartialEntityUID, PartialRequest, RequestBuilder},
+            request::{PartialRequest, RequestBuilder},
             test_utils::unknown_euid,
         },
         validator::ValidatorSchema,

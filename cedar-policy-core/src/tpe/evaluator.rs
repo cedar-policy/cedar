@@ -644,7 +644,6 @@ fn normalize_ext_value_inner(value: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
-    use std::str::FromStr;
     use std::sync::Arc;
 
     use crate::ast::{Expr, SlotEnv};
