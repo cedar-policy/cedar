@@ -10651,18 +10651,23 @@ mod pst_api {
             pst::ResourceConstraint::Any,
             vec![],
         );
+        let inner_key = t.id.clone();
+        let outer_key = pst::PolicyID("fake_key".into());
         let mut templates = LinkedHashMap::new();
-        templates.insert(pst::PolicyID("fake_key".into()), t);
+        templates.insert(outer_key.clone(), t);
         let pst_set = pst::PolicySet {
             templates,
             policies: LinkedHashMap::new(),
             template_links: vec![],
         };
         let err = PolicySet::from_pst(pst_set).unwrap_err();
-        assert!(
-            matches!(err, PolicySetError::InconsistentPolicyId(_)),
-            "expected InconsistentPolicyId, got: {err}"
-        );
+        match &err {
+            PolicySetError::InconsistentPolicyId(e) => {
+                assert_eq!(e.map_key().to_string(), outer_key.to_string());
+                assert_eq!(e.inner_id().to_string(), inner_key.to_string());
+            }
+            _ => panic!("expected InconsistentPolicyId, got: {err}"),
+        }
         assert!(
             err.to_string().contains("fake_key"),
             "error should mention the map key: {err}"
@@ -10688,17 +10693,22 @@ mod pst_api {
         ))
         .unwrap();
         let mut policies = LinkedHashMap::new();
-        policies.insert(pst::PolicyID("outer_key".into()), sp);
+        let inner_key = sp.id().clone();
+        let outer_key = pst::PolicyID("outer_key".into());
+        policies.insert(outer_key.clone(), sp);
         let pst_set = pst::PolicySet {
             templates: LinkedHashMap::new(),
             policies,
             template_links: vec![],
         };
         let err = PolicySet::from_pst(pst_set).unwrap_err();
-        assert!(
-            matches!(err, PolicySetError::InconsistentPolicyId(_)),
-            "expected InconsistentPolicyId, got: {err}"
-        );
+        match &err {
+            PolicySetError::InconsistentPolicyId(e) => {
+                assert_eq!(e.map_key().to_string(), outer_key.to_string());
+                assert_eq!(e.inner_id().to_string(), inner_key.to_string());
+            }
+            _ => panic!("expected InconsistentPolicyId, got: {err}"),
+        }
         assert!(
             err.to_string().contains("outer_key"),
             "error should mention the map key: {err}"
