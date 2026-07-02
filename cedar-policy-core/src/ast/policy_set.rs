@@ -104,7 +104,15 @@ impl TryFrom<LiteralPolicySet> for PolicySet {
         let links = pset
             .links
             .into_iter()
-            .map(|(id, literal)| literal.reify(&templates).map(|linked| (id, linked)))
+            .map(|(id, literal)| {
+                if *literal.id() != id {
+                    return Err(ReificationError::PolicyIdMismatch {
+                        key: id,
+                        policy_id: literal.id().clone(),
+                    });
+                }
+                literal.reify(&templates).map(|linked| (id, linked))
+            })
             .collect::<Result<LinkedHashMap<PolicyID, Policy>, ReificationError>>()?;
 
         let mut template_to_links_map = LinkedHashMap::new();
@@ -1461,6 +1469,57 @@ mod policy_set_validate_test {
             PolicySet::try_from(literal),
             Err(ReificationError::Linking(LinkingError::PolicyIdConflict { id }))
                 if id == PolicyID::from_string("t")
+        );
+    }
+
+    #[test]
+    fn outer_key_mismatch_static_policy_rejected() {
+        let t = valid_template("policy1");
+        let literal = LiteralPolicySet::new(
+            [(t.id().clone(), t)],
+            [(
+                PolicyID::from_string("wrong_key"),
+                LiteralPolicy::static_policy(PolicyID::from_string("policy1")),
+            )],
+        );
+        assert_matches!(
+            PolicySet::try_from(literal),
+            Err(ReificationError::PolicyIdMismatch { key, policy_id })
+                if key == PolicyID::from_string("wrong_key")
+                && policy_id == PolicyID::from_string("policy1")
+        );
+    }
+
+    #[test]
+    fn outer_key_mismatch_linked_policy_rejected() {
+        let id = PolicyID::from_string("t");
+        let t = Template::new(
+            id.clone(),
+            None,
+            Annotations::new(),
+            Effect::Permit,
+            PrincipalConstraint::is_eq_slot(),
+            ActionConstraint::Eq(action_euid()),
+            ResourceConstraint::any(),
+            None,
+        );
+        let mut values = HashMap::new();
+        values.insert(
+            SlotId::principal(),
+            EntityUID::with_eid_and_type("User", "alice").unwrap(),
+        );
+        let literal = LiteralPolicySet::new(
+            [(id.clone(), t)],
+            [(
+                PolicyID::from_string("wrong_key"),
+                LiteralPolicy::template_linked_policy(id, PolicyID::from_string("link1"), values),
+            )],
+        );
+        assert_matches!(
+            PolicySet::try_from(literal),
+            Err(ReificationError::PolicyIdMismatch { key, policy_id })
+                if key == PolicyID::from_string("wrong_key")
+                && policy_id == PolicyID::from_string("link1")
         );
     }
 }

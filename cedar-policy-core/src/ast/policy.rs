@@ -854,6 +854,14 @@ pub enum ReificationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Linking(#[from] LinkingError),
+    /// The outer map key does not match the policy's own ID
+    #[error("policy set map key `{key}` does not match the policy's own id `{policy_id}`")]
+    PolicyIdMismatch {
+        /// The outer map key used in `LiteralPolicySet.links`
+        key: PolicyID,
+        /// The policy's own ID (from `LiteralPolicy::id()`)
+        policy_id: PolicyID,
+    },
 }
 
 impl LiteralPolicy {
