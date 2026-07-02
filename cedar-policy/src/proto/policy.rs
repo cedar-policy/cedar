@@ -444,7 +444,7 @@ impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
                 let id = ast::PolicyID::from_string(&tb.id);
                 if !template_ids.insert(id.clone()) {
                     return Err(ProtobufConversionError::InvalidValue(format!(
-                        "duplicate template id `{id}`"
+                        "duplicate template_id `{id}` in `templates`"
                     )));
                 }
                 Ok((id, ast::Template::from(ast::TemplateBody::try_from(tb)?)))
@@ -460,7 +460,7 @@ impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
                 let template_id = ast::PolicyID::from_string(&p.template_id);
                 if !template_ids.contains(&template_id) {
                     return Err(ProtobufConversionError::InvalidValue(format!(
-                        "link references non-existent template or policy `{template_id}`"
+                        "template_id `{template_id}` of link references non-existent template of `templates`"
                     )));
                 }
                 if p.is_template_link {
@@ -471,13 +471,13 @@ impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
                     let link_id = ast::PolicyID::from_string(link_id);
                     if !link_ids.insert(link_id.clone()) {
                         return Err(ProtobufConversionError::InvalidValue(format!(
-                            "duplicate link id `{link_id}`"
+                            "link_id `{link_id}` conflicts with a policy id (link_id or template_id) in `links`"
                         )));
                     }
                     // Template ids and link ids must not conflict!
                     if template_ids.contains(&link_id) {
                         return Err(ProtobufConversionError::InvalidValue(format!(
-                            "link id `{link_id}` conflicts with a template id"
+                            "link_id `{link_id}` conflicts with a template_id in `templates`"
                         )));
                     }
                     // the linked policy id is the link id
@@ -486,7 +486,7 @@ impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
                     // the policy id is the template id (see protobuf docs)
                     if !link_ids.insert(template_id.clone()) {
                         return Err(ProtobufConversionError::InvalidValue(format!(
-                            "static policy id `{template_id}` conflicts with link"
+                            "template_id `{template_id}` of a static link conflicts with a policy id (link_id or template_id) in `links`"
                         )));
                     }
                     Ok((template_id, ast::LiteralPolicy::try_from(p)?))
@@ -1125,7 +1125,7 @@ mod test {
         };
         assert_matches!(
             ast::LiteralPolicySet::try_from(bad),
-            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("duplicate template id")
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("duplicate template_id")
         );
     }
 
@@ -1140,7 +1140,7 @@ mod test {
         };
         assert_matches!(
             ast::LiteralPolicySet::try_from(bad),
-            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with link")
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a policy id")
         );
     }
 
@@ -1152,7 +1152,7 @@ mod test {
         };
         assert_matches!(
             ast::LiteralPolicySet::try_from(bad),
-            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a template id")
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a template_id")
         );
     }
 
@@ -1176,7 +1176,7 @@ mod test {
         };
         assert_matches!(
             ast::LiteralPolicySet::try_from(bad),
-            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("non-existent template")
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("references non-existent template")
         );
     }
 
@@ -1191,7 +1191,7 @@ mod test {
         };
         assert_matches!(
             ast::LiteralPolicySet::try_from(bad),
-            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("duplicate link id")
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a policy id")
         );
     }
 
@@ -1205,7 +1205,7 @@ mod test {
         };
         assert_matches!(
             ast::LiteralPolicySet::try_from(bad),
-            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("duplicate link id")
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a policy id")
         );
     }
 }
