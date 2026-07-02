@@ -643,28 +643,24 @@ fn normalize_ext_value_inner(value: &Value) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashSet};
+    use std::collections::BTreeMap;
     use std::str::FromStr;
     use std::sync::Arc;
 
     use crate::ast::{Expr, SlotEnv};
-    use crate::parser::parse_expr;
     use crate::tpe::err::ExprToResidualError;
-    use crate::validator::typecheck::Typechecker;
+    use crate::tpe::test_utils::{concrete_euid, parse_typed_expr, unknown_euid};
     use crate::validator::types::Type;
-    use crate::validator::{ValidationMode, ValidatorSchema};
+    use crate::validator::ValidatorSchema;
     use crate::{
-        ast::{Context, EntityUID, ExprBuilder, Value, Var},
+        ast::{Context, ExprBuilder, Value, Var},
         expr_builder::ExprBuilder as _,
         extensions::Extensions,
     };
     use insta::assert_snapshot;
 
     use crate::{
-        ast,
-        tpe::entities::PartialEntities,
-        tpe::request::{PartialEntityUID, PartialRequest},
-        tpe::residual::Residual,
+        ast, tpe::entities::PartialEntities, tpe::request::PartialRequest, tpe::residual::Residual,
     };
 
     use super::Evaluator;
@@ -698,52 +694,12 @@ mod tests {
     }
 
     #[track_caller]
-    fn parse_typed_expr(
-        expr_str: &str,
-        request: &PartialRequest,
-        schema: &ValidatorSchema,
-    ) -> Expr<Option<Type>> {
-        let expr = parse_expr(expr_str).unwrap();
-        let policy_id = crate::ast::PolicyID::from_string("test");
-
-        let env = request
-            .find_request_env(&schema)
-            .unwrap()
-            .link_slot_env(&SlotEnv::new());
-
-        let mut type_errors = HashSet::new();
-        let typechecker = Typechecker::new(schema, ValidationMode::Strict);
-        let ans =
-            typechecker.typecheck_expr_with_request_env(&env, &expr, &policy_id, &mut type_errors);
-        if !type_errors.is_empty() {
-            println!("got {} type errors", type_errors.len());
-            for e in type_errors {
-                println!("{:?}", miette::Report::new(e));
-            }
-            panic!("unexpected type error in expression")
-        }
-        ans.into_typed_expr()
-            .expect("expected typechecking to produce a typed expression")
-    }
-
-    fn concrete_euid(euid: &str) -> PartialEntityUID {
-        EntityUID::from_str(euid).unwrap().into()
-    }
-
-    fn unknown_euid(ty: &str) -> PartialEntityUID {
-        PartialEntityUID {
-            ty: ty.parse().unwrap(),
-            eid: None,
-        }
-    }
-
-    #[track_caller]
     fn interpret_typed_str_to_str(
         evaluator: &Evaluator<'_>,
         expr_str: &str,
         schema: &ValidatorSchema,
     ) -> String {
-        let expr = parse_typed_expr(expr_str, evaluator.request, schema);
+        let expr = parse_typed_expr(expr_str, evaluator.request, schema, &SlotEnv::new());
         interpret_expr_to_str(evaluator, &expr)
     }
 

@@ -498,6 +498,7 @@ mod request_builder_tests {
         tpe::{
             err::RequestBuilderError,
             request::{PartialEntityUID, PartialRequest, RequestBuilder},
+            test_utils::unknown_euid,
         },
         validator::ValidatorSchema,
     };
@@ -525,15 +526,9 @@ mod request_builder_tests {
     #[track_caller]
     fn request() -> PartialRequest {
         PartialRequest::new(
-            PartialEntityUID {
-                ty: "A".parse().unwrap(),
-                eid: None,
-            },
+            unknown_euid("A"),
             r#"Action::"a""#.parse().unwrap(),
-            PartialEntityUID {
-                ty: "B".parse().unwrap(),
-                eid: None,
-            },
+            unknown_euid("B"),
             None,
             &schema(),
         )

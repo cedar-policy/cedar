@@ -558,31 +558,18 @@ impl From<Residual> for Expr {
 #[cfg(test)]
 pub(super) mod test {
     use super::*;
-    use crate::ast::{ActionConstraint, PrincipalConstraint, ResourceConstraint, SlotId, Template};
+    use crate::ast::SlotId;
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
-    use crate::tpe::request::{PartialEntityUID, PartialRequest};
-    use crate::validator::typecheck::Typechecker;
+    use crate::tpe::request::PartialRequest;
+    use crate::tpe::test_utils::unknown_euid;
     use crate::validator::types::BoolType;
-    use crate::validator::{ValidationMode, Validator, ValidatorSchema};
+    use crate::validator::ValidatorSchema;
     use cool_asserts::assert_matches;
     use similar_asserts::assert_eq;
 
     #[track_caller]
     pub(crate) fn parse_typed_expr(expr_str: &str, slot_env: &SlotEnv) -> Expr<Option<Type>> {
-        let expr = parse_expr(expr_str).unwrap();
-        let policy_id = crate::ast::PolicyID::from_string("test");
-        let t = Template::new_shared(
-            policy_id.clone(),
-            None,
-            Arc::new(Annotations::default()),
-            Effect::Permit,
-            PrincipalConstraint::any(),
-            ActionConstraint::any(),
-            ResourceConstraint::any(),
-            Some(Arc::new(expr.clone())),
-        );
-
         let schema = ValidatorSchema::from_cedarschema_str(r#"
             entity User in Organization { foo: Bool, str: String, num: Long, period: __cedar::duration, set: Set<String> } tags String;
             entity Organization;
@@ -593,48 +580,16 @@ pub(super) mod test {
         .unwrap()
         .0;
 
-        let typechecker = Typechecker::new(&schema, ValidationMode::Strict);
-
         let request = PartialRequest::new(
-            PartialEntityUID {
-                ty: "User".parse().unwrap(),
-                eid: None,
-            },
+            unknown_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            PartialEntityUID {
-                ty: "Document".parse().unwrap(),
-                eid: None,
-            },
+            unknown_euid("Document"),
             None,
             &schema,
         )
         .unwrap();
-        let env = request
-            .find_request_env(&schema)
-            .unwrap()
-            .link_slot_env(slot_env);
 
-        let errs: Vec<_> = Validator::validate_entity_types_and_literals(&schema, &t).collect();
-        if !errs.is_empty() {
-            println!("got {} type errors", errs.len());
-            for e in errs {
-                println!("{:?}", miette::Report::new(e));
-            }
-            panic!("unexpected type error in expression");
-        }
-
-        let mut type_errors = HashSet::new();
-        let ans =
-            typechecker.typecheck_expr_with_request_env(&env, &expr, &policy_id, &mut type_errors);
-        if !type_errors.is_empty() {
-            println!("got {} type errors", type_errors.len());
-            for e in type_errors {
-                println!("{:?}", miette::Report::new(e));
-            }
-            panic!("unexpected type error in expression")
-        }
-        ans.into_typed_expr()
-            .expect("expected typechecking to produce a typed expression")
+        crate::tpe::test_utils::parse_typed_expr(expr_str, &request, &schema, slot_env)
     }
 
     #[track_caller]

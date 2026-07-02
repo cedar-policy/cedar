@@ -111,13 +111,7 @@ impl Typechecker<'_> {
         self.typecheck_expr_with_request_env(&request_env, e, policy_id, unique_type_errors)
     }
 
-    /// Typecheck an expression outside the context of a policy, using the given
-    /// `request_env` to determine the types of `principal`, `action`,
-    /// `resource`, and `context`. Unlike policy typechecking, the expression is
-    /// not required to have type boolean; its type is inferred instead.
-    ///
-    /// `policy_id`: Policy ID to associate with this `Expr`, for the purposes
-    /// of reporting the policy ID in validation errors
+    /// Typecheck an expression outside the context of a policy, in the given `request_env`.
     pub(crate) fn typecheck_expr_with_request_env<'a>(
         &self,
         request_env: &RequestEnv<'_>,
