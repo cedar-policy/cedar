@@ -728,7 +728,7 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
-        // principal -> User::"foo"
+        // principal -> User::""
         assert_snapshot!(
             interpret_typed_str_to_str("principal"),
             @r#"User::"foo""#
@@ -1122,6 +1122,52 @@ mod tests {
     }
 
     #[test]
+    fn test_is_empty() {
+        let schema = parse_schema(
+            r#"entity E { s: Set<Long> }; action a appliesTo {principal: E, resource: E, context: {s0: Set<Long>, s1: Set<Long>}};"#,
+        );
+        let Ok(Context::Value(context)) =
+            Context::from_json_value(serde_json::json!({ "s0": [], "s1": [0] }))
+        else {
+            panic!("expected concrete context")
+        };
+        let req = PartialRequest::new(
+            concrete_euid(r#"E::"foo""#),
+            r#"Action::"a""#.parse().unwrap(),
+            unknown_euid("E"),
+            Some(context),
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[1].isEmpty()"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context.s0.isEmpty()"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context.s1.isEmpty()"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.s.isEmpty()"#),
+            @"(resource.s).isEmpty()"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then [1] else [2]).isEmpty()"#),
+            @"error()"
+        );
+    }
+
+    #[test]
     fn test_get_attr_simple() {
         let schema = parse_schema(
             r#"entity E { s: String }; action get appliesTo {principal: E, resource: E};"#,
@@ -1312,6 +1358,11 @@ mod tests {
         assert_snapshot!(
             interpret_typed_str_to_str(r#"{s: 0} has t"#),
             @"false"
+        );
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then E::"alice" else E::"bob") has s"#),
+            @"error()"
         );
     }
 
