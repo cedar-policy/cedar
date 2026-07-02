@@ -330,8 +330,6 @@ impl From<&types::AttributeType> for models::AttributeType {
 mod test {
     use std::sync::Arc;
 
-    use crate::Schema;
-
     use super::models;
     use super::ProtobufConversionError;
     use cedar_policy_core::validator::types::{

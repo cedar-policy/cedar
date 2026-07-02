@@ -19,7 +19,7 @@
 use super::ast::ProtobufConversionError;
 use super::models;
 use cedar_policy_core::{ast, FromNormalizedStr};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 impl TryFrom<models::Policy> for ast::LiteralPolicy {
     type Error = ProtobufConversionError;
@@ -434,11 +434,19 @@ impl From<&ast::Effect> for models::Effect {
 impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
     type Error = ProtobufConversionError;
     fn try_from(v: models::PolicySet) -> Result<Self, Self::Error> {
-        let templates = v
+        let mut template_ids: HashSet<ast::PolicyID> = HashSet::new();
+        let mut link_ids: HashSet<ast::PolicyID> = HashSet::new();
+
+        let templates_and_static_policies = v
             .templates
             .into_iter()
             .map(|tb| {
                 let id = ast::PolicyID::from_string(&tb.id);
+                if !template_ids.insert(id.clone()) {
+                    return Err(ProtobufConversionError::InvalidValue(format!(
+                        "duplicate template_id `{id}` in `templates`"
+                    )));
+                }
                 Ok((id, ast::Template::from(ast::TemplateBody::try_from(tb)?)))
             })
             .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
@@ -449,19 +457,44 @@ impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
             .map(|p| {
                 // per docs in core.proto, for static policies, `link_id` is omitted/ignored,
                 // and the ID of the policy is the `template_id`.
-                let id = if p.is_template_link {
-                    p.link_id
+                let template_id = ast::PolicyID::from_string(&p.template_id);
+                if !template_ids.contains(&template_id) {
+                    return Err(ProtobufConversionError::InvalidValue(format!(
+                        "template_id `{template_id}` of link references non-existent template of `templates`"
+                    )));
+                }
+                if p.is_template_link {
+                    let link_id = p
+                        .link_id
                         .as_ref()
-                        .ok_or_else(|| ProtobufConversionError::missing("link_id"))?
+                        .ok_or_else(|| ProtobufConversionError::missing("link_id"))?;
+                    let link_id = ast::PolicyID::from_string(link_id);
+                    if !link_ids.insert(link_id.clone()) {
+                        return Err(ProtobufConversionError::InvalidValue(format!(
+                            "link_id `{link_id}` conflicts with a policy id (link_id or template_id) in `links`"
+                        )));
+                    }
+                    // Template ids and link ids must not conflict!
+                    if template_ids.contains(&link_id) {
+                        return Err(ProtobufConversionError::InvalidValue(format!(
+                            "link_id `{link_id}` conflicts with a template_id in `templates`"
+                        )));
+                    }
+                    // the linked policy id is the link id
+                    Ok((link_id, ast::LiteralPolicy::try_from(p)?))
                 } else {
-                    &p.template_id
-                };
-                let id = ast::PolicyID::from_string(id);
-                Ok((id, ast::LiteralPolicy::try_from(p)?))
+                    // the policy id is the template id (see protobuf docs)
+                    if !link_ids.insert(template_id.clone()) {
+                        return Err(ProtobufConversionError::InvalidValue(format!(
+                            "template_id `{template_id}` of a static link conflicts with a policy id (link_id or template_id) in `links`"
+                        )));
+                    }
+                    Ok((template_id, ast::LiteralPolicy::try_from(p)?))
+                }
             })
             .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
 
-        Ok(Self::new(templates, links))
+        Ok(Self::new(templates_and_static_policies, links))
     }
 }
 
@@ -526,6 +559,65 @@ mod test {
             // `Ord` contract because there could exist two template-bodies that
             // return `Ordering::Equal` but are not equal with `Eq`
             self.id.cmp(&other.id)
+        }
+    }
+
+    /// A `PrincipalOrResourceConstraint` model matching any principal/resource.
+    fn principal_or_resource_constraint_any() -> models::PrincipalOrResourceConstraint {
+        models::PrincipalOrResourceConstraint {
+            data: Some(models::principal_or_resource_constraint::Data::Any(
+                models::principal_or_resource_constraint::Any::Unit.into(),
+            )),
+        }
+    }
+
+    /// An `ActionConstraint` model matching any action.
+    fn action_constraint_any() -> models::ActionConstraint {
+        models::ActionConstraint {
+            data: Some(models::action_constraint::Data::Any(
+                models::action_constraint::Any::Unit.into(),
+            )),
+        }
+    }
+
+    /// A minimal `TemplateBody` model with the given id and unconstrained scope.
+    fn trivial_template_body(id: &str) -> models::TemplateBody {
+        models::TemplateBody {
+            id: id.to_string(),
+            annotations: Default::default(),
+            effect: models::Effect::Permit.into(),
+            principal_constraint: Some(principal_or_resource_constraint_any()),
+            action_constraint: Some(action_constraint_any()),
+            resource_constraint: Some(principal_or_resource_constraint_any()),
+            non_scope_constraints: None,
+        }
+    }
+
+    /// A static policy link (not a template-linked policy) with the given id.
+    fn static_policy_link(id: &str) -> models::Policy {
+        models::Policy {
+            template_id: id.to_string(),
+            link_id: None,
+            is_template_link: false,
+            principal_euid: None,
+            resource_euid: None,
+        }
+    }
+
+    /// A template-linked policy with the given template id and link id.
+    fn template_link(template_id: &str, link_id: &str) -> models::Policy {
+        models::Policy {
+            template_id: template_id.to_string(),
+            link_id: Some(link_id.to_string()),
+            is_template_link: true,
+            principal_euid: Some(models::EntityUid {
+                ty: Some(models::Name {
+                    id: "User".to_string(),
+                    path: vec![],
+                }),
+                eid: "alice".to_string(),
+            }),
+            resource_euid: None,
         }
     }
 
@@ -869,16 +961,8 @@ mod test {
             annotations: Default::default(),
             effect: models::Effect::Permit.into(),
             principal_constraint: None,
-            action_constraint: Some(models::ActionConstraint {
-                data: Some(models::action_constraint::Data::Any(
-                    models::action_constraint::Any::Unit.into(),
-                )),
-            }),
-            resource_constraint: Some(models::PrincipalOrResourceConstraint {
-                data: Some(models::principal_or_resource_constraint::Data::Any(
-                    models::principal_or_resource_constraint::Any::Unit.into(),
-                )),
-            }),
+            action_constraint: Some(action_constraint_any()),
+            resource_constraint: Some(principal_or_resource_constraint_any()),
             non_scope_constraints: None,
         };
         assert_matches!(
@@ -893,21 +977,9 @@ mod test {
             id: "t".to_string(),
             annotations: [("".to_string(), "v".to_string())].into_iter().collect(),
             effect: models::Effect::Permit.into(),
-            principal_constraint: Some(models::PrincipalOrResourceConstraint {
-                data: Some(models::principal_or_resource_constraint::Data::Any(
-                    models::principal_or_resource_constraint::Any::Unit.into(),
-                )),
-            }),
-            action_constraint: Some(models::ActionConstraint {
-                data: Some(models::action_constraint::Data::Any(
-                    models::action_constraint::Any::Unit.into(),
-                )),
-            }),
-            resource_constraint: Some(models::PrincipalOrResourceConstraint {
-                data: Some(models::principal_or_resource_constraint::Data::Any(
-                    models::principal_or_resource_constraint::Any::Unit.into(),
-                )),
-            }),
+            principal_constraint: Some(principal_or_resource_constraint_any()),
+            action_constraint: Some(action_constraint_any()),
+            resource_constraint: Some(principal_or_resource_constraint_any()),
             non_scope_constraints: None,
         };
         assert_matches!(
@@ -1029,27 +1101,7 @@ mod test {
     #[test]
     fn literal_policy_set_try_from_link_missing_link_id() {
         let bad = models::PolicySet {
-            templates: vec![models::TemplateBody {
-                id: "t".to_string(),
-                annotations: Default::default(),
-                effect: models::Effect::Permit.into(),
-                principal_constraint: Some(models::PrincipalOrResourceConstraint {
-                    data: Some(models::principal_or_resource_constraint::Data::Any(
-                        models::principal_or_resource_constraint::Any::Unit.into(),
-                    )),
-                }),
-                action_constraint: Some(models::ActionConstraint {
-                    data: Some(models::action_constraint::Data::Any(
-                        models::action_constraint::Any::Unit.into(),
-                    )),
-                }),
-                resource_constraint: Some(models::PrincipalOrResourceConstraint {
-                    data: Some(models::principal_or_resource_constraint::Data::Any(
-                        models::principal_or_resource_constraint::Any::Unit.into(),
-                    )),
-                }),
-                non_scope_constraints: None,
-            }],
+            templates: vec![trivial_template_body("t")],
             links: vec![models::Policy {
                 template_id: "t".to_string(),
                 link_id: None,
@@ -1061,6 +1113,99 @@ mod test {
         assert_matches!(
             ast::LiteralPolicySet::try_from(bad),
             Err(ProtobufConversionError::MissingField(f)) if f == "link_id"
+        );
+    }
+
+    #[test]
+    fn literal_policy_set_rejects_duplicate_template_ids() {
+        let template = trivial_template_body("duplicate");
+        let bad = models::PolicySet {
+            templates: vec![template.clone(), template], // twice!
+            links: vec![],
+        };
+        assert_matches!(
+            ast::LiteralPolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("duplicate template_id")
+        );
+    }
+
+    #[test]
+    fn literal_policy_set_rejects_duplicate_link_ids() {
+        let bad = models::PolicySet {
+            templates: vec![trivial_template_body("duplicate")],
+            links: vec![
+                static_policy_link("duplicate"),
+                static_policy_link("duplicate"),
+            ],
+        };
+        assert_matches!(
+            ast::LiteralPolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a policy id")
+        );
+    }
+
+    #[test]
+    fn literal_policy_set_rejects_template_link_id_colliding_with_template_id() {
+        let bad = models::PolicySet {
+            templates: vec![trivial_template_body("shared_id")],
+            links: vec![template_link("shared_id", "shared_id")],
+        };
+        assert_matches!(
+            ast::LiteralPolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a template_id")
+        );
+    }
+
+    #[test]
+    fn literal_policy_set_allows_static_policy_sharing_template_and_link_id() {
+        // Static policies are expected to have the same ID in both templates and links
+        let pset = models::PolicySet {
+            templates: vec![trivial_template_body("static_policy")],
+            links: vec![static_policy_link("static_policy")],
+        };
+        // This should succeed — static policies legitimately share an ID
+        // between their template entry and link entry
+        assert_matches!(ast::LiteralPolicySet::try_from(pset), Ok(_));
+    }
+
+    #[test]
+    fn literal_policy_set_rejects_link_referencing_nonexistent_template() {
+        let bad = models::PolicySet {
+            templates: vec![trivial_template_body("real_template")],
+            links: vec![static_policy_link("nonexistent")],
+        };
+        assert_matches!(
+            ast::LiteralPolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("references non-existent template")
+        );
+    }
+
+    #[test]
+    fn literal_policy_set_rejects_duplicate_template_link_ids() {
+        let bad = models::PolicySet {
+            templates: vec![trivial_template_body("t")],
+            links: vec![
+                template_link("t", "same_link"),
+                template_link("t", "same_link"),
+            ],
+        };
+        assert_matches!(
+            ast::LiteralPolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a policy id")
+        );
+    }
+
+    #[test]
+    fn literal_policy_set_rejects_template_link_id_colliding_with_static_policy() {
+        // Static policy "X" is processed first (link_ids gets "X"),
+        // then a template-link with link_id "X" should fail.
+        let bad = models::PolicySet {
+            templates: vec![trivial_template_body("X"), trivial_template_body("T")],
+            links: vec![static_policy_link("X"), template_link("T", "X")],
+        };
+        assert_matches!(
+            ast::LiteralPolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a policy id")
         );
     }
 }
