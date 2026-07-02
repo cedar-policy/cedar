@@ -728,12 +728,12 @@ mod tests {
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
-        // principal -> principal because its eid is unknown
+        // principal -> User::"foo"
         assert_snapshot!(
             interpret_typed_str_to_str("principal"),
             @r#"User::"foo""#
         );
-        // resource -> E::""
+        // resource -> resource because its eid is unknown
         assert_snapshot!(
             interpret_typed_str_to_str("resource"),
             @"resource"
