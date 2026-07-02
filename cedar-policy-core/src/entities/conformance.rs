@@ -24,7 +24,6 @@ use crate::ast::{
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use err::{
     EntitySchemaConformanceError, InvalidEnumEntity, InvalidEnumEntityError, UndeclaredAction,
-    UnexpectedEntityTypeError,
 };
 use miette::Diagnostic;
 use nonempty::NonEmpty;
@@ -209,14 +208,7 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
             self.validate_action(entity)?;
         } else {
             let schema_etype = self.schema.entity_type(etype).ok_or_else(|| {
-                let suggested_types = self
-                    .schema
-                    .entity_types_with_basename(&etype.name().basename())
-                    .collect();
-                UnexpectedEntityTypeError {
-                    uid: uid.clone(),
-                    suggested_types,
-                }
+                EntitySchemaConformanceError::unexpected_entity_type(self.schema, uid.clone())
             })?;
 
             validate_euid(self.schema, uid)?;

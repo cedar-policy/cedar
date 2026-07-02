@@ -22,8 +22,7 @@ use super::{
 use crate::ast::{BorrowedRestrictedExpr, Entity, EntityUID, PartialValue, RestrictedExpr};
 use crate::entities::conformance::EntitySchemaConformanceChecker;
 use crate::entities::{
-    conformance::err::{EntitySchemaConformanceError, UnexpectedEntityTypeError},
-    Entities, EntitiesError, TCComputation,
+    conformance::err::EntitySchemaConformanceError, Entities, EntitiesError, TCComputation,
 };
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
@@ -288,15 +287,11 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
                     EntitySchemaInfo::NoSchema
                 } else {
                     EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or_else(|| {
-                        let suggested_types = schema
-                            .entity_types_with_basename(&etype.name().basename())
-                            .collect();
-                        JsonDeserializationError::EntitySchemaConformance(
-                            UnexpectedEntityTypeError {
-                                uid: uid.clone(),
-                                suggested_types,
-                            }
-                            .into(),
+                        JsonDeserializationError::from(
+                            EntitySchemaConformanceError::unexpected_entity_type(
+                                *schema,
+                                uid.clone(),
+                            ),
                         )
                     })?)
                 }

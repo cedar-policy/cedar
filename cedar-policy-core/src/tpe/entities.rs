@@ -19,6 +19,7 @@
 use crate::ast::{Entity, PartialValueToValueError};
 use crate::entities::conformance::err::EntitySchemaConformanceError;
 use crate::entities::err::Duplicate;
+use crate::entities::SchemaType;
 use crate::entities::{Dereference, Entities, TCComputation};
 use crate::tpe::err::{
     AncestorValidationError, EntitiesConsistencyError, EntitiesError, EntityConsistencyError,
@@ -28,7 +29,9 @@ use crate::tpe::err::{
     UnknownTagError,
 };
 use crate::transitive_closure::{enforce_tc_and_dag, TcError};
-use crate::validator::{CoreSchema, ValidatorSchema};
+use crate::validator::{
+    CoreSchema, EntityTypeDescription as CoreEntityTypeDescription, ValidatorSchema,
+};
 use crate::{
     ast::PartialValue,
     entities::{conformance::EntitySchemaConformanceChecker, Schema},
@@ -44,10 +47,7 @@ use crate::{
     jsonvalue::JsonValueWithNoDuplicateKeys,
 };
 use crate::{
-    entities::{
-        conformance::{err::UnexpectedEntityTypeError, validate_euid},
-        EntityTypeDescription,
-    },
+    entities::{conformance::validate_euid, EntityTypeDescription},
     transitive_closure::{compute_tc, repair_tc, TCNode},
 };
 use itertools::Itertools;
@@ -134,7 +134,7 @@ impl PartialEntity {
         ancestors: Option<HashSet<EntityUID>>,
         tags: Option<BTreeMap<SmolStr, Value>>,
         schema: &ValidatorSchema,
-    ) -> std::result::Result<Self, EntitiesError> {
+    ) -> Result<Self, EntitiesError> {
         let e = Self {
             uid,
             attrs,
@@ -166,23 +166,24 @@ impl PartialEntity {
     }
 
     /// Check if an [`Entity`] is consistent with a [`PartialEntity`]
-    pub(crate) fn check_consistency(
-        &self,
-        entity: &Entity,
-    ) -> std::result::Result<(), EntityConsistencyError> {
-        if let Some(attrs) = &self.attrs {
-            let other_attrs = entity
-                .attrs()
+    pub(crate) fn check_consistency(&self, entity: &Entity) -> Result<(), EntityConsistencyError> {
+        // `Entity` stores values as the old `PartialValue`, but we should never see the unknown here.
+        fn as_values<'a>(
+            pairs: impl Iterator<Item = (&'a SmolStr, &'a PartialValue)>,
+        ) -> Result<BTreeMap<SmolStr, Value>, SmolStr> {
+            pairs
                 .map(|(a, pv)| match pv {
                     PartialValue::Value(v) => Ok((a.clone(), v.clone())),
-                    PartialValue::Residual(_) => Err(UnknownAttributeError {
-                        uid: self.uid.clone(),
-                        attr: a.clone(),
-                    }
-                    .into()),
+                    PartialValue::Residual(_) => Err(a.clone()),
                 })
-                .collect::<std::result::Result<BTreeMap<_, _>, EntityConsistencyError>>()?;
+                .collect()
+        }
 
+        if let Some(attrs) = &self.attrs {
+            let other_attrs = as_values(entity.attrs()).map_err(|attr| UnknownAttributeError {
+                uid: self.uid.clone(),
+                attr,
+            })?;
             if attrs != &other_attrs {
                 return Err(MismatchedAttributeError {
                     uid: self.uid.clone(),
@@ -200,17 +201,10 @@ impl PartialEntity {
             }
         }
         if let Some(tags) = &self.tags {
-            let other_tags = entity
-                .tags()
-                .map(|(a, pv)| match pv {
-                    PartialValue::Value(v) => Ok((a.clone(), v.clone())),
-                    PartialValue::Residual(_) => Err(UnknownTagError {
-                        uid: self.uid.clone(),
-                        tag: a.clone(),
-                    }
-                    .into()),
-                })
-                .collect::<std::result::Result<BTreeMap<_, _>, EntityConsistencyError>>()?;
+            let other_tags = as_values(entity.tags()).map_err(|tag| UnknownTagError {
+                uid: self.uid.clone(),
+                tag,
+            })?;
             if tags != &other_tags {
                 return Err(MismatchedTagError {
                     uid: self.uid.clone(),
@@ -222,11 +216,44 @@ impl PartialEntity {
     }
 }
 
+/// Parse a JSON map of attribute/tag values into concrete [`Value`]s.
+///
+/// `type_of` returns the expected [`SchemaType`] for a given key (tag or attribute). If `uid`'s
+/// entity type is not declared in the schema, an `UnexpectedEntityType` error
+/// is raised.
+fn parse_value_map(
+    map: DeduplicatedMap,
+    uid: &EntityUID,
+    core_schema: &CoreSchema<'_>,
+    vparser: &ValueParser<'_>,
+    type_of: impl Fn(&CoreEntityTypeDescription, &str) -> Option<SchemaType>,
+) -> Result<BTreeMap<SmolStr, Value>, JsonDeserializationError> {
+    let eval = RestrictedEvaluator::new(Extensions::all_available());
+    let ty = core_schema.entity_type(uid.entity_type()).ok_or_else(|| {
+        JsonDeserializationError::Concrete(
+            EntitySchemaConformanceError::unexpected_entity_type(core_schema, uid.clone()).into(),
+        )
+    })?;
+    map.map
+        .into_iter()
+        .map(|(k, v)| {
+            let expr =
+                vparser.val_into_restricted_expr(v.into(), type_of(&ty, &k).as_ref(), &|| {
+                    JsonDeserializationErrorContext::EntityAttribute {
+                        uid: uid.clone(),
+                        attr: k.clone(),
+                    }
+                })?;
+            Ok((k, eval.interpret(expr.as_borrowed())?))
+        })
+        .collect()
+}
+
 /// Parse an [`EntityJson`] into a [`PartialEntity`] according to `schema`
 pub fn parse_ejson(
     e: EntityJson,
     schema: &ValidatorSchema,
-) -> std::result::Result<PartialEntity, JsonDeserializationError> {
+) -> Result<PartialEntity, JsonDeserializationError> {
     let uid = e
         .uid
         .into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
@@ -236,48 +263,9 @@ pub fn parse_ejson(
         return Err(UnexpectedActionError { action: uid }.into());
     }
     let vparser = ValueParser::new(Extensions::all_available());
-    let eval = RestrictedEvaluator::new(Extensions::all_available());
     let attrs = e
         .attrs
-        .map(|m| {
-            m.map
-                .into_iter()
-                .map(|(k, v)| {
-                    if let Some(ty) = core_schema.entity_type(uid.entity_type()) {
-                        Ok((
-                            k.clone(),
-                            eval.interpret(
-                                vparser
-                                    .val_into_restricted_expr(
-                                        v.into(),
-                                        ty.attr_type(&k).as_ref(),
-                                        &|| JsonDeserializationErrorContext::EntityAttribute {
-                                            uid: uid.clone(),
-                                            attr: k.clone(),
-                                        },
-                                    )?
-                                    .as_borrowed(),
-                            )?,
-                        ))
-                    } else {
-                        Err(JsonDeserializationError::Concrete(
-                            crate::entities::json::err::JsonDeserializationError::from(
-                                EntitySchemaConformanceError::UnexpectedEntityType(
-                                    UnexpectedEntityTypeError {
-                                        uid: uid.clone(),
-                                        suggested_types: core_schema
-                                            .entity_types_with_basename(
-                                                &uid.entity_type().name().basename(),
-                                            )
-                                            .collect(),
-                                    },
-                                ),
-                            ),
-                        ))
-                    }
-                })
-                .collect::<std::result::Result<BTreeMap<_, _>, _>>()
-        })
+        .map(|m| parse_value_map(m, &uid, &core_schema, &vparser, |ty, k| ty.attr_type(k)))
         .transpose()?;
 
     let ancestors = e
@@ -292,51 +280,13 @@ pub fn parse_ejson(
                         })
                         .map_err(JsonDeserializationError::Concrete)
                 })
-                .collect::<std::result::Result<HashSet<_>, _>>()
+                .collect::<Result<HashSet<_>, _>>()
         })
         .transpose()?;
 
     let tags = e
         .tags
-        .map(|m| {
-            m.map
-                .into_iter()
-                .map(|(k, v)| {
-                    if let Some(ty) = core_schema.entity_type(uid.entity_type()) {
-                        Ok((
-                            k.clone(),
-                            eval.interpret(
-                                vparser
-                                    .val_into_restricted_expr(
-                                        v.into(),
-                                        ty.tag_type().as_ref(),
-                                        &|| JsonDeserializationErrorContext::EntityAttribute {
-                                            uid: uid.clone(),
-                                            attr: k.clone(),
-                                        },
-                                    )?
-                                    .as_borrowed(),
-                            )?,
-                        ))
-                    } else {
-                        Err(JsonDeserializationError::Concrete(
-                            crate::entities::json::err::JsonDeserializationError::from(
-                                EntitySchemaConformanceError::UnexpectedEntityType(
-                                    UnexpectedEntityTypeError {
-                                        uid: uid.clone(),
-                                        suggested_types: core_schema
-                                            .entity_types_with_basename(
-                                                &uid.entity_type().name().basename(),
-                                            )
-                                            .collect(),
-                                    },
-                                ),
-                            ),
-                        ))
-                    }
-                })
-                .collect::<std::result::Result<BTreeMap<_, _>, _>>()
-        })
+        .map(|m| parse_value_map(m, &uid, &core_schema, &vparser, |ty, _| ty.tag_type()))
         .transpose()?;
 
     Ok(PartialEntity {
@@ -387,10 +337,7 @@ impl PartialEntity {
     }
 
     /// Validate `self` according to `schema`
-    pub fn validate(
-        &self,
-        schema: &ValidatorSchema,
-    ) -> std::result::Result<(), EntityValidationError> {
+    pub fn validate(&self, schema: &ValidatorSchema) -> Result<(), EntityValidationError> {
         let core_schema = CoreSchema::new(schema);
         let uid = &self.uid;
         let etype = uid.entity_type();
@@ -445,18 +392,9 @@ impl PartialEntity {
             return Ok(());
         }
         validate_euid(&core_schema, uid).map_err(EntitySchemaConformanceError::from)?;
-        let schema_etype = core_schema
-            .entity_type(etype)
-            .ok_or_else(|| {
-                let suggested_types = core_schema
-                    .entity_types_with_basename(&etype.name().basename())
-                    .collect();
-                UnexpectedEntityTypeError {
-                    uid: uid.clone(),
-                    suggested_types,
-                }
-            })
-            .map_err(EntitySchemaConformanceError::from)?;
+        let schema_etype = core_schema.entity_type(etype).ok_or_else(|| {
+            EntitySchemaConformanceError::unexpected_entity_type(&core_schema, uid.clone())
+        })?;
         let checker =
             EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
         if let Some(ancestors) = &self.ancestors {
@@ -484,9 +422,9 @@ impl PartialEntity {
 // i.e., ancestors of any ancestor of a `PartialEntity` should not be unknown
 // This ensures that we can always compute a TC for entities with concrete
 // ancestors
-pub(crate) fn validate_ancestors(
+pub(crate) fn validate_concrete_ancestors_concrete(
     entities: &HashMap<EntityUID, PartialEntity>,
-) -> std::result::Result<(), AncestorValidationError> {
+) -> Result<(), AncestorValidationError> {
     for e in entities.values() {
         if let Some(ancestors) = e.ancestors.as_ref() {
             for ancestor in ancestors {
@@ -524,12 +462,12 @@ impl PartialEntities {
     }
 
     /// Compute transitive closure
-    pub fn compute_tc(&mut self) -> std::result::Result<(), TcError<EntityUID>> {
+    pub fn compute_tc(&mut self) -> Result<(), TcError<EntityUID>> {
         compute_tc(&mut self.entities, true)
     }
 
     /// Check that the tc is computed and forms a dag
-    pub fn enforce_tc_and_dag(&self) -> std::result::Result<(), TcError<EntityUID>> {
+    pub fn enforce_tc_and_dag(&self) -> Result<(), TcError<EntityUID>> {
         enforce_tc_and_dag(&self.entities)
     }
 
@@ -543,48 +481,30 @@ impl PartialEntities {
         self.entities.contains_key(euid)
     }
 
+    /// Shared internal constructor for building from maps. Validates each
+    /// entity, concreteness of the ancestor hierarchy, and optionally compute
+    /// the transitive closure. Also inserts actions entities from the schema.
     fn from_entities_map(
         entities: HashMap<EntityUID, PartialEntity>,
         schema: &ValidatorSchema,
-    ) -> std::result::Result<Self, EntitiesError> {
+        compute_tc: bool,
+    ) -> Result<Self, EntitiesError> {
         entities.values().try_for_each(|e| e.validate(schema))?;
-        validate_ancestors(&entities)?;
+        validate_concrete_ancestors_concrete(&entities)?;
         let mut entities = Self { entities };
-        entities.compute_tc()?;
+        if compute_tc {
+            entities.compute_tc()?;
+        }
         entities.insert_actions(schema);
         Ok(entities)
     }
 
-    /// Construct `PartialEntities` from `Entities`, ensuring that the entities are valid.
-    /// TC is already computed in the source `Entities`, so we skip recomputation.
-    pub fn from_concrete(
-        entities: Entities,
-        schema: &ValidatorSchema,
-    ) -> std::result::Result<Self, EntitiesError> {
-        let entities_map: HashMap<EntityUID, PartialEntity> = entities
-            .into_iter()
-            .map(|e| e.try_into().map(|e: PartialEntity| (e.uid.clone(), e)))
-            .try_collect()?;
-        entities_map.values().try_for_each(|e| e.validate(schema))?;
-        validate_ancestors(&entities_map)?;
-        // TC is already computed in the source Entities — the conversion to
-        // PartialEntity preserves all ancestors (direct + indirect).
-        let mut entities = Self {
-            entities: entities_map,
-        };
-        entities.insert_actions(schema);
-        Ok(entities)
-    }
-
-    /// Construct `PartialEntities` from an iterator
-    pub fn from_entities(
-        entity_mappings: impl Iterator<Item = PartialEntity>,
-        schema: &ValidatorSchema,
-    ) -> std::result::Result<Self, EntitiesError> {
-        let mut entities: HashMap<EntityUID, PartialEntity> = HashMap::new();
-        for entity in entity_mappings {
-            use std::collections::hash_map::Entry;
-            match entities.entry(entity.uid.clone()) {
+    fn collect_unique(
+        entities: impl Iterator<Item = PartialEntity>,
+    ) -> Result<HashMap<EntityUID, PartialEntity>, EntitiesError> {
+        let mut map: HashMap<EntityUID, PartialEntity> = HashMap::new();
+        for entity in entities {
+            match map.entry(entity.uid.clone()) {
                 Entry::Vacant(e) => {
                     e.insert(entity);
                 }
@@ -596,7 +516,30 @@ impl PartialEntities {
                 }
             }
         }
-        Self::from_entities_map(entities, schema)
+        Ok(map)
+    }
+
+    /// Construct `PartialEntities` from `Entities`, ensuring that the entities are valid.
+    /// TC is already computed in the source `Entities`, so we skip recomputation.
+    pub fn from_concrete(
+        entities: Entities,
+        schema: &ValidatorSchema,
+    ) -> Result<Self, EntitiesError> {
+        let entities_map: HashMap<EntityUID, PartialEntity> = entities
+            .into_iter()
+            .map(|e| e.try_into().map(|e: PartialEntity| (e.uid.clone(), e)))
+            .try_collect()?;
+        // TC is already computed in the source Entities — the conversion to
+        // PartialEntity preserves all ancestors (direct + indirect).
+        Self::from_entities_map(entities_map, schema, false)
+    }
+
+    /// Construct `PartialEntities` from an iterator
+    pub fn from_entities(
+        entity_mappings: impl Iterator<Item = PartialEntity>,
+        schema: &ValidatorSchema,
+    ) -> Result<Self, EntitiesError> {
+        Self::from_entities_map(Self::collect_unique(entity_mappings)?, schema, true)
     }
 
     /// Add a partial entity without checking if it conforms to the schema,
@@ -606,7 +549,7 @@ impl PartialEntities {
         &mut self,
         uid: EntityUID,
         entity: PartialEntity,
-    ) -> std::result::Result<(), EntitiesError> {
+    ) -> Result<(), EntitiesError> {
         match self.entities.entry(uid) {
             Entry::Vacant(e) => {
                 e.insert(entity);
@@ -629,7 +572,7 @@ impl PartialEntities {
         entity_mappings: impl Iterator<Item = (EntityUID, PartialEntity)>,
         schema: &ValidatorSchema,
         tc_computation: TCComputation,
-    ) -> std::result::Result<(), EntitiesError> {
+    ) -> Result<(), EntitiesError> {
         let mut entities_touched: HashSet<EntityUID> = HashSet::new();
         for (id, entity) in entity_mappings {
             entity.validate(schema)?;
@@ -637,7 +580,7 @@ impl PartialEntities {
             self.add_entity_trusted(id, entity)?;
         }
 
-        validate_ancestors(&self.entities)?;
+        validate_concrete_ancestors_concrete(&self.entities)?;
 
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => (),
@@ -688,30 +631,18 @@ impl PartialEntities {
     pub fn from_json_value(
         value: serde_json::Value,
         schema: &ValidatorSchema,
-    ) -> std::result::Result<Self, EntitiesError> {
+    ) -> Result<Self, EntitiesError> {
         let entities: Vec<EntityJson> = serde_json::from_value(value)
             .map_err(|e| JsonDeserializationError::Concrete(e.into()))?;
-        let mut partial_entities = PartialEntities::default();
-        for e in entities {
-            let partial_entity = parse_ejson(e, schema)?;
-            partial_entity.validate(schema)?;
-            partial_entities
-                .entities
-                .insert(partial_entity.uid.clone(), partial_entity);
-        }
-        validate_ancestors(&partial_entities.entities)?;
-        partial_entities.compute_tc()?;
-
-        // Insert actions from the schema
-        partial_entities.insert_actions(schema);
-        Ok(partial_entities)
+        let parsed = entities
+            .into_iter()
+            .map(|e| parse_ejson(e, schema))
+            .collect::<Result<Vec<_>, _>>()?;
+        Self::from_entities_map(Self::collect_unique(parsed.into_iter())?, schema, true)
     }
 
     /// Check if [`PartialEntities`] are consistent with [`Entities`]
-    pub fn check_consistency(
-        &self,
-        concrete: &Entities,
-    ) -> std::result::Result<(), EntitiesConsistencyError> {
+    pub fn check_consistency(&self, concrete: &Entities) -> Result<(), EntitiesConsistencyError> {
         for (uid, e) in &self.entities {
             match concrete.entity(uid) {
                 Dereference::NoSuchEntity => {
@@ -739,7 +670,10 @@ mod tests {
     };
     use cool_asserts::assert_matches;
 
-    use super::{parse_ejson, validate_ancestors, EntityJson, PartialEntities, PartialEntity};
+    use super::{
+        parse_ejson, validate_concrete_ancestors_concrete, EntityJson, PartialEntities,
+        PartialEntity,
+    };
 
     #[track_caller]
     fn basic_schema() -> ValidatorSchema {
@@ -840,7 +774,7 @@ mod tests {
         let uid_a: EntityUID = r#"A::"a""#.parse().unwrap();
         let uid_b: EntityUID = r#"A::"b""#.parse().unwrap();
         assert_matches!(
-            validate_ancestors(&HashMap::from_iter([
+            validate_concrete_ancestors_concrete(&HashMap::from_iter([
                 (
                     uid_a.clone(),
                     PartialEntity {
