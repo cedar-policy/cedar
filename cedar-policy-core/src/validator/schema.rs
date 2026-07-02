@@ -1235,7 +1235,6 @@ impl ValidatorSchema {
     // simpler checks tailored to that representation (and also cover tags,
     // which `check_for_undeclared` does not inspect).
     pub fn try_validate(mut self) -> std::result::Result<Self, SchemaError> {
-        self.check_hierarchy_wf()?;
         self.check_references_wf()?;
         self.check_extension_types_wf()?;
         self.check_decls_wf()?;
@@ -1244,6 +1243,9 @@ impl ValidatorSchema {
         compute_tc(&mut self.entity_types, false)
             .map_err(|e| EntityTypeTransitiveClosureError::from(Box::new(e)))?;
         compute_tc(&mut self.action_ids, true)?;
+        // Check hierarchy well-formedness AFTER transitive closure so that
+        // transitive descendants are included in the enum-in-hierarchy check.
+        self.check_hierarchy_wf()?;
         self.actions = Self::action_entities_iter(&self.action_ids)
             .map(|e| (e.uid().clone(), Arc::new(e)))
             .collect();
@@ -2318,6 +2320,51 @@ pub(crate) mod test {
         assert_matches!(
             schema.try_validate(),
             Err(SchemaError::ActionEntityTypeDeclared(_))
+        );
+    }
+
+    /// Regression test: enum entity types reachable only via transitive
+    /// descendants (A -> B -> EnumC) must be rejected by `try_validate`.
+    /// Before the fix, `check_hierarchy_wf` ran before `compute_tc`, so it
+    /// only saw direct descendants and missed transitive enum descendants.
+    #[test]
+    fn try_validate_rejects_transitive_enum_descendant() {
+        use crate::ast::Eid;
+
+        // Set up: A has direct descendant B, B has direct descendant EnumC.
+        // After TC, A should transitively have EnumC as a descendant.
+        let type_a = EntityType::from_normalized_str("A").unwrap();
+        let type_b = EntityType::from_normalized_str("B").unwrap();
+        let type_enum_c = EntityType::from_normalized_str("EnumC").unwrap();
+
+        let entity_a = ValidatorEntityType::new_standard(
+            type_a,
+            [type_b.clone()], // direct descendant: B only
+            Attributes::with_attributes([]),
+            OpenTag::ClosedAttributes,
+            None,
+            None,
+        );
+        let entity_b = ValidatorEntityType::new_standard(
+            type_b,
+            [type_enum_c.clone()], // direct descendant: EnumC
+            Attributes::with_attributes([]),
+            OpenTag::ClosedAttributes,
+            None,
+            None,
+        );
+        let entity_enum_c = ValidatorEntityType::new_enum(
+            type_enum_c.clone(),
+            [],
+            NonEmpty::new(Eid::new("val1")),
+            None,
+        );
+
+        let schema = ValidatorSchema::new([entity_a, entity_b, entity_enum_c], []);
+
+        assert_matches!(
+            schema.try_validate(),
+            Err(SchemaError::EnumEntityInHierarchy(_))
         );
     }
 
