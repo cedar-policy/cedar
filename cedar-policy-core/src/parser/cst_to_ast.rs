@@ -256,6 +256,13 @@ impl Node<Option<cst::Policy>> {
     /// well, which will become templates with 0 slots
     pub fn to_policy_template(&self, id: ast::PolicyID) -> Result<ast::Template> {
         let policy = self.try_as_inner()?;
+        #[cfg_attr(
+            not(feature = "tolerant-ast"),
+            expect(
+                clippy::infallible_destructuring_match,
+                reason = "this is not a destructuring match when `tolerant-ast` is enabled"
+            )
+        )]
         let policy = match policy {
             cst::Policy::Policy(policy_impl) => policy_impl,
             #[cfg(feature = "tolerant-ast")]
@@ -1277,6 +1284,13 @@ impl Node<Option<cst::Expr>> {
     ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let expr_opt = self.try_as_inner()?;
 
+        #[cfg_attr(
+            not(feature = "tolerant-ast"),
+            expect(
+                clippy::infallible_destructuring_match,
+                reason = "this is not a destructuring match when `tolerant-ast` is enabled"
+            )
+        )]
         let expr = match expr_opt {
             cst::Expr::Expr(expr_impl) => expr_impl,
             #[cfg(feature = "tolerant-ast")]

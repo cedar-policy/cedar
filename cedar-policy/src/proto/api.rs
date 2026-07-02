@@ -133,7 +133,7 @@ impl traits::Protobuf for api::Entities {
             msg,
             cedar_policy_core::entities::TCComputation::AssumeAlreadyComputed,
         )?;
-        Ok(api::Entities(core_entities))
+        Ok(Self(core_entities))
     }
 }
 

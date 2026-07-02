@@ -106,7 +106,7 @@ where
     if enforce_dag {
         // TC is correct by construction (same as compute_tc). Only need to
         // check for self-loops, and only on nodes whose edges were modified.
-        return enforce_dag_from_tc_for(&nodes_to_fix, nodes);
+        return enforce_dag_from_tc_for(nodes_to_fix, nodes);
     }
     Ok(())
 }

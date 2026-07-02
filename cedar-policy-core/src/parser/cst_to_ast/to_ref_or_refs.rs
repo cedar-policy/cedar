@@ -202,6 +202,13 @@ impl Node<Option<cst::Expr>> {
     ) -> Result<T> {
         let expr_opt = self.try_as_inner()?;
 
+        #[cfg_attr(
+            not(feature = "tolerant-ast"),
+            expect(
+                clippy::infallible_destructuring_match,
+                reason = "this is not a destructuring match when `tolerant-ast` is enabled"
+            )
+        )]
         let expr = match expr_opt {
             cst::Expr::Expr(expr_impl) => expr_impl,
             #[cfg(feature = "tolerant-ast")]

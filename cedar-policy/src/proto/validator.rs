@@ -192,13 +192,11 @@ impl TryFrom<models::EntityDecl> for cedar_policy_core::validator::ValidatorEnti
                 // enumerated entity types must have no attributes or tags.
                 if !v.attributes.is_empty() {
                     Err(ProtobufConversionError::InvalidValue(format!(
-                        "enum type {} should not have attributes",
-                        name
+                        "enum type {name} should not have attributes"
                     )))
                 } else if v.tags.is_some() {
                     Err(ProtobufConversionError::InvalidValue(format!(
-                        "enum type {} should not have tags",
-                        name
+                        "enum type {name} should not have tags"
                     )))
                 } else {
                     Ok(Self::new_enum(
