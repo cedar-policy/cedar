@@ -2652,6 +2652,13 @@ impl PolicySet {
     pub fn from_pst(pst_set: pst::PolicySet) -> Result<Self, PolicySetError> {
         let mut set = Self::new();
         for (id, template) in pst_set.templates {
+            if id != template.id {
+                return Err(policy_set_errors::InconsistentPolicyId {
+                    map_key: id.into(),
+                    inner_id: template.id.into(),
+                }
+                .into());
+            }
             let ast_template: ast::Template = template.clone().try_into()?;
             set.ast.add_template(ast_template.clone())?;
             set.templates.insert(
@@ -2663,6 +2670,13 @@ impl PolicySet {
             );
         }
         for (id, static_policy) in pst_set.policies {
+            if &id != static_policy.id() {
+                return Err(policy_set_errors::InconsistentPolicyId {
+                    map_key: id.into(),
+                    inner_id: static_policy.id().clone().into(),
+                }
+                .into());
+            }
             let pst_policy = pst::Policy::Static(static_policy);
             let ast_policy: ast::Policy = pst_policy.clone().try_into()?;
             set.ast.add(ast_policy.clone())?;

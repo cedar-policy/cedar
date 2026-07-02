@@ -10638,6 +10638,87 @@ mod pst_api {
         );
     }
 
+    // --- PolicySet from_pst error: template map key != inner id ---
+
+    #[test]
+    fn policy_set_from_pst_inconsistent_template_id() {
+        use linked_hash_map::LinkedHashMap;
+        let t = slotted_template(
+            "real_id",
+            pst::Effect::Permit,
+            pst::PrincipalConstraint::Eq(pst::EntityOrSlot::Slot(pst::SlotId::Principal)),
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+            vec![],
+        );
+        let inner_key = t.id.clone();
+        let outer_key = pst::PolicyID("fake_key".into());
+        let mut templates = LinkedHashMap::new();
+        templates.insert(outer_key.clone(), t);
+        let pst_set = pst::PolicySet {
+            templates,
+            policies: LinkedHashMap::new(),
+            template_links: vec![],
+        };
+        let err = PolicySet::from_pst(pst_set).unwrap_err();
+        match &err {
+            PolicySetError::InconsistentPolicyId(e) => {
+                assert_eq!(e.map_key().to_string(), outer_key.to_string());
+                assert_eq!(e.inner_id().to_string(), inner_key.to_string());
+            }
+            _ => panic!("expected InconsistentPolicyId, got: {err}"),
+        }
+        assert!(
+            err.to_string().contains("fake_key"),
+            "error should mention the map key: {err}"
+        );
+        assert!(
+            err.to_string().contains("real_id"),
+            "error should mention the inner id: {err}"
+        );
+    }
+
+    // --- PolicySet from_pst error: policy map key != inner id ---
+
+    #[test]
+    fn policy_set_from_pst_inconsistent_policy_id() {
+        use linked_hash_map::LinkedHashMap;
+        let sp = pst::StaticPolicy::try_from(static_template(
+            "inner_id",
+            pst::Effect::Forbid,
+            pst::PrincipalConstraint::Any,
+            pst::ActionConstraint::Any,
+            pst::ResourceConstraint::Any,
+            vec![],
+        ))
+        .unwrap();
+        let mut policies = LinkedHashMap::new();
+        let inner_key = sp.id().clone();
+        let outer_key = pst::PolicyID("outer_key".into());
+        policies.insert(outer_key.clone(), sp);
+        let pst_set = pst::PolicySet {
+            templates: LinkedHashMap::new(),
+            policies,
+            template_links: vec![],
+        };
+        let err = PolicySet::from_pst(pst_set).unwrap_err();
+        match &err {
+            PolicySetError::InconsistentPolicyId(e) => {
+                assert_eq!(e.map_key().to_string(), outer_key.to_string());
+                assert_eq!(e.inner_id().to_string(), inner_key.to_string());
+            }
+            _ => panic!("expected InconsistentPolicyId, got: {err}"),
+        }
+        assert!(
+            err.to_string().contains("outer_key"),
+            "error should mention the map key: {err}"
+        );
+        assert!(
+            err.to_string().contains("inner_id"),
+            "error should mention the inner id: {err}"
+        );
+    }
+
     // --- PolicySet from_pst error: link references nonexistent template ---
 
     #[test]
