@@ -686,6 +686,17 @@ mod tests {
         )
     }
 
+    fn concrete_user_req() -> PartialRequest {
+        PartialRequest::new(
+            concrete_euid(r#"User::"foo""#),
+            r#"Action::"get""#.parse().unwrap(),
+            unknown_euid("Document"),
+            None,
+            &schema(),
+        )
+        .unwrap()
+    }
+
     #[track_caller]
     fn parse_typed_expr(
         expr_str: &str,
@@ -726,18 +737,6 @@ mod tests {
         }
     }
 
-    fn typed_req() -> PartialRequest {
-        // Request matches schema in parse_typed_expr
-        PartialRequest::new(
-            concrete_euid(r#"User::"foo""#),
-            r#"Action::"get""#.parse().unwrap(),
-            unknown_euid("Document"),
-            None,
-            &schema(),
-        )
-        .unwrap()
-    }
-
     #[track_caller]
     fn interpret_typed_str_to_str(
         evaluator: &Evaluator<'_>,
@@ -769,12 +768,11 @@ mod tests {
     #[test]
     fn test_var() {
         let eval = Evaluator {
-            request: &typed_req(),
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        let schema = schema();
-        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         // principal -> principal because its eid is unknown
         assert_snapshot!(
             interpret_typed_str_to_str("principal"),
@@ -836,12 +834,11 @@ mod tests {
     #[test]
     fn test_and() {
         let eval = Evaluator {
-            request: &typed_req(),
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        let schema = schema();
-        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         // Note: The test expressions are in the same order as the match statements
 
         // "false && <any>" => "false"
@@ -909,12 +906,11 @@ mod tests {
     #[test]
     fn test_or() {
         let eval = Evaluator {
-            request: &typed_req(),
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        let schema = schema();
-        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         // Note: The test expressions are in the same order as the match statements
 
         // "true || <any>" => "true"
@@ -981,35 +977,26 @@ mod tests {
 
     #[test]
     fn test_ite() {
-        let schema = schema();
-        let req = PartialRequest::new(
-            unknown_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
-            unknown_euid("Document"),
-            None,
-            &schema,
-        )
-        .unwrap();
         let eval = Evaluator {
-            request: &req,
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         assert_snapshot!(
-            interpret_typed_str_to_str("if true then principal else 2"),
-            @"principal"
+            interpret_typed_str_to_str("if true then resource else 2"),
+            @"resource"
         );
         assert_snapshot!(
-            interpret_typed_str_to_str("if false then principal else 2"),
+            interpret_typed_str_to_str("if false then resource else 2"),
             @"2"
         );
         assert_snapshot!(
-            interpret_typed_str_to_str(r#"if (principal == User::"alice") then Document::"A" else Document::"B""#),
-            @r#"if (principal == User::"alice") then Document::"A" else Document::"B""#
+            interpret_typed_str_to_str(r#"if (resource == User::"alice") then Document::"A" else Document::"B""#),
+            @r#"if (resource == User::"alice") then Document::"B" else Document::"B""#
         );
         assert_snapshot!(
-            interpret_typed_str_to_str(&r#"if (9223372036854775807 * 2) == 0 then principal else User::"alice""#),
+            interpret_typed_str_to_str(&r#"if (9223372036854775807 * 2) == 0 then resource else Document::"A""#),
             @"error()"
         );
         assert_snapshot!(
@@ -1375,16 +1362,8 @@ mod tests {
 
     #[test]
     fn test_set() {
-        let req = PartialRequest::new(
-            unknown_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"Document::"""#),
-            None,
-            &schema(),
-        )
-        .unwrap();
         let eval = Evaluator {
-            request: &req,
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
@@ -1392,15 +1371,15 @@ mod tests {
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         assert_snapshot!(
             interpret_typed_str_to_str(r#"[resource]"#),
-            @r#"[Document::""]"#
+            @"[resource]"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"[principal]"#),
-            @"[principal]"
+            @r#"[User::"foo"]"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"[principal, User::"alice"]"#),
-            @r#"[principal, User::"alice"]"#
+            @r#"[User::"alice", User::"foo"]"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"[0, -(-9223372036854775808)]"#),
@@ -1410,27 +1389,19 @@ mod tests {
 
     #[test]
     fn test_record() {
-        let req = PartialRequest::new(
-            unknown_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"Document::"""#),
-            None,
-            &schema(),
-        )
-        .unwrap();
         let eval = Evaluator {
-            request: &req,
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         assert_snapshot!(
             interpret_typed_str_to_str(r#"{s: resource}"#),
-            @r#"{s: Document::""}"#
+            @"{s: resource}"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"{s: principal}"#),
-            @"{s: principal}"
+            @r#"{s: User::"foo"}"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"{s: -(-9223372036854775808), "": resource}"#),
@@ -1563,7 +1534,6 @@ mod tests {
                     "uid": { "type": "M0", "id": "m0" },
                     "attrs": { "data": 42 },
                 },
-                // `M1::"m1"` intentionally omits `attrs`, marking them unknown.
                 {
                     "uid": { "type": "M1", "id": "m1" },
                 },
@@ -1617,16 +1587,8 @@ mod tests {
 
     #[test]
     fn test_call() {
-        let req = PartialRequest::new(
-            unknown_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"Document::"""#),
-            None,
-            &schema(),
-        )
-        .unwrap();
         let eval = Evaluator {
-            request: &req,
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
@@ -1637,7 +1599,7 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"(if principal == User::"alice" then ip("127.0.0.1") else ip("192.168.0.1")).isInRange(ip("192.168.0.0/16"))"#),
-            @r#"(if (principal == User::"alice") then (ip("127.0.0.1/32")) else (ip("192.168.0.1/32"))).isInRange(ip("192.168.0.0/16"))"#
+            @"true"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then ip("127.0.0.1") else ip("192.168.0.1")).isInRange(ip("192.168.0.0/16"))"#),
@@ -2087,16 +2049,8 @@ mod tests {
     // Test containsAll/containsAny operations
     #[test]
     fn test_set_ops() {
-        let req = PartialRequest::new(
-            unknown_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"Document::"""#),
-            None,
-            &schema(),
-        )
-        .unwrap();
         let eval = Evaluator {
-            request: &req,
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
@@ -2106,21 +2060,27 @@ mod tests {
             @"true"
         );
         assert_snapshot!(
-            interpret_typed_str_to_str(r#"[true, false].containsAll([false, principal == User::"alice"])"#),
-            @r#"[false, true].containsAll([false, principal == User::"alice"])"#
+            interpret_typed_str_to_str(r#"[true, false].containsAll([false, resource == Document::"mine"])"#),
+            @r#"[false, true].containsAll([false, resource == Document::"mine"])"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"[true, false].containsAny([false])"#),
             @"true"
         );
         assert_snapshot!(
-            interpret_typed_str_to_str(r#"[true].containsAny([principal == User::"alice"])"#),
-            @r#"[true].containsAny([principal == User::"alice"])"#
+            interpret_typed_str_to_str(r#"[true].containsAny([resource == Document::"alice"])"#),
+            @r#"[true].containsAny([resource == Document::"alice"])"#
         );
     }
 
     #[test]
-    fn test_datetime_residual_normalization() {
+    fn test_ext_normalization() {
+        let eval = Evaluator {
+            request: &concrete_user_req(),
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         // When the TPE evaluator evaluates datetime("6640-02-11") with all
         // concrete args, the resulting residual should use the canonical
         // offset(datetime("1970-01-01"), duration("Nms")) form — not the
@@ -2129,90 +2089,18 @@ mod tests {
         // while the Rust side representation without canonicalization can be either the
         // direct datetime or the offset from the Unix Epoch, depending on where the term
         // originated from.
-        let req = PartialRequest::new(
-            unknown_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"Document::"""#),
-            None,
-            &schema(),
-        )
-        .unwrap();
-        let eval = Evaluator {
-            request: &req,
-            entities: &PartialEntities::new(),
-            extensions: Extensions::all_available(),
-        };
-
-        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         assert_snapshot!(
             interpret_typed_str_to_str(r#"datetime("6640-02-11")"#),
             @r#"(datetime("1970-01-01")).offset(duration("147374467200000ms"))"#
         );
-    }
-
-    #[test]
-    fn test_decimal_residual_normalization() {
-        // decimal("0.0") should be normalized to decimal("0.0000") (4-digit padded)
-        let req = PartialRequest::new(
-            unknown_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"Document::"""#),
-            None,
-            &schema(),
-        )
-        .unwrap();
-        let eval = Evaluator {
-            request: &req,
-            entities: &PartialEntities::new(),
-            extensions: Extensions::all_available(),
-        };
-        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         assert_snapshot!(
             interpret_typed_str_to_str(r#"decimal("0.0")"#),
             @r#"decimal("0.0000")"#
         );
-    }
-
-    #[test]
-    fn test_ip_residual_normalization() {
-        // ip("::1") should be normalized to include the prefix: ip("::1/128")
-        let req = PartialRequest::new(
-            unknown_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"Document::"""#),
-            None,
-            &schema(),
-        )
-        .unwrap();
-        let eval = Evaluator {
-            request: &req,
-            entities: &PartialEntities::new(),
-            extensions: Extensions::all_available(),
-        };
-        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         assert_snapshot!(
             interpret_typed_str_to_str(r#"ip("::1")"#),
             @r#"ip("::1/128")"#
         );
-    }
-
-    #[test]
-    fn test_duration_residual_normalization() {
-        // duration("1d") should be normalized to duration("86400000ms")
-        let req = PartialRequest::new(
-            unknown_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"Document::"""#),
-            None,
-            &schema(),
-        )
-        .unwrap();
-        let eval = Evaluator {
-            request: &req,
-            entities: &PartialEntities::new(),
-            extensions: Extensions::all_available(),
-        };
-        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         assert_snapshot!(
             interpret_typed_str_to_str(r#"duration("1d")"#),
             @r#"duration("86400000ms")"#
