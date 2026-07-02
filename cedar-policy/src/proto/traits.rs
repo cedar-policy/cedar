@@ -54,6 +54,11 @@ pub trait TryValidate: Sized {
     /// The type of errors returned by the validation method.
     type Err: Display;
     /// A validation method that returns the object itself, or an error if it is invalid.
+    ///
+    /// # Errors
+    ///
+    /// Will return errors when the implementing structure is invalid, according to its own
+    ///  invariants.
     fn try_validate(self) -> Result<Self, Self::Err>;
 }
 
@@ -152,35 +157,35 @@ pub(crate) fn try_decode<
 impl TryValidate for api::PolicySet {
     type Err = PolicySetValidationError;
     fn try_validate(self) -> Result<Self, Self::Err> {
-        self.ast.try_validate().map(|o| o.into())
+        self.ast.try_validate().map(Into::into)
     }
 }
 
 impl TryValidate for api::Entities {
     type Err = EntitiesError;
-    fn try_validate(self) -> Result<api::Entities, EntitiesError> {
-        Ok(api::Entities(self.0.try_validate()?))
+    fn try_validate(self) -> Result<Self, EntitiesError> {
+        Ok(Self(self.0.try_validate()?))
     }
 }
 
 impl TryValidate for api::Entity {
     type Err = EntitiesError;
-    fn try_validate(self) -> Result<api::Entity, EntitiesError> {
-        Ok(api::Entity(self.0.try_validate()?))
+    fn try_validate(self) -> Result<Self, EntitiesError> {
+        Ok(Self(self.0.try_validate()?))
     }
 }
 
 impl TryValidate for api::Schema {
     type Err = SchemaError;
     fn try_validate(self) -> Result<Self, SchemaError> {
-        Ok(api::Schema(self.0.try_validate()?))
+        Ok(Self(self.0.try_validate()?))
     }
 }
 
 impl TryValidate for api::Template {
     type Err = TemplateValidationError;
     fn try_validate(self) -> Result<Self, TemplateValidationError> {
-        Ok(api::Template {
+        Ok(Self {
             ast: self.ast.try_validate()?,
             ..self
         })
@@ -190,7 +195,7 @@ impl TryValidate for api::Template {
 impl TryValidate for api::Expression {
     type Err = ExprValidationError;
     fn try_validate(self) -> Result<Self, ExprValidationError> {
-        Ok(api::Expression(self.0.try_validate()?))
+        Ok(Self(self.0.try_validate()?))
     }
 }
 

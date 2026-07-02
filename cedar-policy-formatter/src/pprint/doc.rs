@@ -873,6 +873,13 @@ impl Doc for Node<Option<Ident>> {
 impl Doc for Node<Option<Policy>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let policy = self.as_inner()?;
+        #[cfg_attr(
+            not(feature = "tolerant-ast"),
+            expect(
+                clippy::infallible_destructuring_match,
+                reason = "this is not a destructuring match when `tolerant-ast` is enabled"
+            )
+        )]
         let policy = match policy {
             Policy::Policy(policy_impl) => policy_impl,
             #[cfg(feature = "tolerant-ast")]

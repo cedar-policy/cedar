@@ -161,6 +161,13 @@ impl LocatedType {
     /// Replace `self.loc` with `loc`. No-op if the `extended-schema` feature is
     /// not enabled.
     pub fn with_loc(self, _loc: Option<&Loc>) -> Self {
+        #[cfg_attr(
+            not(feature = "extended-schema"),
+            expect(
+                clippy::unnecessary_struct_initialization,
+                reason = "changes loc when extended-schema is enabled"
+            )
+        )]
         Self {
             #[cfg(feature = "extended-schema")]
             loc: _loc.cloned(),

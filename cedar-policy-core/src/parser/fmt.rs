@@ -58,6 +58,13 @@ impl fmt::Display for Policies {
 }
 impl fmt::Display for Policy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[cfg_attr(
+            not(feature = "tolerant-ast"),
+            expect(
+                clippy::infallible_destructuring_match,
+                reason = "this is not a destrucuring match when `toleran-ast` is enabled"
+            )
+        )]
         let policy = match self {
             Policy::Policy(p) => p,
             #[cfg(feature = "tolerant-ast")]

@@ -165,6 +165,13 @@ impl Clause {
 impl TryFrom<cst::Policy> for Policy {
     type Error = ParseErrors;
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
+        #[cfg_attr(
+            not(feature = "tolerant-ast"),
+            expect(
+                clippy::infallible_destructuring_match,
+                reason = "this is not a destrcutring match when `tolerant-ast` is enabled"
+            )
+        )]
         let policy = match policy {
             cst::Policy::Policy(policy_impl) => policy_impl,
             #[cfg(feature = "tolerant-ast")]
