@@ -17,17 +17,12 @@
 //! This module contains possible errors thrown by various components of the
 //! type-aware partial evaluator.
 
-use std::fmt::Display;
-
 use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::{
     ast::{Eid, EntityType, EntityUID, PartialValueToValueError},
-    entities::{
-        conformance::err::{EntitySchemaConformanceError, InvalidEnumEntityError},
-        err::Duplicate,
-    },
+    entities::{conformance::err::EntitySchemaConformanceError, err::Duplicate},
     evaluator::{evaluation_errors::UnlinkedSlotError, EvaluationError},
     transitive_closure::TcError,
     validator::{RequestValidationError, ValidationError},
@@ -182,15 +177,6 @@ pub enum RequestBuilderError {
     /// entity type
     #[error(transparent)]
     IncorrectResourceEntityType(#[from] IncorrectResourceEntityTypeError),
-    /// Error thrown when the principal candidate is invalid
-    #[error("invalid principal candidate: {}", .0)]
-    InvalidPrincipalCandidate(InvalidEnumEntityError),
-    /// Error thrown when the resource candidate is invalid
-    #[error("invalid resource candidate: {}", .0)]
-    InvalidResourceCandidate(InvalidEnumEntityError),
-    /// Error thrown when the context candidate is invalid
-    #[error("context candidate doesn't validate: {}", .0)]
-    IllTypedContextCandidate(RequestValidationError),
     /// Error thrown when the context candidate contains unknowns
     #[error("context candidate contains unknowns")]
     UnknownContextCandidate,
@@ -344,6 +330,7 @@ pub struct UnknownEntityError {
 
 /// Error thrown when some requested entities were not loaded
 #[derive(Debug, Error)]
+#[error("Failed to load entities: {}", .missing_entities.iter().map(|uid| uid.to_string()).collect::<Vec<_>>().join(", "))]
 pub struct MissingEntitiesError {
     pub(super) missing_entities: Vec<EntityUID>,
 }
@@ -352,20 +339,6 @@ impl MissingEntitiesError {
     /// Construct a new [`MissingEntitiesError`]
     pub fn new(missing_entities: Vec<EntityUID>) -> Self {
         Self { missing_entities }
-    }
-}
-
-impl Display for MissingEntitiesError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Failed to load entities: {}",
-            self.missing_entities
-                .iter()
-                .map(|uid| uid.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
     }
 }
 
@@ -458,8 +431,8 @@ pub enum ReauthorizationError {
     EntityValidation(#[from] EntitySchemaConformanceError),
     /// Error thrown when entities and partial entities are inconsistent
     #[error(transparent)]
-    EntitiesConsistentcy(#[from] EntitiesConsistencyError),
+    EntitiesConsistency(#[from] EntitiesConsistencyError),
     /// Error thrown when request and partial request are inconsistent
     #[error(transparent)]
-    RequestConsistentcy(#[from] RequestConsistencyError),
+    RequestConsistency(#[from] RequestConsistencyError),
 }

@@ -19,6 +19,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::ast::{EntityUIDEntry, RequestSchema};
+use crate::entities::conformance::err::InvalidEnumEntityError;
 use crate::tpe::err::{
     ExistingPrincipalError, ExistingResourceError, InconsistentActionError,
     InconsistentPrincipalEidError, InconsistentPrincipalTypeError, InconsistentResourceEidError,
@@ -30,8 +31,8 @@ use crate::validator::request_validation_errors::{
     UndeclaredActionError, UndeclaredPrincipalTypeError, UndeclaredResourceTypeError,
 };
 use crate::validator::{
-    types::RequestEnv, RequestValidationError, ValidationMode, ValidatorEntityType,
-    ValidatorEntityTypeKind, ValidatorSchema,
+    types::RequestEnv, RequestValidationError, ValidationMode, ValidatorEntityTypeKind,
+    ValidatorSchema,
 };
 use crate::{
     ast::{Context, Eid, EntityType, EntityUID, Request, Value},
@@ -49,11 +50,173 @@ pub struct PartialEntityUID {
     pub eid: Option<Eid>,
 }
 
+#[derive(Debug)]
+enum PartialEUIDConsistencyError {
+    Unknown,
+    InconsistentType(EntityType, EntityType),
+    InconsistentEid(Eid, Eid),
+}
+
+impl PartialEUIDConsistencyError {
+    pub fn into_resource_error(self) -> RequestConsistencyError {
+        match self {
+            PartialEUIDConsistencyError::Unknown => RequestConsistencyError::UnknownResource,
+            PartialEUIDConsistencyError::InconsistentType(partial, concrete) => {
+                InconsistentResourceTypeError { partial, concrete }.into()
+            }
+            PartialEUIDConsistencyError::InconsistentEid(partial, concrete) => {
+                InconsistentResourceEidError { partial, concrete }.into()
+            }
+        }
+    }
+
+    pub fn into_principal_error(self) -> RequestConsistencyError {
+        match self {
+            PartialEUIDConsistencyError::Unknown => RequestConsistencyError::UnknownPrincipal,
+            PartialEUIDConsistencyError::InconsistentType(partial, concrete) => {
+                InconsistentPrincipalTypeError { partial, concrete }.into()
+            }
+            PartialEUIDConsistencyError::InconsistentEid(partial, concrete) => {
+                InconsistentPrincipalEidError { partial, concrete }.into()
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum PartialEUIDValidationError {
+    UndeclaredType(EntityType),
+    InvalidEnum(InvalidEnumEntityError),
+}
+
+impl PartialEUIDValidationError {
+    pub fn into_resource_error(self) -> RequestValidationError {
+        match self {
+            PartialEUIDValidationError::UndeclaredType(resource_ty) => {
+                UndeclaredResourceTypeError { resource_ty }.into()
+            }
+            PartialEUIDValidationError::InvalidEnum(enum_err) => enum_err.into(),
+        }
+    }
+
+    pub fn into_principal_error(self) -> RequestValidationError {
+        match self {
+            PartialEUIDValidationError::UndeclaredType(principal_ty) => {
+                UndeclaredPrincipalTypeError { principal_ty }.into()
+            }
+            PartialEUIDValidationError::InvalidEnum(enum_err) => enum_err.into(),
+        }
+    }
+}
+
+#[derive(Debug)]
+enum PartialEUIDBuilderError {
+    Existing(EntityUID),
+    IncorrectType(EntityType, EntityType),
+    Invalid(PartialEUIDValidationError),
+}
+
+impl PartialEUIDBuilderError {
+    pub fn into_resource_error(self) -> RequestBuilderError {
+        match self {
+            PartialEUIDBuilderError::Existing(resource) => {
+                ExistingResourceError { resource }.into()
+            }
+            PartialEUIDBuilderError::IncorrectType(ty, expected) => {
+                IncorrectResourceEntityTypeError { ty, expected }.into()
+            }
+            PartialEUIDBuilderError::Invalid(e) => e.into_resource_error().into(),
+        }
+    }
+
+    pub fn into_principal_error(self) -> RequestBuilderError {
+        match self {
+            PartialEUIDBuilderError::Existing(principal) => {
+                ExistingPrincipalError { principal }.into()
+            }
+            PartialEUIDBuilderError::IncorrectType(ty, expected) => {
+                IncorrectPrincipalEntityTypeError { ty, expected }.into()
+            }
+            PartialEUIDBuilderError::Invalid(e) => e.into_principal_error().into(),
+        }
+    }
+}
+
+impl PartialEntityUID {
+    fn check_type(
+        &self,
+        schema: &ValidatorSchema,
+        uid: Option<&EntityUID>,
+    ) -> Result<(), PartialEUIDValidationError> {
+        // Entity type must be declared
+        let entity_ty = schema
+            .get_entity_type(&self.ty)
+            .ok_or_else(|| PartialEUIDValidationError::UndeclaredType(self.ty.clone()))?;
+        // If we have a concrete uid and this is an enum entity, it must be one
+        // of the choices
+        if let (ValidatorEntityTypeKind::Enum(choices), Some(uid)) = (&entity_ty.kind, uid) {
+            is_valid_enumerated_entity(choices, uid)
+                .map_err(PartialEUIDValidationError::InvalidEnum)?;
+        }
+        Ok(())
+    }
+
+    fn validate(&self, schema: &ValidatorSchema) -> Result<(), PartialEUIDValidationError> {
+        self.check_type(schema, EntityUID::try_from(self.clone()).ok().as_ref())
+    }
+
+    fn check_consistency(&self, entry: &EntityUIDEntry) -> Result<(), PartialEUIDConsistencyError> {
+        let EntityUIDEntry::Known { euid, .. } = entry else {
+            return Err(PartialEUIDConsistencyError::Unknown);
+        };
+        if euid.entity_type() != &self.ty {
+            return Err(PartialEUIDConsistencyError::InconsistentType(
+                self.ty.clone(),
+                euid.entity_type().clone(),
+            ));
+        }
+        if let Some(eid) = &self.eid {
+            if eid != euid.eid() {
+                return Err(PartialEUIDConsistencyError::InconsistentEid(
+                    eid.clone(),
+                    euid.eid().clone(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Attempt to fill an unknown euid in a request with a concrete candidate.
+    ///
+    /// Errors without changing `self` if the candidate is in incompatible
+    fn set_candidate(
+        &mut self,
+        candidate: EntityUID,
+        schema: &ValidatorSchema,
+    ) -> Result<(), PartialEUIDBuilderError> {
+        if let Some(eid) = &self.eid {
+            return Err(PartialEUIDBuilderError::Existing(
+                EntityUID::from_components(self.ty.clone(), eid.clone(), None),
+            ));
+        }
+        if candidate.entity_type() != &self.ty {
+            return Err(PartialEUIDBuilderError::IncorrectType(
+                candidate.entity_type().clone(),
+                self.ty.clone(),
+            ));
+        }
+        self.check_type(schema, Some(&candidate))
+            .map_err(PartialEUIDBuilderError::Invalid)?;
+        *self = PartialEntityUID::from(candidate);
+        Ok(())
+    }
+}
+
 impl TryFrom<PartialEntityUID> for EntityUID {
     type Error = ();
-    fn try_from(value: PartialEntityUID) -> std::result::Result<EntityUID, ()> {
+    fn try_from(value: PartialEntityUID) -> Result<EntityUID, ()> {
         if let Some(eid) = value.eid {
-            std::result::Result::Ok(EntityUID::from_components(value.ty, eid, None))
+            Ok(EntityUID::from_components(value.ty, eid, None))
         } else {
             Err(())
         }
@@ -62,10 +225,8 @@ impl TryFrom<PartialEntityUID> for EntityUID {
 
 impl From<EntityUID> for PartialEntityUID {
     fn from(value: EntityUID) -> Self {
-        Self {
-            ty: value.entity_type().clone(),
-            eid: Some(value.eid().clone()),
-        }
+        let (ty, eid) = value.components();
+        Self { ty, eid: Some(eid) }
     }
 }
 
@@ -92,10 +253,9 @@ impl PartialRequest {
         principal: PartialEntityUID,
         action: EntityUID,
         resource: PartialEntityUID,
-
         context: Option<Arc<BTreeMap<SmolStr, Value>>>,
         schema: &ValidatorSchema,
-    ) -> std::result::Result<Self, RequestValidationError> {
+    ) -> Result<Self, RequestValidationError> {
         let req = Self {
             principal,
             action,
@@ -125,7 +285,7 @@ impl PartialRequest {
     pub(crate) fn find_request_env<'s>(
         &self,
         schema: &'s ValidatorSchema,
-    ) -> std::result::Result<RequestEnv<'s>, NoMatchingReqEnvError> {
+    ) -> Result<RequestEnv<'s>, NoMatchingReqEnvError> {
         #[expect(
             clippy::unwrap_used,
             reason = "strict validation should produce concrete action entity uid"
@@ -141,45 +301,16 @@ impl PartialRequest {
     }
 
     // Validate `self` with `schema`
-    pub(crate) fn validate(
-        &self,
-        schema: &ValidatorSchema,
-    ) -> std::result::Result<(), RequestValidationError> {
+    pub(crate) fn validate(&self, schema: &ValidatorSchema) -> Result<(), RequestValidationError> {
         if let Some(action_id) = schema.get_action_id(&self.action) {
             action_id.check_principal_type(&self.principal.ty, &self.action.clone().into())?;
             action_id.check_resource_type(&self.resource.ty, &self.action.clone().into())?;
-            if let Some(principal_ty) = schema.get_entity_type(&self.principal.ty) {
-                if let std::result::Result::Ok(uid) = self.principal.clone().try_into() {
-                    if let ValidatorEntityType {
-                        kind: ValidatorEntityTypeKind::Enum(choices),
-                        ..
-                    } = principal_ty
-                    {
-                        is_valid_enumerated_entity(choices, &uid)?;
-                    }
-                }
-            } else {
-                return Err(UndeclaredPrincipalTypeError {
-                    principal_ty: self.principal.ty.clone(),
-                }
-                .into());
-            }
-            if let Some(resource_ty) = schema.get_entity_type(&self.resource.ty) {
-                if let std::result::Result::Ok(uid) = self.resource.clone().try_into() {
-                    if let ValidatorEntityType {
-                        kind: ValidatorEntityTypeKind::Enum(choices),
-                        ..
-                    } = resource_ty
-                    {
-                        is_valid_enumerated_entity(choices, &uid)?;
-                    }
-                }
-            } else {
-                return Err(UndeclaredResourceTypeError {
-                    resource_ty: self.resource.ty.clone(),
-                }
-                .into());
-            }
+            self.principal
+                .validate(schema)
+                .map_err(|e| e.into_principal_error())?;
+            self.resource
+                .validate(schema)
+                .map_err(|e| e.into_resource_error())?;
             if let Some(m) = &self.context {
                 schema.validate_context(
                     &Context::Value(m.clone()),
@@ -197,57 +328,13 @@ impl PartialRequest {
     }
 
     /// Check consistency between a [`PartialRequest`] and a [`Request`]
-    pub fn check_consistency(
-        &self,
-        request: &Request,
-    ) -> std::result::Result<(), RequestConsistencyError> {
-        match &request.principal {
-            EntityUIDEntry::Unknown { .. } => {
-                return Err(RequestConsistencyError::UnknownPrincipal);
-            }
-            EntityUIDEntry::Known { euid, .. } => {
-                if euid.entity_type() != &self.principal.ty {
-                    return Err(InconsistentPrincipalTypeError {
-                        partial: self.principal.ty.clone(),
-                        concrete: euid.entity_type().clone(),
-                    }
-                    .into());
-                }
-                if let Some(eid) = &self.principal.eid {
-                    if eid != euid.eid() {
-                        return Err(InconsistentPrincipalEidError {
-                            partial: eid.clone(),
-                            concrete: euid.eid().clone(),
-                        }
-                        .into());
-                    }
-                }
-            }
-        }
-
-        match &request.resource {
-            EntityUIDEntry::Unknown { .. } => {
-                return Err(RequestConsistencyError::UnknownResource);
-            }
-            EntityUIDEntry::Known { euid, .. } => {
-                if euid.entity_type() != &self.resource.ty {
-                    return Err(InconsistentResourceTypeError {
-                        partial: self.resource.ty.clone(),
-                        concrete: euid.entity_type().clone(),
-                    }
-                    .into());
-                }
-                if let Some(eid) = &self.resource.eid {
-                    if eid != euid.eid() {
-                        return Err(InconsistentResourceEidError {
-                            partial: eid.clone(),
-                            concrete: euid.eid().clone(),
-                        }
-                        .into());
-                    }
-                }
-            }
-        }
+    pub fn check_consistency(&self, request: &Request) -> Result<(), RequestConsistencyError> {
+        self.principal
+            .check_consistency(&request.principal)
+            .map_err(|e| e.into_principal_error())?;
+        self.resource
+            .check_consistency(&request.resource)
+            .map_err(|e| e.into_resource_error())?;
 
         match &request.action {
             EntityUIDEntry::Unknown { .. } => {
@@ -330,7 +417,7 @@ impl<'s> RequestBuilder<'s> {
     pub fn new(
         partial_request: PartialRequest,
         schema: &'s ValidatorSchema,
-    ) -> std::result::Result<Self, RequestBuilderError> {
+    ) -> Result<Self, RequestBuilderError> {
         partial_request.validate(schema)?;
         Ok(Self {
             partial_request,
@@ -352,11 +439,7 @@ impl<'s> RequestBuilder<'s> {
             EntityUID::try_from(resource.clone()),
             context,
         ) {
-            (
-                std::result::Result::Ok(principal),
-                std::result::Result::Ok(resource),
-                Some(context),
-            ) => Some(Request::new_unchecked(
+            (Ok(principal), Ok(resource), Some(context)) => Some(Request::new_unchecked(
                 principal.into(),
                 action.clone().into(),
                 resource.into(),
@@ -367,104 +450,23 @@ impl<'s> RequestBuilder<'s> {
     }
 
     /// Attempt to add `principal`
-    pub fn add_principal(
-        &mut self,
-        candidate: &EntityUID,
-    ) -> std::result::Result<(), RequestBuilderError> {
-        if let PartialEntityUID { eid: Some(eid), .. } = &self.partial_request.principal {
-            Err(ExistingPrincipalError {
-                principal: EntityUID::from_components(
-                    self.partial_request.principal.ty.clone(),
-                    eid.clone(),
-                    None,
-                ),
-            }
-            .into())
-        } else {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "partial_request is validated and hence the entity type must exist in the schema"
-            )]
-            if candidate.entity_type() != &self.partial_request.principal.ty {
-                Err(IncorrectPrincipalEntityTypeError {
-                    ty: candidate.entity_type().clone(),
-                    expected: self.partial_request.principal.ty.clone(),
-                }
-                .into())
-            } else {
-                let principal_ty = self
-                    .schema
-                    .get_entity_type(&self.partial_request.principal.ty)
-                    .unwrap();
-                if let ValidatorEntityType {
-                    kind: ValidatorEntityTypeKind::Enum(choices),
-                    ..
-                } = principal_ty
-                {
-                    is_valid_enumerated_entity(choices, candidate)
-                        .map_err(RequestBuilderError::InvalidPrincipalCandidate)?;
-                }
-                self.partial_request.principal = PartialEntityUID {
-                    ty: candidate.entity_type().clone(),
-                    eid: Some(candidate.eid().clone()),
-                };
-                Ok(())
-            }
-        }
+    pub fn add_principal(&mut self, candidate: EntityUID) -> Result<(), RequestBuilderError> {
+        self.partial_request
+            .principal
+            .set_candidate(candidate, self.schema)
+            .map_err(|e| e.into_principal_error())
     }
 
     /// Attempt to add `resource`
-    pub fn add_resource(
-        &mut self,
-        candidate: &EntityUID,
-    ) -> std::result::Result<(), RequestBuilderError> {
-        if let PartialEntityUID { eid: Some(eid), .. } = &self.partial_request.resource {
-            Err(ExistingResourceError {
-                resource: EntityUID::from_components(
-                    self.partial_request.resource.ty.clone(),
-                    eid.clone(),
-                    None,
-                ),
-            }
-            .into())
-        } else {
-            #[expect(
-                clippy::unwrap_used,
-                reason = "partial_request is validated and hence the entity type must exist in the schema"
-            )]
-            if candidate.entity_type() != &self.partial_request.resource.ty {
-                Err(IncorrectResourceEntityTypeError {
-                    ty: candidate.entity_type().clone(),
-                    expected: self.partial_request.resource.ty.clone(),
-                }
-                .into())
-            } else {
-                let resource_ty = self
-                    .schema
-                    .get_entity_type(&self.partial_request.resource.ty)
-                    .unwrap();
-                if let ValidatorEntityType {
-                    kind: ValidatorEntityTypeKind::Enum(choices),
-                    ..
-                } = resource_ty
-                {
-                    is_valid_enumerated_entity(choices, candidate)
-                        .map_err(RequestBuilderError::InvalidResourceCandidate)?;
-                }
-                self.partial_request.resource = PartialEntityUID {
-                    ty: candidate.entity_type().clone(),
-                    eid: Some(candidate.eid().clone()),
-                };
-                Ok(())
-            }
-        }
+    pub fn add_resource(&mut self, candidate: EntityUID) -> Result<(), RequestBuilderError> {
+        self.partial_request
+            .resource
+            .set_candidate(candidate, self.schema)
+            .map_err(|e| e.into_resource_error())
     }
 
     /// Attempt to add `context`
-    pub fn add_context(
-        &mut self,
-        candidate: &Context,
-    ) -> std::result::Result<(), RequestBuilderError> {
+    pub fn add_context(&mut self, candidate: &Context) -> Result<(), RequestBuilderError> {
         if let Context::Value(v) = candidate {
             if self.partial_request.context.is_some() {
                 Err(RequestBuilderError::ExistingContext)
@@ -475,7 +477,7 @@ impl<'s> RequestBuilder<'s> {
                         &self.partial_request.action,
                         Extensions::all_available(),
                     )
-                    .map_err(RequestBuilderError::IllTypedContextCandidate)?;
+                    .map_err(RequestBuilderError::Validation)?;
                 self.partial_request.context = Some(v.clone());
                 Ok(())
             }
@@ -499,7 +501,7 @@ mod request_builder_tests {
             err::RequestBuilderError,
             request::{PartialEntityUID, PartialRequest, RequestBuilder},
         },
-        validator::ValidatorSchema,
+        validator::{RequestValidationError, ValidatorSchema},
     };
 
     #[track_caller]
@@ -548,31 +550,30 @@ mod request_builder_tests {
 
         // add principal of incorrect type
         assert_matches!(
-            builder.add_principal(&r#"B::"""#.parse().unwrap()),
+            builder.add_principal(r#"B::"""#.parse().unwrap()),
             Err(RequestBuilderError::IncorrectPrincipalEntityType(_))
         );
         // add invalid principal
         assert_matches!(
-            builder.add_principal(&r#"A::"""#.parse().unwrap()),
-            Err(RequestBuilderError::InvalidPrincipalCandidate(_))
+            builder.add_principal(r#"A::"""#.parse().unwrap()),
+            Err(RequestBuilderError::Validation(
+                RequestValidationError::InvalidEnumEntity(_)
+            )),
         );
         // add a principal
-        assert_matches!(
-            builder.add_principal(&r#"A::"foo""#.parse().unwrap()),
-            Ok(_)
-        );
+        assert_matches!(builder.add_principal(r#"A::"foo""#.parse().unwrap()), Ok(_));
         // then we can't add it again
         assert_matches!(
-            builder.add_principal(&r#"A::"foo""#.parse().unwrap()),
+            builder.add_principal(r#"A::"foo""#.parse().unwrap()),
             Err(RequestBuilderError::ExistingPrincipal(_))
         );
         // and we're not done
         assert_matches!(builder.get_request(), None);
         // add resource
-        assert_matches!(builder.add_resource(&r#"B::"foo""#.parse().unwrap()), Ok(_));
+        assert_matches!(builder.add_resource(r#"B::"foo""#.parse().unwrap()), Ok(_));
         // so we can't do it again
         assert_matches!(
-            builder.add_resource(&r#"B::"foo""#.parse().unwrap()),
+            builder.add_resource(r#"B::"foo""#.parse().unwrap()),
             Err(RequestBuilderError::ExistingResource(_))
         );
         // add a context of incorrect type
@@ -581,7 +582,9 @@ mod request_builder_tests {
                 "".into(),
                 1.into()
             )])))),
-            Err(RequestBuilderError::IllTypedContextCandidate(_))
+            Err(RequestBuilderError::Validation(
+                RequestValidationError::InvalidContext(_)
+            ))
         );
         // add a context
         assert_matches!(
