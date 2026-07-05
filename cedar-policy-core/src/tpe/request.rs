@@ -487,6 +487,408 @@ impl<'s> RequestBuilder<'s> {
     }
 }
 
+/// Test utilities for constructing [`PartialEntityUID`]s.
+#[cfg(test)]
+pub(crate) mod test_utils {
+    use super::PartialEntityUID;
+    use crate::ast::EntityUID;
+
+    /// Parse a [`PartialEntityUID`] from a string.
+    ///
+    /// Accepts either a bare entity type (e.g. `A`), yielding an unknown eid, or
+    /// a full entity uid (e.g. `A::"foo"`), yielding a concrete eid.
+    #[track_caller]
+    pub(crate) fn parse_partial_euid(s: &str) -> PartialEntityUID {
+        if let Ok(euid) = s.parse::<EntityUID>() {
+            PartialEntityUID::from(euid)
+        } else {
+            PartialEntityUID {
+                ty: s.parse().expect("should parse as an entity type"),
+                eid: None,
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod invalid_requests {
+    use std::{collections::BTreeMap, sync::Arc};
+
+    use crate::{
+        ast::Value,
+        extensions::Extensions,
+        test_utils::{expect_err, ExpectedErrorMessage, ExpectedErrorMessageBuilder},
+        tpe::request::{test_utils::parse_partial_euid, PartialRequest},
+        validator::ValidatorSchema,
+    };
+
+    #[track_caller]
+    fn schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            r#"
+        entity A enum ["foo"];
+        entity B;
+        entity C;
+        action a appliesTo {
+          principal: A,
+          resource: B,
+          context: {
+            "" : A,
+          }
+        };
+        action b appliesTo {
+          principal: B,
+          resource: A,
+        };
+        "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    #[track_caller]
+    fn expect_validation_err(
+        principal: &str,
+        action: &str,
+        resource: &str,
+        context: Option<Arc<BTreeMap<smol_str::SmolStr, Value>>>,
+        msg: &ExpectedErrorMessage<'_>,
+    ) {
+        let err = PartialRequest::new(
+            parse_partial_euid(principal),
+            action.parse().unwrap(),
+            parse_partial_euid(resource),
+            context,
+            &schema(),
+        )
+        .expect_err("should fail to validate");
+        expect_err("", &miette::Report::new(err), msg);
+    }
+
+    #[test]
+    fn unknown_action() {
+        expect_validation_err(
+            "A",
+            r#"Action::"c""#,
+            "B",
+            None,
+            &ExpectedErrorMessageBuilder::error(
+                r#"request's action `Action::"c"` is not declared in the schema"#,
+            )
+            .exactly_one_underline(r#"Action::"c""#)
+            .build(),
+        );
+    }
+
+    #[test]
+    fn unknown_principal() {
+        expect_validation_err(
+            "D",
+            r#"Action::"a""#,
+            "B",
+            None,
+            &ExpectedErrorMessageBuilder::error(
+                r#"principal type `D` is not valid for `Action::"a"`"#,
+            )
+            .help(r#"valid principal types for `Action::"a"`: `A`"#)
+            .exactly_one_underline("D")
+            .build(),
+        );
+    }
+
+    #[test]
+    fn unknown_resource() {
+        expect_validation_err(
+            "A",
+            r#"Action::"a""#,
+            "D",
+            None,
+            &ExpectedErrorMessageBuilder::error(
+                r#"resource type `D` is not valid for `Action::"a"`"#,
+            )
+            .help(r#"valid resource types for `Action::"a"`: `B`"#)
+            .exactly_one_underline("D")
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_principal_for_action() {
+        expect_validation_err(
+            "C",
+            r#"Action::"a""#,
+            "B",
+            None,
+            &ExpectedErrorMessageBuilder::error(
+                r#"principal type `C` is not valid for `Action::"a"`"#,
+            )
+            .help(r#"valid principal types for `Action::"a"`: `A`"#)
+            .exactly_one_underline("C")
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_resource_for_action() {
+        expect_validation_err(
+            "A",
+            r#"Action::"a""#,
+            "C",
+            None,
+            &ExpectedErrorMessageBuilder::error(
+                r#"resource type `C` is not valid for `Action::"a"`"#,
+            )
+            .help(r#"valid resource types for `Action::"a"`: `B`"#)
+            .exactly_one_underline("C")
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_principal_enum() {
+        expect_validation_err(
+            r#"A::"bar""#,
+            r#"Action::"a""#,
+            "B",
+            None,
+            &ExpectedErrorMessageBuilder::error(
+                r#"entity `A::"bar"` is of an enumerated entity type, but `"bar"` is not declared as a valid eid"#,
+            )
+            .help(r#"valid entity eids: "foo""#)
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_resource_enum() {
+        expect_validation_err(
+            "B",
+            r#"Action::"b""#,
+            r#"A::"bar""#,
+            None,
+            &ExpectedErrorMessageBuilder::error(
+                r#"entity `A::"bar"` is of an enumerated entity type, but `"bar"` is not declared as a valid eid"#,
+            )
+            .help(r#"valid entity eids: "foo""#)
+            .build(),
+        );
+    }
+
+    #[test]
+    fn invalid_context() {
+        // action `a` requires a context attribute `""` of type `A`, but we
+        // supply a `Long`
+        expect_validation_err(
+            "A",
+            r#"Action::"a""#,
+            "B",
+            Some(Arc::new(BTreeMap::from_iter([("".into(), 1.into())]))),
+            &ExpectedErrorMessageBuilder::error(
+                r#"context `{"": 1}` is not valid for `Action::"a"`"#,
+            )
+            .build(),
+        );
+    }
+}
+
+#[cfg(test)]
+mod inconsistent_requests {
+    use std::{collections::BTreeMap, sync::Arc};
+
+    use crate::{
+        ast::{Context, EntityUIDEntry, Request, Value},
+        extensions::Extensions,
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
+        tpe::request::{test_utils::parse_partial_euid, PartialRequest},
+        validator::ValidatorSchema,
+    };
+
+    #[track_caller]
+    fn schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            r#"
+        entity A;
+        entity B;
+        action a appliesTo {
+          principal: A,
+          resource: B,
+          context: {
+            "foo" : Long,
+          }
+        };
+        action b appliesTo {
+          principal: A,
+          resource: B,
+        };
+        "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    /// A `PartialRequest` with a concrete principal `A::"p"`, action `a`,
+    /// concrete resource `B::"r"`, and context `{foo: 0}`.
+    #[track_caller]
+    fn request() -> PartialRequest {
+        PartialRequest::new(
+            parse_partial_euid(r#"A::"p""#),
+            r#"Action::"a""#.parse().unwrap(),
+            parse_partial_euid(r#"B::"r""#),
+            Some(Arc::new(BTreeMap::from_iter([("foo".into(), 0.into())]))),
+            &schema(),
+        )
+        .unwrap()
+    }
+
+    /// Build a concrete [`Request`] out of the given components.
+    #[track_caller]
+    fn concrete_request(
+        principal: &str,
+        action: &str,
+        resource: &str,
+        context: BTreeMap<smol_str::SmolStr, Value>,
+    ) -> Request {
+        Request::new_unchecked(
+            EntityUIDEntry::known(principal.parse().unwrap(), None),
+            EntityUIDEntry::known(action.parse().unwrap(), None),
+            EntityUIDEntry::known(resource.parse().unwrap(), None),
+            Some(Context::Value(Arc::new(context))),
+        )
+    }
+
+    #[track_caller]
+    fn ctx() -> BTreeMap<smol_str::SmolStr, Value> {
+        BTreeMap::from_iter([("foo".into(), 0.into())])
+    }
+
+    /// Check that [`request()`] is inconsistent with `concrete`, expecting the
+    /// given error message.
+    #[track_caller]
+    fn expect_inconsistency(concrete: &Request, error: &str) {
+        let err = request()
+            .check_consistency(concrete)
+            .expect_err("should be inconsistent");
+        expect_err(
+            "",
+            &miette::Report::new(err),
+            &ExpectedErrorMessageBuilder::error(error).build(),
+        );
+    }
+
+    #[test]
+    fn unknown_principal() {
+        let concrete = Request::new_unchecked(
+            EntityUIDEntry::unknown(),
+            EntityUIDEntry::known(r#"Action::"a""#.parse().unwrap(), None),
+            EntityUIDEntry::known(r#"B::"r""#.parse().unwrap(), None),
+            Some(Context::Value(Arc::new(ctx()))),
+        );
+        expect_inconsistency(&concrete, "Concrete principal is unknown");
+    }
+
+    #[test]
+    fn unknown_resource() {
+        let concrete = Request::new_unchecked(
+            EntityUIDEntry::known(r#"A::"p""#.parse().unwrap(), None),
+            EntityUIDEntry::known(r#"Action::"a""#.parse().unwrap(), None),
+            EntityUIDEntry::unknown(),
+            Some(Context::Value(Arc::new(ctx()))),
+        );
+        expect_inconsistency(&concrete, "Concrete resource is unknown");
+    }
+
+    #[test]
+    fn unknown_action() {
+        let concrete = Request::new_unchecked(
+            EntityUIDEntry::known(r#"A::"p""#.parse().unwrap(), None),
+            EntityUIDEntry::unknown(),
+            EntityUIDEntry::known(r#"B::"r""#.parse().unwrap(), None),
+            Some(Context::Value(Arc::new(ctx()))),
+        );
+        expect_inconsistency(&concrete, "Concrete action is unknown");
+    }
+
+    #[test]
+    fn unknown_context() {
+        let concrete = Request::new_unchecked(
+            EntityUIDEntry::known(r#"A::"p""#.parse().unwrap(), None),
+            EntityUIDEntry::known(r#"Action::"a""#.parse().unwrap(), None),
+            EntityUIDEntry::known(r#"B::"r""#.parse().unwrap(), None),
+            None,
+        );
+        expect_inconsistency(&concrete, "Concrete context is unknown");
+    }
+
+    #[test]
+    fn principal_type() {
+        let concrete = concrete_request(r#"B::"p""#, r#"Action::"a""#, r#"B::"r""#, ctx());
+        expect_inconsistency(&concrete, "Principal types `A` and `B` do not match");
+    }
+
+    #[test]
+    fn principal_id() {
+        let concrete = concrete_request(r#"A::"other""#, r#"Action::"a""#, r#"B::"r""#, ctx());
+        expect_inconsistency(&concrete, "Principal eid `p` and `other` do not match");
+    }
+
+    #[test]
+    fn action_type() {
+        let concrete = concrete_request(r#"A::"p""#, r#"Foo::"a""#, r#"B::"r""#, ctx());
+        expect_inconsistency(
+            &concrete,
+            r#"Actions `Action::"a"` and `Foo::"a"` do not match"#,
+        );
+    }
+
+    #[test]
+    fn action_id() {
+        let concrete = concrete_request(r#"A::"p""#, r#"Action::"b""#, r#"B::"r""#, ctx());
+        expect_inconsistency(
+            &concrete,
+            r#"Actions `Action::"a"` and `Action::"b"` do not match"#,
+        );
+    }
+
+    #[test]
+    fn resource_type() {
+        let concrete = concrete_request(r#"A::"p""#, r#"Action::"a""#, r#"A::"r""#, ctx());
+        expect_inconsistency(&concrete, "Resource types `B` and `A` do not match");
+    }
+
+    #[test]
+    fn resource_id() {
+        let concrete = concrete_request(r#"A::"p""#, r#"Action::"a""#, r#"B::"other""#, ctx());
+        expect_inconsistency(&concrete, "Resource eid `r` and `other` do not match");
+    }
+
+    #[test]
+    fn context() {
+        let concrete = concrete_request(
+            r#"A::"p""#,
+            r#"Action::"a""#,
+            r#"B::"r""#,
+            BTreeMap::from_iter([("foo".into(), 1.into())]),
+        );
+        expect_inconsistency(&concrete, "Contexts are inconsistent");
+    }
+
+    #[test]
+    fn concrete_context_contains_unknowns() {
+        use crate::ast::{Expr, Unknown};
+        let residual =
+            BTreeMap::from_iter([("foo".into(), Expr::unknown(Unknown::new_untyped("foo")))]);
+        let concrete = Request::new_unchecked(
+            EntityUIDEntry::known(r#"A::"p""#.parse().unwrap(), None),
+            EntityUIDEntry::known(r#"Action::"a""#.parse().unwrap(), None),
+            EntityUIDEntry::known(r#"B::"r""#.parse().unwrap(), None),
+            Some(Context::RestrictedResidual(Arc::new(residual))),
+        );
+        expect_inconsistency(&concrete, "Concrete context contains unknowns");
+    }
+}
+
 #[cfg(test)]
 mod request_builder_tests {
     use std::{collections::BTreeMap, sync::Arc};
@@ -499,7 +901,7 @@ mod request_builder_tests {
         extensions::Extensions,
         tpe::{
             err::RequestBuilderError,
-            request::{PartialEntityUID, PartialRequest, RequestBuilder},
+            request::{test_utils::parse_partial_euid, PartialRequest, RequestBuilder},
         },
         validator::{RequestValidationError, ValidatorSchema},
     };
@@ -527,15 +929,9 @@ mod request_builder_tests {
     #[track_caller]
     fn request() -> PartialRequest {
         PartialRequest::new(
-            PartialEntityUID {
-                ty: "A".parse().unwrap(),
-                eid: None,
-            },
+            parse_partial_euid("A"),
             r#"Action::"a""#.parse().unwrap(),
-            PartialEntityUID {
-                ty: "B".parse().unwrap(),
-                eid: None,
-            },
+            parse_partial_euid("B"),
             None,
             &schema(),
         )
