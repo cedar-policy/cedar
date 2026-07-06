@@ -16,7 +16,7 @@
 
 //! Utilities for writing TPE test cases
 
-use std::{collections::HashSet, str::FromStr};
+use std::collections::HashSet;
 
 use crate::{
     ast::{EntityUID, Expr, PolicyID, SlotEnv},
@@ -25,16 +25,19 @@ use crate::{
     validator::{typecheck::Typechecker, types::Type, ValidationMode, ValidatorSchema},
 };
 
+/// Parse a [`PartialEntityUID`] from a string.
+///
+/// Accepts either a bare entity type (e.g. `A`), yielding an unknown eid, or
+/// a full entity uid (e.g. `A::"foo"`), yielding a concrete eid.
 #[track_caller]
-pub(crate) fn concrete_euid(euid: &str) -> PartialEntityUID {
-    EntityUID::from_str(euid).unwrap().into()
-}
-
-#[track_caller]
-pub(crate) fn unknown_euid(ty: &str) -> PartialEntityUID {
-    PartialEntityUID {
-        ty: ty.parse().unwrap(),
-        eid: None,
+pub(crate) fn parse_partial_euid(s: &str) -> PartialEntityUID {
+    if let Ok(euid) = s.parse::<EntityUID>() {
+        PartialEntityUID::from(euid)
+    } else {
+        PartialEntityUID {
+            ty: s.parse().expect("should parse as an entity type"),
+            eid: None,
+        }
     }
 }
 

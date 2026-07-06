@@ -562,7 +562,7 @@ pub(super) mod test {
     use crate::extensions::Extensions;
     use crate::parser::parse_expr;
     use crate::tpe::request::PartialRequest;
-    use crate::tpe::test_utils::unknown_euid;
+    use crate::tpe::test_utils::parse_partial_euid;
     use crate::validator::types::BoolType;
     use crate::validator::ValidatorSchema;
     use cool_asserts::assert_matches;
@@ -581,9 +581,9 @@ pub(super) mod test {
         .0;
 
         let request = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            unknown_euid("Document"),
+            parse_partial_euid("Document"),
             None,
             &schema,
         )

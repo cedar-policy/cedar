@@ -648,7 +648,7 @@ mod tests {
 
     use crate::ast::{Expr, SlotEnv};
     use crate::tpe::err::ExprToResidualError;
-    use crate::tpe::test_utils::{concrete_euid, parse_typed_expr, unknown_euid};
+    use crate::tpe::test_utils::{parse_partial_euid, parse_typed_expr};
     use crate::validator::types::Type;
     use crate::validator::ValidatorSchema;
     use crate::{
@@ -683,9 +683,9 @@ mod tests {
 
     fn concrete_user_req() -> PartialRequest {
         PartialRequest::new(
-            concrete_euid(r#"User::"foo""#),
+            parse_partial_euid(r#"User::"foo""#),
             r#"Action::"get""#.parse().unwrap(),
-            unknown_euid("Document"),
+            parse_partial_euid("Document"),
             None,
             &schema(),
         )
@@ -757,9 +757,9 @@ mod tests {
         );
         let eval = Evaluator {
             request: &PartialRequest::new(
-                unknown_euid(r#"E"#),
+                parse_partial_euid(r#"E"#),
                 r#"Action::"a""#.parse().unwrap(),
-                unknown_euid("E"),
+                parse_partial_euid("E"),
                 Some(Arc::new(BTreeMap::from([(
                     "l".parse().unwrap(),
                     Value::from(0),
@@ -978,9 +978,9 @@ mod tests {
             r#"entity E, User { baz : E }; action a appliesTo {principal: User, resource: E};"#,
         );
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"a""#.parse().unwrap(),
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             None,
             &schema,
         )
@@ -1036,9 +1036,9 @@ mod tests {
             r#"entity E { s : String }; action a appliesTo {principal: E, resource: E};"#,
         );
         let req = PartialRequest::new(
-            unknown_euid("E"),
+            parse_partial_euid("E"),
             r#"Action::"a""#.parse().unwrap(),
-            unknown_euid("E"),
+            parse_partial_euid("E"),
             None,
             &schema,
         )
@@ -1078,9 +1078,9 @@ mod tests {
             r#"entity E { l : Long , b: Bool }; action a appliesTo {principal: E, resource: E};"#,
         );
         let req = PartialRequest::new(
-            unknown_euid("E"),
+            parse_partial_euid("E"),
             r#"Action::"a""#.parse().unwrap(),
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             None,
             &schema,
         )
@@ -1132,9 +1132,9 @@ mod tests {
             panic!("expected concrete context")
         };
         let req = PartialRequest::new(
-            concrete_euid(r#"E::"foo""#),
+            parse_partial_euid(r#"E::"foo""#),
             r#"Action::"a""#.parse().unwrap(),
-            unknown_euid("E"),
+            parse_partial_euid("E"),
             Some(context),
             &schema,
         )
@@ -1186,9 +1186,9 @@ mod tests {
         )
         .unwrap();
         let req = PartialRequest::new(
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             r#"Action::"get""#.parse().unwrap(),
-            unknown_euid("E"),
+            parse_partial_euid("E"),
             None,
             &schema,
         )
@@ -1253,9 +1253,9 @@ mod tests {
         )
         .unwrap();
         let req = PartialRequest::new(
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             r#"Action::"get""#.parse().unwrap(),
-            unknown_euid("E"),
+            parse_partial_euid("E"),
             None,
             &schema,
         )
@@ -1313,9 +1313,9 @@ mod tests {
         )
         .unwrap();
         let req = PartialRequest::new(
-            unknown_euid("E"),
+            parse_partial_euid("E"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"User::"""#),
+            parse_partial_euid(r#"User::"""#),
             None,
             &schema,
         )
@@ -1444,9 +1444,9 @@ mod tests {
         };
 
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             Some(context),
             &schema,
         )
@@ -1549,9 +1549,9 @@ mod tests {
         .unwrap();
 
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"E0::"e""#),
+            parse_partial_euid(r#"E0::"e""#),
             None,
             &schema,
         )
@@ -1619,9 +1619,9 @@ mod tests {
             r#"entity E; entity User; action get appliesTo {principal: User, resource: E};"#,
         );
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             None,
             &schema,
         )
@@ -1667,9 +1667,9 @@ mod tests {
         let req = {
             let schema: &ValidatorSchema = &schema;
             PartialRequest::new(
-                unknown_euid("User"),
+                parse_partial_euid("User"),
                 r#"Action::"get""#.parse().unwrap(),
-                concrete_euid(r#"E::"""#),
+                parse_partial_euid(r#"E::"""#),
                 None,
                 schema,
             )
@@ -1697,9 +1697,9 @@ mod tests {
             r#"entity E; entity User; action get appliesTo {principal: User, resource: E};"#,
         );
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             None,
             &schema,
         )
@@ -1726,9 +1726,9 @@ mod tests {
             r#"entity E in E; entity User in E; action get appliesTo {principal: User, resource: E, context: {e: E}};"#,
         );
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"E::"resource""#),
+            parse_partial_euid(r#"E::"resource""#),
             None,
             &schema,
         )
@@ -1814,9 +1814,9 @@ mod tests {
             r#"entity E; entity User tags String; action get appliesTo {principal: User, resource: E, context: {tag: String}};"#,
         );
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"E::"resource""#),
+            parse_partial_euid(r#"E::"resource""#),
             None,
             &schema,
         )
@@ -1966,9 +1966,9 @@ mod tests {
             r#"entity E; entity User tags { s: String, inner: { n: Long } }; action get appliesTo {principal: User, resource: E};"#,
         );
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             None,
             &schema,
         )
@@ -2003,9 +2003,9 @@ mod tests {
             r#"entity E { data: Long }; entity User tags E; action get appliesTo {principal: User, resource: E};"#,
         );
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            unknown_euid("E"),
+            parse_partial_euid("E"),
             None,
             &schema,
         )
@@ -2138,9 +2138,9 @@ mod tests {
         // Principal is unknown so that the overall expression stays partial,
         // making the datetime value appear in the residual.
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             None,
             &schema,
         )
@@ -2181,9 +2181,9 @@ mod tests {
         .unwrap();
 
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             None,
             &schema,
         )
@@ -2224,9 +2224,9 @@ mod tests {
         .unwrap();
 
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             None,
             &schema,
         )
@@ -2269,9 +2269,9 @@ mod tests {
         .unwrap();
 
         let req = PartialRequest::new(
-            unknown_euid("User"),
+            parse_partial_euid("User"),
             r#"Action::"get""#.parse().unwrap(),
-            concrete_euid(r#"E::"""#),
+            parse_partial_euid(r#"E::"""#),
             None,
             &schema,
         )

@@ -487,29 +487,6 @@ impl<'s> RequestBuilder<'s> {
     }
 }
 
-/// Test utilities for constructing [`PartialEntityUID`]s.
-#[cfg(test)]
-pub(crate) mod test_utils {
-    use super::PartialEntityUID;
-    use crate::ast::EntityUID;
-
-    /// Parse a [`PartialEntityUID`] from a string.
-    ///
-    /// Accepts either a bare entity type (e.g. `A`), yielding an unknown eid, or
-    /// a full entity uid (e.g. `A::"foo"`), yielding a concrete eid.
-    #[track_caller]
-    pub(crate) fn parse_partial_euid(s: &str) -> PartialEntityUID {
-        if let Ok(euid) = s.parse::<EntityUID>() {
-            PartialEntityUID::from(euid)
-        } else {
-            PartialEntityUID {
-                ty: s.parse().expect("should parse as an entity type"),
-                eid: None,
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod invalid_requests {
     use std::{collections::BTreeMap, sync::Arc};
@@ -518,7 +495,8 @@ mod invalid_requests {
         ast::Value,
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessage, ExpectedErrorMessageBuilder},
-        tpe::request::{test_utils::parse_partial_euid, PartialRequest},
+        tpe::request::PartialRequest,
+        tpe::test_utils::parse_partial_euid,
         validator::ValidatorSchema,
     };
 
@@ -700,7 +678,7 @@ mod inconsistent_requests {
         ast::{Context, EntityUIDEntry, Request, Value},
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
-        tpe::request::{test_utils::parse_partial_euid, PartialRequest},
+        tpe::{request::PartialRequest, test_utils::parse_partial_euid},
         validator::ValidatorSchema,
     };
 
@@ -901,7 +879,8 @@ mod request_builder_tests {
         extensions::Extensions,
         tpe::{
             err::RequestBuilderError,
-            request::{test_utils::parse_partial_euid, PartialRequest, RequestBuilder},
+            request::{PartialRequest, RequestBuilder},
+            test_utils::parse_partial_euid,
         },
         validator::{RequestValidationError, ValidatorSchema},
     };
@@ -929,9 +908,9 @@ mod request_builder_tests {
     #[track_caller]
     fn request() -> PartialRequest {
         PartialRequest::new(
-            unknown_euid("A"),
+            parse_partial_euid("A"),
             r#"Action::"a""#.parse().unwrap(),
-            unknown_euid("B"),
+            parse_partial_euid("B"),
             None,
             &schema(),
         )
