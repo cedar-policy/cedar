@@ -147,6 +147,7 @@ pub enum ExprToResidualError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnlinkedSlotError(#[from] UnlinkedSlotError),
+    /// Expression contains an unknown which is not supported in residuals
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnknownNotSupported(#[from] UnknownNotSupportedError),
