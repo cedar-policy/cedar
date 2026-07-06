@@ -17,8 +17,6 @@
 //! This module contains possible errors thrown by various components of the
 //! type-aware partial evaluator.
 
-use std::fmt::Display;
-
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
