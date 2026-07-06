@@ -661,6 +661,8 @@ impl PartialEntities {
 mod tests {
     use std::collections::{BTreeMap, HashMap, HashSet};
 
+    use crate::entities::TCComputation;
+    use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use crate::tpe::err::AncestorValidationError;
     use crate::validator::ValidatorSchema;
     use crate::{
@@ -766,6 +768,78 @@ mod tests {
             assert_eq!(e, PartialEntity { uid: r#"A::"""#.parse().unwrap(), attrs: Some(BTreeMap::from_iter([("b".into(), 1.into()), ("c".into(), Value::record(std::iter::once(("x", false)), None)
             )])), ancestors: Some(HashSet::default()), tags: Some(BTreeMap::default()) });
         });
+    }
+
+    #[track_caller]
+    fn in_schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            "entity A in [A] = { a: Bool } tags Long;",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    fn in_entity(id: &str, ancestors: HashSet<EntityUID>) -> PartialEntity {
+        PartialEntity {
+            uid: format!(r#"A::"{id}""#).parse().unwrap(),
+            attrs: Some(BTreeMap::from_iter([("a".into(), Value::from(true))])),
+            ancestors: Some(ancestors),
+            tags: Some(BTreeMap::new()),
+        }
+    }
+
+    #[test]
+    fn duplicate_entities() {
+        let dup = in_entity("foo", HashSet::new());
+        let err = PartialEntities::from_entities(vec![dup.clone(), dup].into_iter(), &in_schema())
+            .expect_err("should fail to construct");
+        expect_err(
+            "",
+            &miette::Report::new(err),
+            &ExpectedErrorMessageBuilder::error(r#"duplicate entity entry `A::"foo"`"#).build(),
+        );
+    }
+
+    #[test]
+    fn cyclic_hierarchy() {
+        let a = in_entity("a", HashSet::from_iter([r#"A::"b""#.parse().unwrap()]));
+        let b = in_entity("b", HashSet::from_iter([r#"A::"a""#.parse().unwrap()]));
+        let err = PartialEntities::from_entities(vec![a, b].into_iter(), &in_schema())
+            .expect_err("should fail to construct");
+        expect_err(
+            "",
+            &miette::Report::new(err),
+            &ExpectedErrorMessageBuilder::error_starts_with(
+                "input graph has a cycle containing vertex",
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn missing_tc_edge() {
+        // `a`'s ancestor `b` is not itself an ancestor of `a`, so enforcing an
+        // already-computed TC should fail with a missing-edge error.
+        let mut entities = PartialEntities::new();
+        let a = in_entity("a", HashSet::from_iter([r#"A::"b""#.parse().unwrap()]));
+        let b = in_entity("b", HashSet::from_iter([r#"A::"c""#.parse().unwrap()]));
+        let c = in_entity("c", HashSet::new());
+        let err = entities
+            .add_entities(
+                vec![a, b, c].into_iter().map(|e| (e.uid.clone(), e)),
+                &in_schema(),
+                TCComputation::EnforceAlreadyComputed,
+            )
+            .expect_err("should fail to construct");
+        expect_err(
+            "",
+            &miette::Report::new(err),
+            &ExpectedErrorMessageBuilder::error_starts_with(
+                "expected all transitive edges to exist",
+            )
+            .build(),
+        );
     }
 
     #[test]
@@ -1391,5 +1465,205 @@ mod test_consistency {
             partial_entities.check_consistency(&concrete_entities),
             Err(tpe::err::EntitiesConsistencyError::MissingEntity(_))
         )
+    }
+}
+
+#[cfg(test)]
+mod test_parse_ejson_errors {
+    use crate::extensions::Extensions;
+    use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use crate::validator::ValidatorSchema;
+
+    use super::{parse_ejson, EntityJson};
+
+    #[track_caller]
+    fn basic_schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            r#"
+            entity A {
+                a? : String,
+                b? : Long,
+                c? : {"x" : Bool}
+            } tags Long;
+            action a appliesTo {
+                principal : A,
+                resource : A
+            };
+            "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    #[track_caller]
+    fn ext_schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            r#"
+            entity E {
+                d? : decimal,
+            } tags decimal;
+            "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    #[track_caller]
+    fn assert_ejson_err(
+        json: serde_json::Value,
+        schema: &ValidatorSchema,
+        msg: &crate::test_utils::ExpectedErrorMessage<'_>,
+    ) {
+        let ejson: EntityJson =
+            serde_json::from_value(json.clone()).expect("should deserialize as EntityJson");
+        let err = parse_ejson(ejson, schema).expect_err("should fail to parse");
+        expect_err(&json, &miette::Report::new(err), msg);
+    }
+
+    #[test]
+    fn uid_not_entity_ref() {
+        let json = serde_json::json!({ "uid": 5 });
+        assert_ejson_err(
+            json,
+            &basic_schema(),
+            &ExpectedErrorMessageBuilder::error(
+                "in uid field of <unknown entity>, expected a literal entity reference, but got `5`",
+            )
+            .help(r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#)
+            .build(),
+        );
+    }
+
+    #[test]
+    fn attrs_unexpected_entity_type() {
+        let json = serde_json::json!({
+            "uid": { "type": "Undeclared", "id": "x" },
+            "attrs": { "b": 1 },
+        });
+        assert_ejson_err(
+            json,
+            &basic_schema(),
+            &ExpectedErrorMessageBuilder::error(
+                r#"entity `Undeclared::"x"` has type `Undeclared` which is not declared in the schema"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn attr_type_mismatch() {
+        let json = serde_json::json!({
+            "uid": { "type": "A", "id": "" },
+            "attrs": { "c": 5 },
+        });
+        assert_ejson_err(
+            json,
+            &basic_schema(),
+            &ExpectedErrorMessageBuilder::error_starts_with(
+                r#"in attribute `c` on `A::""`, type mismatch: value was expected to have type"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn attr_missing_required_record_attr() {
+        let json = serde_json::json!({
+            "uid": { "type": "A", "id": "" },
+            "attrs": { "c": {} },
+        });
+        assert_ejson_err(
+            json,
+            &basic_schema(),
+            &ExpectedErrorMessageBuilder::error(
+                r#"in attribute `c` on `A::""`, expected the record to have an attribute `x`, but it does not"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn attr_unexpected_record_attr() {
+        let json = serde_json::json!({
+            "uid": { "type": "A", "id": "" },
+            "attrs": { "c": { "x": true, "y": 1 } },
+        });
+        assert_ejson_err(
+            json,
+            &basic_schema(),
+            &ExpectedErrorMessageBuilder::error(
+                r#"in attribute `c` on `A::""`, record attribute `y` should not exist according to the schema"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn attr_eval_error() {
+        let json = serde_json::json!({
+            "uid": { "type": "E", "id": "x" },
+            "attrs": { "d": { "fn": "decimal", "arg": "invalid" } },
+        });
+        assert_ejson_err(
+            json,
+            &ext_schema(),
+            &ExpectedErrorMessageBuilder::error(
+                "error while evaluating `decimal` extension function: `invalid` is not a well-formed decimal value",
+            )
+            .help("valid decimal strings look like `12.34`: digits are required on both sides of `.`, up to 4 fractional digits are allowed, and the value must be in range -922337203685477.5808 to 922337203685477.5807")
+            .build(),
+        );
+    }
+
+    #[test]
+    fn tag_eval_error() {
+        let json = serde_json::json!({
+            "uid": { "type": "E", "id": "x" },
+            "tags": { "t": { "fn": "decimal", "arg": "invalid" } },
+        });
+        assert_ejson_err(
+            json,
+            &ext_schema(),
+            &ExpectedErrorMessageBuilder::error(
+                "error while evaluating `decimal` extension function: `invalid` is not a well-formed decimal value",
+            )
+            .help("valid decimal strings look like `12.34`: digits are required on both sides of `.`, up to 4 fractional digits are allowed, and the value must be in range -922337203685477.5808 to 922337203685477.5807")
+            .build(),
+        );
+    }
+
+    #[test]
+    fn tags_unexpected_entity_type() {
+        let json = serde_json::json!({
+            "uid": { "type": "Undeclared", "id": "x" },
+            "tags": { "t": 1 },
+        });
+        assert_ejson_err(
+            json,
+            &basic_schema(),
+            &ExpectedErrorMessageBuilder::error(
+                r#"entity `Undeclared::"x"` has type `Undeclared` which is not declared in the schema"#,
+            )
+            .build(),
+        );
+    }
+
+    #[test]
+    fn parent_not_entity_ref() {
+        let json = serde_json::json!({
+            "uid": { "type": "A", "id": "" },
+            "parents": [ 5 ],
+        });
+        assert_ejson_err(
+            json,
+            &basic_schema(),
+            &ExpectedErrorMessageBuilder::error(
+                r#"in parents field of `A::""`, expected a literal entity reference, but got `5`"#,
+            )
+            .help(r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#)
+            .build(),
+        );
     }
 }
