@@ -18,6 +18,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
   Previously this was reported as an error; it now converts to a correct JSON schema. (#2400)
 - Added missing validation check when decoding a protobuf policy set that template-linked policy IDs do not collide with template IDs. (#2441)
 - `PolicySet::from_pst` now returns an error if a map key doesn't match the id of its corresponding template or policy, instead of silently accepting the malformed input (#2444).
+- For the experimental `tpe` feature, fixed `PartialEntities::from_json_value` to return an error given two entities with duplicate ids.
 
 ### Added
 - Public syntax tree (`pst`) support for `variadic-is-in-range` feature: a variadic `isInRange` is modelled by a `pst::Expr::VariadicOp{...}` in the PST (#2380).
