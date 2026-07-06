@@ -900,7 +900,10 @@ mod inconsistent_requests {
             EntityUIDEntry::known(r#"B::"r""#.parse().unwrap(), None),
             Some(Context::RestrictedResidual(Arc::new(residual))),
         );
-        expect_inconsistency(&concrete, "the concrete request's context contains unknowns");
+        expect_inconsistency(
+            &concrete,
+            "the concrete request's context contains unknowns",
+        );
     }
 }
 
