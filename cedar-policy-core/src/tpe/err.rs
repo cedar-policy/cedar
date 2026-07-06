@@ -17,17 +17,13 @@
 //! This module contains possible errors thrown by various components of the
 //! type-aware partial evaluator.
 
-use std::fmt::Display;
-
+use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::{
     ast::{Eid, EntityType, EntityUID, PartialValueToValueError},
-    entities::{
-        conformance::err::{EntitySchemaConformanceError, InvalidEnumEntityError},
-        err::Duplicate,
-    },
+    entities::{conformance::err::EntitySchemaConformanceError, err::Duplicate},
     evaluator::{evaluation_errors::UnlinkedSlotError, EvaluationError},
     transitive_closure::TcError,
     validator::{RequestValidationError, ValidationError},
@@ -150,7 +146,7 @@ pub struct PartialRequestError {}
 
 /// Error thrown when there is no matching request environment according to a
 /// schema
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error("Can't find a matching request environment")]
 pub struct NoMatchingReqEnvError;
 
@@ -160,16 +156,19 @@ pub struct NoMatchingReqEnvError;
 pub struct NonstaticPolicyError;
 
 /// Error thrown when using a [`crate::tpe::request::RequestBuilder`]
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum RequestBuilderError {
     /// Error thrown when the request cannot be validated
     #[error(transparent)]
+    #[diagnostic(transparent)]
     Validation(#[from] RequestValidationError),
     /// Error thrown when attempting to add a principal when one exists
     #[error(transparent)]
+    #[diagnostic(transparent)]
     ExistingPrincipal(#[from] ExistingPrincipalError),
     /// Error thrown when attempting to add a resource when one exists
     #[error(transparent)]
+    #[diagnostic(transparent)]
     ExistingResource(#[from] ExistingResourceError),
     /// Error thrown when attempting to add a context when one exists
     #[error("Context already exists")]
@@ -177,20 +176,13 @@ pub enum RequestBuilderError {
     /// Error thrown when attempting to add a principal with an incorrect
     /// entity type
     #[error(transparent)]
+    #[diagnostic(transparent)]
     IncorrectPrincipalEntityType(#[from] IncorrectPrincipalEntityTypeError),
     /// Error thrown when attempting to add a resource with an incorrect
     /// entity type
     #[error(transparent)]
+    #[diagnostic(transparent)]
     IncorrectResourceEntityType(#[from] IncorrectResourceEntityTypeError),
-    /// Error thrown when the principal candidate is invalid
-    #[error("invalid principal candidate: {}", .0)]
-    InvalidPrincipalCandidate(InvalidEnumEntityError),
-    /// Error thrown when the resource candidate is invalid
-    #[error("invalid resource candidate: {}", .0)]
-    InvalidResourceCandidate(InvalidEnumEntityError),
-    /// Error thrown when the context candidate is invalid
-    #[error("context candidate doesn't validate: {}", .0)]
-    IllTypedContextCandidate(RequestValidationError),
     /// Error thrown when the context candidate contains unknowns
     #[error("context candidate contains unknowns")]
     UnknownContextCandidate,
@@ -198,7 +190,7 @@ pub enum RequestBuilderError {
 
 /// Error thrown when attempting to add a principal with an incorrect
 /// entity type
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error("Principal `{}` already exists", .principal)]
 pub struct ExistingPrincipalError {
     pub(super) principal: EntityUID,
@@ -206,7 +198,7 @@ pub struct ExistingPrincipalError {
 
 /// Error thrown when attempting to add a resource with an incorrect
 /// entity type
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error("Resource `{}` already exists", .resource)]
 pub struct ExistingResourceError {
     pub(super) resource: EntityUID,
@@ -214,7 +206,7 @@ pub struct ExistingResourceError {
 
 /// Error thrown when attempting to add a principal with an incorrect
 /// entity type
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error("Principal type `{}` is inconsistent with the partial request's `{}`", .ty, .expected)]
 pub struct IncorrectPrincipalEntityTypeError {
     pub(super) ty: EntityType,
@@ -223,7 +215,7 @@ pub struct IncorrectPrincipalEntityTypeError {
 
 /// Error thrown when attempting to add a resource with an incorrect
 /// entity type
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error("Resource type `{}` is inconsistent with the partial request's `{}`", .ty, .expected)]
 pub struct IncorrectResourceEntityTypeError {
     pub(super) ty: EntityType,
@@ -344,6 +336,7 @@ pub struct UnknownEntityError {
 
 /// Error thrown when some requested entities were not loaded
 #[derive(Debug, Error)]
+#[error("Failed to load entities: {}", .missing_entities.iter().map(|uid| uid.to_string()).collect::<Vec<_>>().join(", "))]
 pub struct MissingEntitiesError {
     pub(super) missing_entities: Vec<EntityUID>,
 }
@@ -355,22 +348,8 @@ impl MissingEntitiesError {
     }
 }
 
-impl Display for MissingEntitiesError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Failed to load entities: {}",
-            self.missing_entities
-                .iter()
-                .map(|uid| uid.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    }
-}
-
 /// Error thrown when a [`crate::tpe::request::PartialRequest`] is consistent with a [`crate::ast::Request`]
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum RequestConsistencyError {
     /// Error thrown when the concrete principal is unknown
     #[error("Concrete principal is unknown")]
@@ -386,18 +365,23 @@ pub enum RequestConsistencyError {
     UnknownContext,
     /// Error thrown when principal types are inconsistent
     #[error(transparent)]
+    #[diagnostic(transparent)]
     InconsistentPrincipalType(#[from] InconsistentPrincipalTypeError),
     /// Error thrown when principal eids are inconsistent
     #[error(transparent)]
+    #[diagnostic(transparent)]
     InconsistentPrincipalEid(#[from] InconsistentPrincipalEidError),
     /// Error thrown when resource types are inconsistent
     #[error(transparent)]
+    #[diagnostic(transparent)]
     InconsistentResourceType(#[from] InconsistentResourceTypeError),
     /// Error thrown when resource eids are inconsistent
     #[error(transparent)]
+    #[diagnostic(transparent)]
     InconsistentResourceEid(#[from] InconsistentResourceEidError),
     /// Error thrown when actions are inconsistent
     #[error(transparent)]
+    #[diagnostic(transparent)]
     InconsistentAction(#[from] InconsistentActionError),
     /// Error thrown when contexts are inconsistent
     #[error("Contexts are inconsistent")]
@@ -408,7 +392,7 @@ pub enum RequestConsistencyError {
 }
 
 /// Error thrown when principal types are inconsistent
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error("Principal types `{partial}` and `{concrete}` do not match")]
 pub struct InconsistentPrincipalTypeError {
     pub(super) partial: EntityType,
@@ -416,7 +400,7 @@ pub struct InconsistentPrincipalTypeError {
 }
 
 /// Error thrown when principal eids are inconsistent
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error("Principal eid `{}` and `{}` do not match", .partial.escaped(), .concrete.escaped())]
 pub struct InconsistentPrincipalEidError {
     pub(super) partial: Eid,
@@ -424,7 +408,7 @@ pub struct InconsistentPrincipalEidError {
 }
 
 /// Error thrown when resource types are inconsistent
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error("Resource types `{partial}` and `{concrete}` do not match")]
 pub struct InconsistentResourceTypeError {
     pub(super) partial: EntityType,
@@ -432,7 +416,7 @@ pub struct InconsistentResourceTypeError {
 }
 
 /// Error thrown when resource eids are inconsistent
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error("Resource eid `{}` and `{}` do not match", .partial.escaped(), .concrete.escaped())]
 pub struct InconsistentResourceEidError {
     pub(super) partial: Eid,
@@ -440,7 +424,7 @@ pub struct InconsistentResourceEidError {
 }
 
 /// Error thrown when actions are inconsistent
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error("Actions `{}` and `{}` do not match", .partial, .concrete)]
 pub struct InconsistentActionError {
     pub(super) partial: EntityUID,
@@ -458,8 +442,8 @@ pub enum ReauthorizationError {
     EntityValidation(#[from] EntitySchemaConformanceError),
     /// Error thrown when entities and partial entities are inconsistent
     #[error(transparent)]
-    EntitiesConsistentcy(#[from] EntitiesConsistencyError),
+    EntitiesConsistency(#[from] EntitiesConsistencyError),
     /// Error thrown when request and partial request are inconsistent
     #[error(transparent)]
-    RequestConsistentcy(#[from] RequestConsistencyError),
+    RequestConsistency(#[from] RequestConsistencyError),
 }

@@ -1419,9 +1419,9 @@ pub enum TpeReauthorizationError {
 impl From<tpe_err::ReauthorizationError> for TpeReauthorizationError {
     fn from(value: tpe_err::ReauthorizationError) -> Self {
         match value {
-            tpe_err::ReauthorizationError::EntitiesConsistentcy(e) => Self::InconsistentEntities(e),
+            tpe_err::ReauthorizationError::EntitiesConsistency(e) => Self::InconsistentEntities(e),
             tpe_err::ReauthorizationError::EntityValidation(e) => Self::EntityValidation(e),
-            tpe_err::ReauthorizationError::RequestConsistentcy(e) => Self::InconsistentRequests(e),
+            tpe_err::ReauthorizationError::RequestConsistency(e) => Self::InconsistentRequests(e),
             tpe_err::ReauthorizationError::RequestValidation(e) => {
                 Self::RequestValidation(e.into())
             }
