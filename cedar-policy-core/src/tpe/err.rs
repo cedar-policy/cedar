@@ -125,8 +125,6 @@ pub struct PolicyValidationError {
 }
 
 impl PolicyValidationError {
-    /// Construct a new [`PolicyValidationError`] from the validation errors
-    /// that were encountered
     pub(crate) fn new(errors: Vec<ValidationError>) -> Self {
         Self { errors }
     }

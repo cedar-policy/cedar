@@ -22,7 +22,7 @@ use cedar_policy::{
     Context, Decision, EntityId, EntityUid, PartialEntities, PartialEntityUid, PartialRequest,
     PolicySet, Schema,
 };
-use miette::{miette, IntoDiagnostic, Result, WrapErr};
+use miette::{miette, IntoDiagnostic, Report, Result, WrapErr};
 use serde::Deserialize;
 use std::{path::Path, time::Instant};
 
@@ -224,7 +224,7 @@ pub fn tpe(args: &TpeArgs) -> CedarExitCode {
                     }
                 }
                 Err(err) => {
-                    errs.push(miette!("{err}"));
+                    errs.push(Report::new(err));
                     ret(errs)
                 }
             }
@@ -248,7 +248,7 @@ fn load_partial_entities(
     {
         Ok(f) => {
             PartialEntities::from_json_value(serde_json::from_reader(f).into_diagnostic()?, schema)
-                .map_err(|e| miette!("{e}"))
+                .map_err(Report::new)
                 .wrap_err_with(|| {
                     format!(
                         "failed to parse entities from file {}",
