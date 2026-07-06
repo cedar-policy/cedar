@@ -1900,20 +1900,19 @@ fn test_tpe_invalid_policies() {
         .output()
         .expect("failed to run cedar");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    insta::assert_snapshot!(stdout, @"
+    insta::assert_snapshot!(stdout, @r#"
 
       × policy failed to validate against the schema
 
     Error: 
       × for policy `policy0`, attribute `nonexistent` on entity type `Document`
       │ not found
-       ╭─[6:8]
-     5 │ )
-     6 │ when { resource.nonexistent };
-       ·        ────────────────────
+       ╭────
+     1 │ permit ( principal, action == Action::"View", resource) when { resource.nonexistent };
+       ·                                                                ────────────────────
        ╰────
       help: did you mean `owner`?
-    ");
+    "#);
     assert_eq!(output.status.code(), Some(1));
 }
 

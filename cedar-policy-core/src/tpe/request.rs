@@ -785,7 +785,7 @@ mod inconsistent_requests {
             EntityUIDEntry::known(r#"B::"r""#.parse().unwrap(), None),
             Some(Context::Value(Arc::new(ctx()))),
         );
-        expect_inconsistency(&concrete, "Concrete principal is unknown");
+        expect_inconsistency(&concrete, "the concrete request's principal is unknown");
     }
 
     #[test]
@@ -796,7 +796,7 @@ mod inconsistent_requests {
             EntityUIDEntry::unknown(),
             Some(Context::Value(Arc::new(ctx()))),
         );
-        expect_inconsistency(&concrete, "Concrete resource is unknown");
+        expect_inconsistency(&concrete, "the concrete request's resource is unknown");
     }
 
     #[test]
@@ -807,7 +807,7 @@ mod inconsistent_requests {
             EntityUIDEntry::known(r#"B::"r""#.parse().unwrap(), None),
             Some(Context::Value(Arc::new(ctx()))),
         );
-        expect_inconsistency(&concrete, "Concrete action is unknown");
+        expect_inconsistency(&concrete, "the concrete request's action is unknown");
     }
 
     #[test]
@@ -818,19 +818,25 @@ mod inconsistent_requests {
             EntityUIDEntry::known(r#"B::"r""#.parse().unwrap(), None),
             None,
         );
-        expect_inconsistency(&concrete, "Concrete context is unknown");
+        expect_inconsistency(&concrete, "the concrete request's context is unknown");
     }
 
     #[test]
     fn principal_type() {
         let concrete = concrete_request(r#"B::"p""#, r#"Action::"a""#, r#"B::"r""#, ctx());
-        expect_inconsistency(&concrete, "Principal types `A` and `B` do not match");
+        expect_inconsistency(
+            &concrete,
+            "partial request principal type `A` does not match concrete request principal type `B`",
+        );
     }
 
     #[test]
     fn principal_id() {
         let concrete = concrete_request(r#"A::"other""#, r#"Action::"a""#, r#"B::"r""#, ctx());
-        expect_inconsistency(&concrete, "Principal eid `p` and `other` do not match");
+        expect_inconsistency(
+            &concrete,
+            "partial request principal id `p` does not match concrete request principal id `other`",
+        );
     }
 
     #[test]
@@ -838,7 +844,7 @@ mod inconsistent_requests {
         let concrete = concrete_request(r#"A::"p""#, r#"Foo::"a""#, r#"B::"r""#, ctx());
         expect_inconsistency(
             &concrete,
-            r#"Actions `Action::"a"` and `Foo::"a"` do not match"#,
+            r#"partial request action `Action::"a"` does not match concrete request action `Foo::"a"`"#,
         );
     }
 
@@ -847,20 +853,26 @@ mod inconsistent_requests {
         let concrete = concrete_request(r#"A::"p""#, r#"Action::"b""#, r#"B::"r""#, ctx());
         expect_inconsistency(
             &concrete,
-            r#"Actions `Action::"a"` and `Action::"b"` do not match"#,
+            r#"partial request action `Action::"a"` does not match concrete request action `Action::"b"`"#,
         );
     }
 
     #[test]
     fn resource_type() {
         let concrete = concrete_request(r#"A::"p""#, r#"Action::"a""#, r#"A::"r""#, ctx());
-        expect_inconsistency(&concrete, "Resource types `B` and `A` do not match");
+        expect_inconsistency(
+            &concrete,
+            "partial request resource type `B` does not match concrete request resource type `A`",
+        );
     }
 
     #[test]
     fn resource_id() {
         let concrete = concrete_request(r#"A::"p""#, r#"Action::"a""#, r#"B::"other""#, ctx());
-        expect_inconsistency(&concrete, "Resource eid `r` and `other` do not match");
+        expect_inconsistency(
+            &concrete,
+            "partial request resource id `r` does not match concrete request resource id `other`",
+        );
     }
 
     #[test]
@@ -871,7 +883,10 @@ mod inconsistent_requests {
             r#"B::"r""#,
             BTreeMap::from_iter([("foo".into(), 1.into())]),
         );
-        expect_inconsistency(&concrete, "Contexts are inconsistent");
+        expect_inconsistency(
+            &concrete,
+            "the partial and concrete request contexts do not match",
+        );
     }
 
     #[test]
@@ -885,7 +900,7 @@ mod inconsistent_requests {
             EntityUIDEntry::known(r#"B::"r""#.parse().unwrap(), None),
             Some(Context::RestrictedResidual(Arc::new(residual))),
         );
-        expect_inconsistency(&concrete, "Concrete context contains unknowns");
+        expect_inconsistency(&concrete, "the concrete request's context contains unknowns");
     }
 }
 

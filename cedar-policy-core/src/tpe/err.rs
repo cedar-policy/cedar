@@ -332,7 +332,7 @@ pub enum EntityConsistencyError {
 
 /// Error thrown when the concrete entity contains unknown attribute
 #[derive(Debug, Error, Diagnostic)]
-#[error("concrete entity `{uid}` has an unknown value for attribute `{attr}`")]
+#[error("concrete entity `{uid}` contains unknown attribute `{attr}`")]
 pub struct UnknownAttributeError {
     pub(super) uid: EntityUID,
     pub(super) attr: SmolStr,
@@ -340,14 +340,14 @@ pub struct UnknownAttributeError {
 
 /// Error thrown when attributes mismatch
 #[derive(Debug, Error, Diagnostic)]
-#[error("attributes of entity `{uid}` do not match")]
+#[error("entity `{uid}` is present in both the partial and concrete request with different attribute values")]
 pub struct MismatchedAttributeError {
     pub(super) uid: EntityUID,
 }
 
 /// Error thrown when the concrete entity contains unknown tag
 #[derive(Debug, Error, Diagnostic)]
-#[error("concrete entity `{uid}` has an unknown value for tag `{tag}`")]
+#[error("concrete entity `{uid}` contains unknown tag `{tag}`")]
 pub struct UnknownTagError {
     pub(super) uid: EntityUID,
     pub(super) tag: SmolStr,
@@ -355,35 +355,39 @@ pub struct UnknownTagError {
 
 /// Error thrown when tags mismatch
 #[derive(Debug, Error, Diagnostic)]
-#[error("tags of entity `{uid}` do not match")]
+#[error(
+    "entity `{uid}` is present in both the partial and concrete request with different tag values"
+)]
 pub struct MismatchedTagError {
     pub(super) uid: EntityUID,
 }
 
 /// Error thrown when ancestors do not match
 #[derive(Debug, Error, Diagnostic)]
-#[error("ancestors of entity `{uid}` do not match")]
+#[error(
+    "entity `{uid}` is present in both the partial and concrete request with different ancestors"
+)]
 pub struct MismatchedAncestorError {
     pub(super) uid: EntityUID,
 }
 
 /// Error thrown when when there is an entity missing in the concrete entities
 #[derive(Debug, Error, Diagnostic)]
-#[error("entity `{uid}` is missing from the concrete entities")]
+#[error("entity `{uid}` is present in the partial entities but missing from the concrete entities")]
 pub struct MissingEntityError {
     pub(super) uid: EntityUID,
 }
 
 /// Error thrown when concrete entities contain unknown entities
 #[derive(Debug, Error, Diagnostic)]
-#[error("concrete entities contain an unknown entity `{uid}`")]
+#[error("concrete entities contain unknown entity `{uid}`")]
 pub struct UnknownEntityError {
     pub(super) uid: EntityUID,
 }
 
 /// Error thrown when some requested entities were not loaded
 #[derive(Debug, Error, Diagnostic)]
-#[error("Failed to load entities: {}", .missing_entities.iter().map(|uid| uid.to_string()).collect::<Vec<_>>().join(", "))]
+#[error("failed to load entities: {}", .missing_entities.iter().map(|uid| uid.to_string()).collect::<Vec<_>>().join(", "))]
 pub struct MissingEntitiesError {
     pub(super) missing_entities: Vec<EntityUID>,
 }
