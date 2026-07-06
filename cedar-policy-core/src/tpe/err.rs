@@ -29,13 +29,6 @@ use crate::{
     validator::{RequestValidationError, ValidationError},
 };
 
-/// Error thrown when encountered an action
-#[derive(Debug, Error, Diagnostic)]
-#[error("Unexpected action: `{}`", .action)]
-pub struct UnexpectedActionError {
-    pub(super) action: EntityUID,
-}
-
 /// Error thrown when deserializing a [`crate::tpe::entities::PartialEntity`]
 #[derive(Debug, Error, Diagnostic)]
 pub enum JsonDeserializationError {
@@ -43,11 +36,6 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Concrete(#[from] crate::entities::json::err::JsonDeserializationError),
-    /// Error thrown when encountered an action
-    /// Actions are automatically inserted from a schema
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnexpectedAction(#[from] UnexpectedActionError),
     /// Error thrown when a restricted expression does not evaluate to a value
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -61,28 +49,6 @@ pub enum EntityValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Concrete(#[from] EntitySchemaConformanceError),
-    /// Error thrown when an action component is unknown
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnknownActionComponent(#[from] UnknownActionComponentError),
-    /// Error thrown when an action's ancestors do not match the schema
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    MismatchedActionAncestors(#[from] MismatchedActionAncestorsError),
-}
-
-/// Error thrown when an action has unknown ancestors/attrs/tags
-#[derive(Debug, Error, Diagnostic)]
-#[error("action `{}` has unknown ancestors/attrs/tags", .action)]
-pub struct UnknownActionComponentError {
-    pub(super) action: EntityUID,
-}
-
-/// Error thrown when an action's ancestors do not match the schema
-#[derive(Debug, Error, Diagnostic)]
-#[error("action `{}`'s ancestors do not match the schema", .action)]
-pub struct MismatchedActionAncestorsError {
-    pub(super) action: EntityUID,
 }
 
 /// Error thrown when an ancestor of an ancestor is unknown

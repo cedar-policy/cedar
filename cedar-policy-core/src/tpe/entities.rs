@@ -23,10 +23,9 @@ use crate::entities::SchemaType;
 use crate::entities::{Dereference, Entities, TCComputation};
 use crate::tpe::err::{
     AncestorValidationError, EntitiesConsistencyError, EntitiesError, EntityConsistencyError,
-    EntityValidationError, JsonDeserializationError, MismatchedActionAncestorsError,
-    MismatchedAncestorError, MismatchedAttributeError, MismatchedTagError, MissingEntityError,
-    UnexpectedActionError, UnknownActionComponentError, UnknownAttributeError, UnknownEntityError,
-    UnknownTagError,
+    EntityValidationError, JsonDeserializationError, MismatchedAncestorError,
+    MismatchedAttributeError, MismatchedTagError, MissingEntityError, UnknownAttributeError,
+    UnknownEntityError, UnknownTagError,
 };
 use crate::transitive_closure::{enforce_tc_and_dag, TcError};
 use crate::validator::{
@@ -258,14 +257,18 @@ pub fn parse_ejson(
         .uid
         .into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
     let core_schema = CoreSchema::new(schema);
+    let is_action = uid.is_action();
 
-    if uid.is_action() {
-        return Err(UnexpectedActionError { action: uid }.into());
-    }
     let vparser = ValueParser::new(Extensions::all_available());
     let attrs = e
         .attrs
-        .map(|m| parse_value_map(m, &uid, &core_schema, &vparser, |ty, k| ty.attr_type(k)))
+        .map(|m| {
+            if is_action {
+                parse_action_value_map(m, &uid, &vparser)
+            } else {
+                parse_value_map(m, &uid, &core_schema, &vparser, |ty, k| ty.attr_type(k))
+            }
+        })
         .transpose()?;
 
     let ancestors = e
@@ -274,11 +277,20 @@ pub fn parse_ejson(
             parents
                 .into_iter()
                 .map(|parent| {
-                    parent
+                    let parent_euid = parent
                         .into_euid(&|| JsonDeserializationErrorContext::EntityParents {
                             uid: uid.clone(),
                         })
-                        .map_err(JsonDeserializationError::Concrete)
+                        .map_err(JsonDeserializationError::Concrete)?;
+                    if is_action && !parent_euid.is_action() {
+                        return Err(JsonDeserializationError::Concrete(
+                            crate::entities::json::err::JsonDeserializationError::action_parent_is_not_action(
+                                uid.clone(),
+                                parent_euid,
+                            ),
+                        ));
+                    }
+                    Ok(parent_euid)
                 })
                 .collect::<Result<HashSet<_>, _>>()
         })
@@ -286,7 +298,13 @@ pub fn parse_ejson(
 
     let tags = e
         .tags
-        .map(|m| parse_value_map(m, &uid, &core_schema, &vparser, |ty, _| ty.tag_type()))
+        .map(|m| {
+            if is_action {
+                parse_action_value_map(m, &uid, &vparser)
+            } else {
+                parse_value_map(m, &uid, &core_schema, &vparser, |ty, _| ty.tag_type())
+            }
+        })
         .transpose()?;
 
     Ok(PartialEntity {
@@ -295,6 +313,33 @@ pub fn parse_ejson(
         ancestors,
         tags,
     })
+}
+
+/// Parse a JSON map of attribute/tag values for an action entity into concrete
+/// [`Value`]s.
+///
+/// Unlike [`parse_value_map`], this does not look the entity type up in the
+/// schema (action entity types are not in the schema's entity-type table) and
+/// parses each value with no expected type, matching how concrete entity
+/// parsing treats actions.
+fn parse_action_value_map(
+    map: DeduplicatedMap,
+    uid: &EntityUID,
+    vparser: &ValueParser<'_>,
+) -> Result<BTreeMap<SmolStr, Value>, JsonDeserializationError> {
+    let eval = RestrictedEvaluator::new(Extensions::all_available());
+    map.map
+        .into_iter()
+        .map(|(k, v)| {
+            let expr = vparser.val_into_restricted_expr(v.into(), None, &|| {
+                JsonDeserializationErrorContext::EntityAttribute {
+                    uid: uid.clone(),
+                    attr: k.clone(),
+                }
+            })?;
+            Ok((k, eval.interpret(expr.as_borrowed())?))
+        })
+        .collect()
 }
 
 impl TCNode<EntityUID> for PartialEntity {
@@ -343,51 +388,17 @@ impl PartialEntity {
         let etype = uid.entity_type();
 
         if self.uid.is_action() {
-            if self.attrs.is_none() || self.tags.is_none() {
-                return Err(UnknownActionComponentError {
-                    action: uid.clone(),
-                }
-                .into());
-            }
-            if let Some(attrs) = &self.attrs {
-                if let Some((attr, _)) = attrs.first_key_value() {
-                    return Err(EntitySchemaConformanceError::unexpected_entity_attr(
-                        uid.clone(),
-                        attr.clone(),
-                    )
-                    .into());
-                }
-            }
-            if let Some(tags) = &self.tags {
-                if let Some((tag, _)) = tags.first_key_value() {
-                    return Err(EntitySchemaConformanceError::unexpected_entity_tag(
-                        uid.clone(),
-                        tag.clone(),
-                    )
-                    .into());
-                }
-            }
-            if let Some(action) = core_schema.action(uid) {
-                if let Some(ancestors) = &self.ancestors {
-                    let schema_ancestors: HashSet<EntityUID> =
-                        action.ancestors().cloned().collect();
-                    if &schema_ancestors != ancestors {
-                        return Err(MismatchedActionAncestorsError {
-                            action: uid.clone(),
-                        }
-                        .into());
-                    }
-                } else {
-                    return Err(UnknownActionComponentError {
-                        action: uid.clone(),
-                    }
-                    .into());
-                }
-            } else {
-                return Err(EntitySchemaConformanceError::UndeclaredAction(
-                    crate::entities::conformance::err::UndeclaredAction { uid: uid.clone() },
-                )
-                .into());
+            // Actions are defined by the schema: any known components must be
+            // consistent with the schema's action (unknowns are allowed), and
+            // construction then substitutes the schema's action (see
+            // `insert_actions`).
+            let Some(action) = core_schema.action(uid) else {
+                return Err(EntitySchemaConformanceError::undeclared_action(uid.clone()).into());
+            };
+            if self.check_consistency(action.as_ref()).is_err() {
+                return Err(
+                    EntitySchemaConformanceError::action_declaration_mismatch(uid.clone()).into(),
+                );
             }
             return Ok(());
         }
@@ -979,9 +990,7 @@ mod tests {
 mod test_validate {
     use super::*;
     use crate::entities::conformance::err::EntitySchemaConformanceError;
-    use crate::tpe::err::{
-        EntityValidationError, MismatchedActionAncestorsError, UnknownActionComponentError,
-    };
+    use crate::tpe::err::EntityValidationError;
     use cool_asserts::assert_matches;
 
     fn test_schema() -> ValidatorSchema {
@@ -1018,151 +1027,6 @@ mod test_validate {
         };
 
         assert_matches!(entity.validate(&schema), Ok(()));
-    }
-
-    #[test]
-    fn valid_action() {
-        let schema = test_schema();
-        let action = PartialEntity {
-            uid: "Action::\"view\"".parse().unwrap(),
-            attrs: Some(BTreeMap::new()),
-            ancestors: Some(HashSet::new()),
-            tags: Some(BTreeMap::new()),
-        };
-
-        assert_matches!(action.validate(&schema), Ok(()));
-    }
-
-    #[test]
-    fn invalid_action_with_unknown_ancestors() {
-        let schema = test_schema();
-        let action = PartialEntity {
-            uid: "Action::\"view\"".parse().unwrap(),
-            attrs: Some(BTreeMap::new()),
-            ancestors: None,
-            tags: Some(BTreeMap::new()),
-        };
-
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::UnknownActionComponent(
-                UnknownActionComponentError { .. }
-            ))
-        );
-    }
-
-    #[test]
-    fn invalid_action_with_unknown_tags() {
-        let schema = test_schema();
-        let action = PartialEntity {
-            uid: "Action::\"view\"".parse().unwrap(),
-            attrs: Some(BTreeMap::new()),
-            ancestors: Some(HashSet::new()),
-            tags: None,
-        };
-
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::UnknownActionComponent(
-                UnknownActionComponentError { .. }
-            ))
-        );
-    }
-
-    #[test]
-    fn invalid_action_with_unknown_attrs() {
-        let schema = test_schema();
-        let action = PartialEntity {
-            uid: "Action::\"view\"".parse().unwrap(),
-            attrs: None,
-            ancestors: Some(HashSet::new()),
-            tags: Some(BTreeMap::new()),
-        };
-
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::UnknownActionComponent(
-                UnknownActionComponentError { .. }
-            ))
-        );
-    }
-
-    #[test]
-    fn invalid_action_with_unexpected_attr() {
-        let schema = test_schema();
-        let action = PartialEntity {
-            uid: "Action::\"view\"".parse().unwrap(),
-            attrs: Some(BTreeMap::from_iter([(
-                "unexpected_attr".into(),
-                Value::from("value"),
-            )])),
-            ancestors: Some(HashSet::new()),
-            tags: Some(BTreeMap::new()),
-        };
-
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::Concrete(
-                EntitySchemaConformanceError::UnexpectedEntityAttr(_)
-            ))
-        );
-    }
-
-    #[test]
-    fn invalid_action_with_unexpected_tag() {
-        let schema = test_schema();
-        let action = PartialEntity {
-            uid: "Action::\"view\"".parse().unwrap(),
-            attrs: Some(BTreeMap::new()),
-            ancestors: Some(HashSet::new()),
-            tags: Some(BTreeMap::from_iter([(
-                "unexpected_tag".into(),
-                Value::from("value"),
-            )])),
-        };
-
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::Concrete(
-                EntitySchemaConformanceError::UnexpectedEntityTag(_)
-            ))
-        );
-    }
-
-    #[test]
-    fn invalid_action_with_incorrect_ancestors() {
-        let schema = test_schema();
-        let action = PartialEntity {
-            uid: "Action::\"view\"".parse().unwrap(),
-            attrs: Some(BTreeMap::new()),
-            ancestors: Some(HashSet::from_iter(["Action::\"other\"".parse().unwrap()])),
-            tags: Some(BTreeMap::new()),
-        };
-
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::MismatchedActionAncestors(
-                MismatchedActionAncestorsError { .. }
-            ))
-        );
-    }
-
-    #[test]
-    fn invalid_unexpected_action() {
-        let schema = test_schema();
-        let action = PartialEntity {
-            uid: "Action::\"other\"".parse().unwrap(),
-            attrs: Some(BTreeMap::new()),
-            ancestors: Some(HashSet::new()),
-            tags: Some(BTreeMap::new()),
-        };
-
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::Concrete(
-                EntitySchemaConformanceError::UndeclaredAction(_)
-            ))
-        );
     }
 
     #[test]
@@ -1664,6 +1528,151 @@ mod test_parse_ejson_errors {
             )
             .help(r#"literal entity references can be made with `{ "type": "SomeType", "id": "SomeId" }`"#)
             .build(),
+        );
+    }
+}
+
+#[cfg(test)]
+mod action_entities {
+    use super::PartialEntities;
+    use crate::ast::EntityUID;
+    use crate::entities::conformance::err::EntitySchemaConformanceError;
+    use crate::extensions::Extensions;
+    use crate::tpe::entities::PartialEntity;
+    use crate::tpe::err::{EntitiesError, EntityValidationError, JsonDeserializationError};
+    use crate::validator::ValidatorSchema;
+    use cool_asserts::assert_matches;
+
+    // `read` is an action group; `view` is a member of it and applies to `E`.
+    fn schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            r#"
+            entity E;
+            action read;
+            action view in [read] appliesTo { principal : E, resource : E };
+            "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    // Parse a single-entity JSON list and return the stored action entity.
+    fn parse_view(json: serde_json::Value) -> Result<PartialEntity, EntitiesError> {
+        let uid: EntityUID = "Action::\"view\"".parse().unwrap();
+        PartialEntities::from_json_value(json, &schema())
+            .map(|es| es.get(&uid).unwrap().clone())
+    }
+
+    // Compact projection of an action entity for assertions: its uid rendered
+    // via `Display` plus its (sorted) known ancestor uids.
+    fn summary(e: &PartialEntity) -> (String, Vec<String>) {
+        let mut ancestors: Vec<String> = e
+            .ancestors()
+            .into_iter()
+            .flatten()
+            .map(ToString::to_string)
+            .collect();
+        ancestors.sort();
+        (e.uid().to_string(), ancestors)
+    }
+
+    #[test]
+    fn action_with_unknown_components_is_substituted_by_schema() {
+        // An action supplied with all components unknown is consistent with the
+        // schema, so construction substitutes the schema's fully-known action
+        // (empty attrs/tags, `read` ancestor).
+        let entity = parse_view(serde_json::json!([{
+            "uid": { "type": "Action", "id": "view" },
+        }]))
+        .unwrap();
+        assert_eq!(
+            summary(&entity),
+            ("Action::\"view\"".to_string(), vec![
+                "Action::\"read\"".to_string()
+            ])
+        );
+        assert_eq!(entity.attrs(), Some(&std::collections::BTreeMap::new()));
+    }
+
+    #[test]
+    fn action_matching_schema_is_substituted_by_schema() {
+        // Supplying the components explicitly and consistently with the schema
+        // also succeeds and yields the same substituted schema action.
+        let entity = parse_view(serde_json::json!([{
+            "uid": { "type": "Action", "id": "view" },
+            "attrs": {},
+            "tags": {},
+            "parents": [ { "type": "Action", "id": "read" } ],
+        }]))
+        .unwrap();
+        assert_eq!(
+            summary(&entity),
+            ("Action::\"view\"".to_string(), vec![
+                "Action::\"read\"".to_string()
+            ])
+        );
+    }
+
+    fn assert_declaration_mismatch(json: serde_json::Value) {
+        assert_matches!(
+            parse_view(json),
+            Err(EntitiesError::Validation(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::ActionDeclarationMismatch(_)
+            )))
+        );
+    }
+
+    #[test]
+    fn action_with_unexpected_attr_fails() {
+        assert_declaration_mismatch(serde_json::json!([{
+            "uid": { "type": "Action", "id": "view" },
+            "attrs": { "foo": 1 },
+        }]));
+    }
+
+    #[test]
+    fn action_with_unexpected_tag_fails() {
+        assert_declaration_mismatch(serde_json::json!([{
+            "uid": { "type": "Action", "id": "view" },
+            "tags": { "foo": 1 },
+        }]));
+    }
+
+    #[test]
+    fn action_with_incorrect_ancestors_fails() {
+        // `view`'s only schema ancestor is `read`; declaring no parents is
+        // inconsistent with the schema.
+        assert_declaration_mismatch(serde_json::json!([{
+            "uid": { "type": "Action", "id": "view" },
+            "parents": [],
+        }]));
+    }
+
+    #[test]
+    fn undeclared_action_fails() {
+        assert_matches!(
+            parse_view(serde_json::json!([{
+                "uid": { "type": "Action", "id": "nonexistent" },
+            }])),
+            Err(EntitiesError::Validation(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::UndeclaredAction(_)
+            )))
+        );
+    }
+
+    #[test]
+    fn action_parent_is_not_action_fails_at_parse() {
+        // A non-action parent is rejected at parse time, mirroring concrete
+        // entity parsing.
+        assert_matches!(
+            parse_view(serde_json::json!([{
+                "uid": { "type": "Action", "id": "view" },
+                "parents": [ { "type": "E", "id": "e" } ],
+            }])),
+            Err(EntitiesError::Deserialization(
+                JsonDeserializationError::Concrete(_)
+            ))
         );
     }
 }
