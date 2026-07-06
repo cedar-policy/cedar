@@ -116,9 +116,10 @@ pub enum TpeError {
 
 /// Error thrown when a policy fails to typecheck against the schema during
 /// type-aware partial evaluation
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 #[error("policy failed to validate against the schema")]
 pub struct PolicyValidationError {
+    #[related]
     pub(super) errors: Vec<ValidationError>,
 }
 
@@ -133,12 +134,6 @@ impl PolicyValidationError {
     }
 }
 
-impl Diagnostic for PolicyValidationError {
-    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
-        Some(Box::new(self.errors.iter().map(|e| e as &dyn Diagnostic)))
-    }
-}
-
 /// Residuals require fully typed expressions without
 /// unknowns or parse errors.
 #[derive(Debug, Error, Diagnostic)]
@@ -150,8 +145,8 @@ pub enum ExprToResidualError {
     MissingTypeAnnotation(#[from] MissingTypeAnnotationError),
     /// Expression contains a slot which is not supported in residuals
     #[error(transparent)]
+    #[diagnostic(transparent)]
     UnlinkedSlotError(#[from] UnlinkedSlotError),
-    /// Expression contains an unknown which is not supported in residuals
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnknownNotSupported(#[from] UnknownNotSupportedError),
