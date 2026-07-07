@@ -1864,6 +1864,15 @@ mod tests {
             interpret_typed_str_to_str(r#"E::"undefined" in [E::"other", E::"undefined"]"#),
             @r#"true"#
         );
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in [E::"undefined", context.e]"#),
+            @r#"E::"undefined" in [E::"undefined", context.e]"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in [E::"undefined", (if 9223372036854775807 * 2 == 0 then E::"undefined" else E::"undefined")]"#),
+            @"error()"
+        );
     }
 
     fn binary_app_tags_env() -> (ValidatorSchema, PartialEntities, PartialRequest) {

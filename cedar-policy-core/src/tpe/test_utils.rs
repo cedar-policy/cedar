@@ -55,7 +55,15 @@ pub(crate) fn parse_typed_expr(
         .unwrap()
         .link_slot_env(slot_env);
 
-    let expr = parse_expr(expr_str).unwrap();
+    let expr = match parse_expr(expr_str) {
+        Ok(expr) => expr,
+        Err(es) => {
+            for e in es {
+                println!("{:?}", miette::Report::new(e));
+            }
+            panic!("parse error on input expression");
+        }
+    };
     let mut type_errors = HashSet::new();
     let id = PolicyID::from_string("test");
     let ans = Typechecker::new(schema, ValidationMode::Strict).typecheck_expr_with_request_env(
