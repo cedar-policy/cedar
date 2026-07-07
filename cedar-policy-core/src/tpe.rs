@@ -271,34 +271,37 @@ action Delete appliesTo {
     }
 
     fn rfc_request() -> PartialRequest {
-        PartialRequest {
-            principal: r#"User::"Alice""#.parse::<EntityUID>().unwrap().into(),
-            action: r#"Action::"View""#.parse().unwrap(),
-            resource: PartialEntityUID {
+        PartialRequest::new(
+            r#"User::"Alice""#.parse::<EntityUID>().unwrap().into(),
+            r#"Action::"View""#.parse().unwrap(),
+            PartialEntityUID {
                 ty: "Document".parse().unwrap(),
                 eid: None,
             },
-            context: Some(Arc::new(BTreeMap::from_iter(std::iter::once((
+            Some(Arc::new(BTreeMap::from_iter(std::iter::once((
                 "hasMFA".into(),
                 true.into(),
             ))))),
-        }
+            &rfc_schema(),
+        )
+        .unwrap()
     }
 
     fn rfc_entities() -> PartialEntities {
-        let uid: EntityUID = r#"User::"Alice""#.parse().unwrap();
-        PartialEntities::from_entities_unchecked(
-            [(
-                uid.clone(),
-                PartialEntity {
-                    uid,
-                    attrs: Some(BTreeMap::new()),
-                    ancestors: Some(HashSet::new()),
-                    tags: None,
-                },
-            )]
+        let schema = rfc_schema();
+        PartialEntities::from_entities(
+            [PartialEntity::new(
+                r#"User::"Alice""#.parse().unwrap(),
+                Some(BTreeMap::new()),
+                Some(HashSet::new()),
+                None,
+                &schema,
+            )
+            .unwrap()]
             .into_iter(),
+            &schema,
         )
+        .unwrap()
     }
     #[test]
     fn rfc_example() {
@@ -472,15 +475,17 @@ when { principal in resource.editors };
 
     #[track_caller]
     fn partial_request() -> PartialRequest {
-        PartialRequest {
-            principal: r#"User::"aaron""#.parse::<EntityUID>().unwrap().into(),
-            action: r#"Action::"GetList""#.parse().unwrap(),
-            resource: PartialEntityUID {
+        PartialRequest::new(
+            r#"User::"aaron""#.parse::<EntityUID>().unwrap().into(),
+            r#"Action::"GetList""#.parse().unwrap(),
+            PartialEntityUID {
                 ty: "List".parse().unwrap(),
                 eid: None,
             },
-            context: Some(Arc::new(BTreeMap::new())),
-        }
+            Some(Arc::new(BTreeMap::new())),
+            &schema(),
+        )
+        .unwrap()
     }
 
     #[track_caller]

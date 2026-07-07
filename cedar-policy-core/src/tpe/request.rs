@@ -234,17 +234,17 @@ impl From<EntityUID> for PartialEntityUID {
 #[derive(Debug, Clone)]
 pub struct PartialRequest {
     /// Principal associated with the request
-    pub(crate) principal: PartialEntityUID,
+    principal: PartialEntityUID,
 
     /// Action associated with the request
-    pub(crate) action: EntityUID,
+    action: EntityUID,
 
     /// Resource associated with the request
-    pub(crate) resource: PartialEntityUID,
+    resource: PartialEntityUID,
 
     /// Context associated with the request.
     /// `None` means that variable will result in a residual for partial evaluation.
-    pub(crate) context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+    context: Option<Arc<BTreeMap<SmolStr, Value>>>,
 }
 
 impl PartialRequest {
@@ -264,21 +264,6 @@ impl PartialRequest {
         };
         req.validate(schema)?;
         Ok(req)
-    }
-
-    /// Like `new` but do not perform any validation
-    pub fn new_unchecked(
-        principal: PartialEntityUID,
-        resource: PartialEntityUID,
-        action: EntityUID,
-        context: Option<Arc<BTreeMap<SmolStr, Value>>>,
-    ) -> Self {
-        Self {
-            principal,
-            action,
-            resource,
-            context,
-        }
     }
 
     // Find the matching `RequestEnv`
@@ -370,33 +355,33 @@ impl PartialRequest {
     }
 
     /// Get the [`EntityType`] of `principal`
-    pub fn get_principal_type(&self) -> EntityType {
-        self.principal.ty.clone()
+    pub fn get_principal_type(&self) -> &EntityType {
+        &self.principal.ty
     }
 
     /// Get the [`EntityType`] of `resource`
-    pub fn get_resource_type(&self) -> EntityType {
-        self.resource.ty.clone()
+    pub fn get_resource_type(&self) -> &EntityType {
+        &self.resource.ty
     }
 
     /// Get the `principal`
-    pub fn get_principal(&self) -> PartialEntityUID {
-        self.principal.clone()
+    pub fn get_principal(&self) -> &PartialEntityUID {
+        &self.principal
     }
 
     /// Get the `resource`
-    pub fn get_resource(&self) -> PartialEntityUID {
-        self.resource.clone()
+    pub fn get_resource(&self) -> &PartialEntityUID {
+        &self.resource
     }
 
     /// Get the `action`
-    pub fn get_action(&self) -> EntityUID {
-        self.action.clone()
+    pub fn get_action(&self) -> &EntityUID {
+        &self.action
     }
 
     /// Get the `context` attributes
-    pub fn get_context_attrs(&self) -> Option<&BTreeMap<SmolStr, Value>> {
-        self.context.as_ref().map(|attrs| attrs.as_ref())
+    pub fn get_context_attrs(&self) -> Option<&Arc<BTreeMap<SmolStr, Value>>> {
+        self.context.as_ref()
     }
 }
 

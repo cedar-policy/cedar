@@ -94,13 +94,13 @@ pub struct EntityJson {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PartialEntity {
     // The uid of the partial entity
-    pub(crate) uid: EntityUID,
+    uid: EntityUID,
     // Optional attributes
-    pub(crate) attrs: Option<BTreeMap<SmolStr, Value>>,
+    attrs: Option<BTreeMap<SmolStr, Value>>,
     // Optional ancestors
-    pub(crate) ancestors: Option<HashSet<EntityUID>>,
+    ancestors: Option<HashSet<EntityUID>>,
     // Optional tags
-    pub(crate) tags: Option<BTreeMap<SmolStr, Value>>,
+    tags: Option<BTreeMap<SmolStr, Value>>,
 }
 
 // An `Entity` without unknowns is a `PartialEntity`
@@ -656,16 +656,6 @@ impl PartialEntities {
             }
         }
         Ok(())
-    }
-
-    /// Like `from_entities` but do not perform any validation and tc
-    /// computation. Callers must ensure these invariants are maintained.
-    pub fn from_entities_unchecked(
-        entities: impl Iterator<Item = (EntityUID, PartialEntity)>,
-    ) -> Self {
-        Self {
-            entities: entities.collect(),
-        }
     }
 
     // Insert action entities from the schema
