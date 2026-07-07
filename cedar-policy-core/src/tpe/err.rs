@@ -328,7 +328,7 @@ pub enum EntityConsistencyError {
 
 /// Error thrown when the concrete entity contains unknown attribute
 #[derive(Debug, Error, Diagnostic)]
-#[error("concrete entity `{uid}` contains unknown attribute `{attr}`")]
+#[error("concrete entity `{uid}` has attribute `{attr}` not present in the partial entity")]
 pub struct UnknownAttributeError {
     pub(super) uid: EntityUID,
     pub(super) attr: SmolStr,
@@ -336,14 +336,14 @@ pub struct UnknownAttributeError {
 
 /// Error thrown when attributes mismatch
 #[derive(Debug, Error, Diagnostic)]
-#[error("entity `{uid}` is present in both the partial and concrete request with different attribute values")]
+#[error("concrete entity `{uid}` has attribute values that do not match the partial entity")]
 pub struct MismatchedAttributeError {
     pub(super) uid: EntityUID,
 }
 
 /// Error thrown when the concrete entity contains unknown tag
 #[derive(Debug, Error, Diagnostic)]
-#[error("concrete entity `{uid}` contains unknown tag `{tag}`")]
+#[error("concrete entity `{uid}` has tag `{tag}` not present in the partial entity")]
 pub struct UnknownTagError {
     pub(super) uid: EntityUID,
     pub(super) tag: SmolStr,
@@ -351,18 +351,14 @@ pub struct UnknownTagError {
 
 /// Error thrown when tags mismatch
 #[derive(Debug, Error, Diagnostic)]
-#[error(
-    "entity `{uid}` is present in both the partial and concrete request with different tag values"
-)]
+#[error("concrete entity `{uid}` has tag values that do not match the partial entity")]
 pub struct MismatchedTagError {
     pub(super) uid: EntityUID,
 }
 
 /// Error thrown when ancestors do not match
 #[derive(Debug, Error, Diagnostic)]
-#[error(
-    "entity `{uid}` is present in both the partial and concrete request with different ancestors"
-)]
+#[error("concrete entity `{uid}` has ancestors that do not match the partial entity")]
 pub struct MismatchedAncestorError {
     pub(super) uid: EntityUID,
 }
