@@ -137,12 +137,12 @@ impl ResourceQueryRequest {
             clippy::unwrap_used,
             reason = "constructor requires concrete principal"
         )]
-        EntityUid(self.0 .0.get_principal().clone().try_into().unwrap())
+        EntityUid(self.0 .0.principal().clone().try_into().unwrap())
     }
 
     fn context(&self) -> Context {
         #[expect(clippy::unwrap_used, reason = "constructor requires concrete context")]
-        let context_attrs = self.0 .0.get_context_attrs().unwrap();
+        let context_attrs = self.0 .0.context_attrs().unwrap();
         #[expect(
             clippy::unwrap_used,
             reason = "building context from BTreeMap iter, so no duplicates are possible"
@@ -168,9 +168,9 @@ impl ResourceQueryRequest {
     ) -> Result<Request, RequestValidationError> {
         Request::new(
             self.principal(),
-            EntityUid(self.0 .0.get_action().clone()),
+            EntityUid(self.0 .0.action().clone()),
             EntityUid::from_type_name_and_id(
-                EntityTypeName(self.0 .0.get_resource_type().clone()),
+                EntityTypeName(self.0 .0.resource_type().clone()),
                 resource_id,
             ),
             self.context(),
@@ -208,12 +208,12 @@ impl PrincipalQueryRequest {
 
     fn resource(&self) -> EntityUid {
         #[expect(clippy::unwrap_used, reason = "constructor requires concrete resource")]
-        EntityUid(self.0 .0.get_resource().clone().try_into().unwrap())
+        EntityUid(self.0 .0.resource().clone().try_into().unwrap())
     }
 
     fn context(&self) -> Context {
         #[expect(clippy::unwrap_used, reason = "constructor requires concrete context")]
-        let context_attrs = self.0 .0.get_context_attrs().unwrap();
+        let context_attrs = self.0 .0.context_attrs().unwrap();
         #[expect(
             clippy::unwrap_used,
             reason = "building context from BTreeMap iter, so no duplicates are possible"
@@ -239,10 +239,10 @@ impl PrincipalQueryRequest {
     ) -> Result<Request, RequestValidationError> {
         Request::new(
             EntityUid::from_type_name_and_id(
-                EntityTypeName(self.0 .0.get_principal_type().clone()),
+                EntityTypeName(self.0 .0.principal_type().clone()),
                 principal_id,
             ),
-            EntityUid(self.0 .0.get_action().clone()),
+            EntityUid(self.0 .0.action().clone()),
             self.resource(),
             self.context(),
             schema,
@@ -776,14 +776,14 @@ impl PolicySet {
         match tpe_response.decision() {
             Some(Decision::Allow) => Ok(entities
                 .iter()
-                .filter(|entity| entity.0.uid().entity_type() == request.0.0.get_resource_type())
+                .filter(|entity| entity.0.uid().entity_type() == request.0.0.resource_type())
                 .map(Entity::uid)
                 .collect_vec()
                 .into_iter()),
             Some(Decision::Deny) => Ok(vec![].into_iter()),
             None => Ok(entities
                 .iter()
-                .filter(|entity| entity.0.uid().entity_type() == request.0.0.get_resource_type())
+                .filter(|entity| entity.0.uid().entity_type() == request.0.0.resource_type())
                 .filter(|entity| {
                     #[expect(
                         clippy::unwrap_used, reason = "`to_request` cannot panic because we do not pass a schema. However, the correctness of the authorization
@@ -822,14 +822,14 @@ impl PolicySet {
         match tpe_response.decision() {
             Some(Decision::Allow) => Ok(entities
                 .iter()
-                .filter(|entity| entity.0.uid().entity_type() == request.0.0.get_principal_type())
+                .filter(|entity| entity.0.uid().entity_type() == request.0.0.principal_type())
                 .map(Entity::uid)
                 .collect_vec()
                 .into_iter()),
             Some(Decision::Deny) => Ok(vec![].into_iter()),
             None => Ok(entities
                 .iter()
-                .filter(|entity| entity.0.uid().entity_type() == request.0.0.get_principal_type())
+                .filter(|entity| entity.0.uid().entity_type() == request.0.0.principal_type())
                 .filter(|entity| {
                     #[expect(
                         clippy::unwrap_used, reason = "`to_request` cannot panic because we do not pass a schema. However, the correctness of the authorization

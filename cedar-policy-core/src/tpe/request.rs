@@ -355,32 +355,32 @@ impl PartialRequest {
     }
 
     /// Get the [`EntityType`] of `principal`
-    pub fn get_principal_type(&self) -> &EntityType {
+    pub fn principal_type(&self) -> &EntityType {
         &self.principal.ty
     }
 
     /// Get the [`EntityType`] of `resource`
-    pub fn get_resource_type(&self) -> &EntityType {
+    pub fn resource_type(&self) -> &EntityType {
         &self.resource.ty
     }
 
     /// Get the `principal`
-    pub fn get_principal(&self) -> &PartialEntityUID {
+    pub fn principal(&self) -> &PartialEntityUID {
         &self.principal
     }
 
     /// Get the `resource`
-    pub fn get_resource(&self) -> &PartialEntityUID {
+    pub fn resource(&self) -> &PartialEntityUID {
         &self.resource
     }
 
     /// Get the `action`
-    pub fn get_action(&self) -> &EntityUID {
+    pub fn action(&self) -> &EntityUID {
         &self.action
     }
 
     /// Get the `context` attributes
-    pub fn get_context_attrs(&self) -> Option<&Arc<BTreeMap<SmolStr, Value>>> {
+    pub fn context_attrs(&self) -> Option<&Arc<BTreeMap<SmolStr, Value>>> {
         self.context.as_ref()
     }
 }

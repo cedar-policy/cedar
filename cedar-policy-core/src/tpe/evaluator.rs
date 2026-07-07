@@ -73,23 +73,23 @@ impl Evaluator<'_> {
         }
 
         match kind {
-            ResidualKind::Var(Var::Action) => mk_concrete(self.request.get_action().clone().into()),
+            ResidualKind::Var(Var::Action) => mk_concrete(self.request.action().clone().into()),
             ResidualKind::Var(Var::Principal) => {
-                if let Ok(principal) = EntityUID::try_from(self.request.get_principal().clone()) {
+                if let Ok(principal) = EntityUID::try_from(self.request.principal().clone()) {
                     mk_concrete(principal.into())
                 } else {
                     mk_residual(ResidualKind::Var(Var::Principal))
                 }
             }
             ResidualKind::Var(Var::Resource) => {
-                if let Ok(resource) = EntityUID::try_from(self.request.get_resource().clone()) {
+                if let Ok(resource) = EntityUID::try_from(self.request.resource().clone()) {
                     mk_concrete(resource.into())
                 } else {
                     mk_residual(ResidualKind::Var(Var::Resource))
                 }
             }
             ResidualKind::Var(Var::Context) => {
-                if let Some(context) = self.request.get_context_attrs() {
+                if let Some(context) = self.request.context_attrs() {
                     mk_concrete(Value::record_arc(context.clone(), None))
                 } else {
                     mk_residual(ResidualKind::Var(Var::Context))
@@ -217,11 +217,11 @@ impl Evaluator<'_> {
                     Residual::Partial {
                         kind: ResidualKind::Var(Var::Principal),
                         ..
-                    } => mk_concrete((entity_type == self.request.get_principal_type()).into()),
+                    } => mk_concrete((entity_type == self.request.principal_type()).into()),
                     Residual::Partial {
                         kind: ResidualKind::Var(Var::Resource),
                         ..
-                    } => mk_concrete((entity_type == self.request.get_resource_type()).into()),
+                    } => mk_concrete((entity_type == self.request.resource_type()).into()),
                     Residual::Partial { .. } => mk_residual(ResidualKind::Is {
                         expr: Arc::new(expr),
                         entity_type: entity_type.clone(),
