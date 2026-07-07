@@ -1867,6 +1867,110 @@ when {{ resource.isPublic }};"#
         .code(0);
 }
 
+#[test]
+#[cfg(feature = "tpe")]
+fn test_tpe_invalid_policies() {
+    let entities: &str = "sample-data/tpe_rfc/entities.json";
+    let schema: &str = "sample-data/tpe_rfc/schema.cedarschema";
+
+    let mut policies_file = tempfile::NamedTempFile::new().expect("Failed to create policies file");
+    writeln!(
+        policies_file,
+        r#"permit ( principal, action == Action::"View", resource) when {{ resource.nonexistent }};"#
+    ).expect("Failed to write policies file");
+    let policies_path = policies_file.path().to_str().unwrap();
+
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(policies_path)
+        .arg("--entities")
+        .arg(entities)
+        .arg("-s")
+        .arg(schema)
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    insta::assert_snapshot!(stdout, @r#"
+
+      × policy failed to validate against the schema
+
+    Error: 
+      × for policy `policy0`, attribute `nonexistent` on entity type `Document`
+      │ not found
+       ╭────
+     1 │ permit ( principal, action == Action::"View", resource) when { resource.nonexistent };
+       ·                                                                ────────────────────
+       ╰────
+      help: did you mean `owner`?
+    "#);
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+#[cfg(feature = "tpe")]
+fn test_tpe_invalid_entities() {
+    let policies: &str = "sample-data/tpe_rfc/policies.cedar";
+    let schema: &str = "sample-data/tpe_rfc/schema.cedarschema";
+
+    // `isPublic` is declared as `Bool` in the schema, but this entity gives it a
+    // string value, so entity parsing fails schema conformance.
+    let entities = serde_json::json!(
+    [{
+        "uid": { "type": "Document", "id": "d1" },
+        "attrs": {
+            "isPublic": "not_a_bool",
+            "owner": { "__entity": { "type": "User", "id": "Alice" } }
+        },
+        "parents": []
+    }]);
+    let mut entities_file = tempfile::NamedTempFile::new().expect("Failed to create entities file");
+    serde_json::to_writer(&mut entities_file, &entities).unwrap();
+    let entities_path = entities_file.path().to_str().unwrap();
+
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("tpe")
+        .arg("--principal-type")
+        .arg("User")
+        .arg("--principal-eid")
+        .arg("Alice")
+        .arg("-a")
+        .arg(r#"Action::"View""#)
+        .arg("--resource-type")
+        .arg("Document")
+        .arg("-p")
+        .arg(policies)
+        .arg("--entities")
+        .arg(entities_path)
+        .arg("-s")
+        .arg(schema)
+        .output()
+        .expect("failed to run cedar");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut settings = insta::Settings::clone_current();
+    settings.add_filter(r"/tmp/\S+", "[TEMPFILE]");
+    settings.bind(|| {
+        insta::assert_snapshot!(stdout, @r#"
+
+        × failed to parse entities from file [TEMPFILE]
+        ╰─▶ in attribute `isPublic` on `Document::"d1"`, type mismatch: value was
+            expected to have type bool, but it actually has type string:
+            `"not_a_bool"`
+        "#);
+    });
+    assert_eq!(output.status.code(), Some(1));
+}
+
 #[rstest]
 #[case("principal")]
 #[case("1 + 1")]

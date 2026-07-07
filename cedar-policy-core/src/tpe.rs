@@ -29,7 +29,7 @@ pub(crate) mod test_utils;
 use std::{collections::HashMap, sync::Arc};
 
 use crate::ast::PolicyID;
-use crate::tpe::err::TpeError;
+use crate::tpe::err::{PolicyValidationError, TpeError};
 use crate::tpe::residual::Residual;
 use crate::tpe::response::{ResidualPolicy, Response};
 use crate::validator::Validator;
@@ -51,7 +51,7 @@ pub(crate) fn policy_residual_map<'a>(
 
         let errs: Vec<_> = Validator::validate_entity_types_and_literals(schema, t).collect();
         if !errs.is_empty() {
-            return Err(TpeError::Validation(errs));
+            return Err(PolicyValidationError::new(errs).into());
         }
 
         // Get an environment using the actual types of the entities linked with
@@ -62,13 +62,13 @@ pub(crate) fn policy_residual_map<'a>(
                 residuals.insert(p.id(), Residual::try_from_typed_expr(&expr, p.env())?);
             }
             PolicyCheck::Fail(errs) => {
-                return Err(TpeError::Validation(errs));
+                return Err(PolicyValidationError::new(errs).into());
             }
             PolicyCheck::Irrelevant(errs, expr) => {
                 if errs.is_empty() {
                     residuals.insert(p.id(), Residual::try_from_typed_expr(&expr, p.env())?);
                 } else {
-                    return Err(TpeError::Validation(errs));
+                    return Err(PolicyValidationError::new(errs).into());
                 }
             }
         }
