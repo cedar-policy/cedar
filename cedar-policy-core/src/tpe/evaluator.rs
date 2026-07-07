@@ -1847,6 +1847,23 @@ mod tests {
             interpret_typed_str_to_str(r#"E::"parents_none" in [resource]"#),
             @r#"E::"parents_none" in [E::"resource"]"#
         );
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in E::"undefined""#),
+            @r#"true"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in [E::"undefined"]"#),
+            @r#"true"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in [E::"undefined", E::"other"]"#),
+            @r#"true"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in [E::"other", E::"undefined"]"#),
+            @r#"true"#
+        );
     }
 
     fn binary_app_tags_env() -> (ValidatorSchema, PartialEntities, PartialRequest) {
