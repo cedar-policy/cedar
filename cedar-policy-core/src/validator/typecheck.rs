@@ -68,10 +68,6 @@ pub struct Typechecker<'a> {
     schema: &'a ValidatorSchema,
     extensions: &'static ExtensionSchemas<'static>,
     mode: ValidationMode,
-    /// List of valid (unlinked) `RequestEnv`s for this schema.
-    /// Cached here so it can be computed once (during `Typechecker`
-    /// construction) and potentially used for many typechecking operations.
-    unlinked_envs: Vec<RequestEnv<'a>>,
 }
 
 impl<'a> Typechecker<'a> {
@@ -81,7 +77,6 @@ impl<'a> Typechecker<'a> {
             schema,
             extensions: ExtensionSchemas::all_available(),
             mode,
-            unlinked_envs: schema.unlinked_request_envs(mode).collect(),
         }
     }
 
@@ -100,24 +95,30 @@ impl<'a> Typechecker<'a> {
         type_errors: &mut HashSet<ValidationError>,
         warnings: &mut HashSet<ValidationWarning>,
     ) -> bool {
-        let typecheck_answers = self.typecheck_by_request_env(t);
-
-        // consolidate the results from each query environment
-        let (all_false, all_succ) = typecheck_answers.into_iter().fold(
-            (true, true),
-            |(all_false, all_succ), (_, check)| match check {
-                PolicyCheck::Success(_) => (false, all_succ),
-                PolicyCheck::Irrelevant(err, _) => {
-                    let no_err = err.is_empty();
-                    type_errors.extend(err);
-                    (all_false, all_succ && no_err)
+        // Streaming fold over borrowed env views from the schema's cached env
+        // set (#2439): never hold all envs' typed conditions live at once. Each
+        // `PolicyCheck` (and its typed condition) is dropped before the next env
+        // is computed, so peak live memory is O(one condition) rather than
+        // O(envs * condition).
+        let cond = t.condition();
+        let mut all_false = true;
+        let mut all_succ = true;
+        for unlinked_e in self.schema.unlinked_request_envs(self.mode) {
+            for linked_e in self.link_request_env(&unlinked_e, t) {
+                match self.single_env_typechecking(&linked_e, t.id(), &cond) {
+                    PolicyCheck::Success(_) => all_false = false,
+                    PolicyCheck::Irrelevant(err, _) => {
+                        all_succ = all_succ && err.is_empty();
+                        type_errors.extend(err);
+                    }
+                    PolicyCheck::Fail(err) => {
+                        type_errors.extend(err);
+                        all_false = false;
+                        all_succ = false;
+                    }
                 }
-                PolicyCheck::Fail(err) => {
-                    type_errors.extend(err);
-                    (false, false)
-                }
-            },
-        );
+            }
+        }
 
         // If every policy typechecked with type false, then the policy cannot
         // possibly apply to any request.
@@ -214,15 +215,22 @@ impl<'a> Typechecker<'a> {
         // compute `.condition()` just once, and cache it here
         let cond = t.condition();
 
+        // Borrowed `RequestEnv` views over the schema's cached env set
+        // (plus the fully-unknown env in partial-schema validation).
         // Validate each (principal, resource) pair with the substituted policy
         // for the corresponding action.
-        self.unlinked_envs
-            .iter()
+        self.schema
+            .unlinked_request_envs(self.mode)
             .flat_map(|unlinked_e| {
-                self.link_request_env(unlinked_e, t).map(|linked_e| {
-                    let check = typecheck_fn(&linked_e, t.id(), &cond);
-                    (linked_e, check)
-                })
+                // Collect eagerly so the borrow of the local `unlinked_e` view
+                // ends before it is dropped; the linked envs borrow the schema,
+                // not `unlinked_e`.
+                self.link_request_env(&unlinked_e, t)
+                    .map(|linked_e| {
+                        let check = typecheck_fn(&linked_e, t.id(), &cond);
+                        (linked_e, check)
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect()
     }

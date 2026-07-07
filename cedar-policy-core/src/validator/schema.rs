@@ -36,13 +36,13 @@ use smol_str::SmolStr;
 use smol_str::ToSmolStr;
 use std::collections::{hash_map::Entry, BTreeSet, HashMap, HashSet};
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::validator::{
     cedar_schema::SchemaWarning,
     json_schema,
     partition_nonempty::PartitionNonEmpty,
-    types::{Attributes, EntityKind, OpenTag, RequestEnv, Type, TypeIterator},
+    types::{Attributes, EntityKind, OpenTag, RequestEnv, Type, TypeIterator, UnlinkedRequestEnv},
     ValidationMode,
 };
 
@@ -261,6 +261,12 @@ pub struct ValidatorSchema {
     /// this cache it's O(1).
     pub(crate) actions: HashMap<EntityUID, Arc<Entity>>,
 
+    /// Cache of the unlinked request-env set; see
+    /// [`ValidatorSchema::unlinked_envs_owned`]. Derived data, so it is ignored
+    /// for equality.
+    #[educe(PartialEq(ignore))]
+    unlinked_envs_cache: OnceLock<Vec<UnlinkedRequestEnv>>,
+
     #[cfg(feature = "extended-schema")]
     #[educe(PartialEq(ignore))]
     /// Track where each common type is defined in the schema. Common types are
@@ -345,6 +351,7 @@ impl ValidatorSchema {
             entity_types,
             action_ids,
             actions,
+            unlinked_envs_cache: OnceLock::new(),
             #[cfg(feature = "extended-schema")]
             common_types,
             #[cfg(feature = "extended-schema")]
@@ -427,32 +434,46 @@ impl ValidatorSchema {
         &self,
         mode: ValidationMode,
     ) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
-        // For every action compute the cross product of the principal and
-        // resource applies_to sets.
-        self.action_ids()
-            .flat_map(|action| {
-                action.applies_to_principals().flat_map(|principal| {
-                    action
-                        .applies_to_resources()
-                        .map(|resource| RequestEnv::DeclaredAction {
-                            principal,
-                            action: &action.name,
-                            resource,
-                            context: &action.context,
-                            principal_slot: None,
-                            resource_slot: None,
-                        })
+        // Cheap borrowed views over the cached set (see
+        // `unlinked_envs_owned`). Partial validation additionally considers
+        // `RequestEnv::UndeclaredAction`, which carries no data.
+        self.unlinked_envs_owned()
+            .iter()
+            .map(UnlinkedRequestEnv::as_request_env)
+            .chain(mode.is_partial().then_some(RequestEnv::UndeclaredAction))
+    }
+
+    /// Returns the cached set of unlinked request envs, computing it on first
+    /// use. Unlike [`ValidatorSchema::unlinked_request_envs`], this owns its
+    /// data and is cached on the schema, so it is built once and reused across
+    /// all typechecking operations (and requests) rather than reconstructed per
+    /// `Typechecker`/policy.
+    ///
+    /// The set is identical for strict and permissive validation. Partial
+    /// validation additionally considers [`RequestEnv::UndeclaredAction`], which
+    /// carries no data and so is left for the caller to append.
+    pub(crate) fn unlinked_envs_owned(&self) -> &[UnlinkedRequestEnv] {
+        self.unlinked_envs_cache.get_or_init(|| {
+            // For every action, the cross product of its principal and resource
+            // applies_to sets. The context type is shared (via `Arc`) across all
+            // the P×R envs of a single action.
+            self.action_ids()
+                .flat_map(|action| {
+                    let ctx = Arc::new(action.context.clone());
+                    action.applies_to_principals().flat_map(move |principal| {
+                        let ctx = Arc::clone(&ctx);
+                        action
+                            .applies_to_resources()
+                            .map(move |resource| UnlinkedRequestEnv {
+                                principal: principal.clone(),
+                                action: action.name.clone(),
+                                resource: resource.clone(),
+                                context: Arc::clone(&ctx),
+                            })
+                    })
                 })
-            })
-            .chain(if mode.is_partial() {
-                // A partial schema might not list all actions, and may not
-                // include all principal and resource types for the listed ones.
-                // So we typecheck with a fully unknown request to handle these
-                // missing cases.
-                Some(RequestEnv::UndeclaredAction)
-            } else {
-                None
-            })
+                .collect()
+        })
     }
 
     /// Returns an iterator over all the entity types that can be a parent of `ty`
@@ -500,6 +521,7 @@ impl ValidatorSchema {
             entity_types: HashMap::new(),
             action_ids: HashMap::new(),
             actions: HashMap::new(),
+            unlinked_envs_cache: OnceLock::new(),
             #[cfg(feature = "extended-schema")]
             common_types: HashSet::new(),
             #[cfg(feature = "extended-schema")]

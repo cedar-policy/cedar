@@ -31,6 +31,8 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 - For the experimental `tpe` feature, `TpeResponse::residual_policies` is updated to return only _non-trivial_ residuals and
   `TpeResponse::nontrivial_residual_policies` is deprecated. The previous behavior (iterating all residuals including trivial ones)
   is available via `TpeResponse::policies`.
+- The validator now computes the schema's set of unlinked request environments once and caches it on the `ValidatorSchema`, reusing it across policies and requests instead of reconstructing it for every policy. This reduces redundant work and per-request allocation when validating large schemas. (#2439)
+- `Typechecker::typecheck_policy` now folds each request environment's typecheck result in place and drops it before computing the next, instead of collecting every environment's typed condition into a `Vec` before folding. Peak live memory during validation is now O(one condition) rather than O(environments * condition), which sharply reduces validator memory use (and OOMs) under concurrent load with large action sets.
 
 ## [4.11.2] - 2026-06-22
 
