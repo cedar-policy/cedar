@@ -218,21 +218,18 @@ impl<'a> Typechecker<'a> {
         // Borrowed `RequestEnv` views over the schema's cached env set
         // (plus the fully-unknown env in partial-schema validation).
         // Validate each (principal, resource) pair with the substituted policy
-        // for the corresponding action.
-        self.schema
-            .unlinked_request_envs(self.mode)
-            .flat_map(|unlinked_e| {
-                // Collect eagerly so the borrow of the local `unlinked_e` view
-                // ends before it is dropped; the linked envs borrow the schema,
-                // not `unlinked_e`.
-                self.link_request_env(&unlinked_e, t)
-                    .map(|linked_e| {
-                        let check = typecheck_fn(&linked_e, t.id(), &cond);
-                        (linked_e, check)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect()
+        // for the corresponding action. Use nested loops with a single output
+        // Vec: `link_request_env` yields envs borrowing the schema (not the
+        // local `unlinked_e`), so they are consumed immediately while
+        // `unlinked_e` is in scope, avoiding a per-env intermediate Vec.
+        let mut results = Vec::new();
+        for unlinked_e in self.schema.unlinked_request_envs(self.mode) {
+            for linked_e in self.link_request_env(&unlinked_e, t) {
+                let check = typecheck_fn(&linked_e, t.id(), &cond);
+                results.push((linked_e, check));
+            }
+        }
+        results
     }
 
     /// Given a request environment and a template, return new environments
