@@ -281,10 +281,22 @@ impl Evaluator<'_> {
                                 if let Ok(uid2) = v2.get_as_entity() {
                                     if uid1 == uid2 {
                                         return mk_concrete(true.into());
+<<<<<<< HEAD
                                     } else if let Some(entity) = self.entities.get(uid1) {
                                         if let Some(ancestors) = entity.ancestors() {
                                             return mk_concrete(ancestors.contains(uid2).into());
                                         }
+||||||| parent of 4d4582f9 (Simplify `in` set with unknown ancestors)
+                                    } else if let Some(entity) = self.entities.get(uid1) {
+                                        if let Some(ancestors) = &entity.ancestors {
+                                            return mk_concrete(ancestors.contains(uid2).into());
+                                        }
+=======
+                                    } else if let Some(ancestors) =
+                                        self.entities.get_ancestors(uid1)
+                                    {
+                                        return mk_concrete(ancestors.contains(uid2).into());
+>>>>>>> 4d4582f9 (Simplify `in` set with unknown ancestors)
                                     }
                                     binapp_residual(arg1, arg2)
                                 } else if let Ok(s) = v2.get_as_set() {
@@ -293,6 +305,7 @@ impl Evaluator<'_> {
                                         .map(Value::get_as_entity)
                                         .collect::<std::result::Result<Vec<_>, _>>()
                                     {
+<<<<<<< HEAD
                                         for uid2 in uids {
                                             if uid1 == uid2 {
                                                 return mk_concrete(true.into());
@@ -307,8 +320,35 @@ impl Evaluator<'_> {
                                             } else {
                                                 return binapp_residual(arg1, arg2);
                                             }
+||||||| parent of 4d4582f9 (Simplify `in` set with unknown ancestors)
+                                        for uid2 in uids {
+                                            if uid1 == uid2 {
+                                                return mk_concrete(true.into());
+                                            } else if let Some(entity) = self.entities.get(uid1) {
+                                                if let Some(ancestors) = &entity.ancestors {
+                                                    if ancestors.contains(uid2) {
+                                                        return mk_concrete(true.into());
+                                                    }
+                                                } else {
+                                                    return binapp_residual(arg1, arg2);
+                                                }
+                                            } else {
+                                                return binapp_residual(arg1, arg2);
+                                            }
+=======
+                                        let ancestors = self.entities.get_ancestors(uid1);
+                                        if uids.contains(&uid1)
+                                            || ancestors.is_some_and(|ancestors| {
+                                                uids.iter().any(|uid2| ancestors.contains(uid2))
+                                            })
+                                        {
+                                            mk_concrete(true.into())
+                                        } else if ancestors.is_none() {
+                                            binapp_residual(arg1, arg2)
+                                        } else {
+                                            mk_concrete(false.into())
+>>>>>>> 4d4582f9 (Simplify `in` set with unknown ancestors)
                                         }
-                                        mk_concrete(false.into())
                                     } else {
                                         mk_error()
                                     }
