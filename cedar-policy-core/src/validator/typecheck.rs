@@ -104,7 +104,7 @@ impl<'a> Typechecker<'a> {
         let mut all_false = true;
         let mut all_succ = true;
         for unlinked_e in self.schema.unlinked_request_envs(self.mode) {
-            for linked_e in self.link_request_env(&unlinked_e, t) {
+            for linked_e in self.link_request_env(unlinked_e, t) {
                 match self.single_env_typechecking(&linked_e, t.id(), &cond) {
                     PolicyCheck::Success(_) => all_false = false,
                     PolicyCheck::Irrelevant(err, _) => {
@@ -144,7 +144,18 @@ impl<'a> Typechecker<'a> {
         &'b self,
         t: &'b Template,
     ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
-        self.apply_typecheck_fn_by_request_env(t, |request_env, policy_id, expr| {
+        self.typecheck_by_request_env_iter(t).collect()
+    }
+
+    /// Like [`Self::typecheck_by_request_env`] but yields the per-environment
+    /// results lazily instead of collecting them into a `Vec`. Crate-internal
+    /// callers that consume the results in a single pass should prefer this to
+    /// avoid holding every environment's typed condition live at once.
+    pub(crate) fn typecheck_by_request_env_iter<'b>(
+        &'b self,
+        t: &'b Template,
+    ) -> impl Iterator<Item = (RequestEnv<'b>, PolicyCheck)> + 'b {
+        self.apply_typecheck_fn_by_request_env(t, move |request_env, policy_id, expr| {
             self.single_env_typechecking(request_env, policy_id, expr)
         })
     }
@@ -201,68 +212,71 @@ impl<'a> Typechecker<'a> {
     }
 
     /// Apply `typecheck_fn` to the given policy in every schema-defined request
-    /// environment, and collect all the results.
+    /// environment, yielding the results lazily.
     ///
     /// Results are returned in no particular order.
     fn apply_typecheck_fn_by_request_env<'b, F, C>(
         &'b self,
         t: &'b Template,
         typecheck_fn: F,
-    ) -> Vec<(RequestEnv<'b>, C)>
+    ) -> impl Iterator<Item = (RequestEnv<'b>, C)> + 'b
     where
-        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr) -> C,
+        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr) -> C + 'b,
+        C: 'b,
     {
-        // compute `.condition()` just once, and cache it here
-        let cond = t.condition();
-
-        // Borrowed `RequestEnv` views over the schema's cached env set
-        // (plus the fully-unknown env in partial-schema validation).
-        // Validate each (principal, resource) pair with the substituted policy
-        // for the corresponding action. Use nested loops with a single output
-        // Vec: `link_request_env` yields envs borrowing the schema (not the
-        // local `unlinked_e`), so they are consumed immediately while
-        // `unlinked_e` is in scope, avoiding a per-env intermediate Vec.
-        let mut results = Vec::new();
-        for unlinked_e in self.schema.unlinked_request_envs(self.mode) {
-            for linked_e in self.link_request_env(&unlinked_e, t) {
-                let check = typecheck_fn(&linked_e, t.id(), &cond);
-                results.push((linked_e, check));
-            }
-        }
-        results
+        // `Arc` so the returned iterator owns the condition and fn (cloned per
+        // env) rather than borrowing a local, letting it stream lazily.
+        let cond = Arc::new(t.condition());
+        let typecheck_fn = Arc::new(typecheck_fn);
+        self.schema
+            .unlinked_request_envs(self.mode)
+            .flat_map(move |unlinked_e| {
+                let cond = Arc::clone(&cond);
+                let typecheck_fn = Arc::clone(&typecheck_fn);
+                self.link_request_env(unlinked_e, t).map(move |linked_e| {
+                    let check = typecheck_fn(&linked_e, t.id(), &cond);
+                    (linked_e, check)
+                })
+            })
     }
 
     /// Given a request environment and a template, return new environments
     /// formed by linking template slots with possible entity types.
-    fn link_request_env<'b, 'c>(
+    fn link_request_env<'b>(
         &'b self,
-        env: &'c RequestEnv<'b>,
+        env: RequestEnv<'b>,
         t: &'b Template,
-    ) -> Box<dyn Iterator<Item = RequestEnv<'b>> + 'c> {
-        match env {
-            RequestEnv::UndeclaredAction => Box::new(std::iter::once(RequestEnv::UndeclaredAction)),
-            env @ RequestEnv::DeclaredAction {
+    ) -> Box<dyn Iterator<Item = RequestEnv<'b>> + 'b> {
+        // Take `env` by value so the returned iterator is bound to `'b` (via
+        // `self`/`t`), not a local borrow, letting callers stream it lazily.
+        let (principal, resource) = match &env {
+            RequestEnv::UndeclaredAction => {
+                return Box::new(std::iter::once(RequestEnv::UndeclaredAction));
+            }
+            RequestEnv::DeclaredAction {
                 principal,
                 resource,
                 ..
-            } => Box::new(
+            } => (*principal, *resource),
+        };
+        Box::new(
+            self.possible_slot_links(
+                t,
+                SlotId::principal(),
+                principal,
+                t.principal_constraint().as_inner(),
+            )
+            .flat_map(move |p_slot| {
+                let env = env.clone();
                 self.possible_slot_links(
                     t,
-                    SlotId::principal(),
-                    principal,
-                    t.principal_constraint().as_inner(),
+                    SlotId::resource(),
+                    resource,
+                    t.resource_constraint().as_inner(),
                 )
-                .flat_map(move |p_slot| {
-                    self.possible_slot_links(
-                        t,
-                        SlotId::resource(),
-                        resource,
-                        t.resource_constraint().as_inner(),
-                    )
-                    .map(move |r_slot| env.clone().link(p_slot.clone(), r_slot))
-                }),
-            ),
-        }
+                .map(move |r_slot| env.clone().link(p_slot.clone(), r_slot))
+            }),
+        )
     }
 
     /// Get the entity types which could link the slot given in this
