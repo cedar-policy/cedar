@@ -343,7 +343,7 @@ impl Evaluator<'_> {
                                             })
                                         {
                                             mk_concrete(true.into())
-                                        } else if ancestors.is_none() {
+                                        } else if !uids.is_empty() && ancestors.is_none() {
                                             binapp_residual(arg1, arg2)
                                         } else {
                                             mk_concrete(false.into())
@@ -1872,6 +1872,55 @@ mod tests {
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"undefined" in [E::"undefined", (if 9223372036854775807 * 2 == 0 then E::"undefined" else E::"undefined")]"#),
             @"error()"
+        );
+    }
+
+    #[test]
+    fn test_binary_app_in_empty_set() {
+        let schema = parse_schema(
+            r#"entity E in E; entity User in E; action get appliesTo {principal: User, resource: E, context: {empty: Set<E>}};"#,
+        );
+        let Ok(Context::Value(context)) =
+            Context::from_json_value(serde_json::json!({ "empty": [] }))
+        else {
+            panic!("expected concrete context")
+        };
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid("E"),
+            Some(context),
+            &schema,
+        )
+        .unwrap();
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "has_parents" },
+                    "parents": [ { "type": "E", "id": "" } ],
+                }
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"has_parents" in context.empty"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"unknown" in context.empty"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource in context.empty"#),
+            @"resource in []"
         );
     }
 
