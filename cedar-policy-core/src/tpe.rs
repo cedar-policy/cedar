@@ -23,6 +23,9 @@ pub mod request;
 pub mod residual;
 pub mod response;
 
+#[cfg(test)]
+pub(crate) mod test_utils;
+
 use std::{collections::HashMap, sync::Arc};
 
 use crate::ast::PolicyID;

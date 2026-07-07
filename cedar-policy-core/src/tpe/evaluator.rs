@@ -643,62 +643,62 @@ fn normalize_ext_value_inner(value: &Value) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashSet};
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
 
-    use crate::ast::{Expr, SlotEnv, UnwrapInfallible};
+    use crate::ast::{Expr, SlotEnv};
     use crate::tpe::err::ExprToResidualError;
+    use crate::tpe::test_utils::{parse_partial_euid, parse_typed_expr};
     use crate::validator::types::Type;
+    use crate::validator::ValidatorSchema;
     use crate::{
-        ast::{
-            BinaryOp, Eid, EntityUID, ExprBuilder, Literal, Pattern, PatternElem, UnaryOp, Value,
-            ValueKind, Var,
-        },
+        ast::{Context, ExprBuilder, Value, Var},
         expr_builder::ExprBuilder as _,
         extensions::Extensions,
-        FromNormalizedStr,
     };
-    use cool_asserts::{assert_matches, assertion_failure};
     use insta::assert_snapshot;
-    use itertools::Itertools;
 
     use crate::{
-        ast,
-        tpe::entities::{PartialEntities, PartialEntity},
-        tpe::request::{PartialEntityUID, PartialRequest},
-        tpe::residual::{Residual, ResidualKind},
+        ast, tpe::entities::PartialEntities, tpe::request::PartialRequest, tpe::residual::Residual,
     };
 
     use super::Evaluator;
 
     #[track_caller]
-    fn action() -> EntityUID {
-        r#"Action::"a""#.parse().unwrap()
+    fn parse_schema(src: &str) -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(src, &Extensions::all_available())
+            .unwrap()
+            .0
     }
 
-    #[track_caller]
-    fn dummy_uid() -> EntityUID {
-        r#"E::"""#.parse().unwrap()
-    }
-
-    fn typed_req() -> PartialRequest {
-        // Request matches schema in parse_typed_expr
-        PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "User".parse().unwrap(),
-                eid: Some(Eid::Eid("foo".into())),
-            },
-            PartialEntityUID {
-                ty: "Document".parse().unwrap(),
-                eid: None,
-            },
-            r#"Action::"get""#.parse().unwrap(),
-            None,
+    fn schema() -> ValidatorSchema {
+        parse_schema(
+            r#"
+            entity User in Organization { foo: Bool, str: String, num: Long, period: __cedar::duration, set: Set<String> } tags String;
+            entity Organization;
+            entity Document in Organization;
+            action get appliesTo { principal: [User], resource: [Document] };"#,
         )
     }
 
+    fn concrete_user_req() -> PartialRequest {
+        PartialRequest::new(
+            parse_partial_euid(r#"User::"foo""#),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid("Document"),
+            None,
+            &schema(),
+        )
+        .unwrap()
+    }
+
     #[track_caller]
-    fn interpret_typed_str_to_str(evaluator: &Evaluator<'_>, expr_str: &str) -> String {
-        let expr = super::super::residual::test::parse_typed_expr(expr_str, &SlotEnv::new());
+    fn interpret_typed_str_to_str(
+        evaluator: &Evaluator<'_>,
+        expr_str: &str,
+        schema: &ValidatorSchema,
+    ) -> String {
+        let expr = parse_typed_expr(expr_str, evaluator.request, schema, &SlotEnv::new());
         interpret_expr_to_str(evaluator, &expr)
     }
 
@@ -722,61 +722,62 @@ mod tests {
 
     #[test]
     fn test_var() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
-        );
         let eval = Evaluator {
-            request: &req,
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        // principal -> principal because its eid is unknown
-        assert_matches!(
-            eval.interpret_expr(&builder().var(Var::Principal)).unwrap(),
-            Residual::Partial {
-                kind: ResidualKind::Var(Var::Principal),
-                ..
-            }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
+        // principal -> User::""
+        assert_snapshot!(
+            interpret_typed_str_to_str("principal"),
+            @r#"User::"foo""#
         );
-        // resource -> E::""
-        assert_matches!(
-            eval.interpret_expr(&builder().var(Var::Resource)).unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::EntityUID(uid)),
-                    ..
-                },
-                ..
-            } => {
-                assert_eq!(uid.as_ref(), &dummy_uid());
-            }
+        // resource -> resource because its eid is unknown
+        assert_snapshot!(
+            interpret_typed_str_to_str("resource"),
+            @"resource"
         );
         // action is always known
-        assert_matches!(
-            eval.interpret_expr(&builder().var(Var::Action)).unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::EntityUID(uid)),
-                    ..
-                },
-                ..
-            } => {
-                assert_eq!(uid.as_ref(), &action());
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str("action"),
+            @r#"Action::"get""#
         );
         // context is always unknown
-        assert_matches!(
-            eval.interpret_expr(&builder().var(Var::Context)).unwrap(),
-            Residual::Partial {
-                kind: ResidualKind::Var(Var::Context),
-                ..
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str("context"),
+            @"context"
+        );
+    }
+
+    #[test]
+    fn test_known_context() {
+        let schema = parse_schema(
+            r#"entity E; action a appliesTo {principal: E, resource: E, context: {l: Long}};"#,
+        );
+        let eval = Evaluator {
+            request: &PartialRequest::new(
+                parse_partial_euid(r#"E"#),
+                r#"Action::"a""#.parse().unwrap(),
+                parse_partial_euid("E"),
+                Some(Arc::new(BTreeMap::from([(
+                    "l".parse().unwrap(),
+                    Value::from(0),
+                )]))),
+                &schema,
+            )
+            .unwrap(),
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str("context"),
+            @"{l: 0}"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str("context.l"),
+            @"0"
         );
     }
 
@@ -788,47 +789,48 @@ mod tests {
     #[test]
     fn test_and() {
         let eval = Evaluator {
-            request: &typed_req(),
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         // Note: The test expressions are in the same order as the match statements
 
         // "false && <any>" => "false"
         assert_snapshot!(
             // Note: principal is concrete, and thus can the residual be simplified.
-            interpret_typed_str_to_str(&eval, "principal != principal && principal.foo"),
+            interpret_typed_str_to_str("principal != principal && principal.foo"),
             @r#"false"#
         );
         // "true && <any>" => "<any>"
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "principal == principal && principal.foo"),
+            interpret_typed_str_to_str("principal == principal && principal.foo"),
             @r#"User::"foo".foo"#
         );
         // "<error> && <residual>" => "<error>"
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "(9223372036854775807 * 2 == 0) && principal.foo"),
+            interpret_typed_str_to_str("(9223372036854775807 * 2 == 0) && principal.foo"),
             @r#"error()"#
         );
         // "<residual> && true" => "<residual>"
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "principal.foo && true"),
+            interpret_typed_str_to_str("principal.foo && true"),
             @r#"User::"foo".foo"#
         );
         // "<error-free> && false" => "false"
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "resource == resource && 41 == 42"),
+            interpret_typed_str_to_str("resource == resource && 41 == 42"),
             @r#"false"#
         );
         // note: resource is unknown, and we haven't (yet) implemented a simplifying algorithm for this,
         // so it yields an error-free residual, hence the previous test makes sense
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "resource == resource"),
+            interpret_typed_str_to_str("resource == resource"),
             @r#"resource == resource"#
         );
         // "<non-error-free> && false" cannot be fully simplified
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "principal.num + 1 == 100 && 41 == 42"),
+            interpret_typed_str_to_str("principal.num + 1 == 100 && 41 == 42"),
             @r#"(((User::"foo".num) + 1) == 100) && false"#
         );
         // "<residual> && <nonbool>" => "<residual> && <error>"
@@ -841,17 +843,17 @@ mod tests {
         );
         // The "<residual> && <residual>" case cannot be simplified
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "principal.foo && principal.num == 100"),
+            interpret_typed_str_to_str("principal.foo && principal.num == 100"),
             @r#"(User::"foo".foo) && ((User::"foo".num) == 100)"#
         );
         // "<residual> && <error>" cannot be simplified
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "principal.foo && (9223372036854775807 * 2 == 0)"),
+            interpret_typed_str_to_str("principal.foo && (9223372036854775807 * 2 == 0)"),
             @r#"(User::"foo".foo) && (error())"#
         );
         // "<error> && <any>" => "<error>"
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "(9223372036854775807 * 2 == 0) && false"),
+            interpret_typed_str_to_str("(9223372036854775807 * 2 == 0) && false"),
             @"error()"
         );
     }
@@ -859,47 +861,48 @@ mod tests {
     #[test]
     fn test_or() {
         let eval = Evaluator {
-            request: &typed_req(),
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         // Note: The test expressions are in the same order as the match statements
 
         // "true || <any>" => "true"
         assert_snapshot!(
             // Note: principal is concrete, and thus can the residual be simplified.
-            interpret_typed_str_to_str(&eval, "principal == principal || principal.foo"),
+            interpret_typed_str_to_str("principal == principal || principal.foo"),
             @r#"true"#
         );
         // "false || <any>" => "<any>"
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "principal != principal || principal.foo"),
+            interpret_typed_str_to_str("principal != principal || principal.foo"),
             @r#"User::"foo".foo"#
         );
         // "<error> || <residual>" => "<error>"
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "(9223372036854775807 * 2 == 0) || principal.foo"),
+            interpret_typed_str_to_str("(9223372036854775807 * 2 == 0) || principal.foo"),
             @r#"error()"#
         );
         // "<residual> || false" => "<residual>"
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "principal.foo || false"),
+            interpret_typed_str_to_str("principal.foo || false"),
             @r#"User::"foo".foo"#
         );
         // "<error-free> || true" => "true"
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "resource == resource || 42 == 42"),
+            interpret_typed_str_to_str("resource == resource || 42 == 42"),
             @r#"true"#
         );
         // note: resource is unknown, and we haven't (yet) implemented a simplifying algorithm for this,
         // so it yields an error-free residual, hence the previous test makes sense
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "resource == resource"),
+            interpret_typed_str_to_str("resource == resource"),
             @r#"resource == resource"#
         );
         // "<non-error-free> || true" cannot be fully simplified
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "principal.num + 1 == 100 || 42 == 42"),
+            interpret_typed_str_to_str("principal.num + 1 == 100 || 42 == 42"),
             @r#"(((User::"foo".num) + 1) == 100) || true"#
         );
         // "<residual> || <nonbool>" => "<residual> || <error>"
@@ -912,958 +915,1178 @@ mod tests {
         );
         // The "<residual> || <residual>" case cannot be simplified
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "principal.foo || principal.num == 100"),
+            interpret_typed_str_to_str("principal.foo || principal.num == 100"),
             @r#"(User::"foo".foo) || ((User::"foo".num) == 100)"#
         );
         // "<residual> || <error>" cannot be simplified
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "principal.foo || (9223372036854775807 * 2 == 0)"),
+            interpret_typed_str_to_str("principal.foo || (9223372036854775807 * 2 == 0)"),
             @r#"(User::"foo".foo) || (error())"#
         );
         // "<error> || <any>" => "<error>"
         assert_snapshot!(
-            interpret_typed_str_to_str(&eval, "(9223372036854775807 * 2 == 0) || true"),
+            interpret_typed_str_to_str("(9223372036854775807 * 2 == 0) || true"),
             @"error()"
         );
     }
 
     #[test]
     fn test_ite() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
-        );
         let eval = Evaluator {
-            request: &req,
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        assert_matches!(
-            eval.interpret_expr(&builder().ite(
-                builder().is_eq(builder().var(Var::Action), builder().var(Var::Action)),
-                builder().var(Var::Principal),
-                builder().val(2)
-            ))
-            .unwrap(),
-            Residual::Partial {
-                kind: ResidualKind::Var(Var::Principal),
-                ..
-            }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
+        assert_snapshot!(
+            interpret_typed_str_to_str("if true then resource else 2"),
+            @"resource"
         );
-        assert_matches!(
-            eval.interpret_expr(&builder().ite(
-                builder().is_eq(builder().var(Var::Principal), builder().var(Var::Principal)),
-                builder().var(Var::Principal),
-                builder().val(2)
-            )).unwrap(),
-            Residual::Partial {
-                kind: ResidualKind::If { test_expr, then_expr, else_expr },
-                ..
-            } => {
-                assert_matches!(test_expr.as_ref(), Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, .. }, .. });
-                assert_matches!(then_expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
-                assert_matches!(else_expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::Long(2)), .. }, .. });
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str("if false then resource else 2"),
+            @"2"
         );
-        assert_matches!(
-            eval.interpret_expr(&builder().ite(
-                builder().val(false),
-                builder().var(Var::Principal),
-                builder().val(2)
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Long(2)),
-                    ..
-                },
-                ..
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"if (resource == User::"alice") then Document::"A" else Document::"B""#),
+            @r#"if (resource == User::"alice") then Document::"B" else Document::"B""#
         );
-        assert_matches!(
-            eval.interpret_expr(&builder().ite(
-                builder().is_eq(
-                    builder().mul(builder().val(i64::MAX), builder().val(2)),
-                    builder().val(0)
-                ),
-                builder().var(Var::Principal),
-                builder().val(2)
-            ))
-            .unwrap(),
-            Residual::Error(_),
+        assert_snapshot!(
+            interpret_typed_str_to_str(&r#"if (9223372036854775807 * 2) == 0 then resource else Document::"A""#),
+            @"error()"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str("if true then (9223372036854775807 * 2) else 0"),
+            @"error()"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str("if false then (9223372036854775807 * 2) else 0"),
+            @"0"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str("if true then 0 else (9223372036854775807 * 2)"),
+            @"0"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str("if false then 0 else (9223372036854775807 * 2)"),
+            @"error()"
         );
     }
 
     #[test]
     fn test_is() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
+        let schema = parse_schema(
+            r#"entity E, User { baz : E }; action a appliesTo {principal: User, resource: E};"#,
         );
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"a""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"""#),
+            None,
+            &schema,
+        )
+        .unwrap();
         let eval = Evaluator {
             request: &req,
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        assert_matches!(
-            eval.interpret_expr(&builder().is_entity_type(
-                builder().var(Var::Resource),
-                dummy_uid().entity_type().clone()
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
-                },
-                ..
-            }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(
+            interpret_typed_str_to_str("resource is User"),
+            @"false"
         );
-        // Note that the Lean model evaluates it to `principal is E`
-        assert_matches!(
-            eval.interpret_expr(&builder().is_entity_type(
-                builder().var(Var::Principal),
-                dummy_uid().entity_type().clone()
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
-                },
-                ..
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str("resource is E"),
+            @"true"
         );
-        assert_matches!(
-            eval.interpret_expr(&builder().is_entity_type(
-                builder().get_attr(builder().var(Var::Resource), "baz".parse().unwrap()),
-                dummy_uid().entity_type().clone()
-            ))
-            .unwrap(),
-            Residual::Partial {
-                kind: ResidualKind::Is { expr, entity_type } ,
-                ..
-            } => {
-                assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::GetAttr { .. }, .. });
-                assert_eq!(&entity_type, dummy_uid().entity_type());
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str("principal is User"),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str("principal is E"),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str("principal.baz is E"),
+            @"(principal.baz) is E"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str("principal.baz is Document"),
+            @"(principal.baz) is Document"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str("User::\"alice\" is User"),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str("User::\"alice\" is E"),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str("(if (9223372036854775807 * 2 == 0) then User::\"alice\" else principal) is E"),
+            @"error()"
         );
     }
 
     #[test]
     fn test_like() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
+        let schema = parse_schema(
+            r#"entity E { s : String }; action a appliesTo {principal: E, resource: E};"#,
         );
+        let req = PartialRequest::new(
+            parse_partial_euid("E"),
+            r#"Action::"a""#.parse().unwrap(),
+            parse_partial_euid("E"),
+            None,
+            &schema,
+        )
+        .unwrap();
         let eval = Evaluator {
             request: &req,
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        assert_matches!(
-            eval.interpret_expr(&builder().like(
-                builder().val("aaa"),
-                Pattern::from(vec![PatternElem::Char('a'), PatternElem::Wildcard])
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
-                },
-                ..
-            }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#""aaa" like "a*""#),
+            @"true"
         );
-        // Note that this expression is not valid input
-        assert_matches!(
-            eval.interpret_expr(&builder().like(builder().var(Var::Principal), Pattern::from(vec![PatternElem::Char('a'), PatternElem::Wildcard]))).unwrap(),
-           Residual::Partial { kind: ResidualKind::Like { expr, .. }, .. } => {
-                assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#""aaa" like "b*""#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.s like "*""#),
+            @r#"(principal.s) like "*""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.s like "b*""#),
+            @r#"(principal.s) like "b*""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then "a" else "b") like "b*""#),
+            @"error()"
         );
     }
 
     #[test]
-    fn test_unary_app() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
+    fn test_negation() {
+        let schema = parse_schema(
+            r#"entity E { l : Long , b: Bool }; action a appliesTo {principal: E, resource: E};"#,
         );
+        let req = PartialRequest::new(
+            parse_partial_euid("E"),
+            r#"Action::"a""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"""#),
+            None,
+            &schema,
+        )
+        .unwrap();
         let eval = Evaluator {
             request: &req,
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        assert_matches!(
-            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(42)))
-                .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Long(-42)),
-                    ..
-                },
-                ..
-            }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"-(42)"#),
+            @"(-42)"
         );
-        // This is not a valid input
-        assert_matches!(
-            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().var(Var::Principal))).unwrap(),
-            Residual::Partial { kind: ResidualKind::UnaryApp { op: UnaryOp::Neg, arg }, .. } => {
-                assert_matches!(arg.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"-(-9223372036854775808)"#),
+            @"error()"
         );
-        assert_matches!(
-            eval.interpret_expr(&builder().unary_app(UnaryOp::Neg, builder().val(i64::MIN)))
-                .unwrap(),
-            Residual::Error(_),
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"-(principal.l)"#),
+            @"-(principal.l)"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"--(principal.l)"#),
+            @"-(-(principal.l))"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"!(false)"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"!(principal.b)"#),
+            @"!(principal.b)"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"!!(principal.b)"#),
+            @"!(!(principal.b))"
         );
     }
 
     #[test]
-    fn test_get_attr() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
+    fn test_is_empty() {
+        let schema = parse_schema(
+            r#"entity E { s: Set<Long> }; action a appliesTo {principal: E, resource: E, context: {s0: Set<Long>, s1: Set<Long>}};"#,
+        );
+        let Ok(Context::Value(context)) =
+            Context::from_json_value(serde_json::json!({ "s0": [], "s1": [0] }))
+        else {
+            panic!("expected concrete context")
+        };
+        let req = PartialRequest::new(
+            parse_partial_euid(r#"E::"foo""#),
+            r#"Action::"a""#.parse().unwrap(),
+            parse_partial_euid("E"),
+            Some(context),
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[1].isEmpty()"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context.s0.isEmpty()"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context.s1.isEmpty()"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.s.isEmpty()"#),
+            @"(resource.s).isEmpty()"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then [1] else [2]).isEmpty()"#),
+            @"error()"
+        );
+    }
+
+    #[test]
+    fn test_get_attr_simple() {
+        let schema = parse_schema(
+            r#"entity E { s: String }; action get appliesTo {principal: E, resource: E};"#,
+        );
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": { "s": "bar" },
+                },
+                {
+                    "uid": { "type": "E", "id": "e" },
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let req = PartialRequest::new(
+            parse_partial_euid(r#"E::"""#),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid("E"),
             None,
-        );
-        let entities = PartialEntities::from_entities_unchecked(
-            [
-                (
-                    dummy_uid(),
-                    PartialEntity {
-                        uid: dummy_uid(),
-                        attrs: Some(BTreeMap::from_iter([(
-                            "s".parse().unwrap(),
-                            Value::from("bar"),
-                        )])),
-                        ancestors: None,
-                        tags: None,
-                    },
-                ),
-                (
-                    r#"E::"e""#.parse().unwrap(),
-                    PartialEntity {
-                        uid: r#"E::"e""#.parse().unwrap(),
-                        attrs: None,
-                        ancestors: None,
-                        tags: None,
-                    },
-                ),
-            ]
-            .into_iter(),
-        );
+            &schema,
+        )
+        .unwrap();
         let eval = Evaluator {
             request: &req,
             entities: &entities,
             extensions: Extensions::all_available(),
         };
-        assert_matches!(
-            eval.interpret_expr(&builder().get_attr(builder().var(Var::Resource), "s".parse().unwrap())).unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::String(s)),
-                    ..
-                },
-                ..
-            } => {
-                assert_eq!(s, "bar");
-            }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.s"#),
+            @r#""bar""#
         );
-
         // When LHS is unknown, the entire expression is
-        assert_matches!(
-            eval.interpret_expr(&builder().get_attr(
-                builder().var(Var::Principal),
-                "s".parse().unwrap()
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::GetAttr { expr, .. }, .. } => {
-                assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.s"#),
+            @"resource.s"
         );
         // When LHS is not in the entities, the entire expression is unknown
-        assert_matches!(
-            eval.interpret_expr(&builder().get_attr(
-                builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
-                "s".parse().unwrap()
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::GetAttr { expr, .. }, .. } => {
-                assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"f".s"#),
+            @r#"E::"f".s"#
         );
         // When LHS is in the entities, but its attributes are `None`, the
         // entire expression is unknown
-        assert_matches!(
-            eval.interpret_expr(&builder().get_attr(
-                builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
-                "s".parse().unwrap()
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::GetAttr { expr, .. }, .. } => {
-                assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"e".s"#),
+            @r#"E::"e".s"#
         );
-        assert_matches!(
-            eval.interpret_expr(
-                &builder().get_attr(builder().var(Var::Resource), "baz".parse().unwrap())
-            )
-            .unwrap(),
-            Residual::Error(_),
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then E::"alice" else E::"bob").s"#),
+            @"error()"
+        );
+    }
+
+    #[test]
+    fn test_get_attr_chained() {
+        let schema = parse_schema(
+            r#"entity E { s: String, e: E }; action get appliesTo {principal: E, resource: E};"#,
+        );
+        // `E::"loop".e` points back at itself, so chained access through it
+        // always terminates at `E::"loop"`.
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "s": "bar",
+                        "e": { "__entity": { "type": "E", "id": "x" } },
+                    },
+                },
+                {
+                    "uid": { "type": "E", "id": "loop" },
+                    "attrs": {
+                        "s": "loop_str",
+                        "e": { "__entity": { "type": "E", "id": "loop" } },
+                    },
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let req = PartialRequest::new(
+            parse_partial_euid(r#"E::"""#),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid("E"),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.e.s"#),
+            @r#"E::"x".s"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.e.e.e.s"#),
+            @r#"((E::"x".e).e).s"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.e.s"#),
+            @"(resource.e).s"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"loop".e"#),
+            @r#"E::"loop""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"loop".e.e.e.e"#),
+            @r#"E::"loop""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"loop".e.e.e.e.s"#),
+            @r#""loop_str""#
         );
     }
 
     #[test]
     fn test_has_attr() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
+        let schema = parse_schema(
+            r#"entity E { s: String }; entity User { s: String }; action get appliesTo {principal: E, resource: User};"#,
+        );
+        // `User::""` has known attributes while `E::"e"` omits `attrs`, marking
+        // them unknown.
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "User", "id": "" },
+                    "attrs": { "s": "bar" },
+                },
+                {
+                    "uid": { "type": "E", "id": "e" },
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let req = PartialRequest::new(
+            parse_partial_euid("E"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"User::"""#),
             None,
-        );
-        let entities = PartialEntities::from_entities_unchecked(
-            [
-                (
-                    dummy_uid(),
-                    PartialEntity {
-                        uid: dummy_uid(),
-                        attrs: Some(BTreeMap::from_iter([(
-                            "s".parse().unwrap(),
-                            Value::from("bar"),
-                        )])),
-                        ancestors: None,
-                        tags: None,
-                    },
-                ),
-                (
-                    r#"E::"e""#.parse().unwrap(),
-                    PartialEntity {
-                        uid: r#"E::"e""#.parse().unwrap(),
-                        attrs: None,
-                        ancestors: None,
-                        tags: None,
-                    },
-                ),
-            ]
-            .into_iter(),
-        );
+            &schema,
+        )
+        .unwrap();
         let eval = Evaluator {
             request: &req,
             entities: &entities,
             extensions: Extensions::all_available(),
         };
-        assert_matches!(
-            eval.interpret_expr(
-                &builder().has_attr(builder().var(Var::Resource), "s".parse().unwrap())
-            )
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
-                },
-                ..
-            }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has s"#),
+            @"true"
         );
-        assert_matches!(
-            eval.interpret_expr(&builder().has_attr(builder().var(Var::Principal), "s".parse().unwrap())).unwrap(),
-            Residual::Partial {
-                kind: ResidualKind::HasAttr { expr, .. },
-                ..
-            } => {
-                assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has other"#),
+            @"false"
         );
-        // When LHS is not in the entities, the entire expression is unknown
-        assert_matches!(
-            eval.interpret_expr(&builder().has_attr(
-                builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
-                "s".parse().unwrap()
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::HasAttr { expr, .. }, .. } => {
-                assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal has s"#),
+            @"principal has s"
         );
-        // When LHS is in the entities, but its attributes are `None`, the
-        // entire expression is unknown
-        assert_matches!(
-            eval.interpret_expr(&builder().has_attr(
-                builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
-                "s".parse().unwrap()
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::HasAttr { expr, .. }, .. } => {
-                assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal has other"#),
+            @"principal has other"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"f" has s"#),
+            @r#"E::"f" has s"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"e" has s"#),
+            @r#"E::"e" has s"#
         );
 
-        assert_matches!(
-            eval.interpret_expr(&builder().has_attr(
-                builder().record([("s".into(), builder().val(0))]).unwrap(),
-                "s".parse().unwrap()
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
-                },
-                ..
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: 0} has s"#),
+            @"true"
         );
-        assert_matches!(
-            eval.interpret_expr(&builder().has_attr(
-                builder().record([("s".into(), builder().val(0))]).unwrap(),
-                "t".parse().unwrap()
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(false)),
-                    ..
-                },
-                ..
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: 0} has t"#),
+            @"false"
+        );
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then E::"alice" else E::"bob") has s"#),
+            @"error()"
         );
     }
 
     #[test]
     fn test_set() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
-        );
         let eval = Evaluator {
-            request: &req,
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        assert_matches!(
-            eval.interpret_expr(&builder().set(
-                [builder().var(Var::Resource)]
-            )).unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Set(s),
-                    ..
-                },
-                ..
-            } => {
-                assert_eq!(Vec::from_iter(s.iter().cloned()), vec![Value::from(dummy_uid())]);
-            }
-        );
-        assert_matches!(
-            eval.interpret_expr(&builder().set(
-                [builder().var(Var::Principal),
-                builder().var(Var::Resource),]
-            )).unwrap(),
-            Residual::Partial {
-                kind: ResidualKind::Set(s),
-                ..
-            } => {
-                assert_matches!(s.as_ref().as_slice(), [Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. }, Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. }]);
-            }
-        );
 
-        // Error is propagated
-        assert_matches!(
-            eval.interpret_expr(&builder().set([
-                builder().neg(builder().val(i64::MIN)),
-                builder().var(Var::Resource),
-            ]))
-            .unwrap(),
-            Residual::Error(_)
-        )
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[resource]"#),
+            @"[resource]"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[principal]"#),
+            @r#"[User::"foo"]"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[principal, User::"alice"]"#),
+            @r#"[User::"alice", User::"foo"]"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[0, -(-9223372036854775808)]"#),
+            @"error()"
+        );
     }
 
     #[test]
     fn test_record() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
-        );
         let eval = Evaluator {
-            request: &req,
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-        assert_matches!(
-            eval.interpret_expr(&builder().record(
-                [(
-                    "s".into(),
-                    builder().var(Var::Resource),
-                )]
-            ).unwrap()).unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Record(m),
-                    ..
-                },
-                ..
-            } => {
-                assert_eq!(m.get("s"), Some(&Value::from(dummy_uid())));
-            }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: resource}"#),
+            @"{s: resource}"
         );
-        assert_matches!(
-            eval.interpret_expr(&builder().record(
-                [(
-                    "s".into(),
-                    builder().var(Var::Principal),
-                )]
-            ).unwrap()).unwrap(),
-            Residual::Partial {
-                kind: ResidualKind::Record(m),
-                ..
-            } => {
-                assert_matches!(m.as_ref().get("s"), Some(Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. }));
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: principal}"#),
+            @r#"{s: User::"foo"}"#
         );
-
-        // Error is propagated
-        assert_matches!(
-            eval.interpret_expr(
-                &builder()
-                    .record([
-                        ("s".into(), builder().neg(builder().val(i64::MIN)),),
-                        ("".into(), builder().var(Var::Resource),)
-                    ])
-                    .unwrap()
-            )
-            .unwrap(),
-            Residual::Error(_)
-        )
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: -(-9223372036854775808), "": resource}"#),
+            @"error()"
+        );
     }
 
     #[test]
-    fn test_call() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
+    fn test_get_attr_record() {
+        let schema = parse_schema(
+            r#"entity E { rec: { s: String, inner: { n: Long } } }; entity User; action get appliesTo {principal: User, resource: E, context: {c: {n: Long}}};"#,
         );
-        let eval = Evaluator {
-            request: &req,
-            entities: &PartialEntities::new(),
-            extensions: Extensions::all_available(),
+
+        // Entity `E::""` has a `rec` attribute that is a nested record.
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": { "rec": { "s": "bar", "inner": { "n": 1 } } },
+                },
+                {
+                    "uid": { "type": "E", "id": "unk_attrs" },
+                }
+            ]),
+            &schema,
+        )
+        .unwrap();
+
+        // A context record with a nested record field.
+        let Ok(Context::Value(context)) =
+            Context::from_json_value(serde_json::json!({ "c": { "n": 2 } }))
+        else {
+            panic!("expected concrete context")
         };
-        assert_matches!(
-            eval.interpret_expr(
-                &builder()
-                    .call_extension_fn("decimal".parse().unwrap(), [builder().val("0.0")])
-                    .unwrap_infallible()
-            )
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::ExtensionValue(_),
-                    ..
-                },
-                ..
-            }
-        );
-        // not a valid input
-        assert_matches!(
-            eval.interpret_expr(&builder().call_extension_fn(
-                "decimal".parse().unwrap(),
-                [builder().var(Var::Principal)]
-            ).unwrap_infallible()).unwrap(),
-            Residual::Partial {
-                kind: ResidualKind::ExtensionFunctionApp { fn_name, args, .. },
-                ..
-            } => {
-                assert_eq!(fn_name.to_string(), "decimal");
-                assert_matches!(args.as_ref().as_slice(), [Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. }]);
-            }
-        );
 
-        // Error is propagated
-        assert_matches!(
-            eval.interpret_expr(
-                &builder()
-                    .call_extension_fn(
-                        "decimal".parse().unwrap(),
-                        [builder().neg(builder().val(i64::MIN))]
-                    )
-                    .unwrap_infallible()
-            )
-            .unwrap(),
-            Residual::Error(_)
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"""#),
+            Some(context),
+            &schema,
         )
-    }
-
-    #[test]
-    fn test_binary_app() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
-        );
-        // not valid entities
-        let entities = PartialEntities::from_entities_unchecked(
-            [
-                (
-                    dummy_uid(),
-                    PartialEntity {
-                        uid: dummy_uid(),
-                        attrs: None,
-                        ancestors: Some(HashSet::from_iter([r#"E::"e""#.parse().unwrap()])),
-                        tags: Some(BTreeMap::from_iter([(
-                            "s".parse().unwrap(),
-                            Value::from("bar"),
-                        )])),
-                    },
-                ),
-                (
-                    r#"E::"e""#.parse().unwrap(),
-                    PartialEntity {
-                        uid: r#"E::"e""#.parse().unwrap(),
-                        attrs: None,
-                        ancestors: Some(HashSet::default()),
-                        tags: None,
-                    },
-                ),
-            ]
-            .into_iter(),
-        );
+        .unwrap();
         let eval = Evaluator {
             request: &req,
             entities: &entities,
             extensions: Extensions::all_available(),
         };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
 
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::Eq,
-                builder().var(Var::Resource),
-                builder().val(dummy_uid())
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
+        // Nested records read from an entity attribute.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.rec.s"#),
+            @r#""bar""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.rec.inner.n"#),
+            @"1"
+        );
+
+        // Nested records read from the context.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context.c"#),
+            @"{n: 2}"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context.c.n"#),
+            @"2"
+        );
+
+        // Attribute access on record literals.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: "lit"}.s"#),
+            @r#""lit""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{inner: {n: 3}}.inner.n"#),
+            @"3"
+        );
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{e: E::"unk"}.e.rec"#),
+            @r#"E::"unk".rec"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{e: E::"unk_attrs"}.e.rec"#),
+            @r#"E::"unk_attrs".rec"#
+        );
+
+        // Residuals inside record literals prevent reduction to preserve error semantics
+        // cases to preserve semantics, should often be possible.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{e: if principal == User::"alice" then 9223372036854775807*2 else 0, l: 0}.l"#),
+            @r#"{e: if (principal == User::"alice") then (error()) else 0, l: 0}.l"#
+        );
+        // But it should be possible in other cases
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{p: principal}.p"#),
+            @"{p: principal}.p"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{p: principal, l: 0}.l"#),
+            @"{l: 0, p: principal}.l"
+        );
+    }
+
+    #[test]
+    fn test_get_attr_intermediate_entities_emulate_unknown_attrs() {
+        let schema = parse_schema(
+            r#"
+            entity E0 { metadata: { m0: M0, m1: M1 } };
+            entity M0 { data: Long };
+            entity M1 { data: Long };
+            entity User;
+            action get appliesTo { principal: User, resource: E0 };"#,
+        );
+
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E0", "id": "e" },
+                    "attrs": {
+                        "metadata": {
+                            "m0": { "__entity": { "type": "M0", "id": "m0" } },
+                            "m1": { "__entity": { "type": "M1", "id": "m1" } },
+                        }
+                    },
                 },
-                ..
-            }
-        );
-
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::Eq,
-                builder().var(Var::Principal),
-                builder().val(dummy_uid())
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, .. }, .. } => {
-                assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
-            }
-        );
-
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::Add,
-                builder().val(i64::MAX),
-                builder().val(i64::MAX)
-            ))
-            .unwrap(),
-            Residual::Error(_)
-        );
-
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::Add,
-                builder().val(1),
-                builder().val(1)
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Long(2)),
-                    ..
+                {
+                    "uid": { "type": "M0", "id": "m0" },
+                    "attrs": { "data": 42 },
                 },
-                ..
-            }
-        );
-
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::Contains,
-                builder().set([builder().val(dummy_uid())]),
-                builder().var(Var::Resource)
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
+                {
+                    "uid": { "type": "M1", "id": "m1" },
                 },
-                ..
-            }
+            ]),
+            &schema,
+        )
+        .unwrap();
+
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"E0::"e""#),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        // The referenced entity uids are always known.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.metadata.m0"#),
+            @r#"M0::"m0""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.metadata.m1"#),
+            @r#"M1::"m1""#
         );
 
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::Contains,
-                builder().set([builder().val(dummy_uid())]),
-                builder().var(Var::Principal)
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Contains, arg2, .. }, .. } => {
-                assert_matches!(arg2.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
-            }
+        // `m0`'s attributes are known, so `data` reduces to a concrete value.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.metadata.m0.data"#),
+            @"42"
+        );
+        // `m1`'s attributes are unknown, so `data` stays a residual: this is how
+        // the intermediate entity emulates an unknown attribute.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.metadata.m1.data"#),
+            @r#"M1::"m1".data"#
+        );
+        // Mixing a known and an unknown attribute leaves a partial residual.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.metadata.m0.data + resource.metadata.m1.data"#),
+            @r#"42 + (M1::"m1".data)"#
+        );
+    }
+
+    #[test]
+    fn test_call() {
+        let eval = Evaluator {
+            request: &concrete_user_req(),
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"ip("192.168.0.1").isInRange(ip("192.168.0.0/16"))"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(if principal == User::"alice" then ip("127.0.0.1") else ip("192.168.0.1")).isInRange(ip("192.168.0.0/16"))"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then ip("127.0.0.1") else ip("192.168.0.1")).isInRange(ip("192.168.0.0/16"))"#),
+            @"error()"
+        );
+    }
+
+    #[test]
+    fn test_binary_app_eq() {
+        let schema = parse_schema(
+            r#"entity E; entity User; action get appliesTo {principal: User, resource: E};"#,
+        );
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"""#),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource == E::"""#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource == User::"""#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal == User::"""#),
+            @r#"principal == User::"""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal == E::"""#),
+            @r#"principal == E::"""#
         );
 
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::In,
-                builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
-                builder().var(Var::Resource)
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(false)),
-                    ..
-                },
-                ..
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal == (if (9223372036854775807 * 2 == 0) then User::"alice" else User::"bob")"#),
+            @"error()"
         );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then User::"alice" else User::"bob") == principal"#),
+            @"error()"
+        );
+    }
 
-        assert_matches!(
-            eval.interpret_expr(
-                &builder().binary_app(
-                    BinaryOp::In,
-                    builder().val(EntityUID::from_normalized_str(r#"E::"""#).unwrap()),
-                    builder().set([
-                        builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
-                    ])
-                )
+    #[test]
+    fn test_binary_app_arith() {
+        let schema = parse_schema(
+            r#"entity E; entity User; action get appliesTo {principal: User, resource: E};"#,
+        );
+        let req = {
+            let schema: &ValidatorSchema = &schema;
+            PartialRequest::new(
+                parse_partial_euid("User"),
+                r#"Action::"get""#.parse().unwrap(),
+                parse_partial_euid(r#"E::"""#),
+                None,
+                schema,
             )
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
+            .unwrap()
+        };
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"9223372036854775807 + 9223372036854775807"#),
+            @"error()"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"1 + 1"#),
+            @"2"
+        );
+    }
+
+    #[test]
+    fn test_binary_app_contains() {
+        let schema = parse_schema(
+            r#"entity E; entity User; action get appliesTo {principal: User, resource: E};"#,
+        );
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"""#),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[E::""].contains(resource)"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[User::""].contains(principal)"#),
+            @r#"[User::""].contains(principal)"#
+        );
+    }
+
+    #[test]
+    fn test_binary_app_in() {
+        let schema = parse_schema(
+            r#"entity E in E; entity User in E; action get appliesTo {principal: User, resource: E, context: {e: E}};"#,
+        );
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"resource""#),
+            None,
+            &schema,
+        )
+        .unwrap();
+        // `E::"e"` has known (empty) ancestors; `E::"child"` has a declared
+        // parent `E::""`. The other referenced entities are absent, so their
+        // ancestors are unknown and `in` stays a residual.
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "no_parents" },
+                    "parents": [],
                 },
-                ..
-            }
-        );
-
-        // LHS of `in` has unknown ancestors
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::In,
-                builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
-                builder().var(Var::Resource)
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::In, arg1, arg2 }, .. } => {
-                assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-                assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-            }
-        );
-
-        // LHS of `in` is not in the entities
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::In,
-                builder().val(EntityUID::from_normalized_str(r#"E::"a""#).unwrap()),
-                builder().var(Var::Resource)
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::In, arg1, arg2 }, .. } => {
-                assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-                assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-            }
-        );
-
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::HasTag,
-                builder().var(Var::Resource),
-                builder().val("s")
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
+                {
+                    "uid": { "type": "E", "id": "resource_child" },
+                    "parents": [ { "type": "E", "id": "" } ],
                 },
-                ..
-            }
-        );
-
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::GetTag,
-                builder().var(Var::Resource),
-                builder().val("s")
-            )).unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::String(s)),
-                    ..
+                {
+                    "uid": { "type": "E", "id": "parents_none" },
                 },
-                ..
-            } => {
-                assert_eq!(s, "bar");
-            }
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"no_parents" in resource"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"resource" in E::"resource""#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"resource_child" in resource"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"resource_child" in E::"not_parent""#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"resource_child" in [E::"not_parent", resource]"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"resource_child" in context.e"#),
+            @r#"E::"resource_child" in (context.e)"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"resource_child" in [context.e]"#),
+            @r#"E::"resource_child" in [context.e]"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context.e in E::"resource""#),
+            @r#"(context.e) in E::"resource""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in resource"#),
+            @r#"E::"undefined" in E::"resource""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"parents_none" in resource"#),
+            @r#"E::"parents_none" in E::"resource""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in [resource]"#),
+            @r#"E::"undefined" in [E::"resource"]"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"parents_none" in [resource]"#),
+            @r#"E::"parents_none" in [E::"resource"]"#
+        );
+    }
+
+    fn binary_app_tags_env() -> (ValidatorSchema, PartialEntities, PartialRequest) {
+        let schema = parse_schema(
+            r#"entity E; entity User tags String; action get appliesTo {principal: User, resource: E, context: {tag: String}};"#,
+        );
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"resource""#),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "User", "id": "some_tags" },
+                    "tags": { "s": "bar" },
+                },
+                {
+                    "uid": { "type": "User", "id": "none_tags" },
+                },
+                {
+                    "uid": { "type": "E", "id": "none_tags" },
+                },
+                {
+                    "uid": { "type": "E", "id": "empty_tags" },
+                    "tags": {},
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
+        (schema, entities, req)
+    }
+
+    #[test]
+    fn test_binary_app_has_tag() {
+        let (schema, entities, req) = binary_app_tags_env();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        // Known tags: `hasTag` resolves to a concrete bool.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"some_tags".hasTag("s")"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"some_tags".hasTag("bogus")"#),
+            @"false"
+        );
+        // Unknown entity uid, unknown tags, or absent entity: `hasTag` stays a residual.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.hasTag("s")"#),
+            @r#"principal.hasTag("s")"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"none_tags".hasTag("s")"#),
+            @r#"User::"none_tags".hasTag("s")"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"undefined".hasTag("s")"#),
+            @r#"User::"undefined".hasTag("s")"#
+        );
+    }
+
+    #[test]
+    fn test_binary_app_get_tag() {
+        let (schema, entities, req) = binary_app_tags_env();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        // Known tags: resolves to a concrete bool.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"some_tags".hasTag("s") && User::"some_tags".getTag("s") == "bar" "#),
+            @"true"
+        );
+        // Known tags, missing key: `hasTag` is false and short-circuits.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"some_tags".hasTag("bogus") && User::"some_tags".getTag("bogus") == "bar" "#),
+            @"false"
+        );
+        // Unknown cases
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.hasTag("s") && principal.getTag("s") == "bar" "#),
+            @r#"(principal.hasTag("s")) && ((principal.getTag("s")) == "bar")"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"none_tags".hasTag("s") && User::"none_tags".getTag("s") == "bar" "#),
+            @r#"(User::"none_tags".hasTag("s")) && ((User::"none_tags".getTag("s")) == "bar")"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"undefined".hasTag("s") && User::"undefined".getTag("s") == "bar" "#),
+            @r#"(User::"undefined".hasTag("s")) && ((User::"undefined".getTag("s")) == "bar")"#
         );
 
-        // LHS of hasTag/getTag has unknown tags
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::HasTag,
-                builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
-                builder().val("s")
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::HasTag, arg1, .. }, .. } => {
-                assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-            }
+        // `E` entities can't have tags, but `hasTag` is still well-typed. These could all reduce to
+        // `false`, but only the explicit empty tag case does atm.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"empty_tags".hasTag("s") && E::"empty_tags".getTag("s") == "bar" "#),
+            @"false"
         );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"none_tags".hasTag("s") && E::"none_tags".getTag("s") == "bar" "#),
+            @r#"E::"none_tags".hasTag("s")"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined_tags".hasTag("s") && E::"undefined_tags".getTag("s") == "bar" "#),
+            @r#"E::"undefined_tags".hasTag("s")"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined".hasTag("s") && E::"undefined".getTag("s") == "bar" "#),
+            @r#"E::"undefined".hasTag("s")"#
+        );
+    }
 
-        // LHS of hasTag/getTag is not in the entities
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::HasTag,
-                builder().val(EntityUID::from_normalized_str(r#"E::"a""#).unwrap()),
-                builder().val("s")
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::HasTag, arg1, .. }, .. } => {
-                assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-            }
+    #[test]
+    fn test_binary_app_tag_unknown_key() {
+        let (schema, entities, req) = binary_app_tags_env();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.hasTag(context.tag) && principal.getTag(context.tag) == "bar" "#),
+            @r#"(principal.hasTag(context.tag)) && ((principal.getTag(context.tag)) == "bar")"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"some_tags".hasTag(context.tag) && User::"some_tags".getTag(context.tag) == "bar" "#),
+            @r#"(User::"some_tags".hasTag(context.tag)) && ((User::"some_tags".getTag(context.tag)) == "bar")"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"empty_tags".hasTag(context.tag) && E::"empty_tags".getTag(context.tag) == "bar" "#),
+            @r#"E::"empty_tags".hasTag(context.tag)"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"none_tags".hasTag(context.tag) && E::"none_tags".getTag(context.tag) == "bar" "#),
+            @r#"E::"none_tags".hasTag(context.tag)"#
+        );
+    }
+
+    #[test]
+    fn test_binary_app_get_tag_record() {
+        let schema = parse_schema(
+            r#"entity E; entity User tags { s: String, inner: { n: Long } }; action get appliesTo {principal: User, resource: E};"#,
+        );
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"""#),
+            None,
+            &schema,
+        )
+        .unwrap();
+        // `User::"rec"` has a known tag `k` holding a nested record.
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "User", "id": "rec" },
+                    "tags": { "k": { "s": "bar", "inner": { "n": 1 } } },
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"rec".hasTag("k") && User::"other".hasTag("k") && User::"rec".getTag("k") == User::"other".getTag("k")"#),
+            @r#"(User::"other".hasTag("k")) && ({inner: {n: 1}, s: "bar"} == (User::"other".getTag("k")))"#
+        );
+    }
+
+    #[test]
+    fn test_binary_app_get_tag_entity() {
+        let schema = parse_schema(
+            r#"entity E { data: Long }; entity User tags E; action get appliesTo {principal: User, resource: E};"#,
+        );
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid("E"),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "User", "id": "ent" },
+                    "tags": {
+                        "k": { "__entity": { "type": "E", "id": "target" } },
+                        "unk": { "__entity": { "type": "E", "id": "unk" } },
+                    },
+                },
+                {
+                    "uid": { "type": "E", "id": "target" },
+                    "attrs": { "data": 42 },
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"ent".hasTag("k") && User::"ent".getTag("k").data == 42"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"ent".hasTag("k") && User::"ent".getTag("k") == resource"#),
+            @r#"E::"target" == resource"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"ent".hasTag("unk") && User::"ent".getTag("unk").data == 42"#),
+            @r#"(E::"unk".data) == 42"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.hasTag("k") && principal.getTag("k").data == 42"#),
+            @r#"(principal.hasTag("k")) && (((principal.getTag("k")).data) == 42)"#
         );
     }
 
     // Test containsAll/containsAny operations
     #[test]
     fn test_set_ops() {
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
-        );
         let eval = Evaluator {
-            request: &req,
+            request: &concrete_user_req(),
             entities: &PartialEntities::new(),
             extensions: Extensions::all_available(),
         };
-
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::ContainsAll,
-                builder().set([builder().val(true), builder().val(false)]),
-                builder().set([builder().val(true), builder().val(true)])
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
-                },
-                ..
-            }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[true, false].containsAll([false, true])"#),
+            @"true"
         );
-
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::ContainsAll,
-                builder().set([builder().val(true), builder().binary_app(BinaryOp::Eq, builder().var(Var::Principal), builder().var(Var::Resource))]),
-                builder().set([builder().val(true), builder().val(true)])
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::ContainsAll, arg1, arg2 }, .. } => {
-                assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Set(s), ..} => {
-                    assert_matches!(s.as_slice(), [Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::Bool(true)), .. }, .. }, Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }] => {
-                        assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-                        assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
-                    })
-                } );
-                assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Set(s), .. }, .. } => {
-                    assert_eq!(s.iter().collect_vec(), [&Value::from(true)]);
-                });
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[true, false].containsAll([false, resource == Document::"mine"])"#),
+            @r#"[false, true].containsAll([false, resource == Document::"mine"])"#
         );
-
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::ContainsAny,
-                builder().set([builder().val(true), builder().val(false)]),
-                builder().set([builder().val(true), builder().val(true)])
-            ))
-            .unwrap(),
-            Residual::Concrete {
-                value: Value {
-                    value: ValueKind::Lit(Literal::Bool(true)),
-                    ..
-                },
-                ..
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[true, false].containsAny([false])"#),
+            @"true"
         );
-
-        assert_matches!(
-            eval.interpret_expr(&builder().binary_app(
-                BinaryOp::ContainsAny,
-                builder().set([builder().val(true), builder().binary_app(BinaryOp::Eq, builder().var(Var::Principal), builder().var(Var::Resource))]),
-                builder().set([builder().val(true), builder().val(true)])
-            )).unwrap(),
-            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::ContainsAny, arg1, arg2 }, .. } => {
-                assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Set(s), ..} => {
-                    assert_matches!(s.as_slice(), [Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::Bool(true)), .. }, .. }, Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }] => {
-                        assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
-                        assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
-                    })
-                } );
-                assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Set(s), .. }, .. } => {
-                    assert_eq!(s.iter().collect_vec(), [&Value::from(true)]);
-                });
-            }
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"[true].containsAny([resource == Document::"alice"])"#),
+            @r#"[true].containsAny([resource == Document::"alice"])"#
         );
     }
 
     #[test]
-    fn test_datetime_residual_normalization() {
+    fn test_ext_normalization() {
+        let eval = Evaluator {
+            request: &concrete_user_req(),
+            entities: &PartialEntities::new(),
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
         // When the TPE evaluator evaluates datetime("6640-02-11") with all
         // concrete args, the resulting residual should use the canonical
         // offset(datetime("1970-01-01"), duration("Nms")) form — not the
@@ -1872,432 +2095,197 @@ mod tests {
         // while the Rust side representation without canonicalization can be either the
         // direct datetime or the offset from the Unix Epoch, depending on where the term
         // originated from.
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"datetime("6640-02-11")"#),
+            @r#"(datetime("1970-01-01")).offset(duration("147374467200000ms"))"#
         );
-        let eval = Evaluator {
-            request: &req,
-            entities: &PartialEntities::new(),
-            extensions: Extensions::all_available(),
-        };
-        let residual = eval
-            .interpret_expr(
-                &builder()
-                    .call_extension_fn("datetime".parse().unwrap(), [builder().val("6640-02-11")])
-                    .unwrap_infallible(),
-            )
-            .unwrap();
-        // Convert to Expr and check the top-level function is "offset"
-        let expr: crate::ast::Expr = residual.into();
-        assert_matches!(expr.expr_kind(), crate::ast::ExprKind::ExtensionFunctionApp { fn_name, .. } => {
-            assert_eq!(fn_name.to_string(), "offset");
-        });
-        // String representation
-        assert_eq!(
-            expr.to_string(),
-            r#"(datetime("1970-01-01")).offset(duration("147374467200000ms"))"#
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"decimal("0.0")"#),
+            @r#"decimal("0.0000")"#
         );
-    }
-
-    #[test]
-    fn test_decimal_residual_normalization() {
-        // decimal("0.0") should be normalized to decimal("0.0000") (4-digit padded)
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"ip("::1")"#),
+            @r#"ip("::1/128")"#
         );
-        let eval = Evaluator {
-            request: &req,
-            entities: &PartialEntities::new(),
-            extensions: Extensions::all_available(),
-        };
-        let residual = eval
-            .interpret_expr(
-                &builder()
-                    .call_extension_fn("decimal".parse().unwrap(), [builder().val("0.0")])
-                    .unwrap_infallible(),
-            )
-            .unwrap();
-        let expr: crate::ast::Expr = residual.into();
-        assert_eq!(expr.to_string(), r#"decimal("0.0000")"#);
-    }
-
-    #[test]
-    fn test_ip_residual_normalization() {
-        // ip("::1") should be normalized to include the prefix: ip("::1/128")
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"duration("1d")"#),
+            @r#"duration("86400000ms")"#
         );
-        let eval = Evaluator {
-            request: &req,
-            entities: &PartialEntities::new(),
-            extensions: Extensions::all_available(),
-        };
-        let residual = eval
-            .interpret_expr(
-                &builder()
-                    .call_extension_fn("ip".parse().unwrap(), [builder().val("::1")])
-                    .unwrap_infallible(),
-            )
-            .unwrap();
-        let expr: crate::ast::Expr = residual.into();
-        assert_eq!(expr.to_string(), r#"ip("::1/128")"#);
-    }
-
-    #[test]
-    fn test_duration_residual_normalization() {
-        // duration("1d") should be normalized to duration("86400000ms")
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            dummy_uid().into(),
-            action(),
-            None,
-        );
-        let eval = Evaluator {
-            request: &req,
-            entities: &PartialEntities::new(),
-            extensions: Extensions::all_available(),
-        };
-        let residual = eval
-            .interpret_expr(
-                &builder()
-                    .call_extension_fn("duration".parse().unwrap(), [builder().val("1d")])
-                    .unwrap_infallible(),
-            )
-            .unwrap();
-        let expr: crate::ast::Expr = residual.into();
-        assert_eq!(expr.to_string(), r#"duration("86400000ms")"#);
     }
 
     #[test]
     fn test_datetime_attr_from_entity_is_normalized() {
-        let extensions = Extensions::all_available();
-        let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
-        let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
-            crate::ast::PartialValue::Value(v) => v,
-            _ => panic!("expected concrete value"),
-        };
-
-        // Create an entity whose attribute "dt" holds this non-canonical datetime.
-        let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
-        let entities = PartialEntities::from_entities_unchecked(
-            [(
-                entity_uid.clone(),
-                PartialEntity {
-                    uid: entity_uid.clone(),
-                    attrs: Some(BTreeMap::from_iter([("dt".parse().unwrap(), datetime_val)])),
-                    ancestors: None,
-                    tags: None,
-                },
-            )]
-            .into_iter(),
+        let schema = parse_schema(
+            r#"entity E { dt: datetime }; entity User; action get appliesTo {principal: User, resource: E};"#,
         );
+
+        // Create an entity whose attribute "dt" holds a non-canonical datetime
+        // (constructed via `datetime(..)` rather than the canonical
+        // `datetime(..).offset(..)` form).
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "dt": { "__extn": { "fn": "datetime", "arg": "2026-10-01" } },
+                    },
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
 
         // Principal is unknown so that the overall expression stays partial,
         // making the datetime value appear in the residual.
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            entity_uid.into(),
-            action(),
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"""#),
             None,
-        );
+            &schema,
+        )
+        .unwrap();
         let eval = Evaluator {
             request: &req,
             entities: &entities,
             extensions: Extensions::all_available(),
         };
 
-        // Retrieve the datetime attribute from the known entity (resource).
-        let residual = eval
-            .interpret_expr(
-                &builder().get_attr(builder().var(Var::Resource), "dt".parse().unwrap()),
-            )
-            .unwrap();
-
-        let expr: Expr = residual.into();
-        {
-            use crate::pst::{BinaryOp, Expr, UnaryOp};
-            // expression matches (datetime(..).offset(duration(...))"#,
-            match Expr::try_from(expr).unwrap() {
-                Expr::BinaryOp {
-                    op: BinaryOp::Offset,
-                    left,
-                    right,
-                } => {
-                    assert_matches!(
-                        left.as_ref(),
-                        Expr::UnaryOp {
-                            op: UnaryOp::Datetime,
-                            ..
-                        }
-                    );
-                    assert_matches!(
-                        right.as_ref(),
-                        Expr::UnaryOp {
-                            op: UnaryOp::Duration,
-                            ..
-                        }
-                    );
-                }
-                _ => assertion_failure!("toplevel op should be offset"),
-            }
-        }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.dt"#),
+            @r#"(datetime("1970-01-01")).offset(duration("1790812800000ms"))"#
+        );
     }
 
     #[test]
     fn test_datetime_in_record_attr_from_entity_is_normalized() {
-        use smol_str::ToSmolStr;
-        let extensions = Extensions::all_available();
-        let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
-        let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
-            crate::ast::PartialValue::Value(v) => v,
-            _ => panic!("expected concrete value"),
-        };
+        let schema = parse_schema(
+            r#"entity E { rec: { dt: datetime } }; entity User; action get appliesTo {principal: User, resource: E};"#,
+        );
 
         // Entity attribute "rec" is a record containing the non-canonical datetime.
-        let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
-        let rec_val = Value::record([("dt".to_smolstr(), datetime_val)], None);
-        let entities = PartialEntities::from_entities_unchecked(
-            [(
-                entity_uid.clone(),
-                PartialEntity {
-                    uid: entity_uid.clone(),
-                    attrs: Some(BTreeMap::from_iter([("rec".parse().unwrap(), rec_val)])),
-                    ancestors: None,
-                    tags: None,
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "rec": {
+                            "dt": { "__extn": { "fn": "datetime", "arg": "2026-10-01" } },
+                        },
+                    },
                 },
-            )]
-            .into_iter(),
-        );
+            ]),
+            &schema,
+        )
+        .unwrap();
 
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            entity_uid.into(),
-            action(),
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"""#),
             None,
-        );
+            &schema,
+        )
+        .unwrap();
         let eval = Evaluator {
             request: &req,
             entities: &entities,
             extensions: Extensions::all_available(),
         };
 
-        // Retrieve resource.rec — a record whose "dt" field holds the datetime.
-        // The record is concrete, so it becomes a Residual::Concrete.
-        // When converted to Expr, the datetime inside must use the canonical form.
-        let residual = eval
-            .interpret_expr(
-                &builder().get_attr(builder().var(Var::Resource), "rec".parse().unwrap()),
-            )
-            .unwrap();
-
-        let expr: Expr = residual.into();
-        {
-            use crate::pst::{BinaryOp, Expr, UnaryOp};
-            // The record should have a single field "dt" whose value is in canonical form.
-            match Expr::try_from(expr).unwrap() {
-                Expr::Record(fields) => {
-                    let dt_expr = fields.get("dt").expect("record should have 'dt' field");
-                    match dt_expr.as_ref() {
-                        Expr::BinaryOp {
-                            op: BinaryOp::Offset,
-                            left,
-                            right,
-                        } => {
-                            assert_matches!(
-                                left.as_ref(),
-                                Expr::UnaryOp {
-                                    op: UnaryOp::Datetime,
-                                    ..
-                                }
-                            );
-                            assert_matches!(
-                                right.as_ref(),
-                                Expr::UnaryOp {
-                                    op: UnaryOp::Duration,
-                                    ..
-                                }
-                            );
-                        }
-                        _ => assertion_failure!("dt field should be offset(datetime, duration)"),
-                    }
-                }
-                _ => assertion_failure!("toplevel should be a record"),
-            }
-        }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.rec"#),
+            @r#"{dt: (datetime("1970-01-01")).offset(duration("1790812800000ms"))}"#
+        );
     }
 
     #[test]
     fn test_datetime_in_set_attr_from_entity_is_normalized() {
-        let extensions = Extensions::all_available();
-        let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
-        let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
-            crate::ast::PartialValue::Value(v) => v,
-            _ => panic!("expected concrete value"),
-        };
+        let schema = parse_schema(
+            r#"entity E { s: Set<datetime> }; entity User; action get appliesTo {principal: User, resource: E};"#,
+        );
 
-        // Entity attribute "s" is a set containing a plain value followed by the
-        // non-canonical datetime, so the loop skips the first element before normalizing.
-        let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
-        let set_val = Value::set([Value::from(1), datetime_val], None);
-        let entities = PartialEntities::from_entities_unchecked(
-            [(
-                entity_uid.clone(),
-                PartialEntity {
-                    uid: entity_uid.clone(),
-                    attrs: Some(BTreeMap::from_iter([("s".parse().unwrap(), set_val)])),
-                    ancestors: None,
-                    tags: None,
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "s": [
+                            { "__extn": { "fn": "datetime", "arg": "1970-01-02" } },
+                            { "__extn": { "fn": "datetime", "arg": "2026-10-01" } },
+                        ],
+                    },
                 },
-            )]
-            .into_iter(),
-        );
+            ]),
+            &schema,
+        )
+        .unwrap();
 
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            entity_uid.into(),
-            action(),
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"""#),
             None,
-        );
+            &schema,
+        )
+        .unwrap();
         let eval = Evaluator {
             request: &req,
             entities: &entities,
             extensions: Extensions::all_available(),
         };
 
-        let residual = eval
-            .interpret_expr(&builder().get_attr(builder().var(Var::Resource), "s".parse().unwrap()))
-            .unwrap();
-
-        let expr: Expr = residual.into();
-        {
-            use crate::pst::{BinaryOp, Expr};
-            match Expr::try_from(expr).unwrap() {
-                Expr::Set(elems) => {
-                    assert_eq!(elems.len(), 2);
-                    // At least one element should be the normalized datetime.
-                    let has_normalized = elems.iter().any(|e| {
-                        matches!(
-                            e.as_ref(),
-                            Expr::BinaryOp {
-                                op: BinaryOp::Offset,
-                                ..
-                            }
-                        )
-                    });
-                    assert!(has_normalized, "set should contain a normalized datetime");
-                }
-                _ => assertion_failure!("toplevel should be a set"),
-            }
-        }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.s"#),
+            @r#"[(datetime("1970-01-01")).offset(duration("86400000ms")), (datetime("1970-01-01")).offset(duration("1790812800000ms"))]"#
+        );
     }
 
     #[test]
     fn test_datetime_in_multi_field_record_is_normalized() {
-        use smol_str::ToSmolStr;
-        let extensions = Extensions::all_available();
-        let datetime_fn = extensions.func(&"datetime".parse().unwrap()).unwrap();
-        let datetime_val = match datetime_fn.call(&[Value::from("2026-10-01")]).unwrap() {
-            crate::ast::PartialValue::Value(v) => v,
-            _ => panic!("expected concrete value"),
-        };
+        let schema = parse_schema(
+            r#"entity E { rec: { a: Long, dt: datetime, z: Long } }; entity User; action get appliesTo {principal: User, resource: E};"#,
+        );
 
         // Record with "a" before "dt" and "z" after, so the skip(idx+1) path is exercised.
-        let entity_uid: EntityUID = r#"E::"""#.parse().unwrap();
-        let rec_val = Value::record(
-            [
-                ("a".to_smolstr(), Value::from(1)),
-                ("dt".to_smolstr(), datetime_val),
-                ("z".to_smolstr(), Value::from(2)),
-            ],
-            None,
-        );
-        let entities = PartialEntities::from_entities_unchecked(
-            [(
-                entity_uid.clone(),
-                PartialEntity {
-                    uid: entity_uid.clone(),
-                    attrs: Some(BTreeMap::from_iter([("rec".parse().unwrap(), rec_val)])),
-                    ancestors: None,
-                    tags: None,
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "" },
+                    "attrs": {
+                        "rec": {
+                            "a": 1,
+                            "dt": { "__extn": { "fn": "datetime", "arg": "2026-10-01" } },
+                            "z": 2,
+                        },
+                    },
                 },
-            )]
-            .into_iter(),
-        );
+            ]),
+            &schema,
+        )
+        .unwrap();
 
-        let req = PartialRequest::new_unchecked(
-            PartialEntityUID {
-                ty: "E".parse().unwrap(),
-                eid: None,
-            },
-            entity_uid.into(),
-            action(),
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"E::"""#),
             None,
-        );
+            &schema,
+        )
+        .unwrap();
         let eval = Evaluator {
             request: &req,
             entities: &entities,
             extensions: Extensions::all_available(),
         };
 
-        let residual = eval
-            .interpret_expr(
-                &builder().get_attr(builder().var(Var::Resource), "rec".parse().unwrap()),
-            )
-            .unwrap();
-
-        let expr: Expr = residual.into();
-        {
-            use crate::pst::{BinaryOp, Expr, UnaryOp};
-            match Expr::try_from(expr).unwrap() {
-                Expr::Record(fields) => {
-                    assert_eq!(fields.len(), 3);
-                    assert_matches!(fields.get("a").unwrap().as_ref(), Expr::Literal(_));
-                    assert_matches!(fields.get("z").unwrap().as_ref(), Expr::Literal(_));
-                    let dt_expr = fields.get("dt").expect("record should have 'dt' field");
-                    assert_matches!(
-                        dt_expr.as_ref(),
-                        Expr::BinaryOp {
-                            op: BinaryOp::Offset,
-                            left,
-                            right,
-                        } => {
-                            assert_matches!(left.as_ref(), Expr::UnaryOp { op: UnaryOp::Datetime, .. });
-                            assert_matches!(right.as_ref(), Expr::UnaryOp { op: UnaryOp::Duration, .. });
-                        }
-                    );
-                }
-                _ => assertion_failure!("toplevel should be a record"),
-            }
-        }
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource.rec"#),
+            @r#"{a: 1, dt: (datetime("1970-01-01")).offset(duration("1790812800000ms")), z: 2}"#
+        );
     }
 }

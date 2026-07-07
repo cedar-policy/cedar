@@ -108,12 +108,23 @@ impl Typechecker<'_> {
             principal_slot: None,
             resource_slot: None,
         };
+        self.typecheck_expr_with_request_env(&request_env, e, policy_id, unique_type_errors)
+    }
+
+    /// Typecheck an expression outside the context of a policy, in the given `request_env`.
+    pub(crate) fn typecheck_expr_with_request_env<'a>(
+        &self,
+        request_env: &RequestEnv<'_>,
+        e: &'a Expr,
+        policy_id: &'a PolicyID,
+        unique_type_errors: &mut HashSet<ValidationError>,
+    ) -> TypecheckAnswer<'a> {
         let typechecker = SingleEnvTypechecker {
             schema: self.schema,
             extensions: self.extensions,
             mode: self.mode,
             policy_id,
-            request_env: &request_env,
+            request_env,
         };
         let mut type_errors = Vec::new();
         let ans = typechecker.typecheck(&CapabilitySet::new(), e, &mut type_errors);
