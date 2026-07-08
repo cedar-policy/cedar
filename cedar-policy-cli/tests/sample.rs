@@ -1675,7 +1675,7 @@ fn test_tpe() {
         .arg(schema)
         .assert()
         .stdout(contains_residuals())
-        .code(0);
+        .code(4);
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("tpe")
@@ -1711,7 +1711,7 @@ fn test_tpe() {
         .arg(schema)
         .assert()
         .stdout(contains_residuals())
-        .code(0);
+        .code(4);
 }
 
 #[test]
@@ -1775,7 +1775,7 @@ when {{ resource.isPublic }};"#
                 r#"permit(principal, action, resource) when { (principal == User::"Alice") && (resource.isPublic) };"#
             )),
         )
-        .code(0);
+        .code(4);
 
     // Now providing principal eid, equality between slot and principal
     // evaluates, but we still have a residual
@@ -1803,7 +1803,7 @@ when {{ resource.isPublic }};"#
                 "permit(principal, action, resource) when { resource.isPublic };",
             )),
         )
-        .code(0);
+        .code(4);
 
     // Still no resource eid, but slot/principal equality is false for Bob, so deny
     cargo::cargo_bin_cmd!("cedar")
