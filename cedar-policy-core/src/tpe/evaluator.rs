@@ -73,23 +73,23 @@ impl Evaluator<'_> {
         }
 
         match kind {
-            ResidualKind::Var(Var::Action) => mk_concrete(self.request.action.clone().into()),
+            ResidualKind::Var(Var::Action) => mk_concrete(self.request.action().clone().into()),
             ResidualKind::Var(Var::Principal) => {
-                if let Ok(principal) = EntityUID::try_from(self.request.principal.clone()) {
+                if let Ok(principal) = EntityUID::try_from(self.request.principal().clone()) {
                     mk_concrete(principal.into())
                 } else {
                     mk_residual(ResidualKind::Var(Var::Principal))
                 }
             }
             ResidualKind::Var(Var::Resource) => {
-                if let Ok(resource) = EntityUID::try_from(self.request.resource.clone()) {
+                if let Ok(resource) = EntityUID::try_from(self.request.resource().clone()) {
                     mk_concrete(resource.into())
                 } else {
                     mk_residual(ResidualKind::Var(Var::Resource))
                 }
             }
             ResidualKind::Var(Var::Context) => {
-                if let Some(context) = &self.request.context {
+                if let Some(context) = self.request.context_attrs() {
                     mk_concrete(Value::record_arc(context.clone(), None))
                 } else {
                     mk_residual(ResidualKind::Var(Var::Context))
@@ -217,11 +217,11 @@ impl Evaluator<'_> {
                     Residual::Partial {
                         kind: ResidualKind::Var(Var::Principal),
                         ..
-                    } => mk_concrete((entity_type == &self.request.principal.ty).into()),
+                    } => mk_concrete((entity_type == self.request.principal_type()).into()),
                     Residual::Partial {
                         kind: ResidualKind::Var(Var::Resource),
                         ..
-                    } => mk_concrete((entity_type == &self.request.resource.ty).into()),
+                    } => mk_concrete((entity_type == self.request.resource_type()).into()),
                     Residual::Partial { .. } => mk_residual(ResidualKind::Is {
                         expr: Arc::new(expr),
                         entity_type: entity_type.clone(),
@@ -282,7 +282,7 @@ impl Evaluator<'_> {
                                     if uid1 == uid2 {
                                         return mk_concrete(true.into());
                                     } else if let Some(entity) = self.entities.get(uid1) {
-                                        if let Some(ancestors) = &entity.ancestors {
+                                        if let Some(ancestors) = entity.ancestors() {
                                             return mk_concrete(ancestors.contains(uid2).into());
                                         }
                                     }
@@ -297,7 +297,7 @@ impl Evaluator<'_> {
                                             if uid1 == uid2 {
                                                 return mk_concrete(true.into());
                                             } else if let Some(entity) = self.entities.get(uid1) {
-                                                if let Some(ancestors) = &entity.ancestors {
+                                                if let Some(ancestors) = entity.ancestors() {
                                                     if ancestors.contains(uid2) {
                                                         return mk_concrete(true.into());
                                                     }
@@ -323,7 +323,7 @@ impl Evaluator<'_> {
                             if let Ok(uid) = v1.get_as_entity() {
                                 if let Ok(tag) = v2.get_as_string() {
                                     if let Some(entity) = self.entities.get(uid) {
-                                        if let Some(tags) = &entity.tags {
+                                        if let Some(tags) = entity.tags() {
                                             if let Some(v) = tags.get(tag) {
                                                 mk_concrete(v.clone())
                                             } else {
@@ -346,7 +346,7 @@ impl Evaluator<'_> {
                             if let Ok(uid) = v1.get_as_entity() {
                                 if let Ok(tag) = v2.get_as_string() {
                                     if let Some(entity) = self.entities.get(uid) {
-                                        if let Some(tags) = &entity.tags {
+                                        if let Some(tags) = entity.tags() {
                                             mk_concrete(tags.contains_key(tag).into())
                                         } else {
                                             binapp_residual(arg1, arg2)
@@ -436,7 +436,7 @@ impl Evaluator<'_> {
                         ..
                     } => {
                         if let Some(entity) = self.entities.get(uid.as_ref()) {
-                            if let Some(attrs) = &entity.attrs {
+                            if let Some(attrs) = entity.attrs() {
                                 if let Some(val) = attrs.get(attr) {
                                     return mk_concrete(val.clone());
                                 } else {
@@ -477,7 +477,7 @@ impl Evaluator<'_> {
                         ..
                     } => {
                         if let Some(entity) = self.entities.get(uid.as_ref()) {
-                            if let Some(attrs) = &entity.attrs {
+                            if let Some(attrs) = entity.attrs() {
                                 return mk_concrete(attrs.contains_key(attr).into());
                             }
                         }
