@@ -99,18 +99,31 @@ impl From<Template> for TemplateBody {
 }
 
 impl Template {
+    /// Verify that the slot cache matches the actual slots in the condition.
+    ///
+    /// Returns `Ok(())` if the cache is correct, or
+    /// `Err(TemplateValidationError::SlotCacheMismatch)` if not.
+    fn check_slot_cache(&self) -> Result<(), TemplateValidationError> {
+        for slot in self.body.condition().slots() {
+            if !self.slots.contains(&slot) {
+                return Err(TemplateValidationError::SlotCacheMismatch);
+            }
+        }
+        for slot in &self.slots {
+            if !self.body.condition().slots().contains(slot) {
+                return Err(TemplateValidationError::SlotCacheMismatch);
+            }
+        }
+        Ok(())
+    }
+
     /// Checks the invariant (slot cache correctness)
     ///
     /// This function is a no-op in release builds, but checks the invariant (and panics if it fails) in debug builds.
     pub fn check_invariant(&self) {
         #[cfg(debug_assertions)]
         {
-            for slot in self.body.condition().slots() {
-                assert!(self.slots.contains(&slot));
-            }
-            for slot in self.slots() {
-                assert!(self.body.condition().slots().contains(slot));
-            }
+            assert!(self.check_slot_cache().is_ok());
         }
     }
 
@@ -349,16 +362,14 @@ impl Template {
     }
 
     /// Checks that this template is well-formed according to internal invariants of [`Template`],
-    /// and if not, returns an error.
+    /// and if not, returns an error.  [`try_validate`] checks that this is a 'syntactically valid'
+    /// template that could have been constructed by parsing.
     ///
     /// This will check the following invariants:
     /// - slots do not appear in conditions,
     /// - action constraints only references Action entity types,
     /// - the slot cache is correct,
-    /// - the condition is a valid expression.
-    ///
-    /// This function is meant to cover gaps between parsed templates and other ways to construct
-    /// templates. This is *not* doing any semantic validation beyond the checks mentioned.
+    /// - the condition is a valid expression according to [`Expr::try_validate`].
     pub fn try_validate(self) -> Result<Self, TemplateValidationError> {
         // Invariant: slots must not appear in non-scope constraints (when/unless clauses)
         if let Some(expr) = self.body.non_scope_constraints() {
@@ -372,37 +383,14 @@ impl Template {
             }
         }
         // Invariant: action constraint must only reference Action entity types
-        match self.body.action_constraint() {
-            ActionConstraint::Eq(euid) => {
-                if !euid.is_action() {
-                    return Err(TemplateValidationError::InvalidActionType(
-                        InvalidActionType {
-                            euids: nonempty![euid.clone()],
-                        },
-                    ));
-                }
-            }
-            ActionConstraint::In(euids) => {
-                let invalid: Vec<_> = euids.iter().filter(|e| !e.is_action()).cloned().collect();
-                if let Some(non_empty) = NonEmpty::from_vec(invalid) {
-                    return Err(TemplateValidationError::InvalidActionType(
-                        InvalidActionType { euids: non_empty },
-                    ));
-                }
-            }
-            _ => {}
+        if let Err(euids) = self.body.action_constraint().check_action_types() {
+            return Err(TemplateValidationError::InvalidActionType(
+                InvalidActionType { euids },
+            ));
         }
+
         // Invariant: slot cache correctness
-        for slot in self.body.condition().slots() {
-            if !self.slots.contains(&slot) {
-                return Err(TemplateValidationError::SlotCacheMismatch);
-            }
-        }
-        for slot in &self.slots {
-            if !self.body.condition().slots().contains(slot) {
-                return Err(TemplateValidationError::SlotCacheMismatch);
-            }
-        }
+        self.check_slot_cache()?;
         // Invariant: expressions must be valid (e.g., known extension functions)
         if let Some(expr) = self.body.non_scope_constraints() {
             expr.clone().try_validate()?;
@@ -2025,28 +2013,38 @@ impl ActionConstraint {
 
     /// Check that all of the EUIDs in an action constraint have the type
     /// `Action`, under an arbitrary namespace.
-    pub fn contains_only_action_types(self) -> Result<Self, NonEmpty<Arc<EntityUID>>> {
+    ///
+    /// Returns the non-action EUIDs if any are found.
+    pub fn check_action_types(&self) -> Result<(), NonEmpty<Arc<EntityUID>>> {
         match self {
-            ActionConstraint::Any => Ok(self),
-            ActionConstraint::In(ref euids) => {
+            ActionConstraint::Any => Ok(()),
+            ActionConstraint::In(euids) => {
                 if let Some(euids) =
                     NonEmpty::collect(euids.iter().filter(|euid| !euid.is_action()).cloned())
                 {
                     Err(euids)
                 } else {
-                    Ok(self)
+                    Ok(())
                 }
             }
-            ActionConstraint::Eq(ref euid) => {
+            ActionConstraint::Eq(euid) => {
                 if euid.is_action() {
-                    Ok(self)
+                    Ok(())
                 } else {
                     Err(nonempty![euid.clone()])
                 }
             }
             #[cfg(feature = "tolerant-ast")]
-            ActionConstraint::ErrorConstraint => Ok(self),
+            ActionConstraint::ErrorConstraint => Ok(()),
         }
+    }
+
+    /// Check that all of the EUIDs in an action constraint have the type
+    /// `Action`, under an arbitrary namespace. Consumes and returns `self` on
+    /// success.
+    pub fn contains_only_action_types(self) -> Result<Self, NonEmpty<Arc<EntityUID>>> {
+        self.check_action_types()?;
+        Ok(self)
     }
 }
 

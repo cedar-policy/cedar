@@ -762,6 +762,9 @@ impl Entity {
     /// - entity should not be its own ancestor
     /// - parents and indirect_ancestors should be disjoint
     /// - action entities must only have action parents
+    ///
+    /// The [`uid`], [`attrs`] and [`tags`] are correct by construction (valid names where
+    /// applicable).
     pub fn try_validate(self) -> Result<Self, EntitiesError> {
         self.validate()?;
         Ok(self)
