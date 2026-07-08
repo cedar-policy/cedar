@@ -459,7 +459,7 @@ pub fn compute_entity_manifest(
     // now, for each policy we add the data it requires to the manifest
     for policy in policies.policies() {
         // typecheck the policy and get all the request environments
-        let request_envs = typechecker.typecheck_by_request_env_iter(policy.template());
+        let request_envs = typechecker.typecheck_by_request_env(policy.template());
         for (request_env, policy_check) in request_envs {
             let new_primary_slice = match policy_check {
                 PolicyCheck::Success(typechecked_expr) => {

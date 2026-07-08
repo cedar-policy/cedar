@@ -140,18 +140,10 @@ impl<'a> Typechecker<'a> {
     /// Callers using this as the toplevel entry point, rather than
     /// `typecheck_policy()`, will not get `impossible_policy` validation
     /// warnings.
+    ///
+    /// Results are yielded lazily; callers consuming them in a single pass do
+    /// not hold every environment's typed condition live at once.
     pub fn typecheck_by_request_env<'b>(
-        &'b self,
-        t: &'b Template,
-    ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
-        self.typecheck_by_request_env_iter(t).collect()
-    }
-
-    /// Like [`Self::typecheck_by_request_env`] but yields the per-environment
-    /// results lazily instead of collecting them into a `Vec`. Crate-internal
-    /// callers that consume the results in a single pass should prefer this to
-    /// avoid holding every environment's typed condition live at once.
-    pub(crate) fn typecheck_by_request_env_iter<'b>(
         &'b self,
         t: &'b Template,
     ) -> impl Iterator<Item = (RequestEnv<'b>, PolicyCheck)> + 'b {
@@ -221,18 +213,18 @@ impl<'a> Typechecker<'a> {
         typecheck_fn: F,
     ) -> impl Iterator<Item = (RequestEnv<'b>, C)> + 'b
     where
-        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr) -> C + 'b,
+        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr) -> C + Clone + 'b,
         C: 'b,
     {
-        // `Arc` so the returned iterator owns the condition and fn (cloned per
-        // env) rather than borrowing a local, letting it stream lazily.
+        // `Arc` so each per-env closure owns the condition rather than
+        // borrowing a local, letting the iterator stream lazily. `typecheck_fn`
+        // is cheaply `Clone` (it only captures `&self`), so it needs no `Arc`.
         let cond = Arc::new(t.condition());
-        let typecheck_fn = Arc::new(typecheck_fn);
         self.schema
             .unlinked_request_envs(self.mode)
             .flat_map(move |unlinked_e| {
                 let cond = Arc::clone(&cond);
-                let typecheck_fn = Arc::clone(&typecheck_fn);
+                let typecheck_fn = typecheck_fn.clone();
                 self.link_request_env(unlinked_e, t).map(move |linked_e| {
                     let check = typecheck_fn(&linked_e, t.id(), &cond);
                     (linked_e, check)

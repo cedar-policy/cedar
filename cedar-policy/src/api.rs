@@ -3444,7 +3444,6 @@ fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item
         cedar_policy_core::validator::ValidationMode::default(),
     );
     tc.typecheck_by_request_env(ast)
-        .into_iter()
         .filter_map(|(env, pc)| {
             if matches!(pc, PolicyCheck::Success(_)) {
                 Some(env.into())

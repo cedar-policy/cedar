@@ -74,7 +74,7 @@ impl Validator {
         let (errors, warnings) = self.validate_policy(p, mode);
 
         let typechecker = Typechecker::new(&self.schema, mode);
-        let type_annotated_asts = typechecker.typecheck_by_request_env_iter(p);
+        let type_annotated_asts = typechecker.typecheck_by_request_env(p);
         let mut level_checker = LevelChecker {
             policy_id: p.id(),
             max_level: max_deref_level.into(),
