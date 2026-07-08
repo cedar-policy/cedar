@@ -16,6 +16,7 @@
 //! This module cotnains errors around entities not conforming to schemas
 use super::TypeMismatchError;
 use crate::ast::{Eid, EntityType, EntityUID};
+use crate::entities::Schema;
 use crate::extensions::ExtensionFunctionLookupError;
 use crate::impl_diagnostic_from_method_on_field;
 use itertools::Itertools;
@@ -142,6 +143,19 @@ impl EntitySchemaConformanceError {
             context,
             err,
         })
+    }
+    pub(crate) fn unexpected_entity_type<S: Schema>(
+        schema: &S,
+        uid: EntityUID,
+    ) -> EntitySchemaConformanceError {
+        let suggested_types = schema
+            .entity_types_with_basename(&uid.entity_type().name().basename())
+            .collect();
+        UnexpectedEntityTypeError {
+            uid,
+            suggested_types,
+        }
+        .into()
     }
 }
 
