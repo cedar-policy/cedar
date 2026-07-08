@@ -281,10 +281,10 @@ impl Evaluator<'_> {
                                 if let Ok(uid2) = v2.get_as_entity() {
                                     if uid1 == uid2 {
                                         return mk_concrete(true.into());
-                                    } else if let Some(entity) = self.entities.get(uid1) {
-                                        if let Some(ancestors) = entity.ancestors() {
-                                            return mk_concrete(ancestors.contains(uid2).into());
-                                        }
+                                    } else if let Some(ancestors) =
+                                        self.entities.get_ancestors(uid1)
+                                    {
+                                        return mk_concrete(ancestors.contains(uid2).into());
                                     }
                                     binapp_residual(arg1, arg2)
                                 } else if let Ok(s) = v2.get_as_set() {
@@ -293,22 +293,18 @@ impl Evaluator<'_> {
                                         .map(Value::get_as_entity)
                                         .collect::<std::result::Result<Vec<_>, _>>()
                                     {
-                                        for uid2 in uids {
-                                            if uid1 == uid2 {
-                                                return mk_concrete(true.into());
-                                            } else if let Some(entity) = self.entities.get(uid1) {
-                                                if let Some(ancestors) = entity.ancestors() {
-                                                    if ancestors.contains(uid2) {
-                                                        return mk_concrete(true.into());
-                                                    }
-                                                } else {
-                                                    return binapp_residual(arg1, arg2);
-                                                }
-                                            } else {
-                                                return binapp_residual(arg1, arg2);
-                                            }
+                                        let ancestors = self.entities.get_ancestors(uid1);
+                                        if uids.contains(&uid1)
+                                            || ancestors.is_some_and(|ancestors| {
+                                                uids.iter().any(|uid2| ancestors.contains(uid2))
+                                            })
+                                        {
+                                            mk_concrete(true.into())
+                                        } else if !uids.is_empty() && ancestors.is_none() {
+                                            binapp_residual(arg1, arg2)
+                                        } else {
+                                            mk_concrete(false.into())
                                         }
-                                        mk_concrete(false.into())
                                     } else {
                                         mk_error()
                                     }
@@ -1806,6 +1802,81 @@ mod tests {
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"parents_none" in [resource]"#),
             @r#"E::"parents_none" in [E::"resource"]"#
+        );
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in E::"undefined""#),
+            @r#"true"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in [E::"undefined"]"#),
+            @r#"true"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in [E::"undefined", E::"other"]"#),
+            @r#"true"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in [E::"other", E::"undefined"]"#),
+            @r#"true"#
+        );
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in [E::"undefined", context.e]"#),
+            @r#"E::"undefined" in [E::"undefined", context.e]"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"undefined" in [E::"undefined", (if 9223372036854775807 * 2 == 0 then E::"undefined" else E::"undefined")]"#),
+            @"error()"
+        );
+    }
+
+    #[test]
+    fn test_binary_app_in_empty_set() {
+        let schema = parse_schema(
+            r#"entity E in E; entity User in E; action get appliesTo {principal: User, resource: E, context: {empty: Set<E>}};"#,
+        );
+        let Ok(Context::Value(context)) =
+            Context::from_json_value(serde_json::json!({ "empty": [] }))
+        else {
+            panic!("expected concrete context")
+        };
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid("E"),
+            Some(context),
+            &schema,
+        )
+        .unwrap();
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "has_parents" },
+                    "parents": [ { "type": "E", "id": "" } ],
+                }
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"has_parents" in context.empty"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"unknown" in context.empty"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource in context.empty"#),
+            @"resource in []"
         );
     }
 

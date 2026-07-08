@@ -476,6 +476,15 @@ impl PartialEntities {
         self.entities.get(euid)
     }
 
+    /// Get the ancestors for this `PartialEntity`
+    ///
+    /// Returns ancestors if this entity exists and its ancestors are known. TPE treats missing
+    /// entity and unknown ancestors identically. If you need to distinguish them, get the full
+    /// partial entity (if it exists) using [`PartialEntities::get`].
+    pub fn get_ancestors(&self, euid: &EntityUID) -> Option<&HashSet<EntityUID>> {
+        self.get(euid).and_then(|e| e.ancestors())
+    }
+
     /// Check if there is a `PartialEntity` with identifier
     pub fn contains_entity(&self, euid: &EntityUID) -> bool {
         self.entities.contains_key(euid)
