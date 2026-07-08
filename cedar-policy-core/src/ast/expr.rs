@@ -882,13 +882,20 @@ impl Expr {
 
     /// Validate the expression is well-formed according to internal invariants.
     /// This is useful if you obtained an AST without parsing from Cedar text, but want to ensure
-    /// the invariant obtained from parsing hold.
+    /// the invariant obtained from parsing hold. Essentially, [`try_validate`] checks that
+    /// this is a "syntactically valid" expression that could have been constructed by parsing.
     ///
     /// The invariants being checked are:
     /// - The name of the function in a function call is a known extension.
     /// - If the function call must be a "method style" call, then its arguments are non-empty
     ///
-    /// This does not check that the arity of the function call is correct in general.
+    ///
+    /// Other invariants guaranteed for the AST (a parseable expression) are maintained
+    /// structurally: well-formed ids, expression structure and absence of duplicates in
+    /// records.
+    ///
+    /// This does not check that the arity of the function call is correct: parsing does not
+    /// guarantee this.
     pub fn try_validate(self) -> Result<Self, ExprValidationError> {
         for sub in self.subexpressions() {
             if let ExprKind::ExtensionFunctionApp { fn_name, args } = sub.expr_kind() {

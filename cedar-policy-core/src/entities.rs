@@ -469,7 +469,10 @@ impl Entities {
     /// Validates the set of entities is well formed and returns it, otherwise returns
     /// an error.
     ///
-    /// Checks collection-level invariants (TC and DAG) and entity-level validation.
+    /// Checks that:
+    /// - collection-level invariants hold: the entity hierarchy is a dag and the transitive
+    ///   closure has been computed.
+    /// - individual entities in the set are valid.
     pub fn try_validate(self) -> std::result::Result<Self, EntitiesError> {
         enforce_tc_and_dag(&self.entities)?;
 
