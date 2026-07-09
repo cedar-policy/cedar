@@ -136,7 +136,7 @@ fn policy_checked_in_multiple_envs() {
         .try_into()
         .expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::default());
-    let env_checks = typechecker.typecheck_by_request_env(&t);
+    let env_checks = typechecker.typecheck_by_request_env(&t).collect::<Vec<_>>();
     // There are 3 possible envs in schema:
     // - User, "view_photo", Photo
     // - Group, "view_photo", Photo
@@ -159,7 +159,7 @@ fn policy_checked_in_multiple_envs() {
         .try_into()
         .expect("Failed to construct schema.");
     let typechecker = Typechecker::new(&schema, ValidationMode::default());
-    let env_checks = typechecker.typecheck_by_request_env(&t);
+    let env_checks = typechecker.typecheck_by_request_env(&t).collect::<Vec<_>>();
     // With the new action, policy is always false for the other two
     assert!(
         env_checks

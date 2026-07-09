@@ -68,10 +68,6 @@ pub struct Typechecker<'a> {
     schema: &'a ValidatorSchema,
     extensions: &'static ExtensionSchemas<'static>,
     mode: ValidationMode,
-    /// List of valid (unlinked) `RequestEnv`s for this schema.
-    /// Cached here so it can be computed once (during `Typechecker`
-    /// construction) and potentially used for many typechecking operations.
-    unlinked_envs: Vec<RequestEnv<'a>>,
 }
 
 impl<'a> Typechecker<'a> {
@@ -81,7 +77,6 @@ impl<'a> Typechecker<'a> {
             schema,
             extensions: ExtensionSchemas::all_available(),
             mode,
-            unlinked_envs: schema.unlinked_request_envs(mode).collect(),
         }
     }
 
@@ -100,24 +95,30 @@ impl<'a> Typechecker<'a> {
         type_errors: &mut HashSet<ValidationError>,
         warnings: &mut HashSet<ValidationWarning>,
     ) -> bool {
-        let typecheck_answers = self.typecheck_by_request_env(t);
-
-        // consolidate the results from each query environment
-        let (all_false, all_succ) = typecheck_answers.into_iter().fold(
-            (true, true),
-            |(all_false, all_succ), (_, check)| match check {
-                PolicyCheck::Success(_) => (false, all_succ),
-                PolicyCheck::Irrelevant(err, _) => {
-                    let no_err = err.is_empty();
-                    type_errors.extend(err);
-                    (all_false, all_succ && no_err)
+        // Streaming fold over borrowed env views from the schema's cached env
+        // set (#2439): never hold all envs' typed conditions live at once. Each
+        // `PolicyCheck` (and its typed condition) is dropped before the next env
+        // is computed, so peak live memory is O(one condition) rather than
+        // O(envs * condition).
+        let cond = t.condition();
+        let mut all_false = true;
+        let mut all_succ = true;
+        for unlinked_e in self.schema.unlinked_request_envs(self.mode) {
+            for linked_e in self.link_request_env(unlinked_e, t) {
+                match self.single_env_typechecking(&linked_e, t.id(), &cond) {
+                    PolicyCheck::Success(_) => all_false = false,
+                    PolicyCheck::Irrelevant(err, _) => {
+                        all_succ = all_succ && err.is_empty();
+                        type_errors.extend(err);
+                    }
+                    PolicyCheck::Fail(err) => {
+                        type_errors.extend(err);
+                        all_false = false;
+                        all_succ = false;
+                    }
                 }
-                PolicyCheck::Fail(err) => {
-                    type_errors.extend(err);
-                    (false, false)
-                }
-            },
-        );
+            }
+        }
 
         // If every policy typechecked with type false, then the policy cannot
         // possibly apply to any request.
@@ -139,11 +140,14 @@ impl<'a> Typechecker<'a> {
     /// Callers using this as the toplevel entry point, rather than
     /// `typecheck_policy()`, will not get `impossible_policy` validation
     /// warnings.
+    ///
+    /// Results are yielded lazily; callers consuming them in a single pass do
+    /// not hold every environment's typed condition live at once.
     pub fn typecheck_by_request_env<'b>(
         &'b self,
         t: &'b Template,
-    ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
-        self.apply_typecheck_fn_by_request_env(t, |request_env, policy_id, expr| {
+    ) -> impl Iterator<Item = (RequestEnv<'b>, PolicyCheck)> + 'b {
+        self.apply_typecheck_fn_by_request_env(t, move |request_env, policy_id, expr| {
             self.single_env_typechecking(request_env, policy_id, expr)
         })
     }
@@ -200,64 +204,71 @@ impl<'a> Typechecker<'a> {
     }
 
     /// Apply `typecheck_fn` to the given policy in every schema-defined request
-    /// environment, and collect all the results.
+    /// environment, yielding the results lazily.
     ///
     /// Results are returned in no particular order.
     fn apply_typecheck_fn_by_request_env<'b, F, C>(
         &'b self,
         t: &'b Template,
         typecheck_fn: F,
-    ) -> Vec<(RequestEnv<'b>, C)>
+    ) -> impl Iterator<Item = (RequestEnv<'b>, C)> + 'b
     where
-        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr) -> C,
+        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr) -> C + Clone + 'b,
+        C: 'b,
     {
-        // compute `.condition()` just once, and cache it here
-        let cond = t.condition();
-
-        // Validate each (principal, resource) pair with the substituted policy
-        // for the corresponding action.
-        self.unlinked_envs
-            .iter()
-            .flat_map(|unlinked_e| {
-                self.link_request_env(unlinked_e, t).map(|linked_e| {
+        // `Arc` so each per-env closure owns the condition rather than
+        // borrowing a local, letting the iterator stream lazily. `typecheck_fn`
+        // is cheaply `Clone` (it only captures `&self`), so it needs no `Arc`.
+        let cond = Arc::new(t.condition());
+        self.schema
+            .unlinked_request_envs(self.mode)
+            .flat_map(move |unlinked_e| {
+                let cond = Arc::clone(&cond);
+                let typecheck_fn = typecheck_fn.clone();
+                self.link_request_env(unlinked_e, t).map(move |linked_e| {
                     let check = typecheck_fn(&linked_e, t.id(), &cond);
                     (linked_e, check)
                 })
             })
-            .collect()
     }
 
     /// Given a request environment and a template, return new environments
     /// formed by linking template slots with possible entity types.
-    fn link_request_env<'b, 'c>(
+    fn link_request_env<'b>(
         &'b self,
-        env: &'c RequestEnv<'b>,
+        env: RequestEnv<'b>,
         t: &'b Template,
-    ) -> Box<dyn Iterator<Item = RequestEnv<'b>> + 'c> {
-        match env {
-            RequestEnv::UndeclaredAction => Box::new(std::iter::once(RequestEnv::UndeclaredAction)),
-            env @ RequestEnv::DeclaredAction {
+    ) -> Box<dyn Iterator<Item = RequestEnv<'b>> + 'b> {
+        // Take `env` by value so the returned iterator is bound to `'b` (via
+        // `self`/`t`), not a local borrow, letting callers stream it lazily.
+        let (principal, resource) = match &env {
+            RequestEnv::UndeclaredAction => {
+                return Box::new(std::iter::once(RequestEnv::UndeclaredAction));
+            }
+            RequestEnv::DeclaredAction {
                 principal,
                 resource,
                 ..
-            } => Box::new(
+            } => (*principal, *resource),
+        };
+        Box::new(
+            self.possible_slot_links(
+                t,
+                SlotId::principal(),
+                principal,
+                t.principal_constraint().as_inner(),
+            )
+            .flat_map(move |p_slot| {
+                let env = env.clone();
                 self.possible_slot_links(
                     t,
-                    SlotId::principal(),
-                    principal,
-                    t.principal_constraint().as_inner(),
+                    SlotId::resource(),
+                    resource,
+                    t.resource_constraint().as_inner(),
                 )
-                .flat_map(move |p_slot| {
-                    self.possible_slot_links(
-                        t,
-                        SlotId::resource(),
-                        resource,
-                        t.resource_constraint().as_inner(),
-                    )
-                    .map(move |r_slot| env.clone().link(p_slot.clone(), r_slot))
-                }),
-            ),
-        }
+                .map(move |r_slot| env.clone().link(p_slot.clone(), r_slot))
+            }),
+        )
     }
 
     /// Get the entity types which could link the slot given in this

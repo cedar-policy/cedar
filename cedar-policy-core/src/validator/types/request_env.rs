@@ -20,6 +20,8 @@ use crate::validator::ValidatorSchema;
 
 use super::Type;
 
+use std::sync::Arc;
+
 /// Represents a request type environment. In principle, this contains full
 /// types for the four variables (principal, action, resource, context).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -185,6 +187,41 @@ impl<'a> RequestEnv<'a> {
         match self {
             RequestEnv::UndeclaredAction => &None,
             RequestEnv::DeclaredAction { resource_slot, .. } => resource_slot,
+        }
+    }
+}
+
+/// Owned, schema-lifetime-free version of a declared-action [`RequestEnv`].
+///
+/// Owning its data (rather than borrowing the schema like [`RequestEnv`]) is
+/// what lets the unlinked request-env set be cached on the
+/// [`ValidatorSchema`] without the cache being self-referential. It is cheap:
+/// entity types/uids are `Arc`/`SmolStr`-backed, and the context `Type` is
+/// shared via `Arc` across the P×R envs of a single action. Borrowed
+/// [`RequestEnv`] views are produced on demand via
+/// [`UnlinkedRequestEnv::as_request_env`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct UnlinkedRequestEnv {
+    /// Principal type
+    pub(crate) principal: EntityType,
+    /// Action
+    pub(crate) action: EntityUID,
+    /// Resource type
+    pub(crate) resource: EntityType,
+    /// Context type (shared across the P×R envs of a single action)
+    pub(crate) context: Arc<Type>,
+}
+
+impl UnlinkedRequestEnv {
+    /// Borrow this owned env as a (declared-action) [`RequestEnv`].
+    pub(crate) fn as_request_env(&self) -> RequestEnv<'_> {
+        RequestEnv::DeclaredAction {
+            principal: &self.principal,
+            action: &self.action,
+            resource: &self.resource,
+            context: self.context.as_ref(),
+            principal_slot: None,
+            resource_slot: None,
         }
     }
 }

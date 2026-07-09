@@ -32,6 +32,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 - For the experimental `tpe` feature, `TpeResponse::residual_policies` is updated to return only _non-trivial_ residuals and
   `TpeResponse::nontrivial_residual_policies` is deprecated. The previous behavior (iterating all residuals including trivial ones)
   is available via `TpeResponse::policies`.
+- Validating policies with `Validator` against a `Schema` with a large action set now uses substantially less peak memory and avoids redundant per-request work, especially under concurrent load. (#2439)
 
 ## [4.11.2] - 2026-06-22
 
