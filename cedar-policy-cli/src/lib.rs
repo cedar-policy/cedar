@@ -101,7 +101,7 @@ impl Termination for CedarExitCode {
             CedarExitCode::AuthorizeDeny => ExitCode::from(2),
             CedarExitCode::ValidationFailure => ExitCode::from(3),
             #[cfg(any(feature = "partial-eval", feature = "tpe"))]
-            CedarExitCode::Unknown => ExitCode::SUCCESS,
+            CedarExitCode::Unknown => ExitCode::from(4),
         }
     }
 }
