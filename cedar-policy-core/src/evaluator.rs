@@ -20,7 +20,7 @@ use crate::ast::*;
 use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
-#[cfg(feature = "partial-eval")]
+#[cfg(any(feature = "partial-eval", feature = "tpe"))]
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -589,8 +589,8 @@ impl<'e> Evaluator<'e> {
                             Dereference::Residual(r) => Ok(PartialValue::Residual(
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
                             )),
-                            Dereference::NoSuchEntity => self.eval_in(uid1, None, arg2),
-                            Dereference::Data(entity1) => self.eval_in(uid1, Some(entity1), arg2),
+                            Dereference::NoSuchEntity => self.eval_in(uid1, None, &arg2),
+                            Dereference::Data(entity1) => self.eval_in(uid1, Some(entity1), &arg2),
                         }
                     }
                     // contains, which works on Sets
@@ -811,31 +811,22 @@ impl<'e> Evaluator<'e> {
         &self,
         uid1: &EntityUID,
         entity1: Option<&Entity>,
-        arg2: Value,
+        arg2: &Value,
     ) -> Result<PartialValue> {
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
-        let rhs = match arg2.value {
-            ValueKind::Lit(Literal::EntityUID(uid)) => vec![Arc::unwrap_or_clone(uid)],
-            // we assume that iterating the `authoritative` BTreeSet is
-            // approximately the same cost as iterating the `fast` HashSet
-            ValueKind::Set(Set { authoritative, .. }) => authoritative
-                .iter()
-                .map(|val| Ok(val.get_as_entity()?.clone()))
-                .collect::<Result<Vec<EntityUID>>>()?,
+        let rhs = match &arg2.value {
+            ValueKind::Lit(Literal::EntityUID(uid)) => vec![uid.as_ref()],
+            ValueKind::Set(_) => arg2.get_as_entity_set()?,
             _ => {
                 return Err(EvaluationError::type_error(
                     nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
-                    &arg2,
+                    arg2,
                 ))
             }
         };
         for uid2 in rhs {
-            if uid1 == &uid2
-                || entity1
-                    .map(|e1| e1.is_descendant_of(&uid2))
-                    .unwrap_or(false)
-            {
+            if uid1 == uid2 || entity1.map(|e1| e1.is_descendant_of(uid2)).unwrap_or(false) {
                 return Ok(true.into());
             }
         }
@@ -1137,7 +1128,7 @@ impl Value {
     }
 
     /// Convert the `Value` to a Record, or throw a type error if it's not a Record.
-    #[cfg(feature = "partial-eval")]
+    #[cfg(any(feature = "partial-eval", feature = "tpe"))]
     pub(crate) fn get_as_record(&self) -> Result<&Arc<BTreeMap<SmolStr, Value>>> {
         match &self.value {
             ValueKind::Record(rec) => Ok(rec),
@@ -1155,6 +1146,15 @@ impl Value {
                 self,
             )),
         }
+    }
+
+    /// Convert the `Value` to a set of entities, throwing a type error if it's
+    /// not a set, or a type error if any of its elements is not an entity.
+    pub(crate) fn get_as_entity_set(&self) -> Result<Vec<&EntityUID>> {
+        self.get_as_set()?
+            .iter()
+            .map(Value::get_as_entity)
+            .collect()
     }
 }
 

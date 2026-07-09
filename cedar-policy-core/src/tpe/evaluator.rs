@@ -277,89 +277,67 @@ impl Evaluator<'_> {
                             }
                         }
                         BinaryOp::In => {
-                            if let Ok(uid1) = v1.get_as_entity() {
-                                if let Ok(uid2) = v2.get_as_entity() {
-                                    if uid1 == uid2 {
-                                        return mk_concrete(true.into());
-                                    } else if let Some(ancestors) =
-                                        self.entities.get_ancestors(uid1)
-                                    {
-                                        return mk_concrete(ancestors.contains(uid2).into());
-                                    }
+                            let Ok(uid1) = v1.get_as_entity() else {
+                                return mk_error();
+                            };
+                            if let Ok(uid2) = v2.get_as_entity() {
+                                if uid1 == uid2 {
+                                    return mk_concrete(true.into());
+                                } else if let Some(ancestors) = self.entities.get_ancestors(uid1) {
+                                    return mk_concrete(ancestors.contains(uid2).into());
+                                }
+                                binapp_residual(arg1, arg2)
+                            } else if let Ok(uids) = v2.get_as_entity_set() {
+                                let ancestors = self.entities.get_ancestors(uid1);
+                                if uids.contains(&uid1)
+                                    || ancestors.is_some_and(|ancestors| {
+                                        uids.iter().any(|uid2| ancestors.contains(uid2))
+                                    })
+                                {
+                                    // The set contains `uid1`, or `uid1` has known ancestors and the set contains one of these
+                                    mk_concrete(true.into())
+                                } else if !uids.is_empty() && ancestors.is_none() {
+                                    // `uid1` was not in the set and has unknown ancestors, so we can't reach a concrete value
+                                    // unless the set happens to be empty.
                                     binapp_residual(arg1, arg2)
-                                } else if let Ok(s) = v2.get_as_set() {
-                                    if let Ok(uids) = s
-                                        .iter()
-                                        .map(Value::get_as_entity)
-                                        .collect::<std::result::Result<Vec<_>, _>>()
-                                    {
-                                        let ancestors = self.entities.get_ancestors(uid1);
-                                        if uids.contains(&uid1)
-                                            || ancestors.is_some_and(|ancestors| {
-                                                uids.iter().any(|uid2| ancestors.contains(uid2))
-                                            })
-                                        {
-                                            mk_concrete(true.into())
-                                        } else if !uids.is_empty() && ancestors.is_none() {
-                                            binapp_residual(arg1, arg2)
-                                        } else {
-                                            mk_concrete(false.into())
-                                        }
-                                    } else {
-                                        mk_error()
-                                    }
                                 } else {
-                                    mk_error()
+                                    // `uid1` and it's ancestors are not in set
+                                    mk_concrete(false.into())
                                 }
                             } else {
                                 mk_error()
                             }
                         }
                         BinaryOp::GetTag => {
-                            if let Ok(uid) = v1.get_as_entity() {
-                                if let Ok(tag) = v2.get_as_string() {
-                                    if let Some(entity) = self.entities.get(uid) {
-                                        if let Some(tags) = entity.tags() {
-                                            if let Some(v) = tags.get(tag) {
-                                                mk_concrete(v.clone())
-                                            } else {
-                                                mk_error()
-                                            }
-                                        } else {
-                                            binapp_residual(arg1, arg2)
-                                        }
-                                    } else {
-                                        binapp_residual(arg1, arg2)
-                                    }
-                                } else {
-                                    mk_error()
-                                }
-                            } else {
-                                mk_error()
+                            let Ok(uid) = v1.get_as_entity() else {
+                                return mk_error();
+                            };
+                            let Ok(tag) = v2.get_as_string() else {
+                                return mk_error();
+                            };
+                            match self.entities.get_tags(uid) {
+                                Some(tags) => match tags.get(tag) {
+                                    Some(v) => mk_concrete(v.clone()),
+                                    None => mk_error(),
+                                },
+                                None => binapp_residual(arg1, arg2),
                             }
                         }
                         BinaryOp::HasTag => {
-                            if let Ok(uid) = v1.get_as_entity() {
-                                if let Ok(tag) = v2.get_as_string() {
-                                    if let Some(entity) = self.entities.get(uid) {
-                                        if let Some(tags) = entity.tags() {
-                                            mk_concrete(tags.contains_key(tag).into())
-                                        } else {
-                                            binapp_residual(arg1, arg2)
-                                        }
-                                    } else {
-                                        binapp_residual(arg1, arg2)
-                                    }
-                                } else {
-                                    mk_error()
-                                }
-                            } else {
-                                mk_error()
+                            let Ok(uid) = v1.get_as_entity() else {
+                                return mk_error();
+                            };
+                            let Ok(tag) = v2.get_as_string() else {
+                                return mk_error();
+                            };
+                            match self.entities.get_tags(uid) {
+                                Some(tags) => mk_concrete(tags.contains_key(tag).into()),
+                                None => binapp_residual(arg1, arg2),
                             }
                         }
-                        BinaryOp::Contains => match &v1.value {
-                            ValueKind::Set(s) => mk_concrete(s.contains(v2).into()),
-                            _ => mk_error(),
+                        BinaryOp::Contains => match v1.get_as_set() {
+                            Ok(s) => mk_concrete(s.contains(v2).into()),
+                            Err(_) => mk_error(),
                         },
                         BinaryOp::ContainsAll => match (v1.get_as_set(), v2.get_as_set()) {
                             (Ok(arg1_set), Ok(arg2_set)) => {
@@ -409,43 +387,28 @@ impl Evaluator<'_> {
             ResidualKind::GetAttr { expr, attr } => {
                 let expr = self.interpret(expr);
                 match &expr {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Record(r),
-                                ..
-                            },
-                        ..
-                    } => {
-                        if let Some(val) = r.as_ref().get(attr) {
-                            mk_concrete(val.clone())
+                    Residual::Concrete { value, .. } => {
+                        if let Ok(r) = value.get_as_record() {
+                            if let Some(val) = r.as_ref().get(attr) {
+                                mk_concrete(val.clone())
+                            } else {
+                                mk_error()
+                            }
+                        } else if let Ok(uid) = value.get_as_entity() {
+                            match self.entities.get_attrs(uid) {
+                                Some(attrs) => match attrs.get(attr) {
+                                    Some(val) => mk_concrete(val.clone()),
+                                    None => mk_error(),
+                                },
+                                None => mk_residual(ResidualKind::GetAttr {
+                                    expr: Arc::new(expr),
+                                    attr: attr.clone(),
+                                }),
+                            }
                         } else {
                             mk_error()
                         }
                     }
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::EntityUID(uid)),
-                                ..
-                            },
-                        ..
-                    } => {
-                        if let Some(entity) = self.entities.get(uid.as_ref()) {
-                            if let Some(attrs) = entity.attrs() {
-                                if let Some(val) = attrs.get(attr) {
-                                    return mk_concrete(val.clone());
-                                } else {
-                                    return mk_error();
-                                }
-                            }
-                        }
-                        mk_residual(ResidualKind::GetAttr {
-                            expr: Arc::new(expr),
-                            attr: attr.clone(),
-                        })
-                    }
-                    Residual::Concrete { .. } => mk_error(),
                     Residual::Partial { .. } => mk_residual(ResidualKind::GetAttr {
                         expr: Arc::new(expr),
                         attr: attr.clone(),
@@ -456,33 +419,21 @@ impl Evaluator<'_> {
             ResidualKind::HasAttr { expr, attr } => {
                 let expr = self.interpret(expr);
                 match &expr {
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Record(r),
-                                ..
-                            },
-                        ..
-                    } => mk_concrete(r.as_ref().contains_key(attr).into()),
-                    Residual::Concrete {
-                        value:
-                            Value {
-                                value: ValueKind::Lit(ast::Literal::EntityUID(uid)),
-                                ..
-                            },
-                        ..
-                    } => {
-                        if let Some(entity) = self.entities.get(uid.as_ref()) {
-                            if let Some(attrs) = entity.attrs() {
-                                return mk_concrete(attrs.contains_key(attr).into());
+                    Residual::Concrete { value, .. } => {
+                        if let Ok(r) = value.get_as_record() {
+                            mk_concrete(r.as_ref().contains_key(attr).into())
+                        } else if let Ok(uid) = value.get_as_entity() {
+                            match self.entities.get_attrs(uid) {
+                                Some(attrs) => mk_concrete(attrs.contains_key(attr).into()),
+                                None => mk_residual(ResidualKind::HasAttr {
+                                    expr: Arc::new(expr),
+                                    attr: attr.clone(),
+                                }),
                             }
+                        } else {
+                            mk_error()
                         }
-                        mk_residual(ResidualKind::HasAttr {
-                            expr: Arc::new(expr),
-                            attr: attr.clone(),
-                        })
                     }
-                    Residual::Concrete { .. } => mk_error(),
                     Residual::Partial { .. } => mk_residual(ResidualKind::HasAttr {
                         expr: Arc::new(expr),
                         attr: attr.clone(),

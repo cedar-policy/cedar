@@ -478,11 +478,29 @@ impl PartialEntities {
 
     /// Get the ancestors for this `PartialEntity`
     ///
-    /// Returns ancestors if this entity exists and its ancestors are known. TPE treats missing
+    /// Returns ancestors if this entity exists and its ancestors are known. TPE treats a missing
     /// entity and unknown ancestors identically. If you need to distinguish them, get the full
     /// partial entity (if it exists) using [`PartialEntities::get`].
     pub fn get_ancestors(&self, euid: &EntityUID) -> Option<&HashSet<EntityUID>> {
         self.get(euid).and_then(|e| e.ancestors())
+    }
+
+    /// Get the attributes for this `PartialEntity`
+    ///
+    /// Returns attributes if this entity exists and its attributes are known. TPE treats a missing
+    /// entity and unknown attributes identically. If you need to distinguish them, get the full
+    /// partial entity (if it exists) using [`PartialEntities::get`].
+    pub fn get_attrs(&self, euid: &EntityUID) -> Option<&BTreeMap<SmolStr, Value>> {
+        self.get(euid).and_then(|e| e.attrs())
+    }
+
+    /// Get the tags for this `PartialEntity`
+    ///
+    /// Returns tags if this entity exists and its tags are known. TPE treats a missing entity and
+    /// unknown tags identically. If you need to distinguish them, get the full partial entity (if
+    /// it exists) using [`PartialEntities::get`].
+    pub fn get_tags(&self, euid: &EntityUID) -> Option<&BTreeMap<SmolStr, Value>> {
+        self.get(euid).and_then(|e| e.tags())
     }
 
     /// Check if there is a `PartialEntity` with identifier
