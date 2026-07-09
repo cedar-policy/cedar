@@ -691,16 +691,21 @@ impl PolicySet {
     }
 
     /// Validate that the [`PolicySet`] is well-formed, on top of the invariants guaranteed by the
-    /// public methods. This is useful when the [`PolicySet`] has been constructed directly
-    /// from Rust code, without going through the Cedar or JSON syntax parsers.
+    /// public methods. This is useful when the [`PolicySet`] has been constructed without going
+    /// through the Cedar or JSON syntax parsers. In other words, this checks invariants of
+    /// syntactically valid policy sets, but nothing more.
     ///
-    /// Checks the following invariants:
-    /// - each individual [`Template`] is valid,
+    /// More specifically, this checks the following invariants:
+    /// - each individual [`Template`] is valid (see [`Template::try_validate`]),
     /// - every non-static link references a template with at least one slot.
     ///
-    /// This assumes the [`PolicySet`] has been constructed with the public API methods
-    /// (e.g. [`PolicySet::add`]), which ensure the invariants documented for [`self.templates`],
-    /// [`self.links`] and [`self.template_to_links_map`] hold.
+    /// This does NOT check the following, which are instead ensured by construction
+    /// via the public API methods or the conversion [`TryFrom<LiteralPolicySet>`]:
+    /// - slot binding correctness: the `values` match the template's slots,
+    /// - no duplicate policy IDs across templates and links,
+    /// - every link's template exists in `templates`,
+    /// - consistency of `template_to_links_map` with `templates` and `links`,
+    /// - that linked policy IDs don't collide with template IDs.
     pub fn try_validate(self) -> Result<Self, PolicySetValidationError> {
         for (link_id, policy) in &self.links {
             if !policy.is_static() {

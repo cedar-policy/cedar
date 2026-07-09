@@ -306,7 +306,10 @@ impl TryFrom<json_schema::Fragment<RawName>> for ValidatorSchema {
 }
 
 impl ValidatorSchema {
-    /// Construct a new `ValidatorSchema` from a set of `ValidatorEntityType`s and `ValidatorActionId`s
+    /// Construct a new `ValidatorSchema` from a set of `ValidatorEntityType`s and `ValidatorActionId`s.
+    ///
+    /// The caller must ensure that there are no duplicate entity type names or action names
+    /// in the input. Duplicates are silently collapsed (last entry wins).
     pub fn new(
         entity_types: impl IntoIterator<Item = ValidatorEntityType>,
         action_ids: impl IntoIterator<Item = ValidatorActionId>,
@@ -1225,6 +1228,25 @@ impl ValidatorSchema {
     /// This is useful when the schema has been constructed directly from Rust code,
     /// without going through the JSON or Cedar schema syntax, and thus may not have
     /// been checked for well-formedness by the JSON or Cedar schema parsers.
+    ///
+    /// More specifically, this checks the following:
+    /// - all entity types referenced are declared,
+    /// - all extension types in the schema are known extensions,
+    /// - `entity_types` does not declare actions and `action_ids` declares only actions,
+    /// - enum entities do not appear as descendants,
+    /// - RFC 70 shadowing rules are satisfied.
+    /// Additionally, this recomputes the transitive closure computation for entity types
+    /// and actions.
+    ///
+    /// This does NOT check the following, which must be ensured before construction:
+    /// - duplicate entity type or action declarations (duplicates are silently collapsed
+    ///   by [`ValidatorSchema::new`] since it collects into a `HashMap`; the protobuf
+    ///   conversion path detects duplicates before calling `new`),
+    /// - that context types are records
+    /// - common type resolution
+    ///
+    // Note: the invariants that are not checked and mentioned above are guaranteed
+    // by construction through the parsing paths, and the construction from protobuf.
     //
     // Note: The checks here partially overlap with `check_for_undeclared` and
     // the TC computation in `from_schema_fragments`. We cannot reuse those
@@ -1238,10 +1260,10 @@ impl ValidatorSchema {
         self.check_references_wf()?;
         self.check_extension_types_wf()?;
         self.check_decls_wf()?;
-        // Recompute transitive closure for entity types and actions,
-        // which also detects cycles in the action hierarchy.
+        // Recompute transitive closure for entity types and actions
         compute_tc(&mut self.entity_types, false)
             .map_err(|e| EntityTypeTransitiveClosureError::from(Box::new(e)))?;
+        // Also checks that the action hierarchy does not contain cycles.
         compute_tc(&mut self.action_ids, true)?;
         // Check hierarchy well-formedness AFTER transitive closure so that
         // transitive descendants are included in the enum-in-hierarchy check.

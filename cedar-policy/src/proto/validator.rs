@@ -19,14 +19,14 @@
 use super::ast::ProtobufConversionError;
 use super::models;
 use cedar_policy_core::ast::{self, Eid};
-use cedar_policy_core::validator::types;
+use cedar_policy_core::validator::{self, types};
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
-    fn from(v: &cedar_policy_core::validator::ValidatorSchema) -> Self {
+impl From<&validator::ValidatorSchema> for models::Schema {
+    fn from(v: &validator::ValidatorSchema) -> Self {
         Self {
             entity_decls: v.entity_types().map(models::EntityDecl::from).collect(),
             action_decls: v.action_ids().map(models::ActionDecl::from).collect(),
@@ -34,51 +34,64 @@ impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
     }
 }
 
-impl TryFrom<models::Schema> for cedar_policy_core::validator::ValidatorSchema {
+impl TryFrom<models::Schema> for validator::ValidatorSchema {
     type Error = ProtobufConversionError;
     fn try_from(v: models::Schema) -> Result<Self, Self::Error> {
-        Ok(Self::new(
-            v.entity_decls
-                .into_iter()
-                .map(cedar_policy_core::validator::ValidatorEntityType::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-            v.action_decls
-                .into_iter()
-                .map(cedar_policy_core::validator::ValidatorActionId::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-        ))
+        let mut entity_type_names: HashSet<ast::EntityType> = HashSet::new();
+        let entity_types = v
+            .entity_decls
+            .into_iter()
+            .map(|decl| {
+                let ety = validator::ValidatorEntityType::try_from(decl)?;
+                if !entity_type_names.insert(ety.name().clone()) {
+                    return Err(ProtobufConversionError::InvalidValue(format!(
+                        "duplicate entity type `{}` in `entity_decls`",
+                        ety.name()
+                    )));
+                }
+                Ok(ety)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut action_names: HashSet<ast::EntityUID> = HashSet::new();
+        let action_ids = v
+            .action_decls
+            .into_iter()
+            .map(|decl| {
+                let action = validator::ValidatorActionId::try_from(decl)?;
+                if !action_names.insert(action.name().clone()) {
+                    return Err(ProtobufConversionError::InvalidValue(format!(
+                        "duplicate action `{}` in `action_decls`",
+                        action.name()
+                    )));
+                }
+                Ok(action)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Self::new(entity_types, action_ids))
     }
 }
 
-impl From<&cedar_policy_core::validator::ValidationMode> for models::ValidationMode {
-    fn from(v: &cedar_policy_core::validator::ValidationMode) -> Self {
+impl From<&validator::ValidationMode> for models::ValidationMode {
+    fn from(v: &validator::ValidationMode) -> Self {
         match v {
-            cedar_policy_core::validator::ValidationMode::Strict => models::ValidationMode::Strict,
-            cedar_policy_core::validator::ValidationMode::Permissive => {
-                models::ValidationMode::Permissive
-            }
+            validator::ValidationMode::Strict => models::ValidationMode::Strict,
+            validator::ValidationMode::Permissive => models::ValidationMode::Permissive,
             #[cfg(feature = "partial-validate")]
-            cedar_policy_core::validator::ValidationMode::Partial => {
-                models::ValidationMode::Partial
-            }
+            validator::ValidationMode::Partial => models::ValidationMode::Partial,
         }
     }
 }
 
-impl TryFrom<models::ValidationMode> for cedar_policy_core::validator::ValidationMode {
+impl TryFrom<models::ValidationMode> for validator::ValidationMode {
     type Error = ProtobufConversionError;
     fn try_from(v: models::ValidationMode) -> Result<Self, Self::Error> {
         match v {
-            models::ValidationMode::Strict => {
-                Ok(cedar_policy_core::validator::ValidationMode::Strict)
-            }
-            models::ValidationMode::Permissive => {
-                Ok(cedar_policy_core::validator::ValidationMode::Permissive)
-            }
+            models::ValidationMode::Strict => Ok(validator::ValidationMode::Strict),
+            models::ValidationMode::Permissive => Ok(validator::ValidationMode::Permissive),
             #[cfg(feature = "partial-validate")]
-            models::ValidationMode::Partial => {
-                Ok(cedar_policy_core::validator::ValidationMode::Partial)
-            }
+            models::ValidationMode::Partial => Ok(validator::ValidationMode::Partial),
             #[cfg(not(feature = "partial-validate"))]
             models::ValidationMode::Partial => Err(ProtobufConversionError::missing(
                 "partial-validate feature (required for partial validation mode)",
@@ -88,9 +101,9 @@ impl TryFrom<models::ValidationMode> for cedar_policy_core::validator::Validatio
 }
 
 #[expect(clippy::fallible_impl_from, reason = "experimental feature")]
-impl From<&cedar_policy_core::validator::ValidatorActionId> for models::ActionDecl {
+impl From<&validator::ValidatorActionId> for models::ActionDecl {
     #[expect(clippy::panic, reason = "experimental feature")]
-    fn from(v: &cedar_policy_core::validator::ValidatorActionId) -> Self {
+    fn from(v: &validator::ValidatorActionId) -> Self {
         let ctx_attrs = match v.context() {
             types::Type::Record {
                 attrs,
@@ -108,7 +121,7 @@ impl From<&cedar_policy_core::validator::ValidatorActionId> for models::ActionDe
     }
 }
 
-impl TryFrom<models::ActionDecl> for cedar_policy_core::validator::ValidatorActionId {
+impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
     type Error = ProtobufConversionError;
     fn try_from(v: models::ActionDecl) -> Result<Self, Self::Error> {
         Ok(Self::new(
@@ -137,21 +150,21 @@ impl TryFrom<models::ActionDecl> for cedar_policy_core::validator::ValidatorActi
     }
 }
 
-impl From<&cedar_policy_core::validator::ValidatorEntityType> for models::EntityDecl {
-    fn from(v: &cedar_policy_core::validator::ValidatorEntityType) -> Self {
+impl From<&validator::ValidatorEntityType> for models::EntityDecl {
+    fn from(v: &validator::ValidatorEntityType) -> Self {
         let name = Some(models::Name::from(v.name()));
         let descendants = v.descendants.iter().map(models::Name::from).collect();
         let attributes = attributes_to_model(v.attributes());
         let tags = v.tag_type().map(models::Type::from);
         match &v.kind {
-            cedar_policy_core::validator::ValidatorEntityTypeKind::Standard(_) => Self {
+            validator::ValidatorEntityTypeKind::Standard(_) => Self {
                 name,
                 descendants,
                 attributes,
                 tags,
                 enum_choices: vec![],
             },
-            cedar_policy_core::validator::ValidatorEntityTypeKind::Enum(enum_choices) => Self {
+            validator::ValidatorEntityTypeKind::Enum(enum_choices) => Self {
                 name,
                 descendants,
                 attributes,
@@ -165,7 +178,7 @@ impl From<&cedar_policy_core::validator::ValidatorEntityType> for models::Entity
     }
 }
 
-impl TryFrom<models::EntityDecl> for cedar_policy_core::validator::ValidatorEntityType {
+impl TryFrom<models::EntityDecl> for validator::ValidatorEntityType {
     type Error = ProtobufConversionError;
     fn try_from(v: models::EntityDecl) -> Result<Self, Self::Error> {
         let name = ast::EntityType::try_from(
@@ -332,11 +345,11 @@ mod test {
 
     use super::models;
     use super::ProtobufConversionError;
-    use cedar_policy_core::validator::types::{
-        AttributeType, BoolType, EntityKind, EntityLUB, OpenTag, Type,
+    use cedar_policy_core::validator::{
+        self,
+        types::{AttributeType, BoolType, EntityKind, EntityLUB, OpenTag, Type},
+        SchemaError, ValidatorSchema,
     };
-    use cedar_policy_core::validator::SchemaError;
-    use cedar_policy_core::validator::ValidatorSchema;
     use cool_asserts::assert_matches;
     use similar_asserts::assert_eq;
 
@@ -495,7 +508,7 @@ mod test {
 
     #[test]
     fn validation_mode_roundtrip() {
-        use cedar_policy_core::validator::ValidationMode;
+        use validator::ValidationMode;
         assert_eq!(
             ValidationMode::Strict,
             ValidationMode::try_from(models::ValidationMode::from(&ValidationMode::Strict))
@@ -518,7 +531,7 @@ mod test {
             context: Default::default(),
         };
         assert_matches!(
-            cedar_policy_core::validator::ValidatorActionId::try_from(bad),
+            validator::ValidatorActionId::try_from(bad),
             Err(ProtobufConversionError::MissingField(f)) if f == "name"
         );
     }
@@ -533,7 +546,7 @@ mod test {
             enum_choices: vec![],
         };
         assert_matches!(
-            cedar_policy_core::validator::ValidatorEntityType::try_from(bad),
+            validator::ValidatorEntityType::try_from(bad),
             Err(ProtobufConversionError::MissingField(f)) if f == "name"
         );
     }
@@ -554,7 +567,7 @@ mod test {
             is_required: true,
         };
         assert_matches!(
-            cedar_policy_core::validator::types::AttributeType::try_from(bad),
+            validator::types::AttributeType::try_from(bad),
             Err(ProtobufConversionError::MissingField(f)) if f == "attr_type"
         );
     }
@@ -581,7 +594,7 @@ mod test {
             enum_choices: vec!["x".to_string()],
         };
         assert_matches!(
-            cedar_policy_core::validator::ValidatorEntityType::try_from(bad),
+            validator::ValidatorEntityType::try_from(bad),
             Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("should not have attributes")
         );
     }
@@ -601,7 +614,7 @@ mod test {
             enum_choices: vec!["x".to_string()],
         };
         assert_matches!(
-            cedar_policy_core::validator::ValidatorEntityType::try_from(bad),
+            validator::ValidatorEntityType::try_from(bad),
             Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("should not have tags")
         );
     }
@@ -830,6 +843,45 @@ mod test {
         assert_matches!(
             validator_try_from_ok_return_validate(bad),
             Err(SchemaError::InvalidActionType(_))
+        );
+    }
+
+    #[test]
+    fn schema_try_from_duplicate_entity_type() {
+        let bad = models::Schema {
+            entity_decls: vec![simple_entity_decl("A"), simple_entity_decl("A")],
+            action_decls: vec![],
+        };
+        assert_matches!(
+            ValidatorSchema::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("duplicate entity type")
+        );
+    }
+
+    #[test]
+    fn schema_try_from_duplicate_action() {
+        let bad = models::Schema {
+            entity_decls: vec![simple_entity_decl("A")],
+            action_decls: vec![
+                models::ActionDecl {
+                    name: Some(action_uid("act")),
+                    principal_types: vec![name("A")],
+                    resource_types: vec![name("A")],
+                    descendants: vec![],
+                    context: Default::default(),
+                },
+                models::ActionDecl {
+                    name: Some(action_uid("act")),
+                    principal_types: vec![name("A")],
+                    resource_types: vec![],
+                    descendants: vec![],
+                    context: Default::default(),
+                },
+            ],
+        };
+        assert_matches!(
+            ValidatorSchema::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("duplicate action")
         );
     }
 }
