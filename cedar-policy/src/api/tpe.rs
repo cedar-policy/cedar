@@ -266,11 +266,11 @@ pub struct ActionQueryRequest {
 impl ActionQueryRequest {
     /// Construct an [`ActionQueryRequest`].
     ///
-    /// Unlike [`PartialRequest::new`] this constructor cannot validate the
+    /// Unlike [`PartialRequest::new`], this constructor cannot validate the
     /// request because request validation requires knowing the specific action
     /// being authorized. Further, [`PolicySet::query_action`] cannot report
     /// request validation errors because it is expected that the
-    /// `principal`,`resource`, and `context` will be invalid for many of the
+    /// `principal`, `resource`, and `context` will be invalid for many of the
     /// actions in the schema.
     pub fn new(
         principal: PartialEntityUid,
