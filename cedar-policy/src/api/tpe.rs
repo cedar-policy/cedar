@@ -264,7 +264,14 @@ pub struct ActionQueryRequest {
 }
 
 impl ActionQueryRequest {
-    /// Construct a valid [`ActionQueryRequest`] according to a [`Schema`]
+    /// Construct an [`ActionQueryRequest`].
+    ///
+    /// Unlike [`PartialRequest::new`], this constructor cannot validate the
+    /// request because request validation requires knowing the specific action
+    /// being authorized. Further, [`PolicySet::query_action`] cannot report
+    /// request validation errors because it is expected that the
+    /// `principal`, `resource`, and `context` will be invalid for many of the
+    /// actions in the schema.
     pub fn new(
         principal: PartialEntityUid,
         resource: PartialEntityUid,
