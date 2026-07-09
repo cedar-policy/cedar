@@ -264,7 +264,7 @@ pub struct ActionQueryRequest {
 }
 
 impl ActionQueryRequest {
-    /// Construct an [`ActionQueryRequest`]
+    /// Construct an [`ActionQueryRequest`].
     ///
     /// Unlike [`PartialRequest::new`] this constructor cannot validate the
     /// request because request validation requires knowing the specific action
