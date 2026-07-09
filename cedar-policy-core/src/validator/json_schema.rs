@@ -438,7 +438,7 @@ pub struct NamespaceDefinition<N> {
 
     #[cfg(feature = "extended-schema")]
     #[serde(skip)]
-    #[educe(Eq(ignore))]
+    #[educe(PartialEq(ignore))]
     pub loc: Option<Loc>,
 }
 
@@ -1341,7 +1341,7 @@ impl From<EntityUID> for ActionEntityUID<Name> {
 /// this [`Type`], including recursively.
 /// See notes on [`Fragment`].
 #[derive(Educe, Debug, Clone, Serialize)]
-#[educe(PartialEq(bound(N: PartialEq)), Eq, PartialOrd, Ord(bound(N: Ord)))]
+#[educe(PartialEq(bound(N: PartialEq)), Eq(bound(N: Eq)), PartialOrd(bound(N: PartialOrd)), Ord(bound(N: Ord)))]
 // This enum is `untagged` with these variants as a workaround to a serde
 // limitation. It is not possible to have the known variants on one enum, and
 // then, have catch-all variant for any unrecognized tag in the same enum that
@@ -2154,7 +2154,7 @@ impl RecordType<ConditionalName> {
 /// this [`TypeVariant`], including recursively.
 /// See notes on [`Fragment`].
 #[derive(Educe, Debug, Clone, Serialize, Deserialize)]
-#[educe(PartialEq(bound(N: PartialEq)), Eq, PartialOrd, Ord(bound(N: Ord)))]
+#[educe(PartialEq(bound(N: PartialEq)), Eq(bound(N: Eq)), PartialOrd(bound(N: PartialOrd)), Ord(bound(N: Ord)))]
 #[serde(tag = "type")]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -2448,7 +2448,7 @@ pub struct TypeOfAttribute<N> {
 
     /// Source location - if available
     #[cfg(feature = "extended-schema")]
-    #[educe(Eq(ignore))]
+    #[educe(PartialEq(ignore))]
     #[serde(skip)]
     pub loc: Option<Loc>,
 }
