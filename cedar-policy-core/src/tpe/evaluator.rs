@@ -287,7 +287,7 @@ impl Evaluator<'_> {
                                     return mk_concrete(ancestors.contains(uid2).into());
                                 }
                                 binapp_residual(arg1, arg2)
-                            } else if let Ok(uids) = v2.as_entity_set() {
+                            } else if let Ok(uids) = v2.get_as_entity_set() {
                                 let ancestors = self.entities.get_ancestors(uid1);
                                 if uids.contains(&uid1)
                                     || ancestors.is_some_and(|ancestors| {

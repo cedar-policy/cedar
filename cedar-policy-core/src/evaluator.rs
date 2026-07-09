@@ -817,7 +817,7 @@ impl<'e> Evaluator<'e> {
         // check if `uid1` is a descendant of
         let rhs = match &arg2.value {
             ValueKind::Lit(Literal::EntityUID(uid)) => vec![uid.as_ref()],
-            ValueKind::Set(_) => arg2.as_entity_set()?,
+            ValueKind::Set(_) => arg2.get_as_entity_set()?,
             _ => {
                 return Err(EvaluationError::type_error(
                     nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
@@ -1150,7 +1150,7 @@ impl Value {
 
     /// Convert the `Value` to a set of entities, throwing a type error if it's
     /// not a set, or a type error if any of its elements is not an entity.
-    pub(crate) fn as_entity_set(&self) -> Result<Vec<&EntityUID>> {
+    pub(crate) fn get_as_entity_set(&self) -> Result<Vec<&EntityUID>> {
         self.get_as_set()?
             .iter()
             .map(Value::get_as_entity)
