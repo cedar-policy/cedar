@@ -201,11 +201,11 @@ pub struct LocatedCommonType {
     pub name: SmolStr,
 
     /// Common type name source location if available
-    #[educe(Eq(ignore))]
+    #[educe(PartialEq(ignore))]
     pub name_loc: Option<Loc>,
 
     /// Common type definition source location if available
-    #[educe(Eq(ignore))]
+    #[educe(PartialEq(ignore))]
     pub type_loc: Option<Loc>,
 }
 
@@ -233,11 +233,11 @@ pub struct LocatedNamespace {
     /// Name of namespace
     pub name: SmolStr,
     /// Namespace name source location if available
-    #[educe(Eq(ignore))]
+    #[educe(PartialEq(ignore))]
     pub name_loc: Option<Loc>,
 
     /// Namespace definition source location if available
-    #[educe(Eq(ignore))]
+    #[educe(PartialEq(ignore))]
     pub def_loc: Option<Loc>,
 }
 

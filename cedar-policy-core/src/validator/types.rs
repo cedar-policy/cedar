@@ -1223,7 +1223,7 @@ pub struct AttributeType {
     pub is_required: bool,
     ///  Source location - if available
     #[cfg(feature = "extended-schema")]
-    #[educe(Eq(ignore))]
+    #[educe(PartialEq(ignore))]
     pub loc: Option<Loc>,
 }
 
