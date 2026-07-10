@@ -100,7 +100,7 @@ impl RequestArgs {
                         None
                     },
                 )
-                .map_err(|e| miette!("{e}"))
+                .map_err(Into::into)
             }
             None => {
                 let principal = self
@@ -130,16 +130,18 @@ impl RequestArgs {
                     .transpose()?;
                 let context: Context = match &self.context_json_file {
                     None => Context::empty(),
-                    Some(jsonfile) => match std::fs::OpenOptions::new().read(true).open(jsonfile) {
-                        Ok(f) => Context::from_json_file(
-                            f,
-                            schema.and_then(|s| Some((s, action.as_ref()?))),
-                        )
-                        .wrap_err_with(|| format!("failed to create a context from {jsonfile}"))?,
-                        Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
-                            format!("error while loading context from {jsonfile}")
-                        })?,
-                    },
+                    Some(jsonfile) => {
+                        let f = std::fs::OpenOptions::new()
+                            .read(true)
+                            .open(jsonfile)
+                            .into_diagnostic()
+                            .wrap_err_with(|| {
+                                format!("error while loading context from {jsonfile}")
+                            })?;
+                        Context::from_json_file(f, schema.zip(action.as_ref())).wrap_err_with(
+                            || format!("failed to create a context from {jsonfile}"),
+                        )?
+                    }
                 };
                 match (principal, action, resource) {
                     (Some(principal), Some(action), Some(resource)) => Request::new(
@@ -153,7 +155,7 @@ impl RequestArgs {
                             None
                         },
                     )
-                    .map_err(|e| miette!("{e}")),
+                    .map_err(Into::into),
                     _ => Err(missing_req_var()),
                 }
             }

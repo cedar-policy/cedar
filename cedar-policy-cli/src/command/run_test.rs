@@ -299,24 +299,23 @@ impl<'de, 'a> DeserializeSeed<'de> for CheckedTestCaseSeed<'a> {
 /// Load partially parsed tests from a JSON file
 /// (as JSON values first without parsing to TestCase)
 fn load_partial_tests(tests_filename: impl AsRef<Path>) -> Result<Vec<serde_json::Value>> {
-    match std::fs::OpenOptions::new()
+    let f = std::fs::OpenOptions::new()
         .read(true)
         .open(tests_filename.as_ref())
-    {
-        Ok(f) => {
-            let reader = BufReader::new(f);
-            serde_json::from_reader(reader).map_err(|e| {
-                miette!(
-                    "failed to parse tests from file {}: {e}",
-                    tests_filename.as_ref().display()
-                )
-            })
-        }
-        Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
+        .into_diagnostic()
+        .wrap_err_with(|| {
             format!(
                 "failed to open test file {}",
                 tests_filename.as_ref().display()
             )
-        }),
-    }
+        })?;
+    let reader = BufReader::new(f);
+    serde_json::from_reader(reader)
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            miette!(
+                "failed to parse tests from file {}",
+                tests_filename.as_ref().display()
+            )
+        })
 }

@@ -118,14 +118,14 @@ pub(crate) fn read_cedar_policy_set(
     let context = "policy set";
     let ps_str = read_from_file_or_stdin(filename.as_ref(), context)?;
     let ps = PolicySet::from_str(&ps_str)
+        .wrap_err_with(|| format!("failed to parse {context}"))
         .map_err(|err| {
             let name = filename.map_or_else(
                 || "<stdin>".to_owned(),
                 |n| n.as_ref().display().to_string(),
             );
-            Report::new(err).with_source_code(NamedSource::new(name, ps_str))
-        })
-        .wrap_err_with(|| format!("failed to parse {context}"))?;
+            err.with_source_code(NamedSource::new(name, ps_str))
+        })?;
     rename_from_id_annotation(&ps)
 }
 
@@ -136,7 +136,9 @@ pub(crate) fn read_json_policy_set(
 ) -> Result<PolicySet> {
     let context = "JSON policy";
     let json_source = read_from_file_or_stdin(filename.as_ref(), context)?;
-    let json = serde_json::from_str::<serde_json::Value>(&json_source).into_diagnostic()?;
+    let json = serde_json::from_str::<serde_json::Value>(&json_source)
+        .into_diagnostic()
+        .wrap_err_with(|| format!("failed to parse {context}"))?;
     let policy_type = get_json_policy_type(&json)?;
 
     let add_json_source = |report: Report| {
@@ -151,20 +153,18 @@ pub(crate) fn read_json_policy_set(
         JsonPolicyType::SinglePolicy => match Policy::from_json(None, json.clone()) {
             Ok(policy) => PolicySet::from_policies([policy])
                 .wrap_err_with(|| format!("failed to create policy set from {context}")),
-            Err(_) => match Template::from_json(None, json)
-                .map_err(|err| add_json_source(Report::new(err)))
-            {
-                Ok(template) => {
-                    let mut ps = PolicySet::new();
-                    ps.add_template(template)?;
-                    Ok(ps)
-                }
-                Err(err) => Err(err).wrap_err_with(|| format!("failed to parse {context}")),
-            },
+            Err(_) => {
+                let template = Template::from_json(None, json)
+                    .wrap_err_with(|| format!("failed to parse {context}"))
+                    .map_err(|err| add_json_source(err))?;
+                let mut ps = PolicySet::new();
+                ps.add_template(template)?;
+                Ok(ps)
+            }
         },
         JsonPolicyType::PolicySet => PolicySet::from_json_value(json)
-            .map_err(|err| add_json_source(Report::new(err)))
-            .wrap_err_with(|| format!("failed to create policy set from {context}")),
+            .wrap_err_with(|| format!("failed to create policy set from {context}"))
+            .map_err(|err| add_json_source(err)),
     }
 }
 
@@ -250,7 +250,10 @@ mod tests {
         f.write_all(b"not json at all").unwrap();
         let err = read_json_policy_set(Some(f.path())).unwrap_err();
         insta::with_settings!({filters => vec![TEMPFILE_FILTER]}, {
-            insta::assert_snapshot!(render_err(&err), @"  × expected ident at line 1 column 2");
+            insta::assert_snapshot!(render_err(&err), @"
+            × failed to parse JSON policy
+            ╰─▶ expected ident at line 1 column 2
+            ");
         });
     }
 

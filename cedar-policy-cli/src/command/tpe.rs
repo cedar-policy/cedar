@@ -139,20 +139,32 @@ impl TpeRequestArgs {
                     .transpose()?,
             },
         };
-        let action: EntityUid = qjson.action.parse()?;
+        let action: EntityUid = qjson
+            .action
+            .parse()
+            .wrap_err("failed to parse `action` as an entity UID")?;
         Ok(PartialRequest::new(
             PartialEntityUid::new(
-                qjson.principal_type.parse()?,
+                qjson
+                    .principal_type
+                    .parse()
+                    .wrap_err("failed to parse `principal_type` as an entity type name")?,
                 qjson.principal_eid.as_ref().map(EntityId::new),
             ),
             action.clone(),
             PartialEntityUid::new(
-                qjson.resource_type.parse()?,
+                qjson
+                    .resource_type
+                    .parse()
+                    .wrap_err("failed to parse `resource_type` as an entity type name")?,
                 qjson.resource_eid.as_ref().map(EntityId::new),
             ),
             qjson
                 .context
-                .map(|val| Context::from_json_value(val, Some((schema, &action))))
+                .map(|val| {
+                    Context::from_json_value(val, Some((schema, &action)))
+                        .wrap_err("failed to parse request context")
+                })
                 .transpose()?,
             schema,
         )?)
@@ -242,25 +254,128 @@ fn load_partial_entities(
     entities_filename: impl AsRef<Path>,
     schema: &Schema,
 ) -> Result<PartialEntities> {
-    match std::fs::OpenOptions::new()
+    let f = std::fs::OpenOptions::new()
         .read(true)
         .open(entities_filename.as_ref())
-    {
-        Ok(f) => {
-            PartialEntities::from_json_value(serde_json::from_reader(f).into_diagnostic()?, schema)
-                .map_err(Report::new)
-                .wrap_err_with(|| {
-                    format!(
-                        "failed to parse entities from file {}",
-                        entities_filename.as_ref().display()
-                    )
-                })
-        }
-        Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
+        .into_diagnostic()
+        .wrap_err_with(|| {
             format!(
                 "failed to open entities file {}",
                 entities_filename.as_ref().display()
             )
-        }),
+        })?;
+    let json = serde_json::from_reader(f)
+        .into_diagnostic()
+        .wrap_err(format!(
+            "failed to parse entities as JSON value from file {}",
+            entities_filename.as_ref().display()
+        ))?;
+    PartialEntities::from_json_value(json, schema).wrap_err_with(|| {
+        format!(
+            "failed to parse entities from file {}",
+            entities_filename.as_ref().display()
+        )
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::test_utils::{render_err, TEMPFILE_FILTER};
+    use std::io::Write;
+
+    fn test_schema() -> Schema {
+        Schema::from_cedarschema_str(
+            r#"entity User; entity Photo; action view appliesTo { principal: User, resource: Photo };"#,
+        )
+        .unwrap()
+        .0
+    }
+
+    fn mk_tpe_request(
+        principal_type: Option<&str>,
+        action: Option<&str>,
+        resource_type: Option<&str>,
+        request_json_file: Option<&str>,
+    ) -> TpeRequestArgs {
+        TpeRequestArgs {
+            principal_type: principal_type.map(String::from),
+            principal_eid: Some("alice".to_string()),
+            action: action.map(String::from),
+            resource_type: resource_type.map(String::from),
+            resource_eid: Some("pic".to_string()),
+            context_json_file: None,
+            request_json_file: request_json_file.map(String::from),
+        }
+    }
+
+    #[test]
+    fn tpe_request_bad_action() {
+        let args = mk_tpe_request(Some("User"), Some("not_an_action"), Some("Photo"), None);
+        let err = args.get_request(&test_schema()).unwrap_err();
+        insta::assert_snapshot!(render_err(&err), @"
+         × failed to parse `action` as an entity UID
+         ╰─▶ unexpected end of input
+          ╭────
+        1 │ not_an_action
+          ╰────
+        ");
+    }
+
+    #[test]
+    fn tpe_request_bad_principal_type() {
+        let args = mk_tpe_request(
+            Some("not a type!"),
+            Some(r#"Action::"view""#),
+            Some("Photo"),
+            None,
+        );
+        let err = args.get_request(&test_schema()).unwrap_err();
+        insta::assert_snapshot!(render_err(&err), @"
+         × failed to parse `principal_type` as an entity type name
+         ╰─▶ unexpected token `a`
+          ╭────
+        1 │ not a type!
+          ·     ┬
+          ·     ╰── expected `::`
+          ╰────
+        ");
+    }
+
+    #[test]
+    fn tpe_request_bad_resource_type() {
+        let args = mk_tpe_request(
+            Some("User"),
+            Some(r#"Action::"view""#),
+            Some("not a type!"),
+            None,
+        );
+        let err = args.get_request(&test_schema()).unwrap_err();
+        insta::assert_snapshot!(render_err(&err), @"
+         × failed to parse `resource_type` as an entity type name
+         ╰─▶ unexpected token `a`
+          ╭────
+        1 │ not a type!
+          ·     ┬
+          ·     ╰── expected `::`
+          ╰────
+        ");
+    }
+
+    #[test]
+    fn tpe_request_bad_context() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(
+            br#"{"principal_type":"User","principal_eid":"alice","action":"Action::\"view\"","resource_type":"Photo","resource_eid":"pic","context":123}"#,
+        )
+        .unwrap();
+        let args = mk_tpe_request(None, None, None, Some(f.path().to_str().unwrap()));
+        let err = args.get_request(&test_schema()).unwrap_err();
+        insta::with_settings!({filters => vec![TEMPFILE_FILTER]}, {
+            insta::assert_snapshot!(render_err(&err), @"
+            × failed to parse request context
+            ╰─▶ while parsing context, type mismatch: value was expected to have type {  }, but it actually has type long: `123`
+            ");
+        });
     }
 }
