@@ -45,9 +45,10 @@ pub enum Error {
     #[error("solver returned `unknown`")]
     SolverUnknown,
     /// Policy is not well-typed.
-    #[error("input policy (set) is not well typed with respect to the schema {errs:?}")]
+    #[error("input policy (set) is not well typed with respect to the schema")]
     PolicyNotWellTyped {
         /// Errors from the policy validator.
+        #[related]
         errs: Vec<ValidationError>,
     },
     /// Failed to decode the SMT model.
