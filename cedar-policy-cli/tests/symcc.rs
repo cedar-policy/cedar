@@ -1098,3 +1098,44 @@ fn test_equivalent_does_not_hold_no_counterexample() {
         .stdout(predicates::str::contains("DOES NOT HOLD"))
         .stdout(predicates::str::contains("Counterexample found").not());
 }
+
+#[test]
+fn validation_error_pretty_print() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp("permit(principal, action, resource) when { resource.nonexistent };");
+
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("never-errors")
+        .arg("--policies")
+        .arg(policy.path())
+        .output()
+        .expect("failed to run cedar");
+
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(String::from_utf8_lossy(&output.stderr), @"
+      × Analysis failed
+      ├─▶ Failed to compile policy
+      ╰─▶ input policy (set) is not well typed with respect to the schema
+
+    Error: 
+      × for policy `policy0`, attribute `nonexistent` on entity type `Thing` not
+      │ found
+       ╭────
+     1 │ permit(principal, action, resource) when { resource.nonexistent };
+       ·                                            ────────────────────
+       ╰────
+      help: did you mean `description`?
+    ");
+}

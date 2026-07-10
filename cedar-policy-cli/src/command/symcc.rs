@@ -15,10 +15,12 @@
  */
 
 use cedar_policy::*;
+use cedar_policy_symcc::solver::LocalSolver;
 use clap::{Args, Subcommand};
 use itertools::Itertools;
-use miette::{miette, Result};
+use miette::{miette, Result, WrapErr};
 use std::path::PathBuf;
+use tokio::process::Command;
 
 use crate::CedarExitCode;
 use crate::{read_cedar_policy_set, read_json_policy_set, PoliciesArgs};
@@ -196,28 +198,25 @@ pub fn symcc(args: &SymccArgs) -> CedarExitCode {
         match symcc_async(args).await {
             Ok(()) => CedarExitCode::Success,
             Err(e) => {
-                eprintln!("Analysis failed: {e:?}");
+                eprintln!("{:?}", e.wrap_err("Analysis failed"));
                 CedarExitCode::Failure
             }
         }
     })
 }
 
-fn initialize_solver(
-    cvc5_path: Option<&PathBuf>,
-) -> Result<cedar_policy_symcc::solver::LocalSolver> {
+fn initialize_solver(cvc5_path: Option<&PathBuf>) -> Result<LocalSolver> {
     match cvc5_path {
-        Some(p) => cedar_policy_symcc::solver::LocalSolver::from_command(
-            tokio::process::Command::new(p).args(["--lang", "smt", "--tlimit=60000"]),
-        )
-        .map_err(|e| {
-            miette!(
-                "CVC5 solver not found or failed to start at '{}': {e}",
-                p.display()
-            )
-        }),
-        None => cedar_policy_symcc::solver::LocalSolver::cvc5()
-            .map_err(|e| miette!("CVC5 solver not found or failed to start: {e}")),
+        Some(p) => {
+            LocalSolver::from_command(Command::new(p).args(["--lang", "smt", "--tlimit=60000"]))
+                .wrap_err_with(|| {
+                    format!(
+                        "CVC5 solver not found or failed to start at '{}'",
+                        p.display()
+                    )
+                })
+        }
+        None => LocalSolver::cvc5().wrap_err("CVC5 solver not found or failed to start"),
     }
 }
 
@@ -330,15 +329,15 @@ fn build_request_env(args: &SymccArgs) -> Result<RequestEnv> {
     let principal_type: EntityTypeName = args
         .principal_type
         .parse()
-        .map_err(|e| miette!("Invalid --principal-type '{}': {e}", args.principal_type))?;
+        .wrap_err_with(|| format!("Invalid --principal-type '{}'", args.principal_type))?;
     let action: EntityUid = args
         .action
         .parse()
-        .map_err(|e| miette!("Invalid --action '{}': {e}", args.action))?;
+        .wrap_err_with(|| format!("Invalid --action '{}'", args.action))?;
     let resource_type: EntityTypeName = args
         .resource_type
         .parse()
-        .map_err(|e| miette!("Invalid --resource-type '{}': {e}", args.resource_type))?;
+        .wrap_err_with(|| format!("Invalid --resource-type '{}'", args.resource_type))?;
     Ok(RequestEnv::new(principal_type, action, resource_type))
 }
 
@@ -346,8 +345,8 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
     use cedar_policy_symcc::{CedarSymCompiler, CompiledPolicy, CompiledPolicySet};
 
     let solver = initialize_solver(args.cvc5_path.as_ref())?;
-    let mut compiler = CedarSymCompiler::new(solver)
-        .map_err(|e| miette!("Failed to initialize SymCC compiler: {e}"))?;
+    let mut compiler =
+        CedarSymCompiler::new(solver).wrap_err("Failed to initialize SymCC compiler")?;
     let req_env = build_request_env(args)?;
 
     match &args.command {
@@ -355,54 +354,54 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         SymccCommands::NeverErrors(cmd_args) => {
             let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
             let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy: {e}"))?;
+                .wrap_err("Failed to compile policy")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_never_errors_with_counterexample_opt(&compiled)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_counterexample_result(result, "Policy never errors", args.verbose);
             } else {
                 let holds = compiler
                     .check_never_errors_opt(&compiled)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_bool_result(holds, "Policy never errors");
             }
         }
         SymccCommands::AlwaysMatches(cmd_args) => {
             let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
             let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy: {e}"))?;
+                .wrap_err("Failed to compile policy")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_always_matches_with_counterexample_opt(&compiled)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_counterexample_result(result, "Policy always matches", args.verbose);
             } else {
                 let holds = compiler
                     .check_always_matches_opt(&compiled)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_bool_result(holds, "Policy always matches");
             }
         }
         SymccCommands::NeverMatches(cmd_args) => {
             let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
             let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy: {e}"))?;
+                .wrap_err("Failed to compile policy")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_never_matches_with_counterexample_opt(&compiled)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_counterexample_result(result, "Policy never matches", args.verbose);
             } else {
                 let holds = compiler
                     .check_never_matches_opt(&compiled)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_bool_result(holds, "Policy never matches");
             }
         }
@@ -411,14 +410,14 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         SymccCommands::MatchesEquivalent(cmd_args) => {
             let (p1, p2, schema) = load_two_policies(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
+                .wrap_err("Failed to compile policy1")?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy2: {e}"))?;
+                .wrap_err("Failed to compile policy2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_matches_equivalent_with_counterexample_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_counterexample_result(
                     result,
                     "Policies have equivalent match conditions",
@@ -428,21 +427,21 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                 let holds = compiler
                     .check_matches_equivalent_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_bool_result(holds, "Policies have equivalent match conditions");
             }
         }
         SymccCommands::MatchesImplies(cmd_args) => {
             let (p1, p2, schema) = load_two_policies(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
+                .wrap_err("Failed to compile policy1")?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy2: {e}"))?;
+                .wrap_err("Failed to compile policy2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_matches_implies_with_counterexample_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_counterexample_result(
                     result,
                     "Policy1 match implies Policy2 match",
@@ -452,21 +451,21 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                 let holds = compiler
                     .check_matches_implies_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_bool_result(holds, "Policy1 match implies Policy2 match");
             }
         }
         SymccCommands::MatchesDisjoint(cmd_args) => {
             let (p1, p2, schema) = load_two_policies(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy1: {e}"))?;
+                .wrap_err("Failed to compile policy1")?;
             let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy2: {e}"))?;
+                .wrap_err("Failed to compile policy2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_matches_disjoint_with_counterexample_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_counterexample_result(
                     result,
                     "Policies have disjoint match conditions",
@@ -476,7 +475,7 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                 let holds = compiler
                     .check_matches_disjoint_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_bool_result(holds, "Policies have disjoint match conditions");
             }
         }
@@ -485,36 +484,36 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         SymccCommands::AlwaysAllows(cmd_args) => {
             let (pset, schema) = load_policy_set(cmd_args, &args.schema)?;
             let compiled = CompiledPolicySet::compile(&pset, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy set: {e}"))?;
+                .wrap_err("Failed to compile policy set")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_always_allows_with_counterexample_opt(&compiled)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_counterexample_result(result, "Policy set always allows", args.verbose);
             } else {
                 let holds = compiler
                     .check_always_allows_opt(&compiled)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_bool_result(holds, "Policy set always allows");
             }
         }
         SymccCommands::AlwaysDenies(cmd_args) => {
             let (pset, schema) = load_policy_set(cmd_args, &args.schema)?;
             let compiled = CompiledPolicySet::compile(&pset, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy set: {e}"))?;
+                .wrap_err("Failed to compile policy set")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_always_denies_with_counterexample_opt(&compiled)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_counterexample_result(result, "Policy set always denies", args.verbose);
             } else {
                 let holds = compiler
                     .check_always_denies_opt(&compiled)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_bool_result(holds, "Policy set always denies");
             }
         }
@@ -523,34 +522,34 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         SymccCommands::Equivalent(cmd_args) => {
             let (pset1, pset2, schema) = load_two_policy_sets(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
+                .wrap_err("Failed to compile policy set 1")?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy set 2: {e}"))?;
+                .wrap_err("Failed to compile policy set 2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_equivalent_with_counterexample_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_counterexample_result(result, "Policy sets are equivalent", args.verbose);
             } else {
                 let holds = compiler
                     .check_equivalent_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_bool_result(holds, "Policy sets are equivalent");
             }
         }
         SymccCommands::Implies(cmd_args) => {
             let (pset1, pset2, schema) = load_two_policy_sets(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
+                .wrap_err("Failed to compile policy set 1")?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy set 2: {e}"))?;
+                .wrap_err("Failed to compile policy set 2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_implies_with_counterexample_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_counterexample_result(
                     result,
                     "Policy set 1 implies policy set 2",
@@ -560,27 +559,27 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
                 let holds = compiler
                     .check_implies_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_bool_result(holds, "Policy set 1 implies policy set 2");
             }
         }
         SymccCommands::Disjoint(cmd_args) => {
             let (pset1, pset2, schema) = load_two_policy_sets(cmd_args, &args.schema)?;
             let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy set 1: {e}"))?;
+                .wrap_err("Failed to compile policy set 1")?;
             let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
-                .map_err(|e| miette!("Failed to compile policy set 2: {e}"))?;
+                .wrap_err("Failed to compile policy set 2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
                     .check_disjoint_with_counterexample_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_counterexample_result(result, "Policy sets are disjoint", args.verbose);
             } else {
                 let holds = compiler
                     .check_disjoint_opt(&compiled1, &compiled2)
                     .await
-                    .map_err(|e| miette!("Verification failed: {e}"))?;
+                    .wrap_err("Verification failed")?;
                 format_bool_result(holds, "Policy sets are disjoint");
             }
         }
