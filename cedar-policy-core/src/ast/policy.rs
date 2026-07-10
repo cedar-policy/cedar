@@ -494,7 +494,7 @@ fn describe_arity_error(
 ///   - the bound values for slots in the template
 ///
 /// Policies are not serializable (due to the pointer), and can be serialized
-/// by converting to/from LiteralPolicy
+/// by converting to/from [`LiteralPolicy`]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Policy {
     /// Reference to the template
@@ -845,7 +845,7 @@ pub enum ReificationError {
     /// The outer map key does not match the policy's own ID
     #[error("policy set map key `{key}` does not match the policy's own id `{policy_id}`")]
     PolicyIdMismatch {
-        /// The outer map key used in `LiteralPolicySet.links`
+        /// The outer map key
         key: PolicyID,
         /// The policy's own ID (from `LiteralPolicy::id()`)
         policy_id: PolicyID,
