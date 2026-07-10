@@ -29,6 +29,7 @@ use super::tags::SymTags;
 use super::term::{Term, TermPrim, TermVar};
 use super::term_type::TermType;
 use super::type_abbrevs::*;
+use cedar_policy::{RequestEnv, Schema};
 use cedar_policy_core::validator::ValidatorSchema;
 use cedar_policy_core::validator::{
     types::{Attributes, OpenTag, Type},
@@ -114,13 +115,13 @@ impl SymEntityData {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
-pub struct SymEntities(pub BTreeMap<EntityType, SymEntityData>);
+pub struct SymEntities(pub Arc<BTreeMap<EntityType, SymEntityData>>);
 
 impl Deref for SymEntities {
     type Target = BTreeMap<EntityType, SymEntityData>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        self.0.as_ref()
     }
 }
 
@@ -366,9 +367,9 @@ impl SymEntities {
                 SymEntityData::of_action_type(act_ty, act_tys.clone(), schema),
             ))
         });
-        Ok(SymEntities(
+        Ok(SymEntities(Arc::new(
             e_data.into_iter().chain(a_data).collect::<Result<_, _>>()?,
-        ))
+        )))
     }
 }
 
@@ -418,6 +419,51 @@ impl SymEnv {
 // `cedar-policy-validator` doesn't have an equivalent of several types like
 // `RequestType` that are only used in `Cedar/SymCC/Env.lean`, so we define
 // them here.
+
+/// A [`Schema`] paired with its precomputed [`SymEntities`].
+///
+/// Building [`SymEntities`] from a schema is expensive and depends only on the
+/// schema, not on any particular request environment. [`SymSchema`] computes it
+/// once so it can be reused across many request environments via
+/// [`SymSchema::sym_env`], which is significantly cheaper than rebuilding the
+/// symbolic entities per environment (as [`SymEnv::new`] does).
+#[derive(Debug, Clone)]
+pub struct SymSchema {
+    schema: Schema,
+    entities: SymEntities,
+}
+
+impl SymSchema {
+    /// Builds the symbolic entities for `schema` once, up front.
+    pub fn new(schema: &Schema) -> crate::err::Result<Self> {
+        Ok(Self {
+            schema: schema.clone(),
+            entities: SymEntities::of_schema(schema.as_ref())?,
+        })
+    }
+
+    /// The [`Schema`] this symbolic schema was built from.
+    pub fn schema(&self) -> &Schema {
+        &self.schema
+    }
+
+    /// Returns a [`SymEnv`] for `req_env`, reusing the precomputed [`SymEntities`].
+    ///
+    /// Only the (cheap) symbolic request is built per call; the (expensive)
+    /// symbolic entities are shared via a reference-counted clone. The resulting
+    /// [`SymEnv`] is identical to one built by [`SymEnv::new`] for the same
+    /// schema and request environment.
+    // INVARIANT: must produce the same SymEnv as SymEnv::of_env / SymEnv::new.
+    // Guarded by test sym_schema_sym_env_matches_sym_env_new.
+    pub fn sym_env(&self, req_env: &RequestEnv) -> crate::err::Result<SymEnv> {
+        let env = Environment::from_request_env(req_env, self.schema.as_ref())
+            .ok_or_else(|| crate::err::Error::ActionNotInSchema(req_env.action().to_string()))?;
+        Ok(SymEnv {
+            request: SymRequest::of_request_type(&env.req_ty)?,
+            entities: self.entities.clone(),
+        })
+    }
+}
 
 // TODO: test this
 

@@ -65,7 +65,7 @@ pub use concretizer::ConcretizeError;
 pub use concretizer::Env;
 pub use decoder::DecodeError;
 pub use encoder::EncodeError;
-pub use env::{Environment, SymEnv};
+pub use env::{Environment, SymEnv, SymSchema};
 pub use interpretation::Interpretation;
 pub use result::CompileError;
 pub use smtlib_script::SmtLibScript;

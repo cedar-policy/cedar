@@ -304,12 +304,12 @@ impl SymEntityData {
 impl SymEntities {
     /// Interpret a [`SymEntities`] with the given interpretation.
     pub fn interpret(&self, interp: &Interpretation<'_>) -> SymEntities {
-        SymEntities(
+        SymEntities(Arc::new(
             self.0
                 .iter()
                 .map(|(ent, data)| (ent.clone(), data.interpret(interp)))
                 .collect(),
-        )
+        ))
     }
 }
 

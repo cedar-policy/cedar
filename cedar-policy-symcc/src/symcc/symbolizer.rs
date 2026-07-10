@@ -403,12 +403,12 @@ impl SymEntities {
             ))
         });
 
-        Ok(SymEntities(
+        Ok(SymEntities(Arc::new(
             entities
                 .into_iter()
                 .chain(actions)
                 .collect::<Result<_, _>>()?,
-        ))
+        )))
     }
 }
 
