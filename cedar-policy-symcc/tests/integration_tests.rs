@@ -2558,7 +2558,7 @@ fn sym_schema_reuse_across_envs() {
     let env_a = sym_schema.sym_env(&req_env).unwrap();
     let env_b = sym_schema.sym_env(&req_env).unwrap();
     // Both reuse the same underlying entities (Arc pointer equality).
-    assert!(Arc::ptr_eq(&env_a.entities.0, &env_b.entities.0));
+    assert!(Arc::ptr_eq(&env_a.entities, &env_b.entities));
     // And both match a fresh build.
     assert_eq!(env_a, SymEnv::new(&schema, &req_env).unwrap());
 }

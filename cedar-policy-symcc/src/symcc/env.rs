@@ -115,13 +115,13 @@ impl SymEntityData {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
-pub struct SymEntities(pub Arc<BTreeMap<EntityType, SymEntityData>>);
+pub struct SymEntities(pub BTreeMap<EntityType, SymEntityData>);
 
 impl Deref for SymEntities {
     type Target = BTreeMap<EntityType, SymEntityData>;
 
     fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
+        &self.0
     }
 }
 
@@ -174,7 +174,7 @@ pub struct SymEnv {
     /// Symbolic request
     pub request: SymRequest,
     /// Symbolic entities
-    pub entities: SymEntities,
+    pub entities: Arc<SymEntities>,
 }
 
 impl SymEnv {
@@ -367,9 +367,9 @@ impl SymEntities {
                 SymEntityData::of_action_type(act_ty, act_tys.clone(), schema),
             ))
         });
-        Ok(SymEntities(Arc::new(
+        Ok(SymEntities(
             e_data.into_iter().chain(a_data).collect::<Result<_, _>>()?,
-        )))
+        ))
     }
 }
 
@@ -404,7 +404,7 @@ impl SymEnv {
     pub fn of_env(ty_env: &Environment<'_>) -> Result<Self, CompileError> {
         Ok(SymEnv {
             request: SymRequest::of_request_type(&ty_env.req_ty)?,
-            entities: SymEntities::of_schema(ty_env.schema)?,
+            entities: Arc::new(SymEntities::of_schema(ty_env.schema)?),
         })
     }
 }
@@ -430,7 +430,7 @@ impl SymEnv {
 #[derive(Debug, Clone)]
 pub struct SymSchema {
     schema: Schema,
-    entities: SymEntities,
+    entities: Arc<SymEntities>,
 }
 
 impl SymSchema {
@@ -438,7 +438,7 @@ impl SymSchema {
     pub fn new(schema: &Schema) -> crate::err::Result<Self> {
         Ok(Self {
             schema: schema.clone(),
-            entities: SymEntities::of_schema(schema.as_ref())?,
+            entities: Arc::new(SymEntities::of_schema(schema.as_ref())?),
         })
     }
 

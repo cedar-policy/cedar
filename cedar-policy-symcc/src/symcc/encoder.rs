@@ -766,7 +766,7 @@ mod unit_tests {
     async fn declare_type() {
         let symenv = SymEnv {
             request: SymRequest::empty_sym_req(),
-            entities: SymEntities(Arc::new(BTreeMap::new())),
+            entities: Arc::new(SymEntities(BTreeMap::new())),
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         encoder
@@ -779,7 +779,7 @@ mod unit_tests {
     async fn declare_entity_type() {
         let symenv = SymEnv {
             request: SymRequest::empty_sym_req(),
-            entities: SymEntities(Arc::new(BTreeMap::new())),
+            entities: Arc::new(SymEntities(BTreeMap::new())),
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         let ety = cedar_policy::EntityTypeName::from_str("User").unwrap();
@@ -792,7 +792,7 @@ mod unit_tests {
     async fn declare_empty_record_type() {
         let symenv = SymEnv {
             request: SymRequest::empty_sym_req(),
-            entities: SymEntities(Arc::new(BTreeMap::new())),
+            entities: Arc::new(SymEntities(BTreeMap::new())),
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         encoder.declare_record_type(vec![]).await.unwrap();
@@ -802,7 +802,7 @@ mod unit_tests {
     async fn declare_record_type() {
         let symenv = SymEnv {
             request: SymRequest::empty_sym_req(),
-            entities: SymEntities(Arc::new(BTreeMap::new())),
+            entities: Arc::new(SymEntities(BTreeMap::new())),
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         encoder
@@ -815,7 +815,7 @@ mod unit_tests {
     async fn encode_bool_type() {
         let symenv = SymEnv {
             request: SymRequest::empty_sym_req(),
-            entities: SymEntities(Arc::new(BTreeMap::new())),
+            entities: Arc::new(SymEntities(BTreeMap::new())),
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         encoder.encode_type(&TermType::Bool).await.unwrap();
@@ -825,7 +825,7 @@ mod unit_tests {
     async fn encode_string_type() {
         let symenv = SymEnv {
             request: SymRequest::empty_sym_req(),
-            entities: SymEntities(Arc::new(BTreeMap::new())),
+            entities: Arc::new(SymEntities(BTreeMap::new())),
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         encoder.encode_type(&TermType::String).await.unwrap();
@@ -835,7 +835,7 @@ mod unit_tests {
     async fn encode_uuf() {
         let symenv = SymEnv {
             request: SymRequest::empty_sym_req(),
-            entities: SymEntities(Arc::new(BTreeMap::new())),
+            entities: Arc::new(SymEntities(BTreeMap::new())),
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         let my_uuf = crate::symcc::op::Uuf {
@@ -851,7 +851,7 @@ mod unit_tests {
         use cedar_policy::EntityUid;
         let symenv = SymEnv {
             request: SymRequest::empty_sym_req(),
-            entities: SymEntities(Arc::new(BTreeMap::new())),
+            entities: Arc::new(SymEntities(BTreeMap::new())),
         };
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         let entity_type_name = EntityTypeName::from_str("User").unwrap();

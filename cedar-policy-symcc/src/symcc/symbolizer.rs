@@ -403,12 +403,12 @@ impl SymEntities {
             ))
         });
 
-        Ok(SymEntities(Arc::new(
+        Ok(SymEntities(
             entities
                 .into_iter()
                 .chain(actions)
                 .collect::<Result<_, _>>()?,
-        )))
+        ))
     }
 }
 
@@ -426,7 +426,7 @@ impl SymEnv {
             .ok_or(SymbolizeError::IllFormedTypeEnv)?;
         Ok(SymEnv {
             request: SymRequest::from_request(&type_env, &env.request)?,
-            entities: SymEntities::from_entities(&type_env, &env.entities)?,
+            entities: Arc::new(SymEntities::from_entities(&type_env, &env.entities)?),
         })
     }
 }

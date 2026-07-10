@@ -304,12 +304,12 @@ impl SymEntityData {
 impl SymEntities {
     /// Interpret a [`SymEntities`] with the given interpretation.
     pub fn interpret(&self, interp: &Interpretation<'_>) -> SymEntities {
-        SymEntities(Arc::new(
+        SymEntities(
             self.0
                 .iter()
                 .map(|(ent, data)| (ent.clone(), data.interpret(interp)))
                 .collect(),
-        ))
+        )
     }
 }
 
@@ -317,7 +317,7 @@ impl SymEnv {
     /// Interpret a [`SymEnv`] with the given interpretation.
     pub fn interpret(&self, interp: &Interpretation<'_>) -> SymEnv {
         SymEnv {
-            entities: self.entities.interpret(interp),
+            entities: Arc::new(self.entities.interpret(interp)),
             request: self.request.interpret(interp),
         }
     }
