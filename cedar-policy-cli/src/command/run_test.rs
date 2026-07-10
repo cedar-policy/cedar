@@ -15,7 +15,7 @@
  */
 
 use clap::Args;
-use miette::{miette, IntoDiagnostic, Report, Result, WrapErr};
+use miette::{IntoDiagnostic, Report, Result, WrapErr};
 use owo_colors::OwoColorize;
 use serde::de::{DeserializeSeed, IntoDeserializer};
 use serde::{Deserialize, Deserializer};
