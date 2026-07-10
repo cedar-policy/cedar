@@ -111,7 +111,12 @@ pub(crate) fn load_links_from_file(path: impl AsRef<Path>) -> Result<Vec<Templat
         .wrap_err_with(|| format!("failed to open links file '{}'", path.as_ref().display()))?;
     if f.metadata()
         .into_diagnostic()
-        .wrap_err_with(|| format!("failed to read metadata for links file '{}'", path.as_ref().display()))?
+        .wrap_err_with(|| {
+            format!(
+                "failed to read metadata for links file '{}'",
+                path.as_ref().display()
+            )
+        })?
         .len()
         == 0
     {
