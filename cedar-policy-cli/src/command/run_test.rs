@@ -313,7 +313,7 @@ fn load_partial_tests(tests_filename: impl AsRef<Path>) -> Result<Vec<serde_json
     serde_json::from_reader(reader)
         .into_diagnostic()
         .wrap_err_with(|| {
-            miette!(
+            format!(
                 "failed to parse tests from file {}",
                 tests_filename.as_ref().display()
             )

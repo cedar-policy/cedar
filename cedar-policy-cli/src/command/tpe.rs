@@ -266,10 +266,12 @@ fn load_partial_entities(
         })?;
     let json = serde_json::from_reader(f)
         .into_diagnostic()
-        .wrap_err(format!(
-            "failed to parse entities as JSON value from file {}",
-            entities_filename.as_ref().display()
-        ))?;
+        .wrap_err_with(|| {
+            format!(
+                "failed to parse entities as JSON value from file {}",
+                entities_filename.as_ref().display()
+            )
+        })?
     PartialEntities::from_json_value(json, schema).wrap_err_with(|| {
         format!(
             "failed to parse entities from file {}",
