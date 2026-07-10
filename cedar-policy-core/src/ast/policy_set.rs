@@ -231,6 +231,27 @@ impl PolicySet {
         }
     }
 
+    /// Create a `PolicySet` from pre-built components.
+    ///
+    /// The caller is responsible for ensuring the invariants hold:
+    /// - Every link references a template that exists in `templates`
+    /// - `template_to_links_map` is consistent with `templates` and `links`
+    /// - Non-static link IDs do not collide with template IDs
+    ///
+    /// This is not intended for external use; use the incremental builder methods
+    /// (`add`, `add_template`, `link`) instead.
+    pub fn from_raw_components(
+        templates: LinkedHashMap<PolicyID, Arc<Template>>,
+        links: LinkedHashMap<PolicyID, Policy>,
+        template_to_links_map: LinkedHashMap<PolicyID, LinkedHashSet<PolicyID>>,
+    ) -> Self {
+        Self {
+            templates,
+            links,
+            template_to_links_map,
+        }
+    }
+
     /// Create a `PolicySet` containing a single policy.
     pub fn singleton(p: Policy) -> Self {
         let t = p.template_arc();
