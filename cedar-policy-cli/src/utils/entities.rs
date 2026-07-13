@@ -24,23 +24,22 @@ pub(crate) fn load_entities(
     entities_filename: impl AsRef<Path>,
     schema: Option<&Schema>,
 ) -> Result<Entities> {
-    match std::fs::OpenOptions::new()
+    let f = std::fs::OpenOptions::new()
         .read(true)
         .open(entities_filename.as_ref())
-    {
-        Ok(f) => Entities::from_json_file(f, schema).wrap_err_with(|| {
-            format!(
-                "failed to parse entities from file {}",
-                entities_filename.as_ref().display()
-            )
-        }),
-        Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
+        .into_diagnostic()
+        .wrap_err_with(|| {
             format!(
                 "failed to open entities file {}",
                 entities_filename.as_ref().display()
             )
-        }),
-    }
+        })?;
+    Entities::from_json_file(f, schema).wrap_err_with(|| {
+        format!(
+            "failed to parse entities from file {}",
+            entities_filename.as_ref().display()
+        )
+    })
 }
 
 #[cfg(test)]

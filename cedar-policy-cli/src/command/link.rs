@@ -18,7 +18,7 @@ use std::{collections::HashMap, fs::OpenOptions, path::Path, str::FromStr};
 
 use cedar_policy::{PolicyId, SlotId};
 use clap::Args;
-use miette::{miette, IntoDiagnostic, Result};
+use miette::{miette, Context, IntoDiagnostic, Result};
 use serde::Deserialize;
 
 use crate::{
@@ -120,7 +120,20 @@ fn write_template_linked_file(linked: &[TemplateLinked], path: impl AsRef<Path>)
         .write(true)
         .truncate(true)
         .create(true)
-        .open(path)
-        .into_diagnostic()?;
-    serde_json::to_writer(f, linked).into_diagnostic()
+        .open(&path)
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            format!(
+                "failed to open template link file {}",
+                path.as_ref().display()
+            )
+        })?;
+    serde_json::to_writer(f, linked)
+        .into_diagnostic()
+        .wrap_err_with(|| {
+            format!(
+                "failed while writing to template link file {}",
+                path.as_ref().display()
+            )
+        })
 }

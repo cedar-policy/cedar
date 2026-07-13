@@ -106,19 +106,17 @@ impl From<TemplateLinked> for LiteralTemplateLinked {
 /// Given a file containing template links, return a `Vec` of those links.
 /// Returns an error if the file does not exist.
 pub(crate) fn load_links_from_file(path: impl AsRef<Path>) -> Result<Vec<TemplateLinked>> {
-    let f = match std::fs::File::open(&path) {
-        Ok(f) => f,
-        Err(e) => {
-            return Err(miette::miette!(
-                "failed to open links file '{}': {}",
-                path.as_ref().display(),
-                e
-            ));
-        }
-    };
+    let f = std::fs::File::open(&path)
+        .into_diagnostic()
+        .wrap_err_with(|| format!("failed to open links file '{}'", path.as_ref().display()))?;
     if f.metadata()
         .into_diagnostic()
-        .wrap_err("Failed to read metadata")?
+        .wrap_err_with(|| {
+            format!(
+                "failed to read metadata for links file '{}'",
+                path.as_ref().display()
+            )
+        })?
         .len()
         == 0
     {

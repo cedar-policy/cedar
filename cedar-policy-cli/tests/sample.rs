@@ -2181,10 +2181,10 @@ fn link_file_cant_read() {
     let mut settings = insta::Settings::clone_current();
     settings.add_filter(r"/tmp/[^ ']+/linked", "[TEMPDIR]/linked");
     settings.bind(|| {
-        insta::assert_snapshot!(stdout, @r###"
-        × failed to open links file '[TEMPDIR]/linked': Permission denied (os
-        │ error 13)
-        "###);
+        insta::assert_snapshot!(stdout, @"
+        × failed to open links file '[TEMPDIR]/linked'
+        ╰─▶ Permission denied (os error 13)
+        ");
     });
     assert!(!output.status.success());
 }
@@ -2232,11 +2232,11 @@ fn auth_link_file_does_not_exist() {
     let mut settings = insta::Settings::clone_current();
     settings.add_filter(r"/tmp/[^ ']+/linked", "[TEMPDIR]/linked");
     settings.bind(|| {
-        insta::assert_snapshot!(stdout, @r###"
+        insta::assert_snapshot!(stdout, @"
 
-        × failed to open links file '[TEMPDIR]/linked': No such file or
-        │ directory (os error 2)
-        "###);
+        × failed to open links file '[TEMPDIR]/linked'
+        ╰─▶ No such file or directory (os error 2)
+        ");
     });
     assert!(!output.status.success());
     assert!(
