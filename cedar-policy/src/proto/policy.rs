@@ -631,6 +631,42 @@ mod test {
         }
     }
 
+    /// Create a template-linked `ast::Policy` with a `?principal` slot bound to
+    /// `entity_type`::`eid`, along with the templates map needed for reification.
+    fn make_linked_policy(
+        template_id: &str,
+        link_id: &str,
+        entity_type: &str,
+        eid: &str,
+    ) -> (
+        ast::Policy,
+        LinkedHashMap<ast::PolicyID, Arc<ast::Template>>,
+    ) {
+        let tb = ast::TemplateBody::new(
+            ast::PolicyID::from_string(template_id),
+            None,
+            ast::Annotations::from_iter([]),
+            ast::Effect::Permit,
+            ast::PrincipalConstraint::is_eq_slot(),
+            ast::ActionConstraint::Any,
+            ast::ResourceConstraint::any(),
+            None,
+        );
+        let template = Arc::new(ast::Template::from(tb));
+        let templates =
+            LinkedHashMap::from_iter([(ast::PolicyID::from_string(template_id), template.clone())]);
+        let policy = ast::Template::link(
+            template,
+            ast::PolicyID::from_string(link_id),
+            HashMap::from_iter([(
+                ast::SlotId::principal(),
+                ast::EntityUID::with_eid_and_type(entity_type, eid).unwrap(),
+            )]),
+        )
+        .unwrap();
+        (policy, templates)
+    }
+
     #[test]
     #[expect(clippy::too_many_lines, reason = "unit test code")]
     fn policy_roundtrip() {
@@ -781,36 +817,10 @@ mod test {
         );
 
         // Test reify roundtrip: ast::Policy -> models::Policy -> reify
-        // We need a template with a principal slot for the linked policy.
-        let slotted_tb = ast::TemplateBody::new(
-            ast::PolicyID::from_string("template"),
-            None,
-            ast::Annotations::from_iter([]),
-            ast::Effect::Permit,
-            ast::PrincipalConstraint::is_eq_slot(),
-            ac1.clone(),
-            rc.clone(),
-            None,
-        );
-        let slotted_template = Arc::new(ast::Template::from(slotted_tb));
-        let templates = LinkedHashMap::from_iter([(
-            ast::PolicyID::from_string("template"),
-            slotted_template.clone(),
-        )]);
-        let linked_policy = ast::Template::link(
-            slotted_template,
-            ast::PolicyID::from_string("id"),
-            HashMap::from_iter([(
-                ast::SlotId::principal(),
-                ast::EntityUID::with_eid_and_type("A", "eid").unwrap(),
-            )]),
-        )
-        .unwrap();
+        let (linked_policy, templates) = make_linked_policy("template", "id", "A", "eid");
         let model = models::Policy::from(&linked_policy);
         let roundtripped = reify(model, &templates).unwrap();
-        assert_eq!(linked_policy.id(), roundtripped.id());
-        assert_eq!(linked_policy.template().id(), roundtripped.template().id());
-        assert_eq!(linked_policy.env(), roundtripped.env());
+        assert_eq!(linked_policy, roundtripped);
 
         let tb = ast::TemplateBody::new(
             ast::PolicyID::from_string("\0\n \' \"+-$^!"),
@@ -828,38 +838,11 @@ mod test {
         );
 
         // Test reify roundtrip with special characters in IDs
-        let slotted_tb2 = ast::TemplateBody::new(
-            ast::PolicyID::from_string("template\0\n \' \"+-$^!"),
-            None,
-            ast::Annotations::from_iter([]),
-            ast::Effect::Permit,
-            ast::PrincipalConstraint::is_eq_slot(),
-            ast::ActionConstraint::Any,
-            ast::ResourceConstraint::any(),
-            None,
-        );
-        let slotted_template2 = Arc::new(ast::Template::from(slotted_tb2));
-        let templates2 = LinkedHashMap::from_iter([(
-            ast::PolicyID::from_string("template\0\n \' \"+-$^!"),
-            slotted_template2.clone(),
-        )]);
-        let linked_policy2 = ast::Template::link(
-            slotted_template2,
-            ast::PolicyID::from_string("link\0\n \' \"+-$^!"),
-            HashMap::from_iter([(
-                ast::SlotId::principal(),
-                ast::EntityUID::with_eid_and_type("A", "eid").unwrap(),
-            )]),
-        )
-        .unwrap();
+        let (linked_policy2, templates2) =
+            make_linked_policy("template\0\n \' \"+-$^!", "link\0\n \' \"+-$^!", "A", "eid");
         let model2 = models::Policy::from(&linked_policy2);
         let roundtripped2 = reify(model2, &templates2).unwrap();
-        assert_eq!(linked_policy2.id(), roundtripped2.id());
-        assert_eq!(
-            linked_policy2.template().id(),
-            roundtripped2.template().id()
-        );
-        assert_eq!(linked_policy2.env(), roundtripped2.env());
+        assert_eq!(linked_policy2, roundtripped2);
     }
 
     #[test]
