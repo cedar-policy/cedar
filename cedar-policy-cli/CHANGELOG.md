@@ -20,6 +20,7 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 - `symcc` single-policy and two-policy commands now error if the `--policies` file contains templates. Previously templates were silently ignored.
    Policy-set commands continue to accept and ignore templates with a warning.
+- `run-tests` command now uses provided schema when parsing the context for tests cases.
 
 ## 4.11.2
 

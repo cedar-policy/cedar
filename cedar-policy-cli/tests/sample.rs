@@ -1529,6 +1529,13 @@ fn visualize_entities_parses_as_dot(
     "sample-data/tiny_sandboxes/sample1/tests-unexpected-error.json",
     CedarExitCode::Failure
 )]
+// The test expects a runtime error, but evaluation produces none
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-missing-error.json",
+    CedarExitCode::Failure
+)]
 #[case(
     "sample-data/tiny_sandboxes/sample1/policy.cedar",
     "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
