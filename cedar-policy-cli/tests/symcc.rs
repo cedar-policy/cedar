@@ -1063,7 +1063,8 @@ fn test_error_if_contains_templates_single_policy() {
     assert!(!output.status.success(), "expected non-zero exit code");
     insta::assert_snapshot!(String::from_utf8_lossy(&output.stderr), @"
     × Analysis failed
-    ╰─▶ Expected exactly one static policy in --policies, found 1 policy template(s)
+    ╰─▶ Expected exactly one static policy in --policies, found 1 policy
+        template(s)
     ");
 }
 
