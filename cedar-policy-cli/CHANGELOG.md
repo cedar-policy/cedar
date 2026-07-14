@@ -18,7 +18,7 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ### Fixed
 
-- `symcc` single-policy and two-policy commands now error if the `--policies` files contains templates. Previously templates were silently ignored.
+- `symcc` single-policy and two-policy commands now error if the `--policies` file contains templates. Previously templates were silently ignored.
    Policy-set commands continue to accept and ignore templates with a warning.
 
 ## 4.11.2

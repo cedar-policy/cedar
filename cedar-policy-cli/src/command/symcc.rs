@@ -231,9 +231,9 @@ fn warn_if_contains_templates(pset: &PolicySet, name: &str) {
     }
 }
 
-/// Extract exactly on policy from `pset`.
+/// Extract exactly one policy from `pset`.
 ///
-/// Returns an error if `pset` returns 0 or more than one policies. Returns an
+/// Returns an error if `pset` contains 0 or more than one policy. Returns an
 /// error if `pset` contains _any_ templates. This is an error for the single
 /// policy analysis targets because we expect the input to be a single policy,
 /// not a policy set. Any templates indicates that we were given a policy set.
@@ -241,7 +241,7 @@ fn exactly_one_policy(pset: &PolicySet, name: &str) -> Result<Policy> {
     let num_templates = pset.templates().count();
     if num_templates > 0 {
         Err(miette!(
-            "Expected exactly one static policy in {name}, found {num_templates} templates"
+            "Expected exactly one static policy in {name}, found {num_templates} policy template(s)"
         ))
     } else {
         pset.policies()
@@ -257,7 +257,7 @@ fn load_single_policy(
 ) -> Result<(Policy, Schema)> {
     let pset = policies.get_policy_set()?;
     let schema = schema_args.get_schema()?;
-    let policy = exactly_one_policy(&pset, "--policy")?;
+    let policy = exactly_one_policy(&pset, "--policies")?;
     Ok((policy, schema))
 }
 

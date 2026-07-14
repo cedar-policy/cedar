@@ -524,7 +524,7 @@ fn test_never_errors_rejects_empty_policy() {
         .assert()
         .failure()
         .stderr(predicates::str::contains(
-            "Expected exactly one policy in --policy, found 0",
+            "Expected exactly one policy in --policies, found 0",
         ));
 }
 
@@ -1063,7 +1063,7 @@ fn test_error_if_contains_templates_single_policy() {
     assert!(!output.status.success(), "expected non-zero exit code");
     insta::assert_snapshot!(String::from_utf8_lossy(&output.stderr), @"
     × Analysis failed
-    ╰─▶ Expected exactly one static policy in --policy, found 1 templates
+    ╰─▶ Expected exactly one static policy in --policies, found 1 policy template(s)
     ");
 }
 
