@@ -273,14 +273,13 @@ impl<'de, 'a> DeserializeSeed<'de> for CheckedTestCaseSeed<'a> {
             serde::de::Error::custom(format!("failed to parse resource `{resource}`: {e}",))
         })?;
 
-        let context =
-            Context::from_json_value(request.context.clone(), self.0.map(|s| (s, &action)))
-                .map_err(|e| {
-                    serde::de::Error::custom(format!(
-                        "failed to parse context `{}`: {}",
-                        request.context, e
-                    ))
-                })?;
+        let context = Context::from_json_value(request.context.clone(), self.0.zip(Some(&action)))
+            .map_err(|e| {
+                serde::de::Error::custom(format!(
+                    "failed to parse context `{}`: {}",
+                    request.context, e
+                ))
+            })?;
 
         let request = Request::new(principal, action, resource, context, self.0)
             .map_err(|e| serde::de::Error::custom(format!("failed to create request: {e}")))?;
