@@ -326,8 +326,6 @@ mod tests {
     use super::*;
     use crate::utils::test_utils::render_err;
 
-    /// A schema for sample1 in which `view` takes no context, so any non-empty
-    /// context is only rejected when the schema is supplied.
     fn schema() -> Schema {
         Schema::from_cedarschema_str(
             "entity User; entity Photo; action view appliesTo { principal: [User], resource: [Photo] };",
@@ -405,7 +403,7 @@ mod tests {
         });
 
         insta::assert_snapshot!(
-            deserialize(Some(&schema()), request.clone()).unwrap_err(),
+            deserialize(Some(&schema()), request).unwrap_err(),
             @r#"  × failed to parse context `{}`: action `Action::"delete"` does not exist in the supplied schema"#
         );
     }
@@ -420,7 +418,7 @@ mod tests {
         });
 
         insta::assert_snapshot!(
-            deserialize(Some(&schema()), request.clone()).unwrap_err(),
+            deserialize(Some(&schema()), request).unwrap_err(),
             @r#"  × failed to create request: principal type `Photo` is not valid for `Action::"view"`"#
         );
     }
@@ -437,7 +435,7 @@ mod tests {
 
         // With a schema present the bad context is rejected.
         insta::assert_snapshot!(
-            deserialize(Some(&schema()), request.clone()).unwrap_err(),
+            deserialize(Some(&schema()), request).unwrap_err(),
             @"  × failed to parse context `{\"unexpected\":true}`: while parsing context, record attribute `unexpected` should not exist according to the schema"
         );
     }
